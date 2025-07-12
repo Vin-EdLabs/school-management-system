@@ -1,9 +1,15 @@
 
 import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CreditCard } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import SetFeeStructure from './SetFeeStructure';
+import RecordPayment from './RecordPayment';
+import ViewPayments from './ViewPayments';
+import StudentBalances from './StudentBalances';
+import { CreditCard, DollarSign, Receipt, Eye, AlertCircle } from 'lucide-react';
 
 const FeesModule = () => {
+  const [activeTab, setActiveTab] = useState('set-fees');
+
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
@@ -18,52 +24,42 @@ const FeesModule = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Set Fee Structure</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-gray-600">Configure fees for different classes and terms</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader>
-            <CardTitle>Record Payment</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-gray-600">Record student fee payments</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader>
-            <CardTitle>View Payments</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-gray-600">View and manage all payments</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader>
-            <CardTitle>Generate Receipt</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-gray-600">Generate printable payment receipts</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader>
-            <CardTitle>Student Balances</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-gray-600">View outstanding balances for all students</p>
-          </CardContent>
-        </Card>
-      </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:grid-cols-4">
+          <TabsTrigger value="set-fees" className="flex items-center space-x-2">
+            <DollarSign className="w-4 h-4" />
+            <span>Set Fees</span>
+          </TabsTrigger>
+          <TabsTrigger value="record-payment" className="flex items-center space-x-2">
+            <Receipt className="w-4 h-4" />
+            <span>Record Payment</span>
+          </TabsTrigger>
+          <TabsTrigger value="view-payments" className="flex items-center space-x-2">
+            <Eye className="w-4 h-4" />
+            <span>View Payments</span>
+          </TabsTrigger>
+          <TabsTrigger value="balances" className="flex items-center space-x-2">
+            <AlertCircle className="w-4 h-4" />
+            <span>Balances</span>
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="set-fees">
+          <SetFeeStructure />
+        </TabsContent>
+
+        <TabsContent value="record-payment">
+          <RecordPayment />
+        </TabsContent>
+
+        <TabsContent value="view-payments">
+          <ViewPayments />
+        </TabsContent>
+
+        <TabsContent value="balances">
+          <StudentBalances />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };

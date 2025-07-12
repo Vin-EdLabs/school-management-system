@@ -1,14 +1,18 @@
 
-import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { TrendingUp } from 'lucide-react';
+import React, { useState } from 'react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import AddIncomeForm from './AddIncomeForm';
+import ViewAllIncome from './ViewAllIncome';
+import { TrendingUp, Plus, Eye } from 'lucide-react';
 
 const IncomeModule = () => {
+  const [activeTab, setActiveTab] = useState('add-income');
+
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg flex items-center justify-center">
+          <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-teal-600 rounded-lg flex items-center justify-center">
             <TrendingUp className="w-6 h-6 text-white" />
           </div>
           <div>
@@ -18,25 +22,26 @@ const IncomeModule = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Add Income</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-gray-600">Record additional income sources</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader>
-            <CardTitle>View All Income</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-gray-600">View and manage all income records</p>
-          </CardContent>
-        </Card>
-      </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-2 lg:w-auto lg:grid-cols-2">
+          <TabsTrigger value="add-income" className="flex items-center space-x-2">
+            <Plus className="w-4 h-4" />
+            <span>Add Income</span>
+          </TabsTrigger>
+          <TabsTrigger value="view-all" className="flex items-center space-x-2">
+            <Eye className="w-4 h-4" />
+            <span>View All</span>
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="add-income">
+          <AddIncomeForm />
+        </TabsContent>
+
+        <TabsContent value="view-all">
+          <ViewAllIncome />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };

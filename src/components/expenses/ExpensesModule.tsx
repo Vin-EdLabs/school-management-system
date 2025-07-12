@@ -1,9 +1,13 @@
 
-import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { TrendingDown } from 'lucide-react';
+import React, { useState } from 'react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import AddExpenseForm from './AddExpenseForm';
+import ViewAllExpenses from './ViewAllExpenses';
+import { TrendingDown, Plus, Eye } from 'lucide-react';
 
 const ExpensesModule = () => {
+  const [activeTab, setActiveTab] = useState('add-expense');
+
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
@@ -18,25 +22,26 @@ const ExpensesModule = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Add Expense</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-gray-600">Record new school expenses</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader>
-            <CardTitle>View All Expenses</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-gray-600">View and manage all expense records</p>
-          </CardContent>
-        </Card>
-      </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-2 lg:w-auto lg:grid-cols-2">
+          <TabsTrigger value="add-expense" className="flex items-center space-x-2">
+            <Plus className="w-4 h-4" />
+            <span>Add Expense</span>
+          </TabsTrigger>
+          <TabsTrigger value="view-all" className="flex items-center space-x-2">
+            <Eye className="w-4 h-4" />
+            <span>View All</span>
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="add-expense">
+          <AddExpenseForm />
+        </TabsContent>
+
+        <TabsContent value="view-all">
+          <ViewAllExpenses />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };

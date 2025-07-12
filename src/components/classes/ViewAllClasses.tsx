@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
-import { Search, Edit, Trash2, Eye, Users, GraduationCap } from 'lucide-react';
+import { Search, Edit, Trash2, Eye, Users, GraduationCap, Plus } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
 const ViewAllClasses = () => {
@@ -14,10 +14,19 @@ const ViewAllClasses = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterLevel, setFilterLevel] = useState('');
 
+  console.log('ViewAllClasses: classes data:', classes);
+  console.log('ViewAllClasses: classes length:', classes.length);
+
   const levels = ['KG1', 'KG2', 'Primary 1', 'Primary 2', 'Primary 3', 'Primary 4', 'Primary 5', 'Primary 6', 'JHS 1', 'JHS 2', 'JHS 3'];
 
   // Filter classes based on search and filters
   const filteredClasses = classes.filter(cls => {
+    // Ensure cls and cls.className exist
+    if (!cls || !cls.className) {
+      console.log('ViewAllClasses: Filtering out class with missing data:', cls);
+      return false;
+    }
+
     const matchesSearch = searchTerm === '' || 
       cls.className.toLowerCase().includes(searchTerm.toLowerCase()) ||
       cls.level.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -27,6 +36,8 @@ const ViewAllClasses = () => {
 
     return matchesSearch && matchesLevel;
   });
+
+  console.log('ViewAllClasses: filtered classes:', filteredClasses);
 
   const handleDeleteClass = (classId: string, className: string) => {
     const studentsInClass = students.filter(student => student.classAssigned === className);
@@ -57,6 +68,37 @@ const ViewAllClasses = () => {
     if (!teacherId) return null;
     return teachers.find(teacher => teacher.id === teacherId);
   };
+
+  // If no classes exist at all, show a different message
+  if (classes.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <span>All Classes (0)</span>
+            <Badge variant="outline" className="text-sm">
+              Total: 0 classes
+            </Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-12">
+            <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+              <GraduationCap className="w-8 h-8 text-gray-400" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No Classes Found</h3>
+            <p className="text-gray-500 mb-6">
+              You haven't created any classes yet. Start by creating your first class.
+            </p>
+            <Button className="flex items-center space-x-2">
+              <Plus className="w-4 h-4" />
+              <span>Create First Class</span>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card>
@@ -102,8 +144,14 @@ const ViewAllClasses = () => {
         {/* Classes Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredClasses.length === 0 ? (
-            <div className="col-span-full text-center py-8 text-gray-500">
-              No classes found matching your criteria
+            <div className="col-span-full text-center py-8">
+              <div className="mx-auto w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                <Search className="w-6 h-6 text-gray-400" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No Classes Match Your Search</h3>
+              <p className="text-gray-500">
+                Try adjusting your search terms or filters to find what you're looking for.
+              </p>
             </div>
           ) : (
             filteredClasses.map((cls) => {

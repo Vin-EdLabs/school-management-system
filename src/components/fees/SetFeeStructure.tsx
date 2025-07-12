@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,6 +18,8 @@ const SetFeeStructure = () => {
     dueDate: '',
     description: ''
   });
+
+  console.log('SetFeeStructure: classes data:', classes);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({
@@ -75,11 +78,14 @@ const SetFeeStructure = () => {
                     <SelectValue placeholder="Select class" />
                   </SelectTrigger>
                   <SelectContent>
-                    {classes.map((cls) => (
-                      <SelectItem key={cls.id} value={cls.className}>
-                        {cls.className}
-                      </SelectItem>
-                    ))}
+                    {classes.map((cls) => {
+                      console.log('SetFeeStructure: rendering class item:', cls.className);
+                      return (
+                        <SelectItem key={cls.id} value={cls.className || 'unknown-class'}>
+                          {cls.className}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>

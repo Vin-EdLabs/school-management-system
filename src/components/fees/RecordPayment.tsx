@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,6 +21,8 @@ const RecordPayment = () => {
     notes: ''
   });
   const [searchTerm, setSearchTerm] = useState('');
+
+  console.log('RecordPayment: students data:', students);
 
   const filteredStudents = students.filter(student =>
     student.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -92,19 +95,22 @@ const RecordPayment = () => {
             </div>
             {searchTerm && (
               <div className="border rounded-md max-h-40 overflow-y-auto">
-                {filteredStudents.map((student) => (
-                  <div
-                    key={student.id}
-                    className="p-2 hover:bg-gray-50 cursor-pointer border-b last:border-b-0"
-                    onClick={() => {
-                      setFormData(prev => ({...prev, studentId: student.id}));
-                      setSearchTerm(`${student.firstName} ${student.lastName} - ${student.studentId}`);
-                    }}
-                  >
-                    <p className="font-medium">{student.firstName} {student.lastName}</p>
-                    <p className="text-sm text-gray-500">ID: {student.studentId} | Class: {student.classAssigned}</p>
-                  </div>
-                ))}
+                {filteredStudents.map((student) => {
+                  console.log('RecordPayment: rendering student:', student.firstName, student.lastName, student.id);
+                  return (
+                    <div
+                      key={student.id}
+                      className="p-2 hover:bg-gray-50 cursor-pointer border-b last:border-b-0"
+                      onClick={() => {
+                        setFormData(prev => ({...prev, studentId: student.id || 'unknown-student'}));
+                        setSearchTerm(`${student.firstName} ${student.lastName} - ${student.studentId}`);
+                      }}
+                    >
+                      <p className="font-medium">{student.firstName} {student.lastName}</p>
+                      <p className="text-sm text-gray-500">ID: {student.studentId} | Class: {student.classAssigned}</p>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

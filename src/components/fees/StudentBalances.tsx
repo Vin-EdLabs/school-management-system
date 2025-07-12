@@ -80,7 +80,7 @@ const StudentBalances = () => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all-classes">All Classes</SelectItem>
-              {classes.map((cls) => (
+              {classes.filter(cls => cls.className && cls.className.trim() !== '').map((cls) => (
                 <SelectItem key={cls.id} value={cls.className}>
                   {cls.className}
                 </SelectItem>

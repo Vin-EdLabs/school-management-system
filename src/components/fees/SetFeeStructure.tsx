@@ -12,7 +12,7 @@ import { DollarSign, Save } from 'lucide-react';
 const SetFeeStructure = () => {
   const { classes, addFeeStructure, feeStructures } = useData();
   const [formData, setFormData] = useState({
-    className: '',
+    className: 'all',
     term: 'Term 1 2024',
     amount: '',
     dueDate: '',
@@ -29,10 +29,10 @@ const SetFeeStructure = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.className || !formData.amount) {
+    if (formData.className === 'all' || !formData.amount) {
       toast({
         title: "Validation Error",
-        description: "Please fill in class and amount",
+        description: "Please select a specific class and enter amount",
         variant: "destructive"
       });
       return;
@@ -49,7 +49,7 @@ const SetFeeStructure = () => {
     });
 
     setFormData({
-      className: '',
+      className: 'all',
       term: 'Term 1 2024',
       amount: '',
       dueDate: '',
@@ -76,6 +76,7 @@ const SetFeeStructure = () => {
                     <SelectValue placeholder="Select class" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="all">Select a class</SelectItem>
                     {classes.map((cls) => (
                       <SelectItem key={cls.id} value={cls.className}>
                         {cls.className}

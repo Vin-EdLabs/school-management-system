@@ -11,8 +11,8 @@ import { Search, Filter } from 'lucide-react';
 const ViewPayments = () => {
   const { payments, students, classes } = useData();
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterClass, setFilterClass] = useState('all');
-  const [filterTerm, setFilterTerm] = useState('all');
+  const [filterClass, setFilterClass] = useState('all-classes');
+  const [filterTerm, setFilterTerm] = useState('all-terms');
 
   const filteredPayments = payments.filter(payment => {
     const student = students.find(s => s.id === payment.studentId);
@@ -23,8 +23,8 @@ const ViewPayments = () => {
       student.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       student.studentId.includes(searchTerm);
     
-    const matchesClass = filterClass === 'all' || student.classAssigned === filterClass;
-    const matchesTerm = filterTerm === 'all' || payment.term === filterTerm;
+    const matchesClass = filterClass === 'all-classes' || student.classAssigned === filterClass;
+    const matchesTerm = filterTerm === 'all-terms' || payment.term === filterTerm;
 
     return matchesSearch && matchesClass && matchesTerm;
   });
@@ -59,7 +59,7 @@ const ViewPayments = () => {
                 <SelectValue placeholder="Filter by class" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Classes</SelectItem>
+                <SelectItem value="all-classes">All Classes</SelectItem>
                 {classes.map((cls) => (
                   <SelectItem key={cls.id} value={cls.className}>
                     {cls.className}
@@ -72,7 +72,7 @@ const ViewPayments = () => {
                 <SelectValue placeholder="Term" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Terms</SelectItem>
+                <SelectItem value="all-terms">All Terms</SelectItem>
                 <SelectItem value="Term 1 2024">Term 1 2024</SelectItem>
                 <SelectItem value="Term 2 2024">Term 2 2024</SelectItem>
                 <SelectItem value="Term 3 2024">Term 3 2024</SelectItem>

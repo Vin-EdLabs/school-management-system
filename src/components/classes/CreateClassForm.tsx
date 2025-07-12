@@ -18,8 +18,8 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
   const [formData, setFormData] = useState({
     className: '',
     level: '',
-    stream: '',
-    assignedTeacher: '',
+    stream: 'none',
+    assignedTeacher: 'none',
     maxClassSize: 30
   });
 
@@ -55,6 +55,8 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
     try {
       addClass({
         ...formData,
+        stream: formData.stream === 'none' ? '' : formData.stream,
+        assignedTeacher: formData.assignedTeacher === 'none' ? '' : formData.assignedTeacher,
         students: []
       });
       
@@ -67,8 +69,8 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
       setFormData({
         className: '',
         level: '',
-        stream: '',
-        assignedTeacher: '',
+        stream: 'none',
+        assignedTeacher: 'none',
         maxClassSize: 30
       });
 
@@ -128,7 +130,7 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
                   <SelectValue placeholder="Select stream (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No stream</SelectItem>
+                  <SelectItem value="none">No stream</SelectItem>
                   {streams.map((stream) => (
                     <SelectItem key={stream} value={stream}>
                       {stream}
@@ -157,7 +159,7 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
                 <SelectValue placeholder="Select teacher (optional)" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">No teacher assigned</SelectItem>
+                <SelectItem value="none">No teacher assigned</SelectItem>
                 {activeTeachers.map((teacher) => (
                   <SelectItem key={teacher.id} value={teacher.id}>
                     {teacher.fullName} {teacher.classAssigned ? `(Currently: ${teacher.classAssigned})` : ''}

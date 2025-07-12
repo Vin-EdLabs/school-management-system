@@ -18,8 +18,8 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
   const [formData, setFormData] = useState({
     className: '',
     level: '',
-    stream: 'none',
-    assignedTeacher: 'none',
+    stream: 'no-stream',
+    assignedTeacher: 'no-teacher',
     maxClassSize: 30
   });
 
@@ -30,7 +30,11 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
 
   const streams = ['Red', 'Blue', 'Green', 'Yellow', 'Orange', 'Purple', 'A', 'B', 'C', 'D'];
 
-  const activeTeachers = teachers.filter(teacher => teacher.employmentStatus === 'Active');
+  const activeTeachers = teachers.filter(teacher => 
+    teacher.employmentStatus === 'Active' && 
+    teacher.fullName && 
+    teacher.fullName.trim() !== ''
+  );
 
   const handleInputChange = (field: string, value: any) => {
     setFormData(prev => ({
@@ -55,8 +59,8 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
     try {
       addClass({
         ...formData,
-        stream: formData.stream === 'none' ? '' : formData.stream,
-        assignedTeacher: formData.assignedTeacher === 'none' ? '' : formData.assignedTeacher,
+        stream: formData.stream === 'no-stream' ? '' : formData.stream,
+        assignedTeacher: formData.assignedTeacher === 'no-teacher' ? '' : formData.assignedTeacher,
         students: []
       });
       
@@ -69,8 +73,8 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
       setFormData({
         className: '',
         level: '',
-        stream: 'none',
-        assignedTeacher: 'none',
+        stream: 'no-stream',
+        assignedTeacher: 'no-teacher',
         maxClassSize: 30
       });
 
@@ -130,7 +134,7 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
                   <SelectValue placeholder="Select stream (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">No stream</SelectItem>
+                  <SelectItem value="no-stream">No stream</SelectItem>
                   {streams.map((stream) => (
                     <SelectItem key={stream} value={stream}>
                       {stream}
@@ -159,7 +163,7 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
                 <SelectValue placeholder="Select teacher (optional)" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">No teacher assigned</SelectItem>
+                <SelectItem value="no-teacher">No teacher assigned</SelectItem>
                 {activeTeachers.map((teacher) => (
                   <SelectItem key={teacher.id} value={teacher.id}>
                     {teacher.fullName} {teacher.classAssigned ? `(Currently: ${teacher.classAssigned})` : ''}

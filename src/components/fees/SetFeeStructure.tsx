@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -78,10 +77,10 @@ const SetFeeStructure = () => {
                     <SelectValue placeholder="Select class" />
                   </SelectTrigger>
                   <SelectContent>
-                    {classes.map((cls) => {
+                    {classes.filter(cls => cls.className && cls.className.trim() !== '').map((cls) => {
                       console.log('SetFeeStructure: rendering class item:', cls.className);
                       return (
-                        <SelectItem key={cls.id} value={cls.className || 'unknown-class'}>
+                        <SelectItem key={cls.id} value={cls.className}>
                           {cls.className}
                         </SelectItem>
                       );

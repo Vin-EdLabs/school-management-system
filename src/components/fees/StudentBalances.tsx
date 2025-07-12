@@ -11,7 +11,7 @@ import { Search, AlertCircle } from 'lucide-react';
 const StudentBalances = () => {
   const { students, payments, feeStructures, classes } = useData();
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterClass, setFilterClass] = useState('');
+  const [filterClass, setFilterClass] = useState('all');
 
   const calculateBalance = (student: any) => {
     const studentFee = feeStructures.find(fee => fee.className === student.classAssigned);
@@ -39,7 +39,7 @@ const StudentBalances = () => {
       student.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       student.studentId.includes(searchTerm);
     
-    const matchesClass = filterClass === '' || student.classAssigned === filterClass;
+    const matchesClass = filterClass === 'all' || student.classAssigned === filterClass;
 
     return matchesSearch && matchesClass;
   });
@@ -79,7 +79,7 @@ const StudentBalances = () => {
               <SelectValue placeholder="Filter by class" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Classes</SelectItem>
+              <SelectItem value="all">All Classes</SelectItem>
               {classes.map((cls) => (
                 <SelectItem key={cls.id} value={cls.className}>
                   {cls.className}

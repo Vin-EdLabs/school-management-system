@@ -8,10 +8,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
-import { UserPlus } from 'lucide-react';
 
-const AddTeacherForm = () => {
-  const { classes, addTeacher } = useData();
+interface AddTeacherFormProps {
+  onSuccess?: () => void;
+}
+
+const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
+  const { addTeacher, classes } = useData();
   const [formData, setFormData] = useState({
     fullName: '',
     gender: '',
@@ -20,57 +23,42 @@ const AddTeacherForm = () => {
     phoneNumber: '',
     email: '',
     address: '',
-    subjectsTaught: [] as string[],
+    subjectsTaught: '',
     classAssigned: '',
     employmentDate: '',
-    monthlySalary: 0,
-    employmentStatus: 'Active' as 'Active' | 'Left' | 'Suspended',
+    monthlySalary: '',
+    employmentStatus: 'Active',
     notes: ''
   });
 
-  const [subjectInput, setSubjectInput] = useState('');
-
-  const handleInputChange = (field: string, value: any) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
-  };
-
-  const addSubject = () => {
-    if (subjectInput.trim() && !formData.subjectsTaught.includes(subjectInput.trim())) {
-      setFormData(prev => ({
-        ...prev,
-        subjectsTaught: [...prev.subjectsTaught, subjectInput.trim()]
-      }));
-      setSubjectInput('');
-    }
-  };
-
-  const removeSubject = (subject: string) => {
-    setFormData(prev => ({
-      ...prev,
-      subjectsTaught: prev.subjectsTaught.filter(s => s !== subject)
-    }));
+  const handleInputChange = (field: string, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.fullName || !formData.staffId) {
+    // Basic validation
+    if (!formData.fullName || !formData.gender || !formData.dateOfBirth || !formData.staffId || !formData.phoneNumber) {
       toast({
         title: "Validation Error",
-        description: "Please fill in required fields",
+        description: "Please fill in all required fields",
         variant: "destructive"
       });
       return;
     }
 
-    addTeacher(formData);
+    const teacherData = {
+      ...formData,
+      subjectsTaught: formData.subjectsTaught.split(',').map(s => s.trim()).filter(s => s),
+      monthlySalary: formData.monthlySalary ? parseFloat(formData.monthlySalary) : 0
+    };
 
+    addTeacher(teacherData);
+    
     toast({
-      title: "Teacher Added",
-      description: `${formData.fullName} has been added successfully`,
+      title: "Success",
+      description: `Teacher ${formData.fullName} has been added successfully`
     });
 
     // Reset form
@@ -82,38 +70,43 @@ const AddTeacherForm = () => {
       phoneNumber: '',
       email: '',
       address: '',
-      subjectsTaught: [],
+      subjectsTaught: '',
       classAssigned: '',
       employmentDate: '',
-      monthlySalary: 0,
+      monthlySalary: '',
       employmentStatus: 'Active',
       notes: ''
     });
+
+    // Call onSuccess callback if provided
+    if (onSuccess) {
+      onSuccess();
+    }
   };
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center space-x-2">
-          <UserPlus className="w-5 h-5" />
-          <span>Add New Teacher</span>
-        </CardTitle>
+        <CardTitle>Add New Teacher</CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Personal Information */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
+            {/* Full Name */}
+            <div>
               <Label htmlFor="fullName">Full Name *</Label>
               <Input
                 id="fullName"
                 value={formData.fullName}
                 onChange={(e) => handleInputChange('fullName', e.target.value)}
+                placeholder="Enter full name"
                 required
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="gender">Gender</Label>
+
+            {/* Gender */}
+            <div>
+              <Label htmlFor="gender">Gender *</Label>
               <Select value={formData.gender} onValueChange={(value) => handleInputChange('gender', value)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select gender" />
@@ -124,114 +117,57 @@ const AddTeacherForm = () => {
                 </SelectContent>
               </Select>
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="dateOfBirth">Date of Birth</Label>
+            {/* Date of Birth */}
+            <div>
+              <Label htmlFor="dateOfBirth">Date of Birth *</Label>
               <Input
                 id="dateOfBirth"
                 type="date"
                 value={formData.dateOfBirth}
                 onChange={(e) => handleInputChange('dateOfBirth', e.target.value)}
+                required
               />
             </div>
-            <div className="space-y-2">
+
+            {/* Staff ID */}
+            <div>
               <Label htmlFor="staffId">Staff ID *</Label>
               <Input
                 id="staffId"
                 value={formData.staffId}
                 onChange={(e) => handleInputChange('staffId', e.target.value)}
-                placeholder="e.g., TCH001"
+                placeholder="Enter staff ID"
                 required
               />
             </div>
-          </div>
 
-          {/* Contact Information */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="phoneNumber">Phone Number</Label>
+            {/* Phone Number */}
+            <div>
+              <Label htmlFor="phoneNumber">Phone Number *</Label>
               <Input
                 id="phoneNumber"
                 value={formData.phoneNumber}
                 onChange={(e) => handleInputChange('phoneNumber', e.target.value)}
-                placeholder="+233 XX XXX XXXX"
+                placeholder="Enter phone number"
+                required
               />
             </div>
-            <div className="space-y-2">
+
+            {/* Email */}
+            <div>
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
                 type="email"
                 value={formData.email}
                 onChange={(e) => handleInputChange('email', e.target.value)}
-                placeholder="teacher@rosagardens.edu.gh"
+                placeholder="Enter email address"
               />
             </div>
-          </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="address">Address</Label>
-            <Textarea
-              id="address"
-              value={formData.address}
-              onChange={(e) => handleInputChange('address', e.target.value)}
-              rows={2}
-            />
-          </div>
-
-          {/* Professional Information */}
-          <div className="space-y-2">
-            <Label>Subjects Taught</Label>
-            <div className="flex space-x-2">
-              <Input
-                value={subjectInput}
-                onChange={(e) => setSubjectInput(e.target.value)}
-                placeholder="Enter subject name"
-                onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addSubject())}
-              />
-              <Button type="button" onClick={addSubject} variant="outline">
-                Add
-              </Button>
-            </div>
-            <div className="flex flex-wrap gap-2 mt-2">
-              {formData.subjectsTaught.map((subject, index) => (
-                <span
-                  key={index}
-                  className="bg-blue-100 text-blue-800 px-2 py-1 rounded-md text-sm flex items-center space-x-1"
-                >
-                  <span>{subject}</span>
-                  <button
-                    type="button"
-                    onClick={() => removeSubject(subject)}
-                    className="text-blue-600 hover:text-blue-800"
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="classAssigned">Class Assigned</Label>
-              <Select value={formData.classAssigned} onValueChange={(value) => handleInputChange('classAssigned', value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select class" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No class assigned</SelectItem>
-                  {classes.map((cls) => (
-                    <SelectItem key={cls.id} value={cls.className}>
-                      {cls.className}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
+            {/* Employment Date */}
+            <div>
               <Label htmlFor="employmentDate">Employment Date</Label>
               <Input
                 id="employmentDate"
@@ -240,25 +176,43 @@ const AddTeacherForm = () => {
                 onChange={(e) => handleInputChange('employmentDate', e.target.value)}
               />
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
+            {/* Monthly Salary */}
+            <div>
               <Label htmlFor="monthlySalary">Monthly Salary (GHS)</Label>
               <Input
                 id="monthlySalary"
                 type="number"
-                step="0.01"
                 value={formData.monthlySalary}
-                onChange={(e) => handleInputChange('monthlySalary', parseFloat(e.target.value) || 0)}
-                placeholder="0.00"
+                onChange={(e) => handleInputChange('monthlySalary', e.target.value)}
+                placeholder="Enter monthly salary"
               />
             </div>
-            <div className="space-y-2">
+
+            {/* Class Assigned */}
+            <div>
+              <Label htmlFor="classAssigned">Class Assigned</Label>
+              <Select value={formData.classAssigned} onValueChange={(value) => handleInputChange('classAssigned', value)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select class" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No Class Assigned</SelectItem>
+                  {classes.map((cls) => (
+                    <SelectItem key={cls.id} value={cls.className}>
+                      {cls.className}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Employment Status */}
+            <div>
               <Label htmlFor="employmentStatus">Employment Status</Label>
               <Select value={formData.employmentStatus} onValueChange={(value) => handleInputChange('employmentStatus', value)}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Select status" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Active">Active</SelectItem>
@@ -269,18 +223,42 @@ const AddTeacherForm = () => {
             </div>
           </div>
 
-          <div className="space-y-2">
+          {/* Address */}
+          <div>
+            <Label htmlFor="address">Address</Label>
+            <Textarea
+              id="address"
+              value={formData.address}
+              onChange={(e) => handleInputChange('address', e.target.value)}
+              placeholder="Enter address"
+              rows={2}
+            />
+          </div>
+
+          {/* Subjects Taught */}
+          <div>
+            <Label htmlFor="subjectsTaught">Subjects Taught</Label>
+            <Input
+              id="subjectsTaught"
+              value={formData.subjectsTaught}
+              onChange={(e) => handleInputChange('subjectsTaught', e.target.value)}
+              placeholder="Enter subjects separated by commas (e.g., Mathematics, Science)"
+            />
+          </div>
+
+          {/* Notes */}
+          <div>
             <Label htmlFor="notes">Notes</Label>
             <Textarea
               id="notes"
               value={formData.notes}
               onChange={(e) => handleInputChange('notes', e.target.value)}
+              placeholder="Additional notes or comments"
               rows={3}
-              placeholder="Additional notes about the teacher..."
             />
           </div>
 
-          <Button type="submit" className="w-full md:w-auto">
+          <Button type="submit" className="w-full">
             Add Teacher
           </Button>
         </form>

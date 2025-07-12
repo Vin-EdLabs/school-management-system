@@ -13,8 +13,8 @@ import { toast } from '@/hooks/use-toast';
 const ViewAllStudents = () => {
   const { students, classes, deleteStudent } = useData();
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterClass, setFilterClass] = useState('all');
-  const [filterGender, setFilterGender] = useState('all');
+  const [filterClass, setFilterClass] = useState('all-classes');
+  const [filterGender, setFilterGender] = useState('all-genders');
 
   // Filter students based on search and filters
   const filteredStudents = students.filter(student => {
@@ -24,8 +24,8 @@ const ViewAllStudents = () => {
       student.studentId.includes(searchTerm) ||
       student.admissionNumber.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesClass = filterClass === 'all' || student.classAssigned === filterClass;
-    const matchesGender = filterGender === 'all' || student.gender === filterGender;
+    const matchesClass = filterClass === 'all-classes' || student.classAssigned === filterClass;
+    const matchesGender = filterGender === 'all-genders' || student.gender === filterGender;
 
     return matchesSearch && matchesClass && matchesGender;
   });
@@ -83,7 +83,7 @@ const ViewAllStudents = () => {
                 <SelectValue placeholder="Filter by class" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Classes</SelectItem>
+                <SelectItem value="all-classes">All Classes</SelectItem>
                 {classes.map((cls) => (
                   <SelectItem key={cls.id} value={cls.className}>
                     {cls.className}
@@ -96,7 +96,7 @@ const ViewAllStudents = () => {
                 <SelectValue placeholder="Gender" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="all-genders">All</SelectItem>
                 <SelectItem value="Male">Male</SelectItem>
                 <SelectItem value="Female">Female</SelectItem>
               </SelectContent>

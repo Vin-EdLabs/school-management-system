@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -12,8 +11,8 @@ import { Search, Edit, Trash2, Users } from 'lucide-react';
 const ViewAllTeachers = () => {
   const { teachers, classes, deleteTeacher } = useData();
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [filterClass, setFilterClass] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all-status');
+  const [filterClass, setFilterClass] = useState('all-classes');
 
   const filteredTeachers = teachers.filter(teacher => {
     const matchesSearch = searchTerm === '' || 
@@ -21,8 +20,10 @@ const ViewAllTeachers = () => {
       teacher.staffId.toLowerCase().includes(searchTerm.toLowerCase()) ||
       teacher.email.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesStatus = filterStatus === 'all' || teacher.employmentStatus === filterStatus;
-    const matchesClass = filterClass === 'all' || teacher.classAssigned === filterClass;
+    const matchesStatus = filterStatus === 'all-status' || teacher.employmentStatus === filterStatus;
+    const matchesClass = filterClass === 'all-classes' || filterClass === 'no-class' ? 
+      (filterClass === 'no-class' ? !teacher.classAssigned : true) : 
+      teacher.classAssigned === filterClass;
 
     return matchesSearch && matchesStatus && matchesClass;
   });
@@ -72,7 +73,7 @@ const ViewAllTeachers = () => {
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="all-status">All Status</SelectItem>
                 <SelectItem value="Active">Active</SelectItem>
                 <SelectItem value="Left">Left</SelectItem>
                 <SelectItem value="Suspended">Suspended</SelectItem>
@@ -83,8 +84,8 @@ const ViewAllTeachers = () => {
                 <SelectValue placeholder="Class" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Classes</SelectItem>
-                <SelectItem value="none">No Class Assigned</SelectItem>
+                <SelectItem value="all-classes">All Classes</SelectItem>
+                <SelectItem value="no-class">No Class Assigned</SelectItem>
                 {classes.map((cls) => (
                   <SelectItem key={cls.id} value={cls.className}>
                     {cls.className}

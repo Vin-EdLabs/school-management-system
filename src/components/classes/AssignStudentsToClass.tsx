@@ -1,0 +1,253 @@
+
+import React, { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { useData } from '../../contexts/DataContext';
+import { toast } from '@/hooks/use-toast';
+import { Users, User, School, ArrowRight } from 'lucide-react';
+
+const AssignStudentsToClass = () => {
+  const { students, classes, updateStudent } = useData();
+  const [selectedClass, setSelectedClass] = useState('');
+  const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
+  const [filterCurrentClass, setFilterCurrentClass] = useState('');
+
+  const handleStudentSelect = (studentId: string, checked: boolean) => {
+    if (checked) {
+      setSelectedStudents(prev => [...prev, studentId]);
+    } else {
+      setSelectedStudents(prev => prev.filter(id => id !== studentId));
+    }
+  };
+
+  const handleAssignStudents = () => {
+    if (!selectedClass || selectedStudents.length === 0) {
+      toast({
+        title: "Validation Error",
+        description: "Please select both class and students",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const targetClass = classes.find(c => c.id === selectedClass);
+    if (!targetClass) return;
+
+    // Check class capacity
+    const currentStudentsInClass = students.filter(s => s.classAssigned === targetClass.className).length;
+    const newTotal = currentStudentsInClass + selectedStudents.length;
+    
+    if (targetClass.maxClassSize && newTotal > targetClass.maxClassSize) {
+      toast({
+        title: "Class Capacity Exceeded",
+        description: `This would exceed the class capacity of ${targetClass.maxClassSize} students`,
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Assign students to class
+    selectedStudents.forEach(studentId => {
+      updateStudent(studentId, { classAssigned: targetClass.className });
+    });
+    
+    toast({
+      title: "Students Assigned Successfully",
+      description: `${selectedStudents.length} students have been assigned to ${targetClass.className}`,
+    });
+
+    // Reset form
+    setSelectedStudents([]);
+    setSelectedClass('');
+  };
+
+  const filteredStudents = students.filter(student => {
+    if (filterCurrentClass === '') return true;
+    if (filterCurrentClass === 'unassigned') return !student.classAssigned;
+    return student.classAssigned === filterCurrentClass;
+  });
+
+  const getStudentCount = (className: string) => {
+    return students.filter(student => student.classAssigned === className).length;
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Assignment Form */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <Users className="w-5 h-5" />
+            <span>Assign Students to Class</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Target Class</Label>
+                <Select value={selectedClass} onValueChange={setSelectedClass}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select target class" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {classes.map((cls) => {
+                      const currentCount = getStudentCount(cls.className);
+                      const capacity = cls.maxClassSize ? ` (${currentCount}/${cls.maxClassSize})` : ` (${currentCount})`;
+                      return (
+                        <SelectItem key={cls.id} value={cls.id}>
+                          {cls.className}{capacity}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Filter Students by Current Class</Label>
+                <Select value={filterCurrentClass} onValueChange={setFilterCurrentClass}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All students" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">All students</SelectItem>
+                    <SelectItem value="unassigned">Unassigned students</SelectItem>
+                    {classes.map((cls) => (
+                      <SelectItem key={cls.id} value={cls.className}>
+                        {cls.className} ({getStudentCount(cls.className)})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {selectedClass && (
+              <div className="p-4 bg-blue-50 rounded-lg">
+                <p className="text-sm text-blue-800">
+                  <strong>Target Class:</strong> {classes.find(c => c.id === selectedClass)?.className}
+                </p>
+                <p className="text-sm text-blue-600">
+                  Selected Students: {selectedStudents.length}
+                </p>
+              </div>
+            )}
+
+            <Button 
+              onClick={handleAssignStudents} 
+              className="w-full md:w-auto"
+              disabled={!selectedClass || selectedStudents.length === 0}
+            >
+              <ArrowRight className="w-4 h-4 mr-2" />
+              Assign {selectedStudents.length} Students
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Students Selection */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Select Students ({filteredStudents.length} available)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {filteredStudents.length === 0 ? (
+              <p className="text-center py-8 text-gray-500">
+                No students found for the selected filter
+              </p>
+            ) : (
+              filteredStudents.map((student) => (
+                <div key={student.id} className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-gray-50">
+                  <Checkbox
+                    checked={selectedStudents.includes(student.id)}
+                    onCheckedChange={(checked) => handleStudentSelect(student.id, checked as boolean)}
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">
+                          {student.firstName} {student.lastName}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          ID: {student.studentId} | Admission: {student.admissionNumber || 'N/A'}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <Badge variant={student.gender === 'Male' ? 'default' : 'secondary'} className="text-xs mb-1">
+                          {student.gender}
+                        </Badge>
+                        <div>
+                          {student.classAssigned ? (
+                            <Badge variant="outline">{student.classAssigned}</Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-orange-600 border-orange-300">
+                              Unassigned
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Class Overview */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Class Overview</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {classes.map((cls) => {
+              const studentCount = getStudentCount(cls.className);
+              const utilization = cls.maxClassSize ? Math.round((studentCount / cls.maxClassSize) * 100) : 0;
+              
+              return (
+                <div key={cls.id} className="p-4 border rounded-lg">
+                  <h3 className="font-semibold text-lg">{cls.className}</h3>
+                  <p className="text-sm text-gray-600">{cls.level} {cls.stream ? `- ${cls.stream}` : ''}</p>
+                  <div className="mt-2 space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm">Students:</span>
+                      <Badge variant="outline">
+                        {studentCount}{cls.maxClassSize ? `/${cls.maxClassSize}` : ''}
+                      </Badge>
+                    </div>
+                    {cls.maxClassSize && (
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-xs">
+                          <span>Capacity</span>
+                          <span>{utilization}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className={`h-2 rounded-full ${
+                              utilization >= 90 ? 'bg-red-500' :
+                              utilization >= 70 ? 'bg-yellow-500' : 'bg-green-500'
+                            }`}
+                            style={{ width: `${Math.min(utilization, 100)}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+export default AssignStudentsToClass;

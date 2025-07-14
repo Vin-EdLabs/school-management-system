@@ -31,62 +31,86 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 p-4">
-      <div className="absolute inset-0 bg-black opacity-20"></div>
-      <div className="relative z-10 w-full max-w-md">
-        <Card className="backdrop-blur-sm bg-white/90 shadow-2xl border-0">
-          <CardHeader className="text-center space-y-4">
-            <div className="mx-auto w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-              <GraduationCap className="w-8 h-8 text-white" />
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-4">
+      <div className="w-full max-w-md">
+        <Card className="shadow-xl border-0 bg-white/95 backdrop-blur-sm">
+          <CardHeader className="text-center space-y-6 pb-8">
+            {/* School Branding */}
+            <div className="flex flex-col items-center space-y-4">
+              <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
+                <GraduationCap className="w-8 h-8 text-white" />
+              </div>
+              <div>
+                <CardTitle className="text-2xl font-bold text-gray-800 mb-1">
+                  Rosa Gardens School
+                </CardTitle>
+                <p className="text-gray-500 text-sm font-medium">Management System</p>
+              </div>
             </div>
-            <CardTitle className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              Rosa Gardens School
-            </CardTitle>
-            <p className="text-gray-600">Management System</p>
+
+            {/* TechNerve Branding */}
+            <div className="pt-4 border-t border-gray-100">
+              <div className="flex items-center justify-center space-x-2">
+                <div className="w-6 h-6 bg-gradient-to-br from-indigo-500 to-purple-600 rounded flex items-center justify-center">
+                  <span className="text-xs font-bold text-white">T</span>
+                </div>
+                <span className="text-sm text-gray-600 font-medium">Powered by TechNerve</span>
+              </div>
+            </div>
           </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
+
+          <CardContent className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-5">
               <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
+                <Label htmlFor="username" className="text-sm font-medium text-gray-700">
+                  Username
+                </Label>
                 <div className="relative">
                   <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                   <Input
                     id="username"
                     type="text"
-                    placeholder="Enter username"
+                    placeholder="Enter your username"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    className="pl-10"
+                    className="pl-10 h-11 border-gray-200 focus:border-blue-500 focus:ring-blue-500"
                     required
                   />
                 </div>
               </div>
+
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password" className="text-sm font-medium text-gray-700">
+                  Password
+                </Label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                   <Input
                     id="password"
                     type="password"
-                    placeholder="Enter password"
+                    placeholder="Enter your password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="pl-10"
+                    className="pl-10 h-11 border-gray-200 focus:border-blue-500 focus:ring-blue-500"
                     required
                   />
                 </div>
               </div>
+
               <Button 
                 type="submit" 
-                className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold py-2.5"
+                className="w-full h-11 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold shadow-md hover:shadow-lg transition-all duration-200"
               >
                 Sign In
               </Button>
             </form>
-            <div className="mt-6 text-center text-sm text-gray-500">
-              <p>Default Login:</p>
-              <p><strong>Username:</strong> admin</p>
-              <p><strong>Password:</strong> admin123</p>
+
+            <div className="bg-blue-50 rounded-lg p-4 text-center">
+              <p className="text-sm text-gray-600 font-medium mb-2">Default Login Credentials</p>
+              <div className="space-y-1 text-sm">
+                <p><span className="font-semibold text-gray-700">Username:</span> <code className="bg-white px-2 py-1 rounded text-blue-600">admin</code></p>
+                <p><span className="font-semibold text-gray-700">Password:</span> <code className="bg-white px-2 py-1 rounded text-blue-600">admin123</code></p>
+              </div>
             </div>
           </CardContent>
         </Card>

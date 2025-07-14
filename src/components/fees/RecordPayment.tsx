@@ -12,7 +12,7 @@ import { CreditCard, Search } from 'lucide-react';
 import ReceiptPrinter from '../common/ReceiptPrinter';
 
 const RecordPayment = () => {
-  const { students, addPayment } = useData();
+  const { students, addPayment, feeStructures, payments } = useData();
   const [formData, setFormData] = useState({
     studentId: '',
     amount: '',
@@ -46,6 +46,25 @@ const RecordPayment = () => {
     return `RG${timestamp}${random}`;
   };
 
+  // Calculate remaining balance for student
+  const calculateRemainingBalance = (studentId: string, term: string) => {
+    const student = students.find(s => s.id === studentId);
+    if (!student) return 0;
+
+    // Get fee structure for student's class and term
+    const feeStructure = feeStructures.find(fee => 
+      fee.className === student.classAssigned && fee.term === term
+    );
+    const totalFee = feeStructure?.amount || 0;
+
+    // Calculate total payments made by student for this term
+    const totalPaid = payments
+      .filter(payment => payment.studentId === studentId && payment.term === term)
+      .reduce((sum, payment) => sum + payment.amount, 0);
+
+    return Math.max(0, totalFee - totalPaid);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -69,23 +88,29 @@ const RecordPayment = () => {
     }
 
     const receiptNumber = generateReceiptNumber();
+    const paymentAmount = parseFloat(formData.amount);
+    
+    // Calculate remaining balance after this payment
+    const currentBalance = calculateRemainingBalance(formData.studentId, formData.term);
+    const newBalance = Math.max(0, currentBalance - paymentAmount);
     
     addPayment({
       ...formData,
-      amount: parseFloat(formData.amount)
+      amount: paymentAmount
     });
 
-    // Prepare receipt data
+    // Prepare receipt data with remaining balance
     const newReceiptData = {
       studentName: `${student.firstName} ${student.lastName}`,
       studentId: student.studentId,
       className: student.classAssigned,
-      amount: parseFloat(formData.amount),
+      amount: paymentAmount,
       date: formData.date,
       paymentMethod: formData.paymentMethod,
       term: formData.term,
       receiptNumber: receiptNumber,
-      notes: formData.notes
+      notes: formData.notes,
+      remainingBalance: newBalance
     };
 
     setReceiptData(newReceiptData);
@@ -135,6 +160,7 @@ const RecordPayment = () => {
                 <div className="border rounded-md max-h-40 overflow-y-auto">
                   {filteredStudents.map((student) => {
                     console.log('RecordPayment: rendering student:', student.firstName, student.lastName, student.id);
+                    const remainingBalance = calculateRemainingBalance(student.id, formData.term);
                     return (
                       <div
                         key={student.id}
@@ -145,7 +171,12 @@ const RecordPayment = () => {
                         }}
                       >
                         <p className="font-medium">{student.firstName} {student.lastName}</p>
-                        <p className="text-sm text-gray-500">ID: {student.studentId} | Class: {student.classAssigned}</p>
+                        <p className="text-sm text-gray-500">
+                          ID: {student.studentId} | Class: {student.classAssigned}
+                        </p>
+                        <p className="text-sm text-orange-600">
+                          Balance: GHS {remainingBalance.toFixed(2)}
+                        </p>
                       </div>
                     );
                   })}
@@ -220,7 +251,7 @@ const RecordPayment = () => {
             </div>
 
             <Button type="submit" className="w-full md:w-auto" disabled={!formData.studentId}>
-              Record Payment
+              Record Payment & Generate Receipt
             </Button>
           </form>
         </CardContent>
@@ -233,7 +264,7 @@ const RecordPayment = () => {
           onClose={() => setShowReceipt(false)}
           onPrint={() => {
             toast({
-              title: "Receipt Printed",
+              title: "Receipt Generated",
               description: "Payment receipt has been generated successfully",
             });
           }}

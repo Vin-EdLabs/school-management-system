@@ -96,10 +96,10 @@ interface DataContextType {
   payments: Payment[];
   income: Income[];
   expenses: Expense[];
-  addStudent: (student: Omit<Student, 'id' | 'studentId'>) => void;
+  addStudent: (student: Omit<Student, 'id' | 'studentId' | 'admissionNumber'>) => void;
   updateStudent: (id: string, updates: Partial<Student>) => void;
   deleteStudent: (id: string) => void;
-  addTeacher: (teacher: Omit<Teacher, 'id'>) => void;
+  addTeacher: (teacher: Omit<Teacher, 'id' | 'staffId'>) => void;
   updateTeacher: (id: string, updates: Partial<Teacher>) => void;
   deleteTeacher: (id: string) => void;
   addClass: (classData: Omit<Class, 'id'>) => void;
@@ -331,16 +331,42 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return (maxId + 1).toString();
   };
 
+  const generateAdmissionNumber = () => {
+    const year = new Date().getFullYear().toString().slice(-2);
+    const existingAdmissions = students
+      .map(s => s.admissionNumber)
+      .filter(num => num && num.startsWith(`ADM${year}`))
+      .map(num => parseInt(num.slice(5)))
+      .filter(num => !isNaN(num));
+    
+    const maxAdmission = existingAdmissions.length > 0 ? Math.max(...existingAdmissions) : 0;
+    const nextNumber = (maxAdmission + 1).toString().padStart(3, '0');
+    return `ADM${year}${nextNumber}`;
+  };
+
+  const generateStaffId = () => {
+    const existingStaffIds = teachers
+      .map(t => t.staffId)
+      .filter(id => id && id.startsWith('TCH'))
+      .map(id => parseInt(id.slice(3)))
+      .filter(num => !isNaN(num));
+    
+    const maxStaffId = existingStaffIds.length > 0 ? Math.max(...existingStaffIds) : 0;
+    const nextNumber = (maxStaffId + 1).toString().padStart(3, '0');
+    return `TCH${nextNumber}`;
+  };
+
   const generateId = () => {
     return Date.now().toString() + Math.random().toString(36).substr(2, 9);
   };
 
   // Student functions
-  const addStudent = (studentData: Omit<Student, 'id' | 'studentId'>) => {
+  const addStudent = (studentData: Omit<Student, 'id' | 'studentId' | 'admissionNumber'>) => {
     const newStudent: Student = {
       ...studentData,
       id: generateId(),
-      studentId: generateStudentId()
+      studentId: generateStudentId(),
+      admissionNumber: generateAdmissionNumber()
     };
     setStudents(prev => [...prev, newStudent]);
   };
@@ -356,10 +382,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // Teacher functions
-  const addTeacher = (teacherData: Omit<Teacher, 'id'>) => {
+  const addTeacher = (teacherData: Omit<Teacher, 'id' | 'staffId'>) => {
     const newTeacher: Teacher = {
       ...teacherData,
-      id: generateId()
+      id: generateId(),
+      staffId: generateStaffId()
     };
     setTeachers(prev => [...prev, newTeacher]);
   };

@@ -15,6 +15,7 @@ interface ReceiptData {
   term: string;
   receiptNumber: string;
   notes?: string;
+  remainingBalance?: number;
 }
 
 interface ReceiptPrinterProps {
@@ -35,20 +36,23 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({ receiptData, onPrint, s
         printWindow.document.write(`
           <html>
             <head>
-              <title>Payment Receipt</title>
+              <title>Payment Receipt - ${receiptData.receiptNumber}</title>
               <style>
                 body { font-family: Arial, sans-serif; margin: 20px; }
                 .receipt { max-width: 400px; margin: 0 auto; }
                 .header { text-align: center; margin-bottom: 20px; }
+                .logo { width: 60px; height: 60px; margin: 0 auto 10px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 20px; }
                 .school-name { font-size: 24px; font-weight: bold; color: #1f2937; }
                 .school-address { font-size: 14px; color: #6b7280; margin-top: 5px; }
-                .receipt-title { font-size: 18px; font-weight: bold; margin: 20px 0; text-align: center; }
+                .receipt-title { font-size: 18px; font-weight: bold; margin: 20px 0; text-align: center; background: #f3f4f6; padding: 10px; border: 2px solid #e5e7eb; }
                 .receipt-info { margin: 10px 0; }
                 .info-row { display: flex; justify-content: space-between; margin: 8px 0; }
                 .info-label { font-weight: bold; }
                 .amount { font-size: 20px; font-weight: bold; color: #059669; }
+                .balance { font-size: 16px; font-weight: bold; color: #dc2626; }
                 .separator { border-top: 1px solid #e5e7eb; margin: 15px 0; }
                 .footer { text-align: center; margin-top: 20px; font-size: 12px; color: #6b7280; }
+                .watermark { background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="50" font-size="8" fill="%23f3f4f6" text-anchor="middle" x="50">PAID</text></svg>') no-repeat center; background-size: 200px; }
               </style>
             </head>
             <body>
@@ -75,12 +79,14 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({ receiptData, onPrint, s
           </div>
         </CardHeader>
         <CardContent>
-          <div id="receipt-content" className="receipt">
+          <div id="receipt-content" className="receipt watermark">
             <div className="header">
+              <div className="logo">RG</div>
               <div className="school-name">Rosa Gardens School</div>
               <div className="school-address">
                 Excellence in Education<br/>
-                Accra, Ghana
+                P.O. Box 123, Accra, Ghana<br/>
+                Tel: +233 30 123 4567
               </div>
             </div>
             
@@ -125,6 +131,15 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({ receiptData, onPrint, s
                 <span className="amount">GHS {receiptData.amount.toFixed(2)}</span>
               </div>
               
+              {receiptData.remainingBalance !== undefined && (
+                <div className="info-row">
+                  <span className="info-label">Remaining Balance:</span>
+                  <span className={receiptData.remainingBalance > 0 ? "balance" : "amount"}>
+                    GHS {receiptData.remainingBalance.toFixed(2)}
+                  </span>
+                </div>
+              )}
+              
               {receiptData.notes && (
                 <>
                   <Separator />
@@ -139,8 +154,11 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({ receiptData, onPrint, s
             </div>
             
             <div className="footer">
-              <p>Thank you for your payment!</p>
+              <p><strong>Thank you for your payment!</strong></p>
               <p>Keep this receipt for your records.</p>
+              <p style={{ marginTop: '10px', fontSize: '10px' }}>
+                This is an official receipt from Rosa Gardens School
+              </p>
             </div>
           </div>
           

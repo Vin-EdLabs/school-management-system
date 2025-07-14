@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
 interface Student {
@@ -161,24 +162,132 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [students, teachers, classes, feeStructures, payments, income, expenses]);
 
   const initializeSampleData = () => {
-    // Sample Classes
+    // Sample Classes with beautiful flower names
     const sampleClasses: Class[] = [
       {
         id: '1',
-        className: 'KG1 Red',
+        className: 'Lily (Creche)',
+        level: 'Creche',
+        stream: 'Lily',
+        assignedTeacher: '',
+        maxClassSize: 15,
+        students: []
+      },
+      {
+        id: '2',
+        className: 'Daisy (Nursery 1)',
+        level: 'Nursery 1',
+        stream: 'Daisy',
+        assignedTeacher: '',
+        maxClassSize: 18,
+        students: []
+      },
+      {
+        id: '3',
+        className: 'Tulip (Nursery 2)',
+        level: 'Nursery 2',
+        stream: 'Tulip',
+        assignedTeacher: '',
+        maxClassSize: 18,
+        students: []
+      },
+      {
+        id: '4',
+        className: 'Marigold (KG1)',
         level: 'KG1',
-        stream: 'Red',
+        stream: 'Marigold',
         assignedTeacher: '',
         maxClassSize: 20,
         students: []
       },
       {
-        id: '2',
-        className: 'Primary 4 Yellow',
-        level: 'Primary 4',
-        stream: 'Yellow',
+        id: '5',
+        className: 'Rose Reception (KG2)',
+        level: 'KG2',
+        stream: 'Rose Reception',
+        assignedTeacher: '',
+        maxClassSize: 20,
+        students: []
+      },
+      {
+        id: '6',
+        className: 'Alamanda (Class 1)',
+        level: 'Class 1',
+        stream: 'Alamanda',
+        assignedTeacher: '',
+        maxClassSize: 25,
+        students: []
+      },
+      {
+        id: '7',
+        className: 'Buttercup (Class 2)',
+        level: 'Class 2',
+        stream: 'Buttercup',
+        assignedTeacher: '',
+        maxClassSize: 25,
+        students: []
+      },
+      {
+        id: '8',
+        className: 'Crotons (Class 3)',
+        level: 'Class 3',
+        stream: 'Crotons',
         assignedTeacher: '',
         maxClassSize: 30,
+        students: []
+      },
+      {
+        id: '9',
+        className: 'Daffodil (Class 4)',
+        level: 'Class 4',
+        stream: 'Daffodil',
+        assignedTeacher: '',
+        maxClassSize: 30,
+        students: []
+      },
+      {
+        id: '10',
+        className: 'Echinacea (Class 5)',
+        level: 'Class 5',
+        stream: 'Echinacea',
+        assignedTeacher: '',
+        maxClassSize: 30,
+        students: []
+      },
+      {
+        id: '11',
+        className: 'Fraxinus (Class 6)',
+        level: 'Class 6',
+        stream: 'Fraxinus',
+        assignedTeacher: '',
+        maxClassSize: 30,
+        students: []
+      },
+      {
+        id: '12',
+        className: 'Gladiolus (JHS 1)',
+        level: 'JHS 1',
+        stream: 'Gladiolus',
+        assignedTeacher: '',
+        maxClassSize: 35,
+        students: []
+      },
+      {
+        id: '13',
+        className: 'Hollyhocks (JHS 2)',
+        level: 'JHS 2',
+        stream: 'Hollyhocks',
+        assignedTeacher: '',
+        maxClassSize: 35,
+        students: []
+      },
+      {
+        id: '14',
+        className: 'Iris (JHS 3)',
+        level: 'JHS 3',
+        stream: 'Iris',
+        assignedTeacher: '',
+        maxClassSize: 35,
         students: []
       }
     ];
@@ -194,7 +303,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         nationality: 'Ghanaian',
         studentId: '20240001',
         admissionNumber: 'ADM001',
-        classAssigned: 'Primary 4 Yellow',
+        classAssigned: 'Daffodil (Class 4)',
         guardianName: 'Mrs. Akosua Asante',
         guardianContact: '+233 24 123 4567',
         homeAddress: 'Accra, Greater Accra Region',
@@ -213,7 +322,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         nationality: 'Ghanaian',
         studentId: '20240002',
         admissionNumber: 'ADM002',
-        classAssigned: 'KG1 Red',
+        classAssigned: 'Marigold (KG1)',
         guardianName: 'Mr. Kwame Osei',
         guardianContact: '+233 20 987 6543',
         homeAddress: 'Kumasi, Ashanti Region',
@@ -237,7 +346,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: 'akosua.mensah@rosagardens.edu.gh',
         address: 'East Legon, Accra',
         subjectsTaught: ['Mathematics', 'Science'],
-        classAssigned: 'Primary 4 Yellow',
+        classAssigned: 'Daffodil (Class 4)',
         employmentDate: '2020-01-15',
         monthlySalary: 2500,
         employmentStatus: 'Active',
@@ -249,7 +358,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const sampleFeeStructures: FeeStructure[] = [
       {
         id: '1',
-        className: 'Primary 4 Yellow',
+        className: 'Daffodil (Class 4)',
         term: 'Term 1 2024',
         amount: 1200,
         dueDate: '2024-02-15',
@@ -257,7 +366,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       },
       {
         id: '2',
-        className: 'KG1 Red',
+        className: 'Marigold (KG1)',
         term: 'Term 1 2024',
         amount: 800,
         dueDate: '2024-02-15',

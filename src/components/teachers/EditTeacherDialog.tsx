@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -56,7 +55,7 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
     address: '',
     subjectsTaught: [] as string[],
     employmentDate: '',
-    monthlySalary: 0,
+    monthlySalary: '',
     employmentStatus: '',
     notes: ''
   });
@@ -72,7 +71,7 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
         address: teacher.address,
         subjectsTaught: teacher.subjectsTaught,
         employmentDate: teacher.employmentDate,
-        monthlySalary: teacher.monthlySalary,
+        monthlySalary: teacher.monthlySalary.toString(),
         employmentStatus: teacher.employmentStatus,
         notes: teacher.notes
       });
@@ -109,7 +108,13 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
       return;
     }
 
-    updateTeacher(teacher.id, formData);
+    // Convert salary to number for storage
+    const salaryValue = formData.monthlySalary.trim() === '' ? 0 : parseFloat(formData.monthlySalary) || 0;
+
+    updateTeacher(teacher.id, {
+      ...formData,
+      monthlySalary: salaryValue
+    });
     
     toast({
       title: "Teacher Updated",
@@ -252,11 +257,10 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
             <Label htmlFor="monthlySalary">Monthly Salary (GHS)</Label>
             <Input
               id="monthlySalary"
-              type="number"
-              min="0"
-              step="0.01"
+              type="text"
+              placeholder="Enter salary amount"
               value={formData.monthlySalary}
-              onChange={(e) => setFormData(prev => ({ ...prev, monthlySalary: parseFloat(e.target.value) || 0 }))}
+              onChange={(e) => setFormData(prev => ({ ...prev, monthlySalary: e.target.value }))}
             />
           </div>
 

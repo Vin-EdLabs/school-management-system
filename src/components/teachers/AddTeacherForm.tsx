@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -32,7 +31,7 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
     subjectsTaught: [] as string[],
     classAssigned: '',
     employmentDate: '',
-    monthlySalary: 0,
+    monthlySalary: '',
     employmentStatus: 'Active',
     notes: ''
   });
@@ -65,7 +64,13 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
       return;
     }
 
-    addTeacher(formData);
+    // Convert salary to number for storage, default to 0 if empty or invalid
+    const salaryValue = formData.monthlySalary.trim() === '' ? 0 : parseFloat(formData.monthlySalary) || 0;
+
+    addTeacher({
+      ...formData,
+      monthlySalary: salaryValue
+    });
     
     toast({
       title: "Teacher Added Successfully",
@@ -83,7 +88,7 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
       subjectsTaught: [],
       classAssigned: '',
       employmentDate: '',
-      monthlySalary: 0,
+      monthlySalary: '',
       employmentStatus: 'Active',
       notes: ''
     });
@@ -223,11 +228,10 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
             <Label htmlFor="monthlySalary">Monthly Salary (GHS)</Label>
             <Input
               id="monthlySalary"
-              type="number"
-              min="0"
-              step="0.01"
+              type="text"
+              placeholder="Enter salary amount"
               value={formData.monthlySalary}
-              onChange={(e) => setFormData(prev => ({ ...prev, monthlySalary: parseFloat(e.target.value) || 0 }))}
+              onChange={(e) => setFormData(prev => ({ ...prev, monthlySalary: e.target.value }))}
             />
           </div>
 

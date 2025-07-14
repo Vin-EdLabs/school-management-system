@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,13 +7,13 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
-import { Users, User, School, ArrowRight } from 'lucide-react';
+import { Users, ArrowRight } from 'lucide-react';
 
 const AssignStudentsToClass = () => {
   const { students, classes, updateStudent } = useData();
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
-  const [filterCurrentClass, setFilterCurrentClass] = useState('');
+  const [filterCurrentClass, setFilterCurrentClass] = useState('all');
 
   const handleStudentSelect = (studentId: string, checked: boolean) => {
     if (checked) {
@@ -44,10 +43,9 @@ const AssignStudentsToClass = () => {
       return;
     }
 
-    // Check class capacity
     const currentStudentsInClass = students.filter(s => s.classAssigned === targetClass.className).length;
     const newTotal = currentStudentsInClass + selectedStudents.length;
-    
+
     if (targetClass.maxClassSize && newTotal > targetClass.maxClassSize) {
       toast({
         title: "Class Capacity Exceeded",
@@ -57,23 +55,21 @@ const AssignStudentsToClass = () => {
       return;
     }
 
-    // Assign students to class
     selectedStudents.forEach(studentId => {
       updateStudent(studentId, { classAssigned: targetClass.className });
     });
-    
+
     toast({
       title: "Students Assigned Successfully",
       description: `${selectedStudents.length} students have been assigned to ${targetClass.className}`,
     });
 
-    // Reset form
     setSelectedStudents([]);
     setSelectedClass('');
   };
 
   const filteredStudents = students.filter(student => {
-    if (filterCurrentClass === '') return true;
+    if (filterCurrentClass === 'all') return true;
     if (filterCurrentClass === 'unassigned') return !student.classAssigned;
     return student.classAssigned === filterCurrentClass;
   });
@@ -82,11 +78,10 @@ const AssignStudentsToClass = () => {
     return students.filter(student => student.classAssigned === className).length;
   };
 
-  const availableClasses = classes.filter(cls => cls.className); // Only show classes with names
+  const availableClasses = classes.filter(cls => cls.className);
 
   return (
     <div className="space-y-6">
-      {/* Assignment Form */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
@@ -104,15 +99,17 @@ const AssignStudentsToClass = () => {
                     <SelectValue placeholder="Select target class" />
                   </SelectTrigger>
                   <SelectContent>
-                    {availableClasses.map((cls) => {
-                      const currentCount = getStudentCount(cls.className);
-                      const capacity = cls.maxClassSize ? ` (${currentCount}/${cls.maxClassSize})` : ` (${currentCount})`;
-                      return (
-                        <SelectItem key={cls.id} value={cls.id}>
-                          {cls.className}{capacity}
-                        </SelectItem>
-                      );
-                    })}
+                    {availableClasses
+                      .filter(cls => cls.id && cls.className)
+                      .map((cls) => {
+                        const currentCount = getStudentCount(cls.className);
+                        const capacity = cls.maxClassSize ? ` (${currentCount}/${cls.maxClassSize})` : ` (${currentCount})`;
+                        return (
+                          <SelectItem key={cls.id} value={cls.id}>
+                            {cls.className}{capacity}
+                          </SelectItem>
+                        );
+                      })}
                   </SelectContent>
                 </Select>
               </div>
@@ -123,13 +120,15 @@ const AssignStudentsToClass = () => {
                     <SelectValue placeholder="All students" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All students</SelectItem>
+                    <SelectItem value="all">All students</SelectItem>
                     <SelectItem value="unassigned">Unassigned students</SelectItem>
-                    {availableClasses.map((cls) => (
-                      <SelectItem key={cls.id} value={cls.className}>
-                        {cls.className} ({getStudentCount(cls.className)})
-                      </SelectItem>
-                    ))}
+                    {availableClasses
+                      .filter(cls => cls.className)
+                      .map((cls) => (
+                        <SelectItem key={cls.id} value={cls.className}>
+                          {cls.className} ({getStudentCount(cls.className)})
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -146,8 +145,8 @@ const AssignStudentsToClass = () => {
               </div>
             )}
 
-            <Button 
-              onClick={handleAssignStudents} 
+            <Button
+              onClick={handleAssignStudents}
               className="w-full md:w-auto"
               disabled={!selectedClass || selectedStudents.length === 0}
             >
@@ -158,7 +157,6 @@ const AssignStudentsToClass = () => {
         </CardContent>
       </Card>
 
-      {/* Students Selection */}
       <Card>
         <CardHeader>
           <CardTitle>Select Students ({filteredStudents.length} available)</CardTitle>
@@ -209,7 +207,6 @@ const AssignStudentsToClass = () => {
         </CardContent>
       </Card>
 
-      {/* Class Overview */}
       <Card>
         <CardHeader>
           <CardTitle>Class Overview</CardTitle>
@@ -219,11 +216,13 @@ const AssignStudentsToClass = () => {
             {availableClasses.map((cls) => {
               const studentCount = getStudentCount(cls.className);
               const utilization = cls.maxClassSize ? Math.round((studentCount / cls.maxClassSize) * 100) : 0;
-              
+
               return (
                 <div key={cls.id} className="p-4 border rounded-lg">
                   <h3 className="font-semibold text-lg">{cls.className}</h3>
-                  <p className="text-sm text-gray-600">{cls.level} {cls.stream ? `- ${cls.stream}` : ''}</p>
+                  <p className="text-sm text-gray-600">
+                    {cls.level} {cls.stream ? `- ${cls.stream}` : ''}
+                  </p>
                   <div className="mt-2 space-y-2">
                     <div className="flex justify-between items-center">
                       <span className="text-sm">Students:</span>

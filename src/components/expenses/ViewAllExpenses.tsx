@@ -1,9 +1,21 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
 import { Search, TrendingDown } from 'lucide-react';
@@ -11,21 +23,26 @@ import { Search, TrendingDown } from 'lucide-react';
 const ViewAllExpenses = () => {
   const { expenses } = useData();
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterCategory, setFilterCategory] = useState('');
+  const [filterCategory, setFilterCategory] = useState('__all__');
 
-  const filteredExpenses = expenses.filter(expense => {
-    const matchesSearch = searchTerm === '' || 
+  const filteredExpenses = expenses.filter((expense) => {
+    const matchesSearch =
+      searchTerm === '' ||
       expense.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       expense.payeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       expense.category.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesCategory = filterCategory === '' || expense.category === filterCategory;
+
+    const matchesCategory =
+      filterCategory === '__all__' || expense.category === filterCategory;
 
     return matchesSearch && matchesCategory;
   });
 
-  const totalAmount = filteredExpenses.reduce((sum, expense) => sum + expense.amount, 0);
-  const uniqueCategories = [...new Set(expenses.map(expense => expense.category))];
+  const totalAmount = filteredExpenses.reduce(
+    (sum, expense) => sum + expense.amount,
+    0
+  );
+  const uniqueCategories = [...new Set(expenses.map((expense) => expense.category))];
 
   return (
     <Card>
@@ -57,7 +74,7 @@ const ViewAllExpenses = () => {
               <SelectValue placeholder="Filter by category" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Categories</SelectItem>
+              <SelectItem value="__all__">All Categories</SelectItem>
               {uniqueCategories.map((category) => (
                 <SelectItem key={category} value={category}>
                   {category}
@@ -85,10 +102,9 @@ const ViewAllExpenses = () => {
               {filteredExpenses.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-8 text-gray-500">
-                    {expenses.length === 0 
-                      ? "No expense records found. Add your first expense record to get started."
-                      : "No expense records found matching your criteria"
-                    }
+                    {expenses.length === 0
+                      ? 'No expense records found. Add your first expense record to get started.'
+                      : 'No expense records found matching your criteria'}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -109,7 +125,9 @@ const ViewAllExpenses = () => {
                     <TableCell>
                       <Badge variant="secondary">{expense.paymentMethod}</Badge>
                     </TableCell>
-                    <TableCell>{new Date(expense.paymentDate).toLocaleDateString()}</TableCell>
+                    <TableCell>
+                      {new Date(expense.paymentDate).toLocaleDateString()}
+                    </TableCell>
                     <TableCell className="max-w-xs truncate">
                       {expense.purpose || '-'}
                     </TableCell>

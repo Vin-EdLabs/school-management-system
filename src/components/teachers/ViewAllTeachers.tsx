@@ -6,13 +6,21 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useData } from '../../contexts/DataContext';
-import { Search, Edit, Trash2, Users } from 'lucide-react';
+import { Search, Edit, Trash2, Users, Eye } from 'lucide-react';
+import TeacherDetailsDialog from './TeacherDetailsDialog';
+import EditTeacherDialog from './EditTeacherDialog';
+import ConfirmDialog from '../common/ConfirmDialog';
 
 const ViewAllTeachers = () => {
   const { teachers, classes, deleteTeacher } = useData();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all-status');
   const [filterClass, setFilterClass] = useState('all-classes');
+  const [selectedTeacher, setSelectedTeacher] = useState<any>(null);
+  const [showDetailsDialog, setShowDetailsDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [teacherToDelete, setTeacherToDelete] = useState<any>(null);
 
   const filteredTeachers = teachers.filter(teacher => {
     const matchesSearch = searchTerm === '' || 
@@ -41,164 +49,221 @@ const ViewAllTeachers = () => {
     }
   };
 
-  const handleDelete = (id: string, name: string) => {
-    if (window.confirm(`Are you sure you want to delete ${name}?`)) {
-      deleteTeacher(id);
+  const handleViewTeacher = (teacher: any) => {
+    setSelectedTeacher(teacher);
+    setShowDetailsDialog(true);
+  };
+
+  const handleEditTeacher = (teacher: any) => {
+    setSelectedTeacher(teacher);
+    setShowEditDialog(true);
+  };
+
+  const handleDeleteClick = (teacher: any) => {
+    setTeacherToDelete(teacher);
+    setShowDeleteDialog(true);
+  };
+
+  const handleConfirmDelete = () => {
+    if (teacherToDelete) {
+      deleteTeacher(teacherToDelete.id);
+      setShowDeleteDialog(false);
+      setTeacherToDelete(null);
     }
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center space-x-2">
-          <Users className="w-5 h-5" />
-          <span>All Teachers ({filteredTeachers.length})</span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {/* Search and Filters */}
-        <div className="flex flex-col lg:flex-row gap-4 mb-6">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-            <Input
-              placeholder="Search by name, staff ID, or email..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <Users className="w-5 h-5" />
+            <span>All Teachers ({filteredTeachers.length})</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {/* Search and Filters */}
+          <div className="flex flex-col lg:flex-row gap-4 mb-6">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Search by name, staff ID, or email..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all-status">All Status</SelectItem>
+                  <SelectItem value="Active">Active</SelectItem>
+                  <SelectItem value="Left">Left</SelectItem>
+                  <SelectItem value="Suspended">Suspended</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={filterClass} onValueChange={setFilterClass}>
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Class" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all-classes">All Classes</SelectItem>
+                  <SelectItem value="no-class">No Class Assigned</SelectItem>
+                  {classes.map((cls) => (
+                    <SelectItem key={cls.id} value={cls.className}>
+                      {cls.className}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all-status">All Status</SelectItem>
-                <SelectItem value="Active">Active</SelectItem>
-                <SelectItem value="Left">Left</SelectItem>
-                <SelectItem value="Suspended">Suspended</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={filterClass} onValueChange={setFilterClass}>
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="Class" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all-classes">All Classes</SelectItem>
-                <SelectItem value="no-class">No Class Assigned</SelectItem>
-                {classes.map((cls) => (
-                  <SelectItem key={cls.id} value={cls.className}>
-                    {cls.className}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
 
-        {/* Teachers Table */}
-        <div className="rounded-md border overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Staff ID</TableHead>
-                <TableHead>Contact</TableHead>
-                <TableHead>Subjects</TableHead>
-                <TableHead>Class Assigned</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Salary</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredTeachers.length === 0 ? (
+          {/* Teachers Table */}
+          <div className="rounded-md border overflow-x-auto">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-gray-500">
-                    No teachers found matching your criteria
-                  </TableCell>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Staff ID</TableHead>
+                  <TableHead>Contact</TableHead>
+                  <TableHead>Subjects</TableHead>
+                  <TableHead>Class Assigned</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Salary</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
-              ) : (
-                filteredTeachers.map((teacher) => (
-                  <TableRow key={teacher.id}>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">{teacher.fullName}</div>
-                        <div className="text-sm text-gray-500">{teacher.gender}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className="font-mono">{teacher.staffId}</span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        <div>{teacher.phoneNumber}</div>
-                        <div className="text-gray-500">{teacher.email}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {teacher.subjectsTaught.slice(0, 2).map((subject, index) => (
-                          <Badge key={index} variant="outline" className="text-xs">
-                            {subject}
-                          </Badge>
-                        ))}
-                        {teacher.subjectsTaught.length > 2 && (
-                          <Badge variant="outline" className="text-xs">
-                            +{teacher.subjectsTaught.length - 2}
-                          </Badge>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {teacher.classAssigned ? (
-                        <Badge variant="secondary">{teacher.classAssigned}</Badge>
-                      ) : (
-                        <span className="text-gray-400">No class</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={getStatusColor(teacher.employmentStatus)}>
-                        {teacher.employmentStatus}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {teacher.monthlySalary > 0 ? (
-                        <span className="font-mono">GHS {teacher.monthlySalary.toLocaleString()}</span>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex space-x-2">
-                        <Button size="sm" variant="outline">
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          onClick={() => handleDelete(teacher.id, teacher.fullName)}
-                          className="text-red-600 hover:text-red-800"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
+              </TableHeader>
+              <TableBody>
+                {filteredTeachers.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                      No teachers found matching your criteria
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
-
-        {/* Summary */}
-        {filteredTeachers.length > 0 && (
-          <div className="mt-4 text-sm text-gray-600">
-            Showing {filteredTeachers.length} of {teachers.length} teachers
+                ) : (
+                  filteredTeachers.map((teacher) => (
+                    <TableRow key={teacher.id}>
+                      <TableCell>
+                        <div>
+                          <div className="font-medium">{teacher.fullName}</div>
+                          <div className="text-sm text-gray-500">{teacher.gender}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="font-mono">{teacher.staffId}</span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm">
+                          <div>{teacher.phoneNumber}</div>
+                          <div className="text-gray-500">{teacher.email}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          {teacher.subjectsTaught.slice(0, 2).map((subject, index) => (
+                            <Badge key={index} variant="outline" className="text-xs">
+                              {subject}
+                            </Badge>
+                          ))}
+                          {teacher.subjectsTaught.length > 2 && (
+                            <Badge variant="outline" className="text-xs">
+                              +{teacher.subjectsTaught.length - 2}
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {teacher.classAssigned ? (
+                          <Badge variant="secondary">{teacher.classAssigned}</Badge>
+                        ) : (
+                          <span className="text-gray-400">No class</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={getStatusColor(teacher.employmentStatus)}>
+                          {teacher.employmentStatus}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {teacher.monthlySalary > 0 ? (
+                          <span className="font-mono">GHS {teacher.monthlySalary.toLocaleString()}</span>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex space-x-2">
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => handleViewTeacher(teacher)}
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => handleEditTeacher(teacher)}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            onClick={() => handleDeleteClick(teacher)}
+                            className="text-red-600 hover:text-red-800"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
           </div>
-        )}
-      </CardContent>
-    </Card>
+
+          {/* Summary */}
+          {filteredTeachers.length > 0 && (
+            <div className="mt-4 text-sm text-gray-600">
+              Showing {filteredTeachers.length} of {teachers.length} teachers
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <TeacherDetailsDialog
+        teacher={selectedTeacher}
+        open={showDetailsDialog}
+        onClose={() => setShowDetailsDialog(false)}
+      />
+
+      <EditTeacherDialog
+        teacher={selectedTeacher}
+        open={showEditDialog}
+        onClose={() => setShowEditDialog(false)}
+        onSuccess={() => {
+          setShowEditDialog(false);
+          setSelectedTeacher(null);
+        }}
+      />
+
+      <ConfirmDialog
+        open={showDeleteDialog}
+        onClose={() => setShowDeleteDialog(false)}
+        onConfirm={handleConfirmDelete}
+        title="Delete Teacher"
+        description={`Are you sure you want to delete ${teacherToDelete?.fullName}? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="destructive"
+      />
+    </>
   );
 };
 

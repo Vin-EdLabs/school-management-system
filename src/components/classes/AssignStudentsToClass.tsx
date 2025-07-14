@@ -35,7 +35,14 @@ const AssignStudentsToClass = () => {
     }
 
     const targetClass = classes.find(c => c.id === selectedClass);
-    if (!targetClass) return;
+    if (!targetClass) {
+      toast({
+        title: "Error",
+        description: "Selected class not found",
+        variant: "destructive"
+      });
+      return;
+    }
 
     // Check class capacity
     const currentStudentsInClass = students.filter(s => s.classAssigned === targetClass.className).length;
@@ -75,6 +82,8 @@ const AssignStudentsToClass = () => {
     return students.filter(student => student.classAssigned === className).length;
   };
 
+  const availableClasses = classes.filter(cls => cls.className); // Only show classes with names
+
   return (
     <div className="space-y-6">
       {/* Assignment Form */}
@@ -95,7 +104,7 @@ const AssignStudentsToClass = () => {
                     <SelectValue placeholder="Select target class" />
                   </SelectTrigger>
                   <SelectContent>
-                    {classes.map((cls) => {
+                    {availableClasses.map((cls) => {
                       const currentCount = getStudentCount(cls.className);
                       const capacity = cls.maxClassSize ? ` (${currentCount}/${cls.maxClassSize})` : ` (${currentCount})`;
                       return (
@@ -116,7 +125,7 @@ const AssignStudentsToClass = () => {
                   <SelectContent>
                     <SelectItem value="">All students</SelectItem>
                     <SelectItem value="unassigned">Unassigned students</SelectItem>
-                    {classes.map((cls) => (
+                    {availableClasses.map((cls) => (
                       <SelectItem key={cls.id} value={cls.className}>
                         {cls.className} ({getStudentCount(cls.className)})
                       </SelectItem>
@@ -129,7 +138,7 @@ const AssignStudentsToClass = () => {
             {selectedClass && (
               <div className="p-4 bg-blue-50 rounded-lg">
                 <p className="text-sm text-blue-800">
-                  <strong>Target Class:</strong> {classes.find(c => c.id === selectedClass)?.className}
+                  <strong>Target Class:</strong> {availableClasses.find(c => c.id === selectedClass)?.className}
                 </p>
                 <p className="text-sm text-blue-600">
                   Selected Students: {selectedStudents.length}
@@ -207,7 +216,7 @@ const AssignStudentsToClass = () => {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {classes.map((cls) => {
+            {availableClasses.map((cls) => {
               const studentCount = getStudentCount(cls.className);
               const utilization = cls.maxClassSize ? Math.round((studentCount / cls.maxClassSize) * 100) : 0;
               

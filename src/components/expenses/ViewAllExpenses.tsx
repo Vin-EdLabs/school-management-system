@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
-import { Search } from 'lucide-react';
+import { Search, TrendingDown } from 'lucide-react';
 
 const ViewAllExpenses = () => {
   const { expenses } = useData();
@@ -16,7 +16,8 @@ const ViewAllExpenses = () => {
   const filteredExpenses = expenses.filter(expense => {
     const matchesSearch = searchTerm === '' || 
       expense.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      expense.payeeName.toLowerCase().includes(searchTerm.toLowerCase());
+      expense.payeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      expense.category.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesCategory = filterCategory === '' || expense.category === filterCategory;
 
@@ -30,7 +31,10 @@ const ViewAllExpenses = () => {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
-          <span>All Expenses ({filteredExpenses.length})</span>
+          <div className="flex items-center space-x-2">
+            <TrendingDown className="w-5 h-5" />
+            <span>All Expenses ({filteredExpenses.length})</span>
+          </div>
           <Badge variant="outline" className="text-lg px-3 py-1">
             Total: GHS {totalAmount.toLocaleString()}
           </Badge>
@@ -42,7 +46,7 @@ const ViewAllExpenses = () => {
           <div className="relative flex-1">
             <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
             <Input
-              placeholder="Search by title or payee..."
+              placeholder="Search by title, payee, or category..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10"
@@ -81,7 +85,10 @@ const ViewAllExpenses = () => {
               {filteredExpenses.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-8 text-gray-500">
-                    No expenses found matching your criteria
+                    {expenses.length === 0 
+                      ? "No expense records found. Add your first expense record to get started."
+                      : "No expense records found matching your criteria"
+                    }
                   </TableCell>
                 </TableRow>
               ) : (
@@ -89,11 +96,6 @@ const ViewAllExpenses = () => {
                   <TableRow key={expense.id}>
                     <TableCell>
                       <div className="font-medium">{expense.title}</div>
-                      {expense.notes && (
-                        <div className="text-sm text-gray-500 truncate max-w-xs">
-                          {expense.notes}
-                        </div>
-                      )}
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline">{expense.category}</Badge>
@@ -103,7 +105,7 @@ const ViewAllExpenses = () => {
                         GHS {expense.amount.toLocaleString()}
                       </span>
                     </TableCell>
-                    <TableCell>{expense.payeeName || '-'}</TableCell>
+                    <TableCell>{expense.payeeName}</TableCell>
                     <TableCell>
                       <Badge variant="secondary">{expense.paymentMethod}</Badge>
                     </TableCell>
@@ -121,7 +123,7 @@ const ViewAllExpenses = () => {
         {/* Summary */}
         {filteredExpenses.length > 0 && (
           <div className="mt-4 text-sm text-gray-600">
-            Showing {filteredExpenses.length} of {expenses.length} expenses
+            Showing {filteredExpenses.length} of {expenses.length} expense records
           </div>
         )}
       </CardContent>

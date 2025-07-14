@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
-import { Search } from 'lucide-react';
+import { Search, TrendingUp } from 'lucide-react';
 
 const ViewAllIncome = () => {
   const { income } = useData();
@@ -30,7 +30,10 @@ const ViewAllIncome = () => {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
-          <span>All Income ({filteredIncome.length})</span>
+          <div className="flex items-center space-x-2">
+            <TrendingUp className="w-5 h-5" />
+            <span>All Income ({filteredIncome.length})</span>
+          </div>
           <Badge variant="outline" className="text-lg px-3 py-1">
             Total: GHS {totalAmount.toLocaleString()}
           </Badge>
@@ -80,7 +83,10 @@ const ViewAllIncome = () => {
               {filteredIncome.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-8 text-gray-500">
-                    No income records found matching your criteria
+                    {income.length === 0 
+                      ? "No income records found. Add your first income record to get started."
+                      : "No income records found matching your criteria"
+                    }
                   </TableCell>
                 </TableRow>
               ) : (

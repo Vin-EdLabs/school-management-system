@@ -12,6 +12,7 @@ import IncomeModule from './income/IncomeModule';
 import ExpensesModule from './expenses/ExpensesModule';
 import ReportsModule from './reports/ReportsModule';
 import SettingsModule from './settings/SettingsModule';
+import AuditModule from './audit/AuditModule';
 import { useAuth } from '../contexts/AuthContext';
 
 const Dashboard = () => {
@@ -63,6 +64,8 @@ const Dashboard = () => {
         return <ReportsModule />;
       case 'settings':
         return <SettingsModule />;
+      case 'audit':
+        return <AuditModule />;
       default:
         return user?.role === 'administrator' ? <AdministratorDashboard /> : <DashboardHome />;
     }

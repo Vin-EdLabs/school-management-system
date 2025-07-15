@@ -1,29 +1,26 @@
 
-import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import React from 'react';
+import { AuthProvider } from '../contexts/AuthContext';
 import LoginPage from '../components/LoginPage';
 import Dashboard from '../components/Dashboard';
-import { AuthProvider, useAuth } from '../contexts/AuthContext';
-import { DataProvider } from '../contexts/DataContext';
+import AuditLoginTracker from '../components/AuditLoginTracker';
+import { useAuth } from '../contexts/AuthContext';
 
-const AppContent = () => {
+const IndexContent = () => {
   const { isAuthenticated } = useAuth();
 
-  if (!isAuthenticated) {
-    return <LoginPage />;
-  }
-
-  return <Dashboard />;
+  return (
+    <>
+      <AuditLoginTracker />
+      {isAuthenticated ? <Dashboard /> : <LoginPage />}
+    </>
+  );
 };
 
 const Index = () => {
   return (
     <AuthProvider>
-      <DataProvider>
-        <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
-          <AppContent />
-        </div>
-      </DataProvider>
+      <IndexContent />
     </AuthProvider>
   );
 };

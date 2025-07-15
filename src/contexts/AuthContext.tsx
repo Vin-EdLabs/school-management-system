@@ -53,6 +53,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(newUser);
       localStorage.setItem('rosaGardensAuth', 'true');
       localStorage.setItem('rosaGardensUser', JSON.stringify(newUser));
+      
+      // Add audit log for login (will be handled by AuditContext after login)
+      setTimeout(() => {
+        const event = new CustomEvent('userLogin', { 
+          detail: { username, role, timestamp: new Date() } 
+        });
+        window.dispatchEvent(event);
+      }, 100);
+      
       return true;
     }
     return false;
@@ -82,7 +91,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const rolePermissions = {
       'administrator': ['students', 'teachers', 'classes', 'dashboard', 'settings-password-only'],
       'finance': ['students-view-only', 'teachers-view-only', 'fees', 'income', 'expenses', 'reports', 'financial-dashboard', 'settings-password-only'],
-      'super-admin': ['students', 'teachers', 'classes', 'fees', 'income', 'expenses', 'reports', 'dashboard', 'financial-dashboard', 'settings']
+      'super-admin': ['students', 'teachers', 'classes', 'fees', 'income', 'expenses', 'reports', 'dashboard', 'financial-dashboard', 'settings', 'audit']
     };
 
     return rolePermissions[user.role].includes(module);

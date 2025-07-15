@@ -6,10 +6,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
-import { CreditCard, Search } from 'lucide-react';
+import { CreditCard, Search, AlertCircle } from 'lucide-react';
 import ReceiptPrinter from '../common/ReceiptPrinter';
+import { calculateStudentFees, getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
 
 const RecordPayment = () => {
   const { students, addPayment, feeStructures, payments } = useData();
@@ -18,14 +20,14 @@ const RecordPayment = () => {
     amount: '',
     date: new Date().toISOString().split('T')[0],
     paymentMethod: 'Cash',
-    term: 'Term 1 2024',
     notes: ''
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [showReceipt, setShowReceipt] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
 
-  console.log('RecordPayment: students data:', students);
+  const currentTerm = getActiveAcademicTerm();
+  const currentYear = getActiveAcademicYear();
 
   const filteredStudents = students.filter(student =>
     student.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -46,23 +48,17 @@ const RecordPayment = () => {
     return `RG${timestamp}${random}`;
   };
 
-  // Calculate remaining balance for student
-  const calculateRemainingBalance = (studentId: string, term: string) => {
+  const getStudentFeeDetails = (studentId: string) => {
     const student = students.find(s => s.id === studentId);
-    if (!student) return 0;
+    if (!student) return null;
 
-    // Get fee structure for student's class and term
-    const feeStructure = feeStructures.find(fee => 
-      fee.className === student.classAssigned && fee.term === term
+    return calculateStudentFees(
+      studentId,
+      currentTerm,
+      student.classAssigned,
+      feeStructures,
+      payments
     );
-    const totalFee = feeStructure?.amount || 0;
-
-    // Calculate total payments made by student for this term
-    const totalPaid = payments
-      .filter(payment => payment.studentId === studentId && payment.term === term)
-      .reduce((sum, payment) => sum + payment.amount, 0);
-
-    return Math.max(0, totalFee - totalPaid);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -90,16 +86,35 @@ const RecordPayment = () => {
     const receiptNumber = generateReceiptNumber();
     const paymentAmount = parseFloat(formData.amount);
     
-    // Calculate remaining balance after this payment
-    const currentBalance = calculateRemainingBalance(formData.studentId, formData.term);
-    const newBalance = Math.max(0, currentBalance - paymentAmount);
-    
+    // Get fee details before payment
+    const feeDetails = getStudentFeeDetails(formData.studentId);
+    if (!feeDetails) {
+      toast({
+        title: "Error",
+        description: "Could not calculate fee details",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Add payment record
     addPayment({
       ...formData,
-      amount: paymentAmount
+      amount: paymentAmount,
+      term: currentTerm
     });
 
-    // Prepare receipt data with remaining balance
+    // Calculate new balances after payment
+    const newPaidAmount = feeDetails.totalPaid + paymentAmount;
+    const newBalance = Math.max(0, feeDetails.totalAmountDue - newPaidAmount);
+    const newCreditBalance = Math.max(0, newPaidAmount - feeDetails.totalAmountDue);
+
+    // Update credit balance if overpayment
+    if (newCreditBalance > 0) {
+      localStorage.setItem(`credit-${formData.studentId}`, newCreditBalance.toString());
+    }
+
+    // Prepare receipt data
     const newReceiptData = {
       studentName: `${student.firstName} ${student.lastName}`,
       studentId: student.studentId,
@@ -107,10 +122,15 @@ const RecordPayment = () => {
       amount: paymentAmount,
       date: formData.date,
       paymentMethod: formData.paymentMethod,
-      term: formData.term,
+      term: currentTerm,
+      year: currentYear,
       receiptNumber: receiptNumber,
       notes: formData.notes,
-      remainingBalance: newBalance
+      remainingBalance: newBalance,
+      creditBalance: newCreditBalance,
+      arrears: feeDetails.arrears,
+      currentTermFee: feeDetails.currentTermFee,
+      totalAmountDue: feeDetails.totalAmountDue
     };
 
     setReceiptData(newReceiptData);
@@ -127,7 +147,6 @@ const RecordPayment = () => {
       amount: '',
       date: new Date().toISOString().split('T')[0],
       paymentMethod: 'Cash',
-      term: 'Term 1 2024',
       notes: ''
     });
     setSearchTerm('');
@@ -137,9 +156,17 @@ const RecordPayment = () => {
     <>
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <CreditCard className="w-5 h-5" />
-            <span>Record Payment</span>
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <CreditCard className="w-5 h-5" />
+              <span>Record Payment</span>
+            </div>
+            <div className="text-right">
+              <Badge variant="outline" className="mb-1">
+                {currentTerm}
+              </Badge>
+              <p className="text-sm text-gray-600">Academic Year: {currentYear}</p>
+            </div>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -157,32 +184,87 @@ const RecordPayment = () => {
                 />
               </div>
               {searchTerm && (
-                <div className="border rounded-md max-h-40 overflow-y-auto">
+                <div className="border rounded-md max-h-60 overflow-y-auto">
                   {filteredStudents.map((student) => {
-                    console.log('RecordPayment: rendering student:', student.firstName, student.lastName, student.id);
-                    const remainingBalance = calculateRemainingBalance(student.id, formData.term);
+                    const feeDetails = getStudentFeeDetails(student.id);
                     return (
                       <div
                         key={student.id}
-                        className="p-2 hover:bg-gray-50 cursor-pointer border-b last:border-b-0"
+                        className="p-3 hover:bg-gray-50 cursor-pointer border-b last:border-b-0"
                         onClick={() => {
-                          setFormData(prev => ({...prev, studentId: student.id || 'unknown-student'}));
+                          setFormData(prev => ({...prev, studentId: student.id}));
                           setSearchTerm(`${student.firstName} ${student.lastName} - ${student.studentId}`);
                         }}
                       >
-                        <p className="font-medium">{student.firstName} {student.lastName}</p>
-                        <p className="text-sm text-gray-500">
-                          ID: {student.studentId} | Class: {student.classAssigned}
-                        </p>
-                        <p className="text-sm text-orange-600">
-                          Balance: GHS {remainingBalance.toFixed(2)}
-                        </p>
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-medium">{student.firstName} {student.lastName}</p>
+                            <p className="text-sm text-gray-500">
+                              ID: {student.studentId} | Class: {student.classAssigned}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            {feeDetails && (
+                              <div className="space-y-1">
+                                <p className="text-sm font-medium text-orange-600">
+                                  Due: GHS {feeDetails.totalAmountDue.toFixed(2)}
+                                </p>
+                                {feeDetails.arrears > 0 && (
+                                  <p className="text-xs text-red-600">
+                                    Arrears: GHS {feeDetails.arrears.toFixed(2)}
+                                  </p>
+                                )}
+                                {feeDetails.creditBalance > 0 && (
+                                  <p className="text-xs text-green-600">
+                                    Credit: GHS {feeDetails.creditBalance.toFixed(2)}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     );
                   })}
                 </div>
               )}
             </div>
+
+            {/* Fee Details Display */}
+            {formData.studentId && (
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <h3 className="font-medium text-blue-800 mb-2">Fee Details for {currentTerm}</h3>
+                {(() => {
+                  const feeDetails = getStudentFeeDetails(formData.studentId);
+                  if (!feeDetails) return <p className="text-sm text-gray-600">No fee structure found</p>;
+                  
+                  return (
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-gray-600">Current Term Fee:</p>
+                        <p className="font-medium">GHS {feeDetails.currentTermFee.toFixed(2)}</p>
+                      </div>
+                      {feeDetails.arrears > 0 && (
+                        <div>
+                          <p className="text-gray-600">Arrears:</p>
+                          <p className="font-medium text-red-600">GHS {feeDetails.arrears.toFixed(2)}</p>
+                        </div>
+                      )}
+                      {feeDetails.creditBalance > 0 && (
+                        <div>
+                          <p className="text-gray-600">Credit Balance:</p>
+                          <p className="font-medium text-green-600">GHS {feeDetails.creditBalance.toFixed(2)}</p>
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-gray-600">Total Amount Due:</p>
+                        <p className="font-medium text-orange-600">GHS {feeDetails.totalAmountDue.toFixed(2)}</p>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -209,34 +291,19 @@ const RecordPayment = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="paymentMethod">Payment Method</Label>
-                <Select value={formData.paymentMethod} onValueChange={(value) => handleInputChange('paymentMethod', value)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Cash">Cash</SelectItem>
-                    <SelectItem value="Mobile Money">Mobile Money</SelectItem>
-                    <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
-                    <SelectItem value="Cheque">Cheque</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="term">Term</Label>
-                <Select value={formData.term} onValueChange={(value) => handleInputChange('term', value)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Term 1 2024">Term 1 2024</SelectItem>
-                    <SelectItem value="Term 2 2024">Term 2 2024</SelectItem>
-                    <SelectItem value="Term 3 2024">Term 3 2024</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="paymentMethod">Payment Method</Label>
+              <Select value={formData.paymentMethod} onValueChange={(value) => handleInputChange('paymentMethod', value)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Cash">Cash</SelectItem>
+                  <SelectItem value="Mobile Money">Mobile Money</SelectItem>
+                  <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                  <SelectItem value="Cheque">Cheque</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">

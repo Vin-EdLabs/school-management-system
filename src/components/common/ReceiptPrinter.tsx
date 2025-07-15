@@ -13,9 +13,14 @@ interface ReceiptData {
   date: string;
   paymentMethod: string;
   term: string;
+  year?: string;
   receiptNumber: string;
   notes?: string;
   remainingBalance?: number;
+  creditBalance?: number;
+  arrears?: number;
+  currentTermFee?: number;
+  totalAmountDue?: number;
 }
 
 interface ReceiptPrinterProps {
@@ -50,9 +55,13 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({ receiptData, onPrint, s
                 .info-label { font-weight: bold; }
                 .amount { font-size: 20px; font-weight: bold; color: #059669; }
                 .balance { font-size: 16px; font-weight: bold; color: #dc2626; }
+                .credit { font-size: 16px; font-weight: bold; color: #059669; }
+                .arrears { font-size: 14px; font-weight: bold; color: #dc2626; }
                 .separator { border-top: 1px solid #e5e7eb; margin: 15px 0; }
                 .footer { text-align: center; margin-top: 20px; font-size: 12px; color: #6b7280; }
                 .watermark { background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="50" font-size="8" fill="%23f3f4f6" text-anchor="middle" x="50">PAID</text></svg>') no-repeat center; background-size: 200px; }
+                .fee-breakdown { background: #f9fafb; padding: 10px; border-radius: 5px; margin: 10px 0; }
+                .fee-breakdown-title { font-weight: bold; margin-bottom: 8px; color: #374151; }
               </style>
             </head>
             <body>
@@ -71,7 +80,7 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({ receiptData, onPrint, s
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <Card className="max-w-md w-full mx-4">
+      <Card className="max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
         <CardHeader>
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold">Payment Receipt</h3>
@@ -104,6 +113,19 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({ receiptData, onPrint, s
                 <span>{new Date(receiptData.date).toLocaleDateString()}</span>
               </div>
               <div className="info-row">
+                <span className="info-label">Academic Year:</span>
+                <span>{receiptData.year || '2024'}</span>
+              </div>
+              <div className="info-row">
+                <span className="info-label">Term:</span>
+                <span>{receiptData.term}</span>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="receipt-info">
+              <div className="info-row">
                 <span className="info-label">Student:</span>
                 <span>{receiptData.studentName}</span>
               </div>
@@ -116,48 +138,75 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({ receiptData, onPrint, s
                 <span>{receiptData.className}</span>
               </div>
               <div className="info-row">
-                <span className="info-label">Term:</span>
-                <span>{receiptData.term}</span>
-              </div>
-              <div className="info-row">
                 <span className="info-label">Payment Method:</span>
                 <span>{receiptData.paymentMethod}</span>
               </div>
-              
-              <Separator />
-              
-              <div className="info-row">
-                <span className="info-label">Amount Paid:</span>
-                <span className="amount">GHS {receiptData.amount.toFixed(2)}</span>
-              </div>
-              
-              {receiptData.remainingBalance !== undefined && (
-                <div className="info-row">
-                  <span className="info-label">Remaining Balance:</span>
-                  <span className={receiptData.remainingBalance > 0 ? "balance" : "amount"}>
-                    GHS {receiptData.remainingBalance.toFixed(2)}
-                  </span>
-                </div>
-              )}
-              
-              {receiptData.notes && (
-                <>
-                  <Separator />
-                  <div className="info-row">
-                    <span className="info-label">Notes:</span>
-                  </div>
-                  <div style={{ marginTop: '8px', fontSize: '14px' }}>
-                    {receiptData.notes}
-                  </div>
-                </>
-              )}
             </div>
             
+            <Separator />
+
+            {/* Fee Breakdown */}
+            {(receiptData.currentTermFee || receiptData.arrears || receiptData.totalAmountDue) && (
+              <div className="fee-breakdown">
+                <div className="fee-breakdown-title">Fee Breakdown</div>
+                {receiptData.currentTermFee && (
+                  <div className="info-row">
+                    <span>Current Term Fee:</span>
+                    <span>GHS {receiptData.currentTermFee.toFixed(2)}</span>
+                  </div>
+                )}
+                {receiptData.arrears && receiptData.arrears > 0 && (
+                  <div className="info-row">
+                    <span>Arrears from Previous Terms:</span>
+                    <span className="arrears">GHS {receiptData.arrears.toFixed(2)}</span>
+                  </div>
+                )}
+                {receiptData.totalAmountDue && (
+                  <div className="info-row">
+                    <span className="info-label">Total Amount Due:</span>
+                    <span className="info-label">GHS {receiptData.totalAmountDue.toFixed(2)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            <div className="info-row">
+              <span className="info-label">Amount Paid:</span>
+              <span className="amount">GHS {receiptData.amount.toFixed(2)}</span>
+            </div>
+            
+            {receiptData.remainingBalance !== undefined && receiptData.remainingBalance > 0 && (
+              <div className="info-row">
+                <span className="info-label">Outstanding Balance:</span>
+                <span className="balance">GHS {receiptData.remainingBalance.toFixed(2)}</span>
+              </div>
+            )}
+
+            {receiptData.creditBalance !== undefined && receiptData.creditBalance > 0 && (
+              <div className="info-row">
+                <span className="info-label">Credit Balance:</span>
+                <span className="credit">GHS {receiptData.creditBalance.toFixed(2)}</span>
+              </div>
+            )}
+            
+            {receiptData.notes && (
+              <>
+                <Separator />
+                <div className="info-row">
+                  <span className="info-label">Notes:</span>
+                </div>
+                <div style={{ marginTop: '8px', fontSize: '14px' }}>
+                  {receiptData.notes}
+                </div>
+              </>
+            )}
+
             <div className="footer">
               <p><strong>Thank you for your payment!</strong></p>
               <p>Keep this receipt for your records.</p>
               <p style={{ marginTop: '10px', fontSize: '10px' }}>
-                This is an official receipt from Rosa Gardens School
+                This is an official receipt from Rosa Gardens School<br/>
+                Academic Year: {receiptData.year || '2024'} | {receiptData.term}
               </p>
             </div>
           </div>

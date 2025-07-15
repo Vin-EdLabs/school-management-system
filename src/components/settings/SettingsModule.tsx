@@ -9,6 +9,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
 import { Settings, Key, Calendar, Building, Download, Upload, RefreshCw, Shield } from 'lucide-react';
+import AcademicTermManager from './AcademicTermManager';
 
 interface SchoolSettings {
   name: string;
@@ -102,23 +103,6 @@ const SettingsModule = () => {
     toast({
       title: "School Information Updated",
       description: "School details have been saved successfully",
-    });
-  };
-
-  const handleAcademicUpdate = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!isSuperAdmin) return;
-    
-    localStorage.setItem('academicSettings', JSON.stringify(academicSettings));
-    
-    // Trigger system-wide update by dispatching custom event
-    window.dispatchEvent(new CustomEvent('academicSettingsChanged', { 
-      detail: academicSettings 
-    }));
-    
-    toast({
-      title: "Academic Settings Updated",
-      description: "Academic year and term have been updated system-wide",
     });
   };
 
@@ -270,6 +254,7 @@ const SettingsModule = () => {
       localStorage.removeItem('rosaGardensData');
       localStorage.removeItem('schoolInfo');
       localStorage.removeItem('academicSettings');
+      localStorage.removeItem('academicTerms');
       
       toast({
         title: "Data Reset Complete",
@@ -292,6 +277,9 @@ const SettingsModule = () => {
           </div>
         </div>
       </div>
+
+      {/* Academic Term & Year Management */}
+      <AcademicTermManager />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Password Change */}
@@ -330,58 +318,6 @@ const SettingsModule = () => {
               </div>
               <Button type="submit" className="w-full" disabled={!newPassword || !confirmPassword}>
                 Update Password
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-
-        {/* Academic Year & Term */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Calendar className="w-5 h-5" />
-              <span>Academic Year & Term</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleAcademicUpdate} className="space-y-4">
-              <div className="space-y-2">
-                <Label>Current Academic Year</Label>
-                <Select 
-                  value={academicSettings.currentYear} 
-                  onValueChange={(value) => setAcademicSettings({...academicSettings, currentYear: value})}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="2024">2024</SelectItem>
-                    <SelectItem value="2025">2025</SelectItem>
-                    <SelectItem value="2023">2023</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Current Term</Label>
-                <Select 
-                  value={academicSettings.currentTerm} 
-                  onValueChange={(value) => setAcademicSettings({...academicSettings, currentTerm: value})}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Term 1 2024">Term 1 2024</SelectItem>
-                    <SelectItem value="Term 2 2024">Term 2 2024</SelectItem>
-                    <SelectItem value="Term 3 2024">Term 3 2024</SelectItem>
-                    <SelectItem value="Term 1 2025">Term 1 2025</SelectItem>
-                    <SelectItem value="Term 2 2025">Term 2 2025</SelectItem>
-                    <SelectItem value="Term 3 2025">Term 3 2025</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button type="submit" className="w-full">
-                Update Academic Settings
               </Button>
             </form>
           </CardContent>

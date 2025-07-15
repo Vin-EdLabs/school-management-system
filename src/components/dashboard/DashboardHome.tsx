@@ -2,6 +2,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useData } from '../../contexts/DataContext';
+import { getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
 import FinancialSummary from './FinancialSummary';
 import {
   Users,
@@ -18,11 +19,14 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 const DashboardHome = () => {
   const { students, teachers, payments, expenses, feeStructures, income } = useData();
 
+  // Get active academic term and year
+  const currentTerm = getActiveAcademicTerm();
+  const currentYear = getActiveAcademicYear();
+
   // Calculate summary statistics
   const totalStudents = students.length;
   const totalTeachers = teachers.length;
   
-  const currentTerm = 'Term 1 2024';
   const feesCollectedThisTerm = payments
     .filter(payment => payment.term === currentTerm)
     .reduce((sum, payment) => sum + payment.amount, 0);
@@ -30,8 +34,8 @@ const DashboardHome = () => {
   const expensesThisTerm = expenses
     .filter(expense => {
       const expenseDate = new Date(expense.paymentDate);
-      const currentYear = new Date().getFullYear();
-      return expenseDate.getFullYear() === currentYear;
+      const expenseYear = expenseDate.getFullYear().toString();
+      return expenseYear === currentYear;
     })
     .reduce((sum, expense) => sum + expense.amount, 0);
 

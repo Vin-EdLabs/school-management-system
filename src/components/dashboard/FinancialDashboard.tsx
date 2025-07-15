@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useData } from '../../contexts/DataContext';
+import { getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
 import FinancialSummary from './FinancialSummary';
 import OutstandingFees from '../fees/OutstandingFees';
 import {
@@ -24,7 +25,9 @@ const FinancialDashboard = () => {
   const { students, payments, income, expenses, feeStructures } = useData();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const currentTerm = 'Term 1 2024';
+  // Get active academic term and year
+  const currentTerm = getActiveAcademicTerm();
+  const currentYear = getActiveAcademicYear();
 
   // Calculate financial metrics
   const feesCollected = payments
@@ -34,8 +37,8 @@ const FinancialDashboard = () => {
   const otherIncome = income
     .filter(inc => {
       const incomeDate = new Date(inc.date);
-      const currentYear = new Date().getFullYear();
-      return incomeDate.getFullYear() === currentYear;
+      const incomeYear = incomeDate.getFullYear().toString();
+      return incomeYear === currentYear;
     })
     .reduce((sum, inc) => sum + inc.amount, 0);
 
@@ -44,8 +47,8 @@ const FinancialDashboard = () => {
   const totalExpenses = expenses
     .filter(expense => {
       const expenseDate = new Date(expense.paymentDate);
-      const currentYear = new Date().getFullYear();
-      return expenseDate.getFullYear() === currentYear;
+      const expenseYear = expenseDate.getFullYear().toString();
+      return expenseYear === currentYear;
     })
     .reduce((sum, expense) => sum + expense.amount, 0);
 
@@ -70,15 +73,15 @@ const FinancialDashboard = () => {
 
   // Chart data for monthly income trend
   const monthlyIncomeData = Array.from({length: 12}, (_, i) => {
-    const month = new Date(2024, i, 1).toLocaleDateString('en-US', { month: 'short' });
+    const month = new Date(parseInt(currentYear), i, 1).toLocaleDateString('en-US', { month: 'short' });
     const monthlyFees = payments.filter(payment => {
       const paymentDate = new Date(payment.date);
-      return paymentDate.getMonth() === i && paymentDate.getFullYear() === 2024;
+      return paymentDate.getMonth() === i && paymentDate.getFullYear().toString() === currentYear;
     }).reduce((sum, payment) => sum + payment.amount, 0);
     
     const monthlyOtherIncome = income.filter(inc => {
       const incomeDate = new Date(inc.date);
-      return incomeDate.getMonth() === i && incomeDate.getFullYear() === 2024;
+      return incomeDate.getMonth() === i && incomeDate.getFullYear().toString() === currentYear;
     }).reduce((sum, inc) => sum + inc.amount, 0);
 
     return {
@@ -150,7 +153,7 @@ const FinancialDashboard = () => {
               </Button>
               <div className="text-right">
                 <p className="text-sm text-gray-500">Current Term</p>
-                <p className="text-lg font-semibold text-gray-800">{currentTerm}</p>
+                <p className="text-lg font-semibold text-gray-800">{currentTerm} {currentYear}</p>
               </div>
             </div>
           </div>

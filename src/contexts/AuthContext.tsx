@@ -90,7 +90,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     const rolePermissions = {
       'administrator': ['students', 'teachers', 'classes', 'dashboard', 'settings-password-only'],
-      'finance': ['students-view-only', 'teachers-view-only', 'fees', 'income', 'expenses', 'reports', 'financial-dashboard', 'settings-password-only'],
+      'finance': ['students-view-only', 'teachers-view-only', 'fees', 'income', 'expenses', 'reports', 'financial-dashboard', 'dashboard', 'settings-password-only'],
       'super-admin': ['students', 'teachers', 'classes', 'fees', 'income', 'expenses', 'reports', 'dashboard', 'financial-dashboard', 'settings', 'audit']
     };
 

@@ -1,34 +1,64 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { useData } from '../../contexts/DataContext';
-import { Printer, FileText, Users, GraduationCap } from 'lucide-react';
+import { Printer, FileText, Users, GraduationCap, Search } from 'lucide-react';
 import { getActiveAcademicTerm, getActiveAcademicYear, calculateStudentFeeStatus } from '../../utils/feeCalculations';
 
 const PrintFeeStatusModule = () => {
   const { students, classes, feeStructures, payments } = useData();
   const [selectedClass, setSelectedClass] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
 
   const activeAcademicTerm = getActiveAcademicTerm();
   const activeAcademicYear = getActiveAcademicYear();
 
+  console.log('Active term:', activeAcademicTerm);
+  console.log('Students:', students);
+  console.log('Fee structures:', feeStructures);
+  console.log('Payments:', payments);
+
+  // Filter classes based on search term
+  const filteredClasses = useMemo(() => {
+    return classes.filter(cls => 
+      cls.className && 
+      cls.className.trim() !== '' &&
+      cls.className.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [classes, searchTerm]);
+
   // Get students for selected class with fee status
   const getStudentsWithFeeStatus = () => {
     if (!selectedClass) return [];
     
+    console.log('Selected class:', selectedClass);
     const classStudents = students.filter(student => student.classAssigned === selectedClass);
-    return classStudents.map(student => ({
-      ...student,
-      feeStatus: calculateStudentFeeStatus(student.id, activeAcademicTerm, students, feeStructures, payments)
-    })).filter(student => student.feeStatus.status === 'Amount Owing' && student.feeStatus.balance > 0);
+    console.log('Class students:', classStudents);
+    
+    return classStudents.map(student => {
+      const feeStatus = calculateStudentFeeStatus(student.id, activeAcademicTerm, students, feeStructures, payments);
+      console.log(`Student ${student.firstName} ${student.lastName} fee status:`, feeStatus);
+      return {
+        ...student,
+        feeStatus: feeStatus
+      };
+    }).filter(student => {
+      const hasOutstanding = student.feeStatus.status === 'Amount Owing' && student.feeStatus.balance > 0;
+      console.log(`Student ${student.firstName} ${student.lastName} has outstanding: ${hasOutstanding}, balance: ${student.feeStatus.balance}`);
+      return hasOutstanding;
+    });
   };
 
   const studentsOwingFees = getStudentsWithFeeStatus();
   const totalOwing = studentsOwingFees.reduce((sum, student) => sum + student.feeStatus.balance, 0);
+
+  console.log('Students owing fees:', studentsOwingFees);
+  console.log('Total owing:', totalOwing);
 
   const handlePrint = () => {
     if (!selectedClass || studentsOwingFees.length === 0) return;
@@ -164,6 +194,10 @@ const PrintFeeStatusModule = () => {
             <span class="info-label">Students Owing Fees:</span>
             <span class="info-value">${studentsOwingFees.length}</span>
           </div>
+          <div class="info-row">
+            <span class="info-label">Total Amount Owed:</span>
+            <span class="info-value amount-owing">GHS ${totalOwing.toLocaleString()}</span>
+          </div>
         </div>
         
         <table class="students-table">
@@ -262,20 +296,43 @@ const PrintFeeStatusModule = () => {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
+            {/* Search Input */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Search Classes
+              </label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <Input
+                  placeholder="Type to search classes..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </div>
+
+            {/* Class Selection */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Choose Class
               </label>
               <Select value={selectedClass} onValueChange={setSelectedClass}>
-                <SelectTrigger className="w-full">
+                <SelectTrigger className="w-full bg-white">
                   <SelectValue placeholder="Select a class to generate report" />
                 </SelectTrigger>
-                <SelectContent>
-                  {classes.filter(cls => cls.className && cls.className.trim() !== '').map((cls) => (
-                    <SelectItem key={cls.id} value={cls.className}>
-                      {cls.className}
+                <SelectContent className="bg-white border shadow-lg z-50">
+                  {filteredClasses.length > 0 ? (
+                    filteredClasses.map((cls) => (
+                      <SelectItem key={cls.id} value={cls.className} className="hover:bg-gray-50">
+                        {cls.className}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="no-results" disabled>
+                      No classes found
                     </SelectItem>
-                  ))}
+                  )}
                 </SelectContent>
               </Select>
             </div>

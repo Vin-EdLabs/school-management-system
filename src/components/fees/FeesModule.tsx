@@ -8,7 +8,8 @@ import ViewPayments from './ViewPayments';
 import SetFeeStructure from './SetFeeStructure';
 import StudentBalances from './StudentBalances';
 import ReceiptHistory from './ReceiptHistory';
-import { CreditCard, DollarSign, Eye, Users, Receipt } from 'lucide-react';
+import OutstandingFees from './OutstandingFees';
+import { CreditCard, DollarSign, Eye, Users, Receipt, AlertCircle } from 'lucide-react';
 
 const FeesModule = () => {
   const [activeTab, setActiveTab] = useState('record-payment');
@@ -28,7 +29,7 @@ const FeesModule = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6 lg:w-auto lg:grid-cols-6">
           <TabsTrigger value="record-payment" className="flex items-center space-x-2">
             <CreditCard className="w-4 h-4" />
             <span>Record Payment</span>
@@ -44,6 +45,10 @@ const FeesModule = () => {
           <TabsTrigger value="balances" className="flex items-center space-x-2">
             <Users className="w-4 h-4" />
             <span>Student Balances</span>
+          </TabsTrigger>
+          <TabsTrigger value="outstanding" className="flex items-center space-x-2">
+            <AlertCircle className="w-4 h-4" />
+            <span>Outstanding Fees</span>
           </TabsTrigger>
           <TabsTrigger value="fee-structure" className="flex items-center space-x-2">
             <DollarSign className="w-4 h-4" />
@@ -65,6 +70,10 @@ const FeesModule = () => {
 
         <TabsContent value="balances">
           <StudentBalances />
+        </TabsContent>
+
+        <TabsContent value="outstanding">
+          <OutstandingFees />
         </TabsContent>
 
         <TabsContent value="fee-structure">

@@ -48,13 +48,9 @@ const Dashboard = () => {
       case 'financial-dashboard':
         return <FinancialDashboard />;
       case 'students':
-        // Check if user has view-only access
-        const studentsReadOnly = hasAccess('students-view-only') && !hasAccess('students');
-        return <StudentsModule readOnly={studentsReadOnly} />;
+        return <StudentsModule />;
       case 'teachers':
-        // Check if user has view-only access
-        const teachersReadOnly = hasAccess('teachers-view-only') && !hasAccess('teachers');
-        return <TeachersModule readOnly={teachersReadOnly} />;
+        return <TeachersModule />;
       case 'classes':
         return <ClassesModule />;
       case 'fees':

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -38,7 +39,6 @@ const SettingsModule = () => {
   });
 
   const isSuperAdmin = hasAccess('settings');
-  const canOnlyChangePassword = hasAccess('settings-password-only') && !hasAccess('settings');
 
   // Load settings from localStorage on component mount
   useEffect(() => {
@@ -122,7 +122,8 @@ const SettingsModule = () => {
     });
   };
 
-  if (canOnlyChangePassword) {
+  // If user is not Super Admin, show limited settings (password only)
+  if (!isSuperAdmin) {
     return (
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between">
@@ -176,18 +177,6 @@ const SettingsModule = () => {
             </form>
           </CardContent>
         </Card>
-      </div>
-    );
-  }
-
-  if (!isSuperAdmin) {
-    return (
-      <div className="p-6 text-center">
-        <div className="flex items-center justify-center mb-4">
-          <Shield className="w-12 h-12 text-red-500" />
-        </div>
-        <h2 className="text-2xl font-bold text-gray-800 mb-4">Access Restricted</h2>
-        <p className="text-gray-600">Only Super Admin can access system settings.</p>
       </div>
     );
   }

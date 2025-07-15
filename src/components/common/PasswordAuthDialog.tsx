@@ -43,10 +43,7 @@ const PasswordAuthDialog: React.FC<PasswordAuthDialogProps> = ({
 
     setIsLoading(true);
 
-    // Validate password by attempting a mock login
-    const { login } = await import('../../contexts/AuthContext');
-    
-    // We need to check the password against the stored passwords
+    // Get stored passwords from localStorage
     const savedPasswords = localStorage.getItem('rosaGardensPasswords');
     const passwords = savedPasswords ? JSON.parse(savedPasswords) : {
       'super-admin': 'superadmin123',

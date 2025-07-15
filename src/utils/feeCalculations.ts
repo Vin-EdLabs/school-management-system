@@ -17,6 +17,11 @@ export interface StudentPaymentRecord {
   notes?: string;
 }
 
+export interface StudentFeeStatus {
+  status: 'Fully Paid' | 'Amount Owing' | 'Credit Balance' | 'No Fee Set';
+  balance: number;
+}
+
 export const calculateStudentFees = (
   studentId: string,
   currentTerm: string,
@@ -67,6 +72,42 @@ export const calculateStudentFees = (
     totalPaid: totalPaid,
     currentTermFee: currentTermFee
   };
+};
+
+export const calculateStudentFeeStatus = (
+  studentId: string,
+  currentTerm: string,
+  students: any[],
+  feeStructures: any[],
+  payments: any[]
+): StudentFeeStatus => {
+  const student = students.find(s => s.id === studentId);
+  if (!student) {
+    return { status: 'No Fee Set', balance: 0 };
+  }
+
+  const feeCalculation = calculateStudentFees(
+    studentId,
+    currentTerm,
+    student.classAssigned,
+    feeStructures,
+    payments
+  );
+
+  // If no fee structure is set for this class/term
+  if (feeCalculation.currentTermFee === 0) {
+    return { status: 'No Fee Set', balance: 0 };
+  }
+
+  const balance = feeCalculation.totalAmountDue - feeCalculation.totalPaid;
+
+  if (balance === 0) {
+    return { status: 'Fully Paid', balance: 0 };
+  } else if (balance > 0) {
+    return { status: 'Amount Owing', balance: balance };
+  } else {
+    return { status: 'Credit Balance', balance: balance };
+  }
 };
 
 export const getActiveAcademicTerm = () => {

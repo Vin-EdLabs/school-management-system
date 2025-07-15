@@ -15,7 +15,8 @@ import {
   LogOut,
   ChevronRight,
   Menu,
-  X
+  X,
+  Calculator
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -24,25 +25,28 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ activeModule, setActiveModule }) => {
-  const { logout } = useAuth();
+  const { logout, hasAccess, user } = useAuth();
   const [isCollapsed, setIsCollapsed] = React.useState(false);
 
   const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: Home },
-    { id: 'students', label: 'Students', icon: Users },
-    { id: 'teachers', label: 'Teachers', icon: GraduationCap },
-    { id: 'classes', label: 'Classes', icon: School },
-    { id: 'fees', label: 'Fees Management', icon: CreditCard },
-    { id: 'income', label: 'Other Income', icon: TrendingUp },
-    { id: 'expenses', label: 'Expenses', icon: TrendingDown },
-    { id: 'reports', label: 'Reports', icon: BarChart3 },
-    { id: 'settings', label: 'Settings', icon: Settings },
+    { id: 'dashboard', label: 'Dashboard', icon: Home, requiredAccess: 'dashboard' },
+    { id: 'financial-dashboard', label: 'Financial Dashboard', icon: Calculator, requiredAccess: 'financial-dashboard' },
+    { id: 'students', label: 'Students', icon: Users, requiredAccess: 'students' },
+    { id: 'teachers', label: 'Teachers', icon: GraduationCap, requiredAccess: 'teachers' },
+    { id: 'classes', label: 'Classes', icon: School, requiredAccess: 'classes' },
+    { id: 'fees', label: 'Fees Management', icon: CreditCard, requiredAccess: 'fees' },
+    { id: 'income', label: 'Other Income', icon: TrendingUp, requiredAccess: 'income' },
+    { id: 'expenses', label: 'Expenses', icon: TrendingDown, requiredAccess: 'expenses' },
+    { id: 'reports', label: 'Reports', icon: BarChart3, requiredAccess: 'reports' },
+    { id: 'settings', label: 'Settings', icon: Settings, requiredAccess: 'settings' },
   ];
 
+  const visibleMenuItems = menuItems.filter(item => hasAccess(item.requiredAccess));
+
   return (
-    <div className={`${isCollapsed ? 'w-16' : 'w-64'} bg-white shadow-lg border-r border-gray-200 transition-all duration-300 ease-in-out`}>
+    <div className={`${isCollapsed ? 'w-16' : 'w-64'} bg-white shadow-lg border-r border-gray-200 transition-all duration-300 ease-in-out flex flex-col h-full`}>
       {/* Header with TechNerve branding */}
-      <div className="p-4 border-b border-gray-200">
+      <div className="p-4 border-b border-gray-200 flex-shrink-0">
         <div className="flex items-center justify-between">
           {!isCollapsed && (
             <div className="flex items-center space-x-3">
@@ -72,12 +76,18 @@ const Sidebar: React.FC<SidebarProps> = ({ activeModule, setActiveModule }) => {
               </div>
               <span className="text-xs text-gray-600 font-medium">Powered by TechNerve</span>
             </div>
+            {user && (
+              <div className="mt-2 text-xs text-gray-500">
+                Logged in as: <span className="font-medium text-gray-700">{user.role.replace('-', ' ')}</span>
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      <nav className="mt-4 px-2">
-        {menuItems.map((item) => {
+      {/* Navigation Menu */}
+      <nav className="mt-4 px-2 flex-1 overflow-y-auto">
+        {visibleMenuItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeModule === item.id;
           
@@ -105,7 +115,8 @@ const Sidebar: React.FC<SidebarProps> = ({ activeModule, setActiveModule }) => {
         })}
       </nav>
 
-      <div className="absolute bottom-4 left-2 right-2">
+      {/* Fixed Logout Button at Bottom */}
+      <div className="p-2 border-t border-gray-200 flex-shrink-0">
         <Button
           variant="ghost"
           className={`w-full ${isCollapsed ? 'justify-center p-2' : 'justify-start'} text-red-600 hover:text-red-700 hover:bg-red-50 h-10`}

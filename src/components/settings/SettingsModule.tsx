@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -8,23 +8,57 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
-import { Settings, Key, Calendar, Users, Download, Building, Upload, RefreshCw } from 'lucide-react';
+import { Settings, Key, Calendar, Building, Download, Upload, RefreshCw } from 'lucide-react';
+
+interface SchoolSettings {
+  name: string;
+  address: string;
+  contact: string;
+  email: string;
+}
+
+interface AcademicSettings {
+  currentYear: string;
+  currentTerm: string;
+}
 
 const SettingsModule = () => {
   const { changePassword } = useAuth();
   const { students, teachers, classes, payments, income, expenses } = useData();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [schoolInfo, setSchoolInfo] = useState({
+  const [schoolInfo, setSchoolInfo] = useState<SchoolSettings>({
     name: 'Rosa Gardens School',
     address: 'Accra, Ghana',
     contact: '+233 XX XXX XXXX',
     email: 'info@rosagardens.edu.gh'
   });
-  const [academicSettings, setAcademicSettings] = useState({
+  const [academicSettings, setAcademicSettings] = useState<AcademicSettings>({
     currentYear: '2024',
     currentTerm: 'Term 1 2024'
   });
+
+  // Load settings from localStorage on component mount
+  useEffect(() => {
+    const savedSchoolInfo = localStorage.getItem('schoolInfo');
+    const savedAcademicSettings = localStorage.getItem('academicSettings');
+    
+    if (savedSchoolInfo) {
+      try {
+        setSchoolInfo(JSON.parse(savedSchoolInfo));
+      } catch (error) {
+        console.error('Error loading school info:', error);
+      }
+    }
+    
+    if (savedAcademicSettings) {
+      try {
+        setAcademicSettings(JSON.parse(savedAcademicSettings));
+      } catch (error) {
+        console.error('Error loading academic settings:', error);
+      }
+    }
+  }, []);
 
   const handlePasswordChange = (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,8 +92,8 @@ const SettingsModule = () => {
     setConfirmPassword('');
   };
 
-  const handleSchoolInfoUpdate = () => {
-    // Save to localStorage or context
+  const handleSchoolInfoUpdate = (e: React.FormEvent) => {
+    e.preventDefault();
     localStorage.setItem('schoolInfo', JSON.stringify(schoolInfo));
     toast({
       title: "School Information Updated",
@@ -67,7 +101,8 @@ const SettingsModule = () => {
     });
   };
 
-  const handleAcademicUpdate = () => {
+  const handleAcademicUpdate = (e: React.FormEvent) => {
+    e.preventDefault();
     localStorage.setItem('academicSettings', JSON.stringify(academicSettings));
     toast({
       title: "Academic Settings Updated",
@@ -85,7 +120,8 @@ const SettingsModule = () => {
       expenses,
       schoolInfo,
       academicSettings,
-      exportDate: new Date().toISOString()
+      exportDate: new Date().toISOString(),
+      exportVersion: '1.0'
     };
     
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -112,10 +148,10 @@ const SettingsModule = () => {
         const importedData = JSON.parse(e.target?.result as string);
         
         // Validate the data structure
-        if (importedData.students && importedData.teachers) {
+        if (importedData.students && Array.isArray(importedData.students)) {
           localStorage.setItem('rosaGardensData', JSON.stringify({
             students: importedData.students,
-            teachers: importedData.teachers,
+            teachers: importedData.teachers || [],
             classes: importedData.classes || [],
             feeStructures: importedData.feeStructures || [],
             payments: importedData.payments || [],
@@ -123,29 +159,52 @@ const SettingsModule = () => {
             expenses: importedData.expenses || []
           }));
           
+          // Also update settings if available
+          if (importedData.schoolInfo) {
+            localStorage.setItem('schoolInfo', JSON.stringify(importedData.schoolInfo));
+            setSchoolInfo(importedData.schoolInfo);
+          }
+          
+          if (importedData.academicSettings) {
+            localStorage.setItem('academicSettings', JSON.stringify(importedData.academicSettings));
+            setAcademicSettings(importedData.academicSettings);
+          }
+          
           toast({
-            title: "Data Imported",
-            description: "Data has been imported successfully. Please refresh the page.",
+            title: "Data Imported Successfully",
+            description: "Data has been imported. Please refresh the page to see changes.",
           });
+          
+          // Reset file input
+          event.target.value = '';
         } else {
-          throw new Error('Invalid data format');
+          throw new Error('Invalid data format - missing or invalid students array');
         }
       } catch (error) {
+        console.error('Import error:', error);
         toast({
           title: "Import Failed",
-          description: "Failed to import data. Please check the file format.",
+          description: "Failed to import data. Please check the file format and try again.",
           variant: "destructive"
         });
+        event.target.value = '';
       }
     };
     reader.readAsText(file);
   };
 
   const resetAllData = () => {
-    if (confirm('Are you sure you want to reset all data? This action cannot be undone.')) {
+    const isConfirmed = window.confirm(
+      'Are you sure you want to reset all data? This action cannot be undone. All students, teachers, classes, and financial records will be permanently deleted.'
+    );
+    
+    if (isConfirmed) {
       localStorage.removeItem('rosaGardensData');
+      localStorage.removeItem('schoolInfo');
+      localStorage.removeItem('academicSettings');
+      
       toast({
-        title: "Data Reset",
+        title: "Data Reset Complete",
         description: "All data has been reset. Please refresh the page.",
       });
     }
@@ -184,8 +243,9 @@ const SettingsModule = () => {
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Enter new password"
+                  placeholder="Enter new password (min 6 characters)"
                   required
+                  minLength={6}
                 />
               </div>
               <div className="space-y-2">
@@ -197,9 +257,10 @@ const SettingsModule = () => {
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Confirm new password"
                   required
+                  minLength={6}
                 />
               </div>
-              <Button type="submit" className="w-full">
+              <Button type="submit" className="w-full" disabled={!newPassword || !confirmPassword}>
                 Update Password
               </Button>
             </form>
@@ -215,23 +276,29 @@ const SettingsModule = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
+            <form onSubmit={handleAcademicUpdate} className="space-y-4">
               <div className="space-y-2">
                 <Label>Current Academic Year</Label>
-                <Select value={academicSettings.currentYear} onValueChange={(value) => setAcademicSettings({...academicSettings, currentYear: value})}>
+                <Select 
+                  value={academicSettings.currentYear} 
+                  onValueChange={(value) => setAcademicSettings({...academicSettings, currentYear: value})}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="2024">2024</SelectItem>
-                    <SelectItem value="2023">2023</SelectItem>
                     <SelectItem value="2025">2025</SelectItem>
+                    <SelectItem value="2023">2023</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
                 <Label>Current Term</Label>
-                <Select value={academicSettings.currentTerm} onValueChange={(value) => setAcademicSettings({...academicSettings, currentTerm: value})}>
+                <Select 
+                  value={academicSettings.currentTerm} 
+                  onValueChange={(value) => setAcademicSettings({...academicSettings, currentTerm: value})}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -239,13 +306,16 @@ const SettingsModule = () => {
                     <SelectItem value="Term 1 2024">Term 1 2024</SelectItem>
                     <SelectItem value="Term 2 2024">Term 2 2024</SelectItem>
                     <SelectItem value="Term 3 2024">Term 3 2024</SelectItem>
+                    <SelectItem value="Term 1 2025">Term 1 2025</SelectItem>
+                    <SelectItem value="Term 2 2025">Term 2 2025</SelectItem>
+                    <SelectItem value="Term 3 2025">Term 3 2025</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              <Button onClick={handleAcademicUpdate} className="w-full">
+              <Button type="submit" className="w-full">
                 Update Academic Settings
               </Button>
-            </div>
+            </form>
           </CardContent>
         </Card>
 
@@ -258,39 +328,52 @@ const SettingsModule = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
+            <form onSubmit={handleSchoolInfoUpdate} className="space-y-4">
               <div className="space-y-2">
-                <Label>School Name</Label>
+                <Label htmlFor="schoolName">School Name</Label>
                 <Input 
+                  id="schoolName"
                   value={schoolInfo.name}
                   onChange={(e) => setSchoolInfo({...schoolInfo, name: e.target.value})}
+                  placeholder="Enter school name"
+                  required
                 />
               </div>
               <div className="space-y-2">
-                <Label>Address</Label>
+                <Label htmlFor="schoolAddress">Address</Label>
                 <Input 
+                  id="schoolAddress"
                   value={schoolInfo.address}
                   onChange={(e) => setSchoolInfo({...schoolInfo, address: e.target.value})}
+                  placeholder="Enter school address"
+                  required
                 />
               </div>
               <div className="space-y-2">
-                <Label>Contact</Label>
+                <Label htmlFor="schoolContact">Contact Number</Label>
                 <Input 
+                  id="schoolContact"
                   value={schoolInfo.contact}
                   onChange={(e) => setSchoolInfo({...schoolInfo, contact: e.target.value})}
+                  placeholder="Enter contact number"
+                  required
                 />
               </div>
               <div className="space-y-2">
-                <Label>Email</Label>
+                <Label htmlFor="schoolEmail">Email Address</Label>
                 <Input 
+                  id="schoolEmail"
+                  type="email"
                   value={schoolInfo.email}
                   onChange={(e) => setSchoolInfo({...schoolInfo, email: e.target.value})}
+                  placeholder="Enter email address"
+                  required
                 />
               </div>
-              <Button onClick={handleSchoolInfoUpdate} className="w-full">
-                Update School Info
+              <Button type="submit" className="w-full">
+                Update School Information
               </Button>
-            </div>
+            </form>
           </CardContent>
         </Card>
 
@@ -329,9 +412,9 @@ const SettingsModule = () => {
               </div>
 
               <div>
-                <h4 className="font-medium mb-2">Reset All Data</h4>
+                <h4 className="font-medium mb-2 text-red-700">Reset All Data</h4>
                 <p className="text-sm text-gray-600 mb-3">
-                  Clear all data and start fresh
+                  ⚠️ Permanently delete all data and start fresh
                 </p>
                 <Button 
                   onClick={resetAllData} 

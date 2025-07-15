@@ -4,22 +4,24 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { useAuth } from '../contexts/AuthContext';
-import { GraduationCap, Lock, User } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useAuth, UserRole } from '../contexts/AuthContext';
+import { GraduationCap, Lock, User, UserCheck } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
 const LoginPage = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState<UserRole>('administrator');
   const { login } = useAuth();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (login(username, password)) {
+    if (login(username, password, role)) {
       toast({
         title: "Login Successful",
-        description: "Welcome to Rosa Gardens School Management System",
+        description: `Welcome to Rosa Gardens School Management System as ${role.replace('-', ' ')}`,
       });
     } else {
       toast({
@@ -28,6 +30,12 @@ const LoginPage = () => {
         variant: "destructive",
       });
     }
+  };
+
+  const roleDisplayNames = {
+    'administrator': 'Administrator',
+    'finance': 'Finance Manager',
+    'super-admin': 'Super Admin'
   };
 
   return (
@@ -97,6 +105,25 @@ const LoginPage = () => {
                 </div>
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="role" className="text-sm font-medium text-gray-700">
+                  Role
+                </Label>
+                <div className="relative">
+                  <UserCheck className="absolute left-3 top-3 h-4 w-4 text-gray-400 z-10" />
+                  <Select value={role} onValueChange={(value: UserRole) => setRole(value)}>
+                    <SelectTrigger className="pl-10 h-11 border-gray-200 focus:border-blue-500 focus:ring-blue-500">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="administrator">Administrator</SelectItem>
+                      <SelectItem value="finance">Finance Manager</SelectItem>
+                      <SelectItem value="super-admin">Super Admin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
               <Button 
                 type="submit" 
                 className="w-full h-11 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold shadow-md hover:shadow-lg transition-all duration-200"
@@ -110,6 +137,15 @@ const LoginPage = () => {
               <div className="space-y-1 text-sm">
                 <p><span className="font-semibold text-gray-700">Username:</span> <code className="bg-white px-2 py-1 rounded text-blue-600">admin</code></p>
                 <p><span className="font-semibold text-gray-700">Password:</span> <code className="bg-white px-2 py-1 rounded text-blue-600">admin123</code></p>
+              </div>
+            </div>
+
+            <div className="bg-purple-50 rounded-lg p-3">
+              <p className="text-xs text-gray-600 mb-2 font-medium">Role Descriptions:</p>
+              <div className="space-y-1 text-xs text-gray-500">
+                <p><strong>Administrator:</strong> Students, Teachers, Classes</p>
+                <p><strong>Finance:</strong> Financial Dashboard, Fees, Income, Expenses</p>
+                <p><strong>Super Admin:</strong> Full system access</p>
               </div>
             </div>
           </CardContent>

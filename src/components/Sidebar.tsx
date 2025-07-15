@@ -38,9 +38,9 @@ const Sidebar: React.FC<SidebarProps> = ({ activeModule, setActiveModule }) => {
     { id: 'income', label: 'Other Income', icon: TrendingUp, requiredAccess: 'income' },
     { id: 'expenses', label: 'Expenses', icon: TrendingDown, requiredAccess: 'expenses' },
     { id: 'reports', label: 'Reports', icon: BarChart3, requiredAccess: 'reports' },
-    { id: 'settings', label: 'Settings', icon: Settings, requiredAccess: 'settings' },
   ];
 
+  // Filter menu items based on role access
   const visibleMenuItems = menuItems.filter(item => hasAccess(item.requiredAccess));
 
   return (
@@ -113,6 +113,26 @@ const Sidebar: React.FC<SidebarProps> = ({ activeModule, setActiveModule }) => {
             </Button>
           );
         })}
+
+        {/* Settings - Available for all roles */}
+        <Button
+          variant={activeModule === 'settings' ? "default" : "ghost"}
+          className={`w-full ${isCollapsed ? 'justify-center p-2' : 'justify-start'} mb-1 h-10 ${
+            activeModule === 'settings'
+              ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-md' 
+              : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+          }`}
+          onClick={() => setActiveModule('settings')}
+          title={isCollapsed ? 'Settings' : undefined}
+        >
+          <Settings className={`w-4 h-4 ${!isCollapsed ? 'mr-3' : ''}`} />
+          {!isCollapsed && (
+            <>
+              <span className="flex-1 text-left text-sm">Settings</span>
+              {activeModule === 'settings' && <ChevronRight className="w-3 h-3" />}
+            </>
+          )}
+        </Button>
       </nav>
 
       {/* Fixed Logout Button at Bottom */}

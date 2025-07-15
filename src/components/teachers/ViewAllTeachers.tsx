@@ -6,21 +6,24 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useData } from '../../contexts/DataContext';
+import { useAudit } from '../../contexts/AuditContext';
 import { Search, Edit, Trash2, Users, Eye } from 'lucide-react';
+import { toast } from '@/hooks/use-toast';
 import TeacherDetailsDialog from './TeacherDetailsDialog';
 import EditTeacherDialog from './EditTeacherDialog';
-import ConfirmDialog from '../common/ConfirmDialog';
+import PasswordAuthDialog from '../common/PasswordAuthDialog';
 
 const ViewAllTeachers = () => {
   const { teachers, classes, deleteTeacher } = useData();
+  const { addAuditLog } = useAudit();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all-status');
   const [filterClass, setFilterClass] = useState('all-classes');
   const [selectedTeacher, setSelectedTeacher] = useState<any>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [teacherToDelete, setTeacherToDelete] = useState<any>(null);
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [pendingAction, setPendingAction] = useState<{type: 'edit' | 'delete', teacher: any} | null>(null);
 
   const filteredTeachers = teachers.filter(teacher => {
     const matchesSearch = searchTerm === '' || 
@@ -55,21 +58,48 @@ const ViewAllTeachers = () => {
   };
 
   const handleEditTeacher = (teacher: any) => {
-    setSelectedTeacher(teacher);
-    setShowEditDialog(true);
+    setPendingAction({ type: 'edit', teacher });
+    setShowPasswordDialog(true);
   };
 
   const handleDeleteClick = (teacher: any) => {
-    setTeacherToDelete(teacher);
-    setShowDeleteDialog(true);
+    setPendingAction({ type: 'delete', teacher });
+    setShowPasswordDialog(true);
   };
 
-  const handleConfirmDelete = () => {
-    if (teacherToDelete) {
-      deleteTeacher(teacherToDelete.id);
-      setShowDeleteDialog(false);
-      setTeacherToDelete(null);
+  const handlePasswordSuccess = (reason?: string) => {
+    if (!pendingAction) return;
+
+    if (pendingAction.type === 'edit') {
+      // Add audit log for edit attempt
+      addAuditLog({
+        actionType: 'Edit',
+        module: 'Teachers',
+        itemId: pendingAction.teacher.id,
+        itemName: pendingAction.teacher.fullName,
+        reason: reason
+      });
+
+      setSelectedTeacher(pendingAction.teacher);
+      setShowEditDialog(true);
+    } else if (pendingAction.type === 'delete') {
+      // Add audit log for delete
+      addAuditLog({
+        actionType: 'Delete',
+        module: 'Teachers',
+        itemId: pendingAction.teacher.id,
+        itemName: pendingAction.teacher.fullName,
+        reason: reason
+      });
+
+      deleteTeacher(pendingAction.teacher.id);
+      toast({
+        title: "Teacher Deleted",
+        description: `${pendingAction.teacher.fullName} has been removed from the system`,
+      });
     }
+
+    setPendingAction(null);
   };
 
   return (
@@ -253,15 +283,17 @@ const ViewAllTeachers = () => {
         }}
       />
 
-      <ConfirmDialog
-        open={showDeleteDialog}
-        onClose={() => setShowDeleteDialog(false)}
-        onConfirm={handleConfirmDelete}
-        title="Delete Teacher"
-        description={`Are you sure you want to delete ${teacherToDelete?.fullName}? This action cannot be undone.`}
-        confirmText="Delete"
-        cancelText="Cancel"
-        variant="destructive"
+      {/* Password Authentication Dialog */}
+      <PasswordAuthDialog
+        open={showPasswordDialog}
+        onClose={() => {
+          setShowPasswordDialog(false);
+          setPendingAction(null);
+        }}
+        onSuccess={handlePasswordSuccess}
+        action={pendingAction?.type || 'edit'}
+        itemName={pendingAction?.teacher?.fullName || ''}
+        module="Teachers"
       />
     </>
   );

@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useData } from '../../contexts/DataContext';
+import { useAudit } from '../../contexts/AuditContext';
 import { toast } from '@/hooks/use-toast';
 
 interface Student {
@@ -38,6 +39,7 @@ interface EditStudentDialogProps {
 
 const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, onClose, onSuccess }) => {
   const { classes, updateStudent } = useData();
+  const { addAuditLog } = useAudit();
   const [formData, setFormData] = useState<Student | null>(null);
 
   useEffect(() => {
@@ -60,6 +62,15 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
     if (!formData) return;
 
     updateStudent(formData.id, formData);
+    
+    // Add additional audit log for successful edit completion
+    addAuditLog({
+      actionType: 'Edit',
+      module: 'Students',
+      itemId: formData.id,
+      itemName: `${formData.firstName} ${formData.lastName}`,
+      reason: 'Student information updated successfully'
+    });
     
     toast({
       title: "Student Updated",

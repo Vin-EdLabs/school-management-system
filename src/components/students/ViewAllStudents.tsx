@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,22 +6,24 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
+import { useAudit } from '../../contexts/AuditContext';
 import { Search, Filter, Edit, Trash2, Eye } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import StudentDetailsDialog from './StudentDetailsDialog';
 import EditStudentDialog from './EditStudentDialog';
-import ConfirmDialog from '../common/ConfirmDialog';
+import PasswordAuthDialog from '../common/PasswordAuthDialog';
 
 const ViewAllStudents = () => {
   const { students, classes, deleteStudent } = useData();
+  const { addAuditLog } = useAudit();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterClass, setFilterClass] = useState('all-classes');
   const [filterGender, setFilterGender] = useState('all-genders');
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [studentToDelete, setStudentToDelete] = useState(null);
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [pendingAction, setPendingAction] = useState<{type: 'edit' | 'delete', student: any} | null>(null);
 
   // Filter students based on search and filters
   const filteredStudents = students.filter(student => {
@@ -44,25 +45,48 @@ const ViewAllStudents = () => {
   };
 
   const handleEditStudent = (student) => {
-    setSelectedStudent(student);
-    setShowEditDialog(true);
+    setPendingAction({ type: 'edit', student });
+    setShowPasswordDialog(true);
   };
 
   const handleDeleteClick = (student) => {
-    setStudentToDelete(student);
-    setShowDeleteDialog(true);
+    setPendingAction({ type: 'delete', student });
+    setShowPasswordDialog(true);
   };
 
-  const handleDeleteConfirm = () => {
-    if (studentToDelete) {
-      deleteStudent(studentToDelete.id);
+  const handlePasswordSuccess = (reason?: string) => {
+    if (!pendingAction) return;
+
+    if (pendingAction.type === 'edit') {
+      // Add audit log for edit attempt
+      addAuditLog({
+        actionType: 'Edit',
+        module: 'Students',
+        itemId: pendingAction.student.id,
+        itemName: `${pendingAction.student.firstName} ${pendingAction.student.lastName}`,
+        reason: reason
+      });
+
+      setSelectedStudent(pendingAction.student);
+      setShowEditDialog(true);
+    } else if (pendingAction.type === 'delete') {
+      // Add audit log for delete
+      addAuditLog({
+        actionType: 'Delete',
+        module: 'Students',
+        itemId: pendingAction.student.id,
+        itemName: `${pendingAction.student.firstName} ${pendingAction.student.lastName}`,
+        reason: reason
+      });
+
+      deleteStudent(pendingAction.student.id);
       toast({
         title: "Student Deleted",
-        description: `${studentToDelete.firstName} ${studentToDelete.lastName} has been removed from the system`,
+        description: `${pendingAction.student.firstName} ${pendingAction.student.lastName} has been removed from the system`,
       });
-      setStudentToDelete(null);
-      setShowDeleteDialog(false);
     }
+
+    setPendingAction(null);
   };
 
   const calculateAge = (dateOfBirth: string) => {
@@ -254,18 +278,17 @@ const ViewAllStudents = () => {
         }}
       />
 
-      {/* Delete Confirmation Dialog */}
-      <ConfirmDialog
-        open={showDeleteDialog}
+      {/* Password Authentication Dialog */}
+      <PasswordAuthDialog
+        open={showPasswordDialog}
         onClose={() => {
-          setShowDeleteDialog(false);
-          setStudentToDelete(null);
+          setShowPasswordDialog(false);
+          setPendingAction(null);
         }}
-        onConfirm={handleDeleteConfirm}
-        title="Delete Student"
-        description={`Are you sure you want to delete ${studentToDelete?.firstName} ${studentToDelete?.lastName}? This action cannot be undone and will remove all associated records.`}
-        confirmText="Delete"
-        variant="destructive"
+        onSuccess={handlePasswordSuccess}
+        action={pendingAction?.type || 'edit'}
+        itemName={pendingAction ? `${pendingAction.student.firstName} ${pendingAction.student.lastName}` : ''}
+        module="Students"
       />
     </>
   );

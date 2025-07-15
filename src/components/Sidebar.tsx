@@ -39,7 +39,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeModule, setActiveModule }) => {
     { id: 'income', label: 'Other Income', icon: TrendingUp, requiredAccess: 'income' },
     { id: 'expenses', label: 'Expenses', icon: TrendingDown, requiredAccess: 'expenses' },
     { id: 'reports', label: 'Reports', icon: BarChart3, requiredAccess: 'reports' },
-    { id: 'print-fee-status', label: 'Print Fee Status', icon: Printer, requiredAccess: 'dashboard' },
+    { id: 'print-fee-status', label: 'Print Fee Status', icon: Printer, requiredAccess: 'print-fee-status' },
     { id: 'audit', label: 'Audit Logs', icon: FileText, requiredAccess: 'audit' },
   ];
 

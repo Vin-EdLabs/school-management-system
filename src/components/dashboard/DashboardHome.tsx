@@ -1,8 +1,8 @@
-
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useData } from '../../contexts/DataContext';
+import FinancialSummary from './FinancialSummary';
 import {
   Users,
   CreditCard,
@@ -105,6 +105,9 @@ const DashboardHome = () => {
           <p className="text-lg font-semibold text-gray-800">{currentTerm}</p>
         </div>
       </div>
+
+      {/* Financial Summary Dropdown */}
+      <FinancialSummary />
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-6">

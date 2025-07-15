@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import Sidebar from './Sidebar';
 import DashboardHome from './dashboard/DashboardHome';
+import AdministratorDashboard from './dashboard/AdministratorDashboard';
 import FinancialDashboard from './dashboard/FinancialDashboard';
 import StudentsModule from './students/StudentsModule';
 import TeachersModule from './teachers/TeachersModule';
@@ -28,7 +29,7 @@ const Dashboard = () => {
 
   const renderActiveModule = () => {
     // Check access before rendering
-    if (!hasAccess(activeModule)) {
+    if (!hasAccess(activeModule) && !hasAccess(activeModule + '-view-only')) {
       return (
         <div className="p-6 text-center">
           <h2 className="text-2xl font-bold text-gray-800 mb-4">Access Denied</h2>
@@ -39,13 +40,21 @@ const Dashboard = () => {
 
     switch (activeModule) {
       case 'dashboard':
+        // Show different dashboard based on role
+        if (user?.role === 'administrator') {
+          return <AdministratorDashboard />;
+        }
         return <DashboardHome />;
       case 'financial-dashboard':
         return <FinancialDashboard />;
       case 'students':
-        return <StudentsModule />;
+        // Check if user has view-only access
+        const studentsReadOnly = hasAccess('students-view-only') && !hasAccess('students');
+        return <StudentsModule readOnly={studentsReadOnly} />;
       case 'teachers':
-        return <TeachersModule />;
+        // Check if user has view-only access
+        const teachersReadOnly = hasAccess('teachers-view-only') && !hasAccess('teachers');
+        return <TeachersModule readOnly={teachersReadOnly} />;
       case 'classes':
         return <ClassesModule />;
       case 'fees':
@@ -59,7 +68,7 @@ const Dashboard = () => {
       case 'settings':
         return <SettingsModule />;
       default:
-        return <DashboardHome />;
+        return user?.role === 'administrator' ? <AdministratorDashboard /> : <DashboardHome />;
     }
   };
 

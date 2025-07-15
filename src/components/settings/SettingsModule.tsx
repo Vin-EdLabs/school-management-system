@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
-import { Settings, Key, Calendar, Building, Download, Upload, RefreshCw } from 'lucide-react';
+import { Settings, Key, Calendar, Building, Download, Upload, RefreshCw, Shield } from 'lucide-react';
 
 interface SchoolSettings {
   name: string;
@@ -23,7 +22,7 @@ interface AcademicSettings {
 }
 
 const SettingsModule = () => {
-  const { changePassword } = useAuth();
+  const { changePassword, user, hasAccess } = useAuth();
   const { students, teachers, classes, payments, income, expenses } = useData();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -37,6 +36,9 @@ const SettingsModule = () => {
     currentYear: '2024',
     currentTerm: 'Term 1 2024'
   });
+
+  const isSuperAdmin = hasAccess('settings');
+  const canOnlyChangePassword = hasAccess('settings-password-only') && !hasAccess('settings');
 
   // Load settings from localStorage on component mount
   useEffect(() => {
@@ -94,6 +96,8 @@ const SettingsModule = () => {
 
   const handleSchoolInfoUpdate = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isSuperAdmin) return;
+    
     localStorage.setItem('schoolInfo', JSON.stringify(schoolInfo));
     toast({
       title: "School Information Updated",
@@ -103,12 +107,90 @@ const SettingsModule = () => {
 
   const handleAcademicUpdate = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isSuperAdmin) return;
+    
     localStorage.setItem('academicSettings', JSON.stringify(academicSettings));
+    
+    // Trigger system-wide update by dispatching custom event
+    window.dispatchEvent(new CustomEvent('academicSettingsChanged', { 
+      detail: academicSettings 
+    }));
+    
     toast({
       title: "Academic Settings Updated",
-      description: "Academic year and term have been updated",
+      description: "Academic year and term have been updated system-wide",
     });
   };
+
+  if (canOnlyChangePassword) {
+    return (
+      <div className="p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-gray-500 to-gray-600 rounded-lg flex items-center justify-center">
+              <Key className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-800">Account Settings</h1>
+              <p className="text-gray-600">Change your password</p>
+            </div>
+          </div>
+        </div>
+
+        <Card className="max-w-md">
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Key className="w-5 h-5" />
+              <span>Change Password</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handlePasswordChange} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="newPassword">New Password</Label>
+                <Input
+                  id="newPassword"
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Enter new password (min 6 characters)"
+                  required
+                  minLength={6}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword">Confirm Password</Label>
+                <Input
+                  id="confirmPassword"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm new password"
+                  required
+                  minLength={6}
+                />
+              </div>
+              <Button type="submit" className="w-full" disabled={!newPassword || !confirmPassword}>
+                Update Password
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!isSuperAdmin) {
+    return (
+      <div className="p-6 text-center">
+        <div className="flex items-center justify-center mb-4">
+          <Shield className="w-12 h-12 text-red-500" />
+        </div>
+        <h2 className="text-2xl font-bold text-gray-800 mb-4">Access Restricted</h2>
+        <p className="text-gray-600">Only Super Admin can access system settings.</p>
+      </div>
+    );
+  }
 
   const handleExportData = () => {
     const data = {
@@ -147,7 +229,6 @@ const SettingsModule = () => {
       try {
         const importedData = JSON.parse(e.target?.result as string);
         
-        // Validate the data structure
         if (importedData.students && Array.isArray(importedData.students)) {
           localStorage.setItem('rosaGardensData', JSON.stringify({
             students: importedData.students,
@@ -159,7 +240,6 @@ const SettingsModule = () => {
             expenses: importedData.expenses || []
           }));
           
-          // Also update settings if available
           if (importedData.schoolInfo) {
             localStorage.setItem('schoolInfo', JSON.stringify(importedData.schoolInfo));
             setSchoolInfo(importedData.schoolInfo);
@@ -175,10 +255,9 @@ const SettingsModule = () => {
             description: "Data has been imported. Please refresh the page to see changes.",
           });
           
-          // Reset file input
           event.target.value = '';
         } else {
-          throw new Error('Invalid data format - missing or invalid students array');
+          throw new Error('Invalid data format');
         }
       } catch (error) {
         console.error('Import error:', error);
@@ -195,7 +274,7 @@ const SettingsModule = () => {
 
   const resetAllData = () => {
     const isConfirmed = window.confirm(
-      'Are you sure you want to reset all data? This action cannot be undone. All students, teachers, classes, and financial records will be permanently deleted.'
+      'Are you sure you want to reset all data? This action cannot be undone.'
     );
     
     if (isConfirmed) {
@@ -219,7 +298,7 @@ const SettingsModule = () => {
             <Settings className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">Settings</h1>
+            <h1 className="text-3xl font-bold text-gray-800">System Settings</h1>
             <p className="text-gray-600">Configure system settings and preferences</p>
           </div>
         </div>

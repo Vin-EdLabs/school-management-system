@@ -26,16 +26,16 @@ const LoginPage = () => {
     } else {
       toast({
         title: "Login Failed",
-        description: "Invalid username or password",
+        description: "Invalid username or password for the selected role",
         variant: "destructive",
       });
     }
   };
 
-  const roleDisplayNames = {
-    'administrator': 'Administrator',
-    'finance': 'Finance Manager',
-    'super-admin': 'Super Admin'
+  const roleCredentials = {
+    'administrator': { password: 'admin123', description: 'Students, Teachers, Classes' },
+    'finance': { password: 'finance123', description: 'Financial Dashboard, Fees, Income, Expenses' },
+    'super-admin': { password: 'superadmin123', description: 'Full system access' }
   };
 
   return (
@@ -88,24 +88,6 @@ const LoginPage = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password" className="text-sm font-medium text-gray-700">
-                  Password
-                </Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                  <Input
-                    id="password"
-                    type="password"
-                    placeholder="Enter your password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="pl-10 h-11 border-gray-200 focus:border-blue-500 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
                 <Label htmlFor="role" className="text-sm font-medium text-gray-700">
                   Role
                 </Label>
@@ -124,6 +106,24 @@ const LoginPage = () => {
                 </div>
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="password" className="text-sm font-medium text-gray-700">
+                  Password
+                </Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="pl-10 h-11 border-gray-200 focus:border-blue-500 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+              </div>
+
               <Button 
                 type="submit" 
                 className="w-full h-11 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold shadow-md hover:shadow-lg transition-all duration-200"
@@ -133,20 +133,18 @@ const LoginPage = () => {
             </form>
 
             <div className="bg-blue-50 rounded-lg p-4 text-center">
-              <p className="text-sm text-gray-600 font-medium mb-2">Default Login Credentials</p>
+              <p className="text-sm text-gray-600 font-medium mb-2">Login Credentials</p>
               <div className="space-y-1 text-sm">
                 <p><span className="font-semibold text-gray-700">Username:</span> <code className="bg-white px-2 py-1 rounded text-blue-600">admin</code></p>
-                <p><span className="font-semibold text-gray-700">Password:</span> <code className="bg-white px-2 py-1 rounded text-blue-600">admin123</code></p>
+                <p><span className="font-semibold text-gray-700">Password:</span> <code className="bg-white px-2 py-1 rounded text-blue-600">{roleCredentials[role].password}</code></p>
               </div>
             </div>
 
             <div className="bg-purple-50 rounded-lg p-3">
-              <p className="text-xs text-gray-600 mb-2 font-medium">Role Descriptions:</p>
-              <div className="space-y-1 text-xs text-gray-500">
-                <p><strong>Administrator:</strong> Students, Teachers, Classes</p>
-                <p><strong>Finance:</strong> Financial Dashboard, Fees, Income, Expenses</p>
-                <p><strong>Super Admin:</strong> Full system access</p>
-              </div>
+              <p className="text-xs text-gray-600 mb-2 font-medium">Selected Role Access:</p>
+              <p className="text-xs text-gray-500">
+                <strong>{role.replace('-', ' ').toUpperCase()}:</strong> {roleCredentials[role].description}
+              </p>
             </div>
           </CardContent>
         </Card>

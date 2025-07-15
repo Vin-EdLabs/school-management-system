@@ -13,6 +13,7 @@ import ExpensesModule from './expenses/ExpensesModule';
 import ReportsModule from './reports/ReportsModule';
 import SettingsModule from './settings/SettingsModule';
 import AuditModule from './audit/AuditModule';
+import PrintFeeStatusModule from './fees/PrintFeeStatusModule';
 import { useAuth } from '../contexts/AuthContext';
 
 const Dashboard = () => {
@@ -62,6 +63,8 @@ const Dashboard = () => {
         return <ExpensesModule />;
       case 'reports':
         return <ReportsModule />;
+      case 'print-fee-status':
+        return <PrintFeeStatusModule />;
       case 'settings':
         return <SettingsModule />;
       case 'audit':

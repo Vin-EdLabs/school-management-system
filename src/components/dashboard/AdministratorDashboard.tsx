@@ -6,73 +6,54 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useData } from '../../contexts/DataContext';
 import { Users, GraduationCap, BookOpen, DollarSign, AlertCircle, Eye } from 'lucide-react';
+import { getActiveAcademicTerm, getActiveAcademicYear, calculateStudentFeeStatus } from '../../utils/feeCalculations';
 
 const AdministratorDashboard = () => {
   const { students, teachers, classes, payments, feeStructures } = useData();
   const [selectedClass, setSelectedClass] = useState('all-classes');
-  const [academicSettings, setAcademicSettings] = useState({
-    currentYear: '2024',
-    currentTerm: 'Term 1 2024'
-  });
+  const [activeAcademicTerm, setActiveAcademicTerm] = useState('');
+  const [activeAcademicYear, setActiveAcademicYear] = useState('');
 
-  // Load academic settings
+  // Load active academic settings
   useEffect(() => {
-    const savedSettings = localStorage.getItem('academicSettings');
-    if (savedSettings) {
-      try {
-        setAcademicSettings(JSON.parse(savedSettings));
-      } catch (error) {
-        console.error('Error loading academic settings:', error);
-      }
-    }
+    const activeTerm = getActiveAcademicTerm();
+    const activeYear = getActiveAcademicYear();
+    setActiveAcademicTerm(activeTerm);
+    setActiveAcademicYear(activeYear);
   }, []);
 
-  // Calculate student statistics
+  // Calculate real-time student statistics
   const totalStudents = students.length;
   const maleStudents = students.filter(s => s.gender === 'Male').length;
   const femaleStudents = students.filter(s => s.gender === 'Female').length;
 
-  // Calculate teacher statistics
+  // Calculate real-time teacher statistics
   const totalTeachers = teachers.length;
   const maleTeachers = teachers.filter(t => t.gender === 'Male').length;
   const femaleTeachers = teachers.filter(t => t.gender === 'Female').length;
 
-  // Calculate fee status for each student
-  const calculateStudentFeeStatus = (student: any) => {
-    const studentFee = feeStructures.find(fee => fee.className === student.classAssigned);
-    if (!studentFee) return { status: 'No Fee Set', amount: 0, paid: 0 };
-
-    const studentPayments = payments
-      .filter(payment => payment.studentId === student.id && payment.term === academicSettings.currentTerm)
-      .reduce((sum, payment) => sum + payment.amount, 0);
-
-    const balance = Math.max(0, studentFee.amount - studentPayments);
-    
-    return {
-      status: balance > 0 ? 'Amount Owing' : 'Fully Paid',
-      amount: studentFee.amount,
-      paid: studentPayments,
-      balance: balance
-    };
-  };
+  // Calculate active classes count
+  const activeClasses = classes.filter(cls => cls.className && cls.className.trim() !== '').length;
 
   // Filter students by class
   const filteredStudents = selectedClass === 'all-classes' 
     ? students 
     : students.filter(student => student.classAssigned === selectedClass);
 
+  // Calculate fee status for each student using real data
   const studentsWithFeeStatus = filteredStudents.map(student => ({
     ...student,
-    feeStatus: calculateStudentFeeStatus(student)
+    feeStatus: calculateStudentFeeStatus(student.id, activeAcademicTerm, students, feeStructures, payments)
   }));
 
-  // Calculate totals for fee overview
+  // Calculate real-time fee overview totals
   const totalOwing = studentsWithFeeStatus
     .filter(s => s.feeStatus.status === 'Amount Owing')
     .reduce((sum, s) => sum + s.feeStatus.balance, 0);
 
   const fullyPaidCount = studentsWithFeeStatus.filter(s => s.feeStatus.status === 'Fully Paid').length;
   const owingCount = studentsWithFeeStatus.filter(s => s.feeStatus.status === 'Amount Owing').length;
+  const noFeeSetCount = studentsWithFeeStatus.filter(s => s.feeStatus.status === 'No Fee Set').length;
 
   return (
     <div className="p-6 space-y-6">
@@ -84,12 +65,12 @@ const AdministratorDashboard = () => {
           </div>
           <div>
             <h1 className="text-3xl font-bold text-gray-800">Administrator Dashboard</h1>
-            <p className="text-gray-600">Academic Year: {academicSettings.currentYear} | {academicSettings.currentTerm}</p>
+            <p className="text-gray-600">Academic Year: {activeAcademicYear} | {activeAcademicTerm}</p>
           </div>
         </div>
       </div>
 
-      {/* Overview Cards */}
+      {/* Overview Cards with Real Data */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -123,7 +104,7 @@ const AdministratorDashboard = () => {
             <GraduationCap className="h-4 w-4 text-purple-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{classes.length}</div>
+            <div className="text-2xl font-bold">{activeClasses}</div>
             <div className="text-xs text-muted-foreground mt-1">
               All levels active
             </div>
@@ -138,13 +119,13 @@ const AdministratorDashboard = () => {
           <CardContent>
             <div className="text-2xl font-bold text-green-600">{fullyPaidCount}</div>
             <div className="text-xs text-muted-foreground mt-1">
-              Fully Paid • {owingCount} Owing
+              Fully Paid • {owingCount} Owing • {noFeeSetCount} No Fee Set
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Student Fee Status Section */}
+      {/* Student Fee Status Section with Real Data */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -209,6 +190,15 @@ const AdministratorDashboard = () => {
                         <Badge variant="default" className="bg-green-500">
                           Fully Paid
                         </Badge>
+                      ) : student.feeStatus.status === 'Credit Balance' ? (
+                        <div className="text-right">
+                          <Badge variant="default" className="bg-blue-500 mb-1">
+                            Credit Balance
+                          </Badge>
+                          <div className="text-sm font-mono text-blue-600">
+                            GHS {Math.abs(student.feeStatus.balance).toLocaleString()}
+                          </div>
+                        </div>
                       ) : (
                         <Badge variant="outline">
                           No Fee Set

@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
 interface Student {
@@ -75,6 +74,8 @@ interface Income {
   paymentMethod: string;
   receivedBy: string;
   notes: string;
+  description?: string;
+  category?: string;
 }
 
 interface Expense {
@@ -87,6 +88,8 @@ interface Expense {
   paymentMethod: string;
   purpose: string;
   notes: string;
+  description?: string;
+  vendor?: string;
 }
 
 interface DataContextType {

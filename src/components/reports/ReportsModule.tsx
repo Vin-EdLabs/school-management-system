@@ -50,7 +50,7 @@ const ReportsModule = () => {
         type: 'Other Income',
         amount: inc.amount,
         date: inc.date,
-        description: inc.description || 'Income record',
+        description: inc.description || inc.source || 'Income record',
         category: inc.category || 'Other Income',
         source: inc.source || 'Unknown'
       }));
@@ -67,9 +67,9 @@ const ReportsModule = () => {
         type: 'Expense',
         amount: expense.amount,
         date: expense.paymentDate,
-        description: expense.description || 'Expense record',
+        description: expense.description || expense.title || 'Expense record',
         category: expense.category || 'General Expense',
-        vendor: expense.vendor || 'Unknown',
+        vendor: expense.vendor || expense.payeeName || 'Unknown',
         paymentMethod: expense.paymentMethod || 'Cash'
       }));
 

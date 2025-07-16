@@ -1,4 +1,3 @@
-
 import { generateReceiptNumber, getActiveAcademicTerm, getActiveAcademicYear } from './feeCalculations';
 
 interface Student {
@@ -122,13 +121,22 @@ export class AIProcessor {
   }
 
   private findStudent(query: string): Student | undefined {
-    const searchTerm = query.toLowerCase();
-    return this.data.students.find(student => 
-      student.studentId.toLowerCase().includes(searchTerm) ||
-      student.firstName.toLowerCase().includes(searchTerm) ||
-      student.lastName.toLowerCase().includes(searchTerm) ||
-      `${student.firstName} ${student.lastName}`.toLowerCase().includes(searchTerm)
-    );
+    const searchTerm = query.toLowerCase().trim();
+    console.log('Searching for student with query:', searchTerm);
+    console.log('Available students:', this.data.students.map(s => ({ id: s.studentId, name: `${s.firstName} ${s.lastName}` })));
+    
+    return this.data.students.find(student => {
+      const matches = 
+        student.studentId.toLowerCase() === searchTerm ||
+        student.studentId.toLowerCase().includes(searchTerm) ||
+        student.firstName.toLowerCase().includes(searchTerm) ||
+        student.lastName.toLowerCase().includes(searchTerm) ||
+        `${student.firstName} ${student.lastName}`.toLowerCase().includes(searchTerm) ||
+        `${student.firstName.toLowerCase()} ${student.lastName.toLowerCase()}` === searchTerm;
+      
+      console.log(`Checking student ${student.firstName} ${student.lastName} (${student.studentId}):`, matches);
+      return matches;
+    });
   }
 
   private calculateStudentBalance(studentId: string) {
@@ -158,21 +166,31 @@ export class AIProcessor {
     const amount = amountMatch ? parseFloat(amountMatch[1]) : null;
     
     if (!amount) {
-      return 'Please specify the payment amount. Example: "Record payment of 500 for student ID STU001"';
+      return 'Please specify the payment amount. Example: "Record payment of 500 for student ID 20240001"';
     }
 
-    const studentIdMatch = input.match(/(?:student\s*id|id)\s*:?\s*([A-Za-z0-9]+)/i);
+    // Enhanced student search patterns
+    const studentIdMatch = input.match(/(?:student\s*id|id)\s*:?\s*([A-Za-z0-9]+)/i) ||
+                          input.match(/(?:for|student)\s+([A-Za-z0-9]+)$/i);
     const studentNameMatch = input.match(/for\s+([A-Za-z\s]+)(?:\s+(?:amount|pay|fee))?/i);
     
     let student = null;
+    let searchQuery = '';
+    
     if (studentIdMatch) {
-      student = this.findStudent(studentIdMatch[1]);
+      searchQuery = studentIdMatch[1];
+      student = this.findStudent(searchQuery);
     } else if (studentNameMatch) {
-      student = this.findStudent(studentNameMatch[1].trim());
+      searchQuery = studentNameMatch[1].trim();
+      student = this.findStudent(searchQuery);
     }
 
     if (!student) {
-      return 'Student not found. Please provide a valid student ID or name.';
+      const availableStudents = this.data.students.slice(0, 5).map(s => 
+        `${s.firstName} ${s.lastName} (ID: ${s.studentId})`
+      ).join('\n');
+      
+      return `Student "${searchQuery}" not found. Please check the student ID or name.\n\nAvailable students:\n${availableStudents}\n\nTry: "Record payment of ${amount} for student ${this.data.students[0]?.studentId || '20240001'}"`;
     }
 
     // Record the payment
@@ -206,7 +224,7 @@ export class AIProcessor {
     };
 
     return {
-      content: `✅ Payment recorded successfully!\n\n💰 Amount: GHS ${amount.toFixed(2)}\n👤 Student: ${student.firstName} ${student.lastName} (${student.studentId})\n🏫 Class: ${student.classAssigned}\n📄 Receipt: ${receiptNumber}\n\n💳 Remaining Balance: GHS ${receiptData.remainingBalance.toFixed(2)}`,
+      content: `✅ Payment recorded successfully!\n\n💰 **Amount:** GHS ${amount.toFixed(2)}\n👤 **Student:** ${student.firstName} ${student.lastName} (${student.studentId})\n🏫 **Class:** ${student.classAssigned}\n📄 **Receipt:** ${receiptNumber}\n\n💳 **Remaining Balance:** GHS ${receiptData.remainingBalance.toFixed(2)}`,
       action: 'payment',
       data: receiptData
     };
@@ -217,7 +235,7 @@ export class AIProcessor {
     const student = this.findStudent(studentQuery);
     
     if (!student) {
-      return 'Please specify which student\'s receipt you want to see. Try "Show receipt for John Doe" or "Receipt for student ID STU001"';
+      return 'Please specify which student\'s receipt you want to see. Try "Show receipt for John Doe" or "Receipt for student ID 20240001"';
     }
 
     const lastPayment = this.data.payments
@@ -244,7 +262,7 @@ export class AIProcessor {
     };
 
     return {
-      content: `📄 Latest receipt for ${student.firstName} ${student.lastName} is ready to view.\n\n💰 Amount: GHS ${lastPayment.amount.toFixed(2)}\n📅 Date: ${new Date(lastPayment.date).toLocaleDateString()}\n💳 Remaining Balance: GHS ${receiptData.remainingBalance.toFixed(2)}`,
+      content: `📄 **Latest receipt for ${student.firstName} ${student.lastName}** is ready to view.\n\n💰 **Amount:** GHS ${lastPayment.amount.toFixed(2)}\n📅 **Date:** ${new Date(lastPayment.date).toLocaleDateString()}\n💳 **Remaining Balance:** GHS ${receiptData.remainingBalance.toFixed(2)}`,
       action: 'receipt',
       data: receiptData
     };
@@ -268,11 +286,11 @@ export class AIProcessor {
 
     const totalPaid = studentPayments.reduce((sum, p) => sum + p.amount, 0);
     const receiptsText = studentPayments.map((payment, index) => 
-      `${index + 1}. GHS ${payment.amount.toFixed(2)} - ${new Date(payment.date).toLocaleDateString()} (${payment.paymentMethod})`
+      `${index + 1}. **GHS ${payment.amount.toFixed(2)}** - ${new Date(payment.date).toLocaleDateString()} (${payment.paymentMethod})`
     ).join('\n');
 
     return {
-      content: `📄 All receipts for ${student.firstName} ${student.lastName}:\n\n${receiptsText}\n\n💰 Total Paid: GHS ${totalPaid.toFixed(2)}\n📊 Number of Payments: ${studentPayments.length}`,
+      content: `📄 **All receipts for ${student.firstName} ${student.lastName}:**\n\n${receiptsText}\n\n💰 **Total Paid:** GHS ${totalPaid.toFixed(2)}\n📊 **Number of Payments:** ${studentPayments.length}`,
       action: 'list',
       data: { student, payments: studentPayments }
     };
@@ -297,7 +315,7 @@ export class AIProcessor {
     }
 
     return {
-      content: `💰 Balance for ${student.firstName} ${student.lastName}:\n\n🏫 Class: ${student.classAssigned}\n💵 Current Term Fee: GHS ${balanceInfo.currentTermFee.toFixed(2)}\n✅ Total Paid: GHS ${balanceInfo.totalPaid.toFixed(2)}\n⚠️ Outstanding Balance: GHS ${balanceInfo.balance.toFixed(2)}\n📊 Payment History: ${balanceInfo.payments.length} payments\n\n${balanceInfo.balance === 0 ? '✅ Fully paid!' : '❌ Payment pending'}`,
+      content: `💰 **Balance for ${student.firstName} ${student.lastName}:**\n\n🏫 **Class:** ${student.classAssigned}\n💵 **Current Term Fee:** GHS ${balanceInfo.currentTermFee.toFixed(2)}\n✅ **Total Paid:** GHS ${balanceInfo.totalPaid.toFixed(2)}\n⚠️ **Outstanding Balance:** GHS ${balanceInfo.balance.toFixed(2)}\n📊 **Payment History:** ${balanceInfo.payments.length} payments\n\n${balanceInfo.balance === 0 ? '✅ **Fully paid!**' : '❌ **Payment pending**'}`,
       action: 'balance',
       data: balanceInfo
     };
@@ -314,20 +332,20 @@ export class AIProcessor {
 
     if (studentsWithBalance.length === 0) {
       return {
-        content: '🎉 Great news! All students have paid their fees in full!',
+        content: '🎉 **Great news!** All students have paid their fees in full!',
         action: 'stats'
       };
     }
 
     const totalOwing = studentsWithBalance.reduce((sum, item) => sum + item.balance, 0);
     const studentsText = studentsWithBalance.slice(0, 10).map((item, index) => 
-      `${index + 1}. ${item.student.firstName} ${item.student.lastName} (${item.student.studentId}) - GHS ${item.balance.toFixed(2)}`
+      `${index + 1}. **${item.student.firstName} ${item.student.lastName}** (${item.student.studentId}) - GHS ${item.balance.toFixed(2)}`
     ).join('\n');
 
     const moreText = studentsWithBalance.length > 10 ? `\n... and ${studentsWithBalance.length - 10} more students` : '';
 
     return {
-      content: `💸 Students with outstanding balances:\n\n${studentsText}${moreText}\n\n📊 Total Students Owing: ${studentsWithBalance.length}\n💰 Total Amount Owing: GHS ${totalOwing.toFixed(2)}`,
+      content: `💸 **Students with outstanding balances:**\n\n${studentsText}${moreText}\n\n📊 **Total Students Owing:** ${studentsWithBalance.length}\n💰 **Total Amount Owing:** GHS ${totalOwing.toFixed(2)}`,
       action: 'list',
       data: studentsWithBalance
     };
@@ -350,11 +368,11 @@ export class AIProcessor {
     const studentsText = this.data.students
       .sort((a, b) => a.firstName.localeCompare(b.firstName))
       .map((student, index) => 
-        `${index + 1}. ${student.firstName} ${student.lastName} (${student.studentId}) - ${student.classAssigned}`
+        `${index + 1}. **${student.firstName} ${student.lastName}** (${student.studentId}) - ${student.classAssigned}`
       ).join('\n');
 
     return {
-      content: `👥 All Students (${this.data.students.length}):\n\n${studentsText}`,
+      content: `👥 **All Students (${this.data.students.length}):**\n\n${studentsText}`,
       action: 'list',
       data: this.data.students
     };
@@ -373,11 +391,11 @@ export class AIProcessor {
     }
 
     const studentsText = studentsInClass.map((student, index) => 
-      `${index + 1}. ${student.firstName} ${student.lastName} (${student.studentId})`
+      `${index + 1}. **${student.firstName} ${student.lastName}** (${student.studentId})`
     ).join('\n');
 
     return {
-      content: `👥 Students in ${className} (${studentsInClass.length}):\n\n${studentsText}`,
+      content: `👥 **Students in ${className} (${studentsInClass.length}):**\n\n${studentsText}`,
       action: 'list',
       data: studentsInClass
     };
@@ -399,11 +417,11 @@ export class AIProcessor {
     }
 
     const studentsText = recentStudents.map((student, index) => 
-      `${index + 1}. ${student.firstName} ${student.lastName} (${student.studentId}) - Admitted: ${new Date(student.dateOfAdmission).toLocaleDateString()}`
+      `${index + 1}. **${student.firstName} ${student.lastName}** (${student.studentId}) - Admitted: ${new Date(student.dateOfAdmission).toLocaleDateString()}`
     ).join('\n');
 
     return {
-      content: `🆕 Recent Student Admissions (${recentStudents.length}):\n\n${studentsText}`,
+      content: `🆕 **Recent Student Admissions (${recentStudents.length}):**\n\n${studentsText}`,
       action: 'list',
       data: recentStudents
     };
@@ -420,7 +438,7 @@ export class AIProcessor {
 
     if (input.includes('teacher')) {
       return {
-        content: `👨‍🏫 Teacher Statistics:\n\n• Total Teachers: ${this.data.teachers.length}\n• Active: ${this.data.teachers.filter(t => t.employmentStatus === 'Active').length}\n• Classes with Teachers: ${this.data.classes.filter(c => c.assignedTeacher).length}`,
+        content: `👨‍🏫 **Teacher Statistics:**\n\n• **Total Teachers:** ${this.data.teachers.length}\n• **Active:** ${this.data.teachers.filter(t => t.employmentStatus === 'Active').length}\n• **Classes with Teachers:** ${this.data.classes.filter(c => c.assignedTeacher).length}`,
         action: 'stats'
       };
     }
@@ -437,7 +455,7 @@ export class AIProcessor {
     }).length;
 
     return {
-      content: `📊 Rosa Gardens School Statistics:\n\n👥 Students: ${this.data.students.length}\n👨‍🏫 Teachers: ${this.data.teachers.length}\n🏫 Classes: ${this.data.classes.length}\n💰 Total Payments: GHS ${totalPaid.toFixed(2)}\n📊 Students Owing: ${studentsOwing}\n📅 Current Term: ${getActiveAcademicTerm()}`,
+      content: `📊 **Rosa Gardens School Statistics:**\n\n👥 **Students:** ${this.data.students.length}\n👨‍🏫 **Teachers:** ${this.data.teachers.length}\n🏫 **Classes:** ${this.data.classes.length}\n💰 **Total Payments:** GHS ${totalPaid.toFixed(2)}\n📊 **Students Owing:** ${studentsOwing}\n📅 **Current Term:** ${getActiveAcademicTerm()}`,
       action: 'stats'
     };
   }
@@ -445,10 +463,10 @@ export class AIProcessor {
   private getStudentStatistics(): string {
     const classCounts = this.data.classes.map(cls => {
       const count = this.data.students.filter(s => s.classAssigned === cls.className).length;
-      return `• ${cls.className}: ${count}/${cls.maxClassSize} students`;
+      return `• **${cls.className}:** ${count}/${cls.maxClassSize} students`;
     }).join('\n');
 
-    return `👥 Student Statistics:\n\n📊 Total Students: ${this.data.students.length}\n\n🏫 By Class:\n${classCounts}`;
+    return `👥 **Student Statistics:**\n\n📊 **Total Students:** ${this.data.students.length}\n\n🏫 **By Class:**\n${classCounts}`;
   }
 
   private getPaymentStatistics(): AIResponse {
@@ -463,11 +481,11 @@ export class AIProcessor {
     }, {} as Record<string, number>);
 
     const methodText = Object.entries(methodStats)
-      .map(([method, count]) => `• ${method}: ${count} payments`)
+      .map(([method, count]) => `• **${method}:** ${count} payments`)
       .join('\n');
 
     return {
-      content: `💰 Payment Statistics:\n\n📊 Current Term (${currentTerm}):\n• Payments: ${currentTermPayments.length}\n• Amount: GHS ${totalCurrentTerm.toFixed(2)}\n\n📈 All Time:\n• Total Payments: ${this.data.payments.length}\n• Total Amount: GHS ${totalAllTime.toFixed(2)}\n\n💳 By Payment Method:\n${methodText}`,
+      content: `💰 **Payment Statistics:**\n\n📊 **Current Term (${currentTerm}):**\n• **Payments:** ${currentTermPayments.length}\n• **Amount:** GHS ${totalCurrentTerm.toFixed(2)}\n\n📈 **All Time:**\n• **Total Payments:** ${this.data.payments.length}\n• **Total Amount:** GHS ${totalAllTime.toFixed(2)}\n\n💳 **By Payment Method:**\n${methodText}`,
       action: 'stats'
     };
   }
@@ -477,14 +495,14 @@ export class AIProcessor {
     const student = this.findStudent(query);
     
     if (!student) {
-      return 'Student not found. Please check the student ID or name. Try "Find student John Doe" or "Search for STU001"';
+      return 'Student not found. Please check the student ID or name. Try "Find student John Doe" or "Search for 20240001"';
     }
 
     const balanceInfo = this.calculateStudentBalance(student.id);
     const paymentCount = this.data.payments.filter(p => p.studentId === student.id).length;
 
     return {
-      content: `👤 Student Information:\n\n📝 Name: ${student.firstName} ${student.lastName}\n🆔 Student ID: ${student.studentId}\n🏫 Class: ${student.classAssigned}\n📞 Guardian: ${student.guardianName}\n☎️ Contact: ${student.guardianContact}\n📅 Admission: ${new Date(student.dateOfAdmission).toLocaleDateString()}\n💰 Balance: GHS ${balanceInfo?.balance.toFixed(2) || '0.00'}\n📊 Payments Made: ${paymentCount}`,
+      content: `👤 **Student Information:**\n\n📝 **Name:** ${student.firstName} ${student.lastName}\n🆔 **Student ID:** ${student.studentId}\n🏫 **Class:** ${student.classAssigned}\n📞 **Guardian:** ${student.guardianName}\n☎️ **Contact:** ${student.guardianContact}\n📅 **Admission:** ${new Date(student.dateOfAdmission).toLocaleDateString()}\n💰 **Balance:** GHS ${balanceInfo?.balance.toFixed(2) || '0.00'}\n📊 **Payments Made:** ${paymentCount}`,
       action: 'search',
       data: { student, balanceInfo }
     };
@@ -511,7 +529,7 @@ export class AIProcessor {
     const teacher = this.data.teachers.find(t => t.id === classInfo.assignedTeacher);
     
     return {
-      content: `🏫 Class Information: ${classInfo.className}\n\n👥 Students: ${studentsInClass.length}/${classInfo.maxClassSize}\n👨‍🏫 Teacher: ${teacher ? teacher.fullName : 'Not assigned'}\n📚 Level: ${classInfo.level}\n🌟 Stream: ${classInfo.stream}`,
+      content: `🏫 **Class Information: ${classInfo.className}**\n\n👥 **Students:** ${studentsInClass.length}/${classInfo.maxClassSize}\n👨‍🏫 **Teacher:** ${teacher ? teacher.fullName : 'Not assigned'}\n📚 **Level:** ${classInfo.level}\n🌟 **Stream:** ${classInfo.stream}`,
       action: 'info',
       data: { classInfo, students: studentsInClass, teacher }
     };
@@ -519,7 +537,7 @@ export class AIProcessor {
 
   private getHelpResponse(): AIResponse {
     return {
-      content: `🤖 I can help you with many tasks! Here are some examples:\n\n💰 **Payments:**\n• "Record payment of 500 for student STU001"\n• "Payment of 300 for John Doe"\n\n📄 **Receipts:**\n• "Show receipt for Mary Smith"\n• "All receipts for student STU002"\n\n💳 **Balances:**\n• "Check balance for John Doe"\n• "Which students owe money?"\n• "Students with outstanding balances"\n\n👥 **Student Information:**\n• "List all students"\n• "Students in Class 4"\n• "Find student John Doe"\n• "Recent student admissions"\n\n📊 **Statistics:**\n• "How many students?"\n• "Payment statistics"\n• "Class information for KG1"\n\nJust ask me naturally - I'll understand! 😊`,
+      content: `🤖 **I can help you with many tasks! Here are some examples:**\n\n💰 **Payments:**\n• "Record payment of 500 for student 20240001"\n• "Payment of 300 for John Doe"\n\n📄 **Receipts:**\n• "Show receipt for Mary Smith"\n• "All receipts for student 20240002"\n\n💳 **Balances:**\n• "Check balance for John Doe"\n• "Which students owe money?"\n• "Students with outstanding balances"\n\n👥 **Student Information:**\n• "List all students"\n• "Students in Class 4"\n• "Find student John Doe"\n• "Recent student admissions"\n\n📊 **Statistics:**\n• "How many students?"\n• "Payment statistics"\n• "Class information for KG1"\n\nJust ask me naturally - I'll understand! 😊`,
       action: 'info'
     };
   }

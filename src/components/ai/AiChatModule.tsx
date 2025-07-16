@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
-import { Bot, Send, User, Receipt, Sparkles, MessageCircle, Clock, Trash2, Command, Zap } from 'lucide-react';
+import { Bot, Send, User, Receipt, Sparkles, MessageCircle, Clock, Trash2, Command, Zap, ArrowUp } from 'lucide-react';
 import ReceiptPrinter from '../common/ReceiptPrinter';
 import { useChatPersistence } from '../../hooks/useChatPersistence';
 import { AIProcessor } from '../../utils/aiProcessor';
@@ -29,6 +29,7 @@ interface QuickCommand {
   description: string;
   command: string;
   needsStudentId: boolean;
+  category: string;
 }
 
 const quickCommands: QuickCommand[] = [
@@ -38,7 +39,8 @@ const quickCommands: QuickCommand[] = [
     title: 'Record Payment',
     description: 'Record a new payment for a student',
     command: 'Record payment of [AMOUNT] for student [STUDENT]',
-    needsStudentId: true
+    needsStudentId: true,
+    category: 'Payments'
   },
   {
     id: 'check-balance',
@@ -46,7 +48,8 @@ const quickCommands: QuickCommand[] = [
     title: 'Check Balance',
     description: 'Check outstanding balance for a student',
     command: 'Check balance for [STUDENT]',
-    needsStudentId: true
+    needsStudentId: true,
+    category: 'Balances'
   },
   {
     id: 'show-receipt',
@@ -54,7 +57,8 @@ const quickCommands: QuickCommand[] = [
     title: 'Show Receipt',
     description: 'Show latest receipt for a student',
     command: 'Show receipt for [STUDENT]',
-    needsStudentId: true
+    needsStudentId: true,
+    category: 'Receipts'
   },
   {
     id: 'all-receipts',
@@ -62,7 +66,8 @@ const quickCommands: QuickCommand[] = [
     title: 'All Receipts',
     description: 'Show all receipts for a student',
     command: 'All receipts for [STUDENT]',
-    needsStudentId: true
+    needsStudentId: true,
+    category: 'Receipts'
   },
   {
     id: 'students-owing',
@@ -70,7 +75,8 @@ const quickCommands: QuickCommand[] = [
     title: 'Students Owing',
     description: 'List all students with outstanding balances',
     command: 'Which students owe money?',
-    needsStudentId: false
+    needsStudentId: false,
+    category: 'Reports'
   },
   {
     id: 'all-students',
@@ -78,7 +84,8 @@ const quickCommands: QuickCommand[] = [
     title: 'All Students',
     description: 'List all students in the school',
     command: 'List all students',
-    needsStudentId: false
+    needsStudentId: false,
+    category: 'Students'
   },
   {
     id: 'statistics',
@@ -86,7 +93,8 @@ const quickCommands: QuickCommand[] = [
     title: 'Statistics',
     description: 'Show school statistics and summary',
     command: 'Show school statistics',
-    needsStudentId: false
+    needsStudentId: false,
+    category: 'Reports'
   },
   {
     id: 'find-student',
@@ -94,7 +102,8 @@ const quickCommands: QuickCommand[] = [
     title: 'Find Student',
     description: 'Search for a specific student',
     command: 'Find student [STUDENT]',
-    needsStudentId: true
+    needsStudentId: true,
+    category: 'Students'
   }
 ];
 
@@ -200,14 +209,10 @@ const AiChatModule = () => {
 
   const handleCommandSelect = (command: QuickCommand) => {
     setSelectedCommand(command);
-    setShowCommands(false);
     
     if (!command.needsStudentId) {
       // Execute command immediately if it doesn't need student ID
-      setInputValue(command.command);
-      setTimeout(() => {
-        handleSendMessage();
-      }, 100);
+      executeCommand(command, '', '');
     } else {
       // Show student input form
       setStudentQuery('');
@@ -215,27 +220,38 @@ const AiChatModule = () => {
     }
   };
 
+  const executeCommand = async (command: QuickCommand, studentId: string = '', amount: string = '') => {
+    let finalCommand = command.command;
+    
+    if (command.needsStudentId && studentId.trim()) {
+      finalCommand = finalCommand.replace('[STUDENT]', studentId.trim());
+      
+      if (command.id === 'record-payment' && amount.trim()) {
+        finalCommand = finalCommand.replace('[AMOUNT]', amount.trim());
+      }
+    }
+
+    // Add user message
+    const userMessage: ChatMessage = {
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+      type: 'user',
+      content: finalCommand,
+      timestamp: new Date()
+    };
+    addMessage(userMessage);
+
+    // Process the command
+    await processUserInput(finalCommand);
+    
+    // Clear command state
+    setSelectedCommand(null);
+    setStudentQuery('');
+    setPaymentAmount('');
+  };
+
   const handleCommandExecution = () => {
     if (!selectedCommand) return;
-    
-    let finalCommand = selectedCommand.command;
-    
-    if (selectedCommand.needsStudentId && studentQuery.trim()) {
-      finalCommand = finalCommand.replace('[STUDENT]', studentQuery.trim());
-      
-      if (selectedCommand.id === 'record-payment' && paymentAmount.trim()) {
-        finalCommand = finalCommand.replace('[AMOUNT]', paymentAmount.trim());
-      }
-      
-      setInputValue(finalCommand);
-      setSelectedCommand(null);
-      setStudentQuery('');
-      setPaymentAmount('');
-      
-      setTimeout(() => {
-        handleSendMessage();
-      }, 100);
-    }
+    executeCommand(selectedCommand, studentQuery, paymentAmount);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -268,98 +284,125 @@ const AiChatModule = () => {
       .replace(/\n/g, '<br />');
   };
 
+  const commandCategories = quickCommands.reduce((acc, command) => {
+    if (!acc[command.category]) {
+      acc[command.category] = [];
+    }
+    acc[command.category].push(command);
+    return acc;
+  }, {} as Record<string, QuickCommand[]>);
+
   return (
     <>
-      <div className="p-6 max-w-7xl mx-auto">
-        <div className="mb-6">
-          <div className="flex items-center justify-between">
+      <div className="h-screen flex flex-col bg-gray-50">
+        {/* Header */}
+        <div className="flex-shrink-0 p-4 bg-white border-b shadow-sm">
+          <div className="flex items-center justify-between max-w-4xl mx-auto">
             <div className="flex items-center space-x-3">
-              <div className="p-3 bg-gradient-to-br from-blue-100 to-purple-100 rounded-xl">
-                <Bot className="w-8 h-8 text-blue-600" />
+              <div className="p-2 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl text-white">
+                <Bot className="w-6 h-6" />
               </div>
               <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                  AI School Assistant
+                <h1 className="text-xl font-bold text-gray-900">
+                  AI Assistant
                 </h1>
-                <p className="text-gray-600 flex items-center space-x-1">
-                  <Sparkles className="w-4 h-4" />
-                  <span>Intelligent database operations & school management</span>
-                </p>
+                <p className="text-sm text-gray-500">Rosa Gardens School Management</p>
               </div>
             </div>
             <div className="flex items-center space-x-2">
-              <Badge variant="secondary" className="text-xs flex items-center space-x-1">
-                <Clock className="w-3 h-3" />
-                <span>Auto-clear in 10min</span>
+              <Badge variant="secondary" className="text-xs">
+                {messages.length - 1} messages
               </Badge>
-              <Badge variant="outline" className="text-xs">
-                {user?.role === 'super-admin' ? 'Super Admin' : 'Finance'} Access
-              </Badge>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleClearChat}
+                className="text-gray-500 hover:text-red-600"
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
             </div>
           </div>
         </div>
 
-        <Card className="h-[75vh] flex flex-col shadow-lg border-0 bg-gradient-to-br from-white to-gray-50">
-          <CardHeader className="pb-4 border-b bg-white rounded-t-lg">
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center space-x-2">
-                <MessageCircle className="w-5 h-5 text-blue-600" />
-                <span>Chat Assistant</span>
-                <Badge variant="secondary" className="text-xs">
-                  {messages.length} messages
-                </Badge>
-              </CardTitle>
-              <div className="flex items-center space-x-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowCommands(!showCommands)}
-                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                >
-                  <Command className="w-4 h-4 mr-1" />
-                  Commands
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleClearChat}
-                  className="text-gray-500 hover:text-red-600"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          
-          <CardContent className="flex-1 flex flex-col p-0">
-            {/* Quick Commands Panel */}
-            {showCommands && (
-              <div className="p-4 border-b bg-gray-50">
-                <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
-                  <Zap className="w-4 h-4 mr-1" />
-                  Quick Commands
-                </h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                  {quickCommands.map((command) => (
-                    <Button
-                      key={command.id}
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleCommandSelect(command)}
-                      className="h-auto p-3 flex flex-col items-start text-left hover:bg-blue-50 hover:border-blue-300"
-                    >
-                      <div className="text-lg mb-1">{command.icon}</div>
-                      <div className="text-xs font-medium">{command.title}</div>
-                      <div className="text-xs text-gray-500 mt-1">{command.description}</div>
-                    </Button>
-                  ))}
+        {/* Chat Area */}
+        <div className="flex-1 flex flex-col max-w-4xl mx-auto w-full">
+          <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
+            <div className="space-y-4">
+              {messages.map((message) => (
+                <div key={message.id} className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[80%] ${
+                    message.type === 'user' 
+                      ? 'bg-blue-600 text-white' 
+                      : 'bg-white border text-gray-900'
+                  } rounded-2xl p-4 shadow-sm`}>
+                    
+                    <div className="flex items-start space-x-3">
+                      <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+                        message.type === 'user' ? 'bg-blue-500' : 'bg-gray-100'
+                      }`}>
+                        {message.type === 'ai' ? <Bot className="w-4 h-4 text-gray-600" /> : <User className="w-4 h-4 text-white" />}
+                      </div>
+                      
+                      <div className="flex-1 min-w-0">
+                        <div 
+                          className="text-sm leading-relaxed prose prose-sm max-w-none"
+                          dangerouslySetInnerHTML={{ __html: formatMessageContent(message.content) }}
+                        />
+                        
+                        {(message.action === 'receipt' || message.action === 'payment') && message.data && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleShowReceipt(message.data)}
+                            className={`mt-3 ${
+                              message.type === 'user' 
+                                ? 'text-blue-100 hover:text-white hover:bg-blue-500' 
+                                : 'text-blue-600 hover:text-blue-700 hover:bg-blue-50'
+                            }`}
+                          >
+                            <Receipt className="w-4 h-4 mr-1" />
+                            View Receipt
+                          </Button>
+                        )}
+                        
+                        <div className={`text-xs mt-2 ${
+                          message.type === 'user' ? 'text-blue-100' : 'text-gray-500'
+                        }`}>
+                          {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            )}
+              ))}
+              
+              {isProcessing && (
+                <div className="flex justify-start">
+                  <div className="bg-white border rounded-2xl p-4 shadow-sm">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+                        <Bot className="w-4 h-4 text-gray-600 animate-pulse" />
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <div className="flex space-x-1">
+                          <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                          <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                          <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                        </div>
+                        <span className="text-sm text-gray-600">AI is thinking...</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
 
-            {/* Command Execution Form */}
-            {selectedCommand && (
-              <div className="p-4 border-b bg-blue-50">
+          {/* Command Execution Form */}
+          {selectedCommand && (
+            <div className="flex-shrink-0 p-4 bg-blue-50 border-t">
+              <div className="max-w-2xl mx-auto">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-blue-800 flex items-center">
                     <span className="text-lg mr-2">{selectedCommand.icon}</span>
@@ -412,104 +455,89 @@ const AiChatModule = () => {
                   </Button>
                 </div>
               </div>
-            )}
+            </div>
+          )}
 
-            <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
-              <div className="space-y-6">
-                {messages.map((message) => (
-                  <div key={message.id} className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[85%] ${
-                      message.type === 'user' 
-                        ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg' 
-                        : 'bg-white border border-gray-200 text-gray-900 shadow-sm'
-                    } rounded-2xl p-4 relative`}>
-                      
-                      <div className={`absolute -top-2 ${message.type === 'user' ? '-right-2' : '-left-2'} w-8 h-8 rounded-full flex items-center justify-center ${
-                        message.type === 'user' ? 'bg-blue-600 text-white' : 'bg-gradient-to-br from-purple-100 to-blue-100 text-blue-600'
-                      } shadow-md`}>
-                        {message.type === 'ai' ? <Bot className="w-4 h-4" /> : <User className="w-4 h-4" />}
-                      </div>
-
-                      <div className="mt-2">
-                        <div 
-                          className="text-sm leading-relaxed"
-                          dangerouslySetInnerHTML={{ __html: formatMessageContent(message.content) }}
-                        />
-                        
-                        {(message.action === 'receipt' || message.action === 'payment') && message.data && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleShowReceipt(message.data)}
-                            className={`mt-3 ${
-                              message.type === 'user' 
-                                ? 'text-blue-100 hover:text-white hover:bg-blue-500' 
-                                : 'text-blue-600 hover:text-blue-700 hover:bg-blue-50'
-                            }`}
-                          >
-                            <Receipt className="w-4 h-4 mr-1" />
-                            View Receipt
-                          </Button>
-                        )}
-                      </div>
-                      
-                      <div className={`text-xs mt-2 ${
-                        message.type === 'user' ? 'text-blue-100' : 'text-gray-500'
-                      }`}>
-                        {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </div>
+          {/* Quick Commands Panel */}
+          {showCommands && (
+            <div className="flex-shrink-0 p-4 bg-gray-50 border-t max-h-64 overflow-y-auto">
+              <div className="max-w-4xl mx-auto">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
+                  <Command className="w-4 h-4 mr-1" />
+                  Quick Commands
+                </h3>
+                {Object.entries(commandCategories).map(([category, commands]) => (
+                  <div key={category} className="mb-4">
+                    <h4 className="text-xs font-medium text-gray-600 mb-2">{category}</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      {commands.map((command) => (
+                        <Button
+                          key={command.id}
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleCommandSelect(command)}
+                          className="h-auto p-3 flex flex-col items-start text-left hover:bg-blue-50 hover:border-blue-300"
+                        >
+                          <div className="text-lg mb-1">{command.icon}</div>
+                          <div className="text-xs font-medium">{command.title}</div>
+                          <div className="text-xs text-gray-500 mt-1 line-clamp-2">{command.description}</div>
+                        </Button>
+                      ))}
                     </div>
                   </div>
                 ))}
-                
-                {isProcessing && (
-                  <div className="flex justify-start">
-                    <div className="bg-gray-100 border rounded-2xl p-4 max-w-[85%] relative">
-                      <div className="absolute -top-2 -left-2 w-8 h-8 rounded-full bg-gradient-to-br from-purple-100 to-blue-100 text-blue-600 shadow-md flex items-center justify-center">
-                        <Bot className="w-4 h-4 animate-pulse" />
-                      </div>
-                      <div className="mt-2 flex items-center space-x-2">
-                        <div className="flex space-x-1">
-                          <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                          <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                          <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                        </div>
-                        <span className="text-sm text-gray-600">AI is thinking...</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
-            </ScrollArea>
+            </div>
+          )}
 
-            <div className="p-4 border-t bg-white rounded-b-lg">
-              <div className="flex space-x-3">
-                <Input
-                  ref={inputRef}
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  placeholder="Ask me anything or use quick commands above..."
-                  className="flex-1 border-2 border-gray-200 focus:border-blue-400 rounded-xl px-4 py-3"
-                  disabled={isProcessing}
-                />
+          {/* Input Area */}
+          <div className="flex-shrink-0 p-4 bg-white border-t">
+            <div className="max-w-2xl mx-auto">
+              <div className="flex items-center space-x-2 mb-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowCommands(!showCommands)}
+                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                >
+                  <Command className="w-4 h-4 mr-1" />
+                  {showCommands ? 'Hide' : 'Show'} Commands
+                </Button>
+                <Badge variant="secondary" className="text-xs">
+                  <Clock className="w-3 h-3 mr-1" />
+                  Auto-clear in 10min
+                </Badge>
+              </div>
+              
+              <div className="flex items-end space-x-2">
+                <div className="flex-1 relative">
+                  <Input
+                    ref={inputRef}
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    placeholder="Ask me anything about students, payments, or school management..."
+                    className="pr-12 min-h-[44px] resize-none"
+                    disabled={isProcessing}
+                  />
+                </div>
                 <Button 
                   onClick={handleSendMessage} 
                   disabled={!inputValue.trim() || isProcessing}
-                  className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-xl shadow-md"
+                  className="h-11 w-11 p-0 bg-blue-600 hover:bg-blue-700 rounded-xl"
                 >
-                  <Send className="w-4 h-4" />
+                  <ArrowUp className="w-4 h-4" />
                 </Button>
               </div>
 
-              <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-500">
-                <span className="bg-gray-100 px-2 py-1 rounded-full">💡 Click "Commands" for quick actions</span>
+              <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-500">
+                <span className="bg-gray-100 px-2 py-1 rounded-full">💡 Try: "Record payment of 500 for student 20240001"</span>
                 <span className="bg-gray-100 px-2 py-1 rounded-full">📄 "Show receipt for John Doe"</span>
                 <span className="bg-gray-100 px-2 py-1 rounded-full">👥 "Which students owe money?"</span>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
 
       {receiptData && (

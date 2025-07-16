@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -257,12 +256,39 @@ const AiChatModule = () => {
   };
 
   const handleShowReceipt = (data: any) => {
+    console.log('handleShowReceipt called with:', data);
+    
+    // Check if this is report data (has type property indicating report type)
     if (data && (data.type === 'general' || data.type === 'income' || data.type === 'expenses')) {
+      console.log('Opening A4 Report for type:', data.type);
       setReportData(data);
       setShowA4Report(true);
-    } else {
+    } 
+    // Check if this is receipt data (has studentName, amount, etc.)
+    else if (data && data.studentName && data.amount !== undefined) {
+      console.log('Opening Receipt Printer');
       setReceiptData(data);
       setShowReceipt(true);
+    }
+    // Fallback - if unclear, check for common receipt properties
+    else if (data && (data.receiptNumber || data.paymentMethod)) {
+      console.log('Opening Receipt Printer (fallback)');
+      setReceiptData(data);
+      setShowReceipt(true);
+    }
+    // If it has comprehensive financial data, treat as report
+    else if (data && (data.financial || data.students || data.classes)) {
+      console.log('Opening A4 Report (comprehensive data detected)');
+      setReportData(data);
+      setShowA4Report(true);
+    }
+    else {
+      console.log('Unknown data format:', data);
+      toast({
+        title: "Unable to Display",
+        description: "The data format is not recognized for display.",
+        variant: "destructive"
+      });
     }
   };
 

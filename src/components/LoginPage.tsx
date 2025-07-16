@@ -35,6 +35,7 @@ const LoginPage = () => {
   const roleCredentials = {
     'administrator': { password: 'admin123', description: 'Students, Teachers, Classes' },
     'finance': { password: 'finance123', description: 'Financial Dashboard, Fees, Income, Expenses' },
+    'teacher': { password: 'teacher123', description: 'Classes, Attendance, Grades' },
     'super-admin': { password: 'superadmin123', description: 'Full system access' }
   };
 
@@ -100,6 +101,7 @@ const LoginPage = () => {
                     <SelectContent>
                       <SelectItem value="administrator">Administrator</SelectItem>
                       <SelectItem value="finance">Finance Manager</SelectItem>
+                      <SelectItem value="teacher">Teacher</SelectItem>
                       <SelectItem value="super-admin">Super Admin</SelectItem>
                     </SelectContent>
                   </Select>

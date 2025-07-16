@@ -14,6 +14,10 @@ import ReportsModule from './reports/ReportsModule';
 import SettingsModule from './settings/SettingsModule';
 import AuditModule from './audit/AuditModule';
 import PrintFeeStatusModule from './fees/PrintFeeStatusModule';
+import TeacherDashboard from './teacher/TeacherDashboard';
+import TeacherClassesModule from './teacher/TeacherClassesModule';
+import AttendanceModule from './teacher/AttendanceModule';
+import GradesModule from './teacher/GradesModule';
 import { useAuth } from '../contexts/AuthContext';
 
 const Dashboard = () => {
@@ -24,6 +28,8 @@ const Dashboard = () => {
       return 'financial-dashboard';
     } else if (user?.role === 'administrator') {
       return 'dashboard';
+    } else if (user?.role === 'teacher') {
+      return 'teacher-dashboard';
     } else {
       return 'dashboard'; // super-admin
     }
@@ -49,12 +55,20 @@ const Dashboard = () => {
         return <DashboardHome />;
       case 'financial-dashboard':
         return <FinancialDashboard />;
+      case 'teacher-dashboard':
+        return <TeacherDashboard />;
       case 'students':
         return <StudentsModule />;
       case 'teachers':
         return <TeachersModule />;
       case 'classes':
         return <ClassesModule />;
+      case 'teacher-classes':
+        return <TeacherClassesModule />;
+      case 'attendance':
+        return <AttendanceModule />;
+      case 'grades':
+        return <GradesModule />;
       case 'fees':
         return <FeesModule />;
       case 'income':
@@ -70,7 +84,12 @@ const Dashboard = () => {
       case 'audit':
         return <AuditModule />;
       default:
-        return user?.role === 'administrator' ? <AdministratorDashboard /> : <DashboardHome />;
+        if (user?.role === 'teacher') {
+          return <TeacherDashboard />;
+        } else if (user?.role === 'administrator') {
+          return <AdministratorDashboard />;
+        }
+        return <DashboardHome />;
     }
   };
 

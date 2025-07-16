@@ -17,7 +17,9 @@ import {
   X,
   Calculator,
   FileText,
-  Printer
+  Printer,
+  ClipboardCheck,
+  BookOpen
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -32,9 +34,13 @@ const Sidebar: React.FC<SidebarProps> = ({ activeModule, setActiveModule }) => {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home, requiredAccess: 'dashboard' },
     { id: 'financial-dashboard', label: 'Financial Dashboard', icon: Calculator, requiredAccess: 'financial-dashboard' },
+    { id: 'teacher-dashboard', label: 'Teacher Dashboard', icon: BookOpen, requiredAccess: 'teacher-dashboard' },
     { id: 'students', label: 'Students', icon: Users, requiredAccess: 'students' },
     { id: 'teachers', label: 'Teachers', icon: GraduationCap, requiredAccess: 'teachers' },
     { id: 'classes', label: 'Classes', icon: School, requiredAccess: 'classes' },
+    { id: 'teacher-classes', label: 'My Classes', icon: School, requiredAccess: 'teacher-classes' },
+    { id: 'attendance', label: 'Attendance', icon: ClipboardCheck, requiredAccess: 'attendance' },
+    { id: 'grades', label: 'Grades', icon: BookOpen, requiredAccess: 'grades' },
     { id: 'fees', label: 'Fees Management', icon: CreditCard, requiredAccess: 'fees' },
     { id: 'income', label: 'Other Income', icon: TrendingUp, requiredAccess: 'income' },
     { id: 'expenses', label: 'Expenses', icon: TrendingDown, requiredAccess: 'expenses' },

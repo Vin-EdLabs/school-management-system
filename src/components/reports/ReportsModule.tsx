@@ -47,9 +47,9 @@ const ReportsModule = () => {
         type: 'Other Income',
         amount: inc.amount,
         date: inc.date,
-        description: inc.description,
-        category: inc.category,
-        source: inc.source
+        description: inc.description || 'Income record',
+        category: inc.category || 'Other Income',
+        source: inc.source || 'Unknown'
       }));
 
     // Get detailed expense records
@@ -63,10 +63,10 @@ const ReportsModule = () => {
         type: 'Expense',
         amount: expense.amount,
         date: expense.paymentDate,
-        description: expense.description,
-        category: expense.category,
-        vendor: expense.vendor,
-        paymentMethod: expense.paymentMethod
+        description: expense.description || 'Expense record',
+        category: expense.category || 'General Expense',
+        vendor: expense.vendor || 'Unknown',
+        paymentMethod: expense.paymentMethod || 'Cash'
       }));
 
     // Calculate totals

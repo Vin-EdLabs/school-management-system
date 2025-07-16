@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Calendar } from '@/components/ui/calendar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,24 +8,42 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Edit, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
-import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth } from 'date-fns';
+import { Switch } from '@/components/ui/switch';
+import { Separator } from '@/components/ui/separator';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Plus, Edit, Trash2, ChevronLeft, ChevronRight, Bell, Clock, Eye, Calendar as CalendarIcon } from 'lucide-react';
+import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, isToday, isPast, isBefore, addHours, subHours } from 'date-fns';
+import { toast } from '@/hooks/use-toast';
 
 interface CalendarEvent {
   id: string;
   title: string;
   date: Date;
+  time?: string;
   description?: string;
   color: string;
+  category: string;
+  reminder?: boolean;
+  reminderTime?: string;
+  location?: string;
 }
 
 const eventColors = [
-  { name: 'Blue', value: 'bg-blue-500', text: 'text-blue-700', bg: 'bg-blue-50' },
-  { name: 'Green', value: 'bg-green-500', text: 'text-green-700', bg: 'bg-green-50' },
-  { name: 'Purple', value: 'bg-purple-500', text: 'text-purple-700', bg: 'bg-purple-50' },
-  { name: 'Orange', value: 'bg-orange-500', text: 'text-orange-700', bg: 'bg-orange-50' },
-  { name: 'Red', value: 'bg-red-500', text: 'text-red-700', bg: 'bg-red-50' },
-  { name: 'Pink', value: 'bg-pink-500', text: 'text-pink-700', bg: 'bg-pink-50' },
+  { name: 'Academic', value: 'bg-primary', text: 'text-primary', bg: 'bg-primary/5', border: 'border-primary/20' },
+  { name: 'Sports', value: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200' },
+  { name: 'Meeting', value: 'bg-purple-500', text: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200' },
+  { name: 'Holiday', value: 'bg-rose-500', text: 'text-rose-700', bg: 'bg-rose-50', border: 'border-rose-200' },
+  { name: 'Exam', value: 'bg-amber-500', text: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200' },
+  { name: 'Other', value: 'bg-slate-500', text: 'text-slate-700', bg: 'bg-slate-50', border: 'border-slate-200' },
+];
+
+const eventCategories = [
+  'Academic',
+  'Sports',
+  'Meeting',
+  'Holiday',
+  'Exam',
+  'Other'
 ];
 
 export default function CalendarModule() {
@@ -35,24 +53,41 @@ export default function CalendarModule() {
       id: '1',
       title: 'Parent-Teacher Conference',
       date: new Date(),
+      time: '10:00',
       description: 'Quarterly parent-teacher meetings',
-      color: 'bg-blue-500'
+      color: 'bg-primary',
+      category: 'Academic',
+      reminder: true,
+      reminderTime: '30',
+      location: 'Main Hall'
     },
     {
       id: '2',
       title: 'School Sports Day',
       date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      time: '09:00',
       description: 'Annual athletics competition',
-      color: 'bg-green-500'
+      color: 'bg-emerald-500',
+      category: 'Sports',
+      reminder: true,
+      reminderTime: '60',
+      location: 'Sports Ground'
     }
   ]);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [viewingEvent, setViewingEvent] = useState<CalendarEvent | null>(null);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   const [eventForm, setEventForm] = useState({
     title: '',
     description: '',
-    color: 'bg-blue-500'
+    time: '',
+    location: '',
+    color: 'bg-primary',
+    category: 'Academic',
+    reminder: false,
+    reminderTime: '30'
   });
 
   const months = [
@@ -72,12 +107,23 @@ export default function CalendarModule() {
       id: Date.now().toString(),
       title: eventForm.title,
       description: eventForm.description,
+      time: eventForm.time,
+      location: eventForm.location,
       date: selectedDate,
-      color: eventForm.color
+      color: eventForm.color,
+      category: eventForm.category,
+      reminder: eventForm.reminder,
+      reminderTime: eventForm.reminderTime
     };
 
     setEvents([...events, newEvent]);
     resetForm();
+    
+    // Show success toast
+    toast({
+      title: "Event Created",
+      description: `${eventForm.title} has been added to your calendar.`,
+    });
   };
 
   const handleEditEvent = () => {
@@ -85,18 +131,50 @@ export default function CalendarModule() {
 
     setEvents(events.map(event => 
       event.id === editingEvent.id 
-        ? { ...event, title: eventForm.title, description: eventForm.description, color: eventForm.color }
+        ? { 
+            ...event, 
+            title: eventForm.title, 
+            description: eventForm.description,
+            time: eventForm.time,
+            location: eventForm.location,
+            color: eventForm.color,
+            category: eventForm.category,
+            reminder: eventForm.reminder,
+            reminderTime: eventForm.reminderTime
+          }
         : event
     ));
     resetForm();
+    
+    // Show success toast
+    toast({
+      title: "Event Updated",
+      description: `${eventForm.title} has been updated successfully.`,
+    });
   };
 
   const handleDeleteEvent = (eventId: string) => {
+    const event = events.find(e => e.id === eventId);
     setEvents(events.filter(event => event.id !== eventId));
+    
+    // Show success toast
+    toast({
+      title: "Event Deleted",
+      description: `${event?.title} has been removed from your calendar.`,
+    });
   };
 
   const resetForm = () => {
-    setEventForm({ title: '', description: '', color: 'bg-blue-500' });
+    setEventForm({ 
+      title: '', 
+      description: '', 
+      time: '',
+      location: '',
+      color: 'bg-primary',
+      category: 'Academic',
+      reminder: false,
+      reminderTime: '30'
+    });
     setEditingEvent(null);
     setIsDialogOpen(false);
   };
@@ -106,7 +184,12 @@ export default function CalendarModule() {
     setEventForm({
       title: event.title,
       description: event.description || '',
-      color: event.color
+      time: event.time || '',
+      location: event.location || '',
+      color: event.color,
+      category: event.category,
+      reminder: event.reminder || false,
+      reminderTime: event.reminderTime || '30'
     });
     setIsDialogOpen(true);
   };
@@ -114,8 +197,22 @@ export default function CalendarModule() {
   const openAddDialog = (date?: Date) => {
     setSelectedDate(date || new Date());
     setEditingEvent(null);
-    setEventForm({ title: '', description: '', color: 'bg-blue-500' });
+    setEventForm({ 
+      title: '', 
+      description: '', 
+      time: '',
+      location: '',
+      color: 'bg-primary',
+      category: 'Academic',
+      reminder: false,
+      reminderTime: '30'
+    });
     setIsDialogOpen(true);
+  };
+
+  const openDetailsDialog = (event: CalendarEvent) => {
+    setViewingEvent(event);
+    setIsDetailsOpen(true);
   };
 
   const navigateMonth = (direction: 'prev' | 'next') => {
@@ -236,27 +333,60 @@ export default function CalendarModule() {
               .map((event) => {
                 const colorConfig = getColorConfig(event.color);
                 return (
-                  <div key={event.id} className={`p-3 rounded-lg border ${colorConfig.bg}`}>
+                  <div key={event.id} className={`p-4 rounded-lg border ${colorConfig.bg} ${colorConfig.border}`}>
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
+                        <div className="flex items-center gap-2 mb-2">
                           <Badge className={`${colorConfig.value} text-white`}>
                             {format(event.date, 'MMM d')}
                           </Badge>
-                          <h3 className={`font-semibold ${colorConfig.text}`}>
-                            {event.title}
-                          </h3>
+                          <Badge variant="outline" className="text-xs">
+                            {event.category}
+                          </Badge>
+                          {event.reminder && (
+                            <Badge variant="outline" className="text-xs text-amber-600">
+                              <Bell className="h-3 w-3 mr-1" />
+                              {event.reminderTime}m
+                            </Badge>
+                          )}
+                        </div>
+                        <h3 className={`font-semibold ${colorConfig.text} mb-1`}>
+                          {event.title}
+                        </h3>
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground mb-2">
+                          {event.time && (
+                            <div className="flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              {event.time}
+                            </div>
+                          )}
+                          {event.location && (
+                            <div className="flex items-center gap-1">
+                              <span>📍</span>
+                              {event.location}
+                            </div>
+                          )}
                         </div>
                         {event.description && (
-                          <p className="text-sm text-muted-foreground">{event.description}</p>
+                          <p className="text-sm text-muted-foreground line-clamp-2">{event.description}</p>
                         )}
                       </div>
                       <div className="flex gap-1">
                         <Button
                           variant="ghost"
                           size="sm"
+                          onClick={() => openDetailsDialog(event)}
+                          className="h-8 w-8 p-0"
+                          title="View Details"
+                        >
+                          <Eye className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           onClick={() => openEditDialog(event)}
                           className="h-8 w-8 p-0"
+                          title="Edit Event"
                         >
                           <Edit className="h-3 w-3" />
                         </Button>
@@ -265,6 +395,7 @@ export default function CalendarModule() {
                           size="sm"
                           onClick={() => handleDeleteEvent(event.id)}
                           className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                          title="Delete Event"
                         >
                           <Trash2 className="h-3 w-3" />
                         </Button>
@@ -307,6 +438,43 @@ export default function CalendarModule() {
               />
             </div>
 
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="time">Time</Label>
+                <Input
+                  id="time"
+                  type="time"
+                  value={eventForm.time}
+                  onChange={(e) => setEventForm({ ...eventForm, time: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="category">Category</Label>
+                <Select value={eventForm.category} onValueChange={(value) => setEventForm({ ...eventForm, category: value })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {eventCategories.map((category) => (
+                      <SelectItem key={category} value={category}>
+                        {category}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="location">Location</Label>
+              <Input
+                id="location"
+                value={eventForm.location}
+                onChange={(e) => setEventForm({ ...eventForm, location: e.target.value })}
+                placeholder="Enter event location (optional)"
+              />
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="color">Color Tag</Label>
               <Select value={eventForm.color} onValueChange={(value) => setEventForm({ ...eventForm, color: value })}>
@@ -326,10 +494,42 @@ export default function CalendarModule() {
               </Select>
             </div>
 
-            {selectedDate && !editingEvent && (
-              <div className="text-sm text-muted-foreground">
-                Event will be added to: {format(selectedDate, 'MMMM d, yyyy')}
+            <div className="space-y-4">
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="reminder"
+                  checked={eventForm.reminder}
+                  onCheckedChange={(checked) => setEventForm({ ...eventForm, reminder: checked })}
+                />
+                <Label htmlFor="reminder">Set Reminder</Label>
               </div>
+              
+              {eventForm.reminder && (
+                <div className="space-y-2">
+                  <Label htmlFor="reminderTime">Remind me</Label>
+                  <Select value={eventForm.reminderTime} onValueChange={(value) => setEventForm({ ...eventForm, reminderTime: value })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select reminder time" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="15">15 minutes before</SelectItem>
+                      <SelectItem value="30">30 minutes before</SelectItem>
+                      <SelectItem value="60">1 hour before</SelectItem>
+                      <SelectItem value="120">2 hours before</SelectItem>
+                      <SelectItem value="1440">1 day before</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+
+            {selectedDate && !editingEvent && (
+              <Alert>
+                <CalendarIcon className="h-4 w-4" />
+                <AlertDescription>
+                  Event will be added to: {format(selectedDate, 'MMMM d, yyyy')}
+                </AlertDescription>
+              </Alert>
             )}
           </div>
 
@@ -341,6 +541,107 @@ export default function CalendarModule() {
               {editingEvent ? 'Update Event' : 'Add Event'}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Event Details Dialog */}
+      <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarIcon className="h-5 w-5" />
+              Event Details
+            </DialogTitle>
+          </DialogHeader>
+          {viewingEvent && (
+            <div className="space-y-4 py-4">
+              <div className="text-center">
+                <h2 className="text-2xl font-bold text-foreground mb-2">{viewingEvent.title}</h2>
+                <div className="flex justify-center gap-2 mb-4">
+                  <Badge className={`${getColorConfig(viewingEvent.color).value} text-white`}>
+                    {format(viewingEvent.date, 'EEEE, MMMM d, yyyy')}
+                  </Badge>
+                  <Badge variant="outline">{viewingEvent.category}</Badge>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="grid grid-cols-2 gap-4">
+                {viewingEvent.time && (
+                  <div className="space-y-1">
+                    <Label className="text-sm font-medium text-muted-foreground">Time</Label>
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm">{viewingEvent.time}</span>
+                    </div>
+                  </div>
+                )}
+                
+                {viewingEvent.location && (
+                  <div className="space-y-1">
+                    <Label className="text-sm font-medium text-muted-foreground">Location</Label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">📍</span>
+                      <span className="text-sm">{viewingEvent.location}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {viewingEvent.description && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-muted-foreground">Description</Label>
+                  <p className="text-sm text-foreground bg-muted p-3 rounded-md">
+                    {viewingEvent.description}
+                  </p>
+                </div>
+              )}
+
+              {viewingEvent.reminder && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-muted-foreground">Reminder</Label>
+                  <div className="flex items-center gap-2 text-sm">
+                    <Bell className="h-4 w-4 text-amber-600" />
+                    <span>Set for {viewingEvent.reminderTime} minutes before</span>
+                  </div>
+                </div>
+              )}
+
+              <Separator />
+
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsDetailsOpen(false)}
+                >
+                  Close
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsDetailsOpen(false);
+                    openEditDialog(viewingEvent);
+                  }}
+                  className="gap-2"
+                >
+                  <Edit className="h-4 w-4" />
+                  Edit
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => {
+                    setIsDetailsOpen(false);
+                    handleDeleteEvent(viewingEvent.id);
+                  }}
+                  className="gap-2"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

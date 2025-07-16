@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Calendar } from '@/components/ui/calendar';
 import { Button } from '@/components/ui/button';
@@ -119,7 +120,6 @@ export default function CalendarModule() {
     setEvents([...events, newEvent]);
     resetForm();
     
-    // Show success toast
     toast({
       title: "Event Created",
       description: `${eventForm.title} has been added to your calendar.`,
@@ -146,7 +146,6 @@ export default function CalendarModule() {
     ));
     resetForm();
     
-    // Show success toast
     toast({
       title: "Event Updated",
       description: `${eventForm.title} has been updated successfully.`,
@@ -157,7 +156,6 @@ export default function CalendarModule() {
     const event = events.find(e => e.id === eventId);
     setEvents(events.filter(event => event.id !== eventId));
     
-    // Show success toast
     toast({
       title: "Event Deleted",
       description: `${event?.title} has been removed from your calendar.`,
@@ -181,6 +179,7 @@ export default function CalendarModule() {
 
   const openEditDialog = (event: CalendarEvent) => {
     setEditingEvent(event);
+    setSelectedDate(event.date);
     setEventForm({
       title: event.title,
       description: event.description || '',
@@ -224,7 +223,7 @@ export default function CalendarModule() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 max-w-full overflow-hidden">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Academic Calendar</h1>
@@ -264,13 +263,18 @@ export default function CalendarModule() {
               <Calendar
                 mode="single"
                 selected={selectedDate}
-                onSelect={(date) => date && openAddDialog(date)}
+                onSelect={(date) => {
+                  if (date) {
+                    setSelectedDate(date);
+                    openAddDialog(date);
+                  }
+                }}
                 month={month}
                 className="rounded-md border-none p-0"
                 classNames={{
                   head_cell: "text-muted-foreground rounded-md w-9 font-normal text-[0.8rem]",
                   cell: "relative h-9 w-9 text-center text-sm p-0 focus-within:relative focus-within:z-20 [&:has([aria-selected])]:bg-accent",
-                  day: "h-9 w-9 p-0 font-normal hover:bg-accent hover:text-accent-foreground",
+                  day: "h-9 w-9 p-0 font-normal hover:bg-accent hover:text-accent-foreground cursor-pointer",
                   day_today: "bg-accent text-accent-foreground font-semibold",
                   day_selected: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
                   day_outside: "text-muted-foreground opacity-50",
@@ -289,8 +293,12 @@ export default function CalendarModule() {
                             h-9 w-9 p-0 font-normal rounded-md transition-colors
                             ${isToday ? 'bg-accent text-accent-foreground font-semibold' : ''}
                             ${!isCurrentMonth ? 'text-muted-foreground opacity-50' : ''}
-                            hover:bg-accent hover:text-accent-foreground
+                            hover:bg-accent hover:text-accent-foreground cursor-pointer
                           `}
+                          onClick={() => {
+                            setSelectedDate(date);
+                            openAddDialog(date);
+                          }}
                         >
                           {format(date, 'd')}
                         </button>
@@ -410,48 +418,70 @@ export default function CalendarModule() {
 
       {/* Event Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader className="pb-4">
+            <DialogTitle className="text-xl font-semibold">
               {editingEvent ? 'Edit Event' : 'Add New Event'}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          
+          <div className="space-y-6 py-2">
+            {/* Selected Date Display */}
+            {selectedDate && (
+              <div className="bg-accent/50 p-4 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <CalendarIcon className="h-5 w-5 text-primary" />
+                  <span className="font-medium">Selected Date:</span>
+                  <span className="text-primary font-semibold">
+                    {format(selectedDate, 'EEEE, MMMM d, yyyy')}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Event Title */}
             <div className="space-y-2">
-              <Label htmlFor="title">Event Title</Label>
+              <Label htmlFor="title" className="text-sm font-medium">
+                Event Title <span className="text-destructive">*</span>
+              </Label>
               <Input
                 id="title"
                 value={eventForm.title}
                 onChange={(e) => setEventForm({ ...eventForm, title: e.target.value })}
                 placeholder="Enter event title"
+                className="h-11"
               />
             </div>
             
+            {/* Description */}
             <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="description" className="text-sm font-medium">Description</Label>
               <Textarea
                 id="description"
                 value={eventForm.description}
                 onChange={(e) => setEventForm({ ...eventForm, description: e.target.value })}
                 placeholder="Enter event description (optional)"
                 rows={3}
+                className="resize-none"
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            {/* Time and Category Row */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="time">Time</Label>
+                <Label htmlFor="time" className="text-sm font-medium">Time</Label>
                 <Input
                   id="time"
                   type="time"
                   value={eventForm.time}
                   onChange={(e) => setEventForm({ ...eventForm, time: e.target.value })}
+                  className="h-11"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="category">Category</Label>
+                <Label htmlFor="category" className="text-sm font-medium">Category</Label>
                 <Select value={eventForm.category} onValueChange={(value) => setEventForm({ ...eventForm, category: value })}>
-                  <SelectTrigger>
+                  <SelectTrigger className="h-11">
                     <SelectValue placeholder="Select category" />
                   </SelectTrigger>
                   <SelectContent>
@@ -465,27 +495,30 @@ export default function CalendarModule() {
               </div>
             </div>
 
+            {/* Location */}
             <div className="space-y-2">
-              <Label htmlFor="location">Location</Label>
+              <Label htmlFor="location" className="text-sm font-medium">Location</Label>
               <Input
                 id="location"
                 value={eventForm.location}
                 onChange={(e) => setEventForm({ ...eventForm, location: e.target.value })}
                 placeholder="Enter event location (optional)"
+                className="h-11"
               />
             </div>
 
+            {/* Color Tag */}
             <div className="space-y-2">
-              <Label htmlFor="color">Color Tag</Label>
+              <Label htmlFor="color" className="text-sm font-medium">Color Tag</Label>
               <Select value={eventForm.color} onValueChange={(value) => setEventForm({ ...eventForm, color: value })}>
-                <SelectTrigger>
+                <SelectTrigger className="h-11">
                   <SelectValue placeholder="Select a color" />
                 </SelectTrigger>
                 <SelectContent>
                   {eventColors.map((color) => (
                     <SelectItem key={color.value} value={color.value}>
                       <div className="flex items-center gap-2">
-                        <div className={`w-3 h-3 rounded-full ${color.value}`} />
+                        <div className={`w-4 h-4 rounded-full ${color.value}`} />
                         {color.name}
                       </div>
                     </SelectItem>
@@ -494,21 +527,27 @@ export default function CalendarModule() {
               </Select>
             </div>
 
+            <Separator />
+
+            {/* Reminder Section */}
             <div className="space-y-4">
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <Label htmlFor="reminder" className="text-sm font-medium">Set Reminder</Label>
+                  <p className="text-xs text-muted-foreground">Get notified before the event</p>
+                </div>
                 <Switch
                   id="reminder"
                   checked={eventForm.reminder}
                   onCheckedChange={(checked) => setEventForm({ ...eventForm, reminder: checked })}
                 />
-                <Label htmlFor="reminder">Set Reminder</Label>
               </div>
               
               {eventForm.reminder && (
-                <div className="space-y-2">
-                  <Label htmlFor="reminderTime">Remind me</Label>
+                <div className="space-y-2 pl-4 border-l-2 border-primary/20">
+                  <Label htmlFor="reminderTime" className="text-sm font-medium">Remind me</Label>
                   <Select value={eventForm.reminderTime} onValueChange={(value) => setEventForm({ ...eventForm, reminderTime: value })}>
-                    <SelectTrigger>
+                    <SelectTrigger className="h-11">
                       <SelectValue placeholder="Select reminder time" />
                     </SelectTrigger>
                     <SelectContent>
@@ -522,22 +561,18 @@ export default function CalendarModule() {
                 </div>
               )}
             </div>
-
-            {selectedDate && !editingEvent && (
-              <Alert>
-                <CalendarIcon className="h-4 w-4" />
-                <AlertDescription>
-                  Event will be added to: {format(selectedDate, 'MMMM d, yyyy')}
-                </AlertDescription>
-              </Alert>
-            )}
           </div>
 
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={resetForm}>
+          {/* Dialog Actions */}
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <Button variant="outline" onClick={resetForm} className="min-w-[80px]">
               Cancel
             </Button>
-            <Button onClick={editingEvent ? handleEditEvent : handleAddEvent}>
+            <Button 
+              onClick={editingEvent ? handleEditEvent : handleAddEvent}
+              disabled={!eventForm.title.trim()}
+              className="min-w-[80px]"
+            >
               {editingEvent ? 'Update Event' : 'Add Event'}
             </Button>
           </div>

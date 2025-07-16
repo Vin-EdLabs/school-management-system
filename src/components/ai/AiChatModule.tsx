@@ -17,7 +17,13 @@ interface ChatMessage {
   type: 'user' | 'ai';
   content: string;
   timestamp: Date;
-  action?: 'receipt' | 'payment' | 'info';
+  action?: 'receipt' | 'payment' | 'info' | 'balance' | 'stats' | 'search';
+  data?: any;
+}
+
+interface AIResponse {
+  content: string;
+  action?: 'receipt' | 'payment' | 'info' | 'balance' | 'stats' | 'search';
   data?: any;
 }
 
@@ -91,7 +97,7 @@ const AiChatModule = () => {
     return `RG${timestamp}${random}`;
   };
 
-  const processUserInput = async (input: string) => {
+  const processUserInput = async (input: string): Promise<string | AIResponse> => {
     setIsProcessing(true);
     const lowerInput = input.toLowerCase();
 
@@ -216,38 +222,53 @@ const AiChatModule = () => {
           return 'Unable to calculate balance for this student.';
         }
 
-        return `💰 Balance for ${student.firstName} ${student.lastName}:\n\n🏫 Class: ${student.classAssigned}\n💵 Current Term Fee: GHS ${balanceInfo.currentTermFee.toFixed(2)}\n✅ Total Paid: GHS ${balanceInfo.totalPaid.toFixed(2)}\n⚠️ Outstanding Balance: GHS ${balanceInfo.balance.toFixed(2)}\n\n${balanceInfo.balance === 0 ? '✅ Fully paid!' : '❌ Payment pending'}`;
+        return {
+          content: `💰 Balance for ${student.firstName} ${student.lastName}:\n\n🏫 Class: ${student.classAssigned}\n💵 Current Term Fee: GHS ${balanceInfo.currentTermFee.toFixed(2)}\n✅ Total Paid: GHS ${balanceInfo.totalPaid.toFixed(2)}\n⚠️ Outstanding Balance: GHS ${balanceInfo.balance.toFixed(2)}\n\n${balanceInfo.balance === 0 ? '✅ Fully paid!' : '❌ Payment pending'}`,
+          action: 'balance'
+        };
       }
 
       // School statistics
       if (lowerInput.includes('total') || lowerInput.includes('number') || lowerInput.includes('how many') || lowerInput.includes('statistics') || lowerInput.includes('stats')) {
         if (lowerInput.includes('student')) {
-          return `👥 Total Students: ${students.length}\n\n📊 Breakdown by Level:\n${
-            classes.reduce((acc, cls) => {
-              const studentCount = students.filter(s => s.classAssigned === cls.className).length;
-              if (studentCount > 0) {
-                acc += `• ${cls.className}: ${studentCount} students\n`;
-              }
-              return acc;
-            }, '')
-          }`;
+          return {
+            content: `👥 Total Students: ${students.length}\n\n📊 Breakdown by Level:\n${
+              classes.reduce((acc, cls) => {
+                const studentCount = students.filter(s => s.classAssigned === cls.className).length;
+                if (studentCount > 0) {
+                  acc += `• ${cls.className}: ${studentCount} students\n`;
+                }
+                return acc;
+              }, '')
+            }`,
+            action: 'stats'
+          };
         }
 
         if (lowerInput.includes('teacher')) {
-          return `👨‍🏫 Total Teachers: ${teachers.length}\n\n📋 Employment Status:\n• Active: ${teachers.filter(t => t.employmentStatus === 'Active').length}\n• Inactive: ${teachers.filter(t => t.employmentStatus !== 'Active').length}`;
+          return {
+            content: `👨‍🏫 Total Teachers: ${teachers.length}\n\n📋 Employment Status:\n• Active: ${teachers.filter(t => t.employmentStatus === 'Active').length}\n• Inactive: ${teachers.filter(t => t.employmentStatus !== 'Active').length}`,
+            action: 'stats'
+          };
         }
 
         if (lowerInput.includes('class')) {
-          return `🏫 Total Classes: ${classes.length}\n\n📚 Class Breakdown:\n${
-            classes.map(cls => {
-              const studentCount = students.filter(s => s.classAssigned === cls.className).length;
-              return `• ${cls.className}: ${studentCount}/${cls.maxClassSize} students`;
-            }).join('\n')
-          }`;
+          return {
+            content: `🏫 Total Classes: ${classes.length}\n\n📚 Class Breakdown:\n${
+              classes.map(cls => {
+                const studentCount = students.filter(s => s.classAssigned === cls.className).length;
+                return `• ${cls.className}: ${studentCount}/${cls.maxClassSize} students`;
+              }).join('\n')
+            }`,
+            action: 'stats'
+          };
         }
 
         // General stats
-        return `📊 Rosa Gardens School Statistics:\n\n👥 Students: ${students.length}\n👨‍🏫 Teachers: ${teachers.length}\n🏫 Classes: ${classes.length}\n💰 Total Payments This Term: GHS ${payments.reduce((sum, p) => sum + p.amount, 0).toFixed(2)}\n📅 Current Term: ${getActiveAcademicTerm()}`;
+        return {
+          content: `📊 Rosa Gardens School Statistics:\n\n👥 Students: ${students.length}\n👨‍🏫 Teachers: ${teachers.length}\n🏫 Classes: ${classes.length}\n💰 Total Payments This Term: GHS ${payments.reduce((sum, p) => sum + p.amount, 0).toFixed(2)}\n📅 Current Term: ${getActiveAcademicTerm()}`,
+          action: 'stats'
+        };
       }
 
       // Search student
@@ -259,11 +280,15 @@ const AiChatModule = () => {
           return 'Student not found. Please check the student ID or name.';
         }
 
-        return `👤 Student Information:\n\n📝 Name: ${student.firstName} ${student.lastName}\n🆔 Student ID: ${student.studentId}\n🏫 Class: ${student.classAssigned}\n📞 Guardian: ${student.guardianName}\n☎️ Contact: ${student.guardianContact}\n📅 Admission Date: ${new Date(student.dateOfAdmission).toLocaleDateString()}`;
+        return {
+          content: `👤 Student Information:\n\n📝 Name: ${student.firstName} ${student.lastName}\n🆔 Student ID: ${student.studentId}\n🏫 Class: ${student.classAssigned}\n📞 Guardian: ${student.guardianName}\n☎️ Contact: ${student.guardianContact}\n📅 Admission Date: ${new Date(student.dateOfAdmission).toLocaleDateString()}`,
+          action: 'search'
+        };
       }
 
       // Default help response
-      return `I can help you with:
+      return {
+        content: `I can help you with:
 
 💰 **Payment Recording**: "Record payment of 500 for student ID STU001"
 📄 **Receipt Generation**: "Show receipt for John Doe"
@@ -271,7 +296,9 @@ const AiChatModule = () => {
 📊 **School Statistics**: "How many students?" or "Total teachers"
 🔍 **Student Search**: "Find student John Doe"
 
-Please let me know what you'd like to do!`;
+Please let me know what you'd like to do!`,
+        action: 'info'
+      };
 
     } catch (error) {
       console.error('AI processing error:', error);

@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
 interface Student {
@@ -136,17 +137,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const data = JSON.parse(savedData);
         setStudents(data.students || []);
         setTeachers(data.teachers || []);
-        setClasses(data.classes || []);
+        setClasses(data.classes || initializeDefaultClasses());
         setFeeStructures(data.feeStructures || []);
         setPayments(data.payments || []);
         setIncome(data.income || []);
         setExpenses(data.expenses || []);
       } catch (error) {
         console.error('Error loading data:', error);
-        initializeSampleData();
+        // Only initialize classes on error, no sample data
+        setClasses(initializeDefaultClasses());
       }
     } else {
-      initializeSampleData();
+      // Only initialize classes for new installations
+      setClasses(initializeDefaultClasses());
     }
   }, []);
 
@@ -164,9 +167,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('rosaGardensData', JSON.stringify(data));
   }, [students, teachers, classes, feeStructures, payments, income, expenses]);
 
-  const initializeSampleData = () => {
-    // Sample Classes with beautiful flower names
-    const sampleClasses: Class[] = [
+  const initializeDefaultClasses = (): Class[] => {
+    return [
       {
         id: '1',
         className: 'Lily (Creche)',
@@ -294,146 +296,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         students: []
       }
     ];
+  };
 
-    // Sample Students
-    const sampleStudents: Student[] = [
-      {
-        id: '1',
-        firstName: 'Kofi',
-        lastName: 'Asante',
-        gender: 'Male',
-        dateOfBirth: '2015-03-15',
-        nationality: 'Ghanaian',
-        studentId: '20240001',
-        admissionNumber: 'ADM001',
-        classAssigned: 'Daffodil (Class 4)',
-        guardianName: 'Mrs. Akosua Asante',
-        guardianContact: '+233 24 123 4567',
-        homeAddress: 'Accra, Greater Accra Region',
-        numberOfSiblings: 1,
-        namesOfSiblings: 'Ama Asante',
-        previousSchool: 'ABC Primary School',
-        dateOfAdmission: '2024-01-15',
-        notes: 'Good student, very active in sports'
-      },
-      {
-        id: '2',
-        firstName: 'Ama',
-        lastName: 'Osei',
-        gender: 'Female',
-        dateOfBirth: '2018-07-22',
-        nationality: 'Ghanaian',
-        studentId: '20240002',
-        admissionNumber: 'ADM002',
-        classAssigned: 'Marigold (KG1)',
-        guardianName: 'Mr. Kwame Osei',
-        guardianContact: '+233 20 987 6543',
-        homeAddress: 'Kumasi, Ashanti Region',
-        numberOfSiblings: 0,
-        namesOfSiblings: '',
-        previousSchool: '',
-        dateOfAdmission: '2024-01-10',
-        notes: 'Very creative and loves art'
-      }
-    ];
-
-    // Sample Teachers
-    const sampleTeachers: Teacher[] = [
-      {
-        id: '1',
-        fullName: 'Mrs. Akosua Mensah',
-        gender: 'Female',
-        dateOfBirth: '1985-05-10',
-        staffId: 'TCH001',
-        phoneNumber: '+233 24 555 0123',
-        email: 'akosua.mensah@rosagardens.edu.gh',
-        address: 'East Legon, Accra',
-        subjectsTaught: ['Mathematics', 'Science'],
-        classAssigned: 'Daffodil (Class 4)',
-        employmentDate: '2020-01-15',
-        monthlySalary: 2500,
-        employmentStatus: 'Active',
-        notes: 'Excellent teacher with 5 years experience'
-      }
-    ];
-
-    // Sample Fee Structures
-    const sampleFeeStructures: FeeStructure[] = [
-      {
-        id: '1',
-        className: 'Daffodil (Class 4)',
-        term: 'Term 1 2024',
-        amount: 1200,
-        dueDate: '2024-02-15',
-        description: 'Tuition fees for Term 1 2024'
-      },
-      {
-        id: '2',
-        className: 'Marigold (KG1)',
-        term: 'Term 1 2024',
-        amount: 800,
-        dueDate: '2024-02-15',
-        description: 'Tuition fees for Term 1 2024'
-      }
-    ];
-
-    // Sample Payments
-    const samplePayments: Payment[] = [
-      {
-        id: '1',
-        studentId: '1',
-        amount: 600,
-        date: '2024-01-20',
-        paymentMethod: 'Mobile Money',
-        term: 'Term 1 2024',
-        notes: 'Partial payment - first installment'
-      },
-      {
-        id: '2',
-        studentId: '2',
-        amount: 800,
-        date: '2024-01-18',
-        paymentMethod: 'Cash',
-        term: 'Term 1 2024',
-        notes: 'Full payment for the term'
-      }
-    ];
-
-    // Sample Income
-    const sampleIncome: Income[] = [
-      {
-        id: '1',
-        source: 'Uniform Sales',
-        amount: 500,
-        date: '2024-01-25',
-        paymentMethod: 'Cash',
-        receivedBy: 'Admin',
-        notes: 'Sale of school uniforms to parents'
-      }
-    ];
-
-    // Sample Expenses
-    const sampleExpenses: Expense[] = [
-      {
-        id: '1',
-        title: 'Office Supplies Purchase',
-        category: 'Supplies',
-        amount: 350,
-        payeeName: 'ABC Stationery Ltd',
-        paymentDate: '2024-01-22',
-        paymentMethod: 'Cash',
-        purpose: 'Monthly office supplies',
-        notes: 'Pens, papers, markers for all classes'
-      }
-    ];
-
-    setClasses(sampleClasses);
-    setStudents(sampleStudents);
-    setTeachers(sampleTeachers);
-    setFeeStructures(sampleFeeStructures);
-    setPayments(samplePayments);
-    setIncome(sampleIncome);
-    setExpenses(sampleExpenses);
+  const generateId = () => {
+    return Date.now().toString() + Math.random().toString(36).substr(2, 9);
   };
 
   const generateStudentId = () => {
@@ -466,10 +332,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const maxStaffId = existingStaffIds.length > 0 ? Math.max(...existingStaffIds) : 0;
     const nextNumber = (maxStaffId + 1).toString().padStart(3, '0');
     return `TCH${nextNumber}`;
-  };
-
-  const generateId = () => {
-    return Date.now().toString() + Math.random().toString(36).substr(2, 9);
   };
 
   // Student functions

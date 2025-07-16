@@ -1,161 +1,98 @@
+
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
-import { BarChart3, Download, FileText, Calculator, Users, DollarSign } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
+import { BarChart3, Download, FileText, Calculator, DollarSign } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { getActiveAcademicTerm, calculateStudentFees } from '../../utils/feeCalculations';
+import { reportService } from '../../services';
 
 const ReportsModule = () => {
-  const { students, teachers, payments, income, expenses, feeStructures, classes } = useData();
+  const { students, payments, income, expenses, feeStructures, classes } = useData();
   const [selectedTerm, setSelectedTerm] = useState(getActiveAcademicTerm());
-  const [selectedClass, setSelectedClass] = useState('All');
 
-  // Calculate detailed financial summary with real data
-  const calculateDetailedFinancialSummary = () => {
-    const currentYear = selectedTerm.split(' ').pop() || '2024';
+  // Generate financial summary from real data
+  const generateFinancialSummary = () => {
+    const currentYear = selectedTerm.split(' ').pop() || new Date().getFullYear().toString();
     
-    // Get real fee payments from context
-    const paymentsArray = Array.isArray(payments) ? payments : [];
-    const studentsArray = Array.isArray(students) ? students : [];
-    
-    const feePayments = paymentsArray
-      .filter(payment => payment.term === selectedTerm)
-      .map(payment => {
-        const student = studentsArray.find(s => s.id === payment.studentId);
-        return {
-          id: payment.id,
-          type: 'Fee Payment',
-          amount: payment.amount,
-          date: payment.date,
-          description: `Fee payment from ${student?.firstName || 'Unknown'} ${student?.lastName || 'Student'} (${student?.classAssigned || 'Unknown Class'})`,
-          category: 'School Fees',
-          studentId: payment.studentId,
-          term: payment.term,
-          paymentMethod: payment.paymentMethod || 'Cash'
-        };
-      });
-
-    // Get real other income records from context
-    const incomeArray = Array.isArray(income) ? income : [];
-    const otherIncomeRecords = incomeArray
-      .filter(inc => {
-        const incomeDate = new Date(inc.date);
-        return incomeDate.getFullYear().toString() === currentYear;
-      })
-      .map(inc => ({
-        id: inc.id,
-        type: 'Other Income',
-        amount: inc.amount,
-        date: inc.date,
-        description: inc.description || inc.source || 'Income record',
-        category: inc.category || 'Other Income',
-        source: inc.source || 'Unknown'
-      }));
-
-    // Get real expense records from context
-    const expensesArray = Array.isArray(expenses) ? expenses : [];
-    const expenseRecords = expensesArray
-      .filter(expense => {
-        const expenseDate = new Date(expense.paymentDate);
-        return expenseDate.getFullYear().toString() === currentYear;
-      })
-      .map(expense => ({
-        id: expense.id,
-        type: 'Expense',
-        amount: expense.amount,
-        date: expense.paymentDate,
-        description: expense.description || expense.title || 'Expense record',
-        category: expense.category || 'General Expense',
-        vendor: expense.vendor || expense.payeeName || 'Unknown',
-        paymentMethod: expense.paymentMethod || 'Cash'
-      }));
-
-    // Calculate totals from real data
+    const feePayments = payments.filter(payment => payment.term === selectedTerm);
     const totalFees = feePayments.reduce((sum, payment) => sum + payment.amount, 0);
-    const totalOtherIncome = otherIncomeRecords.reduce((sum, inc) => sum + inc.amount, 0);
-    const totalExpenses = expenseRecords.reduce((sum, expense) => sum + expense.amount, 0);
+    
+    const currentYearIncome = income.filter(inc => {
+      const incomeDate = new Date(inc.date);
+      return incomeDate.getFullYear().toString() === currentYear;
+    });
+    const totalOtherIncome = currentYearIncome.reduce((sum, inc) => sum + inc.amount, 0);
+    
+    const currentYearExpenses = expenses.filter(expense => {
+      const expenseDate = new Date(expense.paymentDate);
+      return expenseDate.getFullYear().toString() === currentYear;
+    });
+    const totalExpenses = currentYearExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+    
     const totalIncome = totalFees + totalOtherIncome;
     const balance = totalIncome - totalExpenses;
 
-    return { 
-      totalFees, 
-      totalOtherIncome, 
-      totalIncome, 
-      totalExpenses, 
+    return {
+      totalFees,
+      totalOtherIncome,
+      totalIncome,
+      totalExpenses,
       balance,
       feePayments,
-      otherIncomeRecords,
-      expenseRecords,
-      allIncomeRecords: [...feePayments, ...otherIncomeRecords],
-      allTransactions: [...feePayments, ...otherIncomeRecords, ...expenseRecords]
+      currentYearIncome,
+      currentYearExpenses
     };
   };
 
-  // Generate real class report with actual data
-  const generateDetailedClassReport = () => {
-    const classesArray = Array.isArray(classes) ? classes : [];
-    const studentsArray = Array.isArray(students) ? students : [];
-    const paymentsArray = Array.isArray(payments) ? payments : [];
-    
-    return classesArray.map(cls => {
-      const classStudents = studentsArray.filter(student => student.classAssigned === cls.className);
+  // Generate class financial report
+  const generateClassReport = () => {
+    return classes.map(cls => {
+      const classStudents = students.filter(student => student.classAssigned === cls.className);
       
       let totalFeesExpected = 0;
       let totalFeesCollected = 0;
       let totalArrears = 0;
       
-      const studentDetails = classStudents.map(student => {
+      classStudents.forEach(student => {
         const feeCalculation = calculateStudentFees(
           student.id,
           selectedTerm,
           student.classAssigned,
           feeStructures,
-          paymentsArray
+          payments
         );
         
         totalFeesExpected += feeCalculation.currentTermFee;
         totalFeesCollected += feeCalculation.totalPaid;
         totalArrears += feeCalculation.arrears;
-        
-        return {
-          studentId: student.id,
-          studentName: `${student.firstName} ${student.lastName}`,
-          expectedFee: feeCalculation.currentTermFee,
-          totalPaid: feeCalculation.totalPaid,
-          arrears: feeCalculation.arrears,
-          balance: feeCalculation.totalAmountDue - feeCalculation.totalPaid
-        };
       });
 
       return {
         className: cls.className,
         enrolled: classStudents.length,
         capacity: cls.maxClassSize,
-        utilization: ((classStudents.length / cls.maxClassSize) * 100).toFixed(1),
+        utilization: cls.maxClassSize > 0 ? ((classStudents.length / cls.maxClassSize) * 100).toFixed(1) : '0',
         totalFeesExpected,
         totalFeesCollected,
         totalArrears,
-        outstandingBalance: totalFeesExpected - totalFeesCollected + totalArrears,
-        studentDetails
+        outstandingBalance: totalFeesExpected - totalFeesCollected + totalArrears
       };
     });
   };
 
-  // Generate real outstanding report with actual data
-  const generateComprehensiveOutstandingReport = () => {
-    const studentsArray = Array.isArray(students) ? students : [];
-    const paymentsArray = Array.isArray(payments) ? payments : [];
-    
-    return studentsArray.map(student => {
+  // Generate outstanding balances report
+  const generateOutstandingReport = () => {
+    return students.map(student => {
       const feeCalculation = calculateStudentFees(
         student.id,
         selectedTerm,
         student.classAssigned,
         feeStructures,
-        paymentsArray
+        payments
       );
 
       const outstanding = Math.max(0, feeCalculation.totalAmountDue - feeCalculation.totalPaid);
@@ -166,28 +103,25 @@ const ReportsModule = () => {
         className: student.classAssigned,
         currentTermFee: feeCalculation.currentTermFee,
         arrears: feeCalculation.arrears,
-        creditBalance: feeCalculation.creditBalance,
         totalAmountDue: feeCalculation.totalAmountDue,
         totalPaid: feeCalculation.totalPaid,
-        outstanding: outstanding,
-        paymentHistory: paymentsArray.filter(p => p.studentId === student.id)
+        outstanding
       };
     }).filter(student => student.outstanding > 0);
   };
 
-  // Calculate data from real context data
-  const financial = calculateDetailedFinancialSummary();
-  const classReport = generateDetailedClassReport();
-  const outstandingReport = generateComprehensiveOutstandingReport();
+  const financial = generateFinancialSummary();
+  const classReport = generateClassReport();
+  const outstandingReport = generateOutstandingReport();
 
-  // Chart data for income/expense breakdown by category using real data
-  const incomeByCategory = financial.allIncomeRecords.reduce((acc, record) => {
-    const category = record.category || 'Other';
+  // Chart data for categories
+  const incomeByCategory = financial.currentYearIncome.reduce((acc, record) => {
+    const category = record.category || record.source || 'Other';
     acc[category] = (acc[category] || 0) + record.amount;
     return acc;
   }, {} as Record<string, number>);
 
-  const expenseByCategory = financial.expenseRecords.reduce((acc, record) => {
+  const expenseByCategory = financial.currentYearExpenses.reduce((acc, record) => {
     const category = record.category || 'Other';
     acc[category] = (acc[category] || 0) + record.amount;
     return acc;
@@ -197,19 +131,23 @@ const ReportsModule = () => {
     ...Object.entries(incomeByCategory).map(([category, amount]) => ({
       name: category,
       income: amount,
-      expense: 0,
-      type: 'Income'
+      expense: 0
     })),
     ...Object.entries(expenseByCategory).map(([category, amount]) => ({
       name: category,
       income: 0,
-      expense: amount,
-      type: 'Expense'
+      expense: amount
     }))
   ];
 
-  // Monthly trend data from real transactions
-  const monthlyTrends = financial.allTransactions.reduce((acc, transaction) => {
+  // Monthly trends
+  const allTransactions = [
+    ...financial.feePayments.map(p => ({ ...p, type: 'Income' as const })),
+    ...financial.currentYearIncome.map(i => ({ ...i, type: 'Income' as const })),
+    ...financial.currentYearExpenses.map(e => ({ ...e, type: 'Expense' as const, date: e.paymentDate }))
+  ];
+
+  const monthlyTrends = allTransactions.reduce((acc, transaction) => {
     const month = new Date(transaction.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short' });
     if (!acc[month]) {
       acc[month] = { month, income: 0, expense: 0 };
@@ -225,60 +163,38 @@ const ReportsModule = () => {
   }, {} as Record<string, any>);
 
   const trendData = Object.values(monthlyTrends).sort((a: any, b: any) => 
-    new Date(a.month).getTime() - new Date(b.month).getTime()
+    new Date(a.month + ' 1').getTime() - new Date(b.month + ' 1').getTime()
   );
 
-  const COLORS = ['#3B82F6', '#10B981', '#EF4444', '#F59E0B', '#8B5CF6'];
+  const exportReport = async (reportType: string) => {
+    try {
+      const data = reportService.generateReport(reportType, {
+        financial,
+        classReport,
+        outstandingReport,
+        selectedTerm
+      });
+      
+      const filename = `${reportType}-report-${selectedTerm.replace(/\s+/g, '-').toLowerCase()}.json`;
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
 
-  const exportDetailedReport = (reportType: string) => {
-    let data;
-    let filename;
-
-    switch (reportType) {
-      case 'financial':
-        data = {
-          summary: financial,
-          incomeByCategory,
-          expenseByCategory,
-          monthlyTrends: trendData,
-          detailedTransactions: financial.allTransactions
-        };
-        filename = `detailed-financial-report-${selectedTerm.replace(/\s+/g, '-').toLowerCase()}.json`;
-        break;
-      case 'enrollment':
-        data = classReport;
-        filename = `detailed-enrollment-report-${selectedTerm.replace(/\s+/g, '-').toLowerCase()}.json`;
-        break;
-      case 'outstanding':
-        data = outstandingReport;
-        filename = `comprehensive-outstanding-report-${selectedTerm.replace(/\s+/g, '-').toLowerCase()}.json`;
-        break;
-      default:
-        data = { 
-          financial, 
-          enrollment: classReport, 
-          outstanding: outstandingReport,
-          analytics: {
-            incomeByCategory,
-            expenseByCategory,
-            monthlyTrends: trendData
-          }
-        };
-        filename = `complete-detailed-report-${selectedTerm.replace(/\s+/g, '-').toLowerCase()}.json`;
+      toast({
+        title: "Report Exported Successfully",
+        description: `${reportType} report has been exported`,
+      });
+    } catch (error) {
+      toast({
+        title: "Export Failed",
+        description: "There was an error exporting the report",
+        variant: "destructive"
+      });
     }
-
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-
-    toast({
-      title: "Real Data Report Exported",
-      description: `${reportType} report with actual financial records has been exported successfully`,
-    });
   };
 
   return (
@@ -308,7 +224,7 @@ const ReportsModule = () => {
         </div>
       </div>
 
-      {/* Financial Summary Cards - Using Real Data */}
+      {/* Financial Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
         <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
           <CardContent className="p-4">
@@ -329,7 +245,7 @@ const ReportsModule = () => {
               <div>
                 <p className="text-sm opacity-90">Other Income</p>
                 <p className="text-2xl font-bold">GHS {financial.totalOtherIncome.toLocaleString()}</p>
-                <p className="text-xs opacity-75">{financial.otherIncomeRecords.length} records</p>
+                <p className="text-xs opacity-75">{financial.currentYearIncome.length} records</p>
               </div>
               <Calculator className="w-8 h-8 opacity-80" />
             </div>
@@ -342,7 +258,7 @@ const ReportsModule = () => {
               <div>
                 <p className="text-sm opacity-90">Total Income</p>
                 <p className="text-2xl font-bold">GHS {financial.totalIncome.toLocaleString()}</p>
-                <p className="text-xs opacity-75">{financial.allIncomeRecords.length} total records</p>
+                <p className="text-xs opacity-75">{financial.feePayments.length + financial.currentYearIncome.length} records</p>
               </div>
               <BarChart3 className="w-8 h-8 opacity-80" />
             </div>
@@ -355,7 +271,7 @@ const ReportsModule = () => {
               <div>
                 <p className="text-sm opacity-90">Total Expenses</p>
                 <p className="text-2xl font-bold">GHS {financial.totalExpenses.toLocaleString()}</p>
-                <p className="text-xs opacity-75">{financial.expenseRecords.length} expenses</p>
+                <p className="text-xs opacity-75">{financial.currentYearExpenses.length} expenses</p>
               </div>
               <FileText className="w-8 h-8 opacity-80" />
             </div>
@@ -376,122 +292,126 @@ const ReportsModule = () => {
         </Card>
       </div>
 
-      {/* Charts - Using Real Data */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Income vs Expenses by Category (Real Data)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={categoryChartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="income" fill="#10B981" name="Income" />
-                <Bar dataKey="expense" fill="#EF4444" name="Expense" />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+      {/* Charts */}
+      {(categoryChartData.length > 0 || trendData.length > 0) && (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          {categoryChartData.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Income vs Expenses by Category</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={categoryChartData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis />
+                    <Tooltip />
+                    <Bar dataKey="income" fill="#10B981" name="Income" />
+                    <Bar dataKey="expense" fill="#EF4444" name="Expense" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Monthly Financial Trends (Real Data)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={trendData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip />
-                <Line type="monotone" dataKey="income" stroke="#10B981" name="Income" />
-                <Line type="monotone" dataKey="expense" stroke="#EF4444" name="Expense" />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
+          {trendData.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Monthly Financial Trends</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={trendData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="month" />
+                    <YAxis />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="income" stroke="#10B981" name="Income" />
+                    <Line type="monotone" dataKey="expense" stroke="#EF4444" name="Expense" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
 
-      {/* Detailed Reports Tables */}
+      {/* Reports Tables */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Class Financial Summary</CardTitle>
-            <Button onClick={() => exportDetailedReport('enrollment')} size="sm">
+            <Button onClick={() => exportReport('class')} size="sm">
               <Download className="w-4 h-4 mr-2" />
               Export
             </Button>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left p-2">Class</th>
-                    <th className="text-left p-2">Students</th>
-                    <th className="text-left p-2">Expected</th>
-                    <th className="text-left p-2">Collected</th>
-                    <th className="text-left p-2">Arrears</th>
-                    <th className="text-left p-2">Outstanding</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {classReport.map((cls, index) => (
-                    <tr key={index} className="border-b">
-                      <td className="p-2">{cls.className}</td>
-                      <td className="p-2">{cls.enrolled}/{cls.capacity}</td>
-                      <td className="p-2">GHS {cls.totalFeesExpected.toLocaleString()}</td>
-                      <td className="p-2 text-green-600">GHS {cls.totalFeesCollected.toLocaleString()}</td>
-                      <td className="p-2 text-orange-600">GHS {cls.totalArrears.toLocaleString()}</td>
-                      <td className="p-2 text-red-600">GHS {cls.outstandingBalance.toLocaleString()}</td>
+            {classReport.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left p-2">Class</th>
+                      <th className="text-left p-2">Students</th>
+                      <th className="text-left p-2">Expected</th>
+                      <th className="text-left p-2">Collected</th>
+                      <th className="text-left p-2">Outstanding</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {classReport.map((cls, index) => (
+                      <tr key={index} className="border-b">
+                        <td className="p-2">{cls.className}</td>
+                        <td className="p-2">{cls.enrolled}/{cls.capacity}</td>
+                        <td className="p-2">GHS {cls.totalFeesExpected.toLocaleString()}</td>
+                        <td className="p-2 text-green-600">GHS {cls.totalFeesCollected.toLocaleString()}</td>
+                        <td className="p-2 text-red-600">GHS {cls.outstandingBalance.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-center text-gray-500 py-8">No class data available</p>
+            )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Students with Outstanding Balances</CardTitle>
-            <Button onClick={() => exportDetailedReport('outstanding')} size="sm">
+            <CardTitle>Outstanding Balances</CardTitle>
+            <Button onClick={() => exportReport('outstanding')} size="sm">
               <Download className="w-4 h-4 mr-2" />
               Export
             </Button>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left p-2">Student</th>
-                    <th className="text-left p-2">Class</th>
-                    <th className="text-left p-2">Term Fee</th>
-                    <th className="text-left p-2">Arrears</th>
-                    <th className="text-left p-2">Total Due</th>
-                    <th className="text-left p-2">Paid</th>
-                    <th className="text-left p-2">Outstanding</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {outstandingReport.slice(0, 10).map((student, index) => (
-                    <tr key={index} className="border-b">
-                      <td className="p-2">{student.studentName}</td>
-                      <td className="p-2">{student.className}</td>
-                      <td className="p-2">GHS {student.currentTermFee.toLocaleString()}</td>
-                      <td className="p-2 text-orange-600">GHS {student.arrears.toLocaleString()}</td>
-                      <td className="p-2">GHS {student.totalAmountDue.toLocaleString()}</td>
-                      <td className="p-2 text-green-600">GHS {student.totalPaid.toLocaleString()}</td>
-                      <td className="p-2 text-red-600 font-bold">GHS {student.outstanding.toLocaleString()}</td>
+            {outstandingReport.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left p-2">Student</th>
+                      <th className="text-left p-2">Class</th>
+                      <th className="text-left p-2">Outstanding</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {outstandingReport.slice(0, 10).map((student, index) => (
+                      <tr key={index} className="border-b">
+                        <td className="p-2">{student.studentName}</td>
+                        <td className="p-2">{student.className}</td>
+                        <td className="p-2 text-red-600 font-bold">GHS {student.outstanding.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-center text-gray-500 py-8">No outstanding balances</p>
+            )}
             {outstandingReport.length > 10 && (
               <p className="text-sm text-gray-500 mt-2">
                 Showing 10 of {outstandingReport.length} students with outstanding balances
@@ -507,68 +427,74 @@ const ReportsModule = () => {
           <CardTitle>Recent Financial Transactions</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left p-2">Date</th>
-                  <th className="text-left p-2">Type</th>
-                  <th className="text-left p-2">Description</th>
-                  <th className="text-left p-2">Category</th>
-                  <th className="text-left p-2">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {financial.allTransactions
-                  .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                  .slice(0, 15)
-                  .map((transaction, index) => (
-                    <tr key={index} className="border-b hover:bg-gray-50">
-                      <td className="p-2">{new Date(transaction.date).toLocaleDateString()}</td>
-                      <td className="p-2">
-                        <span className={`px-2 py-1 rounded text-xs ${
-                          transaction.type === 'Expense' 
-                            ? 'bg-red-100 text-red-800' 
-                            : 'bg-green-100 text-green-800'
+          {allTransactions.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left p-2">Date</th>
+                    <th className="text-left p-2">Type</th>
+                    <th className="text-left p-2">Description</th>
+                    <th className="text-left p-2">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allTransactions
+                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                    .slice(0, 15)
+                    .map((transaction, index) => (
+                      <tr key={index} className="border-b hover:bg-gray-50">
+                        <td className="p-2">{new Date(transaction.date).toLocaleDateString()}</td>
+                        <td className="p-2">
+                          <span className={`px-2 py-1 rounded text-xs ${
+                            transaction.type === 'Expense' 
+                              ? 'bg-red-100 text-red-800' 
+                              : 'bg-green-100 text-green-800'
+                          }`}>
+                            {transaction.type}
+                          </span>
+                        </td>
+                        <td className="p-2">
+                          {'source' in transaction ? transaction.source : 
+                           'title' in transaction ? transaction.title : 
+                           'Fee Payment'}
+                        </td>
+                        <td className={`p-2 font-bold ${
+                          transaction.type === 'Expense' ? 'text-red-600' : 'text-green-600'
                         }`}>
-                          {transaction.type}
-                        </span>
-                      </td>
-                      <td className="p-2">{transaction.description}</td>
-                      <td className="p-2">{transaction.category}</td>
-                      <td className={`p-2 font-bold ${
-                        transaction.type === 'Expense' ? 'text-red-600' : 'text-green-600'
-                      }`}>
-                        {transaction.type === 'Expense' ? '-' : '+'}GHS {transaction.amount.toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
+                          {transaction.type === 'Expense' ? '-' : '+'}GHS {transaction.amount.toLocaleString()}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-center text-gray-500 py-8">No transactions available</p>
+          )}
         </CardContent>
       </Card>
 
       {/* Export Actions */}
       <Card>
         <CardHeader>
-          <CardTitle>Export Real Data Reports</CardTitle>
+          <CardTitle>Export Reports</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Button onClick={() => exportDetailedReport('financial')} variant="outline">
+            <Button onClick={() => exportReport('financial')} variant="outline">
               <Download className="w-4 h-4 mr-2" />
               Financial Report
             </Button>
-            <Button onClick={() => exportDetailedReport('enrollment')} variant="outline">
+            <Button onClick={() => exportReport('class')} variant="outline">
               <Download className="w-4 h-4 mr-2" />
               Class Analysis
             </Button>
-            <Button onClick={() => exportDetailedReport('outstanding')} variant="outline">
+            <Button onClick={() => exportReport('outstanding')} variant="outline">
               <Download className="w-4 h-4 mr-2" />
               Outstanding Report
             </Button>
-            <Button onClick={() => exportDetailedReport('complete')} variant="outline">
+            <Button onClick={() => exportReport('complete')} variant="outline">
               <Download className="w-4 h-4 mr-2" />
               Complete Analysis
             </Button>

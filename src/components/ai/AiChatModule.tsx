@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
-import { Bot, Send, User, Receipt, Sparkles, MessageCircle, Clock, Trash2 } from 'lucide-react';
+import { Bot, Send, User, Receipt, Sparkles, MessageCircle, Clock, Trash2, Command, Zap } from 'lucide-react';
 import ReceiptPrinter from '../common/ReceiptPrinter';
 import { useChatPersistence } from '../../hooks/useChatPersistence';
 import { AIProcessor } from '../../utils/aiProcessor';
@@ -22,6 +22,82 @@ interface ChatMessage {
   data?: any;
 }
 
+interface QuickCommand {
+  id: string;
+  icon: string;
+  title: string;
+  description: string;
+  command: string;
+  needsStudentId: boolean;
+}
+
+const quickCommands: QuickCommand[] = [
+  {
+    id: 'record-payment',
+    icon: '💰',
+    title: 'Record Payment',
+    description: 'Record a new payment for a student',
+    command: 'Record payment of [AMOUNT] for student [STUDENT]',
+    needsStudentId: true
+  },
+  {
+    id: 'check-balance',
+    icon: '💳',
+    title: 'Check Balance',
+    description: 'Check outstanding balance for a student',
+    command: 'Check balance for [STUDENT]',
+    needsStudentId: true
+  },
+  {
+    id: 'show-receipt',
+    icon: '📄',
+    title: 'Show Receipt',
+    description: 'Show latest receipt for a student',
+    command: 'Show receipt for [STUDENT]',
+    needsStudentId: true
+  },
+  {
+    id: 'all-receipts',
+    icon: '📋',
+    title: 'All Receipts',
+    description: 'Show all receipts for a student',
+    command: 'All receipts for [STUDENT]',
+    needsStudentId: true
+  },
+  {
+    id: 'students-owing',
+    icon: '⚠️',
+    title: 'Students Owing',
+    description: 'List all students with outstanding balances',
+    command: 'Which students owe money?',
+    needsStudentId: false
+  },
+  {
+    id: 'all-students',
+    icon: '👥',
+    title: 'All Students',
+    description: 'List all students in the school',
+    command: 'List all students',
+    needsStudentId: false
+  },
+  {
+    id: 'statistics',
+    icon: '📊',
+    title: 'Statistics',
+    description: 'Show school statistics and summary',
+    command: 'Show school statistics',
+    needsStudentId: false
+  },
+  {
+    id: 'find-student',
+    icon: '🔍',
+    title: 'Find Student',
+    description: 'Search for a specific student',
+    command: 'Find student [STUDENT]',
+    needsStudentId: true
+  }
+];
+
 const AiChatModule = () => {
   const { user, hasAccess } = useAuth();
   const { students, teachers, payments, feeStructures, addPayment, classes } = useData();
@@ -30,6 +106,10 @@ const AiChatModule = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
+  const [showCommands, setShowCommands] = useState(false);
+  const [selectedCommand, setSelectedCommand] = useState<QuickCommand | null>(null);
+  const [studentQuery, setStudentQuery] = useState('');
+  const [paymentAmount, setPaymentAmount] = useState('');
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -89,12 +169,13 @@ const AiChatModule = () => {
       }
     } catch (error) {
       console.error('AI processing error:', error);
-      addMessage({
+      const errorMessage: ChatMessage = {
         id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
         type: 'ai',
         content: 'Sorry, I encountered an error processing your request. Please try again or rephrase your question.',
         timestamp: new Date()
-      });
+      };
+      addMessage(errorMessage);
     } finally {
       setIsProcessing(false);
     }
@@ -117,10 +198,54 @@ const AiChatModule = () => {
     await processUserInput(currentInput);
   };
 
+  const handleCommandSelect = (command: QuickCommand) => {
+    setSelectedCommand(command);
+    setShowCommands(false);
+    
+    if (!command.needsStudentId) {
+      // Execute command immediately if it doesn't need student ID
+      setInputValue(command.command);
+      setTimeout(() => {
+        handleSendMessage();
+      }, 100);
+    } else {
+      // Show student input form
+      setStudentQuery('');
+      setPaymentAmount('');
+    }
+  };
+
+  const handleCommandExecution = () => {
+    if (!selectedCommand) return;
+    
+    let finalCommand = selectedCommand.command;
+    
+    if (selectedCommand.needsStudentId && studentQuery.trim()) {
+      finalCommand = finalCommand.replace('[STUDENT]', studentQuery.trim());
+      
+      if (selectedCommand.id === 'record-payment' && paymentAmount.trim()) {
+        finalCommand = finalCommand.replace('[AMOUNT]', paymentAmount.trim());
+      }
+      
+      setInputValue(finalCommand);
+      setSelectedCommand(null);
+      setStudentQuery('');
+      setPaymentAmount('');
+      
+      setTimeout(() => {
+        handleSendMessage();
+      }, 100);
+    }
+  };
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSendMessage();
+      if (selectedCommand) {
+        handleCommandExecution();
+      } else {
+        handleSendMessage();
+      }
     }
   };
 
@@ -138,7 +263,6 @@ const AiChatModule = () => {
   };
 
   const formatMessageContent = (content: string) => {
-    // Convert bullet points and formatting
     return content
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
       .replace(/\n/g, '<br />');
@@ -182,21 +306,114 @@ const AiChatModule = () => {
                 <MessageCircle className="w-5 h-5 text-blue-600" />
                 <span>Chat Assistant</span>
                 <Badge variant="secondary" className="text-xs">
-                  {messages.length - 1} messages
+                  {messages.length} messages
                 </Badge>
               </CardTitle>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleClearChat}
-                className="text-gray-500 hover:text-red-600"
-              >
-                <Trash2 className="w-4 h-4" />
-              </Button>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowCommands(!showCommands)}
+                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                >
+                  <Command className="w-4 h-4 mr-1" />
+                  Commands
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleClearChat}
+                  className="text-gray-500 hover:text-red-600"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
           </CardHeader>
           
           <CardContent className="flex-1 flex flex-col p-0">
+            {/* Quick Commands Panel */}
+            {showCommands && (
+              <div className="p-4 border-b bg-gray-50">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
+                  <Zap className="w-4 h-4 mr-1" />
+                  Quick Commands
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {quickCommands.map((command) => (
+                    <Button
+                      key={command.id}
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleCommandSelect(command)}
+                      className="h-auto p-3 flex flex-col items-start text-left hover:bg-blue-50 hover:border-blue-300"
+                    >
+                      <div className="text-lg mb-1">{command.icon}</div>
+                      <div className="text-xs font-medium">{command.title}</div>
+                      <div className="text-xs text-gray-500 mt-1">{command.description}</div>
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Command Execution Form */}
+            {selectedCommand && (
+              <div className="p-4 border-b bg-blue-50">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-blue-800 flex items-center">
+                    <span className="text-lg mr-2">{selectedCommand.icon}</span>
+                    {selectedCommand.title}
+                  </h3>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedCommand(null)}
+                    className="text-gray-500"
+                  >
+                    ✕
+                  </Button>
+                </div>
+                
+                <div className="space-y-3">
+                  {selectedCommand.id === 'record-payment' && (
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">Payment Amount (GHS)</label>
+                      <Input
+                        type="number"
+                        placeholder="Enter amount..."
+                        value={paymentAmount}
+                        onChange={(e) => setPaymentAmount(e.target.value)}
+                        className="text-sm"
+                      />
+                    </div>
+                  )}
+                  
+                  {selectedCommand.needsStudentId && (
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">Student ID or Name</label>
+                      <Input
+                        placeholder="Enter student ID or name..."
+                        value={studentQuery}
+                        onChange={(e) => setStudentQuery(e.target.value)}
+                        onKeyPress={handleKeyPress}
+                        className="text-sm"
+                      />
+                    </div>
+                  )}
+                  
+                  <Button 
+                    onClick={handleCommandExecution}
+                    disabled={selectedCommand.needsStudentId && !studentQuery.trim()}
+                    className="w-full bg-blue-600 hover:bg-blue-700"
+                    size="sm"
+                  >
+                    Execute Command
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
               <div className="space-y-6">
                 {messages.map((message) => (
@@ -207,7 +424,6 @@ const AiChatModule = () => {
                         : 'bg-white border border-gray-200 text-gray-900 shadow-sm'
                     } rounded-2xl p-4 relative`}>
                       
-                      {/* Avatar */}
                       <div className={`absolute -top-2 ${message.type === 'user' ? '-right-2' : '-left-2'} w-8 h-8 rounded-full flex items-center justify-center ${
                         message.type === 'user' ? 'bg-blue-600 text-white' : 'bg-gradient-to-br from-purple-100 to-blue-100 text-blue-600'
                       } shadow-md`}>
@@ -220,7 +436,6 @@ const AiChatModule = () => {
                           dangerouslySetInnerHTML={{ __html: formatMessageContent(message.content) }}
                         />
                         
-                        {/* Action buttons */}
                         {(message.action === 'receipt' || message.action === 'payment') && message.data && (
                           <Button
                             variant="ghost"
@@ -267,7 +482,6 @@ const AiChatModule = () => {
               </div>
             </ScrollArea>
 
-            {/* Input area */}
             <div className="p-4 border-t bg-white rounded-b-lg">
               <div className="flex space-x-3">
                 <Input
@@ -275,7 +489,7 @@ const AiChatModule = () => {
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyPress={handleKeyPress}
-                  placeholder="Ask me anything about the school, record payments, check balances..."
+                  placeholder="Ask me anything or use quick commands above..."
                   className="flex-1 border-2 border-gray-200 focus:border-blue-400 rounded-xl px-4 py-3"
                   disabled={isProcessing}
                 />
@@ -289,10 +503,9 @@ const AiChatModule = () => {
               </div>
 
               <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-500">
-                <span className="bg-gray-100 px-2 py-1 rounded-full">💰 "Record payment of 500 for STU001"</span>
+                <span className="bg-gray-100 px-2 py-1 rounded-full">💡 Click "Commands" for quick actions</span>
                 <span className="bg-gray-100 px-2 py-1 rounded-full">📄 "Show receipt for John Doe"</span>
                 <span className="bg-gray-100 px-2 py-1 rounded-full">👥 "Which students owe money?"</span>
-                <span className="bg-gray-100 px-2 py-1 rounded-full">📊 "How many students?"</span>
               </div>
             </div>
           </CardContent>

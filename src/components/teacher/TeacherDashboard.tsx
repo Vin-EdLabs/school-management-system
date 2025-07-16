@@ -11,8 +11,11 @@ const TeacherDashboard = () => {
   const { user } = useAuth();
   const { students, teachers, classes } = useData();
 
-  // Find the current teacher's data
-  const currentTeacher = teachers.find(t => t.email === user?.email);
+  // Find the current teacher's data based on username or teacherId
+  const currentTeacher = teachers.find(t => 
+    t.staffId === user?.teacherId || 
+    t.fullName.toLowerCase().includes(user?.username?.toLowerCase() || '')
+  );
   
   // Get teacher's assigned classes and students
   const teacherClasses = currentTeacher?.classAssigned 

@@ -17,8 +17,12 @@ const AttendanceModule = () => {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [attendance, setAttendance] = useState<Record<string, boolean>>({});
 
-  // Find the current teacher's assigned classes
-  const currentTeacher = teachers.find(t => t.email === user?.email);
+  // Find the current teacher's assigned classes based on username or teacherId
+  const currentTeacher = teachers.find(t => 
+    t.staffId === user?.teacherId || 
+    t.fullName.toLowerCase().includes(user?.username?.toLowerCase() || '')
+  );
+  
   const teacherClasses = currentTeacher?.classAssigned 
     ? classes.filter(cls => cls.className === currentTeacher.classAssigned)
     : [];

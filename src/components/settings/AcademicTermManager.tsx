@@ -6,209 +6,165 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
-import { Calendar, Plus, Check, Trash2 } from 'lucide-react';
+import { Calendar, Plus, Edit2, Trash2, CheckCircle, AlertCircle } from 'lucide-react';
+import { useData } from '../../contexts/DataContext';
+import { processArrearsForTermChange } from '../../utils/feeCalculations';
 
 interface AcademicTerm {
   id: string;
   name: string;
   year: string;
-  isActive: boolean;
   startDate: string;
   endDate: string;
+  isActive: boolean;
 }
 
 const AcademicTermManager = () => {
   const { students, payments, feeStructures } = useData();
-  const [academicTerms, setAcademicTerms] = useState<AcademicTerm[]>([]);
-  const [currentTerm, setCurrentTerm] = useState<AcademicTerm | null>(null);
-  const [newTermName, setNewTermName] = useState('');
-  const [newYear, setNewYear] = useState('');
-  const [newStartDate, setNewStartDate] = useState('');
-  const [newEndDate, setNewEndDate] = useState('');
-  const [showAddForm, setShowAddForm] = useState(false);
+  const [terms, setTerms] = useState<AcademicTerm[]>([]);
+  const [isAddingTerm, setIsAddingTerm] = useState(false);
+  const [editingTerm, setEditingTerm] = useState<string | null>(null);
+  const [newTerm, setNewTerm] = useState({
+    name: '',
+    year: new Date().getFullYear().toString(),
+    startDate: '',
+    endDate: ''
+  });
 
-  // Load academic terms from localStorage
+  // Helper function to dispatch settings change event
+  const dispatchSettingsChange = () => {
+    window.dispatchEvent(new CustomEvent('academicSettingsChanged'));
+  };
+
+  // Load terms from localStorage on component mount
   useEffect(() => {
     const savedTerms = localStorage.getItem('academicTerms');
     if (savedTerms) {
       try {
-        const terms = JSON.parse(savedTerms);
-        setAcademicTerms(terms);
-        const activeTerm = terms.find((term: AcademicTerm) => term.isActive);
-        if (activeTerm) {
-          setCurrentTerm(activeTerm);
-        }
+        const parsedTerms = JSON.parse(savedTerms);
+        setTerms(parsedTerms);
       } catch (error) {
         console.error('Error loading academic terms:', error);
       }
     } else {
-      // Create default terms
+      // Create default terms if none exist
       const defaultTerms: AcademicTerm[] = [
         {
-          id: 'term1-2024',
+          id: '1',
           name: 'Term 1',
           year: '2024',
-          isActive: true,
-          startDate: '2024-01-08',
-          endDate: '2024-04-12'
+          startDate: '2024-01-15',
+          endDate: '2024-04-12',
+          isActive: true
         },
         {
-          id: 'term2-2024',
+          id: '2',
           name: 'Term 2',
           year: '2024',
-          isActive: false,
           startDate: '2024-04-29',
-          endDate: '2024-08-02'
+          endDate: '2024-07-26',
+          isActive: false
         },
         {
-          id: 'term3-2024',
+          id: '3',
           name: 'Term 3',
           year: '2024',
-          isActive: false,
-          startDate: '2024-08-19',
-          endDate: '2024-12-13'
+          startDate: '2024-09-09',
+          endDate: '2024-12-13',
+          isActive: false
         }
       ];
-      setAcademicTerms(defaultTerms);
-      setCurrentTerm(defaultTerms[0]);
+      setTerms(defaultTerms);
       localStorage.setItem('academicTerms', JSON.stringify(defaultTerms));
     }
   }, []);
 
-  // Calculate arrears for term change
-  const calculateArrearsForStudent = (studentId: string, previousTermId: string) => {
-    const student = students.find(s => s.id === studentId);
-    if (!student) return 0;
-
-    const previousTerm = academicTerms.find(term => term.id === previousTermId);
-    if (!previousTerm) return 0;
-
-    const previousTermKey = `${previousTerm.name} ${previousTerm.year}`;
-    
-    // Get fee structure for student's class in previous term
-    const previousFeeStructure = feeStructures.find(fee => 
-      fee.className === student.classAssigned && fee.term === previousTermKey
-    );
-    
-    if (!previousFeeStructure) return 0;
-
-    // Calculate payments made in previous term
-    const previousTermPayments = payments
-      .filter(payment => payment.studentId === studentId && payment.term === previousTermKey)
-      .reduce((sum, payment) => sum + payment.amount, 0);
-
-    // Return arrears (positive) or credit (negative)
-    return Math.max(0, previousFeeStructure.amount - previousTermPayments);
+  const saveTerms = (updatedTerms: AcademicTerm[]) => {
+    setTerms(updatedTerms);
+    localStorage.setItem('academicTerms', JSON.stringify(updatedTerms));
+    dispatchSettingsChange(); // Notify header of changes
   };
 
-  const addNewTerm = () => {
-    if (!newTermName || !newYear || !newStartDate || !newEndDate) {
+  const handleAddTerm = () => {
+    if (!newTerm.name || !newTerm.year || !newTerm.startDate || !newTerm.endDate) {
       toast({
-        title: "Validation Error",
+        title: "Missing Information",
         description: "Please fill in all fields",
         variant: "destructive"
       });
       return;
     }
 
-    const newTerm: AcademicTerm = {
-      id: `${newTermName.toLowerCase().replace(/\s+/g, '-')}-${newYear}`,
-      name: newTermName,
-      year: newYear,
-      isActive: false,
-      startDate: newStartDate,
-      endDate: newEndDate
+    const newTermData: AcademicTerm = {
+      id: Date.now().toString(),
+      name: newTerm.name,
+      year: newTerm.year,
+      startDate: newTerm.startDate,
+      endDate: newTerm.endDate,
+      isActive: false
     };
 
-    const updatedTerms = [...academicTerms, newTerm];
-    setAcademicTerms(updatedTerms);
-    localStorage.setItem('academicTerms', JSON.stringify(updatedTerms));
-
-    // Reset form
-    setNewTermName('');
-    setNewYear('');
-    setNewStartDate('');
-    setNewEndDate('');
-    setShowAddForm(false);
+    const updatedTerms = [...terms, newTermData];
+    saveTerms(updatedTerms);
 
     toast({
       title: "Term Added",
-      description: `${newTermName} ${newYear} has been created successfully`,
+      description: `${newTerm.name} ${newTerm.year} has been added successfully`,
     });
+
+    setNewTerm({ name: '', year: new Date().getFullYear().toString(), startDate: '', endDate: '' });
+    setIsAddingTerm(false);
   };
 
-  const setActiveTerm = (termId: string) => {
-    const previousTerm = currentTerm;
+  const handleSetActiveTerm = (termId: string) => {
+    const currentActiveTerm = terms.find(t => t.isActive);
+    const newActiveTerm = terms.find(t => t.id === termId);
     
-    // Update terms - deactivate all, activate selected
-    const updatedTerms = academicTerms.map(term => ({
+    if (!newActiveTerm) return;
+
+    // Process arrears for term change if there's a current active term
+    if (currentActiveTerm && currentActiveTerm.id !== termId) {
+      const previousTermName = `${currentActiveTerm.name} ${currentActiveTerm.year}`;
+      const newTermName = `${newActiveTerm.name} ${newActiveTerm.year}`;
+      
+      processArrearsForTermChange(
+        students,
+        payments,
+        feeStructures,
+        previousTermName,
+        newTermName
+      );
+    }
+
+    const updatedTerms = terms.map(term => ({
       ...term,
       isActive: term.id === termId
     }));
 
-    const newActiveTerm = updatedTerms.find(term => term.id === termId);
-    if (!newActiveTerm) return;
-
-    // Process arrears for all students if switching terms
-    if (previousTerm && previousTerm.id !== termId) {
-      const arrearsData: Record<string, number> = {};
-      
-      students.forEach(student => {
-        const arrears = calculateArrearsForStudent(student.id, previousTerm.id);
-        if (arrears > 0) {
-          arrearsData[student.id] = arrears;
-        }
-      });
-
-      // Store arrears data for the new term
-      localStorage.setItem(`arrears-${termId}`, JSON.stringify(arrearsData));
-    }
-
-    setAcademicTerms(updatedTerms);
-    setCurrentTerm(newActiveTerm);
-    localStorage.setItem('academicTerms', JSON.stringify(updatedTerms));
-
-    // Update legacy academic settings for backward compatibility
-    localStorage.setItem('academicSettings', JSON.stringify({
-      currentYear: newActiveTerm.year,
-      currentTerm: `${newActiveTerm.name} ${newActiveTerm.year}`
-    }));
-
-    // Dispatch event to update other components
-    window.dispatchEvent(new CustomEvent('academicTermChanged', { 
-      detail: { 
-        term: newActiveTerm,
-        previousTerm: previousTerm
-      } 
-    }));
+    saveTerms(updatedTerms);
 
     toast({
-      title: "Active Term Updated",
+      title: "Active Term Changed",
       description: `${newActiveTerm.name} ${newActiveTerm.year} is now the active term`,
     });
   };
 
-  const deleteTerm = (termId: string) => {
-    const termToDelete = academicTerms.find(term => term.id === termId);
+  const handleDeleteTerm = (termId: string) => {
+    const termToDelete = terms.find(t => t.id === termId);
     if (!termToDelete) return;
 
     if (termToDelete.isActive) {
       toast({
         title: "Cannot Delete Active Term",
-        description: "Please set another term as active before deleting this one",
+        description: "Please set another term as active before deleting this term",
         variant: "destructive"
       });
       return;
     }
 
-    const updatedTerms = academicTerms.filter(term => term.id !== termId);
-    setAcademicTerms(updatedTerms);
-    localStorage.setItem('academicTerms', JSON.stringify(updatedTerms));
-
-    // Remove arrears data for deleted term
-    localStorage.removeItem(`arrears-${termId}`);
+    const updatedTerms = terms.filter(t => t.id !== termId);
+    saveTerms(updatedTerms);
 
     toast({
       title: "Term Deleted",
@@ -216,140 +172,240 @@ const AcademicTermManager = () => {
     });
   };
 
+  const handleUpdateTerm = (termId: string, updatedData: Partial<AcademicTerm>) => {
+    const updatedTerms = terms.map(term => 
+      term.id === termId ? { ...term, ...updatedData } : term
+    );
+    saveTerms(updatedTerms);
+    setEditingTerm(null);
+
+    toast({
+      title: "Term Updated",
+      description: "Academic term has been updated successfully",
+    });
+  };
+
+  const activeTerm = terms.find(t => t.isActive);
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <Calendar className="w-5 h-5" />
-            <span>Academic Term & Year Management</span>
-          </div>
-          <Button
-            onClick={() => setShowAddForm(!showAddForm)}
-            variant="outline"
-            size="sm"
-            className="flex items-center space-x-2"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add New Term</span>
-          </Button>
+        <CardTitle className="flex items-center space-x-2">
+          <Calendar className="w-5 h-5" />
+          <span>Academic Term Management</span>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Current Active Term */}
-        {currentTerm && (
+        {/* Current Active Term Display */}
+        {activeTerm && (
           <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-semibold text-green-800">Current Active Term</h3>
-                <p className="text-green-700">{currentTerm.name} {currentTerm.year}</p>
+                <p className="text-green-700">{activeTerm.name} {activeTerm.year}</p>
                 <p className="text-sm text-green-600">
-                  {new Date(currentTerm.startDate).toLocaleDateString()} - {new Date(currentTerm.endDate).toLocaleDateString()}
+                  {new Date(activeTerm.startDate).toLocaleDateString()} - {new Date(activeTerm.endDate).toLocaleDateString()}
                 </p>
               </div>
-              <Badge variant="default" className="bg-green-500">Active</Badge>
+              <Badge className="bg-green-500">
+                <CheckCircle className="w-3 h-3 mr-1" />
+                Active
+              </Badge>
             </div>
           </div>
         )}
 
         {/* Add New Term Form */}
-        {showAddForm && (
-          <div className="p-4 border rounded-lg bg-gray-50">
-            <h3 className="font-semibold mb-4">Add New Academic Term</h3>
+        {isAddingTerm && (
+          <div className="p-4 border border-gray-200 rounded-lg space-y-4">
+            <h3 className="font-semibold">Add New Academic Term</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
+              <div>
                 <Label htmlFor="termName">Term Name</Label>
                 <Input
                   id="termName"
-                  value={newTermName}
-                  onChange={(e) => setNewTermName(e.target.value)}
+                  value={newTerm.name}
+                  onChange={(e) => setNewTerm({ ...newTerm, name: e.target.value })}
                   placeholder="e.g., Term 1, First Semester"
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="year">Academic Year</Label>
+              <div>
+                <Label htmlFor="termYear">Academic Year</Label>
                 <Input
-                  id="year"
-                  value={newYear}
-                  onChange={(e) => setNewYear(e.target.value)}
-                  placeholder="e.g., 2024, 2024-2025"
+                  id="termYear"
+                  value={newTerm.year}
+                  onChange={(e) => setNewTerm({ ...newTerm, year: e.target.value })}
+                  placeholder="e.g., 2024"
                 />
               </div>
-              <div className="space-y-2">
+              <div>
                 <Label htmlFor="startDate">Start Date</Label>
                 <Input
                   id="startDate"
                   type="date"
-                  value={newStartDate}
-                  onChange={(e) => setNewStartDate(e.target.value)}
+                  value={newTerm.startDate}
+                  onChange={(e) => setNewTerm({ ...newTerm, startDate: e.target.value })}
                 />
               </div>
-              <div className="space-y-2">
+              <div>
                 <Label htmlFor="endDate">End Date</Label>
                 <Input
                   id="endDate"
                   type="date"
-                  value={newEndDate}
-                  onChange={(e) => setNewEndDate(e.target.value)}
+                  value={newTerm.endDate}
+                  onChange={(e) => setNewTerm({ ...newTerm, endDate: e.target.value })}
                 />
               </div>
             </div>
-            <div className="flex justify-end space-x-2 mt-4">
-              <Button
-                variant="outline"
-                onClick={() => setShowAddForm(false)}
-              >
-                Cancel
-              </Button>
-              <Button onClick={addNewTerm}>
-                Add Term
-              </Button>
+            <div className="flex space-x-2">
+              <Button onClick={handleAddTerm}>Add Term</Button>
+              <Button variant="outline" onClick={() => setIsAddingTerm(false)}>Cancel</Button>
             </div>
           </div>
+        )}
+
+        {/* Add Term Button */}
+        {!isAddingTerm && (
+          <Button onClick={() => setIsAddingTerm(true)} variant="outline" className="w-full">
+            <Plus className="w-4 h-4 mr-2" />
+            Add New Academic Term
+          </Button>
         )}
 
         {/* Terms List */}
         <div className="space-y-3">
           <h3 className="font-semibold">All Academic Terms</h3>
-          {academicTerms.map((term) => (
-            <div key={term.id} className="flex items-center justify-between p-3 border rounded-lg">
-              <div>
-                <div className="flex items-center space-x-2">
-                  <span className="font-medium">{term.name} {term.year}</span>
-                  {term.isActive && <Badge variant="default" className="bg-green-500">Active</Badge>}
+          {terms.length === 0 ? (
+            <p className="text-gray-500 text-center py-4">No academic terms found</p>
+          ) : (
+            <div className="space-y-2">
+              {terms.map((term) => (
+                <div key={term.id} className={`p-3 border rounded-lg ${term.isActive ? 'border-green-300 bg-green-50' : 'border-gray-200'}`}>
+                  {editingTerm === term.id ? (
+                    <EditTermForm
+                      term={term}
+                      onSave={(updatedData) => handleUpdateTerm(term.id, updatedData)}
+                      onCancel={() => setEditingTerm(null)}
+                    />
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <h4 className="font-medium">{term.name} {term.year}</h4>
+                          {term.isActive && (
+                            <Badge variant="default" className="bg-green-500">
+                              Active
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-600">
+                          {new Date(term.startDate).toLocaleDateString()} - {new Date(term.endDate).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="flex space-x-2">
+                        {!term.isActive && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleSetActiveTerm(term.id)}
+                          >
+                            Set Active
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setEditingTerm(term.id)}
+                        >
+                          <Edit2 className="w-3 h-3" />
+                        </Button>
+                        {!term.isActive && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDeleteTerm(term.id)}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <p className="text-sm text-gray-600">
-                  {new Date(term.startDate).toLocaleDateString()} - {new Date(term.endDate).toLocaleDateString()}
-                </p>
-              </div>
-              <div className="flex items-center space-x-2">
-                {!term.isActive && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setActiveTerm(term.id)}
-                    className="flex items-center space-x-1"
-                  >
-                    <Check className="w-4 h-4" />
-                    <span>Set Active</span>
-                  </Button>
-                )}
-                {!term.isActive && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => deleteTerm(term.id)}
-                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                )}
-              </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
       </CardContent>
     </Card>
+  );
+};
+
+// Component for editing a term
+const EditTermForm: React.FC<{
+  term: AcademicTerm;
+  onSave: (data: Partial<AcademicTerm>) => void;
+  onCancel: () => void;
+}> = ({ term, onSave, onCancel }) => {
+  const [editData, setEditData] = useState({
+    name: term.name,
+    year: term.year,
+    startDate: term.startDate,
+    endDate: term.endDate
+  });
+
+  const handleSave = () => {
+    if (!editData.name || !editData.year || !editData.startDate || !editData.endDate) {
+      toast({
+        title: "Missing Information",
+        description: "Please fill in all fields",
+        variant: "destructive"
+      });
+      return;
+    }
+    onSave(editData);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <Label>Term Name</Label>
+          <Input
+            value={editData.name}
+            onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+          />
+        </div>
+        <div>
+          <Label>Academic Year</Label>
+          <Input
+            value={editData.year}
+            onChange={(e) => setEditData({ ...editData, year: e.target.value })}
+          />
+        </div>
+        <div>
+          <Label>Start Date</Label>
+          <Input
+            type="date"
+            value={editData.startDate}
+            onChange={(e) => setEditData({ ...editData, startDate: e.target.value })}
+          />
+        </div>
+        <div>
+          <Label>End Date</Label>
+          <Input
+            type="date"
+            value={editData.endDate}
+            onChange={(e) => setEditData({ ...editData, endDate: e.target.value })}
+          />
+        </div>
+      </div>
+      <div className="flex space-x-2">
+        <Button size="sm" onClick={handleSave}>Save</Button>
+        <Button size="sm" variant="outline" onClick={onCancel}>Cancel</Button>
+      </div>
+    </div>
   );
 };
 

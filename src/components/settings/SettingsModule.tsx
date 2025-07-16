@@ -63,6 +63,11 @@ const SettingsModule = () => {
     }
   }, []);
 
+  // Helper function to dispatch settings change event
+  const dispatchSettingsChange = () => {
+    window.dispatchEvent(new CustomEvent('academicSettingsChanged'));
+  };
+
   const handlePasswordChange = (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -221,6 +226,7 @@ const SettingsModule = () => {
           if (importedData.academicSettings) {
             localStorage.setItem('academicSettings', JSON.stringify(importedData.academicSettings));
             setAcademicSettings(importedData.academicSettings);
+            dispatchSettingsChange(); // Notify header of changes
           }
           
           toast({
@@ -255,6 +261,9 @@ const SettingsModule = () => {
       localStorage.removeItem('schoolInfo');
       localStorage.removeItem('academicSettings');
       localStorage.removeItem('academicTerms');
+      
+      // Notify header of changes
+      dispatchSettingsChange();
       
       toast({
         title: "Data Reset Complete",

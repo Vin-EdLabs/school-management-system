@@ -3,7 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '../../contexts/AuthContext';
-import { Bot, Calendar, Clock, User } from 'lucide-react';
+import { Bot, Calendar, Clock, User, GraduationCap } from 'lucide-react';
+import { getActiveAcademicTerm } from '../../utils/feeCalculations';
 
 interface MainHeaderProps {
   onAiAssistantClick?: () => void;
@@ -12,6 +13,7 @@ interface MainHeaderProps {
 const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick }) => {
   const { user } = useAuth();
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [currentTerm, setCurrentTerm] = useState('');
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -19,6 +21,36 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick }) => {
     }, 1000);
 
     return () => clearInterval(timer);
+  }, []);
+
+  // Update current term from settings
+  useEffect(() => {
+    const updateCurrentTerm = () => {
+      setCurrentTerm(getActiveAcademicTerm());
+    };
+
+    // Initial load
+    updateCurrentTerm();
+
+    // Listen for localStorage changes (when settings are updated)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'academicTerms' || e.key === 'academicSettings') {
+        updateCurrentTerm();
+      }
+    };
+
+    // Listen for custom events when settings change within the same tab
+    const handleSettingsChange = () => {
+      updateCurrentTerm();
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('academicSettingsChanged', handleSettingsChange);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('academicSettingsChanged', handleSettingsChange);
+    };
   }, []);
 
   const formatDate = (date: Date) => {
@@ -62,13 +94,22 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick }) => {
         </div>
       </div>
 
-      {/* Date & Time Section */}
+      {/* Academic Term, Date & Time Section */}
       <div className="flex items-center space-x-6">
         <div className="flex items-center space-x-4 text-sm">
+          {/* Current Academic Term */}
+          <div className="flex items-center space-x-2 px-3 py-2 bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-lg">
+            <GraduationCap className="w-4 h-4 text-purple-600" />
+            <span className="text-purple-700 font-medium">{currentTerm}</span>
+          </div>
+          
+          {/* Current Date */}
           <div className="flex items-center space-x-2 px-3 py-2 bg-gray-50 rounded-lg">
             <Calendar className="w-4 h-4 text-gray-500" />
             <span className="text-gray-700 font-medium">{formatDate(currentTime)}</span>
           </div>
+          
+          {/* Current Time */}
           <div className="flex items-center space-x-2 px-3 py-2 bg-gray-50 rounded-lg">
             <Clock className="w-4 h-4 text-gray-500" />
             <span className="font-mono text-gray-700 font-medium">{formatTime(currentTime)}</span>

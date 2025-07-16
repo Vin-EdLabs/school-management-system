@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -355,7 +356,7 @@ const AiChatModule = () => {
                       </div>
                       
                       <div className="flex-1 min-w-0">
-                        {message.isTyping ? (
+                        {(message.isTyping && message.type === 'ai') ? (
                           <TypewriterText 
                             text={message.content} 
                             onComplete={() => {}}

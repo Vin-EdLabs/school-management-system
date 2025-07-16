@@ -6,8 +6,9 @@ interface ChatMessage {
   type: 'user' | 'ai';
   content: string;
   timestamp: Date;
-  action?: 'receipt' | 'payment' | 'info' | 'balance' | 'stats' | 'search' | 'list';
+  action?: 'receipt' | 'payment' | 'info' | 'balance' | 'stats' | 'search' | 'list' | 'report';
   data?: any;
+  isTyping?: boolean;
 }
 
 const STORAGE_KEY = 'ai_chat_messages';

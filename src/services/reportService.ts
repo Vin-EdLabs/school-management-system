@@ -10,8 +10,16 @@ export interface ReportData {
     currentYearIncome: any[];
     currentYearExpenses: any[];
   };
-  classReport: any[];
-  outstandingReport: any[];
+  incomeBreakdown?: {
+    bySource: Record<string, number>;
+    monthly: any[];
+    total: number;
+  };
+  expenseBreakdown?: {
+    byCategory: Record<string, any>;
+    monthly: any[];
+    total: number;
+  };
   selectedTerm: string;
 }
 
@@ -29,6 +37,8 @@ export class ReportService {
         return {
           ...baseReport,
           summary: data.financial,
+          incomeBreakdown: data.incomeBreakdown,
+          expenseBreakdown: data.expenseBreakdown,
           transactions: [
             ...data.financial.feePayments,
             ...data.financial.currentYearIncome,
@@ -36,24 +46,30 @@ export class ReportService {
           ]
         };
       
-      case 'class':
+      case 'income':
         return {
           ...baseReport,
-          classAnalysis: data.classReport
+          incomeAnalysis: data.incomeBreakdown,
+          totalIncome: data.financial.totalIncome
         };
       
-      case 'outstanding':
+      case 'expense':
         return {
           ...baseReport,
-          outstandingBalances: data.outstandingReport
+          expenseAnalysis: data.expenseBreakdown,
+          totalExpenses: data.financial.totalExpenses
         };
       
-      case 'complete':
+      case 'summary':
         return {
           ...baseReport,
-          financial: data.financial,
-          classAnalysis: data.classReport,
-          outstandingBalances: data.outstandingReport
+          executiveSummary: {
+            totalIncome: data.financial.totalIncome,
+            totalExpenses: data.financial.totalExpenses,
+            balance: data.financial.balance,
+            topIncomeSource: data.incomeBreakdown ? Object.keys(data.incomeBreakdown.bySource)[0] : 'N/A',
+            topExpenseCategory: data.expenseBreakdown ? Object.keys(data.expenseBreakdown.byCategory)[0] : 'N/A'
+          }
         };
       
       default:
@@ -125,25 +141,22 @@ export class ReportService {
           dataToExport = [reportData.summary];
         }
         break;
-      case 'class':
-        dataToExport = reportData.classAnalysis || [];
+      case 'income':
+        if (reportData.incomeAnalysis && reportData.incomeAnalysis.monthly) {
+          dataToExport = reportData.incomeAnalysis.monthly;
+        } else {
+          dataToExport = [{ totalIncome: reportData.totalIncome || 0 }];
+        }
         break;
-      case 'outstanding':
-        dataToExport = reportData.outstandingBalances || [];
+      case 'expense':
+        if (reportData.expenseAnalysis && reportData.expenseAnalysis.monthly) {
+          dataToExport = reportData.expenseAnalysis.monthly;
+        } else {
+          dataToExport = [{ totalExpenses: reportData.totalExpenses || 0 }];
+        }
         break;
-      case 'complete':
-        // For complete reports, create a summary sheet
-        dataToExport = [
-          {
-            'Report Type': 'Complete Financial Report',
-            'Generated At': reportData.generatedAt,
-            'Term': reportData.term,
-            'Total Income': reportData.financial?.totalIncome || 0,
-            'Total Expenses': reportData.financial?.totalExpenses || 0,
-            'Balance': reportData.financial?.balance || 0,
-            'Students with Outstanding': reportData.outstandingBalances?.length || 0
-          }
-        ];
+      case 'summary':
+        dataToExport = [reportData.executiveSummary || reportData];
         break;
       default:
         dataToExport = Array.isArray(reportData) ? reportData : [reportData];

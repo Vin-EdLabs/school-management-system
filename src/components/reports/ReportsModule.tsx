@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -6,12 +7,37 @@ import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
 import { BarChart3, Download, FileText, Calculator, DollarSign, TrendingUp, TrendingDown, Users, Calendar } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
-import { getActiveAcademicTerm, calculateStudentFees } from '../../utils/feeCalculations';
 import { reportService } from '../../services';
 
 const ReportsModule = () => {
   const { students, payments, income, expenses, feeStructures, classes } = useData();
-  const [selectedTerm, setSelectedTerm] = useState(getActiveAcademicTerm());
+  const [selectedTerm, setSelectedTerm] = useState('');
+
+  // Get current term from settings
+  useEffect(() => {
+    const getCurrentTerm = () => {
+      const savedAcademicSettings = localStorage.getItem('academicSettings');
+      if (savedAcademicSettings) {
+        try {
+          const settings = JSON.parse(savedAcademicSettings);
+          return settings.currentTerm || 'Term 1 2024';
+        } catch (error) {
+          console.error('Error loading academic settings:', error);
+        }
+      }
+      return 'Term 1 2024';
+    };
+
+    setSelectedTerm(getCurrentTerm());
+
+    // Listen for academic settings changes
+    const handleSettingsChange = () => {
+      setSelectedTerm(getCurrentTerm());
+    };
+
+    window.addEventListener('academicSettingsChanged', handleSettingsChange);
+    return () => window.removeEventListener('academicSettingsChanged', handleSettingsChange);
+  }, []);
 
   // Generate comprehensive financial summary from real data
   const generateFinancialSummary = () => {
@@ -201,7 +227,7 @@ const ReportsModule = () => {
               <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
                 Financial Reports & Analytics
               </h1>
-              <p className="text-gray-600 text-lg">Real-time financial insights and comprehensive analysis</p>
+              <p className="text-gray-600 text-lg">Real-time financial insights for {selectedTerm}</p>
             </div>
           </div>
           <div className="flex items-center space-x-4">

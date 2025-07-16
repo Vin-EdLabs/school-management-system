@@ -6,32 +6,49 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
-import { Search, AlertCircle } from 'lucide-react';
+import { Search, AlertCircle, CreditCard, TrendingUp } from 'lucide-react';
+import { getActiveAcademicTerm, calculateStudentFees, calculateStudentFeeStatus } from '../../utils/feeCalculations';
 
 const StudentBalances = () => {
   const { students, payments, feeStructures, classes } = useData();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterClass, setFilterClass] = useState('all-classes');
+  const [filterStatus, setFilterStatus] = useState('all-status');
 
-  const calculateBalance = (student: any) => {
-    const studentFee = feeStructures.find(fee => fee.className === student.classAssigned);
-    if (!studentFee) return 0;
+  const currentTerm = getActiveAcademicTerm();
 
-    const studentPayments = payments
-      .filter(payment => payment.studentId === student.id && payment.term === 'Term 1 2024')
-      .reduce((sum, payment) => sum + payment.amount, 0);
+  // Calculate comprehensive balance for each student
+  const calculateStudentBalance = (student: any) => {
+    const feeCalculation = calculateStudentFees(
+      student.id,
+      currentTerm,
+      student.classAssigned,
+      feeStructures,
+      payments
+    );
+    
+    const feeStatus = calculateStudentFeeStatus(
+      student.id,
+      currentTerm,
+      students,
+      feeStructures,
+      payments
+    );
 
-    return Math.max(0, studentFee.amount - studentPayments);
+    return {
+      ...student,
+      currentTermFee: feeCalculation.currentTermFee,
+      arrears: feeCalculation.arrears,
+      creditBalance: feeCalculation.creditBalance,
+      totalAmountDue: feeCalculation.totalAmountDue,
+      totalPaid: feeCalculation.totalPaid,
+      balance: Math.max(0, feeCalculation.totalAmountDue - feeCalculation.totalPaid),
+      feeStatus: feeStatus,
+      paymentCount: payments.filter(p => p.studentId === student.id && p.term === currentTerm).length
+    };
   };
 
-  const studentsWithBalances = students.map(student => ({
-    ...student,
-    balance: calculateBalance(student),
-    totalPaid: payments
-      .filter(payment => payment.studentId === student.id && payment.term === 'Term 1 2024')
-      .reduce((sum, payment) => sum + payment.amount, 0),
-    expectedFee: feeStructures.find(fee => fee.className === student.classAssigned)?.amount || 0
-  }));
+  const studentsWithBalances = students.map(calculateStudentBalance);
 
   const filteredStudents = studentsWithBalances.filter(student => {
     const matchesSearch = searchTerm === '' || 
@@ -40,18 +57,62 @@ const StudentBalances = () => {
       student.studentId.includes(searchTerm);
     
     const matchesClass = filterClass === 'all-classes' || student.classAssigned === filterClass;
+    
+    const matchesStatus = filterStatus === 'all-status' || 
+      (filterStatus === 'outstanding' && student.balance > 0) ||
+      (filterStatus === 'paid' && student.balance === 0 && student.feeStatus.status === 'Fully Paid') ||
+      (filterStatus === 'credit' && student.feeStatus.status === 'Credit Balance') ||
+      (filterStatus === 'no-fee' && student.feeStatus.status === 'No Fee Set') ||
+      (filterStatus === 'arrears' && student.arrears > 0);
 
-    return matchesSearch && matchesClass;
+    return matchesSearch && matchesClass && matchesStatus;
   });
 
+  // Calculate summary statistics
   const totalOutstanding = filteredStudents.reduce((sum, student) => sum + student.balance, 0);
   const studentsWithOutstanding = filteredStudents.filter(student => student.balance > 0).length;
+  const totalArrears = filteredStudents.reduce((sum, student) => sum + student.arrears, 0);
+  const studentsWithArrears = filteredStudents.filter(student => student.arrears > 0).length;
+  const totalCreditBalance = filteredStudents
+    .filter(student => student.feeStatus.status === 'Credit Balance')
+    .reduce((sum, student) => sum + Math.abs(student.feeStatus.balance), 0);
+  const studentsWithCredit = filteredStudents.filter(student => student.feeStatus.status === 'Credit Balance').length;
+
+  const getStatusBadge = (student: any) => {
+    if (student.feeStatus.status === 'No Fee Set') {
+      return <Badge variant="secondary">No Fee Set</Badge>;
+    }
+    
+    if (student.feeStatus.status === 'Credit Balance') {
+      return (
+        <Badge variant="default" className="bg-blue-500">
+          Credit Balance
+        </Badge>
+      );
+    }
+    
+    if (student.balance > 0) {
+      const hasArrears = student.arrears > 0;
+      return (
+        <Badge variant="destructive" className="flex items-center space-x-1">
+          <AlertCircle className="w-3 h-3" />
+          <span>{hasArrears ? 'Outstanding + Arrears' : 'Outstanding'}</span>
+        </Badge>
+      );
+    }
+    
+    return (
+      <Badge variant="default" className="bg-green-500">
+        Fully Paid
+      </Badge>
+    );
+  };
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
-          <span>Student Balances</span>
+          <span>Student Balances - {currentTerm}</span>
           <div className="flex items-center space-x-4">
             <Badge variant="outline" className="text-sm">
               Outstanding: {studentsWithOutstanding} students
@@ -63,6 +124,61 @@ const StudentBalances = () => {
         </CardTitle>
       </CardHeader>
       <CardContent>
+        {/* Enhanced Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-center space-x-2 mb-2">
+              <AlertCircle className="w-4 h-4 text-red-600" />
+              <span className="text-sm font-medium text-red-800">Outstanding</span>
+            </div>
+            <div className="text-lg font-bold text-red-600">
+              {studentsWithOutstanding} students
+            </div>
+            <div className="text-sm text-red-600">
+              GHS {totalOutstanding.toLocaleString()}
+            </div>
+          </div>
+
+          <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+            <div className="flex items-center space-x-2 mb-2">
+              <TrendingUp className="w-4 h-4 text-amber-600" />
+              <span className="text-sm font-medium text-amber-800">Arrears</span>
+            </div>
+            <div className="text-lg font-bold text-amber-600">
+              {studentsWithArrears} students
+            </div>
+            <div className="text-sm text-amber-600">
+              GHS {totalArrears.toLocaleString()}
+            </div>
+          </div>
+
+          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center space-x-2 mb-2">
+              <CreditCard className="w-4 h-4 text-blue-600" />
+              <span className="text-sm font-medium text-blue-800">Credit Balance</span>
+            </div>
+            <div className="text-lg font-bold text-blue-600">
+              {studentsWithCredit} students
+            </div>
+            <div className="text-sm text-blue-600">
+              GHS {totalCreditBalance.toLocaleString()}
+            </div>
+          </div>
+
+          <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+            <div className="flex items-center space-x-2 mb-2">
+              <Search className="w-4 h-4 text-green-600" />
+              <span className="text-sm font-medium text-green-800">Showing</span>
+            </div>
+            <div className="text-lg font-bold text-green-600">
+              {filteredStudents.length} students
+            </div>
+            <div className="text-sm text-green-600">
+              Filtered results
+            </div>
+          </div>
+        </div>
+
         {/* Search and Filters */}
         <div className="flex flex-col lg:flex-row gap-4 mb-6">
           <div className="relative flex-1">
@@ -87,6 +203,19 @@ const StudentBalances = () => {
               ))}
             </SelectContent>
           </Select>
+          <Select value={filterStatus} onValueChange={setFilterStatus}>
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="Filter by status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all-status">All Statuses</SelectItem>
+              <SelectItem value="outstanding">Outstanding</SelectItem>
+              <SelectItem value="paid">Fully Paid</SelectItem>
+              <SelectItem value="credit">Credit Balance</SelectItem>
+              <SelectItem value="arrears">With Arrears</SelectItem>
+              <SelectItem value="no-fee">No Fee Set</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Balances Table */}
@@ -96,16 +225,19 @@ const StudentBalances = () => {
               <TableRow>
                 <TableHead>Student</TableHead>
                 <TableHead>Class</TableHead>
-                <TableHead>Expected Fee</TableHead>
+                <TableHead>Term Fee</TableHead>
+                <TableHead>Arrears</TableHead>
+                <TableHead>Total Due</TableHead>
                 <TableHead>Amount Paid</TableHead>
                 <TableHead>Balance</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Payments</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredStudents.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                  <TableCell colSpan={9} className="text-center py-8 text-gray-500">
                     No students found matching your criteria
                   </TableCell>
                 </TableRow>
@@ -127,7 +259,19 @@ const StudentBalances = () => {
                     </TableCell>
                     <TableCell>
                       <span className="font-mono">
-                        GHS {student.expectedFee.toLocaleString()}
+                        GHS {student.currentTermFee.toLocaleString()}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span className={`font-mono ${
+                        student.arrears > 0 ? 'text-amber-600 font-bold' : 'text-gray-500'
+                      }`}>
+                        GHS {student.arrears.toLocaleString()}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="font-mono font-bold">
+                        GHS {student.totalAmountDue.toLocaleString()}
                       </span>
                     </TableCell>
                     <TableCell>
@@ -141,18 +285,19 @@ const StudentBalances = () => {
                       }`}>
                         GHS {student.balance.toLocaleString()}
                       </span>
+                      {student.feeStatus.status === 'Credit Balance' && (
+                        <div className="text-xs text-blue-600 mt-1">
+                          Credit: GHS {Math.abs(student.feeStatus.balance).toLocaleString()}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell>
-                      {student.balance > 0 ? (
-                        <Badge variant="destructive" className="flex items-center space-x-1">
-                          <AlertCircle className="w-3 h-3" />
-                          <span>Outstanding</span>
-                        </Badge>
-                      ) : (
-                        <Badge variant="default" className="bg-green-500">
-                          Paid
-                        </Badge>
-                      )}
+                      {getStatusBadge(student)}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-xs">
+                        {student.paymentCount} payment{student.paymentCount !== 1 ? 's' : ''}
+                      </Badge>
                     </TableCell>
                   </TableRow>
                 ))
@@ -163,13 +308,27 @@ const StudentBalances = () => {
 
         {/* Summary */}
         {filteredStudents.length > 0 && (
-          <div className="mt-4 text-sm text-gray-600">
-            Showing {filteredStudents.length} students. 
-            {studentsWithOutstanding > 0 && (
-              <span className="text-red-600 ml-1">
-                {studentsWithOutstanding} have outstanding balances.
-              </span>
-            )}
+          <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+              <div>
+                <p className="font-medium text-gray-800">Showing {filteredStudents.length} students</p>
+                <p className="text-gray-600">
+                  {studentsWithOutstanding} have outstanding balances
+                </p>
+              </div>
+              <div>
+                <p className="font-medium text-gray-800">Total Outstanding: GHS {totalOutstanding.toLocaleString()}</p>
+                <p className="text-gray-600">
+                  Arrears: GHS {totalArrears.toLocaleString()}
+                </p>
+              </div>
+              <div>
+                <p className="font-medium text-gray-800">Academic Period: {currentTerm}</p>
+                <p className="text-gray-600">
+                  Generated: {new Date().toLocaleDateString()}
+                </p>
+              </div>
+            </div>
           </div>
         )}
       </CardContent>

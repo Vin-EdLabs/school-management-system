@@ -36,14 +36,14 @@ const ReportsModule = () => {
     const totalExpenses = currentYearExpenses.reduce((sum, expense) => sum + expense.amount, 0);
     
     const totalIncome = totalFees + totalOtherIncome;
-    const netBalance = totalIncome - totalExpenses;
+    const balance = totalIncome - totalExpenses;
 
     return {
       totalFees,
       totalOtherIncome,
       totalIncome,
       totalExpenses,
-      netBalance,
+      balance,
       feePayments,
       currentYearIncome,
       currentYearExpenses
@@ -272,13 +272,13 @@ const ReportsModule = () => {
             </CardContent>
           </Card>
 
-          <Card className={`bg-gradient-to-br ${financial.netBalance >= 0 ? 'from-emerald-500 to-emerald-600' : 'from-orange-500 to-orange-600'} text-white shadow-xl border-0`}>
+          <Card className={`bg-gradient-to-br ${financial.balance >= 0 ? 'from-emerald-500 to-emerald-600' : 'from-orange-500 to-orange-600'} text-white shadow-xl border-0`}>
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm opacity-90 font-medium">Net Balance</p>
-                  <p className="text-3xl font-bold">GHS {financial.netBalance.toLocaleString()}</p>
-                  <p className="text-xs opacity-75 mt-1">{financial.netBalance >= 0 ? 'Profit' : 'Loss'}</p>
+                  <p className="text-3xl font-bold">GHS {financial.balance.toLocaleString()}</p>
+                  <p className="text-xs opacity-75 mt-1">{financial.balance >= 0 ? 'Profit' : 'Loss'}</p>
                 </div>
                 <Calculator className="w-10 h-10 opacity-80" />
               </div>

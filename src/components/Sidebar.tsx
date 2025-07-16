@@ -17,6 +17,7 @@ import {
   UserCheck,
   Award,
   Bot,
+  Calendar,
   LogOut
 } from 'lucide-react';
 import {
@@ -74,6 +75,11 @@ const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
       id: 'classes',
       label: 'Classes',
       icon: BookOpen,
+    }] : []),
+    ...(hasAccess('calendar') ? [{
+      id: 'calendar',
+      label: 'Calendar',
+      icon: Calendar,
     }] : []),
   ],
   

@@ -7,6 +7,7 @@ import FinancialDashboard from './dashboard/FinancialDashboard';
 import StudentsModule from './students/StudentsModule';
 import TeachersModule from './teachers/TeachersModule';
 import ClassesModule from './classes/ClassesModule';
+import CalendarModule from './CalendarModule';
 import FeesModule from './fees/FeesModule';
 import IncomeModule from './income/IncomeModule';
 import ExpensesModule from './expenses/ExpensesModule';
@@ -66,6 +67,8 @@ const Dashboard = () => {
         return <TeachersModule />;
       case 'classes':
         return <ClassesModule />;
+      case 'calendar':
+        return <CalendarModule />;
       case 'teacher-classes':
         return <TeacherClassesModule />;
       case 'attendance':

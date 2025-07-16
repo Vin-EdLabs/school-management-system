@@ -71,6 +71,7 @@ const AiChatModule = () => {
       const response = await processor.processInput(input);
       
       const aiMessage: ChatMessage = {
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
         type: 'ai',
         content: typeof response === 'string' ? response : response.content,
         timestamp: new Date(),
@@ -89,6 +90,7 @@ const AiChatModule = () => {
     } catch (error) {
       console.error('AI processing error:', error);
       addMessage({
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
         type: 'ai',
         content: 'Sorry, I encountered an error processing your request. Please try again or rephrase your question.',
         timestamp: new Date()
@@ -102,6 +104,7 @@ const AiChatModule = () => {
     if (!inputValue.trim() || isProcessing) return;
 
     const userMessage: ChatMessage = {
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
       type: 'user',
       content: inputValue,
       timestamp: new Date()

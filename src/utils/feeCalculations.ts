@@ -1,4 +1,3 @@
-
 export interface FeeCalculation {
   totalFee: number;
   arrears: number;
@@ -21,6 +20,13 @@ export interface StudentFeeStatus {
   status: 'Fully Paid' | 'Amount Owing' | 'Credit Balance' | 'No Fee Set';
   balance: number;
 }
+
+export const generateReceiptNumber = (): string => {
+  const prefix = 'RGS';
+  const timestamp = Date.now().toString().slice(-6);
+  const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+  return `${prefix}${timestamp}${random}`;
+};
 
 export const calculateStudentFees = (
   studentId: string,

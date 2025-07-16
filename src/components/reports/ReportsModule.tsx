@@ -13,11 +13,11 @@ const ReportsModule = () => {
   const [selectedTerm, setSelectedTerm] = useState(getActiveAcademicTerm());
   const [selectedClass, setSelectedClass] = useState('All');
 
-  // Calculate detailed financial summary with individual records
+  // Calculate detailed financial summary with real data
   const calculateDetailedFinancialSummary = () => {
     const currentYear = selectedTerm.split(' ').pop() || '2024';
     
-    // Get detailed fee payments
+    // Get real fee payments from context
     const paymentsArray = Array.isArray(payments) ? payments : [];
     const studentsArray = Array.isArray(students) ? students : [];
     
@@ -38,7 +38,7 @@ const ReportsModule = () => {
         };
       });
 
-    // Get detailed other income records
+    // Get real other income records from context
     const incomeArray = Array.isArray(income) ? income : [];
     const otherIncomeRecords = incomeArray
       .filter(inc => {
@@ -55,7 +55,7 @@ const ReportsModule = () => {
         source: inc.source || 'Unknown'
       }));
 
-    // Get detailed expense records
+    // Get real expense records from context
     const expensesArray = Array.isArray(expenses) ? expenses : [];
     const expenseRecords = expensesArray
       .filter(expense => {
@@ -73,7 +73,7 @@ const ReportsModule = () => {
         paymentMethod: expense.paymentMethod || 'Cash'
       }));
 
-    // Calculate totals
+    // Calculate totals from real data
     const totalFees = feePayments.reduce((sum, payment) => sum + payment.amount, 0);
     const totalOtherIncome = otherIncomeRecords.reduce((sum, inc) => sum + inc.amount, 0);
     const totalExpenses = expenseRecords.reduce((sum, expense) => sum + expense.amount, 0);
@@ -94,7 +94,7 @@ const ReportsModule = () => {
     };
   };
 
-  // Generate detailed class report with arrears tracking
+  // Generate real class report with actual data
   const generateDetailedClassReport = () => {
     const classesArray = Array.isArray(classes) ? classes : [];
     const studentsArray = Array.isArray(students) ? students : [];
@@ -144,7 +144,7 @@ const ReportsModule = () => {
     });
   };
 
-  // Generate comprehensive outstanding report with arrears
+  // Generate real outstanding report with actual data
   const generateComprehensiveOutstandingReport = () => {
     const studentsArray = Array.isArray(students) ? students : [];
     const paymentsArray = Array.isArray(payments) ? payments : [];
@@ -175,11 +175,12 @@ const ReportsModule = () => {
     }).filter(student => student.outstanding > 0);
   };
 
+  // Calculate data from real context data
   const financial = calculateDetailedFinancialSummary();
   const classReport = generateDetailedClassReport();
   const outstandingReport = generateComprehensiveOutstandingReport();
 
-  // Chart data for income/expense breakdown by category
+  // Chart data for income/expense breakdown by category using real data
   const incomeByCategory = financial.allIncomeRecords.reduce((acc, record) => {
     const category = record.category || 'Other';
     acc[category] = (acc[category] || 0) + record.amount;
@@ -207,7 +208,7 @@ const ReportsModule = () => {
     }))
   ];
 
-  // Monthly trend data
+  // Monthly trend data from real transactions
   const monthlyTrends = financial.allTransactions.reduce((acc, transaction) => {
     const month = new Date(transaction.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short' });
     if (!acc[month]) {
@@ -275,8 +276,8 @@ const ReportsModule = () => {
     URL.revokeObjectURL(url);
 
     toast({
-      title: "Detailed Report Exported",
-      description: `${reportType} report with detailed records has been exported successfully`,
+      title: "Real Data Report Exported",
+      description: `${reportType} report with actual financial records has been exported successfully`,
     });
   };
 
@@ -289,8 +290,8 @@ const ReportsModule = () => {
             <BarChart3 className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">Detailed Reports & Analytics</h1>
-            <p className="text-gray-600">Comprehensive financial tracking and analysis</p>
+            <h1 className="text-3xl font-bold text-gray-800">Financial Reports & Analytics</h1>
+            <p className="text-gray-600">Real-time financial tracking and analysis</p>
           </div>
         </div>
         <div className="flex items-center space-x-4">
@@ -307,7 +308,7 @@ const ReportsModule = () => {
         </div>
       </div>
 
-      {/* Financial Summary Cards */}
+      {/* Financial Summary Cards - Using Real Data */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
         <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
           <CardContent className="p-4">
@@ -375,11 +376,11 @@ const ReportsModule = () => {
         </Card>
       </div>
 
-      {/* Charts */}
+      {/* Charts - Using Real Data */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>Income vs Expenses by Category</CardTitle>
+            <CardTitle>Income vs Expenses by Category (Real Data)</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
@@ -397,7 +398,7 @@ const ReportsModule = () => {
 
         <Card>
           <CardHeader>
-            <CardTitle>Monthly Financial Trends</CardTitle>
+            <CardTitle>Monthly Financial Trends (Real Data)</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
@@ -551,13 +552,13 @@ const ReportsModule = () => {
       {/* Export Actions */}
       <Card>
         <CardHeader>
-          <CardTitle>Export Detailed Reports</CardTitle>
+          <CardTitle>Export Real Data Reports</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Button onClick={() => exportDetailedReport('financial')} variant="outline">
               <Download className="w-4 h-4 mr-2" />
-              Detailed Financial
+              Financial Report
             </Button>
             <Button onClick={() => exportDetailedReport('enrollment')} variant="outline">
               <Download className="w-4 h-4 mr-2" />

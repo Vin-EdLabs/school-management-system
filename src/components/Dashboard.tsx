@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import Sidebar from './Sidebar';
+import SidebarWrapper from './SidebarWrapper';
 import DashboardHome from './dashboard/DashboardHome';
 import AdministratorDashboard from './dashboard/AdministratorDashboard';
 import FinancialDashboard from './dashboard/FinancialDashboard';
@@ -97,12 +97,12 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      <Sidebar activeModule={activeModule} setActiveModule={setActiveModule} />
-      <div className="flex-1 overflow-auto">
-        {renderActiveModule()}
-      </div>
-    </div>
+    <SidebarWrapper
+      activeModule={activeModule}
+      setActiveModule={setActiveModule}
+    >
+      {renderActiveModule()}
+    </SidebarWrapper>
   );
 };
 

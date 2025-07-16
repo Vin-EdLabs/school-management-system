@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '../contexts/AuthContext';
@@ -38,14 +39,12 @@ interface AppSidebarProps {
   setActiveModule: (module: string) => void;
 }
 
-export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveModule }) => {
-  const { user, logout, hasAccess } = useAuth();
-  const { state } = useSidebar();
-
-  const dashboardItems = [
+// Clean menu configuration for easy backend integration
+const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
+  dashboard: [
     ...(hasAccess('dashboard') ? [{
       id: 'dashboard',
-      label: user?.role === 'administrator' ? 'Dashboard' : 'General Dashboard',
+      label: 'Dashboard',
       icon: LayoutDashboard,
     }] : []),
     ...(hasAccess('financial-dashboard') ? [{
@@ -58,9 +57,9 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
       label: 'Teacher Dashboard',
       icon: GraduationCap,
     }] : []),
-  ];
-
-  const academicItems = [
+  ],
+  
+  academic: [
     ...(hasAccess('students') || hasAccess('students-view-only') ? [{
       id: 'students',
       label: 'Students',
@@ -76,9 +75,9 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
       label: 'Classes',
       icon: BookOpen,
     }] : []),
-  ];
-
-  const teachingItems = [
+  ],
+  
+  teaching: [
     ...(hasAccess('teacher-classes') ? [{
       id: 'teacher-classes',
       label: 'My Classes',
@@ -94,9 +93,9 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
       label: 'Grades',
       icon: Award,
     }] : []),
-  ];
-
-  const financialItems = [
+  ],
+  
+  financial: [
     ...(hasAccess('fees') ? [{
       id: 'fees',
       label: 'Fees',
@@ -122,9 +121,9 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
       label: 'Fee Status',
       icon: FileText,
     }] : []),
-  ];
-
-  const systemItems = [
+  ],
+  
+  system: [
     ...(hasAccess('settings') || hasAccess('settings-password-only') ? [{
       id: 'settings',
       label: 'Settings',
@@ -135,52 +134,64 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
       label: 'Audit Logs',
       icon: Shield,
     }] : []),
-  ];
-
-  const aiItems = [
+  ],
+  
+  ai: [
     ...(hasAccess('ai-assistant') ? [{
       id: 'ai-assistant',
       label: 'AI Assistant',
       icon: Bot,
       badge: 'NEW'
     }] : []),
-  ];
+  ]
+});
 
-  const renderMenuGroup = (items: any[], label: string) => {
-    if (items.length === 0) return null;
-
-    return (
-      <SidebarGroup>
-        <SidebarGroupLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-          {label}
-        </SidebarGroupLabel>
-        <SidebarGroupContent>
-          <SidebarMenu>
-            {items.map((item) => (
-              <SidebarMenuItem key={item.id}>
-                <SidebarMenuButton
-                  isActive={activeModule === item.id}
-                  onClick={() => setActiveModule(item.id)}
-                  className="w-full"
-                >
-                  <item.icon className="h-4 w-4" />
-                  <span className="flex-1">{item.label}</span>
-                  {item.badge && (
-                    <Badge variant="secondary" className="ml-2 text-xs">
-                      {item.badge}
-                    </Badge>
-                  )}
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
-        </SidebarGroupContent>
-      </SidebarGroup>
-    );
-  };
+const MenuSection: React.FC<{
+  items: any[];
+  label: string;
+  activeModule: string;
+  setActiveModule: (module: string) => void;
+}> = ({ items, label, activeModule, setActiveModule }) => {
+  if (items.length === 0) return null;
 
   return (
-    <Sidebar variant="sidebar" collapsible="icon" className="fixed left-0 top-0 h-full w-64 z-50 bg-white border-r border-gray-200">
+    <SidebarGroup>
+      <SidebarGroupLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+        {label}
+      </SidebarGroupLabel>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {items.map((item) => (
+            <SidebarMenuItem key={item.id}>
+              <SidebarMenuButton
+                isActive={activeModule === item.id}
+                onClick={() => setActiveModule(item.id)}
+                className="w-full"
+              >
+                <item.icon className="h-4 w-4" />
+                <span className="flex-1">{item.label}</span>
+                {item.badge && (
+                  <Badge variant="secondary" className="ml-2 text-xs">
+                    {item.badge}
+                  </Badge>
+                )}
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+};
+
+export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveModule }) => {
+  const { logout, hasAccess } = useAuth();
+  const { state } = useSidebar();
+
+  const menuItems = getMenuItems(hasAccess);
+
+  return (
+    <Sidebar variant="sidebar" collapsible="icon" className="border-r border-gray-200">
       <SidebarHeader className="border-b border-gray-200 p-4">
         <div className="flex items-center space-x-3">
           <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center shrink-0">
@@ -196,15 +207,45 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
       </SidebarHeader>
 
       <SidebarContent className="px-2 py-4">
-        {renderMenuGroup(dashboardItems, 'Dashboard')}
-        {renderMenuGroup(academicItems, 'Academic')}
-        {renderMenuGroup(teachingItems, 'Teaching')}
-        {renderMenuGroup(financialItems, 'Financial')}
-        {renderMenuGroup(systemItems, 'System')}
+        <MenuSection 
+          items={menuItems.dashboard} 
+          label="Dashboard" 
+          activeModule={activeModule}
+          setActiveModule={setActiveModule}
+        />
+        <MenuSection 
+          items={menuItems.academic} 
+          label="Academic" 
+          activeModule={activeModule}
+          setActiveModule={setActiveModule}
+        />
+        <MenuSection 
+          items={menuItems.teaching} 
+          label="Teaching" 
+          activeModule={activeModule}
+          setActiveModule={setActiveModule}
+        />
+        <MenuSection 
+          items={menuItems.financial} 
+          label="Financial" 
+          activeModule={activeModule}
+          setActiveModule={setActiveModule}
+        />
+        <MenuSection 
+          items={menuItems.system} 
+          label="System" 
+          activeModule={activeModule}
+          setActiveModule={setActiveModule}
+        />
         
         <SidebarSeparator className="my-2" />
         
-        {renderMenuGroup(aiItems, 'AI Tools')}
+        <MenuSection 
+          items={menuItems.ai} 
+          label="AI Tools" 
+          activeModule={activeModule}
+          setActiveModule={setActiveModule}
+        />
       </SidebarContent>
 
       <SidebarFooter className="border-t border-gray-200">

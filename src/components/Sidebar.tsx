@@ -1,25 +1,25 @@
+
 import React from 'react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { useAuth } from '../contexts/AuthContext';
-import {
-  Home,
-  Users,
-  GraduationCap,
-  School,
-  CreditCard,
-  TrendingUp,
-  TrendingDown,
-  BarChart3,
-  Settings,
-  LogOut,
-  ChevronRight,
-  Menu,
-  X,
-  Calculator,
+import { 
+  LayoutDashboard, 
+  Users, 
+  GraduationCap, 
+  BookOpen, 
+  DollarSign, 
+  TrendingUp, 
+  TrendingDown, 
+  BarChart3, 
+  Settings, 
+  Shield, 
   FileText,
-  Printer,
-  ClipboardCheck,
-  BookOpen
+  UserCheck,
+  ClipboardList,
+  Award,
+  Bot,
+  LogOut
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -28,132 +28,212 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ activeModule, setActiveModule }) => {
-  const { logout, hasAccess, user } = useAuth();
-  const [isCollapsed, setIsCollapsed] = React.useState(false);
+  const { user, logout, hasAccess } = useAuth();
 
   const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: Home, requiredAccess: 'dashboard' },
-    { id: 'financial-dashboard', label: 'Financial Dashboard', icon: Calculator, requiredAccess: 'financial-dashboard' },
-    { id: 'teacher-dashboard', label: 'Teacher Dashboard', icon: BookOpen, requiredAccess: 'teacher-dashboard' },
-    { id: 'students', label: 'Students', icon: Users, requiredAccess: 'students' },
-    { id: 'teachers', label: 'Teachers', icon: GraduationCap, requiredAccess: 'teachers' },
-    { id: 'classes', label: 'Classes', icon: School, requiredAccess: 'classes' },
-    { id: 'teacher-classes', label: 'My Classes', icon: School, requiredAccess: 'teacher-classes' },
-    { id: 'attendance', label: 'Attendance', icon: ClipboardCheck, requiredAccess: 'attendance' },
-    { id: 'grades', label: 'Grades', icon: BookOpen, requiredAccess: 'grades' },
-    { id: 'fees', label: 'Fees Management', icon: CreditCard, requiredAccess: 'fees' },
-    { id: 'income', label: 'Other Income', icon: TrendingUp, requiredAccess: 'income' },
-    { id: 'expenses', label: 'Expenses', icon: TrendingDown, requiredAccess: 'expenses' },
-    { id: 'reports', label: 'Reports', icon: BarChart3, requiredAccess: 'reports' },
-    { id: 'print-fee-status', label: 'Print Fee Status', icon: Printer, requiredAccess: 'print-fee-status' },
-    { id: 'audit', label: 'Audit Logs', icon: FileText, requiredAccess: 'audit' },
+    // Dashboard items
+    ...(hasAccess('dashboard') ? [{
+      id: 'dashboard',
+      label: user?.role === 'administrator' ? 'Dashboard' : 'General Dashboard',
+      icon: LayoutDashboard,
+      category: 'Dashboard'
+    }] : []),
+    ...(hasAccess('financial-dashboard') ? [{
+      id: 'financial-dashboard',
+      label: 'Financial Dashboard',
+      icon: DollarSign,
+      category: 'Dashboard'
+    }] : []),
+    ...(hasAccess('teacher-dashboard') ? [{
+      id: 'teacher-dashboard',
+      label: 'Teacher Dashboard',
+      icon: GraduationCap,
+      category: 'Dashboard'
+    }] : []),
+
+    // AI Assistant
+    ...(hasAccess('ai-assistant') ? [{
+      id: 'ai-assistant',
+      label: 'AI Assistant',
+      icon: Bot,
+      category: 'AI',
+      badge: 'NEW'
+    }] : []),
+
+    // Academic Management
+    ...(hasAccess('students') || hasAccess('students-view-only') ? [{
+      id: 'students',
+      label: 'Students',
+      icon: Users,
+      category: 'Academic'
+    }] : []),
+    ...(hasAccess('teachers') || hasAccess('teachers-view-only') ? [{
+      id: 'teachers',
+      label: 'Teachers',
+      icon: GraduationCap,
+      category: 'Academic'
+    }] : []),
+    ...(hasAccess('classes') ? [{
+      id: 'classes',
+      label: 'Classes',
+      icon: BookOpen,
+      category: 'Academic'
+    }] : []),
+
+    // Teacher specific
+    ...(hasAccess('teacher-classes') ? [{
+      id: 'teacher-classes',
+      label: 'My Classes',
+      icon: BookOpen,
+      category: 'Teaching'
+    }] : []),
+    ...(hasAccess('attendance') ? [{
+      id: 'attendance',
+      label: 'Attendance',
+      icon: UserCheck,
+      category: 'Teaching'
+    }] : []),
+    ...(hasAccess('grades') ? [{
+      id: 'grades',
+      label: 'Grades',
+      icon: Award,
+      category: 'Teaching'
+    }] : []),
+
+    // Financial Management
+    ...(hasAccess('fees') ? [{
+      id: 'fees',
+      label: 'Fees',
+      icon: DollarSign,
+      category: 'Financial'
+    }] : []),
+    ...(hasAccess('income') ? [{
+      id: 'income',
+      label: 'Income',
+      icon: TrendingUp,
+      category: 'Financial'
+    }] : []),
+    ...(hasAccess('expenses') ? [{
+      id: 'expenses',
+      label: 'Expenses',
+      icon: TrendingDown,
+      category: 'Financial'
+    }] : []),
+    ...(hasAccess('reports') ? [{
+      id: 'reports',
+      label: 'Reports',
+      icon: BarChart3,
+      category: 'Financial'
+    }] : []),
+    ...(hasAccess('print-fee-status') ? [{
+      id: 'print-fee-status',
+      label: 'Fee Status',
+      icon: FileText,
+      category: 'Financial'
+    }] : []),
+
+    // System Management
+    ...(hasAccess('settings') || hasAccess('settings-password-only') ? [{
+      id: 'settings',
+      label: 'Settings',
+      icon: Settings,
+      category: 'System'
+    }] : []),
+    ...(hasAccess('audit') ? [{
+      id: 'audit',
+      label: 'Audit Logs',
+      icon: Shield,
+      category: 'System'
+    }] : [])
   ];
 
-  // Filter menu items based on role access
-  const visibleMenuItems = menuItems.filter(item => hasAccess(item.requiredAccess));
+  const groupedItems = menuItems.reduce((acc, item) => {
+    if (!acc[item.category]) {
+      acc[item.category] = [];
+    }
+    acc[item.category].push(item);
+    return acc;
+  }, {} as Record<string, typeof menuItems>);
+
+  const categoryOrder = ['Dashboard', 'AI', 'Academic', 'Teaching', 'Financial', 'System'];
 
   return (
-    <div className={`${isCollapsed ? 'w-16' : 'w-64'} bg-white shadow-lg border-r border-gray-200 transition-all duration-300 ease-in-out flex flex-col h-full`}>
-      {/* Header with TechNerve branding */}
-      <div className="p-4 border-b border-gray-200 flex-shrink-0">
-        <div className="flex items-center justify-between">
-          {!isCollapsed && (
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-                <GraduationCap className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h1 className="text-sm font-bold text-gray-800">Rosa Gardens</h1>
-                <p className="text-xs text-gray-500">School Management</p>
-              </div>
-            </div>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 w-8 p-0"
-            onClick={() => setIsCollapsed(!isCollapsed)}
-          >
-            {isCollapsed ? <Menu className="w-4 h-4" /> : <X className="w-4 h-4" />}
-          </Button>
-        </div>
-        {!isCollapsed && (
-          <div className="mt-3 pt-3 border-t border-gray-100">
-            <div className="flex items-center space-x-2">
-              <div className="w-6 h-6 bg-gradient-to-br from-indigo-500 to-purple-600 rounded flex items-center justify-center">
-                <span className="text-xs font-bold text-white">T</span>
-              </div>
-              <span className="text-xs text-gray-600 font-medium">Powered by TechNerve</span>
-            </div>
-            {user && (
-              <div className="mt-2 text-xs text-gray-500">
-                Logged in as: <span className="font-medium text-gray-700">{user.role.replace('-', ' ')}</span>
-              </div>
-            )}
+    <div className="w-64 bg-white border-r border-gray-200 h-full flex flex-col">
+      {/* Header */}
+      <div className="p-4 border-b border-gray-200">
+        <div className="flex items-center space-x-3">
+          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+            <span className="text-white font-bold text-lg">RG</span>
           </div>
-        )}
+          <div>
+            <h1 className="font-bold text-gray-900">Rosa Gardens</h1>
+            <p className="text-xs text-gray-500">School Management</p>
+          </div>
+        </div>
       </div>
 
-      {/* Navigation Menu */}
-      <nav className="mt-4 px-2 flex-1 overflow-y-auto">
-        {visibleMenuItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeModule === item.id;
-          
+      {/* User Info */}
+      <div className="p-4 border-b border-gray-200">
+        <div className="flex items-center space-x-3">
+          <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
+            <span className="text-gray-600 font-medium text-sm">
+              {user?.username?.charAt(0).toUpperCase()}
+            </span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-gray-900 truncate">{user?.username}</p>
+            <p className="text-xs text-gray-500 capitalize">{user?.role?.replace('-', ' ')}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Navigation */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {categoryOrder.map(category => {
+          const items = groupedItems[category];
+          if (!items || items.length === 0) return null;
+
           return (
-            <Button
-              key={item.id}
-              variant={isActive ? "default" : "ghost"}
-              className={`w-full ${isCollapsed ? 'justify-center p-2' : 'justify-start'} mb-1 h-10 ${
-                isActive 
-                  ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-md' 
-                  : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
-              }`}
-              onClick={() => setActiveModule(item.id)}
-              title={isCollapsed ? item.label : undefined}
-            >
-              <Icon className={`w-4 h-4 ${!isCollapsed ? 'mr-3' : ''}`} />
-              {!isCollapsed && (
-                <>
-                  <span className="flex-1 text-left text-sm">{item.label}</span>
-                  {isActive && <ChevronRight className="w-3 h-3" />}
-                </>
-              )}
-            </Button>
+            <div key={category}>
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                {category}
+              </h3>
+              <div className="space-y-1">
+                {items.map((item) => (
+                  <Button
+                    key={item.id}
+                    variant={activeModule === item.id ? "default" : "ghost"}
+                    className={`w-full justify-start text-left ${
+                      activeModule === item.id 
+                        ? 'bg-blue-600 text-white' 
+                        : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                    onClick={() => setActiveModule(item.id)}
+                  >
+                    <item.icon className="mr-3 h-4 w-4" />
+                    <span className="flex-1">{item.label}</span>
+                    {item.badge && (
+                      <Badge variant="secondary" className="ml-2 text-xs">
+                        {item.badge}
+                      </Badge>
+                    )}
+                  </Button>
+                ))}
+              </div>
+            </div>
           );
         })}
+      </div>
 
-        {/* Settings - Available for all roles */}
-        <Button
-          variant={activeModule === 'settings' ? "default" : "ghost"}
-          className={`w-full ${isCollapsed ? 'justify-center p-2' : 'justify-start'} mb-1 h-10 ${
-            activeModule === 'settings'
-              ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-md' 
-              : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
-          }`}
-          onClick={() => setActiveModule('settings')}
-          title={isCollapsed ? 'Settings' : undefined}
-        >
-          <Settings className={`w-4 h-4 ${!isCollapsed ? 'mr-3' : ''}`} />
-          {!isCollapsed && (
-            <>
-              <span className="flex-1 text-left text-sm">Settings</span>
-              {activeModule === 'settings' && <ChevronRight className="w-3 h-3" />}
-            </>
-          )}
-        </Button>
-      </nav>
-
-      {/* Fixed Logout Button at Bottom */}
-      <div className="p-2 border-t border-gray-200 flex-shrink-0">
+      {/* Logout */}
+      <div className="p-4 border-t border-gray-200">
         <Button
           variant="ghost"
-          className={`w-full ${isCollapsed ? 'justify-center p-2' : 'justify-start'} text-red-600 hover:text-red-700 hover:bg-red-50 h-10`}
+          className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
           onClick={logout}
-          title={isCollapsed ? "Logout" : undefined}
         >
-          <LogOut className={`w-4 h-4 ${!isCollapsed ? 'mr-3' : ''}`} />
-          {!isCollapsed && <span className="text-sm">Logout</span>}
+          <LogOut className="mr-3 h-4 w-4" />
+          Logout
         </Button>
       </div>
     </div>

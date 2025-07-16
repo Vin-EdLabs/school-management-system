@@ -18,6 +18,7 @@ import TeacherDashboard from './teacher/TeacherDashboard';
 import TeacherClassesModule from './teacher/TeacherClassesModule';
 import AttendanceModule from './teacher/AttendanceModule';
 import GradesModule from './teacher/GradesModule';
+import AiChatModule from './ai/AiChatModule';
 import { useAuth } from '../contexts/AuthContext';
 
 const Dashboard = () => {
@@ -57,6 +58,8 @@ const Dashboard = () => {
         return <FinancialDashboard />;
       case 'teacher-dashboard':
         return <TeacherDashboard />;
+      case 'ai-assistant':
+        return <AiChatModule />;
       case 'students':
         return <StudentsModule />;
       case 'teachers':

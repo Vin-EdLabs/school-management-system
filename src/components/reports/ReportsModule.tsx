@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -19,25 +18,29 @@ const ReportsModule = () => {
     const currentYear = selectedTerm.split(' ').pop() || '2024';
     
     // Get detailed fee payments
-    const feePayments = payments
+    const paymentsArray = Array.isArray(payments) ? payments : [];
+    const studentsArray = Array.isArray(students) ? students : [];
+    
+    const feePayments = paymentsArray
       .filter(payment => payment.term === selectedTerm)
       .map(payment => {
-        const student = students.find(s => s.id === payment.studentId);
+        const student = studentsArray.find(s => s.id === payment.studentId);
         return {
           id: payment.id,
           type: 'Fee Payment',
           amount: payment.amount,
           date: payment.date,
-          description: `Fee payment from ${student?.firstName} ${student?.lastName} (${student?.classAssigned})`,
+          description: `Fee payment from ${student?.firstName || 'Unknown'} ${student?.lastName || 'Student'} (${student?.classAssigned || 'Unknown Class'})`,
           category: 'School Fees',
           studentId: payment.studentId,
           term: payment.term,
-          paymentMethod: payment.paymentMethod
+          paymentMethod: payment.paymentMethod || 'Cash'
         };
       });
 
     // Get detailed other income records
-    const otherIncomeRecords = income
+    const incomeArray = Array.isArray(income) ? income : [];
+    const otherIncomeRecords = incomeArray
       .filter(inc => {
         const incomeDate = new Date(inc.date);
         return incomeDate.getFullYear().toString() === currentYear;
@@ -53,7 +56,8 @@ const ReportsModule = () => {
       }));
 
     // Get detailed expense records
-    const expenseRecords = expenses
+    const expensesArray = Array.isArray(expenses) ? expenses : [];
+    const expenseRecords = expensesArray
       .filter(expense => {
         const expenseDate = new Date(expense.paymentDate);
         return expenseDate.getFullYear().toString() === currentYear;
@@ -92,8 +96,12 @@ const ReportsModule = () => {
 
   // Generate detailed class report with arrears tracking
   const generateDetailedClassReport = () => {
-    return classes.map(cls => {
-      const classStudents = students.filter(student => student.classAssigned === cls.className);
+    const classesArray = Array.isArray(classes) ? classes : [];
+    const studentsArray = Array.isArray(students) ? students : [];
+    const paymentsArray = Array.isArray(payments) ? payments : [];
+    
+    return classesArray.map(cls => {
+      const classStudents = studentsArray.filter(student => student.classAssigned === cls.className);
       
       let totalFeesExpected = 0;
       let totalFeesCollected = 0;
@@ -105,7 +113,7 @@ const ReportsModule = () => {
           selectedTerm,
           student.classAssigned,
           feeStructures,
-          payments
+          paymentsArray
         );
         
         totalFeesExpected += feeCalculation.currentTermFee;
@@ -138,13 +146,16 @@ const ReportsModule = () => {
 
   // Generate comprehensive outstanding report with arrears
   const generateComprehensiveOutstandingReport = () => {
-    return students.map(student => {
+    const studentsArray = Array.isArray(students) ? students : [];
+    const paymentsArray = Array.isArray(payments) ? payments : [];
+    
+    return studentsArray.map(student => {
       const feeCalculation = calculateStudentFees(
         student.id,
         selectedTerm,
         student.classAssigned,
         feeStructures,
-        payments
+        paymentsArray
       );
 
       const outstanding = Math.max(0, feeCalculation.totalAmountDue - feeCalculation.totalPaid);
@@ -159,7 +170,7 @@ const ReportsModule = () => {
         totalAmountDue: feeCalculation.totalAmountDue,
         totalPaid: feeCalculation.totalPaid,
         outstanding: outstanding,
-        paymentHistory: payments.filter(p => p.studentId === student.id)
+        paymentHistory: paymentsArray.filter(p => p.studentId === student.id)
       };
     }).filter(student => student.outstanding > 0);
   };
@@ -511,7 +522,7 @@ const ReportsModule = () => {
                   .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                   .slice(0, 15)
                   .map((transaction, index) => (
-                    <tr key={index} className="border-b">
+                    <tr key={index} className="border-b hover:bg-gray-50">
                       <td className="p-2">{new Date(transaction.date).toLocaleDateString()}</td>
                       <td className="p-2">
                         <span className={`px-2 py-1 rounded text-xs ${

@@ -23,16 +23,13 @@ const SidebarWrapper: React.FC<SidebarWrapperProps> = ({
     <SidebarProvider>
       <div className="flex min-h-screen w-full">
         <AppSidebar activeModule={activeModule} setActiveModule={setActiveModule} />
-        <SidebarInset className="flex-1">
-          <MainHeader onAiAssistantClick={handleAiAssistantClick} />
-          
-          {/* Sidebar trigger bar - now below the main header */}
-          <div className="flex h-14 items-center gap-2 px-4 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 mt-16">
-            <SidebarTrigger className="h-8 w-8" />
-            <div className="flex-1" />
-          </div>
-          
-          <main className="flex-1 overflow-auto">
+        
+        {/* Main Header - Fixed */}
+        <MainHeader onAiAssistantClick={handleAiAssistantClick} />
+        
+        <SidebarInset className="flex-1">          
+          {/* Main content with top margin to account for fixed header */}
+          <main className="pt-16 min-h-screen bg-gray-50">
             {children}
           </main>
         </SidebarInset>

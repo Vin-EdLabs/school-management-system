@@ -136,7 +136,7 @@ const AiChatModule = () => {
 
   if (!hasAccess('ai-assistant')) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6 flex items-center justify-center">
+      <div className="flex items-center justify-center h-full">
         <div className="max-w-md mx-auto text-center bg-white rounded-2xl p-8 shadow-lg">
           <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
             <Bot className="w-8 h-8 text-gray-400" />
@@ -164,7 +164,6 @@ const AiChatModule = () => {
     setTypingMessageId(typingId);
     
     try {
-      // Show typing for 2 seconds
       await new Promise(resolve => setTimeout(resolve, 2000));
       
       const processor = new AIProcessor({
@@ -258,25 +257,21 @@ const AiChatModule = () => {
   const handleShowReceipt = (data: any) => {
     console.log('handleShowReceipt called with:', data);
     
-    // Check if this is report data (has type property indicating report type)
     if (data && (data.type === 'general' || data.type === 'income' || data.type === 'expenses')) {
       console.log('Opening A4 Report for type:', data.type);
       setReportData(data);
       setShowA4Report(true);
     } 
-    // Check if this is receipt data (has studentName, amount, etc.)
     else if (data && data.studentName && data.amount !== undefined) {
       console.log('Opening Receipt Printer');
       setReceiptData(data);
       setShowReceipt(true);
     }
-    // Fallback - if unclear, check for common receipt properties
     else if (data && (data.receiptNumber || data.paymentMethod)) {
       console.log('Opening Receipt Printer (fallback)');
       setReceiptData(data);
       setShowReceipt(true);
     }
-    // If it has comprehensive financial data, treat as report
     else if (data && (data.financial || data.students || data.classes)) {
       console.log('Opening A4 Report (comprehensive data detected)');
       setReportData(data);
@@ -302,19 +297,17 @@ const AiChatModule = () => {
 
   return (
     <>
-      <div className="h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50/20 to-indigo-50/30">
-        {/* Header */}
-        <div className="flex-shrink-0 p-4 bg-white/90 backdrop-blur-md border-b border-gray-200/60 shadow-sm">
-          <div className="flex items-center justify-between max-w-5xl mx-auto">
+      <div className="h-full flex flex-col bg-white">
+        {/* Fixed Chat Header */}
+        <div className="flex-shrink-0 p-6 bg-white border-b border-gray-200 shadow-sm">
+          <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl text-white shadow-lg">
                 <Bot className="w-7 h-7" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
-                  AI Assistant
-                </h1>
-                <p className="text-sm text-gray-500">Rosa Gardens School Management</p>
+                <h1 className="text-2xl font-bold text-gray-900">AI Assistant</h1>
+                <p className="text-sm text-gray-600">Rosa Gardens School Management</p>
               </div>
             </div>
             <div className="flex items-center space-x-3">
@@ -334,10 +327,10 @@ const AiChatModule = () => {
           </div>
         </div>
 
-        {/* Chat Area */}
-        <div className="flex-1 flex flex-col max-w-5xl mx-auto w-full">
-          <ScrollArea className="flex-1 p-6" ref={scrollAreaRef}>
-            <div className="space-y-6">
+        {/* Scrollable Chat Area */}
+        <div className="flex-1 overflow-hidden">
+          <ScrollArea className="h-full p-6" ref={scrollAreaRef}>
+            <div className="space-y-6 pb-6">
               {messages.map((message) => (
                 <div key={message.id} className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[85%] ${
@@ -408,101 +401,99 @@ const AiChatModule = () => {
               {typingMessageId && <TypingMessage />}
             </div>
           </ScrollArea>
+        </div>
 
+        {/* Fixed Input Area */}
+        <div className="flex-shrink-0 border-t border-gray-200 bg-white">
           {/* Quick Commands */}
           {showCommands && (
-            <div className="flex-shrink-0 p-4 bg-white/70 backdrop-blur-sm border-t border-gray-200/50">
-              <div className="max-w-5xl mx-auto">
-                <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
-                  <Zap className="w-4 h-4 mr-2 text-blue-500" />
-                  Quick Commands
-                </h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
-                  {quickCommands.map((command) => (
-                    <Button
-                      key={command.id}
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleQuickCommand(command.template)}
-                      className="h-auto p-3 flex flex-col items-center text-center hover:bg-blue-50 hover:border-blue-300 transition-all duration-200 hover:shadow-sm rounded-xl"
-                    >
-                      <div className="text-lg mb-1">{command.icon}</div>
-                      <div className="text-xs font-medium">{command.title}</div>
-                    </Button>
-                  ))}
-                </div>
+            <div className="p-4 border-b border-gray-100">
+              <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
+                <Zap className="w-4 h-4 mr-2 text-blue-500" />
+                Quick Commands
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
+                {quickCommands.map((command) => (
+                  <Button
+                    key={command.id}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleQuickCommand(command.template)}
+                    className="h-auto p-3 flex flex-col items-center text-center hover:bg-blue-50 hover:border-blue-300 transition-all duration-200 hover:shadow-sm rounded-xl"
+                  >
+                    <div className="text-lg mb-1">{command.icon}</div>
+                    <div className="text-xs font-medium">{command.title}</div>
+                  </Button>
+                ))}
               </div>
             </div>
           )}
 
-          {/* Input Area */}
-          <div className="flex-shrink-0 p-4 bg-white/90 backdrop-blur-sm border-t border-gray-200/50">
-            <div className="max-w-5xl mx-auto">
-              <div className="flex items-center justify-between mb-3">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowCommands(!showCommands)}
-                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200 rounded-xl"
-                >
-                  <Command className="w-4 h-4 mr-2" />
-                  {showCommands ? 'Hide' : 'Show'} Commands
-                </Button>
-                <Badge variant="secondary" className="text-xs bg-amber-50 text-amber-700 border-amber-200">
-                  <Clock className="w-3 h-3 mr-1" />
-                  Auto-clear in 10min
-                </Badge>
-              </div>
-              
-              <div className="flex items-end space-x-3">
-                <div className="flex-1 relative">
-                  <Input
-                    ref={inputRef}
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    placeholder="Type a command, e.g. 'Record payment ₵500 for 12345' or 'Generate general report'"
-                    className="pr-12 min-h-[52px] text-sm border-gray-300 focus:border-blue-500 focus:ring-blue-500 rounded-xl shadow-sm"
-                    disabled={isProcessing}
-                  />
-                </div>
-                <Button 
-                  onClick={handleSendMessage} 
-                  disabled={!inputValue.trim() || isProcessing}
-                  className="h-[52px] w-[52px] p-0 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
-                >
-                  <ArrowUp className="w-5 h-5" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-[52px] w-[52px] p-0 border-gray-300 hover:bg-gray-50 rounded-xl"
+          <div className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowCommands(!showCommands)}
+                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200 rounded-xl"
+              >
+                <Command className="w-4 h-4 mr-2" />
+                {showCommands ? 'Hide' : 'Show'} Commands
+              </Button>
+              <Badge variant="secondary" className="text-xs bg-amber-50 text-amber-700 border-amber-200">
+                <Clock className="w-3 h-3 mr-1" />
+                Auto-clear in 10min
+              </Badge>
+            </div>
+            
+            <div className="flex items-end space-x-3">
+              <div className="flex-1 relative">
+                <Input
+                  ref={inputRef}
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder="Type a command, e.g. 'Record payment ₵500 for 12345' or 'Generate general report'"
+                  className="pr-12 min-h-[52px] text-sm border-gray-300 focus:border-blue-500 focus:ring-blue-500 rounded-xl shadow-sm"
                   disabled={isProcessing}
-                >
-                  <Mic className="w-5 h-5 text-gray-500" />
-                </Button>
+                />
               </div>
+              <Button 
+                onClick={handleSendMessage} 
+                disabled={!inputValue.trim() || isProcessing}
+                className="h-[52px] w-[52px] p-0 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
+              >
+                <ArrowUp className="w-5 h-5" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-[52px] w-[52px] p-0 border-gray-300 hover:bg-gray-50 rounded-xl"
+                disabled={isProcessing}
+              >
+                <Mic className="w-5 h-5 text-gray-500" />
+              </Button>
+            </div>
 
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button 
-                  onClick={() => handleQuickCommand('Record payment ₵500 for student 12345')}
-                  className="text-xs bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full transition-colors duration-200"
-                >
-                  💡 Record payment ₵500 for student 12345
-                </button>
-                <button 
-                  onClick={() => handleQuickCommand('Generate general report for current term')}
-                  className="text-xs bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full transition-colors duration-200"
-                >
-                  📊 Generate general report for current term
-                </button>
-                <button 
-                  onClick={() => handleQuickCommand('Which students owe money?')}
-                  className="text-xs bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full transition-colors duration-200"
-                >
-                  👥 Which students owe money?
-                </button>
-              </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button 
+                onClick={() => handleQuickCommand('Record payment ₵500 for student 12345')}
+                className="text-xs bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full transition-colors duration-200"
+              >
+                💡 Record payment ₵500 for student 12345
+              </button>
+              <button 
+                onClick={() => handleQuickCommand('Generate general report for current term')}
+                className="text-xs bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full transition-colors duration-200"
+              >
+                📊 Generate general report for current term
+              </button>
+              <button 
+                onClick={() => handleQuickCommand('Which students owe money?')}
+                className="text-xs bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full transition-colors duration-200"
+              >
+                👥 Which students owe money?
+              </button>
             </div>
           </div>
         </div>

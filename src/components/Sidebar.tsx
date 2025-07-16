@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '../contexts/AuthContext';
@@ -181,38 +180,22 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
   };
 
   return (
-    <Sidebar variant="sidebar" collapsible="icon">
-      <SidebarHeader className="border-b border-border">
-        <div className="flex items-center space-x-3 p-2">
+    <Sidebar variant="sidebar" collapsible="icon" className="fixed left-0 top-0 h-full w-64 z-50 bg-white border-r border-gray-200">
+      <SidebarHeader className="border-b border-gray-200 p-4">
+        <div className="flex items-center space-x-3">
           <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center shrink-0">
             <span className="text-white font-bold text-lg">RG</span>
           </div>
           {state === "expanded" && (
             <div className="min-w-0">
-              <h1 className="font-bold text-foreground truncate">Rosa Gardens</h1>
-              <p className="text-xs text-muted-foreground truncate">School Management</p>
+              <h1 className="font-bold text-gray-900 truncate text-lg">Rosa Gardens</h1>
+              <p className="text-sm text-gray-600 truncate">School Management</p>
             </div>
           )}
         </div>
-
-        {state === "expanded" && (
-          <div className="flex items-center space-x-3 p-2 border-t border-border">
-            <div className="w-8 h-8 bg-muted rounded-full flex items-center justify-center shrink-0">
-              <span className="text-muted-foreground font-medium text-sm">
-                {user?.username?.charAt(0).toUpperCase()}
-              </span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-foreground truncate">{user?.username}</p>
-              <p className="text-xs text-muted-foreground capitalize truncate">
-                {user?.role?.replace('-', ' ')}
-              </p>
-            </div>
-          </div>
-        )}
       </SidebarHeader>
 
-      <SidebarContent className="px-2">
+      <SidebarContent className="px-2 py-4">
         {renderMenuGroup(dashboardItems, 'Dashboard')}
         {renderMenuGroup(academicItems, 'Academic')}
         {renderMenuGroup(teachingItems, 'Teaching')}
@@ -224,12 +207,12 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
         {renderMenuGroup(aiItems, 'AI Tools')}
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-border">
+      <SidebarFooter className="border-t border-gray-200">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
               onClick={logout}
-              className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
+              className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
             >
               <LogOut className="h-4 w-4" />
               <span>Logout</span>
@@ -238,9 +221,9 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
         </SidebarMenu>
         
         {state === "expanded" && (
-          <div className="px-2 py-3 border-t border-border">
-            <p className="text-xs text-muted-foreground text-center">
-              Powered by <span className="font-semibold text-foreground">Technver</span>
+          <div className="px-2 py-3 border-t border-gray-200">
+            <p className="text-xs text-gray-500 text-center">
+              Powered by <span className="font-semibold text-gray-700">Technver</span>
             </p>
           </div>
         )}

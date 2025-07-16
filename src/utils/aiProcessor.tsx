@@ -230,17 +230,63 @@ export class AIProcessor {
     const totalRevenue = totalFees + totalIncome;
     const netProfit = totalRevenue - totalExpenses;
     
-    // Calculate student statistics
-    const totalStudents = this.data.students.length;
-    const studentsWithBalance = this.data.students.filter(student => {
-      const balance = this.calculateStudentBalance(student.id);
-      return balance && balance.balance > 0;
-    });
+    // Detailed income breakdown
+    const incomeBreakdown = this.data.income
+      .filter(inc => new Date(inc.date).getFullYear().toString() === currentYear)
+      .reduce((acc, income) => {
+        acc[income.source] = (acc[income.source] || 0) + income.amount;
+        return acc;
+      }, {} as Record<string, number>);
+
+    // Detailed expense breakdown with descriptions
+    const expenseBreakdown = this.data.expenses
+      .filter(exp => new Date(exp.paymentDate).getFullYear().toString() === currentYear)
+      .reduce((acc, expense) => {
+        if (!acc[expense.category]) {
+          acc[expense.category] = { amount: 0, count: 0, items: [] };
+        }
+        acc[expense.category].amount += expense.amount;
+        acc[expense.category].count += 1;
+        acc[expense.category].items.push({
+          description: expense.description,
+          amount: expense.amount,
+          date: expense.paymentDate,
+          paymentMethod: expense.paymentMethod
+        });
+        return acc;
+      }, {} as Record<string, any>);
+
+    // Monthly expense breakdown
+    const monthlyExpenses = this.data.expenses
+      .filter(exp => new Date(exp.paymentDate).getFullYear().toString() === currentYear)
+      .reduce((acc, expense) => {
+        const month = new Date(expense.paymentDate).toLocaleDateString('en', { month: 'long' });
+        if (!acc[month]) {
+          acc[month] = { amount: 0, count: 0 };
+        }
+        acc[month].amount += expense.amount;
+        acc[month].count += 1;
+        return acc;
+      }, {} as Record<string, any>);
     
-    const totalOutstanding = studentsWithBalance.reduce((sum, student) => {
+    // Calculate student statistics and outstanding balances
+    const totalStudents = this.data.students.length;
+    const outstandingStudents = this.data.students.map(student => {
       const balance = this.calculateStudentBalance(student.id);
-      return sum + (balance?.balance || 0);
-    }, 0);
+      if (balance && balance.balance > 0) {
+        return {
+          studentName: `${student.firstName} ${student.lastName}`,
+          studentId: student.studentId,
+          className: student.classAssigned,
+          totalFee: balance.currentTermFee,
+          paid: balance.totalPaid,
+          outstanding: balance.balance
+        };
+      }
+      return null;
+    }).filter(Boolean);
+    
+    const totalOutstanding = outstandingStudents.reduce((sum, student) => sum + (student?.outstanding || 0), 0);
 
     // Class breakdown
     const classBreakdown = this.data.classes.map(cls => {
@@ -257,14 +303,6 @@ export class AIProcessor {
         feesCollected: classPayments
       };
     });
-
-    // Top expenses categories
-    const expenseCategories = this.data.expenses
-      .filter(exp => new Date(exp.paymentDate).getFullYear().toString() === currentYear)
-      .reduce((acc, expense) => {
-        acc[expense.category] = (acc[expense.category] || 0) + expense.amount;
-        return acc;
-      }, {} as Record<string, number>);
 
     const reportContent = `📊 **ROSA GARDENS SCHOOL - GENERAL REPORT**
 **Academic Term:** ${currentTerm}
@@ -283,7 +321,7 @@ export class AIProcessor {
 
 ## 👥 **STUDENT STATISTICS**
 • **Total Students:** ${totalStudents}
-• **Students with Outstanding Balance:** ${studentsWithBalance.length}
+• **Students with Outstanding Balance:** ${outstandingStudents.length}
 • **Total Outstanding Amount:** GHS ${totalOutstanding.toLocaleString()}
 • **Collection Rate:** ${((totalFees / (totalFees + totalOutstanding)) * 100).toFixed(1)}%
 
@@ -297,10 +335,10 @@ ${classBreakdown.map(cls =>
 ---
 
 ## 💸 **TOP EXPENSE CATEGORIES**
-${Object.entries(expenseCategories)
-  .sort(([,a], [,b]) => b - a)
+${Object.entries(expenseBreakdown)
+  .sort(([,a], [,b]) => b.amount - a.amount)
   .slice(0, 5)
-  .map(([category, amount]) => `• **${category}:** GHS ${amount.toLocaleString()}`)
+  .map(([category, data]) => `• **${category}:** GHS ${data.amount.toLocaleString()} (${data.count} transactions)`)
   .join('\n')}
 
 ---
@@ -321,11 +359,15 @@ ${Object.entries(expenseCategories)
       },
       students: {
         total: totalStudents,
-        owing: studentsWithBalance.length,
+        owing: outstandingStudents.length,
         totalOutstanding
       },
       classes: classBreakdown,
-      expenses: expenseCategories
+      expenses: expenseBreakdown,
+      incomeBreakdown,
+      monthlyExpenses,
+      outstandingStudents,
+      type: 'general'
     };
 
     return {

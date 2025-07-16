@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,75 +7,67 @@ import { toast } from '@/hooks/use-toast';
 import { BarChart3, Download, FileText, Calculator, DollarSign, TrendingUp, TrendingDown, Users, Calendar } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 import { reportService } from '../../services';
+import { getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
 
 const ReportsModule = () => {
   const { students, payments, income, expenses, feeStructures, classes } = useData();
   const [selectedTerm, setSelectedTerm] = useState('');
 
-  // Get current term from settings
+  // Get current term from settings - same as Financial Dashboard
   useEffect(() => {
-    const getCurrentTerm = () => {
-      const savedAcademicSettings = localStorage.getItem('academicSettings');
-      if (savedAcademicSettings) {
-        try {
-          const settings = JSON.parse(savedAcademicSettings);
-          return settings.currentTerm || 'Term 1 2024';
-        } catch (error) {
-          console.error('Error loading academic settings:', error);
-        }
-      }
-      return 'Term 1 2024';
-    };
-
-    setSelectedTerm(getCurrentTerm());
-
-    // Listen for academic settings changes
-    const handleSettingsChange = () => {
-      setSelectedTerm(getCurrentTerm());
-    };
-
-    window.addEventListener('academicSettingsChanged', handleSettingsChange);
-    return () => window.removeEventListener('academicSettingsChanged', handleSettingsChange);
+    const currentTerm = getActiveAcademicTerm();
+    setSelectedTerm(currentTerm);
   }, []);
 
-  // Generate comprehensive financial summary from real data
+  // Generate comprehensive financial summary using the same logic as Financial Dashboard
   const generateFinancialSummary = () => {
-    const currentYear = selectedTerm.split(' ').pop() || new Date().getFullYear().toString();
+    const currentYear = getActiveAcademicYear();
     
-    // School fees for the selected term
-    const feePayments = payments.filter(payment => payment.term === selectedTerm);
-    const totalFees = feePayments.reduce((sum, payment) => sum + payment.amount, 0);
-    
-    // Other income for the current year
-    const currentYearIncome = income.filter(inc => {
-      const incomeDate = new Date(inc.date);
-      return incomeDate.getFullYear().toString() === currentYear;
-    });
-    const totalOtherIncome = currentYearIncome.reduce((sum, inc) => sum + inc.amount, 0);
-    
-    // Expenses for the current year
-    const currentYearExpenses = expenses.filter(expense => {
-      const expenseDate = new Date(expense.paymentDate);
-      return expenseDate.getFullYear().toString() === currentYear;
-    });
-    const totalExpenses = currentYearExpenses.reduce((sum, expense) => sum + expense.amount, 0);
-    
-    const totalIncome = totalFees + totalOtherIncome;
+    // Fees collected for the selected term (same as Financial Dashboard)
+    const feesCollected = payments
+      .filter(payment => payment.term === selectedTerm)
+      .reduce((sum, payment) => sum + payment.amount, 0);
+
+    // Other income for the current year (same as Financial Dashboard)
+    const otherIncome = income
+      .filter(inc => {
+        const incomeDate = new Date(inc.date);
+        const incomeYear = incomeDate.getFullYear().toString();
+        return incomeYear === currentYear;
+      })
+      .reduce((sum, inc) => sum + inc.amount, 0);
+
+    // Total expenses for the current year (same as Financial Dashboard)
+    const totalExpenses = expenses
+      .filter(expense => {
+        const expenseDate = new Date(expense.paymentDate);
+        const expenseYear = expenseDate.getFullYear().toString();
+        return expenseYear === currentYear;
+      })
+      .reduce((sum, expense) => sum + expense.amount, 0);
+
+    const totalIncome = feesCollected + otherIncome;
     const balance = totalIncome - totalExpenses;
 
     return {
-      totalFees,
-      totalOtherIncome,
+      totalFees: feesCollected,
+      totalOtherIncome: otherIncome,
       totalIncome,
       totalExpenses,
       balance,
-      feePayments,
-      currentYearIncome,
-      currentYearExpenses
+      feePayments: payments.filter(payment => payment.term === selectedTerm),
+      currentYearIncome: income.filter(inc => {
+        const incomeDate = new Date(inc.date);
+        return incomeDate.getFullYear().toString() === currentYear;
+      }),
+      currentYearExpenses: expenses.filter(expense => {
+        const expenseDate = new Date(expense.paymentDate);
+        return expenseDate.getFullYear().toString() === currentYear;
+      })
     };
   };
 
-  // Generate detailed income breakdown
+  // Generate detailed income breakdown using Financial Dashboard approach
   const generateIncomeBreakdown = () => {
     const financial = generateFinancialSummary();
     
@@ -92,7 +83,7 @@ const ReportsModule = () => {
       incomeBySource['School Fees'] = financial.totalFees;
     }
 
-    // Monthly income trends
+    // Monthly income trends using Financial Dashboard logic
     const monthlyIncome = [...financial.feePayments, ...financial.currentYearIncome].reduce((acc, record) => {
       const date = new Date(record.date);
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
@@ -113,11 +104,11 @@ const ReportsModule = () => {
     };
   };
 
-  // Generate detailed expense breakdown
+  // Generate detailed expense breakdown using Financial Dashboard approach
   const generateExpenseBreakdown = () => {
     const financial = generateFinancialSummary();
     
-    // Expenses by category
+    // Expenses by category using Financial Dashboard logic
     const expensesByCategory = financial.currentYearExpenses.reduce((acc, expense) => {
       const category = expense.category || 'Miscellaneous';
       if (!acc[category]) {
@@ -159,7 +150,7 @@ const ReportsModule = () => {
   const incomeBreakdown = generateIncomeBreakdown();
   const expenseBreakdown = generateExpenseBreakdown();
 
-  // Prepare chart data
+  // Prepare chart data using Financial Dashboard approach
   const incomeVsExpenseData = incomeBreakdown.monthly.map((incomeMonth: any) => {
     const expenseMonth = expenseBreakdown.monthly.find((em: any) => em.month === incomeMonth.month);
     return {
@@ -227,24 +218,12 @@ const ReportsModule = () => {
               <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
                 Financial Reports & Analytics
               </h1>
-              <p className="text-gray-600 text-lg">Real-time financial insights for {selectedTerm}</p>
+              <p className="text-gray-600 text-lg">Real-time financial insights for {selectedTerm} {getActiveAcademicYear()}</p>
             </div>
-          </div>
-          <div className="flex items-center space-x-4">
-            <Select value={selectedTerm} onValueChange={setSelectedTerm}>
-              <SelectTrigger className="w-48 bg-white shadow-md border-gray-200">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-white">
-                <SelectItem value="Term 1 2024">Term 1 2024</SelectItem>
-                <SelectItem value="Term 2 2024">Term 2 2024</SelectItem>
-                <SelectItem value="Term 3 2024">Term 3 2024</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
         </div>
 
-        {/* Financial Summary Cards */}
+        {/* Financial Summary Cards using Financial Dashboard data */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-6">
           <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-xl border-0">
             <CardContent className="p-6">

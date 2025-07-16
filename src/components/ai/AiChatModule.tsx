@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
-import { Bot, Send, User, Receipt, Sparkles, MessageCircle, Clock, Trash2, Command, Zap, ArrowUp } from 'lucide-react';
+import { Bot, Send, User, Receipt, Sparkles, MessageCircle, Clock, Trash2, Command, Zap, ArrowUp, Mic } from 'lucide-react';
 import ReceiptPrinter from '../common/ReceiptPrinter';
 import { useChatPersistence } from '../../hooks/useChatPersistence';
 import { AIProcessor } from '../../utils/aiProcessor';
@@ -20,6 +20,7 @@ interface ChatMessage {
   timestamp: Date;
   action?: 'receipt' | 'payment' | 'info' | 'balance' | 'stats' | 'search' | 'list';
   data?: any;
+  isTyping?: boolean;
 }
 
 interface QuickCommand {
@@ -27,8 +28,7 @@ interface QuickCommand {
   icon: string;
   title: string;
   description: string;
-  command: string;
-  needsStudentId: boolean;
+  template: string;
   category: string;
 }
 
@@ -37,75 +37,103 @@ const quickCommands: QuickCommand[] = [
     id: 'record-payment',
     icon: '💰',
     title: 'Record Payment',
-    description: 'Record a new payment for a student',
-    command: 'Record payment of [AMOUNT] for student [STUDENT]',
-    needsStudentId: true,
+    description: 'Record payment for student',
+    template: 'Record payment ₵[AMOUNT] for student [ID]',
     category: 'Payments'
   },
   {
     id: 'check-balance',
     icon: '💳',
     title: 'Check Balance',
-    description: 'Check outstanding balance for a student',
-    command: 'Check balance for [STUDENT]',
-    needsStudentId: true,
+    description: 'Check student balance',
+    template: 'Check balance for student [ID]',
     category: 'Balances'
   },
   {
     id: 'show-receipt',
     icon: '📄',
     title: 'Show Receipt',
-    description: 'Show latest receipt for a student',
-    command: 'Show receipt for [STUDENT]',
-    needsStudentId: true,
-    category: 'Receipts'
-  },
-  {
-    id: 'all-receipts',
-    icon: '📋',
-    title: 'All Receipts',
-    description: 'Show all receipts for a student',
-    command: 'All receipts for [STUDENT]',
-    needsStudentId: true,
+    description: 'Show latest receipt',
+    template: 'Show receipt for student [ID]',
     category: 'Receipts'
   },
   {
     id: 'students-owing',
     icon: '⚠️',
     title: 'Students Owing',
-    description: 'List all students with outstanding balances',
-    command: 'Which students owe money?',
-    needsStudentId: false,
+    description: 'List students with debt',
+    template: 'Which students owe money?',
     category: 'Reports'
   },
   {
     id: 'all-students',
     icon: '👥',
     title: 'All Students',
-    description: 'List all students in the school',
-    command: 'List all students',
-    needsStudentId: false,
+    description: 'List all students',
+    template: 'List all students',
     category: 'Students'
   },
   {
     id: 'statistics',
     icon: '📊',
     title: 'Statistics',
-    description: 'Show school statistics and summary',
-    command: 'Show school statistics',
-    needsStudentId: false,
+    description: 'School statistics',
+    template: 'Show school statistics',
     category: 'Reports'
-  },
-  {
-    id: 'find-student',
-    icon: '🔍',
-    title: 'Find Student',
-    description: 'Search for a specific student',
-    command: 'Find student [STUDENT]',
-    needsStudentId: true,
-    category: 'Students'
   }
 ];
+
+const TypingMessage = () => (
+  <div className="flex justify-start mb-4">
+    <div className="max-w-[80%] bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-2xl p-4 shadow-sm">
+      <div className="flex items-start space-x-3">
+        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
+          <Bot className="w-4 h-4 text-white" />
+        </div>
+        <div className="flex items-center space-x-1 pt-1">
+          <div className="flex space-x-1">
+            <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+            <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+            <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+          </div>
+          <span className="text-sm text-gray-600 ml-2">AI is thinking...</span>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+const TypewriterText = ({ text, onComplete }: { text: string; onComplete: () => void }) => {
+  const [displayedText, setDisplayedText] = useState('');
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  useEffect(() => {
+    if (text.length <= 50) {
+      // For short messages, show instantly
+      setDisplayedText(text);
+      onComplete();
+      return;
+    }
+
+    if (currentIndex < text.length) {
+      const timer = setTimeout(() => {
+        setDisplayedText(text.slice(0, currentIndex + 1));
+        setCurrentIndex(currentIndex + 1);
+      }, 30); // Fast typing speed - 30ms per character
+
+      return () => clearTimeout(timer);
+    } else {
+      onComplete();
+    }
+  }, [currentIndex, text, onComplete]);
+
+  return (
+    <div 
+      className="text-sm leading-relaxed prose prose-sm max-w-none"
+      dangerouslySetInnerHTML={{ __html: displayedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br />') }}
+    />
+  );
+};
 
 const AiChatModule = () => {
   const { user, hasAccess } = useAuth();
@@ -116,18 +144,18 @@ const AiChatModule = () => {
   const [showReceipt, setShowReceipt] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
   const [showCommands, setShowCommands] = useState(false);
-  const [selectedCommand, setSelectedCommand] = useState<QuickCommand | null>(null);
-  const [studentQuery, setStudentQuery] = useState('');
-  const [paymentAmount, setPaymentAmount] = useState('');
+  const [typingMessageId, setTypingMessageId] = useState<string | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Check access
   if (!hasAccess('ai-assistant')) {
     return (
-      <div className="p-6 text-center">
-        <div className="max-w-md mx-auto">
-          <Bot className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6 flex items-center justify-center">
+        <div className="max-w-md mx-auto text-center bg-white rounded-2xl p-8 shadow-lg">
+          <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
+            <Bot className="w-8 h-8 text-gray-400" />
+          </div>
           <h2 className="text-2xl font-bold text-gray-800 mb-4">Access Denied</h2>
           <p className="text-gray-600">Only Super Admin and Finance roles can access the AI Assistant.</p>
         </div>
@@ -142,10 +170,14 @@ const AiChatModule = () => {
         scrollElement.scrollTop = scrollElement.scrollHeight;
       }
     }
-  }, [messages]);
+  }, [messages, typingMessageId]);
 
   const processUserInput = async (input: string): Promise<void> => {
     setIsProcessing(true);
+    
+    // Add typing indicator
+    const typingId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+    setTypingMessageId(typingId);
     
     try {
       const processor = new AIProcessor({
@@ -159,13 +191,17 @@ const AiChatModule = () => {
 
       const response = await processor.processInput(input);
       
+      // Remove typing indicator
+      setTypingMessageId(null);
+      
       const aiMessage: ChatMessage = {
         id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
         type: 'ai',
         content: typeof response === 'string' ? response : response.content,
         timestamp: new Date(),
         action: typeof response === 'object' ? response.action : undefined,
-        data: typeof response === 'object' ? response.data : undefined
+        data: typeof response === 'object' ? response.data : undefined,
+        isTyping: true
       };
 
       addMessage(aiMessage);
@@ -178,6 +214,7 @@ const AiChatModule = () => {
       }
     } catch (error) {
       console.error('AI processing error:', error);
+      setTypingMessageId(null);
       const errorMessage: ChatMessage = {
         id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
         type: 'ai',
@@ -207,61 +244,15 @@ const AiChatModule = () => {
     await processUserInput(currentInput);
   };
 
-  const handleCommandSelect = (command: QuickCommand) => {
-    setSelectedCommand(command);
-    
-    if (!command.needsStudentId) {
-      // Execute command immediately if it doesn't need student ID
-      executeCommand(command, '', '');
-    } else {
-      // Show student input form
-      setStudentQuery('');
-      setPaymentAmount('');
-    }
-  };
-
-  const executeCommand = async (command: QuickCommand, studentId: string = '', amount: string = '') => {
-    let finalCommand = command.command;
-    
-    if (command.needsStudentId && studentId.trim()) {
-      finalCommand = finalCommand.replace('[STUDENT]', studentId.trim());
-      
-      if (command.id === 'record-payment' && amount.trim()) {
-        finalCommand = finalCommand.replace('[AMOUNT]', amount.trim());
-      }
-    }
-
-    // Add user message
-    const userMessage: ChatMessage = {
-      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-      type: 'user',
-      content: finalCommand,
-      timestamp: new Date()
-    };
-    addMessage(userMessage);
-
-    // Process the command
-    await processUserInput(finalCommand);
-    
-    // Clear command state
-    setSelectedCommand(null);
-    setStudentQuery('');
-    setPaymentAmount('');
-  };
-
-  const handleCommandExecution = () => {
-    if (!selectedCommand) return;
-    executeCommand(selectedCommand, studentQuery, paymentAmount);
+  const handleQuickCommand = (template: string) => {
+    setInputValue(template);
+    inputRef.current?.focus();
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !isProcessing) {
       e.preventDefault();
-      if (selectedCommand) {
-        handleCommandExecution();
-      } else {
-        handleSendMessage();
-      }
+      handleSendMessage();
     }
   };
 
@@ -278,28 +269,14 @@ const AiChatModule = () => {
     });
   };
 
-  const formatMessageContent = (content: string) => {
-    return content
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\n/g, '<br />');
-  };
-
-  const commandCategories = quickCommands.reduce((acc, command) => {
-    if (!acc[command.category]) {
-      acc[command.category] = [];
-    }
-    acc[command.category].push(command);
-    return acc;
-  }, {} as Record<string, QuickCommand[]>);
-
   return (
     <>
-      <div className="h-screen flex flex-col bg-gray-50">
+      <div className="h-screen flex flex-col bg-gradient-to-br from-gray-50 via-blue-50/30 to-indigo-50/20">
         {/* Header */}
-        <div className="flex-shrink-0 p-4 bg-white border-b shadow-sm">
+        <div className="flex-shrink-0 p-4 bg-white/80 backdrop-blur-sm border-b border-gray-200/50 shadow-sm">
           <div className="flex items-center justify-between max-w-4xl mx-auto">
             <div className="flex items-center space-x-3">
-              <div className="p-2 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl text-white">
+              <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl text-white shadow-lg">
                 <Bot className="w-6 h-6" />
               </div>
               <div>
@@ -310,14 +287,15 @@ const AiChatModule = () => {
               </div>
             </div>
             <div className="flex items-center space-x-2">
-              <Badge variant="secondary" className="text-xs">
+              <Badge variant="secondary" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                <MessageCircle className="w-3 h-3 mr-1" />
                 {messages.length - 1} messages
               </Badge>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={handleClearChat}
-                className="text-gray-500 hover:text-red-600"
+                className="text-gray-500 hover:text-red-600 hover:bg-red-50"
               >
                 <Trash2 className="w-4 h-4" />
               </Button>
@@ -333,22 +311,45 @@ const AiChatModule = () => {
                 <div key={message.id} className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[80%] ${
                     message.type === 'user' 
-                      ? 'bg-blue-600 text-white' 
-                      : 'bg-white border text-gray-900'
-                  } rounded-2xl p-4 shadow-sm`}>
+                      ? 'bg-white shadow-md border border-gray-200' 
+                      : 'bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 shadow-sm'
+                  } rounded-2xl p-4`}>
                     
                     <div className="flex items-start space-x-3">
                       <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-                        message.type === 'user' ? 'bg-blue-500' : 'bg-gray-100'
+                        message.type === 'user' 
+                          ? 'bg-gray-100 border border-gray-200' 
+                          : 'bg-gradient-to-br from-blue-500 to-indigo-600'
                       }`}>
-                        {message.type === 'ai' ? <Bot className="w-4 h-4 text-gray-600" /> : <User className="w-4 h-4 text-white" />}
+                        {message.type === 'ai' ? (
+                          <Bot className="w-4 h-4 text-white" />
+                        ) : (
+                          <User className="w-4 h-4 text-gray-600" />
+                        )}
                       </div>
                       
                       <div className="flex-1 min-w-0">
-                        <div 
-                          className="text-sm leading-relaxed prose prose-sm max-w-none"
-                          dangerouslySetInnerHTML={{ __html: formatMessageContent(message.content) }}
-                        />
+                        {message.isTyping ? (
+                          <TypewriterText 
+                            text={message.content} 
+                            onComplete={() => {
+                              // Mark message as no longer typing
+                              const updatedMessages = messages.map(msg => 
+                                msg.id === message.id ? { ...msg, isTyping: false } : msg
+                              );
+                              // Update messages if needed
+                            }}
+                          />
+                        ) : (
+                          <div 
+                            className="text-sm leading-relaxed prose prose-sm max-w-none"
+                            dangerouslySetInnerHTML={{ 
+                              __html: message.content
+                                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                                .replace(/\n/g, '<br />') 
+                            }}
+                          />
+                        )}
                         
                         {(message.action === 'receipt' || message.action === 'payment') && message.data && (
                           <Button
@@ -357,8 +358,8 @@ const AiChatModule = () => {
                             onClick={() => handleShowReceipt(message.data)}
                             className={`mt-3 ${
                               message.type === 'user' 
-                                ? 'text-blue-100 hover:text-white hover:bg-blue-500' 
-                                : 'text-blue-600 hover:text-blue-700 hover:bg-blue-50'
+                                ? 'text-blue-600 hover:text-blue-700 hover:bg-blue-50' 
+                                : 'text-blue-600 hover:text-blue-700 hover:bg-blue-100'
                             }`}
                           >
                             <Receipt className="w-4 h-4 mr-1" />
@@ -367,7 +368,7 @@ const AiChatModule = () => {
                         )}
                         
                         <div className={`text-xs mt-2 ${
-                          message.type === 'user' ? 'text-blue-100' : 'text-gray-500'
+                          message.type === 'user' ? 'text-gray-500' : 'text-blue-600/60'
                         }`}>
                           {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </div>
@@ -377,163 +378,106 @@ const AiChatModule = () => {
                 </div>
               ))}
               
-              {isProcessing && (
-                <div className="flex justify-start">
-                  <div className="bg-white border rounded-2xl p-4 shadow-sm">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
-                        <Bot className="w-4 h-4 text-gray-600 animate-pulse" />
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <div className="flex space-x-1">
-                          <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                          <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                          <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                        </div>
-                        <span className="text-sm text-gray-600">AI is thinking...</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
+              {typingMessageId && <TypingMessage />}
             </div>
           </ScrollArea>
 
-          {/* Command Execution Form */}
-          {selectedCommand && (
-            <div className="flex-shrink-0 p-4 bg-blue-50 border-t">
-              <div className="max-w-2xl mx-auto">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-blue-800 flex items-center">
-                    <span className="text-lg mr-2">{selectedCommand.icon}</span>
-                    {selectedCommand.title}
-                  </h3>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setSelectedCommand(null)}
-                    className="text-gray-500"
-                  >
-                    ✕
-                  </Button>
-                </div>
-                
-                <div className="space-y-3">
-                  {selectedCommand.id === 'record-payment' && (
-                    <div>
-                      <label className="text-xs font-medium text-gray-700 block mb-1">Payment Amount (GHS)</label>
-                      <Input
-                        type="number"
-                        placeholder="Enter amount..."
-                        value={paymentAmount}
-                        onChange={(e) => setPaymentAmount(e.target.value)}
-                        className="text-sm"
-                      />
-                    </div>
-                  )}
-                  
-                  {selectedCommand.needsStudentId && (
-                    <div>
-                      <label className="text-xs font-medium text-gray-700 block mb-1">Student ID or Name</label>
-                      <Input
-                        placeholder="Enter student ID or name..."
-                        value={studentQuery}
-                        onChange={(e) => setStudentQuery(e.target.value)}
-                        onKeyPress={handleKeyPress}
-                        className="text-sm"
-                      />
-                    </div>
-                  )}
-                  
-                  <Button 
-                    onClick={handleCommandExecution}
-                    disabled={selectedCommand.needsStudentId && !studentQuery.trim()}
-                    className="w-full bg-blue-600 hover:bg-blue-700"
-                    size="sm"
-                  >
-                    Execute Command
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Quick Commands Panel */}
+          {/* Quick Commands */}
           {showCommands && (
-            <div className="flex-shrink-0 p-4 bg-gray-50 border-t max-h-64 overflow-y-auto">
+            <div className="flex-shrink-0 p-4 bg-white/70 backdrop-blur-sm border-t border-gray-200/50">
               <div className="max-w-4xl mx-auto">
                 <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
-                  <Command className="w-4 h-4 mr-1" />
+                  <Zap className="w-4 h-4 mr-1 text-blue-500" />
                   Quick Commands
                 </h3>
-                {Object.entries(commandCategories).map(([category, commands]) => (
-                  <div key={category} className="mb-4">
-                    <h4 className="text-xs font-medium text-gray-600 mb-2">{category}</h4>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                      {commands.map((command) => (
-                        <Button
-                          key={command.id}
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleCommandSelect(command)}
-                          className="h-auto p-3 flex flex-col items-start text-left hover:bg-blue-50 hover:border-blue-300"
-                        >
-                          <div className="text-lg mb-1">{command.icon}</div>
-                          <div className="text-xs font-medium">{command.title}</div>
-                          <div className="text-xs text-gray-500 mt-1 line-clamp-2">{command.description}</div>
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+                  {quickCommands.map((command) => (
+                    <Button
+                      key={command.id}
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleQuickCommand(command.template)}
+                      className="h-auto p-3 flex flex-col items-center text-center hover:bg-blue-50 hover:border-blue-300 transition-all duration-200 hover:shadow-sm"
+                    >
+                      <div className="text-lg mb-1">{command.icon}</div>
+                      <div className="text-xs font-medium">{command.title}</div>
+                    </Button>
+                  ))}
+                </div>
               </div>
             </div>
           )}
 
           {/* Input Area */}
-          <div className="flex-shrink-0 p-4 bg-white border-t">
-            <div className="max-w-2xl mx-auto">
-              <div className="flex items-center space-x-2 mb-3">
+          <div className="flex-shrink-0 p-4 bg-white/80 backdrop-blur-sm border-t border-gray-200/50">
+            <div className="max-w-4xl mx-auto">
+              {/* Command Toggle */}
+              <div className="flex items-center justify-between mb-3">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setShowCommands(!showCommands)}
-                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
                 >
                   <Command className="w-4 h-4 mr-1" />
                   {showCommands ? 'Hide' : 'Show'} Commands
                 </Button>
-                <Badge variant="secondary" className="text-xs">
+                <Badge variant="secondary" className="text-xs bg-amber-50 text-amber-700 border-amber-200">
                   <Clock className="w-3 h-3 mr-1" />
                   Auto-clear in 10min
                 </Badge>
               </div>
               
-              <div className="flex items-end space-x-2">
+              {/* Input Box */}
+              <div className="flex items-end space-x-3">
                 <div className="flex-1 relative">
                   <Input
                     ref={inputRef}
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                     onKeyPress={handleKeyPress}
-                    placeholder="Ask me anything about students, payments, or school management..."
-                    className="pr-12 min-h-[44px] resize-none"
+                    placeholder="Type a command, e.g. 'Record payment ₵500 for 12345'"
+                    className="pr-12 min-h-[52px] text-sm border-gray-300 focus:border-blue-500 focus:ring-blue-500 rounded-xl shadow-sm"
                     disabled={isProcessing}
                   />
                 </div>
                 <Button 
                   onClick={handleSendMessage} 
                   disabled={!inputValue.trim() || isProcessing}
-                  className="h-11 w-11 p-0 bg-blue-600 hover:bg-blue-700 rounded-xl"
+                  className="h-[52px] w-[52px] p-0 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
                 >
-                  <ArrowUp className="w-4 h-4" />
+                  <ArrowUp className="w-5 h-5" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-[52px] w-[52px] p-0 border-gray-300 hover:bg-gray-50 rounded-xl"
+                  disabled={isProcessing}
+                >
+                  <Mic className="w-5 h-5 text-gray-500" />
                 </Button>
               </div>
 
-              <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-500">
-                <span className="bg-gray-100 px-2 py-1 rounded-full">💡 Try: "Record payment of 500 for student 20240001"</span>
-                <span className="bg-gray-100 px-2 py-1 rounded-full">📄 "Show receipt for John Doe"</span>
-                <span className="bg-gray-100 px-2 py-1 rounded-full">👥 "Which students owe money?"</span>
+              {/* Example Commands */}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button 
+                  onClick={() => handleQuickCommand('Record payment ₵500 for student 12345')}
+                  className="text-xs bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full transition-colors duration-200"
+                >
+                  💡 Record payment ₵500 for student 12345
+                </button>
+                <button 
+                  onClick={() => handleQuickCommand('Show receipt for student 12345')}
+                  className="text-xs bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full transition-colors duration-200"
+                >
+                  📄 Show receipt for student 12345
+                </button>
+                <button 
+                  onClick={() => handleQuickCommand('Which students owe money?')}
+                  className="text-xs bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full transition-colors duration-200"
+                >
+                  👥 Which students owe money?
+                </button>
               </div>
             </div>
           </div>

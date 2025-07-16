@@ -214,7 +214,7 @@ export class AIProcessor {
     const currentTerm = getActiveAcademicTerm();
     const currentYear = getActiveAcademicYear();
     
-    // Calculate financial totals
+    // Calculate financial totals using REAL data only
     const totalFees = this.data.payments
       .filter(p => p.term === currentTerm)
       .reduce((sum, p) => sum + p.amount, 0);
@@ -230,7 +230,7 @@ export class AIProcessor {
     const totalRevenue = totalFees + totalIncome;
     const netProfit = totalRevenue - totalExpenses;
     
-    // Detailed income breakdown
+    // REAL income breakdown from actual data
     const incomeBreakdown = this.data.income
       .filter(inc => new Date(inc.date).getFullYear().toString() === currentYear)
       .reduce((acc, income) => {
@@ -238,7 +238,7 @@ export class AIProcessor {
         return acc;
       }, {} as Record<string, number>);
 
-    // Detailed expense breakdown with descriptions
+    // REAL expense breakdown with actual descriptions and details
     const expenseBreakdown = this.data.expenses
       .filter(exp => new Date(exp.paymentDate).getFullYear().toString() === currentYear)
       .reduce((acc, expense) => {
@@ -256,7 +256,7 @@ export class AIProcessor {
         return acc;
       }, {} as Record<string, any>);
 
-    // Monthly expense breakdown
+    // REAL monthly expense breakdown
     const monthlyExpenses = this.data.expenses
       .filter(exp => new Date(exp.paymentDate).getFullYear().toString() === currentYear)
       .reduce((acc, expense) => {
@@ -269,7 +269,7 @@ export class AIProcessor {
         return acc;
       }, {} as Record<string, any>);
     
-    // Calculate student statistics and outstanding balances
+    // Calculate REAL student statistics and outstanding balances
     const totalStudents = this.data.students.length;
     const outstandingStudents = this.data.students.map(student => {
       const balance = this.calculateStudentBalance(student.id);
@@ -288,7 +288,7 @@ export class AIProcessor {
     
     const totalOutstanding = outstandingStudents.reduce((sum, student) => sum + (student?.outstanding || 0), 0);
 
-    // Class breakdown
+    // REAL class breakdown using actual data
     const classBreakdown = this.data.classes.map(cls => {
       const studentsInClass = this.data.students.filter(s => s.classAssigned === cls.className);
       const classPayments = this.data.payments.filter(p => {
@@ -323,7 +323,7 @@ export class AIProcessor {
 • **Total Students:** ${totalStudents}
 • **Students with Outstanding Balance:** ${outstandingStudents.length}
 • **Total Outstanding Amount:** GHS ${totalOutstanding.toLocaleString()}
-• **Collection Rate:** ${((totalFees / (totalFees + totalOutstanding)) * 100).toFixed(1)}%
+• **Collection Rate:** ${totalFees + totalOutstanding > 0 ? ((totalFees / (totalFees + totalOutstanding)) * 100).toFixed(1) : '100'}%
 
 ---
 
@@ -335,11 +335,13 @@ ${classBreakdown.map(cls =>
 ---
 
 ## 💸 **TOP EXPENSE CATEGORIES**
-${Object.entries(expenseBreakdown)
-  .sort(([,a], [,b]) => b.amount - a.amount)
-  .slice(0, 5)
-  .map(([category, data]) => `• **${category}:** GHS ${data.amount.toLocaleString()} (${data.count} transactions)`)
-  .join('\n')}
+${Object.keys(expenseBreakdown).length > 0 
+  ? Object.entries(expenseBreakdown)
+      .sort(([,a], [,b]) => b.amount - a.amount)
+      .slice(0, 5)
+      .map(([category, data]) => `• **${category}:** GHS ${data.amount.toLocaleString()} (${data.count} transactions)`)
+      .join('\n')
+  : '• No expenses recorded yet'}
 
 ---
 

@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -7,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
-import { Bot, Send, User, Receipt, Sparkles, MessageCircle, Clock, Trash2, Command, Zap, ArrowUp, Mic } from 'lucide-react';
+import { Bot, Send, User, Receipt, Sparkles, MessageCircle, Clock, Trash2, Command, Zap, ArrowUp, Mic, FileText, BarChart3, TrendingUp, Calculator } from 'lucide-react';
 import ReceiptPrinter from '../common/ReceiptPrinter';
 import { useChatPersistence } from '../../hooks/useChatPersistence';
 import { AIProcessor } from '../../utils/aiProcessor';
@@ -17,7 +18,7 @@ interface ChatMessage {
   type: 'user' | 'ai';
   content: string;
   timestamp: Date;
-  action?: 'receipt' | 'payment' | 'info' | 'balance' | 'stats' | 'search' | 'list';
+  action?: 'receipt' | 'payment' | 'info' | 'balance' | 'stats' | 'search' | 'list' | 'report';
   data?: any;
   isTyping?: boolean;
 }
@@ -73,11 +74,27 @@ const quickCommands: QuickCommand[] = [
     category: 'Students'
   },
   {
-    id: 'statistics',
+    id: 'general-report',
     icon: '📊',
-    title: 'Statistics',
-    description: 'School statistics',
-    template: 'Show school statistics',
+    title: 'General Report',
+    description: 'Complete financial report',
+    template: 'Generate general report for current term',
+    category: 'Reports'
+  },
+  {
+    id: 'income-summary',
+    icon: '💹',
+    title: 'Income Summary',
+    description: 'Total income breakdown',
+    template: 'Show income summary',
+    category: 'Reports'
+  },
+  {
+    id: 'expenses-summary',
+    icon: '💸',
+    title: 'Expenses Summary',
+    description: 'Total expenses breakdown',
+    template: 'Show expenses summary',
     category: 'Reports'
   }
 ];
@@ -108,7 +125,6 @@ const TypewriterText = ({ text, onComplete }: { text: string; onComplete: () => 
 
   useEffect(() => {
     if (text.length <= 50) {
-      // For short messages, show instantly
       setDisplayedText(text);
       onComplete();
       return;
@@ -118,7 +134,7 @@ const TypewriterText = ({ text, onComplete }: { text: string; onComplete: () => 
       const timer = setTimeout(() => {
         setDisplayedText(text.slice(0, currentIndex + 1));
         setCurrentIndex(currentIndex + 1);
-      }, 30); // Fast typing speed - 30ms per character
+      }, 25);
 
       return () => clearTimeout(timer);
     } else {
@@ -128,26 +144,25 @@ const TypewriterText = ({ text, onComplete }: { text: string; onComplete: () => 
 
   return (
     <div 
-      className="text-sm leading-relaxed prose prose-sm max-w-none"
-      dangerouslySetInnerHTML={{ __html: displayedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br />') }}
+      className="text-sm leading-relaxed prose prose-sm max-w-none text-gray-800"
+      dangerouslySetInnerHTML={{ __html: displayedText.replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-900">$1</strong>').replace(/\n/g, '<br />') }}
     />
   );
 };
 
 const AiChatModule = () => {
   const { user, hasAccess } = useAuth();
-  const { students, teachers, payments, feeStructures, addPayment, classes } = useData();
+  const { students, teachers, payments, feeStructures, addPayment, classes, income, expenses } = useData();
   const { messages, addMessage, clearMessages } = useChatPersistence();
   const [inputValue, setInputValue] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
-  const [showCommands, setShowCommands] = useState(false);
+  const [showCommands, setShowCommands] = useState(true);
   const [typingMessageId, setTypingMessageId] = useState<string | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Check access
   if (!hasAccess('ai-assistant')) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6 flex items-center justify-center">
@@ -174,7 +189,6 @@ const AiChatModule = () => {
   const processUserInput = async (input: string): Promise<void> => {
     setIsProcessing(true);
     
-    // Add typing indicator
     const typingId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
     setTypingMessageId(typingId);
     
@@ -185,12 +199,13 @@ const AiChatModule = () => {
         payments,
         feeStructures,
         classes,
+        income,
+        expenses,
         addPayment
       });
 
       const response = await processor.processInput(input);
       
-      // Remove typing indicator
       setTypingMessageId(null);
       
       const aiMessage: ChatMessage = {
@@ -243,9 +258,21 @@ const AiChatModule = () => {
     await processUserInput(currentInput);
   };
 
-  const handleQuickCommand = (template: string) => {
-    setInputValue(template);
-    inputRef.current?.focus();
+  const handleQuickCommand = async (template: string) => {
+    if (template.includes('[')) {
+      setInputValue(template);
+      inputRef.current?.focus();
+    } else {
+      const userMessage: ChatMessage = {
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+        type: 'user',
+        content: template,
+        timestamp: new Date()
+      };
+
+      addMessage(userMessage);
+      await processUserInput(template);
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -270,23 +297,23 @@ const AiChatModule = () => {
 
   return (
     <>
-      <div className="h-screen flex flex-col bg-gradient-to-br from-gray-50 via-blue-50/30 to-indigo-50/20">
+      <div className="h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50/20 to-indigo-50/30">
         {/* Header */}
-        <div className="flex-shrink-0 p-4 bg-white/80 backdrop-blur-sm border-b border-gray-200/50 shadow-sm">
-          <div className="flex items-center justify-between max-w-4xl mx-auto">
-            <div className="flex items-center space-x-3">
+        <div className="flex-shrink-0 p-4 bg-white/90 backdrop-blur-md border-b border-gray-200/60 shadow-sm">
+          <div className="flex items-center justify-between max-w-5xl mx-auto">
+            <div className="flex items-center space-x-4">
               <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl text-white shadow-lg">
-                <Bot className="w-6 h-6" />
+                <Bot className="w-7 h-7" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-gray-900">
+                <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
                   AI Assistant
                 </h1>
                 <p className="text-sm text-gray-500">Rosa Gardens School Management</p>
               </div>
             </div>
-            <div className="flex items-center space-x-2">
-              <Badge variant="secondary" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+            <div className="flex items-center space-x-3">
+              <Badge variant="secondary" className="text-xs bg-blue-50 text-blue-700 border-blue-200 px-3 py-1">
                 <MessageCircle className="w-3 h-3 mr-1" />
                 {messages.length - 1} messages
               </Badge>
@@ -294,7 +321,7 @@ const AiChatModule = () => {
                 variant="ghost"
                 size="sm"
                 onClick={handleClearChat}
-                className="text-gray-500 hover:text-red-600 hover:bg-red-50"
+                className="text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-xl"
               >
                 <Trash2 className="w-4 h-4" />
               </Button>
@@ -303,27 +330,27 @@ const AiChatModule = () => {
         </div>
 
         {/* Chat Area */}
-        <div className="flex-1 flex flex-col max-w-4xl mx-auto w-full">
-          <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
-            <div className="space-y-4">
+        <div className="flex-1 flex flex-col max-w-5xl mx-auto w-full">
+          <ScrollArea className="flex-1 p-6" ref={scrollAreaRef}>
+            <div className="space-y-6">
               {messages.map((message) => (
                 <div key={message.id} className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[80%] ${
+                  <div className={`max-w-[85%] ${
                     message.type === 'user' 
-                      ? 'bg-white shadow-md border border-gray-200' 
+                      ? 'bg-white shadow-lg border border-gray-100' 
                       : 'bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 shadow-sm'
-                  } rounded-2xl p-4`}>
+                  } rounded-2xl p-5`}>
                     
                     <div className="flex items-start space-x-3">
-                      <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+                      <div className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${
                         message.type === 'user' 
                           ? 'bg-gray-100 border border-gray-200' 
                           : 'bg-gradient-to-br from-blue-500 to-indigo-600'
                       }`}>
                         {message.type === 'ai' ? (
-                          <Bot className="w-4 h-4 text-white" />
+                          <Bot className="w-5 h-5 text-white" />
                         ) : (
-                          <User className="w-4 h-4 text-gray-600" />
+                          <User className="w-5 h-5 text-gray-600" />
                         )}
                       </div>
                       
@@ -331,42 +358,45 @@ const AiChatModule = () => {
                         {message.isTyping ? (
                           <TypewriterText 
                             text={message.content} 
-                            onComplete={() => {
-                              // Mark message as no longer typing
-                              const updatedMessages = messages.map(msg => 
-                                msg.id === message.id ? { ...msg, isTyping: false } : msg
-                              );
-                              // Update messages if needed
-                            }}
+                            onComplete={() => {}}
                           />
                         ) : (
                           <div 
-                            className="text-sm leading-relaxed prose prose-sm max-w-none"
+                            className="text-sm leading-relaxed prose prose-sm max-w-none text-gray-800"
                             dangerouslySetInnerHTML={{ 
                               __html: message.content
-                                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                                .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-900">$1</strong>')
                                 .replace(/\n/g, '<br />') 
                             }}
                           />
                         )}
                         
-                        {(message.action === 'receipt' || message.action === 'payment') && message.data && (
+                        {(message.action === 'receipt' || message.action === 'payment' || message.action === 'report') && message.data && (
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => handleShowReceipt(message.data)}
-                            className={`mt-3 ${
+                            className={`mt-4 ${
                               message.type === 'user' 
                                 ? 'text-blue-600 hover:text-blue-700 hover:bg-blue-50' 
                                 : 'text-blue-600 hover:text-blue-700 hover:bg-blue-100'
-                            }`}
+                            } rounded-xl`}
                           >
-                            <Receipt className="w-4 h-4 mr-1" />
-                            View Receipt
+                            {message.action === 'report' ? (
+                              <>
+                                <FileText className="w-4 h-4 mr-2" />
+                                View Report
+                              </>
+                            ) : (
+                              <>
+                                <Receipt className="w-4 h-4 mr-2" />
+                                View Receipt
+                              </>
+                            )}
                           </Button>
                         )}
                         
-                        <div className={`text-xs mt-2 ${
+                        <div className={`text-xs mt-3 ${
                           message.type === 'user' ? 'text-gray-500' : 'text-blue-600/60'
                         }`}>
                           {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -384,19 +414,19 @@ const AiChatModule = () => {
           {/* Quick Commands */}
           {showCommands && (
             <div className="flex-shrink-0 p-4 bg-white/70 backdrop-blur-sm border-t border-gray-200/50">
-              <div className="max-w-4xl mx-auto">
+              <div className="max-w-5xl mx-auto">
                 <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
-                  <Zap className="w-4 h-4 mr-1 text-blue-500" />
+                  <Zap className="w-4 h-4 mr-2 text-blue-500" />
                   Quick Commands
                 </h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
                   {quickCommands.map((command) => (
                     <Button
                       key={command.id}
                       variant="outline"
                       size="sm"
                       onClick={() => handleQuickCommand(command.template)}
-                      className="h-auto p-3 flex flex-col items-center text-center hover:bg-blue-50 hover:border-blue-300 transition-all duration-200 hover:shadow-sm"
+                      className="h-auto p-3 flex flex-col items-center text-center hover:bg-blue-50 hover:border-blue-300 transition-all duration-200 hover:shadow-sm rounded-xl"
                     >
                       <div className="text-lg mb-1">{command.icon}</div>
                       <div className="text-xs font-medium">{command.title}</div>
@@ -408,17 +438,16 @@ const AiChatModule = () => {
           )}
 
           {/* Input Area */}
-          <div className="flex-shrink-0 p-4 bg-white/80 backdrop-blur-sm border-t border-gray-200/50">
-            <div className="max-w-4xl mx-auto">
-              {/* Command Toggle */}
+          <div className="flex-shrink-0 p-4 bg-white/90 backdrop-blur-sm border-t border-gray-200/50">
+            <div className="max-w-5xl mx-auto">
               <div className="flex items-center justify-between mb-3">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setShowCommands(!showCommands)}
-                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
+                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200 rounded-xl"
                 >
-                  <Command className="w-4 h-4 mr-1" />
+                  <Command className="w-4 h-4 mr-2" />
                   {showCommands ? 'Hide' : 'Show'} Commands
                 </Button>
                 <Badge variant="secondary" className="text-xs bg-amber-50 text-amber-700 border-amber-200">
@@ -427,7 +456,6 @@ const AiChatModule = () => {
                 </Badge>
               </div>
               
-              {/* Input Box */}
               <div className="flex items-end space-x-3">
                 <div className="flex-1 relative">
                   <Input
@@ -435,7 +463,7 @@ const AiChatModule = () => {
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                     onKeyPress={handleKeyPress}
-                    placeholder="Type a command, e.g. 'Record payment ₵500 for 12345'"
+                    placeholder="Type a command, e.g. 'Record payment ₵500 for 12345' or 'Generate general report'"
                     className="pr-12 min-h-[52px] text-sm border-gray-300 focus:border-blue-500 focus:ring-blue-500 rounded-xl shadow-sm"
                     disabled={isProcessing}
                   />
@@ -457,7 +485,6 @@ const AiChatModule = () => {
                 </Button>
               </div>
 
-              {/* Example Commands */}
               <div className="mt-3 flex flex-wrap gap-2">
                 <button 
                   onClick={() => handleQuickCommand('Record payment ₵500 for student 12345')}
@@ -466,10 +493,10 @@ const AiChatModule = () => {
                   💡 Record payment ₵500 for student 12345
                 </button>
                 <button 
-                  onClick={() => handleQuickCommand('Show receipt for student 12345')}
+                  onClick={() => handleQuickCommand('Generate general report for current term')}
                   className="text-xs bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full transition-colors duration-200"
                 >
-                  📄 Show receipt for student 12345
+                  📊 Generate general report for current term
                 </button>
                 <button 
                   onClick={() => handleQuickCommand('Which students owe money?')}
@@ -490,8 +517,8 @@ const AiChatModule = () => {
           onClose={() => setShowReceipt(false)}
           onPrint={() => {
             toast({
-              title: "Receipt Generated",
-              description: "Receipt has been generated successfully",
+              title: "Report Generated",
+              description: "Report has been generated successfully",
             });
           }}
         />

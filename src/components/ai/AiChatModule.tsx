@@ -120,37 +120,6 @@ const TypingMessage = () => (
   </div>
 );
 
-const TypewriterText = ({ text, onComplete }: { text: string; onComplete: () => void }) => {
-  const [displayedText, setDisplayedText] = useState('');
-  const [currentIndex, setCurrentIndex] = useState(0);
-
-  useEffect(() => {
-    if (text.length <= 50) {
-      setDisplayedText(text);
-      onComplete();
-      return;
-    }
-
-    if (currentIndex < text.length) {
-      const timer = setTimeout(() => {
-        setDisplayedText(text.slice(0, currentIndex + 1));
-        setCurrentIndex(currentIndex + 1);
-      }, 25);
-
-      return () => clearTimeout(timer);
-    } else {
-      onComplete();
-    }
-  }, [currentIndex, text, onComplete]);
-
-  return (
-    <div 
-      className="text-sm leading-relaxed prose prose-sm max-w-none text-gray-800"
-      dangerouslySetInnerHTML={{ __html: displayedText.replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-900">$1</strong>').replace(/\n/g, '<br />') }}
-    />
-  );
-};
-
 const AiChatModule = () => {
   const { user, hasAccess } = useAuth();
   const { students, teachers, payments, feeStructures, addPayment, classes, income, expenses } = useData();
@@ -161,6 +130,8 @@ const AiChatModule = () => {
   const [receiptData, setReceiptData] = useState(null);
   const [showCommands, setShowCommands] = useState(true);
   const [typingMessageId, setTypingMessageId] = useState<string | null>(null);
+  const [showA4Report, setShowA4Report] = useState(false);
+  const [reportData, setReportData] = useState(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -194,14 +165,17 @@ const AiChatModule = () => {
     setTypingMessageId(typingId);
     
     try {
+      // Show typing for 2 seconds
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
       const processor = new AIProcessor({
         students,
         teachers,
         payments,
         feeStructures,
         classes,
-        income,
-        expenses,
+        income: income as any[],
+        expenses: expenses as any[],
         addPayment
       });
 
@@ -215,8 +189,7 @@ const AiChatModule = () => {
         content: typeof response === 'string' ? response : response.content,
         timestamp: new Date(),
         action: typeof response === 'object' ? response.action : undefined,
-        data: typeof response === 'object' ? response.data : undefined,
-        isTyping: true
+        data: typeof response === 'object' ? response.data : undefined
       };
 
       addMessage(aiMessage);
@@ -284,8 +257,13 @@ const AiChatModule = () => {
   };
 
   const handleShowReceipt = (data: any) => {
-    setReceiptData(data);
-    setShowReceipt(true);
+    if (data && (data.type === 'general' || data.type === 'income' || data.type === 'expenses')) {
+      setReportData(data);
+      setShowA4Report(true);
+    } else {
+      setReceiptData(data);
+      setShowReceipt(true);
+    }
   };
 
   const handleClearChat = () => {
@@ -356,21 +334,14 @@ const AiChatModule = () => {
                       </div>
                       
                       <div className="flex-1 min-w-0">
-                        {(message.isTyping && message.type === 'ai') ? (
-                          <TypewriterText 
-                            text={message.content} 
-                            onComplete={() => {}}
-                          />
-                        ) : (
-                          <div 
-                            className="text-sm leading-relaxed prose prose-sm max-w-none text-gray-800"
-                            dangerouslySetInnerHTML={{ 
-                              __html: message.content
-                                .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-900">$1</strong>')
-                                .replace(/\n/g, '<br />') 
-                            }}
-                          />
-                        )}
+                        <div 
+                          className="text-sm leading-relaxed prose prose-sm max-w-none text-gray-800"
+                          dangerouslySetInnerHTML={{ 
+                            __html: message.content
+                              .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-900">$1</strong>')
+                              .replace(/\n/g, '<br />') 
+                          }}
+                        />
                         
                         {(message.action === 'receipt' || message.action === 'payment' || message.action === 'report') && message.data && (
                           <Button
@@ -511,11 +482,27 @@ const AiChatModule = () => {
         </div>
       </div>
 
+      {/* Receipt Printer */}
       {receiptData && (
         <ReceiptPrinter
           receiptData={receiptData}
           show={showReceipt}
           onClose={() => setShowReceipt(false)}
+          onPrint={() => {
+            toast({
+              title: "Receipt Printed",
+              description: "Receipt has been printed successfully",
+            });
+          }}
+        />
+      )}
+
+      {/* A4 Report Printer */}
+      {reportData && (
+        <A4ReportPrinter
+          reportData={reportData}
+          show={showA4Report}
+          onClose={() => setShowA4Report(false)}
           onPrint={() => {
             toast({
               title: "Report Generated",
@@ -524,19 +511,6 @@ const AiChatModule = () => {
           }}
         />
       )}
-
-      {/* A4 Report Printer */}
-      <A4ReportPrinter
-        reportData={receiptData}
-        show={showReceipt}
-        onClose={() => setShowReceipt(false)}
-        onPrint={() => {
-          toast({
-            title: "Report Generated",
-            description: "Report has been generated successfully",
-          });
-        }}
-      />
     </>
   );
 };

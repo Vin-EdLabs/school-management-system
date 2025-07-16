@@ -7,29 +7,27 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/hooks/use-toast';
 import { ClipboardCheck, Calendar, Users, Save } from 'lucide-react';
+import { useData } from '../../contexts/DataContext';
+import { useAuth } from '../../contexts/AuthContext';
 
 const AttendanceModule = () => {
+  const { students, teachers, classes } = useData();
+  const { user } = useAuth();
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [attendance, setAttendance] = useState<Record<string, boolean>>({});
 
-  // Mock data
-  const teacherClasses = [
-    { id: '1', name: 'Mathematics Grade 5', students: 25 },
-    { id: '2', name: 'Science Grade 6', students: 22 },
-    { id: '3', name: 'Mathematics Grade 6', students: 28 }
-  ];
+  // Find the current teacher's assigned classes
+  const currentTeacher = teachers.find(t => t.email === user?.email);
+  const teacherClasses = currentTeacher?.classAssigned 
+    ? classes.filter(cls => cls.className === currentTeacher.classAssigned)
+    : [];
 
-  const students = [
-    { id: '1', name: 'Alice Johnson', rollNo: '001' },
-    { id: '2', name: 'Bob Smith', rollNo: '002' },
-    { id: '3', name: 'Carol Davis', rollNo: '003' },
-    { id: '4', name: 'David Wilson', rollNo: '004' },
-    { id: '5', name: 'Eva Brown', rollNo: '005' },
-    { id: '6', name: 'Frank Miller', rollNo: '006' },
-    { id: '7', name: 'Grace Lee', rollNo: '007' },
-    { id: '8', name: 'Henry Taylor', rollNo: '008' }
-  ];
+  // Get students for the selected class
+  const selectedClassData = classes.find(cls => cls.id === selectedClass);
+  const classStudents = selectedClassData 
+    ? students.filter(student => student.classAssigned === selectedClassData.className)
+    : [];
 
   const handleAttendanceChange = (studentId: string, present: boolean) => {
     setAttendance(prev => ({
@@ -48,8 +46,9 @@ const AttendanceModule = () => {
     }
 
     const presentCount = Object.values(attendance).filter(Boolean).length;
-    const totalStudents = students.length;
+    const totalStudents = classStudents.length;
 
+    // Here you would save to backend or local storage
     toast({
       title: "Attendance Saved",
       description: `Attendance for ${selectedDate} saved successfully. ${presentCount}/${totalStudents} students present.`
@@ -58,7 +57,7 @@ const AttendanceModule = () => {
 
   const handleMarkAllPresent = () => {
     const allPresent: Record<string, boolean> = {};
-    students.forEach(student => {
+    classStudents.forEach(student => {
       allPresent[student.id] = true;
     });
     setAttendance(allPresent);
@@ -66,15 +65,43 @@ const AttendanceModule = () => {
 
   const handleMarkAllAbsent = () => {
     const allAbsent: Record<string, boolean> = {};
-    students.forEach(student => {
+    classStudents.forEach(student => {
       allAbsent[student.id] = false;
     });
     setAttendance(allAbsent);
   };
 
   const presentCount = Object.values(attendance).filter(Boolean).length;
-  const totalStudents = students.length;
+  const totalStudents = classStudents.length;
   const attendancePercentage = totalStudents > 0 ? Math.round((presentCount / totalStudents) * 100) : 0;
+
+  if (!currentTeacher) {
+    return (
+      <div className="p-6">
+        <Card>
+          <CardContent className="p-8 text-center">
+            <ClipboardCheck className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Teacher Not Found</h3>
+            <p className="text-gray-500">You must be logged in as a teacher to access attendance.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!currentTeacher.classAssigned) {
+    return (
+      <div className="p-6">
+        <Card>
+          <CardContent className="p-8 text-center">
+            <ClipboardCheck className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No Class Assigned</h3>
+            <p className="text-gray-500">You don't have any classes assigned yet. Please contact the administrator.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -108,11 +135,14 @@ const AttendanceModule = () => {
                   <SelectValue placeholder="Select a class" />
                 </SelectTrigger>
                 <SelectContent>
-                  {teacherClasses.map(cls => (
-                    <SelectItem key={cls.id} value={cls.id}>
-                      {cls.name} ({cls.students} students)
-                    </SelectItem>
-                  ))}
+                  {teacherClasses.map(cls => {
+                    const studentCount = students.filter(s => s.classAssigned === cls.className).length;
+                    return (
+                      <SelectItem key={cls.id} value={cls.id}>
+                        {cls.className} ({studentCount} students)
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>
@@ -170,49 +200,57 @@ const AttendanceModule = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                {students.map(student => (
-                  <div key={student.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
-                        {student.rollNo}
+              {classStudents.length === 0 ? (
+                <div className="text-center py-8">
+                  <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No Students Found</h3>
+                  <p className="text-gray-500">No students are assigned to this class yet.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {classStudents.map(student => (
+                    <div key={student.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
+                          {student.admissionNumber?.slice(-3) || student.firstName.charAt(0)}
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900">{student.firstName} {student.lastName}</p>
+                          <p className="text-sm text-gray-500">Admission: {student.admissionNumber}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-medium text-gray-900">{student.name}</p>
-                        <p className="text-sm text-gray-500">Roll No: {student.rollNo}</p>
+                      <div className="flex items-center space-x-3">
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`present-${student.id}`}
+                            checked={attendance[student.id] === true}
+                            onCheckedChange={(checked) => handleAttendanceChange(student.id, checked as boolean)}
+                          />
+                          <label 
+                            htmlFor={`present-${student.id}`}
+                            className="text-sm font-medium text-green-600 cursor-pointer"
+                          >
+                            Present
+                          </label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`absent-${student.id}`}
+                            checked={attendance[student.id] === false}
+                            onCheckedChange={(checked) => handleAttendanceChange(student.id, !(checked as boolean))}
+                          />
+                          <label 
+                            htmlFor={`absent-${student.id}`}
+                            className="text-sm font-medium text-red-600 cursor-pointer"
+                          >
+                            Absent
+                          </label>
+                        </div>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-3">
-                      <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`present-${student.id}`}
-                          checked={attendance[student.id] === true}
-                          onCheckedChange={(checked) => handleAttendanceChange(student.id, checked as boolean)}
-                        />
-                        <label 
-                          htmlFor={`present-${student.id}`}
-                          className="text-sm font-medium text-green-600 cursor-pointer"
-                        >
-                          Present
-                        </label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`absent-${student.id}`}
-                          checked={attendance[student.id] === false}
-                          onCheckedChange={(checked) => handleAttendanceChange(student.id, !(checked as boolean))}
-                        />
-                        <label 
-                          htmlFor={`absent-${student.id}`}
-                          className="text-sm font-medium text-red-600 cursor-pointer"
-                        >
-                          Absent
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </>

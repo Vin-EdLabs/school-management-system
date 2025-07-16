@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -12,6 +11,7 @@ import { Bot, Send, User, Receipt, Sparkles, MessageCircle, Clock, Trash2, Comma
 import ReceiptPrinter from '../common/ReceiptPrinter';
 import { useChatPersistence } from '../../hooks/useChatPersistence';
 import { AIProcessor } from '../../utils/aiProcessor';
+import A4ReportPrinter from '../reports/A4ReportPrinter';
 
 interface ChatMessage {
   id: string;
@@ -523,6 +523,19 @@ const AiChatModule = () => {
           }}
         />
       )}
+
+      {/* A4 Report Printer */}
+      <A4ReportPrinter
+        reportData={receiptData}
+        show={showReceipt}
+        onClose={() => setShowReceipt(false)}
+        onPrint={() => {
+          toast({
+            title: "Report Generated",
+            description: "Report has been generated successfully",
+          });
+        }}
+      />
     </>
   );
 };

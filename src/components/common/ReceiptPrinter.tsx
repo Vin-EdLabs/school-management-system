@@ -146,7 +146,7 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({ receiptData, onPrint, s
             <Separator />
 
             {/* Fee Breakdown */}
-            {(receiptData.currentTermFee || receiptData.arrears || receiptData.totalAmountDue) && (
+            {(receiptData.currentTermFee !== undefined || receiptData.arrears !== undefined || receiptData.totalAmountDue !== undefined) && (
               <div className="fee-breakdown">
                 <div className="fee-breakdown-title">Fee Breakdown</div>
                 {receiptData.currentTermFee !== undefined && (
@@ -172,7 +172,7 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({ receiptData, onPrint, s
             
             <div className="info-row">
               <span className="info-label">Amount Paid:</span>
-              <span className="amount">GHS {receiptData.amount.toFixed(2)}</span>
+              <span className="amount">GHS {(receiptData.amount || 0).toFixed(2)}</span>
             </div>
             
             {receiptData.remainingBalance !== undefined && receiptData.remainingBalance > 0 && (

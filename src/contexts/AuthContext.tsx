@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 
 export type UserRole = 'administrator' | 'finance' | 'super-admin' | 'teacher';
 
@@ -23,11 +23,11 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<User | null>(null);
-  
+
   // Default passwords for each role
   const [passwords, setPasswords] = useState({
     'super-admin': 'superadmin123',
-    'finance': 'finance123', 
+    'finance': 'finance123',
     'administrator': 'admin123',
     'teacher': 'teacher123'
   });
@@ -36,12 +36,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const authStatus = localStorage.getItem('rosaGardensAuth');
     const savedUser = localStorage.getItem('rosaGardensUser');
     const savedPasswords = localStorage.getItem('rosaGardensPasswords');
-    
+
     if (authStatus === 'true' && savedUser) {
       setIsAuthenticated(true);
       setUser(JSON.parse(savedUser));
     }
-    
+
     if (savedPasswords) {
       setPasswords(JSON.parse(savedPasswords));
     }
@@ -50,8 +50,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = (username: string, password: string, role: UserRole): boolean => {
     // Check if username is 'admin' and password matches the role's password
     if (username === 'admin' && password === passwords[role]) {
-      const newUser: User = { 
-        username, 
+      const newUser: User = {
+        username,
         role,
         // For demo purposes, assign teacherId for teacher role
         ...(role === 'teacher' && { teacherId: 'teacher-1' })
@@ -60,15 +60,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(newUser);
       localStorage.setItem('rosaGardensAuth', 'true');
       localStorage.setItem('rosaGardensUser', JSON.stringify(newUser));
-      
+
       // Add audit log for login (will be handled by AuditContext after login)
       setTimeout(() => {
-        const event = new CustomEvent('userLogin', { 
-          detail: { username, role, timestamp: new Date() } 
+        const event = new CustomEvent('userLogin', {
+          detail: { username, role, timestamp: new Date() }
         });
         window.dispatchEvent(event);
       }, 100);
-      
+
       return true;
     }
     return false;
@@ -83,7 +83,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const changePassword = (newPassword: string) => {
     if (!user) return;
-    
+
     const updatedPasswords = {
       ...passwords,
       [user.role]: newPassword
@@ -94,12 +94,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const hasAccess = (module: string): boolean => {
     if (!user) return false;
-    
+
     const rolePermissions = {
       'administrator': ['students', 'teachers', 'classes', 'calendar', 'dashboard', 'settings-password-only', 'print-fee-status'],
-      'finance': ['students-view-only', 'teachers-view-only', 'fees', 'income', 'expenses', 'reports', 'financial-dashboard', 'dashboard', 'settings-password-only', 'print-fee-status', 'ai-assistant'],
+      'finance': ['students-view-only', 'teachers-view-only', 'fees', 'income', 'expenses', 'reports', 'financial-dashboard', 'dashboard', 'settings-password-only', 'print-fee-status', 'ai-assistant', 'staff-payroll'],
       'teacher': ['teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'calendar', 'settings-password-only'],
-      'super-admin': ['students', 'teachers', 'classes', 'calendar', 'fees', 'income', 'expenses', 'reports', 'dashboard', 'financial-dashboard', 'settings', 'audit', 'print-fee-status', 'teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'ai-assistant']
+      'super-admin': ['students', 'teachers', 'classes', 'calendar', 'fees', 'income', 'expenses', 'reports', 'dashboard', 'financial-dashboard', 'settings', 'audit', 'print-fee-status', 'teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'ai-assistant', 'staff-payroll']
     };
 
     return rolePermissions[user.role].includes(module);

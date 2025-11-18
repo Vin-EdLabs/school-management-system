@@ -1,26 +1,27 @@
 
-import React, { useState } from 'react';
-import SidebarWrapper from './SidebarWrapper';
-import DashboardHome from './dashboard/DashboardHome';
-import AdministratorDashboard from './dashboard/AdministratorDashboard';
-import FinancialDashboard from './dashboard/FinancialDashboard';
-import StudentsModule from './students/StudentsModule';
-import TeachersModule from './teachers/TeachersModule';
-import ClassesModule from './classes/ClassesModule';
+import { useState } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 import CalendarModule from './CalendarModule';
-import FeesModule from './fees/FeesModule';
-import IncomeModule from './income/IncomeModule';
+import SidebarWrapper from './SidebarWrapper';
+import AiChatModule from './ai/AiChatModule';
+import AuditModule from './audit/AuditModule';
+import ClassesModule from './classes/ClassesModule';
+import AdministratorDashboard from './dashboard/AdministratorDashboard';
+import DashboardHome from './dashboard/DashboardHome';
+import FinancialDashboard from './dashboard/FinancialDashboard';
 import ExpensesModule from './expenses/ExpensesModule';
+import FeesModule from './fees/FeesModule';
+import PrintFeeStatusModule from './fees/PrintFeeStatusModule';
+import StaffPayroll from './financial/StaffPayroll';
+import IncomeModule from './income/IncomeModule';
 import ReportsModule from './reports/ReportsModule';
 import SettingsModule from './settings/SettingsModule';
-import AuditModule from './audit/AuditModule';
-import PrintFeeStatusModule from './fees/PrintFeeStatusModule';
-import TeacherDashboard from './teacher/TeacherDashboard';
-import TeacherClassesModule from './teacher/TeacherClassesModule';
+import StudentsModule from './students/StudentsModule';
 import AttendanceModule from './teacher/AttendanceModule';
 import GradesModule from './teacher/GradesModule';
-import AiChatModule from './ai/AiChatModule';
-import { useAuth } from '../contexts/AuthContext';
+import TeacherClassesModule from './teacher/TeacherClassesModule';
+import TeacherDashboard from './teacher/TeacherDashboard';
+import TeachersModule from './teachers/TeachersModule';
 
 const Dashboard = () => {
   const { hasAccess, user } = useAuth();
@@ -83,6 +84,8 @@ const Dashboard = () => {
         return <ExpensesModule />;
       case 'reports':
         return <ReportsModule />;
+      case 'staff-payroll':
+        return <StaffPayroll />;
       case 'print-fee-status':
         return <PrintFeeStatusModule />;
       case 'settings':

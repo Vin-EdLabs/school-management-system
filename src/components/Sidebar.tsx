@@ -1,25 +1,5 @@
 
-import React from 'react';
 import { Badge } from '@/components/ui/badge';
-import { useAuth } from '../contexts/AuthContext';
-import { 
-  LayoutDashboard, 
-  Users, 
-  GraduationCap, 
-  BookOpen, 
-  DollarSign, 
-  TrendingUp, 
-  TrendingDown, 
-  BarChart3, 
-  Settings, 
-  Shield, 
-  FileText,
-  UserCheck,
-  Award,
-  Bot,
-  Calendar,
-  LogOut
-} from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -34,6 +14,27 @@ import {
   SidebarSeparator,
   useSidebar,
 } from '@/components/ui/sidebar';
+import {
+  Award,
+  BarChart3,
+  BookOpen,
+  Bot,
+  Calendar,
+  DollarSign,
+  FileText,
+  GraduationCap,
+  LayoutDashboard,
+  LogOut,
+  Settings,
+  Shield,
+  TrendingDown,
+  TrendingUp,
+  UserCheck,
+  Users,
+  Wallet
+} from 'lucide-react';
+import React from 'react';
+import { useAuth } from '../contexts/AuthContext';
 
 interface AppSidebarProps {
   activeModule: string;
@@ -59,7 +60,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
       icon: GraduationCap,
     }] : []),
   ],
-  
+
   academic: [
     ...(hasAccess('students') || hasAccess('students-view-only') ? [{
       id: 'students',
@@ -82,7 +83,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
       icon: Calendar,
     }] : []),
   ],
-  
+
   teaching: [
     ...(hasAccess('teacher-classes') ? [{
       id: 'teacher-classes',
@@ -100,7 +101,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
       icon: Award,
     }] : []),
   ],
-  
+
   financial: [
     ...(hasAccess('fees') ? [{
       id: 'fees',
@@ -127,8 +128,13 @@ const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
       label: 'Fee Status',
       icon: FileText,
     }] : []),
+    ...(hasAccess('staff-payroll') ? [{
+      id: 'staff-payroll',
+      label: 'Staff Payroll',
+      icon: Wallet,
+    }] : []),
   ],
-  
+
   system: [
     ...(hasAccess('settings') || hasAccess('settings-password-only') ? [{
       id: 'settings',
@@ -141,7 +147,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
       icon: Shield,
     }] : []),
   ],
-  
+
   ai: [
     ...(hasAccess('ai-assistant') ? [{
       id: 'ai-assistant',
@@ -213,42 +219,42 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
       </SidebarHeader>
 
       <SidebarContent className="px-2 py-4">
-        <MenuSection 
-          items={menuItems.dashboard} 
-          label="Dashboard" 
+        <MenuSection
+          items={menuItems.dashboard}
+          label="Dashboard"
           activeModule={activeModule}
           setActiveModule={setActiveModule}
         />
-        <MenuSection 
-          items={menuItems.academic} 
-          label="Academic" 
+        <MenuSection
+          items={menuItems.academic}
+          label="Academic"
           activeModule={activeModule}
           setActiveModule={setActiveModule}
         />
-        <MenuSection 
-          items={menuItems.teaching} 
-          label="Teaching" 
+        <MenuSection
+          items={menuItems.teaching}
+          label="Teaching"
           activeModule={activeModule}
           setActiveModule={setActiveModule}
         />
-        <MenuSection 
-          items={menuItems.financial} 
-          label="Financial" 
+        <MenuSection
+          items={menuItems.financial}
+          label="Financial"
           activeModule={activeModule}
           setActiveModule={setActiveModule}
         />
-        <MenuSection 
-          items={menuItems.system} 
-          label="System" 
+        <MenuSection
+          items={menuItems.system}
+          label="System"
           activeModule={activeModule}
           setActiveModule={setActiveModule}
         />
-        
+
         <SidebarSeparator className="my-2" />
-        
-        <MenuSection 
-          items={menuItems.ai} 
-          label="AI Tools" 
+
+        <MenuSection
+          items={menuItems.ai}
+          label="AI Tools"
           activeModule={activeModule}
           setActiveModule={setActiveModule}
         />
@@ -266,7 +272,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-        
+
         {state === "expanded" && (
           <div className="px-2 py-3 border-t border-gray-200">
             <p className="text-xs text-gray-500 text-center">

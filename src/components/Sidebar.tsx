@@ -1,5 +1,5 @@
 
-import { Badge } from '@/components/ui/badge';
+import { } from '@/components/ui/badge';
 import {
   Sidebar,
   SidebarContent,
@@ -9,6 +9,7 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
@@ -183,9 +184,9 @@ const MenuSection: React.FC<{
                 <item.icon className="h-4 w-4" />
                 <span className="flex-1">{item.label}</span>
                 {item.badge && (
-                  <Badge variant="secondary" className="ml-2 text-xs">
+                  <SidebarMenuBadge>
                     {item.badge}
-                  </Badge>
+                  </SidebarMenuBadge>
                 )}
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -198,17 +199,22 @@ const MenuSection: React.FC<{
 
 export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveModule }) => {
   const { logout, hasAccess } = useAuth();
-  const { state } = useSidebar();
+  const { state, toggleSidebar } = useSidebar();
 
   const menuItems = getMenuItems(hasAccess);
 
   return (
     <Sidebar variant="sidebar" collapsible="icon" className="border-r border-gray-200">
-      <SidebarHeader className="border-b border-gray-200 p-4">
+      <SidebarHeader className="border-b border-gray-200 p-1">
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center shrink-0">
+          <button
+            onClick={() => toggleSidebar()}
+            aria-label="Toggle sidebar"
+            title="Toggle sidebar"
+            className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500 hover:opacity-95"
+          >
             <span className="text-white font-bold text-lg">RG</span>
-          </div>
+          </button>
           {state === "expanded" && (
             <div className="min-w-0">
               <h1 className="font-bold text-gray-900 truncate text-lg">Rosa Gardens</h1>
@@ -218,7 +224,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
         </div>
       </SidebarHeader>
 
-      <SidebarContent className="px-2 py-4">
+      <SidebarContent className="px-1 py-4">
         <MenuSection
           items={menuItems.dashboard}
           label="Dashboard"
@@ -266,9 +272,10 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
             <SidebarMenuButton
               onClick={logout}
               className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
+              tooltip="Logout"
             >
               <LogOut className="h-4 w-4" />
-              <span>Logout</span>
+              <span className="flex-1">Logout</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

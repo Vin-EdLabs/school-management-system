@@ -72,7 +72,7 @@ const LoginPage = () => {
         </div>
 
         {/* Right column - form */}
-        <div className="p-8 flex flex-col justify-center items-center">
+        <div className="p-8 flex flex-col justify-center">
           <div className="mb-4">
             <h2 className="text-2xl font-bold text-center">Login</h2>
           </div>

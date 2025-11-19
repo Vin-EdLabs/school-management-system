@@ -45,7 +45,7 @@ const LoginPage = () => {
         <div className="hidden md:flex flex-col justify-center p-10 bg-gradient-to-br from-blue-600 to-purple-600 text-white">
           <div className="flex flex-col items-center text-center space-y-6">
             <div className="w-20 h-20 bg-white/10 rounded-2xl flex items-center justify-center shadow-lg">
-              <GraduationCap className="w-10 h-10 text-white" />
+              <img src="/rosa.png" alt="Rosa Gardens Logo" className="w-16 h-16" />
             </div>
             <div>
               <h1 className="text-2xl font-bold">Rosa Gardens School</h1>
@@ -63,8 +63,8 @@ const LoginPage = () => {
 
           <div className="mt-8 flex items-center justify-center">
             <div className="flex items-center space-x-3">
-              <div className="w-6 h-6 bg-white/20 rounded flex items-center justify-center">
-                <span className="text-xs font-bold">T</span>
+              <div className="w-6 h-6 flex items-center justify-center">
+                <span className="text-xs font-bold"><img src="/favicon.ico" alt="" /></span>
               </div>
               <div className="text-sm">Powered by TechNerve</div>
             </div>

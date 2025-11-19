@@ -1,12 +1,12 @@
 
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { useState } from 'react';
 import { useAudit } from '../contexts/AuditContext';
 import { useAuth } from '../contexts/AuthContext';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 
 interface UseAuditLogProps {
   module: string;
@@ -34,7 +34,7 @@ export const useAuditLog = ({ module, actionType }: UseAuditLogProps) => {
     // Verify password (simplified - using current role password)
     const passwords = {
       'super-admin': 'superadmin123',
-      'finance': 'finance123', 
+      'finance': 'finance123',
       'administrator': 'admin123'
     };
 
@@ -46,7 +46,7 @@ export const useAuditLog = ({ module, actionType }: UseAuditLogProps) => {
     // Execute the action
     if (pendingAction) {
       pendingAction();
-      
+
       // Log the audit entry
       addAuditLog({
         actionType,
@@ -78,6 +78,7 @@ export const useAuditLog = ({ module, actionType }: UseAuditLogProps) => {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Confirm {actionType} Action</DialogTitle>
+          <DialogDescription>Confirm the action by entering your password and optionally providing a reason.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div>

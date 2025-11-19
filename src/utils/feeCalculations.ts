@@ -54,7 +54,7 @@ export const getActiveAcademicTerm = () => {
     try {
       const terms = JSON.parse(savedTerms);
       const activeTerm = terms.find((term: any) => term.isActive);
-      return activeTerm ? `${activeTerm.name} ${activeTerm.year}` : 'Term 1 2024';
+      return activeTerm ? `${activeTerm.name}` : 'Term 1';
     } catch (error) {
       console.error('Error loading academic terms:', error);
     }

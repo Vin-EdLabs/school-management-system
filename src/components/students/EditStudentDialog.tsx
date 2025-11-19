@@ -1,14 +1,14 @@
 
-import React, { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { useData } from '../../contexts/DataContext';
-import { useAudit } from '../../contexts/AuditContext';
 import { toast } from '@/hooks/use-toast';
+import React, { useEffect, useState } from 'react';
+import { useAudit } from '../../contexts/AuditContext';
+import { useData } from '../../contexts/DataContext';
 
 interface Student {
   id: string;
@@ -62,7 +62,7 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
     if (!formData) return;
 
     updateStudent(formData.id, formData);
-    
+
     // Add additional audit log for successful edit completion
     addAuditLog({
       actionType: 'Edit',
@@ -71,7 +71,7 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
       itemName: `${formData.firstName} ${formData.lastName}`,
       reason: 'Student information updated successfully'
     });
-    
+
     toast({
       title: "Student Updated",
       description: `${formData.firstName} ${formData.lastName} has been updated successfully`,
@@ -88,8 +88,9 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Student Information</DialogTitle>
+          <DialogDescription>Edit the selected student's personal and academic information.</DialogDescription>
         </DialogHeader>
-        
+
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Personal Information */}
           <div className="space-y-4">

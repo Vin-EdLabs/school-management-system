@@ -1,14 +1,14 @@
 
-import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
-import { BookOpen, Plus, Edit3, Users } from 'lucide-react';
+import { BookOpen, Edit3, Plus, Users } from 'lucide-react';
+import { useState } from 'react';
 
 const GradesModule = () => {
   const [selectedClass, setSelectedClass] = useState('');
@@ -40,12 +40,18 @@ const GradesModule = () => {
     { id: '6', name: 'Frank Miller', rollNo: '006' }
   ];
 
-  const grades = [
+  const [grades, setGrades] = useState([
     { id: '1', studentId: '1', studentName: 'Alice Johnson', assignmentId: '1', assignmentName: 'Quiz 1', score: 95, maxScore: 100, grade: 'A' },
     { id: '2', studentId: '2', studentName: 'Bob Smith', assignmentId: '1', assignmentName: 'Quiz 1', score: 87, maxScore: 100, grade: 'B+' },
     { id: '3', studentId: '3', studentName: 'Carol Davis', assignmentId: '1', assignmentName: 'Quiz 1', score: 92, maxScore: 100, grade: 'A-' },
     { id: '4', studentId: '1', studentName: 'Alice Johnson', assignmentId: '2', assignmentName: 'Midterm Exam', score: 88, maxScore: 100, grade: 'B+' }
-  ];
+  ]);
+
+  const [isEditGradeOpen, setIsEditGradeOpen] = useState(false);
+  const [editingGradeId, setEditingGradeId] = useState<string | null>(null);
+  const [editSelectedStudent, setEditSelectedStudent] = useState('');
+  const [editSelectedAssignment, setEditSelectedAssignment] = useState('');
+  const [editGradeValue, setEditGradeValue] = useState('');
 
   const getLetterGrade = (score: number, maxScore: number) => {
     const percentage = (score / maxScore) * 100;
@@ -89,7 +95,58 @@ const GradesModule = () => {
     setGradeValue('');
   };
 
-  const filteredGrades = selectedClass && selectedAssignment 
+  const openEdit = (gradeId: string) => {
+    const g = grades.find(x => x.id === gradeId);
+    if (!g) return;
+    setEditingGradeId(gradeId);
+    setEditSelectedStudent(g.studentId);
+    setEditSelectedAssignment(g.assignmentId);
+    setEditGradeValue(String(g.score));
+    setIsEditGradeOpen(true);
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingGradeId || !editSelectedStudent || !editSelectedAssignment || !editGradeValue) {
+      toast({
+        title: 'Missing Information',
+        description: 'Please fill in all fields',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    const assignment = assignments.find(a => a.id === editSelectedAssignment);
+    const student = students.find(s => s.id === editSelectedStudent);
+    const score = parseFloat(editGradeValue);
+    const letterGrade = getLetterGrade(score, assignment?.maxScore || 100);
+
+    setGrades(prev => prev.map(g => g.id === editingGradeId
+      ? {
+        ...g,
+        studentId: editSelectedStudent,
+        studentName: student?.name || g.studentName,
+        assignmentId: editSelectedAssignment,
+        assignmentName: assignment?.name || g.assignmentName,
+        score,
+        maxScore: assignment?.maxScore || g.maxScore,
+        grade: letterGrade
+      }
+      : g
+    ));
+
+    toast({
+      title: 'Grade Updated',
+      description: `Grade ${letterGrade} (${score}/${assignment?.maxScore}) updated for ${student?.name} - ${assignment?.name}`
+    });
+
+    setIsEditGradeOpen(false);
+    setEditingGradeId(null);
+    setEditSelectedStudent('');
+    setEditSelectedAssignment('');
+    setEditGradeValue('');
+  };
+
+  const filteredGrades = selectedClass && selectedAssignment
     ? grades.filter(g => g.assignmentId === selectedAssignment)
     : grades;
 
@@ -116,6 +173,7 @@ const GradesModule = () => {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Add New Grade</DialogTitle>
+              <DialogDescription>Add a grade for a student and assignment.</DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
@@ -160,6 +218,59 @@ const GradesModule = () => {
               </div>
               <Button onClick={handleAddGrade} className="w-full">
                 Add Grade
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={isEditGradeOpen} onOpenChange={setIsEditGradeOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Grade</DialogTitle>
+              <DialogDescription>Modify the selected grade information.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Student</Label>
+                <Select value={editSelectedStudent} onValueChange={setEditSelectedStudent}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select student" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {students.map(student => (
+                      <SelectItem key={student.id} value={student.id}>
+                        {student.name} ({student.rollNo})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Assignment</Label>
+                <Select value={editSelectedAssignment} onValueChange={setEditSelectedAssignment}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select assignment" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {assignments.map(assignment => (
+                      <SelectItem key={assignment.id} value={assignment.id}>
+                        {assignment.name} ({assignment.type}) - {assignment.maxScore} pts
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Score</Label>
+                <Input
+                  type="number"
+                  placeholder="Enter score"
+                  value={editGradeValue}
+                  onChange={(e) => setEditGradeValue(e.target.value)}
+                  max={assignments.find(a => a.id === editSelectedAssignment)?.maxScore || 100}
+                />
+              </div>
+              <Button onClick={handleSaveEdit} className="w-full">
+                Save Changes
               </Button>
             </div>
           </DialogContent>
@@ -245,14 +356,14 @@ const GradesModule = () => {
                       <td className="py-3">
                         <Badge variant={
                           grade.grade.startsWith('A') ? 'default' :
-                          grade.grade.startsWith('B') ? 'secondary' :
-                          grade.grade.startsWith('C') ? 'outline' : 'destructive'
+                            grade.grade.startsWith('B') ? 'secondary' :
+                              grade.grade.startsWith('C') ? 'outline' : 'destructive'
                         }>
                           {grade.grade}
                         </Badge>
                       </td>
                       <td className="py-3">
-                        <Button size="sm" variant="outline">
+                        <Button size="sm" variant="outline" onClick={() => openEdit(grade.id)}>
                           <Edit3 className="w-3 h-3 mr-1" />
                           Edit
                         </Button>
@@ -267,7 +378,7 @@ const GradesModule = () => {
               <BookOpen className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">No grades found</h3>
               <p className="text-gray-500">
-                {selectedClass || selectedAssignment 
+                {selectedClass || selectedAssignment
                   ? 'No grades match your current filters.'
                   : 'Start by adding grades for your students.'}
               </p>

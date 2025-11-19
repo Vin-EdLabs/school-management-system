@@ -1,10 +1,8 @@
-import React from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
-import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Printer, Download, X } from 'lucide-react';
+import { Printer, X } from 'lucide-react';
+import React from 'react';
 
 interface A4ReportPrinterProps {
   reportData: any;
@@ -278,7 +276,7 @@ const A4ReportPrinter: React.FC<A4ReportPrinterProps> = ({
         {/* Detailed Income Analysis */}
         <div className="section income-section">
           <h3 className="section-title">💰 Income Sources</h3>
-          
+
           <div className="summary-box">
             <span className="summary-label">Total Income:</span>
             <span className="summary-value positive">GHS {((reportData.financial?.totalFees || 0) + (reportData.financial?.totalIncome || 0)).toLocaleString()}</span>
@@ -286,7 +284,7 @@ const A4ReportPrinter: React.FC<A4ReportPrinterProps> = ({
 
           {reportData.incomeBreakdown && Object.keys(reportData.incomeBreakdown).length > 0 && (
             <>
-              <h4 style={{fontSize: '10px', fontWeight: 600, margin: '12px 0 6px 0', color: '#374151'}}>Other Income Sources</h4>
+              <h4 style={{ fontSize: '10px', fontWeight: 600, margin: '12px 0 6px 0', color: '#374151' }}>Other Income Sources</h4>
               <table>
                 <thead>
                   <tr>
@@ -297,10 +295,10 @@ const A4ReportPrinter: React.FC<A4ReportPrinterProps> = ({
                 </thead>
                 <tbody>
                   {Object.entries(reportData.incomeBreakdown)
-                    .sort(([,a], [,b]) => (b as number) - (a as number))
+                    .sort(([, a], [, b]) => (b as number) - (a as number))
                     .map(([source, amount], index) => (
                       <tr key={index}>
-                        <td style={{fontWeight: 500}}>{source}</td>
+                        <td style={{ fontWeight: 500 }}>{source}</td>
                         <td>GHS {(amount as number).toLocaleString()}</td>
                         <td>{reportData.financial?.totalIncome ? (((amount as number) / reportData.financial.totalIncome) * 100).toFixed(1) : '0'}%</td>
                       </tr>
@@ -326,7 +324,7 @@ const A4ReportPrinter: React.FC<A4ReportPrinterProps> = ({
             <div className="financial-item">
               <div className="financial-label">Collection Rate</div>
               <div className="financial-value neutral">
-                {reportData.financial?.totalFees && reportData.students?.totalOutstanding 
+                {reportData.financial?.totalFees && reportData.students?.totalOutstanding
                   ? (((reportData.financial.totalFees) / (reportData.financial.totalFees + reportData.students.totalOutstanding)) * 100).toFixed(1)
                   : '100'
                 }%
@@ -341,7 +339,7 @@ const A4ReportPrinter: React.FC<A4ReportPrinterProps> = ({
       {/* Detailed Expense Analysis */}
       <div className="section expense-section">
         <h3 className="section-title">💸 Detailed Expense Analysis</h3>
-        
+
         <div className="summary-box">
           <span className="summary-label">Total Expenses:</span>
           <span className="summary-value negative">GHS {(reportData.financial?.totalExpenses || 0).toLocaleString()}</span>
@@ -350,7 +348,7 @@ const A4ReportPrinter: React.FC<A4ReportPrinterProps> = ({
         {reportData.expenses && Object.keys(reportData.expenses).length > 0 && (
           <div className="two-column">
             <div>
-              <h4 style={{fontSize: '10px', fontWeight: 600, margin: '12px 0 6px 0', color: '#374151'}}>Expense Categories</h4>
+              <h4 style={{ fontSize: '10px', fontWeight: 600, margin: '12px 0 6px 0', color: '#374151' }}>Expense Categories</h4>
               <table>
                 <thead>
                   <tr>
@@ -362,11 +360,11 @@ const A4ReportPrinter: React.FC<A4ReportPrinterProps> = ({
                 </thead>
                 <tbody>
                   {Object.entries(reportData.expenses)
-                    .sort(([,a], [,b]) => (b as any).amount - (a as any).amount)
+                    .sort(([, a], [, b]) => (b as any).amount - (a as any).amount)
                     .slice(0, 8)
                     .map(([category, data], index) => (
                       <tr key={index}>
-                        <td style={{fontWeight: 500}}>{category}</td>
+                        <td style={{ fontWeight: 500 }}>{category}</td>
                         <td>GHS {((data as any).amount || 0).toLocaleString()}</td>
                         <td>{((data as any).count || 0)}</td>
                         <td>{reportData.financial?.totalExpenses ? ((((data as any).amount || 0) / reportData.financial.totalExpenses) * 100).toFixed(1) : '0'}%</td>
@@ -377,19 +375,19 @@ const A4ReportPrinter: React.FC<A4ReportPrinterProps> = ({
             </div>
 
             <div>
-              <h4 style={{fontSize: '10px', fontWeight: 600, margin: '12px 0 6px 0', color: '#374151'}}>Recent Expense Details</h4>
+              <h4 style={{ fontSize: '10px', fontWeight: 600, margin: '12px 0 6px 0', color: '#374151' }}>Recent Expense Details</h4>
               {Object.entries(reportData.expenses)
-                .sort(([,a], [,b]) => (b as any).amount - (a as any).amount)
+                .sort(([, a], [, b]) => (b as any).amount - (a as any).amount)
                 .slice(0, 3)
                 .map(([category, data]) => (
                   <div key={category}>
-                    <div style={{fontSize: '9px', fontWeight: 600, color: '#374151', marginBottom: '4px'}}>{category}</div>
+                    <div style={{ fontSize: '9px', fontWeight: 600, color: '#374151', marginBottom: '4px' }}>{category}</div>
                     {((data as any).items || []).slice(0, 3).map((item: any, idx: number) => (
                       <div key={idx} className="expense-item">
                         <div className="expense-title">{item.description}</div>
                         <div className="expense-details">
                           <span>GHS {item.amount.toLocaleString()}</span>
-                          <span>{new Date(item.date).toLocaleDateString()} {new Date(item.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                          <span>{new Date(item.date).toLocaleDateString()} {new Date(item.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                           <span>{item.paymentMethod}</span>
                         </div>
                       </div>
@@ -403,7 +401,7 @@ const A4ReportPrinter: React.FC<A4ReportPrinterProps> = ({
         {/* Monthly Expense Trend */}
         {reportData.monthlyExpenses && Object.keys(reportData.monthlyExpenses).length > 0 && (
           <>
-            <h4 style={{fontSize: '10px', fontWeight: 600, margin: '12px 0 6px 0', color: '#374151'}}>Monthly Expense Breakdown</h4>
+            <h4 style={{ fontSize: '10px', fontWeight: 600, margin: '12px 0 6px 0', color: '#374151' }}>Monthly Expense Breakdown</h4>
             <table>
               <thead>
                 <tr>
@@ -413,24 +411,24 @@ const A4ReportPrinter: React.FC<A4ReportPrinterProps> = ({
                   <th>Average/Transaction</th>
                   <th>% of Total</th>
                 </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(reportData.monthlyExpenses)
-                    .sort(([,a], [,b]) => (b as any).amount - (a as any).amount)
-                    .map(([month, data], index) => (
-                      <tr key={index}>
-                        <td style={{fontWeight: 500}}>{month}</td>
-                        <td>GHS {((data as any).amount || 0).toLocaleString()}</td>
-                        <td>{((data as any).count || 0)}</td>
-                        <td>GHS {((data as any).count > 0 ? ((data as any).amount / (data as any).count) : 0).toLocaleString()}</td>
-                        <td>{reportData.financial?.totalExpenses ? ((((data as any).amount || 0) / reportData.financial.totalExpenses) * 100).toFixed(1) : '0'}%</td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </>
-          )}
-        </div>
+              </thead>
+              <tbody>
+                {Object.entries(reportData.monthlyExpenses)
+                  .sort(([, a], [, b]) => (b as any).amount - (a as any).amount)
+                  .map(([month, data], index) => (
+                    <tr key={index}>
+                      <td style={{ fontWeight: 500 }}>{month}</td>
+                      <td>GHS {((data as any).amount || 0).toLocaleString()}</td>
+                      <td>{((data as any).count || 0)}</td>
+                      <td>GHS {((data as any).count > 0 ? ((data as any).amount / (data as any).count) : 0).toLocaleString()}</td>
+                      <td>{reportData.financial?.totalExpenses ? ((((data as any).amount || 0) / reportData.financial.totalExpenses) * 100).toFixed(1) : '0'}%</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </>
+        )}
+      </div>
 
       <div className="divider"></div>
 
@@ -448,7 +446,7 @@ const A4ReportPrinter: React.FC<A4ReportPrinterProps> = ({
               <span className="summary-value negative">GHS {reportData.outstandingStudents.reduce((sum: number, student: any) => sum + (student.outstanding || 0), 0).toLocaleString()}</span>
             </div>
           </div>
-          
+
           <table>
             <thead>
               <tr>
@@ -466,11 +464,11 @@ const A4ReportPrinter: React.FC<A4ReportPrinterProps> = ({
                 .slice(0, 15)
                 .map((student: any, index: number) => (
                   <tr key={index}>
-                    <td style={{fontWeight: 500}}>Outstanding {index + 1}</td>
+                    <td style={{ fontWeight: 500 }}>Outstanding {index + 1}</td>
                     <td>{student.className}</td>
                     <td>GHS {(student.totalFee || 0).toLocaleString()}</td>
                     <td>GHS {(student.paid || 0).toLocaleString()}</td>
-                    <td style={{color: '#dc2626', fontWeight: 600}}>GHS {(student.outstanding || 0).toLocaleString()}</td>
+                    <td style={{ color: '#dc2626', fontWeight: 600 }}>GHS {(student.outstanding || 0).toLocaleString()}</td>
                     <td>
                       <span style={{
                         padding: '2px 6px',
@@ -488,7 +486,7 @@ const A4ReportPrinter: React.FC<A4ReportPrinterProps> = ({
             </tbody>
           </table>
           {reportData.outstandingStudents.length > 15 && (
-            <p style={{fontSize: '8px', color: '#6b7280', marginTop: '6px', textAlign: 'center'}}>
+            <p style={{ fontSize: '8px', color: '#6b7280', marginTop: '6px', textAlign: 'center' }}>
               Showing top 15 of {reportData.outstandingStudents.length} students with outstanding balances
             </p>
           )}
@@ -515,7 +513,7 @@ const A4ReportPrinter: React.FC<A4ReportPrinterProps> = ({
             <tbody>
               {reportData.classes.map((cls: any, index: number) => (
                 <tr key={index}>
-                  <td style={{fontWeight: 500}}>{cls.className}</td>
+                  <td style={{ fontWeight: 500 }}>{cls.className}</td>
                   <td>{cls.enrolled}</td>
                   <td>{cls.capacity || 'N/A'}</td>
                   <td>{cls.capacity ? ((cls.enrolled / cls.capacity) * 100).toFixed(1) + '%' : 'N/A'}</td>
@@ -544,7 +542,7 @@ const A4ReportPrinter: React.FC<A4ReportPrinterProps> = ({
             <div className="financial-value">GHS {reportData.otherIncome?.toLocaleString() || '0'}</div>
           </div>
         </div>
-        
+
         <div className="summary-box">
           <div className="flex justify-between items-center">
             <span className="font-semibold text-lg">Total Income:</span>
@@ -569,7 +567,7 @@ const A4ReportPrinter: React.FC<A4ReportPrinterProps> = ({
             </TableHeader>
             <TableBody>
               {Object.entries(reportData.breakdown)
-                .sort(([,a], [,b]) => (b as number) - (a as number))
+                .sort(([, a], [, b]) => (b as number) - (a as number))
                 .map(([source, amount], index) => (
                   <TableRow key={index}>
                     <TableCell className="font-medium">{source}</TableCell>
@@ -617,7 +615,7 @@ const A4ReportPrinter: React.FC<A4ReportPrinterProps> = ({
             </TableHeader>
             <TableBody>
               {Object.entries(reportData.byCategory)
-                .sort(([,a], [,b]) => (b as number) - (a as number))
+                .sort(([, a], [, b]) => (b as number) - (a as number))
                 .map(([category, amount], index) => (
                   <TableRow key={index}>
                     <TableCell className="font-medium">{category}</TableCell>
@@ -647,7 +645,7 @@ const A4ReportPrinter: React.FC<A4ReportPrinterProps> = ({
             </TableHeader>
             <TableBody>
               {Object.entries(reportData.byMonth)
-                .sort(([,a], [,b]) => (b as number) - (a as number))
+                .sort(([, a], [, b]) => (b as number) - (a as number))
                 .map(([month, amount], index) => (
                   <TableRow key={index}>
                     <TableCell className="font-medium">{month}</TableCell>
@@ -671,6 +669,7 @@ const A4ReportPrinter: React.FC<A4ReportPrinterProps> = ({
         <DialogHeader className="flex-shrink-0">
           <div className="flex items-center justify-between">
             <DialogTitle className="text-xl font-bold">📊 Comprehensive School Report</DialogTitle>
+            <DialogDescription>Preview and print a comprehensive school report.</DialogDescription>
             <div className="flex space-x-2 no-print">
               <Button onClick={handlePrint} size="sm" className="bg-blue-600 hover:bg-blue-700">
                 <Printer className="w-4 h-4 mr-2" />

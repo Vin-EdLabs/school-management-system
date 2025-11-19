@@ -1,20 +1,19 @@
 
-import React, { useState, useEffect } from 'react';
-import { Calendar } from '@/components/ui/calendar';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Calendar } from '@/components/ui/calendar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Plus, Edit, Trash2, ChevronLeft, ChevronRight, Bell, Clock, Eye, Calendar as CalendarIcon, MapPin, Tag } from 'lucide-react';
-import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, isToday, isPast, isBefore, addHours, subHours } from 'date-fns';
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
+import { addMonths, format, isSameDay, isSameMonth, subMonths } from 'date-fns';
+import { Bell, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, Edit, Eye, MapPin, Plus, Tag, Trash2 } from 'lucide-react';
+import { useState } from 'react';
 
 interface CalendarEvent {
   id: string;
@@ -119,7 +118,7 @@ export default function CalendarModule() {
 
     setEvents([...events, newEvent]);
     resetForm();
-    
+
     toast({
       title: "Event Created",
       description: `${eventForm.title} has been added to your calendar.`,
@@ -129,23 +128,23 @@ export default function CalendarModule() {
   const handleEditEvent = () => {
     if (!editingEvent || !eventForm.title.trim()) return;
 
-    setEvents(events.map(event => 
-      event.id === editingEvent.id 
-        ? { 
-            ...event, 
-            title: eventForm.title, 
-            description: eventForm.description,
-            time: eventForm.time,
-            location: eventForm.location,
-            color: eventForm.color,
-            category: eventForm.category,
-            reminder: eventForm.reminder,
-            reminderTime: eventForm.reminderTime
-          }
+    setEvents(events.map(event =>
+      event.id === editingEvent.id
+        ? {
+          ...event,
+          title: eventForm.title,
+          description: eventForm.description,
+          time: eventForm.time,
+          location: eventForm.location,
+          color: eventForm.color,
+          category: eventForm.category,
+          reminder: eventForm.reminder,
+          reminderTime: eventForm.reminderTime
+        }
         : event
     ));
     resetForm();
-    
+
     toast({
       title: "Event Updated",
       description: `${eventForm.title} has been updated successfully.`,
@@ -155,7 +154,7 @@ export default function CalendarModule() {
   const handleDeleteEvent = (eventId: string) => {
     const event = events.find(e => e.id === eventId);
     setEvents(events.filter(event => event.id !== eventId));
-    
+
     toast({
       title: "Event Deleted",
       description: `${event?.title} has been removed from your calendar.`,
@@ -163,9 +162,9 @@ export default function CalendarModule() {
   };
 
   const resetForm = () => {
-    setEventForm({ 
-      title: '', 
-      description: '', 
+    setEventForm({
+      title: '',
+      description: '',
       time: '',
       location: '',
       color: 'bg-blue-500',
@@ -196,9 +195,9 @@ export default function CalendarModule() {
   const openAddDialog = (date?: Date) => {
     setSelectedDate(date || new Date());
     setEditingEvent(null);
-    setEventForm({ 
-      title: '', 
-      description: '', 
+    setEventForm({
+      title: '',
+      description: '',
       time: '',
       location: '',
       color: 'bg-blue-500',
@@ -238,8 +237,8 @@ export default function CalendarModule() {
               Organize your academic year with style and precision
             </p>
           </div>
-          <Button 
-            onClick={() => openAddDialog()} 
+          <Button
+            onClick={() => openAddDialog()}
             className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 px-8 py-3 rounded-xl text-lg font-semibold"
           >
             <Plus className="h-5 w-5 mr-2" />
@@ -251,9 +250,9 @@ export default function CalendarModule() {
         <Card className="border-0 shadow-lg bg-white/80 backdrop-blur-sm">
           <CardContent className="p-6">
             <div className="flex justify-between items-center">
-              <Button 
-                variant="outline" 
-                onClick={() => navigateMonth('prev')} 
+              <Button
+                variant="outline"
+                onClick={() => navigateMonth('prev')}
                 className="gap-2 hover:bg-slate-50 border-slate-200 px-6 py-3 rounded-xl"
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -265,9 +264,9 @@ export default function CalendarModule() {
                 </h2>
                 <p className="text-sm text-muted-foreground mt-1">Three month view</p>
               </div>
-              <Button 
-                variant="outline" 
-                onClick={() => navigateMonth('next')} 
+              <Button
+                variant="outline"
+                onClick={() => navigateMonth('next')}
                 className="gap-2 hover:bg-slate-50 border-slate-200 px-6 py-3 rounded-xl"
               >
                 Next
@@ -287,69 +286,76 @@ export default function CalendarModule() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6">
-                <Calendar
-                  mode="single"
-                  selected={selectedDate}
-                  onSelect={(date) => {
-                    if (date) {
-                      setSelectedDate(date);
-                      openAddDialog(date);
-                    }
-                  }}
-                  month={month}
-                  className="rounded-lg border-none p-0 w-full"
-                  classNames={{
-                    head_cell: "text-muted-foreground rounded-md w-10 h-10 font-medium text-sm flex items-center justify-center",
-                    cell: "relative h-12 w-10 text-center text-sm p-0 focus-within:relative focus-within:z-20",
-                    day: "h-12 w-10 p-0 font-medium hover:bg-blue-50 hover:text-blue-600 cursor-pointer rounded-lg transition-all duration-200 flex items-center justify-center relative",
-                    day_today: "bg-blue-500 text-white font-bold hover:bg-blue-600 shadow-md",
-                    day_selected: "bg-purple-500 text-white hover:bg-purple-600 shadow-md",
-                    day_outside: "text-muted-foreground opacity-40",
-                  }}
-                  components={{
-                    Day: ({ date, ...props }) => {
-                      const dayEvents = getEventsForDate(date);
-                      const isToday = isSameDay(date, new Date());
-                      const isCurrentMonth = isSameMonth(date, month);
-                      
-                      return (
-                        <div className="relative w-full h-full">
-                          <button
-                            {...props}
-                            className={`
+                <div className="w-full flex justify-center">
+                  <div className="w-[320px] sm:w-[360px]">
+                    <Calendar
+                      mode="single"
+                      selected={selectedDate}
+                      onSelect={(date) => {
+                        if (date) {
+                          setSelectedDate(date);
+                          openAddDialog(date);
+                        }
+                      }}
+                      month={month}
+                      className="rounded-lg border-none p-0 w-full"
+                      classNames={{
+                        head_cell: "text-muted-foreground rounded-md w-10 h-10 font-medium text-sm flex items-center justify-center",
+                        cell: "relative h-12 w-10 text-center text-sm p-0 focus-within:relative focus-within:z-20",
+                        day: "h-12 w-10 p-0 font-medium hover:bg-blue-50 hover:text-blue-600 cursor-pointer rounded-lg transition-all duration-200 flex items-center justify-center relative",
+                        day_today: "bg-blue-500 text-white font-bold hover:bg-blue-600 shadow-md",
+                        day_selected: "bg-purple-500 text-white hover:bg-purple-600 shadow-md",
+                        day_outside: "text-muted-foreground opacity-40",
+                        // hide the built-in caption (month/year) and nav arrows so custom header controls are used
+                        caption: "hidden",
+                        nav: "hidden",
+                      }}
+                      components={{
+                        Day: ({ date, ...props }) => {
+                          const dayEvents = getEventsForDate(date);
+                          const isToday = isSameDay(date, new Date());
+                          const isCurrentMonth = isSameMonth(date, month);
+
+                          return (
+                            <div className="relative w-full h-full">
+                              <button
+                                {...props}
+                                className={`
                               w-full h-full p-0 font-medium rounded-lg transition-all duration-200 relative
                               ${isToday ? 'bg-blue-500 text-white font-bold hover:bg-blue-600 shadow-md' : ''}
                               ${!isCurrentMonth ? 'text-muted-foreground opacity-40' : 'hover:bg-blue-50 hover:text-blue-600'}
                               flex items-center justify-center
                             `}
-                            onClick={() => {
-                              setSelectedDate(date);
-                              openAddDialog(date);
-                            }}
-                          >
-                            <span className="relative z-10">{format(date, 'd')}</span>
-                          </button>
-                          {dayEvents.length > 0 && (
-                            <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 flex gap-1">
-                              {dayEvents.slice(0, 3).map((event, i) => {
-                                const colorConfig = getColorConfig(event.color);
-                                return (
-                                  <div
-                                    key={i}
-                                    className={`w-2 h-2 rounded-full ${colorConfig.dot} shadow-sm`}
-                                  />
-                                );
-                              })}
-                              {dayEvents.length > 3 && (
-                                <div className="w-2 h-2 rounded-full bg-gray-400 shadow-sm" />
+                                onClick={() => {
+                                  setSelectedDate(date);
+                                  openAddDialog(date);
+                                }}
+                              >
+                                <span className="relative z-10">{format(date, 'd')}</span>
+                              </button>
+                              {dayEvents.length > 0 && (
+                                <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 flex gap-1">
+                                  {dayEvents.slice(0, 3).map((event, i) => {
+                                    const colorConfig = getColorConfig(event.color);
+                                    return (
+                                      <div
+                                        key={i}
+                                        className={`w-2 h-2 rounded-full ${colorConfig.dot} shadow-sm`}
+                                      />
+                                    );
+                                  })}
+                                  {dayEvents.length > 3 && (
+                                    <div className="w-2 h-2 rounded-full bg-gray-400 shadow-sm" />
+                                  )}
+                                </div>
                               )}
                             </div>
-                          )}
-                        </div>
-                      );
-                    }
-                  }}
-                />
+                          );
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
               </CardContent>
             </Card>
           ))}
@@ -468,8 +474,9 @@ export default function CalendarModule() {
                 </div>
                 {editingEvent ? 'Edit Event' : 'Create New Event'}
               </DialogTitle>
+              <DialogDescription>Provide event details and save to add or update calendar events.</DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-8 py-6">
               {/* Selected Date Display */}
               {selectedDate && (
@@ -501,7 +508,7 @@ export default function CalendarModule() {
                   className="h-12 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:ring-0 text-lg"
                 />
               </div>
-              
+
               {/* Description */}
               <div className="space-y-3">
                 <Label htmlFor="description" className="text-sm font-semibold text-slate-700">Description</Label>
@@ -603,7 +610,7 @@ export default function CalendarModule() {
                     onCheckedChange={(checked) => setEventForm({ ...eventForm, reminder: checked })}
                   />
                 </div>
-                
+
                 {eventForm.reminder && (
                   <div className="space-y-3 pl-6 border-l-4 border-amber-300 bg-amber-50/50 py-4 rounded-r-xl">
                     <Label htmlFor="reminderTime" className="text-sm font-semibold text-slate-700">Remind me</Label>
@@ -626,14 +633,14 @@ export default function CalendarModule() {
 
             {/* Dialog Actions */}
             <div className="flex justify-end gap-4 pt-6 border-t border-slate-200">
-              <Button 
-                variant="outline" 
-                onClick={resetForm} 
+              <Button
+                variant="outline"
+                onClick={resetForm}
                 className="px-8 py-3 rounded-xl border-2 border-slate-200 hover:bg-slate-50"
               >
                 Cancel
               </Button>
-              <Button 
+              <Button
                 onClick={editingEvent ? handleEditEvent : handleAddEvent}
                 disabled={!eventForm.title.trim()}
                 className="px-8 py-3 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
@@ -654,6 +661,7 @@ export default function CalendarModule() {
                 </div>
                 Event Details
               </DialogTitle>
+              <DialogDescription>View full details for the selected event.</DialogDescription>
             </DialogHeader>
             {viewingEvent && (
               <div className="space-y-6 py-6">
@@ -681,7 +689,7 @@ export default function CalendarModule() {
                       <p className="text-lg font-medium text-slate-800">{viewingEvent.time}</p>
                     </div>
                   )}
-                  
+
                   {viewingEvent.location && (
                     <div className="space-y-2">
                       <Label className="text-sm font-semibold text-slate-600 flex items-center gap-2">

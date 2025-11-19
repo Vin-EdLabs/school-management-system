@@ -1,14 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
-import { useData } from '../../contexts/DataContext';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
 import { X } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { useData } from '../../contexts/DataContext';
 
 interface Teacher {
   id: string;
@@ -96,7 +96,7 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!teacher) return;
 
     if (!formData.fullName || !formData.email || !formData.phoneNumber) {
@@ -115,7 +115,7 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
       ...formData,
       monthlySalary: salaryValue
     });
-    
+
     toast({
       title: "Teacher Updated",
       description: `${formData.fullName} has been updated successfully`,
@@ -132,6 +132,7 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Teacher Details</DialogTitle>
+          <DialogDescription>Edit the selected teacher's profile and employment details.</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">

@@ -1,9 +1,9 @@
 
-import React from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
-import { User, Mail, Phone, MapPin, Calendar, GraduationCap, Briefcase, DollarSign } from 'lucide-react';
+import { Briefcase, Calendar, DollarSign, Mail, MapPin, Phone, User } from 'lucide-react';
+import React from 'react';
 
 interface Teacher {
   id: string;
@@ -43,6 +43,7 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
             <User className="w-5 h-5" />
             <span>Teacher Details</span>
           </DialogTitle>
+          <DialogDescription>View detailed information for the selected teacher.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6">
@@ -134,11 +135,11 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
                 <Briefcase className="w-4 h-4 text-gray-500" />
                 <div>
                   <label className="text-sm font-medium text-gray-500">Status</label>
-                  <Badge 
+                  <Badge
                     className={
                       teacher.employmentStatus === 'Active' ? 'bg-green-100 text-green-800' :
-                      teacher.employmentStatus === 'Left' ? 'bg-red-100 text-red-800' :
-                      'bg-yellow-100 text-yellow-800'
+                        teacher.employmentStatus === 'Left' ? 'bg-red-100 text-red-800' :
+                          'bg-yellow-100 text-yellow-800'
                     }
                   >
                     {teacher.employmentStatus}

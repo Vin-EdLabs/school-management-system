@@ -1,15 +1,15 @@
 
-import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ChevronDown, ChevronUp, DollarSign, TrendingUp, Calculator } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Calculator, ChevronDown, ChevronUp, DollarSign, TrendingUp } from 'lucide-react';
+import { useState } from 'react';
 import { useData } from '../../contexts/DataContext';
 
 const FinancialSummary = () => {
   const [isExpanded, setIsExpanded] = useState(false);
   const { payments, income, expenses } = useData();
 
-  const currentTerm = 'Term 1 2024';
+  const currentTerm = 'Term 1';
 
   // Calculate fees collected
   const feesCollected = payments
@@ -62,7 +62,7 @@ const FinancialSummary = () => {
           </Button>
         </div>
       </CardHeader>
-      
+
       {isExpanded && (
         <CardContent className="pt-0 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -98,9 +98,8 @@ const FinancialSummary = () => {
                     <p>Expenses: GHS {totalExpenses.toLocaleString()}</p>
                   </div>
                 </div>
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                  balanceLeft >= 0 ? 'bg-blue-100' : 'bg-red-100'
-                }`}>
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center ${balanceLeft >= 0 ? 'bg-blue-100' : 'bg-red-100'
+                  }`}>
                   <DollarSign className={`w-6 h-6 ${balanceLeft >= 0 ? 'text-blue-600' : 'text-red-600'}`} />
                 </div>
               </div>
@@ -111,14 +110,13 @@ const FinancialSummary = () => {
           <div className="bg-white rounded-lg p-4 border border-purple-100">
             <h4 className="font-medium text-gray-800 mb-2">Financial Health</h4>
             <div className="flex items-center space-x-2">
-              <div className={`w-3 h-3 rounded-full ${
-                balanceLeft > totalCombinedIncome * 0.2 ? 'bg-green-500' :
-                balanceLeft > 0 ? 'bg-yellow-500' : 'bg-red-500'
-              }`}></div>
+              <div className={`w-3 h-3 rounded-full ${balanceLeft > totalCombinedIncome * 0.2 ? 'bg-green-500' :
+                  balanceLeft > 0 ? 'bg-yellow-500' : 'bg-red-500'
+                }`}></div>
               <span className="text-sm text-gray-600">
                 {balanceLeft > totalCombinedIncome * 0.2 ? 'Excellent - Strong financial position' :
-                 balanceLeft > 0 ? 'Good - Positive balance maintained' : 
-                 'Attention needed - Expenses exceed income'}
+                  balanceLeft > 0 ? 'Good - Positive balance maintained' :
+                    'Attention needed - Expenses exceed income'}
               </span>
             </div>
           </div>

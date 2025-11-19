@@ -2,7 +2,7 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useSidebar } from '@/components/ui/sidebar';
-import { Bot, Calendar, Clock, GraduationCap, User } from 'lucide-react';
+import { Bot, Calendar, Clock, GraduationCap, Menu, User } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { getActiveAcademicTerm } from '../../utils/feeCalculations';
@@ -108,6 +108,13 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick }) => {
 
   return (
     <div className="relative flex items-center justify-between w-full">
+      {/* Mobile sidebar toggle (separate so it doesn't add spacing to the left group) */}
+      <div className="md:hidden mr-2 flex-shrink-0">
+        <button onClick={() => toggleSidebar()} aria-label="Open sidebar" className="flex items-center">
+          <Menu className="w-6 h-6 text-gray-700" />
+        </button>
+      </div>
+
       {/* Left: Logo (when sidebar collapsed) + Welcome Section */}
       <div className="flex items-center space-x-4">
         {/* Logo block visually attached to the sidebar; fixed to top-left and matches sidebar width */}
@@ -119,8 +126,8 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick }) => {
               title="Toggle sidebar"
               className="flex items-center gap-3 ml-1"
             >
-              <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold">RG</span>
+              <div className="w-9 h-9 flex items-center justify-center">
+                <img src="/rosa.png" alt="" />
               </div>
               <div className={state === 'collapsed' ? 'hidden' : 'hidden sm:block text-sidebar-foreground'}>
                 <span className="font-semibold">Rosa Gardens</span>

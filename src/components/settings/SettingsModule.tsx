@@ -1,14 +1,13 @@
 
-import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { toast } from '@/hooks/use-toast';
+import { Building, Download, Key, RefreshCw, Settings } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
-import { toast } from '@/hooks/use-toast';
-import { Settings, Key, Calendar, Building, Download, Upload, RefreshCw, Shield } from 'lucide-react';
 import AcademicTermManager from './AcademicTermManager';
 
 interface SchoolSettings {
@@ -36,7 +35,7 @@ const SettingsModule = () => {
   });
   const [academicSettings, setAcademicSettings] = useState<AcademicSettings>({
     currentYear: '2024',
-    currentTerm: 'Term 1 2024'
+    currentTerm: 'Term 1'
   });
 
   const isSuperAdmin = hasAccess('settings');
@@ -45,7 +44,7 @@ const SettingsModule = () => {
   useEffect(() => {
     const savedSchoolInfo = localStorage.getItem('schoolInfo');
     const savedAcademicSettings = localStorage.getItem('academicSettings');
-    
+
     if (savedSchoolInfo) {
       try {
         setSchoolInfo(JSON.parse(savedSchoolInfo));
@@ -53,7 +52,7 @@ const SettingsModule = () => {
         console.error('Error loading school info:', error);
       }
     }
-    
+
     if (savedAcademicSettings) {
       try {
         setAcademicSettings(JSON.parse(savedAcademicSettings));
@@ -70,7 +69,7 @@ const SettingsModule = () => {
 
   const handlePasswordChange = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (newPassword !== confirmPassword) {
       toast({
         title: "Password Mismatch",
@@ -90,7 +89,7 @@ const SettingsModule = () => {
     }
 
     changePassword(newPassword);
-    
+
     toast({
       title: "Password Changed",
       description: "Your password has been updated successfully",
@@ -103,7 +102,7 @@ const SettingsModule = () => {
   const handleSchoolInfoUpdate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!isSuperAdmin) return;
-    
+
     localStorage.setItem('schoolInfo', JSON.stringify(schoolInfo));
     toast({
       title: "School Information Updated",
@@ -183,7 +182,7 @@ const SettingsModule = () => {
       exportDate: new Date().toISOString(),
       exportVersion: '1.0'
     };
-    
+
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -191,7 +190,7 @@ const SettingsModule = () => {
     a.download = `rosa-gardens-backup-${new Date().toISOString().split('T')[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    
+
     toast({
       title: "Data Exported",
       description: "Your data has been exported successfully",
@@ -206,7 +205,7 @@ const SettingsModule = () => {
     reader.onload = (e) => {
       try {
         const importedData = JSON.parse(e.target?.result as string);
-        
+
         if (importedData.students && Array.isArray(importedData.students)) {
           localStorage.setItem('rosaGardensData', JSON.stringify({
             students: importedData.students,
@@ -217,23 +216,23 @@ const SettingsModule = () => {
             income: importedData.income || [],
             expenses: importedData.expenses || []
           }));
-          
+
           if (importedData.schoolInfo) {
             localStorage.setItem('schoolInfo', JSON.stringify(importedData.schoolInfo));
             setSchoolInfo(importedData.schoolInfo);
           }
-          
+
           if (importedData.academicSettings) {
             localStorage.setItem('academicSettings', JSON.stringify(importedData.academicSettings));
             setAcademicSettings(importedData.academicSettings);
             dispatchSettingsChange(); // Notify header of changes
           }
-          
+
           toast({
             title: "Data Imported Successfully",
             description: "Data has been imported. Please refresh the page to see changes.",
           });
-          
+
           event.target.value = '';
         } else {
           throw new Error('Invalid data format');
@@ -255,16 +254,16 @@ const SettingsModule = () => {
     const isConfirmed = window.confirm(
       'Are you sure you want to reset all data? This action cannot be undone.'
     );
-    
+
     if (isConfirmed) {
       localStorage.removeItem('rosaGardensData');
       localStorage.removeItem('schoolInfo');
       localStorage.removeItem('academicSettings');
       localStorage.removeItem('academicTerms');
-      
+
       // Notify header of changes
       dispatchSettingsChange();
-      
+
       toast({
         title: "Data Reset Complete",
         description: "All data has been reset. Please refresh the page.",
@@ -344,41 +343,41 @@ const SettingsModule = () => {
             <form onSubmit={handleSchoolInfoUpdate} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="schoolName">School Name</Label>
-                <Input 
+                <Input
                   id="schoolName"
                   value={schoolInfo.name}
-                  onChange={(e) => setSchoolInfo({...schoolInfo, name: e.target.value})}
+                  onChange={(e) => setSchoolInfo({ ...schoolInfo, name: e.target.value })}
                   placeholder="Enter school name"
                   required
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="schoolAddress">Address</Label>
-                <Input 
+                <Input
                   id="schoolAddress"
                   value={schoolInfo.address}
-                  onChange={(e) => setSchoolInfo({...schoolInfo, address: e.target.value})}
+                  onChange={(e) => setSchoolInfo({ ...schoolInfo, address: e.target.value })}
                   placeholder="Enter school address"
                   required
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="schoolContact">Contact Number</Label>
-                <Input 
+                <Input
                   id="schoolContact"
                   value={schoolInfo.contact}
-                  onChange={(e) => setSchoolInfo({...schoolInfo, contact: e.target.value})}
+                  onChange={(e) => setSchoolInfo({ ...schoolInfo, contact: e.target.value })}
                   placeholder="Enter contact number"
                   required
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="schoolEmail">Email Address</Label>
-                <Input 
+                <Input
                   id="schoolEmail"
                   type="email"
                   value={schoolInfo.email}
-                  onChange={(e) => setSchoolInfo({...schoolInfo, email: e.target.value})}
+                  onChange={(e) => setSchoolInfo({ ...schoolInfo, email: e.target.value })}
                   placeholder="Enter email address"
                   required
                 />
@@ -410,7 +409,7 @@ const SettingsModule = () => {
                   Export Data
                 </Button>
               </div>
-              
+
               <div>
                 <h4 className="font-medium mb-2">Import Data</h4>
                 <p className="text-sm text-gray-600 mb-3">
@@ -429,9 +428,9 @@ const SettingsModule = () => {
                 <p className="text-sm text-gray-600 mb-3">
                   ⚠️ Permanently delete all data and start fresh
                 </p>
-                <Button 
-                  onClick={resetAllData} 
-                  variant="destructive" 
+                <Button
+                  onClick={resetAllData}
+                  variant="destructive"
                   className="w-full"
                 >
                   <RefreshCw className="w-4 h-4 mr-2" />

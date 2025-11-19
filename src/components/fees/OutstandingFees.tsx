@@ -1,16 +1,20 @@
 
-import React, { useState, useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
-import { Search, AlertTriangle, Download, DollarSign, Clock, TrendingUp } from 'lucide-react';
+import { AlertTriangle, Clock, DollarSign, Download, Search, TrendingUp } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { useData } from '../../contexts/DataContext';
 import { calculateStudentFees, getActiveAcademicTerm } from '../../utils/feeCalculations';
 
-const OutstandingFees = () => {
+interface OutstandingFeesProps {
+  compact?: boolean;
+}
+
+const OutstandingFees: React.FC<OutstandingFeesProps> = ({ compact = false }) => {
   const { students, classes, feeStructures, payments } = useData();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClass, setSelectedClass] = useState('All');
@@ -20,7 +24,7 @@ const OutstandingFees = () => {
   const outstandingData = useMemo(() => {
     const studentsArray = Array.isArray(students) ? students : [];
     const paymentsArray = Array.isArray(payments) ? payments : [];
-    
+
     return studentsArray.map(student => {
       const feeCalculation = calculateStudentFees(
         student.id,
@@ -120,7 +124,7 @@ const OutstandingFees = () => {
   return (
     <div className="space-y-6">
       {/* Header with summary stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className={compact ? 'grid grid-cols-2 gap-4' : 'grid grid-cols-1 md:grid-cols-4 gap-4'}>
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
@@ -177,11 +181,13 @@ const OutstandingFees = () => {
       {/* Filters and Actions */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Outstanding Fees Overview</CardTitle>
-            <div className="flex items-center space-x-2">
+          <div className={compact ? 'flex flex-col items-start gap-2' : 'flex items-center justify-between'}>
+            <div className="min-w-0 w-full">
+              <CardTitle className="truncate max-w-[420px]  text-xl">Outstanding Fees Overview</CardTitle>
+            </div>
+            <div className={compact ? 'flex items-center space-x-2 w-full' : 'flex items-center space-x-2 flex-shrink-0 whitespace-nowrap'}>
               <Select value={selectedTerm} onValueChange={setSelectedTerm}>
-                <SelectTrigger className="w-40">
+                <SelectTrigger className={compact ? 'w-full' : 'w-28 sm:w-40'}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -190,7 +196,7 @@ const OutstandingFees = () => {
                   <SelectItem value="Term 3 2024">Term 3 2024</SelectItem>
                 </SelectContent>
               </Select>
-              <Button onClick={exportOutstandingReport} size="sm">
+              <Button onClick={exportOutstandingReport} size="sm" className={compact ? 'w-full sm:w-auto' : 'whitespace-nowrap'}>
                 <Download className="w-4 h-4 mr-2" />
                 Export
               </Button>
@@ -291,7 +297,7 @@ const OutstandingFees = () => {
               <AlertTriangle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">No Outstanding Fees</h3>
               <p className="text-gray-600">
-                {searchTerm || selectedClass !== 'All' 
+                {searchTerm || selectedClass !== 'All'
                   ? 'No students match your current filters.'
                   : 'All students have paid their fees for this term.'}
               </p>

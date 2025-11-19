@@ -1,13 +1,13 @@
 
-import React, { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { useAudit } from '../../contexts/AuditContext';
-import { Trash2, Search, Filter, Calendar, User, Activity } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Activity, Calendar, Search, Trash2, User } from 'lucide-react';
+import { useState } from 'react';
+import { useAudit } from '../../contexts/AuditContext';
 
 const AuditModule = () => {
   const { auditLogs, deleteAuditLog, clearAllLogs } = useAudit();
@@ -16,7 +16,7 @@ const AuditModule = () => {
   const [filterModule, setFilterModule] = useState<string>('all');
 
   const filteredLogs = auditLogs.filter(log => {
-    const matchesSearch = 
+    const matchesSearch =
       log.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
       log.module.toLowerCase().includes(searchTerm.toLowerCase()) ||
       log.itemName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -56,6 +56,7 @@ const AuditModule = () => {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Clear All Audit Logs</DialogTitle>
+              <DialogDescription>This will permanently delete all audit logs. This action cannot be undone.</DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <p className="text-gray-600">
@@ -92,8 +93,8 @@ const AuditModule = () => {
               <div>
                 <p className="text-sm font-medium text-gray-600">Logins Today</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {auditLogs.filter(log => 
-                    log.actionType === 'Login' && 
+                  {auditLogs.filter(log =>
+                    log.actionType === 'Login' &&
                     new Date(log.timestamp).toDateString() === new Date().toDateString()
                   ).length}
                 </p>
@@ -108,8 +109,8 @@ const AuditModule = () => {
               <div>
                 <p className="text-sm font-medium text-gray-600">Edits Today</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {auditLogs.filter(log => 
-                    log.actionType === 'Edit' && 
+                  {auditLogs.filter(log =>
+                    log.actionType === 'Edit' &&
                     new Date(log.timestamp).toDateString() === new Date().toDateString()
                   ).length}
                 </p>
@@ -124,8 +125,8 @@ const AuditModule = () => {
               <div>
                 <p className="text-sm font-medium text-gray-600">Deletions Today</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {auditLogs.filter(log => 
-                    log.actionType === 'Delete' && 
+                  {auditLogs.filter(log =>
+                    log.actionType === 'Delete' &&
                     new Date(log.timestamp).toDateString() === new Date().toDateString()
                   ).length}
                 </p>

@@ -270,7 +270,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
         {state === "expanded" && (
           <div className="px-2 py-3 border-t border-gray-200">
             <p className="text-xs text-gray-500 text-center">
-              Powered by <span className="font-semibold text-gray-700">Technver</span>
+              Powered by <span className="font-semibold text-gray-700">Technerve</span>
             </p>
           </div>
         )}

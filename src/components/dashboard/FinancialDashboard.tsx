@@ -1,25 +1,25 @@
 
-import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useData } from '../../contexts/DataContext';
-import { getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
-import FinancialSummary from './FinancialSummary';
-import OutstandingFees from '../fees/OutstandingFees';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
-  CreditCard,
-  TrendingUp,
-  TrendingDown,
-  Calculator,
   AlertCircle,
-  Receipt,
+  Calculator,
+  ChevronLeft,
+  ChevronRight,
+  CreditCard,
   FileText,
   Plus,
-  Users,
-  ChevronLeft,
-  ChevronRight
+  Receipt,
+  TrendingDown,
+  TrendingUp,
+  Users
 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
+import { useState } from 'react';
+import { CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { useData } from '../../contexts/DataContext';
+import { getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
+import OutstandingFees from '../fees/OutstandingFees';
+import FinancialSummary from './FinancialSummary';
 
 const FinancialDashboard = () => {
   const { students, payments, income, expenses, feeStructures } = useData();
@@ -72,13 +72,13 @@ const FinancialDashboard = () => {
   const outstandingBalances = calculateOutstanding();
 
   // Chart data for monthly income trend
-  const monthlyIncomeData = Array.from({length: 12}, (_, i) => {
+  const monthlyIncomeData = Array.from({ length: 12 }, (_, i) => {
     const month = new Date(parseInt(currentYear), i, 1).toLocaleDateString('en-US', { month: 'short' });
     const monthlyFees = payments.filter(payment => {
       const paymentDate = new Date(payment.date);
       return paymentDate.getMonth() === i && paymentDate.getFullYear().toString() === currentYear;
     }).reduce((sum, payment) => sum + payment.amount, 0);
-    
+
     const monthlyOtherIncome = income.filter(inc => {
       const incomeDate = new Date(inc.date);
       return incomeDate.getMonth() === i && incomeDate.getFullYear().toString() === currentYear;
@@ -133,7 +133,7 @@ const FinancialDashboard = () => {
   return (
     <div className="flex h-full">
       {/* Main Content */}
-      <div className={`flex-1 transition-all duration-300 ${sidebarOpen ? 'mr-96' : ''}`}>
+      <div className="flex-1 transition-all duration-300">
         <div className="p-6 space-y-6">
           {/* Header */}
           <div className="flex items-center justify-between">
@@ -267,17 +267,15 @@ const FinancialDashboard = () => {
                 <div className="space-y-3 max-h-80 overflow-y-auto">
                   {recentActivities.slice(0, 10).map((activity, index) => (
                     <div key={index} className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
-                      <div className={`w-2 h-2 rounded-full mt-2 ${
-                        activity.type === 'payment' ? 'bg-green-500' : 
+                      <div className={`w-2 h-2 rounded-full mt-2 ${activity.type === 'payment' ? 'bg-green-500' :
                         activity.type === 'income' ? 'bg-blue-500' : 'bg-red-500'
-                      }`}></div>
+                        }`}></div>
                       <div className="flex-1">
                         <p className="text-sm text-gray-800">{activity.text}</p>
                         <p className="text-xs text-gray-500">{activity.time}</p>
                       </div>
-                      <div className={`text-sm font-medium ${
-                        activity.type === 'expense' ? 'text-red-600' : 'text-green-600'
-                      }`}>
+                      <div className={`text-sm font-medium ${activity.type === 'expense' ? 'text-red-600' : 'text-green-600'
+                        }`}>
                         {activity.type === 'expense' ? '-' : '+'}GHS{activity.amount.toLocaleString()}
                       </div>
                     </div>
@@ -316,7 +314,7 @@ const FinancialDashboard = () => {
       {/* Outstanding Fees Sidebar */}
       {sidebarOpen && (
         <div className="fixed right-0 top-0 h-full w-96 bg-white shadow-lg border-l border-gray-200 z-50 overflow-y-auto">
-          <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+          <div className="sticky top-0 z-40 bg-white p-4 border-b border-gray-200 flex items-center justify-between">
             <h2 className="text-lg font-semibold text-gray-800">Outstanding Fees by Class</h2>
             <Button
               onClick={() => setSidebarOpen(false)}
@@ -327,7 +325,7 @@ const FinancialDashboard = () => {
             </Button>
           </div>
           <div className="p-4">
-            <OutstandingFees />
+            <OutstandingFees compact />
           </div>
         </div>
       )}

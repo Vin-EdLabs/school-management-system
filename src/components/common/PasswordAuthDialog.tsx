@@ -1,12 +1,12 @@
 
-import React, { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { useAuth } from '../../contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
+import React, { useState } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface PasswordAuthDialogProps {
   open: boolean;
@@ -47,7 +47,7 @@ const PasswordAuthDialog: React.FC<PasswordAuthDialogProps> = ({
     const savedPasswords = localStorage.getItem('rosaGardensPasswords');
     const passwords = savedPasswords ? JSON.parse(savedPasswords) : {
       'super-admin': 'superadmin123',
-      'finance': 'finance123', 
+      'finance': 'finance123',
       'administrator': 'admin123'
     };
 
@@ -80,8 +80,9 @@ const PasswordAuthDialog: React.FC<PasswordAuthDialogProps> = ({
           <DialogTitle>
             Authenticate {action === 'edit' ? 'Edit' : 'Delete'} Action
           </DialogTitle>
+          <DialogDescription>Authenticate this action by entering your password.</DialogDescription>
         </DialogHeader>
-        
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <p className="text-sm text-gray-600">
@@ -118,8 +119,8 @@ const PasswordAuthDialog: React.FC<PasswordAuthDialogProps> = ({
             <Button type="button" variant="outline" onClick={handleClose}>
               Cancel
             </Button>
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               variant={action === 'delete' ? 'destructive' : 'default'}
               disabled={isLoading}
             >

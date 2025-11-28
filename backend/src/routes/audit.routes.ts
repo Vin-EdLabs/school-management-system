@@ -1,10 +1,11 @@
-import { Router } from 'express';
-import { success } from '../utils/response.js';
+import express from 'express';
+import * as controller from '../controllers/audit.controller.js';
+import { requireAuth } from '../middlewares/auth.js';
 
-const router = Router();
+const router = express.Router();
 
-router.get('/logins', async (req, res) => res.json(success([])));
-router.get('/activity', async (req, res) => res.json(success([])));
-router.get('/export', async (req, res) => res.json(success({ url: '/audit/export?stub=1' })));
+router.get('/logins', requireAuth, controller.listLogins);
+router.get('/activity', requireAuth, controller.listAll);
+router.get('/export', requireAuth, controller.listAll);
 
 export default router;

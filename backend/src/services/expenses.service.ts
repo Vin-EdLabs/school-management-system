@@ -19,3 +19,7 @@ export async function listExpensesForYear(year: number) {
 export async function listExpenseCategories() {
   return expensesRepo.listCategories();
 }
+
+export async function getExpense(id: number) {
+  return expensesRepo.getExpenseById(id);
+}

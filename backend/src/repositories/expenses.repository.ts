@@ -25,3 +25,8 @@ export async function listCategories() {
   const res = await query('SELECT DISTINCT category FROM expenses');
   return res.rows.map((r) => r.category).filter(Boolean);
 }
+
+export async function getExpenseById(id: number) {
+  const res = await query('SELECT * FROM expenses WHERE id = $1 LIMIT 1', [id]);
+  return res.rows[0];
+}

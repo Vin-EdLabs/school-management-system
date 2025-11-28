@@ -24,3 +24,8 @@ export async function getClassStudents(id: number) {
   const res = await query('SELECT * FROM students WHERE class_id = $1', [id]);
   return res.rows;
 }
+
+export async function listClasses(limit = 500) {
+  const res = await query('SELECT * FROM classes ORDER BY id DESC LIMIT $1', [limit]);
+  return res.rows;
+}

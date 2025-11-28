@@ -1,13 +1,14 @@
-import { Router } from 'express';
-import { success } from '../utils/response.js';
+import express from 'express';
+import * as controller from '../controllers/classes.controller.js';
+import { requireAuth } from '../middlewares/auth.js';
 
-const router = Router();
+const router = express.Router();
 
-router.get('/', async (req, res) => res.json(success([])));
-router.post('/', async (req, res) => res.status(201).json(success({})));
-router.get('/:id', async (req, res) => res.json(success({})));
-router.put('/:id', async (req, res) => res.json(success({})));
-router.delete('/:id', async (req, res) => res.json(success({ deleted: true })));
-router.get('/:id/students', async (req, res) => res.json(success([])));
+router.get('/', requireAuth, controller.list);
+router.post('/', requireAuth, controller.create);
+router.get('/:id', requireAuth, controller.get);
+router.put('/:id', requireAuth, controller.update);
+router.delete('/:id', requireAuth, controller.remove);
+router.get('/:id/students', requireAuth, controller.students);
 
 export default router;

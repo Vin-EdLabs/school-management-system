@@ -1,13 +1,14 @@
-import { Router } from 'express';
-import { success } from '../utils/response.js';
+import express from 'express';
+import * as controller from '../controllers/feeStructures.controller.js';
+import { requireAuth } from '../middlewares/auth.js';
 
-const router = Router();
+const router = express.Router();
 
-router.get('/', async (req, res) => res.json(success([])));
-router.post('/', async (req, res) => res.status(201).json(success({})));
-router.get('/:id', async (req, res) => res.json(success({})));
-router.put('/:id', async (req, res) => res.json(success({})));
-router.put('/:id/assign-class', async (req, res) => res.json(success({ assigned: true })));
-router.put('/:id/assign-term', async (req, res) => res.json(success({ assigned: true })));
+router.get('/', requireAuth, controller.list);
+router.post('/', requireAuth, controller.create);
+router.get('/:id', requireAuth, controller.get);
+router.put('/:id', requireAuth, controller.update);
+router.post('/:id/assign-class', requireAuth, controller.assignClass);
+router.post('/:id/assign-term', requireAuth, controller.assignTerm);
 
 export default router;

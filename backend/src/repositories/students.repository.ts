@@ -24,3 +24,8 @@ export async function searchStudents(q: string) {
   const res = await query("SELECT * FROM students WHERE first_name ILIKE $1 OR last_name ILIKE $1 LIMIT 100", ['%' + q + '%']);
   return res.rows;
 }
+
+export async function listStudents(limit = 1000) {
+  const res = await query('SELECT * FROM students ORDER BY id DESC LIMIT $1', [limit]);
+  return res.rows;
+}

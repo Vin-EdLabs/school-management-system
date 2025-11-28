@@ -19,3 +19,7 @@ export async function deleteClass(id: number) {
 export async function getRoster(id: number) {
   return classesRepo.getClassStudents(id);
 }
+
+export async function listClasses(limit = 500) {
+  return classesRepo.listClasses(limit);
+}

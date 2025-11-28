@@ -1,11 +1,12 @@
-import { Router } from 'express';
-import { success } from '../utils/response.js';
+import express from 'express';
+import * as controller from '../controllers/reports.controller.js';
+import { requireAuth } from '../middlewares/auth.js';
 
-const router = Router();
+const router = express.Router();
 
-router.get('/fees/term/:termId', async (req, res) => res.json(success({}))); 
-router.get('/income/year/:year', async (req, res) => res.json(success({}))); 
-router.get('/expenses/year/:year', async (req, res) => res.json(success({}))); 
-router.get('/net/year/:year', async (req, res) => res.json(success({}))); 
+router.get('/fees/term/:termId', requireAuth, controller.termReport);
+router.get('/income/year/:year', requireAuth, controller.summary);
+router.get('/expenses/year/:year', requireAuth, controller.summary);
+router.get('/net/year/:year', requireAuth, controller.summary);
 
 export default router;

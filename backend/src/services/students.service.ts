@@ -15,3 +15,7 @@ export async function updateStudent(id: number, payload: any) {
 export async function searchStudents(q: string) {
   return studentsRepo.searchStudents(q);
 }
+
+export async function listStudents(limit = 1000) {
+  return studentsRepo.listStudents(limit);
+}

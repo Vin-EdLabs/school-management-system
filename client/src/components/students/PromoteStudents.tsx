@@ -1,28 +1,37 @@
 
-import React, { useState } from 'react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import { useData } from '../../contexts/DataContext';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
-import { TrendingUp, Users, User, AlertTriangle, DollarSign } from 'lucide-react';
-import { 
-  getActiveAcademicTerm, 
-  calculateStudentFees, 
-  processFeesForClassPromotion,
-  processArrearsForTermChange 
+import usePromotions from '@/hooks/usePromotions';
+import { AlertTriangle, DollarSign, TrendingUp, User, Users } from 'lucide-react';
+import { useState } from 'react';
+import {
+  calculateStudentFees,
+  getActiveAcademicTerm,
+  processFeesForClassPromotion
 } from '../../utils/feeCalculations';
 
 const PromoteStudents = () => {
-  const { students, classes, promoteStudent, promoteClass, feeStructures, payments } = useData();
+  const {
+    students,
+    classes,
+    feeStructures,
+    payments,
+    classIdToName,
+    promoteStudentMutation,
+    promoteClassMutation
+  } = usePromotions();
   const [promotionType, setPromotionType] = useState<'individual' | 'class'>('individual');
   const [selectedStudent, setSelectedStudent] = useState('');
   const [selectedCurrentClass, setSelectedCurrentClass] = useState('');
   const [selectedNewClass, setSelectedNewClass] = useState('');
   const [showFeeWarning, setShowFeeWarning] = useState(false);
   const [feeImpactData, setFeeImpactData] = useState<any>(null);
+
+
 
   const currentTerm = getActiveAcademicTerm();
 
@@ -56,7 +65,7 @@ const PromoteStudents = () => {
   // Calculate fee impact for class promotion
   const calculateClassFeeImpact = (currentClass: string, newClass: string) => {
     const studentsInClass = students.filter(s => s.classAssigned === currentClass);
-    
+
     const impactData = studentsInClass.map(student => {
       const feeCalc = calculateStudentFees(
         student.id,
@@ -103,8 +112,9 @@ const PromoteStudents = () => {
     const student = students.find(s => s.id === selectedStudent);
     if (!student) return;
 
-    const feeImpact = calculateIndividualFeeImpact(selectedStudent, selectedNewClass);
-    
+    const newClassName = classIdToName[Number(selectedNewClass)];
+    const feeImpact = calculateIndividualFeeImpact(selectedStudent, newClassName);
+
     if (feeImpact && feeImpact.willBecomeArrears) {
       setFeeImpactData(feeImpact);
       setShowFeeWarning(true);
@@ -118,19 +128,22 @@ const PromoteStudents = () => {
     if (!student) return;
 
     // Process fee arrears if any
+    const newClassName = classIdToName[Number(selectedNewClass)];
     const outstandingAmount = processFeesForClassPromotion(
       selectedStudent,
       student.classAssigned,
-      selectedNewClass,
+      newClassName,
       currentTerm,
       feeStructures,
       payments
     );
 
-    // Promote the student
-    promoteStudent(selectedStudent, selectedNewClass);
-    
-    let message = `${student.firstName} ${student.lastName} has been promoted to ${selectedNewClass}`;
+    // Promote the student via API
+    const studentIdNum = Number(selectedStudent);
+    // cast to any to satisfy mutate typing from the hook
+    promoteStudentMutation.mutate({ id: studentIdNum, class_id: Number(selectedNewClass) } as any);
+
+    let message = `${student.firstName} ${student.lastName} has been promoted to ${newClassName}`;
     if (outstandingAmount > 0) {
       message += `. Outstanding balance of GHS ${outstandingAmount.toLocaleString()} has been added to arrears.`;
     }
@@ -157,8 +170,11 @@ const PromoteStudents = () => {
       return;
     }
 
-    const feeImpact = calculateClassFeeImpact(selectedCurrentClass, selectedNewClass);
-    
+    const currentClassName = classIdToName[Number(selectedCurrentClass)];
+    const newClassName = classIdToName[Number(selectedNewClass)];
+
+    const feeImpact = calculateClassFeeImpact(currentClassName, newClassName);
+
     if (feeImpact.studentsWithOutstanding > 0) {
       setFeeImpactData(feeImpact);
       setShowFeeWarning(true);
@@ -168,15 +184,18 @@ const PromoteStudents = () => {
   };
 
   const executeClassPromotion = () => {
-    const studentsInClass = students.filter(s => s.classAssigned === selectedCurrentClass);
-    
+    const currentClassName = classIdToName[Number(selectedCurrentClass)];
+    const newClassName = classIdToName[Number(selectedNewClass)];
+
+    const studentsInClass = students.filter(s => s.classAssigned === currentClassName);
+
     // Process fee arrears for each student
     let totalArrears = 0;
     studentsInClass.forEach(student => {
       const outstandingAmount = processFeesForClassPromotion(
         student.id,
         student.classAssigned,
-        selectedNewClass,
+        newClassName,
         currentTerm,
         feeStructures,
         payments
@@ -184,10 +203,11 @@ const PromoteStudents = () => {
       totalArrears += outstandingAmount;
     });
 
-    // Promote the entire class
-    promoteClass(selectedCurrentClass, selectedNewClass);
-    
-    let message = `All ${studentsInClass.length} students from ${selectedCurrentClass} have been promoted to ${selectedNewClass}`;
+    const updates = studentsInClass.map(s => ({ id: Number(s.id), class_id: Number(selectedNewClass) }));
+    // cast to any to satisfy mutate typing from the hook
+    promoteClassMutation.mutate(updates as any);
+
+    let message = `All ${studentsInClass.length} students from ${currentClassName} have been promoted to ${newClassName}`;
     if (totalArrears > 0) {
       message += `. Total arrears of GHS ${totalArrears.toLocaleString()} have been carried forward.`;
     }
@@ -307,14 +327,14 @@ const PromoteStudents = () => {
               </div>
             )}
             <div className="flex space-x-4 mt-6">
-              <Button 
+              <Button
                 onClick={promotionType === 'individual' ? executeIndividualPromotion : executeClassPromotion}
                 className="bg-orange-600 hover:bg-orange-700"
               >
                 Proceed with Promotion
               </Button>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={() => {
                   setShowFeeWarning(false);
                   setFeeImpactData(null);
@@ -389,7 +409,7 @@ const PromoteStudents = () => {
                     </SelectTrigger>
                     <SelectContent>
                       {classes.map((cls) => (
-                        <SelectItem key={cls.id} value={cls.className}>
+                        <SelectItem key={cls.id} value={String(cls.id)}>
                           {cls.className}
                         </SelectItem>
                       ))}
@@ -397,7 +417,7 @@ const PromoteStudents = () => {
                   </Select>
                 </div>
               </div>
-              
+
               {selectedStudent && (
                 <div className="p-4 bg-blue-50 rounded-lg">
                   {(() => {
@@ -444,9 +464,9 @@ const PromoteStudents = () => {
                           const studentWithFee = getStudentWithFeeInfo(s.id);
                           return studentWithFee?.hasOutstanding;
                         }).length;
-                        
+
                         return (
-                          <SelectItem key={cls.id} value={cls.className}>
+                          <SelectItem key={cls.id} value={String(cls.id)}>
                             <div className="flex items-center justify-between w-full">
                               <span>{cls.className} ({studentsInClass.length} students)</span>
                               {studentsWithOutstanding > 0 && (
@@ -470,7 +490,7 @@ const PromoteStudents = () => {
                     </SelectTrigger>
                     <SelectContent>
                       {classes.map((cls) => (
-                        <SelectItem key={cls.id} value={cls.className}>
+                        <SelectItem key={cls.id} value={String(cls.id)}>
                           {cls.className}
                         </SelectItem>
                       ))}
@@ -482,18 +502,17 @@ const PromoteStudents = () => {
               {selectedCurrentClass && (
                 <div className="p-4 bg-green-50 rounded-lg">
                   <p className="text-sm text-green-800 mb-2">
-                    <strong>Students to be promoted from {selectedCurrentClass}:</strong>
+                    <strong>Students to be promoted from {classIdToName[Number(selectedCurrentClass)]}:</strong>
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    {getStudentsInClass(selectedCurrentClass).map((student) => {
+                    {getStudentsInClass(classIdToName[Number(selectedCurrentClass)]).map((student) => {
                       const studentWithFee = getStudentWithFeeInfo(student.id);
                       return (
-                        <Badge 
-                          key={student.id} 
-                          variant="outline" 
-                          className={`text-green-700 ${
-                            studentWithFee?.hasOutstanding ? 'border-orange-300 bg-orange-50' : ''
-                          }`}
+                        <Badge
+                          key={student.id}
+                          variant="outline"
+                          className={`text-green-700 ${studentWithFee?.hasOutstanding ? 'border-orange-300 bg-orange-50' : ''
+                            }`}
                         >
                           {student.firstName} {student.lastName}
                           {studentWithFee?.hasOutstanding && (
@@ -504,14 +523,14 @@ const PromoteStudents = () => {
                     })}
                   </div>
                   <p className="text-sm text-green-600 mt-2">
-                    Total: {getStudentsInClass(selectedCurrentClass).length} students
+                    Total: {getStudentsInClass(classIdToName[Number(selectedCurrentClass)]).length} students
                   </p>
                   {(() => {
-                    const studentsWithOutstanding = getStudentsInClass(selectedCurrentClass).filter(s => {
+                    const studentsWithOutstanding = getStudentsInClass(classIdToName[Number(selectedCurrentClass)]).filter(s => {
                       const studentWithFee = getStudentWithFeeInfo(s.id);
                       return studentWithFee?.hasOutstanding;
                     });
-                    
+
                     if (studentsWithOutstanding.length > 0) {
                       return (
                         <div className="mt-2 p-2 bg-orange-100 rounded border border-orange-200">
@@ -548,7 +567,7 @@ const PromoteStudents = () => {
                 const studentWithFee = getStudentWithFeeInfo(s.id);
                 return studentWithFee?.hasOutstanding;
               });
-              
+
               return (
                 <div key={cls.id} className="p-4 border rounded-lg">
                   <h3 className="font-semibold text-lg">{cls.className}</h3>

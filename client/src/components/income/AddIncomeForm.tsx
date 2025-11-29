@@ -1,17 +1,17 @@
 
-import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
-import { TrendingUp, Save } from 'lucide-react';
+import useIncome from '@/hooks/useIncome';
+import { Save, TrendingUp } from 'lucide-react';
+import React, { useState } from 'react';
 
 const AddIncomeForm = () => {
-  const { addIncome } = useData();
+  const { createIncome } = useIncome();
   const [formData, setFormData] = useState({
     source: '',
     amount: '',
@@ -30,7 +30,7 @@ const AddIncomeForm = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.source || !formData.amount) {
       toast({
         title: "Validation Error",
@@ -40,23 +40,30 @@ const AddIncomeForm = () => {
       return;
     }
 
-    addIncome({
-      ...formData,
-      amount: parseFloat(formData.amount)
-    });
+    const payload = {
+      source: formData.source,
+      amount: parseFloat(formData.amount),
+      date: formData.date,
+      method: formData.paymentMethod,
+      received_by: formData.receivedBy,
+      notes: formData.notes
+    };
 
-    toast({
-      title: "Income Added",
-      description: `GHS ${formData.amount} income from ${formData.source} recorded`,
-    });
-
-    setFormData({
-      source: '',
-      amount: '',
-      date: new Date().toISOString().split('T')[0],
-      paymentMethod: 'Cash',
-      receivedBy: 'Admin',
-      notes: ''
+    createIncome.mutate(payload, {
+      onSuccess: () => {
+        toast({ title: 'Income Added', description: `GHS ${formData.amount} income from ${formData.source} recorded` });
+        setFormData({
+          source: '',
+          amount: '',
+          date: new Date().toISOString().split('T')[0],
+          paymentMethod: 'Cash',
+          receivedBy: 'Admin',
+          notes: ''
+        });
+      },
+      onError: () => {
+        toast({ title: 'Error', description: 'Failed to record income', variant: 'destructive' });
+      }
     });
   };
 

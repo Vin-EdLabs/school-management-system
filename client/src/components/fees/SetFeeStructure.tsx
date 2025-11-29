@@ -4,12 +4,19 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useData } from '../../contexts/DataContext';
+import useClasses from '@/hooks/useClasses';
+import useFeeStructures, { useCreateFeeStructure } from '@/hooks/useFeeStructures';
 import { toast } from '@/hooks/use-toast';
 import { DollarSign, Save } from 'lucide-react';
 
 const SetFeeStructure = () => {
-  const { classes, addFeeStructure, feeStructures } = useData();
+  const { classes: rawClasses } = useClasses();
+  const { feeStructures } = useFeeStructures();
+  const createFeeStructure = useCreateFeeStructure();
+  const classes = (rawClasses || []).map((c: any) => ({
+    id: c.id ?? String(c.id),
+    className: c.className || c.class_name || c.name || ''
+  }));
   const [formData, setFormData] = useState({
     className: '',
     term: 'Term 1 2024',
@@ -39,9 +46,12 @@ const SetFeeStructure = () => {
       return;
     }
 
-    addFeeStructure({
-      ...formData,
-      amount: parseFloat(formData.amount)
+    createFeeStructure.mutate({
+      className: formData.className,
+      term: formData.term,
+      amount: parseFloat(formData.amount),
+      dueDate: formData.dueDate,
+      description: formData.description
     });
 
     toast({

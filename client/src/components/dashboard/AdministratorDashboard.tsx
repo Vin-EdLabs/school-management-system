@@ -4,12 +4,55 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useData } from '../../contexts/DataContext';
+import useStudents from '@/hooks/useStudents';
+import useTeachers from '@/hooks/useTeachers';
+import useClasses from '@/hooks/useClasses';
+import usePayments from '@/hooks/usePayments';
+import useFeeStructures from '@/hooks/useFeeStructures';
 import { Users, GraduationCap, BookOpen, DollarSign, AlertCircle, Eye } from 'lucide-react';
 import { getActiveAcademicTerm, getActiveAcademicYear, calculateStudentFeeStatus } from '../../utils/feeCalculations';
 
 const AdministratorDashboard = () => {
-  const { students, teachers, classes, payments, feeStructures } = useData();
+  const { students: rawStudents } = useStudents();
+  const { teachers: rawTeachers } = useTeachers();
+  const { classes: rawClasses } = useClasses();
+  const { payments: rawPayments } = usePayments();
+  const { feeStructures: rawFeeStructures } = useFeeStructures();
+
+  const students = (rawStudents || []).map((s: any) => ({
+    id: s.id ?? String(s.id),
+    firstName: s.first_name || s.firstName || '',
+    lastName: s.last_name || s.lastName || '',
+    studentId: s.studentId || s.student_id || s.id || '',
+    classAssigned: s.classAssigned || s.class_assigned || '' ,
+    gender: s.gender || s.sex || ''
+  }));
+
+  const teachers = (rawTeachers || []).map((t: any) => ({
+    id: t.id ?? String(t.id),
+    firstName: t.firstName || t.first_name || '',
+    lastName: t.lastName || t.last_name || '',
+    fullName: t.fullName || t.full_name || `${t.firstName || ''} ${t.lastName || ''}`,
+    gender: t.gender || ''
+  }));
+
+  const classes = (rawClasses || []).map((c: any) => ({
+    id: c.id ?? String(c.id),
+    className: c.className || c.class_name || c.name || ''
+  }));
+
+  const payments = (rawPayments || []).map((p: any) => ({
+    id: p.id ?? String(p.id),
+    studentId: String(p.student_id || p.studentId || p.student),
+    term: p.term || p.term_name || '',
+    amount: Number(p.amount || 0)
+  }));
+
+  const feeStructures = (rawFeeStructures || []).map((f: any) => ({
+    id: f.id ?? String(f.id),
+    className: f.className || f.class_name || '',
+    term: f.term || f.term_name || ''
+  }));
   const [selectedClass, setSelectedClass] = useState('all-classes');
   const [activeAcademicTerm, setActiveAcademicTerm] = useState('');
   const [activeAcademicYear, setActiveAcademicYear] = useState('');

@@ -17,32 +17,42 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { useData } from '../../contexts/DataContext';
+import useExpenses from '@/hooks/useExpenses';
 import { Search, TrendingDown } from 'lucide-react';
 
 const ViewAllExpenses = () => {
-  const { expenses } = useData();
+  const { expenses } = useExpenses();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('__all__');
 
-  const filteredExpenses = expenses.filter((expense) => {
+  // Normalizers to support camelCase or snake_case API payloads
+  const getTitle = (e: any) => e?.title ?? e?.name ?? '';
+  const getPayee = (e: any) => e?.payeeName ?? e?.payee_name ?? e?.payee ?? '';
+  const getCategory = (e: any) => e?.category ?? e?.type ?? 'Other';
+  const getAmount = (e: any) => Number(e?.amount ?? e?.value ?? 0) || 0;
+  const getPaymentMethod = (e: any) => e?.paymentMethod ?? e?.payment_method ?? e?.method ?? '';
+  const getDate = (e: any) => new Date(e?.paymentDate ?? e?.payment_date ?? e?.date ?? Date.now());
+  const getPurpose = (e: any) => e?.purpose ?? e?.description ?? '';
+
+  const allExpenses = expenses || [];
+  const filteredExpenses = allExpenses.filter((expense: any) => {
+    const title = getTitle(expense).toLowerCase();
+    const payee = getPayee(expense).toLowerCase();
+    const category = (getCategory(expense) || '').toLowerCase();
+
     const matchesSearch =
       searchTerm === '' ||
-      expense.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      expense.payeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      expense.category.toLowerCase().includes(searchTerm.toLowerCase());
+      title.includes(searchTerm.toLowerCase()) ||
+      payee.includes(searchTerm.toLowerCase()) ||
+      category.includes(searchTerm.toLowerCase());
 
-    const matchesCategory =
-      filterCategory === '__all__' || expense.category === filterCategory;
+    const matchesCategory = filterCategory === '__all__' || getCategory(expense) === filterCategory;
 
     return matchesSearch && matchesCategory;
   });
 
-  const totalAmount = filteredExpenses.reduce(
-    (sum, expense) => sum + expense.amount,
-    0
-  );
-  const uniqueCategories = [...new Set(expenses.map((expense) => expense.category))];
+  const totalAmount = filteredExpenses.reduce((sum: number, expense: any) => sum + getAmount(expense), 0);
+  const uniqueCategories: string[] = Array.from(new Set((allExpenses || []).map((expense: any) => String(getCategory(expense)))));
 
   return (
     <Card>
@@ -108,28 +118,28 @@ const ViewAllExpenses = () => {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredExpenses.map((expense) => (
-                  <TableRow key={expense.id}>
+                filteredExpenses.map((expense: any) => (
+                  <TableRow key={expense.id ?? expense._id}>
                     <TableCell>
-                      <div className="font-medium">{expense.title}</div>
+                      <div className="font-medium">{getTitle(expense)}</div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline">{expense.category}</Badge>
+                      <Badge variant="outline">{getCategory(expense)}</Badge>
                     </TableCell>
                     <TableCell>
                       <span className="font-mono font-bold text-red-600">
-                        GHS {expense.amount.toLocaleString()}
+                        GHS {getAmount(expense).toLocaleString()}
                       </span>
                     </TableCell>
-                    <TableCell>{expense.payeeName}</TableCell>
+                    <TableCell>{getPayee(expense)}</TableCell>
                     <TableCell>
-                      <Badge variant="secondary">{expense.paymentMethod}</Badge>
+                      <Badge variant="secondary">{getPaymentMethod(expense)}</Badge>
                     </TableCell>
                     <TableCell>
-                      {new Date(expense.paymentDate).toLocaleDateString()}
+                      {getDate(expense).toLocaleDateString()}
                     </TableCell>
                     <TableCell className="max-w-xs truncate">
-                      {expense.purpose || '-'}
+                      {getPurpose(expense) || '-'}
                     </TableCell>
                   </TableRow>
                 ))

@@ -1,16 +1,18 @@
 
-import React, { useState } from 'react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import { useData } from '../../contexts/DataContext';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
-import { Users, User, School } from 'lucide-react';
+import useClasses from '@/hooks/useClasses';
+import useTeachers from '@/hooks/useTeachers';
+import { School, User, Users } from 'lucide-react';
+import { useState } from 'react';
 
 const AssignClassToTeacher = () => {
-  const { teachers, classes, updateTeacher, updateClass } = useData();
+  const { teachers, updateTeacher } = useTeachers();
+  const { classes, updateClass } = useClasses();
   const [selectedTeacher, setSelectedTeacher] = useState('');
   const [selectedClass, setSelectedClass] = useState('');
 
@@ -28,31 +30,29 @@ const AssignClassToTeacher = () => {
 
     const teacher = teachers.find(t => t.id === selectedTeacher);
     const classData = classes.find(c => c.id === selectedClass);
-    
+
     if (!teacher || !classData) return;
 
     // Check if teacher already has a class assigned
     if (teacher.classAssigned) {
-      // Remove teacher from previous class
       const previousClass = classes.find(c => c.className === teacher.classAssigned);
       if (previousClass) {
-        updateClass(previousClass.id, { assignedTeacher: '' });
+        updateClass.mutate({ id: previousClass.id, payload: { assignedTeacher: '' } });
       }
     }
 
     // Check if class already has a teacher assigned
     if (classData.assignedTeacher) {
-      // Remove class from previous teacher
       const previousTeacher = teachers.find(t => t.id === classData.assignedTeacher);
       if (previousTeacher) {
-        updateTeacher(previousTeacher.id, { classAssigned: '' });
+        updateTeacher.mutate({ id: previousTeacher.id, payload: { classAssigned: '' } });
       }
     }
 
-    // Make new assignments
-    updateTeacher(selectedTeacher, { classAssigned: classData.className });
-    updateClass(selectedClass, { assignedTeacher: selectedTeacher });
-    
+    // Make new assignments via mutations
+    updateTeacher.mutate({ id: selectedTeacher, payload: { classAssigned: classData.className } });
+    updateClass.mutate({ id: selectedClass, payload: { assignedTeacher: selectedTeacher } });
+
     toast({
       title: "Class Assigned Successfully",
       description: `${teacher.fullName} has been assigned to ${classData.className}`,
@@ -71,7 +71,7 @@ const AssignClassToTeacher = () => {
   const getClassCurrentTeacher = (classId: string) => {
     const classData = classes.find(c => c.id === classId);
     if (!classData?.assignedTeacher) return 'None';
-    
+
     const teacher = teachers.find(t => t.id === classData.assignedTeacher);
     return teacher?.fullName || 'None';
   };
@@ -120,7 +120,7 @@ const AssignClassToTeacher = () => {
                 </Select>
               </div>
             </div>
-            
+
             {(selectedTeacher || selectedClass) && (
               <div className="p-4 bg-blue-50 rounded-lg">
                 {selectedTeacher && (

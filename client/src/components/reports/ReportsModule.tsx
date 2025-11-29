@@ -2,7 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useData } from '../../contexts/DataContext';
+import useStudents from '@/hooks/useStudents';
+import usePayments from '@/hooks/usePayments';
+import useIncome from '@/hooks/useIncome';
+import useExpenses from '@/hooks/useExpenses';
+import useFeeStructures from '@/hooks/useFeeStructures';
+import useClasses from '@/hooks/useClasses';
 import { toast } from '@/hooks/use-toast';
 import { BarChart3, Download, FileText, Calculator, DollarSign, TrendingUp, TrendingDown, Users, Calendar } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
@@ -10,7 +15,39 @@ import { reportService } from '../../services';
 import { getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
 
 const ReportsModule = () => {
-  const { students, payments, income, expenses, feeStructures, classes } = useData();
+  const { students } = useStudents();
+  const { payments } = usePayments();
+  const { income } = useIncome();
+  const { expenses } = useExpenses();
+  const { feeStructures } = useFeeStructures();
+  const { classes } = useClasses();
+  
+  // Normalizers - produce arrays with consistent fields used by reports
+  const normalizePayment = (p: any) => ({
+    ...p,
+    term: p?.term ?? p?.payment_term ?? p?.term_name ?? '',
+    amount: Number(p?.amount ?? p?.value ?? 0) || 0,
+    date: p?.date ?? p?.paymentDate ?? p?.payment_date ?? new Date().toISOString(),
+  });
+
+  const normalizeIncome = (i: any) => ({
+    ...i,
+    source: i?.source ?? i?.description ?? 'Other Income',
+    amount: Number(i?.amount ?? i?.value ?? 0) || 0,
+    date: i?.date ?? i?.paymentDate ?? i?.payment_date ?? new Date().toISOString(),
+  });
+
+  const normalizeExpense = (e: any) => ({
+    ...e,
+    category: e?.category ?? e?.type ?? 'Miscellaneous',
+    amount: Number(e?.amount ?? e?.value ?? 0) || 0,
+    date: e?.date ?? e?.paymentDate ?? e?.payment_date ?? new Date().toISOString(),
+    description: e?.description ?? e?.title ?? ''
+  });
+
+  const normalizedPayments = (payments || []).map(normalizePayment);
+  const normalizedIncome = (income || []).map(normalizeIncome);
+  const normalizedExpenses = (expenses || []).map(normalizeExpense);
   const [selectedTerm, setSelectedTerm] = useState('');
 
   // Get current term from settings - same as Financial Dashboard
@@ -22,29 +59,21 @@ const ReportsModule = () => {
   // Generate comprehensive financial summary using the same logic as Financial Dashboard
   const generateFinancialSummary = () => {
     const currentYear = getActiveAcademicYear();
-    
-    // Fees collected for the selected term (same as Financial Dashboard)
-    const feesCollected = payments
-      .filter(payment => payment.term === selectedTerm)
-      .reduce((sum, payment) => sum + payment.amount, 0);
 
-    // Other income for the current year (same as Financial Dashboard)
-    const otherIncome = income
-      .filter(inc => {
-        const incomeDate = new Date(inc.date);
-        const incomeYear = incomeDate.getFullYear().toString();
-        return incomeYear === currentYear;
-      })
+    // Fees collected for the selected term
+    const feesCollected = normalizedPayments
+      .filter(p => p.term === selectedTerm)
+      .reduce((sum, p) => sum + p.amount, 0);
+
+    // Other income for the current year
+    const otherIncome = normalizedIncome
+      .filter(inc => new Date(inc.date).getFullYear().toString() === currentYear)
       .reduce((sum, inc) => sum + inc.amount, 0);
 
-    // Total expenses for the current year (same as Financial Dashboard)
-    const totalExpenses = expenses
-      .filter(expense => {
-        const expenseDate = new Date(expense.paymentDate);
-        const expenseYear = expenseDate.getFullYear().toString();
-        return expenseYear === currentYear;
-      })
-      .reduce((sum, expense) => sum + expense.amount, 0);
+    // Total expenses for the current year
+    const totalExpenses = normalizedExpenses
+      .filter(exp => new Date(exp.date).getFullYear().toString() === currentYear)
+      .reduce((sum, exp) => sum + exp.amount, 0);
 
     const totalIncome = feesCollected + otherIncome;
     const balance = totalIncome - totalExpenses;
@@ -55,26 +84,20 @@ const ReportsModule = () => {
       totalIncome,
       totalExpenses,
       balance,
-      feePayments: payments.filter(payment => payment.term === selectedTerm),
-      currentYearIncome: income.filter(inc => {
-        const incomeDate = new Date(inc.date);
-        return incomeDate.getFullYear().toString() === currentYear;
-      }),
-      currentYearExpenses: expenses.filter(expense => {
-        const expenseDate = new Date(expense.paymentDate);
-        return expenseDate.getFullYear().toString() === currentYear;
-      })
+      feePayments: normalizedPayments.filter(p => p.term === selectedTerm),
+      currentYearIncome: normalizedIncome.filter(inc => new Date(inc.date).getFullYear().toString() === currentYear),
+      currentYearExpenses: normalizedExpenses.filter(exp => new Date(exp.date).getFullYear().toString() === currentYear)
     };
   };
 
   // Generate detailed income breakdown using Financial Dashboard approach
   const generateIncomeBreakdown = () => {
     const financial = generateFinancialSummary();
-    
+
     // Income by source
-    const incomeBySource = financial.currentYearIncome.reduce((acc, record) => {
-      const source = record.source || 'Other Income';
-      acc[source] = (acc[source] || 0) + record.amount;
+    const incomeBySource = financial.currentYearIncome.reduce((acc: Record<string, number>, record: any) => {
+      const source = record.source || record.description || 'Other Income';
+      acc[source] = (acc[source] || 0) + (Number(record.amount) || 0);
       return acc;
     }, {} as Record<string, number>);
 
@@ -84,7 +107,7 @@ const ReportsModule = () => {
     }
 
     // Monthly income trends using Financial Dashboard logic
-    const monthlyIncome = [...financial.feePayments, ...financial.currentYearIncome].reduce((acc, record) => {
+    const monthlyIncome = [...financial.feePayments, ...financial.currentYearIncome].reduce((acc: Record<string, any>, record: any) => {
       const date = new Date(record.date);
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       const monthName = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
@@ -92,7 +115,7 @@ const ReportsModule = () => {
       if (!acc[monthKey]) {
         acc[monthKey] = { month: monthName, amount: 0, count: 0 };
       }
-      acc[monthKey].amount += record.amount;
+      acc[monthKey].amount += Number(record.amount) || 0;
       acc[monthKey].count += 1;
       return acc;
     }, {} as Record<string, any>);
@@ -107,34 +130,34 @@ const ReportsModule = () => {
   // Generate detailed expense breakdown using Financial Dashboard approach
   const generateExpenseBreakdown = () => {
     const financial = generateFinancialSummary();
-    
-    // Expenses by category using Financial Dashboard logic
-    const expensesByCategory = financial.currentYearExpenses.reduce((acc, expense) => {
+
+    // Expenses by category
+    const expensesByCategory = financial.currentYearExpenses.reduce((acc: Record<string, any>, expense: any) => {
       const category = expense.category || 'Miscellaneous';
       if (!acc[category]) {
         acc[category] = { amount: 0, count: 0, items: [] };
       }
-      acc[category].amount += expense.amount;
+      acc[category].amount += Number(expense.amount) || 0;
       acc[category].count += 1;
       acc[category].items.push({
-        description: expense.description,
-        amount: expense.amount,
-        date: expense.paymentDate,
-        paymentMethod: expense.paymentMethod
+        description: expense.description || expense.title,
+        amount: Number(expense.amount) || 0,
+        date: expense.date,
+        paymentMethod: expense.paymentMethod || expense.method
       });
       return acc;
     }, {} as Record<string, any>);
 
     // Monthly expense trends
-    const monthlyExpenses = financial.currentYearExpenses.reduce((acc, expense) => {
-      const date = new Date(expense.paymentDate);
+    const monthlyExpenses = financial.currentYearExpenses.reduce((acc: Record<string, any>, expense: any) => {
+      const date = new Date(expense.date);
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       const monthName = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
       
       if (!acc[monthKey]) {
         acc[monthKey] = { month: monthName, amount: 0, count: 0 };
       }
-      acc[monthKey].amount += expense.amount;
+      acc[monthKey].amount += Number(expense.amount) || 0;
       acc[monthKey].count += 1;
       return acc;
     }, {} as Record<string, any>);
@@ -152,11 +175,11 @@ const ReportsModule = () => {
 
   // Prepare chart data using Financial Dashboard approach
   const incomeVsExpenseData = incomeBreakdown.monthly.map((incomeMonth: any) => {
-    const expenseMonth = expenseBreakdown.monthly.find((em: any) => em.month === incomeMonth.month);
+    const expenseMonth = expenseBreakdown.monthly.find((em: any) => em.month === incomeMonth.month) as any;
     return {
       month: incomeMonth.month,
       income: incomeMonth.amount,
-      expense: expenseMonth?.amount || 0
+      expense: (expenseMonth?.amount as number) || 0
     };
   });
 

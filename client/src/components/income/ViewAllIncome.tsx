@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { useData } from '../../contexts/DataContext';
+import useIncome from '@/hooks/useIncome';
 import { Search } from 'lucide-react';
+import React, { useState } from 'react';
 
 interface Income {
   id: string;
@@ -18,7 +18,16 @@ interface Income {
 }
 
 const ViewAllIncome: React.FC = () => {
-  const { income } = useData();
+  const { income: rawIncome } = useIncome();
+  const income = (rawIncome || []).map((i: any) => ({
+    id: i.id ?? String(i.id),
+    source: i.source || i.source_name || '',
+    amount: Number(i.amount || 0),
+    paymentMethod: i.paymentMethod || i.method || i.payment_method || '',
+    receivedBy: i.receivedBy || i.received_by || '',
+    date: i.date || i.created_at || new Date().toISOString(),
+    notes: i.notes || i.description || ''
+  }));
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSource, setFilterSource] = useState('all');
 
@@ -35,9 +44,9 @@ const ViewAllIncome: React.FC = () => {
 
   const totalAmount = filteredIncome.reduce((sum: number, item: Income) => sum + item.amount, 0);
 
-  const uniqueSources = [...new Set(
-    income.map((item: Income) => item.source).filter((s) => s && s.trim() !== '')
-  )];
+  const uniqueSources: string[] = Array.from(new Set(
+    income.map((item: Income) => item.source).filter((s): s is string => !!s && s.trim() !== '')
+  ));
 
   return (
     <Card>

@@ -5,12 +5,18 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { useData } from '../../contexts/DataContext';
+import useStudents from '@/hooks/useStudents';
+import useClasses from '@/hooks/useClasses';
+import useFeeStructures from '@/hooks/useFeeStructures';
+import usePayments from '@/hooks/usePayments';
 import { Printer, FileText, Users, GraduationCap, Search } from 'lucide-react';
 import { getActiveAcademicTerm, getActiveAcademicYear, calculateStudentFeeStatus } from '../../utils/feeCalculations';
 
 const PrintFeeStatusModule = () => {
-  const { students, classes, feeStructures, payments } = useData();
+  const { students } = useStudents();
+  const { classes } = useClasses();
+  const { feeStructures } = useFeeStructures();
+  const { payments } = usePayments();
   const [selectedClass, setSelectedClass] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -23,39 +29,62 @@ const PrintFeeStatusModule = () => {
   console.log('Fee structures:', feeStructures);
   console.log('Payments:', payments);
 
+  // Normalizers to tolerate camelCase / snake_case shapes
+  const normalizeStudent = (s: any) => {
+    const id = s?.id ?? s?.studentId ?? s?.student_id ?? s?._id ?? '';
+    return {
+      id,
+      studentId: s?.studentId ?? s?.student_id ?? id,
+      firstName: s?.firstName ?? s?.first_name ?? s?.fullName ?? s?.full_name ?? '',
+      lastName: s?.lastName ?? s?.last_name ?? '',
+      classAssigned: s?.classAssigned ?? s?.class_assigned ?? s?.className ?? s?.class_name ?? ''
+    };
+  };
+
+  const normalizePayment = (p: any) => ({
+    studentId: p?.studentId ?? p?.student_id ?? p?.student?.id ?? null,
+    term: p?.term ?? p?.payment_term ?? p?.term_name ?? '',
+    amount: Number(p?.amount ?? p?.value ?? 0) || 0,
+    date: p?.date ?? p?.paymentDate ?? p?.payment_date ?? '',
+    paymentMethod: p?.paymentMethod ?? p?.payment_method ?? p?.method ?? ''
+  });
+
+  const normalizeFee = (f: any) => ({
+    className: f?.className ?? f?.class_name ?? '',
+    term: f?.term ?? f?.term_name ?? '',
+    amount: Number(f?.amount ?? f?.value ?? 0) || 0
+  });
+
+  const normalizedStudents = (students || []).map(normalizeStudent);
+  const normalizedPayments = (payments || []).map(normalizePayment);
+  const normalizedFees = (feeStructures || []).map(normalizeFee);
+
   // Filter classes based on search term
   const filteredClasses = useMemo(() => {
-    return classes.filter(cls => 
-      cls.className && 
-      cls.className.trim() !== '' &&
-      cls.className.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const all = classes || [];
+    return all.filter((cls: any) => {
+      const name = cls?.className ?? cls?.class_name ?? '';
+      return name && name.trim() !== '' && name.toLowerCase().includes(searchTerm.toLowerCase());
+    });
   }, [classes, searchTerm]);
 
   // Get students for selected class with fee status
   const getStudentsWithFeeStatus = () => {
     if (!selectedClass) return [];
-    
-    console.log('Selected class:', selectedClass);
-    const classStudents = students.filter(student => student.classAssigned === selectedClass);
-    console.log('Class students:', classStudents);
-    
+
+    const classStudents = normalizedStudents.filter(s => s.classAssigned === selectedClass);
+
     return classStudents.map(student => {
-      const feeStatus = calculateStudentFeeStatus(student.id, activeAcademicTerm, students, feeStructures, payments);
-      console.log(`Student ${student.firstName} ${student.lastName} fee status:`, feeStatus);
+      const feeStatus = calculateStudentFeeStatus(student.id, activeAcademicTerm, normalizedStudents, normalizedFees, normalizedPayments);
       return {
         ...student,
-        feeStatus: feeStatus
+        feeStatus
       };
-    }).filter(student => {
-      const hasOutstanding = student.feeStatus.status === 'Amount Owing' && student.feeStatus.balance > 0;
-      console.log(`Student ${student.firstName} ${student.lastName} has outstanding: ${hasOutstanding}, balance: ${student.feeStatus.balance}`);
-      return hasOutstanding;
-    });
+    }).filter(student => student.feeStatus.status === 'Amount Owing' && student.feeStatus.balance > 0);
   };
 
   const studentsOwingFees = getStudentsWithFeeStatus();
-  const totalOwing = studentsOwingFees.reduce((sum, student) => sum + student.feeStatus.balance, 0);
+  const totalOwing = studentsOwingFees.reduce((sum, student) => sum + (student.feeStatus?.balance || 0), 0);
 
   console.log('Students owing fees:', studentsOwingFees);
   console.log('Total owing:', totalOwing);
@@ -371,14 +400,14 @@ const PrintFeeStatusModule = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {studentsOwingFees.map((student) => (
+                {studentsOwingFees.map((student) => (
                 <div key={student.id} className="flex items-center justify-between p-3 border rounded-lg">
                   <div>
                     <p className="font-medium">{student.firstName} {student.lastName}</p>
                     <p className="text-sm text-gray-500">ID: {student.studentId} • {student.classAssigned}</p>
                   </div>
                   <Badge variant="destructive">
-                    GHS {student.feeStatus.balance.toLocaleString()}
+                    GHS {(student.feeStatus?.balance || 0).toLocaleString()}
                   </Badge>
                 </div>
               ))}

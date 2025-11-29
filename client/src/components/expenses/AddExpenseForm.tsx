@@ -1,17 +1,17 @@
 
-import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
-import { TrendingDown, Save } from 'lucide-react';
+import useExpenses from '@/hooks/useExpenses';
+import { Save, TrendingDown } from 'lucide-react';
+import React, { useState } from 'react';
 
 const AddExpenseForm = () => {
-  const { addExpense } = useData();
+  const { createExpense } = useExpenses();
   const [formData, setFormData] = useState({
     title: '',
     category: '',
@@ -32,7 +32,7 @@ const AddExpenseForm = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.title || !formData.category || !formData.amount) {
       toast({
         title: "Validation Error",
@@ -42,9 +42,15 @@ const AddExpenseForm = () => {
       return;
     }
 
-    addExpense({
-      ...formData,
-      amount: parseFloat(formData.amount)
+    createExpense.mutate({
+      title: formData.title,
+      category: formData.category,
+      amount: parseFloat(formData.amount),
+      payeeName: formData.payeeName,
+      paymentDate: formData.paymentDate,
+      paymentMethod: formData.paymentMethod,
+      purpose: formData.purpose,
+      notes: formData.notes
     });
 
     toast({

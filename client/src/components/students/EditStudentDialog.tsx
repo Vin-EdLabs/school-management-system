@@ -8,7 +8,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
 import React, { useEffect, useState } from 'react';
 import { useAudit } from '../../contexts/AuditContext';
-import { useData } from '../../contexts/DataContext';
+import { useClasses } from '../../hooks/useClasses';
+import { useUpdateStudent } from '../../hooks/useStudents';
 
 interface Student {
   id: string;
@@ -38,7 +39,9 @@ interface EditStudentDialogProps {
 }
 
 const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, onClose, onSuccess }) => {
-  const { classes, updateStudent } = useData();
+  const updateStudentMutation = useUpdateStudent();
+  const classesQuery = useClasses();
+  const classes = classesQuery.data?.data ?? [];
   const { addAuditLog } = useAudit();
   const [formData, setFormData] = useState<Student | null>(null);
 
@@ -61,24 +64,44 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
     e.preventDefault();
     if (!formData) return;
 
-    updateStudent(formData.id, formData);
+    // prepare payload mapping to API
+    const payload: any = {
+      first_name: formData.firstName,
+      last_name: formData.lastName,
+      gender: formData.gender,
+      date_of_birth: formData.dateOfBirth,
+      nationality: formData.nationality,
+      admission_no: formData.admissionNumber,
+      class_id: formData.classAssigned,
+      guardian_name: formData.guardianName,
+      guardian_contact: formData.guardianContact,
+      home_address: formData.homeAddress,
+      number_of_siblings: formData.numberOfSiblings,
+      names_of_siblings: formData.namesOfSiblings,
+      previous_school: formData.previousSchool,
+      date_of_admission: formData.dateOfAdmission,
+      notes: formData.notes
+    };
 
-    // Add additional audit log for successful edit completion
-    addAuditLog({
-      actionType: 'Edit',
-      module: 'Students',
-      itemId: formData.id,
-      itemName: `${formData.firstName} ${formData.lastName}`,
-      reason: 'Student information updated successfully'
+    updateStudentMutation.mutate({ id: formData.id, payload }, {
+      onSuccess: () => {
+        // Add additional audit log for successful edit completion
+        addAuditLog({
+          actionType: 'Edit',
+          module: 'Students',
+          itemId: formData.id,
+          itemName: `${formData.firstName} ${formData.lastName}`,
+          reason: 'Student information updated successfully'
+        });
+
+        toast({ title: 'Student Updated', description: `${formData.firstName} ${formData.lastName} has been updated successfully` });
+        onSuccess();
+        onClose();
+      },
+      onError: (err: any) => {
+        toast({ title: 'Update Failed', description: err?.message ?? 'Unable to update student', variant: 'destructive' });
+      }
     });
-
-    toast({
-      title: "Student Updated",
-      description: `${formData.firstName} ${formData.lastName} has been updated successfully`,
-    });
-
-    onSuccess();
-    onClose();
   };
 
   if (!formData) return null;

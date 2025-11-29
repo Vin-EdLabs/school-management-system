@@ -7,6 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
+import useStudents from '@/hooks/useStudents';
+import useClasses from '@/hooks/useClasses';
 import { BookOpen, Edit3, Plus, Users } from 'lucide-react';
 import { useState } from 'react';
 
@@ -17,12 +19,23 @@ const GradesModule = () => {
   const [selectedStudent, setSelectedStudent] = useState('');
   const [gradeValue, setGradeValue] = useState('');
 
-  // Mock data
-  const teacherClasses = [
-    { id: '1', name: 'Mathematics Grade 5', students: 25 },
-    { id: '2', name: 'Science Grade 6', students: 22 },
-    { id: '3', name: 'Mathematics Grade 6', students: 28 }
-  ];
+  const { students: apiStudents } = useStudents();
+  const { classes: apiClasses } = useClasses();
+
+  // Normalize API shapes to the small shape used in this UI
+  const normalizeStudent = (s: any) => ({
+    id: s?.id ?? s?.studentId ?? s?._id ?? '',
+    name: s?.firstName ? `${s.firstName} ${s?.lastName ?? ''}` : s?.fullName ?? s?.full_name ?? s?.name ?? 'Student',
+    rollNo: s?.rollNo ?? s?.roll_no ?? s?.studentNumber ?? ''
+  });
+
+  const normalizeClass = (c: any) => ({
+    id: c?.id ?? c?._id ?? c?.classId ?? '',
+    name: c?.className ?? c?.class_name ?? c?.name ?? ''
+  });
+
+  const classesList = (apiClasses || []).map(normalizeClass);
+  const studentsList = (apiStudents || []).map(normalizeStudent);
 
   const assignments = [
     { id: '1', name: 'Quiz 1', type: 'Quiz', maxScore: 100 },
@@ -31,21 +44,7 @@ const GradesModule = () => {
     { id: '4', name: 'Final Project', type: 'Project', maxScore: 100 }
   ];
 
-  const students = [
-    { id: '1', name: 'Alice Johnson', rollNo: '001' },
-    { id: '2', name: 'Bob Smith', rollNo: '002' },
-    { id: '3', name: 'Carol Davis', rollNo: '003' },
-    { id: '4', name: 'David Wilson', rollNo: '004' },
-    { id: '5', name: 'Eva Brown', rollNo: '005' },
-    { id: '6', name: 'Frank Miller', rollNo: '006' }
-  ];
-
-  const [grades, setGrades] = useState([
-    { id: '1', studentId: '1', studentName: 'Alice Johnson', assignmentId: '1', assignmentName: 'Quiz 1', score: 95, maxScore: 100, grade: 'A' },
-    { id: '2', studentId: '2', studentName: 'Bob Smith', assignmentId: '1', assignmentName: 'Quiz 1', score: 87, maxScore: 100, grade: 'B+' },
-    { id: '3', studentId: '3', studentName: 'Carol Davis', assignmentId: '1', assignmentName: 'Quiz 1', score: 92, maxScore: 100, grade: 'A-' },
-    { id: '4', studentId: '1', studentName: 'Alice Johnson', assignmentId: '2', assignmentName: 'Midterm Exam', score: 88, maxScore: 100, grade: 'B+' }
-  ]);
+  const [grades, setGrades] = useState<any[]>([]);
 
   const [isEditGradeOpen, setIsEditGradeOpen] = useState(false);
   const [editingGradeId, setEditingGradeId] = useState<string | null>(null);
@@ -80,7 +79,7 @@ const GradesModule = () => {
     }
 
     const assignment = assignments.find(a => a.id === selectedAssignment);
-    const student = students.find(s => s.id === selectedStudent);
+    const student = studentsList.find(s => s.id === selectedStudent);
     const score = parseFloat(gradeValue);
     const letterGrade = getLetterGrade(score, assignment?.maxScore || 100);
 
@@ -116,7 +115,7 @@ const GradesModule = () => {
     }
 
     const assignment = assignments.find(a => a.id === editSelectedAssignment);
-    const student = students.find(s => s.id === editSelectedStudent);
+    const student = studentsList.find(s => s.id === editSelectedStudent);
     const score = parseFloat(editGradeValue);
     const letterGrade = getLetterGrade(score, assignment?.maxScore || 100);
 
@@ -183,9 +182,9 @@ const GradesModule = () => {
                     <SelectValue placeholder="Select student" />
                   </SelectTrigger>
                   <SelectContent>
-                    {students.map(student => (
+                    {studentsList.map(student => (
                       <SelectItem key={student.id} value={student.id}>
-                        {student.name} ({student.rollNo})
+                        {student.name} {student.rollNo ? `(${student.rollNo})` : ''}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -236,9 +235,9 @@ const GradesModule = () => {
                     <SelectValue placeholder="Select student" />
                   </SelectTrigger>
                   <SelectContent>
-                    {students.map(student => (
+                    {studentsList.map(student => (
                       <SelectItem key={student.id} value={student.id}>
-                        {student.name} ({student.rollNo})
+                        {student.name} {student.rollNo ? `(${student.rollNo})` : ''}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -291,7 +290,7 @@ const GradesModule = () => {
                   <SelectValue placeholder="Select class" />
                 </SelectTrigger>
                 <SelectContent>
-                  {teacherClasses.map(cls => (
+                  {classesList.map(cls => (
                     <SelectItem key={cls.id} value={cls.id}>
                       {cls.name}
                     </SelectItem>

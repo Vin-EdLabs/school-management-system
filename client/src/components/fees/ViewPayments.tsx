@@ -1,15 +1,42 @@
 
-import React, { useState } from 'react';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { useData } from '../../contexts/DataContext';
-import { Search, Filter } from 'lucide-react';
+import useClasses from '@/hooks/useClasses';
+import usePayments from '@/hooks/usePayments';
+import useStudents from '@/hooks/useStudents';
+import { Search } from 'lucide-react';
+import { useState } from 'react';
 
 const ViewPayments = () => {
-  const { payments, students, classes } = useData();
+  const { payments: rawPayments } = usePayments();
+  const { students: rawStudents } = useStudents();
+  const { classes: rawClasses } = useClasses();
+
+  const payments = (rawPayments || []).map((p: any) => ({
+    id: p.id ?? String(p.id),
+    studentId: String(p.student_id || p.studentId || p.student),
+    term: p.term || p.term_name || p.termName || '',
+    amount: Number(p.amount || 0),
+    paymentMethod: p.paymentMethod || p.method || p.payment_method || '',
+    date: p.date || p.created_at || new Date().toISOString(),
+    notes: p.notes || p.description || ''
+  }));
+
+  const students = (rawStudents || []).map((s: any) => ({
+    id: String(s.id),
+    firstName: s.first_name || s.firstName || '',
+    lastName: s.last_name || s.lastName || '',
+    studentId: s.studentId || s.student_id || s.id || '',
+    classAssigned: s.classAssigned || s.class_assigned || ''
+  }));
+
+  const classes = (rawClasses || []).map((c: any) => ({
+    id: c.id ?? String(c.id),
+    className: c.className || c.class_name || c.name || ''
+  }));
   const [searchTerm, setSearchTerm] = useState('');
   const [filterClass, setFilterClass] = useState('all-classes');
   const [filterTerm, setFilterTerm] = useState('all-terms');
@@ -18,11 +45,11 @@ const ViewPayments = () => {
     const student = students.find(s => s.id === payment.studentId);
     if (!student) return false;
 
-    const matchesSearch = searchTerm === '' || 
+    const matchesSearch = searchTerm === '' ||
       student.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       student.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       student.studentId.includes(searchTerm);
-    
+
     const matchesClass = filterClass === 'all-classes' || student.classAssigned === filterClass;
     const matchesTerm = filterTerm === 'all-terms' || payment.term === filterTerm;
 

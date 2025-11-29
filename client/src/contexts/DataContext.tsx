@@ -1,5 +1,7 @@
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { apiService } from '../services/api';
+import ENDPOINTS from '../services/endpoints';
 
 interface Student {
   id: string;
@@ -131,26 +133,60 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Load data from localStorage on mount
   useEffect(() => {
-    const savedData = localStorage.getItem('rosaGardensData');
-    if (savedData) {
+    let mounted = true;
+    // Try to load from backend API first
+    (async () => {
       try {
-        const data = JSON.parse(savedData);
-        setStudents(data.students || []);
-        setTeachers(data.teachers || []);
-        setClasses(data.classes || initializeDefaultClasses());
-        setFeeStructures(data.feeStructures || []);
-        setPayments(data.payments || []);
-        setIncome(data.income || []);
-        setExpenses(data.expenses || []);
+        const [studentsRes, teachersRes, classesRes, feesRes, paymentsRes, incomeRes, expensesRes] = await Promise.all([
+          apiService.get(ENDPOINTS.students).catch(() => ({ data: [] })),
+          apiService.get('/teachers').catch(() => ({ data: [] })),
+          apiService.get(ENDPOINTS.classes).catch(() => ({ data: [] })),
+          apiService.get(ENDPOINTS.feeStructures).catch(() => ({ data: [] })),
+          apiService.get(ENDPOINTS.payments).catch(() => ({ data: [] })),
+          apiService.get(ENDPOINTS.income).catch(() => ({ data: [] })),
+          apiService.get(ENDPOINTS.expenses).catch(() => ({ data: [] })),
+        ]);
+
+        if (!mounted) return;
+
+        const apiAvailable = Array.isArray(studentsRes?.data) || Array.isArray(classesRes?.data);
+        if (apiAvailable) {
+          setStudents(studentsRes.data || []);
+          setTeachers(teachersRes.data || []);
+          setClasses(classesRes.data || initializeDefaultClasses());
+          setFeeStructures(feesRes.data || []);
+          setPayments(paymentsRes.data || []);
+          setIncome(incomeRes.data || []);
+          setExpenses(expensesRes.data || []);
+          // persist a copy locally
+          const data = { students: studentsRes.data || [], teachers: teachersRes.data || [], classes: classesRes.data || [], feeStructures: feesRes.data || [], payments: paymentsRes.data || [], income: incomeRes.data || [], expenses: expensesRes.data || [] };
+          localStorage.setItem('rosaGardensData', JSON.stringify(data));
+          return;
+        }
       } catch (error) {
-        console.error('Error loading data:', error);
-        // Only initialize classes on error, no sample data
+        // ignore and fall back to localStorage
+      }
+
+      const savedData = localStorage.getItem('rosaGardensData');
+      if (savedData) {
+        try {
+          const data = JSON.parse(savedData);
+          setStudents(data.students || []);
+          setTeachers(data.teachers || []);
+          setClasses(data.classes || initializeDefaultClasses());
+          setFeeStructures(data.feeStructures || []);
+          setPayments(data.payments || []);
+          setIncome(data.income || []);
+          setExpenses(data.expenses || []);
+        } catch (error) {
+          console.error('Error loading data:', error);
+          setClasses(initializeDefaultClasses());
+        }
+      } else {
         setClasses(initializeDefaultClasses());
       }
-    } else {
-      // Only initialize classes for new installations
-      setClasses(initializeDefaultClasses());
-    }
+    })();
+    return () => { mounted = false; };
   }, []);
 
   // Save data to localStorage whenever data changes
@@ -316,7 +352,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .filter(num => num && num.startsWith(`ADM${year}`))
       .map(num => parseInt(num.slice(5)))
       .filter(num => !isNaN(num));
-    
+
     const maxAdmission = existingAdmissions.length > 0 ? Math.max(...existingAdmissions) : 0;
     const nextNumber = (maxAdmission + 1).toString().padStart(3, '0');
     return `ADM${year}${nextNumber}`;
@@ -328,7 +364,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .filter(id => id && id.startsWith('TCH'))
       .map(id => parseInt(id.slice(3)))
       .filter(num => !isNaN(num));
-    
+
     const maxStaffId = existingStaffIds.length > 0 ? Math.max(...existingStaffIds) : 0;
     const nextNumber = (maxStaffId + 1).toString().padStart(3, '0');
     return `TCH${nextNumber}`;
@@ -336,96 +372,180 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Student functions
   const addStudent = (studentData: Omit<Student, 'id' | 'studentId' | 'admissionNumber'>) => {
-    const newStudent: Student = {
-      ...studentData,
-      id: generateId(),
-      studentId: generateStudentId(),
-      admissionNumber: generateAdmissionNumber()
-    };
-    setStudents(prev => [...prev, newStudent]);
+    (async () => {
+      try {
+        // try backend
+        const res: any = await apiService.post(ENDPOINTS.students, studentData);
+        const created = res?.data ?? res;
+        setStudents(prev => [...prev, created]);
+        return;
+      } catch (e) {
+        // fallback to local
+        const newStudent: Student = {
+          ...studentData,
+          id: generateId(),
+          studentId: generateStudentId(),
+          admissionNumber: generateAdmissionNumber()
+        };
+        setStudents(prev => [...prev, newStudent]);
+      }
+    })();
   };
 
   const updateStudent = (id: string, updates: Partial<Student>) => {
-    setStudents(prev => prev.map(student => 
-      student.id === id ? { ...student, ...updates } : student
-    ));
+    (async () => {
+      try {
+        await apiService.put(`${ENDPOINTS.students}/${id}`, updates);
+        setStudents(prev => prev.map(student => student.id === id ? { ...student, ...updates } : student));
+      } catch (e) {
+        // local fallback
+        setStudents(prev => prev.map(student => student.id === id ? { ...student, ...updates } : student));
+      }
+    })();
   };
 
   const deleteStudent = (id: string) => {
-    setStudents(prev => prev.filter(student => student.id !== id));
+    (async () => {
+      try {
+        await apiService.delete(`${ENDPOINTS.students}/${id}`);
+        setStudents(prev => prev.filter(student => student.id !== id));
+      } catch (e) {
+        // fallback
+        setStudents(prev => prev.filter(student => student.id !== id));
+      }
+    })();
   };
 
   // Teacher functions
   const addTeacher = (teacherData: Omit<Teacher, 'id' | 'staffId'>) => {
-    const newTeacher: Teacher = {
-      ...teacherData,
-      id: generateId(),
-      staffId: generateStaffId()
-    };
-    setTeachers(prev => [...prev, newTeacher]);
+    (async () => {
+      try {
+        const res: any = await apiService.post('/teachers', teacherData);
+        const created = res?.data ?? res;
+        setTeachers(prev => [...prev, created]);
+        return;
+      } catch (e) {
+        const newTeacher: Teacher = {
+          ...teacherData,
+          id: generateId(),
+          staffId: generateStaffId()
+        };
+        setTeachers(prev => [...prev, newTeacher]);
+      }
+    })();
   };
 
   const updateTeacher = (id: string, updates: Partial<Teacher>) => {
-    setTeachers(prev => prev.map(teacher => 
-      teacher.id === id ? { ...teacher, ...updates } : teacher
-    ));
+    (async () => {
+      try {
+        await apiService.put(`/teachers/${id}`, updates);
+        setTeachers(prev => prev.map(teacher => teacher.id === id ? { ...teacher, ...updates } : teacher));
+      } catch (e) {
+        setTeachers(prev => prev.map(teacher => teacher.id === id ? { ...teacher, ...updates } : teacher));
+      }
+    })();
   };
 
   const deleteTeacher = (id: string) => {
-    setTeachers(prev => prev.filter(teacher => teacher.id !== id));
+    (async () => {
+      try {
+        await apiService.delete(`/teachers/${id}`);
+        setTeachers(prev => prev.filter(teacher => teacher.id !== id));
+      } catch (e) {
+        setTeachers(prev => prev.filter(teacher => teacher.id !== id));
+      }
+    })();
   };
 
   // Class functions
   const addClass = (classData: Omit<Class, 'id'>) => {
-    const newClass: Class = {
-      ...classData,
-      id: generateId()
-    };
-    setClasses(prev => [...prev, newClass]);
+    (async () => {
+      try {
+        const res: any = await apiService.post(ENDPOINTS.classes, classData);
+        const created = res?.data ?? res;
+        setClasses(prev => [...prev, created]);
+        return;
+      } catch (e) {
+        const newClass: Class = { ...classData, id: generateId() };
+        setClasses(prev => [...prev, newClass]);
+      }
+    })();
   };
 
   const updateClass = (id: string, updates: Partial<Class>) => {
-    setClasses(prev => prev.map(cls => 
-      cls.id === id ? { ...cls, ...updates } : cls
-    ));
+    (async () => {
+      try {
+        await apiService.put(`${ENDPOINTS.classes}/${id}`, updates);
+        setClasses(prev => prev.map(cls => cls.id === id ? { ...cls, ...updates } : cls));
+      } catch (e) {
+        setClasses(prev => prev.map(cls => cls.id === id ? { ...cls, ...updates } : cls));
+      }
+    })();
   };
 
   const deleteClass = (id: string) => {
-    setClasses(prev => prev.filter(cls => cls.id !== id));
+    (async () => {
+      try {
+        await apiService.delete(`${ENDPOINTS.classes}/${id}`);
+        setClasses(prev => prev.filter(cls => cls.id !== id));
+      } catch (e) {
+        setClasses(prev => prev.filter(cls => cls.id !== id));
+      }
+    })();
   };
 
   // Fee and Payment functions
   const addFeeStructure = (feeData: Omit<FeeStructure, 'id'>) => {
-    const newFee: FeeStructure = {
-      ...feeData,
-      id: generateId()
-    };
-    setFeeStructures(prev => [...prev, newFee]);
+    (async () => {
+      try {
+        const res: any = await apiService.post(ENDPOINTS.feeStructures, feeData);
+        const created = res?.data ?? res;
+        setFeeStructures(prev => [...prev, created]);
+      } catch (e) {
+        const newFee: FeeStructure = { ...feeData, id: generateId() };
+        setFeeStructures(prev => [...prev, newFee]);
+      }
+    })();
   };
 
   const addPayment = (paymentData: Omit<Payment, 'id'>) => {
-    const newPayment: Payment = {
-      ...paymentData,
-      id: generateId()
-    };
-    setPayments(prev => [...prev, newPayment]);
+    (async () => {
+      try {
+        const res: any = await apiService.post(ENDPOINTS.payments, paymentData);
+        const created = res?.data ?? res;
+        setPayments(prev => [...prev, created]);
+      } catch (e) {
+        const newPayment: Payment = { ...paymentData, id: generateId() };
+        setPayments(prev => [...prev, newPayment]);
+      }
+    })();
   };
 
   // Income and Expense functions
   const addIncome = (incomeData: Omit<Income, 'id'>) => {
-    const newIncome: Income = {
-      ...incomeData,
-      id: generateId()
-    };
-    setIncome(prev => [...prev, newIncome]);
+    (async () => {
+      try {
+        const res: any = await apiService.post(ENDPOINTS.income, incomeData);
+        const created = res?.data ?? res;
+        setIncome(prev => [...prev, created]);
+      } catch (e) {
+        const newIncome: Income = { ...incomeData, id: generateId() };
+        setIncome(prev => [...prev, newIncome]);
+      }
+    })();
   };
 
   const addExpense = (expenseData: Omit<Expense, 'id'>) => {
-    const newExpense: Expense = {
-      ...expenseData,
-      id: generateId()
-    };
-    setExpenses(prev => [...prev, newExpense]);
+    (async () => {
+      try {
+        const res: any = await apiService.post(ENDPOINTS.expenses, expenseData);
+        const created = res?.data ?? res;
+        setExpenses(prev => [...prev, created]);
+      } catch (e) {
+        const newExpense: Expense = { ...expenseData, id: generateId() };
+        setExpenses(prev => [...prev, newExpense]);
+      }
+    })();
   };
 
   // Promotion functions

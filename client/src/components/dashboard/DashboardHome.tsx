@@ -1,7 +1,12 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useData } from '../../contexts/DataContext';
+import useStudents from '@/hooks/useStudents';
+import useTeachers from '@/hooks/useTeachers';
+import usePayments from '@/hooks/usePayments';
+import useExpenses from '@/hooks/useExpenses';
+import useFeeStructures from '@/hooks/useFeeStructures';
+import useIncome from '@/hooks/useIncome';
 import { getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
 import FinancialSummary from './FinancialSummary';
 import {
@@ -17,11 +22,24 @@ import {
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 const DashboardHome = () => {
-  const { students, teachers, payments, expenses, feeStructures, income } = useData();
+  const { students } = useStudents();
+  const { teachers } = useTeachers();
+  const { payments } = usePayments();
+  const { expenses } = useExpenses();
+  const { feeStructures } = useFeeStructures();
+  const { income } = useIncome();
 
   // Get active academic term and year
   const currentTerm = getActiveAcademicTerm();
   const currentYear = getActiveAcademicYear();
+
+  // Normalization helpers (handle camelCase or snake_case API shapes)
+  const getDate = (item: any) => new Date(item?.date ?? item?.paymentDate ?? item?.payment_date ?? item?.createdAt ?? item?.created_at ?? Date.now());
+  const getAmount = (item: any) => Number(item?.amount ?? item?.value ?? item?.payment_amount ?? 0) || 0;
+  const getStudentFirstName = (s: any) => s?.firstName ?? s?.first_name ?? s?.fullName ?? s?.full_name ?? '';
+  const getStudentLastName = (s: any) => s?.lastName ?? s?.last_name ?? '';
+  const getStudentClass = (s: any) => s?.classAssigned ?? s?.class_assigned ?? s?.className ?? s?.class_name ?? '';
+  const getFeeClassName = (f: any) => f?.className ?? f?.class_name ?? '';
 
   // Calculate summary statistics
   const totalStudents = students.length;

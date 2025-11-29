@@ -1,21 +1,24 @@
-import React, { useState } from 'react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { useData } from '../../contexts/DataContext';
-import { useAudit } from '../../contexts/AuditContext';
-import { Search, Filter, Edit, Trash2, Eye } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-import StudentDetailsDialog from './StudentDetailsDialog';
-import EditStudentDialog from './EditStudentDialog';
+import { Edit, Eye, Search, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { useClasses } from '../../hooks/useClasses';
+import { useDeleteStudent, useStudents } from '../../hooks/useStudents';
 import PasswordAuthDialog from '../common/PasswordAuthDialog';
+import EditStudentDialog from './EditStudentDialog';
+import StudentDetailsDialog from './StudentDetailsDialog';
 
 const ViewAllStudents = () => {
-  const { students, classes, deleteStudent } = useData();
-  const { addAuditLog } = useAudit();
+  const studentsQuery = useStudents();
+  const classesQuery = useClasses();
+  const deleteStudentMutation = useDeleteStudent();
+  const students = studentsQuery.data?.data ?? [];
+  const classes = classesQuery.data?.data ?? [];
   const [searchTerm, setSearchTerm] = useState('');
   const [filterClass, setFilterClass] = useState('all-classes');
   const [filterGender, setFilterGender] = useState('all-genders');
@@ -23,18 +26,29 @@ const ViewAllStudents = () => {
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
-  const [pendingAction, setPendingAction] = useState<{type: 'edit' | 'delete', student: any} | null>(null);
+  const [pendingAction, setPendingAction] = useState<{ type: 'edit' | 'delete', student: any } | null>(null);
 
   // Filter students based on search and filters
-  const filteredStudents = students.filter(student => {
-    const matchesSearch = searchTerm === '' || 
-      student.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      student.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      student.studentId.includes(searchTerm) ||
-      student.admissionNumber.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesClass = filterClass === 'all-classes' || student.classAssigned === filterClass;
-    const matchesGender = filterGender === 'all-genders' || student.gender === filterGender;
+  const filteredStudents = students.filter((student: any) => {
+    const first = (student.first_name || student.firstName || '').toString();
+    const last = (student.last_name || student.lastName || '').toString();
+    const admission = (student.admission_no || student.admissionNumber || student.admissionNumber || (student.meta && student.meta.admission_no) || '').toString();
+    const sid = (student.student_id || student.studentId || student.id || '').toString();
+
+    const matchesSearch = searchTerm === '' ||
+      first.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      last.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      sid.includes(searchTerm) ||
+      admission.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const clsName = (() => {
+      const cls = classes.find((c: any) => c.id === (student.class_id ?? student.classId ?? null));
+      return cls?.name ?? cls?.className ?? 'Unassigned';
+    })();
+
+    const matchesClass = filterClass === 'all-classes' || clsName === filterClass;
+    const gender = student.gender || student.meta?.gender || 'Unknown';
+    const matchesGender = filterGender === 'all-genders' || gender === filterGender;
 
     return matchesSearch && matchesClass && matchesGender;
   });
@@ -44,12 +58,12 @@ const ViewAllStudents = () => {
     setShowDetailsDialog(true);
   };
 
-  const handleEditStudent = (student) => {
+  const handleEditStudent = (student: any) => {
     setPendingAction({ type: 'edit', student });
     setShowPasswordDialog(true);
   };
 
-  const handleDeleteClick = (student) => {
+  const handleDeleteClick = (student: any) => {
     setPendingAction({ type: 'delete', student });
     setShowPasswordDialog(true);
   };
@@ -58,47 +72,34 @@ const ViewAllStudents = () => {
     if (!pendingAction) return;
 
     if (pendingAction.type === 'edit') {
-      // Add audit log for edit attempt
-      addAuditLog({
-        actionType: 'Edit',
-        module: 'Students',
-        itemId: pendingAction.student.id,
-        itemName: `${pendingAction.student.firstName} ${pendingAction.student.lastName}`,
-        reason: reason
-      });
-
       setSelectedStudent(pendingAction.student);
       setShowEditDialog(true);
     } else if (pendingAction.type === 'delete') {
-      // Add audit log for delete
-      addAuditLog({
-        actionType: 'Delete',
-        module: 'Students',
-        itemId: pendingAction.student.id,
-        itemName: `${pendingAction.student.firstName} ${pendingAction.student.lastName}`,
-        reason: reason
-      });
-
-      deleteStudent(pendingAction.student.id);
-      toast({
-        title: "Student Deleted",
-        description: `${pendingAction.student.firstName} ${pendingAction.student.lastName} has been removed from the system`,
+      // perform delete via mutation
+      deleteStudentMutation.mutate(pendingAction.student.id, {
+        onSuccess: () => {
+          toast({ title: 'Student Deleted', description: 'Student has been removed from the system' });
+        },
+        onError: (err: any) => {
+          toast({ title: 'Delete Failed', description: err?.message ?? 'Unable to delete student', variant: 'destructive' });
+        }
       });
     }
 
     setPendingAction(null);
   };
 
-  const calculateAge = (dateOfBirth: string) => {
+  const calculateAge = (dateOfBirth?: string) => {
+    if (!dateOfBirth) return 'N/A';
     const today = new Date();
     const birthDate = new Date(dateOfBirth);
     let age = today.getFullYear() - birthDate.getFullYear();
     const monthDiff = today.getMonth() - birthDate.getMonth();
-    
+
     if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
       age--;
     }
-    
+
     return age;
   };
 
@@ -134,9 +135,9 @@ const ViewAllStudents = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all-classes">All Classes</SelectItem>
-                  {classes.filter(cls => cls.className && cls.className.trim() !== '').map((cls) => (
-                    <SelectItem key={cls.id} value={cls.className}>
-                      {cls.className}
+                  {classes.filter((cls: any) => (cls.name || cls.className)).map((cls: any) => (
+                    <SelectItem key={cls.id} value={cls.name ?? cls.className}>
+                      {cls.name ?? cls.className}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -176,70 +177,59 @@ const ViewAllStudents = () => {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredStudents.map((student) => (
-                    <TableRow key={student.id}>
-                      <TableCell>
-                        <div className="space-y-1">
-                          <div className="font-medium text-gray-900">
-                            {student.firstName} {student.lastName}
+                  filteredStudents.map((student: any) => {
+                    const cls = classes.find((c: any) => c.id === (student.class_id ?? student.classId ?? null));
+                    const className = cls?.name ?? cls?.className ?? 'Unassigned';
+                    const first = student.first_name ?? student.firstName ?? '';
+                    const last = student.last_name ?? student.lastName ?? '';
+                    const admission = student.admission_no ?? student.admissionNumber ?? student.meta?.admission_no ?? 'N/A';
+                    const sid = student.student_id ?? student.studentId ?? student.id;
+                    const gender = student.gender ?? student.meta?.gender ?? 'Unknown';
+
+                    return (
+                      <TableRow key={student.id}>
+                        <TableCell>
+                          <div className="space-y-1">
+                            <div className="font-medium text-gray-900">
+                              {first} {last}
+                            </div>
+                            <div className="text-sm text-gray-500">Admission: {admission}</div>
+                            <Badge variant={gender === 'Male' ? 'default' : 'secondary'} className="text-xs">
+                              {gender}
+                            </Badge>
                           </div>
-                          <div className="text-sm text-gray-500">
-                            Admission: {student.admissionNumber || 'N/A'}
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-mono text-sm bg-gray-100 px-2 py-1 rounded">{sid}</span>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{className}</Badge>
+                        </TableCell>
+                        <TableCell>{calculateAge(student.date_of_birth ?? student.dateOfBirth)} years</TableCell>
+                        <TableCell>
+                          <div className="space-y-1">
+                            <div className="text-sm font-medium">{student.guardian_name ?? student.guardianName ?? ''}</div>
                           </div>
-                          <Badge variant={student.gender === 'Male' ? 'default' : 'secondary'} className="text-xs">
-                            {student.gender}
-                          </Badge>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-mono text-sm bg-gray-100 px-2 py-1 rounded">
-                          {student.studentId}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{student.classAssigned}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        {calculateAge(student.dateOfBirth)} years
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-1">
-                          <div className="text-sm font-medium">{student.guardianName}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">{student.guardianContact}</div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center space-x-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                            onClick={() => handleViewStudent(student)}
-                          >
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-green-600 hover:text-green-700 hover:bg-green-50"
-                            onClick={() => handleEditStudent(student)}
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                            onClick={() => handleDeleteClick(student)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm">{student.guardian_contact ?? student.guardianContact ?? ''}</div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center space-x-2">
+                            <Button variant="ghost" size="sm" className="text-blue-600 hover:text-blue-700 hover:bg-blue-50" onClick={() => handleViewStudent(student)}>
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                            <Button variant="ghost" size="sm" className="text-green-600 hover:text-green-700 hover:bg-green-50" onClick={() => handleEditStudent(student)}>
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => handleDeleteClick(student)}>
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>

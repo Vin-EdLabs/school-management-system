@@ -1,17 +1,42 @@
 
-import React, { useState } from 'react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { useData } from '../../contexts/DataContext';
-import { Search, Users, Edit, Trash2, UserPlus } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import useClasses from '@/hooks/useClasses';
+import useStudents from '@/hooks/useStudents';
+import useTeachers from '@/hooks/useTeachers';
+import { Edit, Search, Trash2, UserPlus, Users } from 'lucide-react';
+import { useState } from 'react';
 
 const ViewAllClasses = () => {
-  const { classes, students, teachers, deleteClass } = useData();
+  const { classes: rawClasses, deleteClass } = useClasses();
+  const { students: rawStudents } = useStudents();
+  const { teachers: rawTeachers } = useTeachers();
+  const classes = (rawClasses || []).map((c: any) => ({
+    id: c.id ?? c._id ?? String(c.id),
+    className: c.className || c.class_name || c.name || '',
+    level: c.level || c.grade || '',
+    stream: c.stream || '',
+    maxClassSize: c.maxClassSize ?? c.max_class_size ?? c.capacity ?? 30
+  }));
+
+  const students = (rawStudents || []).map((s: any) => ({
+    id: s.id ?? String(s.id),
+    firstName: s.first_name || s.firstName || s.first || '',
+    lastName: s.last_name || s.lastName || s.last || '',
+    classAssigned: s.classAssigned || s.class_assigned || s.class || ''
+  }));
+
+  const teachers = (rawTeachers || []).map((t: any) => ({
+    id: t.id ?? String(t.id),
+    fullName: t.fullName || t.full_name || `${t.firstName || ''} ${t.lastName || ''}`,
+    classAssigned: t.classAssigned || t.class_assigned || t.class || '',
+    employmentStatus: t.employmentStatus || t.employment_status || 'Active'
+  }));
   const [searchTerm, setSearchTerm] = useState('');
   const [filterLevel, setFilterLevel] = useState('all-levels');
 
@@ -21,14 +46,14 @@ const ViewAllClasses = () => {
   // Filter classes based on search term and level
   const filteredClasses = classes.filter(classItem => {
     if (!classItem.className || classItem.className.trim() === '') return false;
-    
-    const matchesSearch = searchTerm === '' || 
+
+    const matchesSearch = searchTerm === '' ||
       classItem.className.toLowerCase().includes(searchTerm.toLowerCase()) ||
       classItem.level.toLowerCase().includes(searchTerm.toLowerCase()) ||
       classItem.stream.toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     const matchesLevel = filterLevel === 'all-levels' || classItem.level === filterLevel;
-    
+
     return matchesSearch && matchesLevel;
   });
 
@@ -38,7 +63,7 @@ const ViewAllClasses = () => {
   const getClassStats = (classItem: any) => {
     const studentsInClass = students.filter(student => student.classAssigned === classItem.className);
     const assignedTeacher = teachers.find(teacher => teacher.classAssigned === classItem.className);
-    
+
     return {
       studentCount: studentsInClass.length,
       teacherName: assignedTeacher ? assignedTeacher.fullName : 'Not assigned',
@@ -48,7 +73,7 @@ const ViewAllClasses = () => {
 
   const handleDeleteClass = (classItem: any) => {
     const studentsInClass = students.filter(student => student.classAssigned === classItem.className);
-    
+
     if (studentsInClass.length > 0) {
       toast({
         title: "Cannot Delete Class",
@@ -59,11 +84,7 @@ const ViewAllClasses = () => {
     }
 
     if (window.confirm(`Are you sure you want to delete ${classItem.className}?`)) {
-      deleteClass(classItem.id);
-      toast({
-        title: "Class Deleted",
-        description: `${classItem.className} has been deleted successfully.`,
-      });
+      deleteClass.mutate(classItem.id);
     }
   };
 
@@ -151,7 +172,7 @@ const ViewAllClasses = () => {
                 filteredClasses.map((classItem) => {
                   const stats = getClassStats(classItem);
                   const capacityPercentage = (stats.studentCount / classItem.maxClassSize) * 100;
-                  
+
                   return (
                     <TableRow key={classItem.id}>
                       <TableCell>
@@ -174,11 +195,10 @@ const ViewAllClasses = () => {
                           </span>
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
-                          <div 
-                            className={`h-1.5 rounded-full ${
-                              capacityPercentage > 90 ? 'bg-red-500' :
-                              capacityPercentage > 75 ? 'bg-yellow-500' : 'bg-green-500'
-                            }`}
+                          <div
+                            className={`h-1.5 rounded-full ${capacityPercentage > 90 ? 'bg-red-500' :
+                                capacityPercentage > 75 ? 'bg-yellow-500' : 'bg-green-500'
+                              }`}
                             style={{ width: `${Math.min(capacityPercentage, 100)}%` }}
                           ></div>
                         </div>
@@ -189,7 +209,7 @@ const ViewAllClasses = () => {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge 
+                        <Badge
                           variant={capacityPercentage > 90 ? 'destructive' : 'outline'}
                           className="text-xs"
                         >

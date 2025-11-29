@@ -8,7 +8,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
 import { Calendar, Plus, Edit2, Trash2, CheckCircle, AlertCircle } from 'lucide-react';
-import { useData } from '../../contexts/DataContext';
+import useStudents from '@/hooks/useStudents';
+import usePayments from '@/hooks/usePayments';
+import useFeeStructures from '@/hooks/useFeeStructures';
 import { processArrearsForTermChange } from '../../utils/feeCalculations';
 
 interface AcademicTerm {
@@ -21,7 +23,30 @@ interface AcademicTerm {
 }
 
 const AcademicTermManager = () => {
-  const { students, payments, feeStructures } = useData();
+  const { students: rawStudents } = useStudents();
+  const { payments: rawPayments } = usePayments();
+  const { feeStructures: rawFeeStructures } = useFeeStructures();
+
+  const students = (rawStudents || []).map((s: any) => ({
+    id: s.id ?? String(s.id),
+    firstName: s.first_name || s.firstName || '',
+    lastName: s.last_name || s.lastName || '',
+    classAssigned: s.classAssigned || s.class_assigned || ''
+  }));
+
+  const payments = (rawPayments || []).map((p: any) => ({
+    id: p.id ?? String(p.id),
+    studentId: String(p.student_id || p.studentId || p.student),
+    term: p.term || p.term_name || p.termName || '',
+    amount: Number(p.amount || 0)
+  }));
+
+  const feeStructures = (rawFeeStructures || []).map((f: any) => ({
+    id: f.id ?? String(f.id),
+    classId: f.class_id || f.classId || null,
+    term: f.term || f.term_name || f.termName || '',
+    amount: Number(f.amount || f.fee || 0)
+  }));
   const [terms, setTerms] = useState<AcademicTerm[]>([]);
   const [isAddingTerm, setIsAddingTerm] = useState(false);
   const [editingTerm, setEditingTerm] = useState<string | null>(null);

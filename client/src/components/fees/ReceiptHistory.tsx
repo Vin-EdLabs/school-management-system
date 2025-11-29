@@ -5,12 +5,31 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { useData } from '../../contexts/DataContext';
+import usePayments from '@/hooks/usePayments';
+import useStudents from '@/hooks/useStudents';
 import { Search, Receipt, Eye } from 'lucide-react';
 import ReceiptPrinter from '../common/ReceiptPrinter';
 
 const ReceiptHistory = () => {
-  const { payments, students } = useData();
+  const { payments: rawPayments } = usePayments();
+  const { students: rawStudents } = useStudents();
+  const payments = (rawPayments || []).map((p: any) => ({
+    id: p.id ?? String(p.id),
+    amount: Number(p.amount || 0),
+    date: p.date || p.created_at || new Date().toISOString(),
+    paymentMethod: p.paymentMethod || p.method || p.payment_method || '',
+    term: p.term || p.term_name || '',
+    notes: p.notes || '' ,
+    studentId: String(p.student_id || p.studentId || p.student)
+  }));
+
+  const students = (rawStudents || []).map((s: any) => ({
+    id: s.id ?? String(s.id),
+    firstName: s.first_name || s.firstName || '',
+    lastName: s.last_name || s.lastName || '',
+    studentId: s.studentId || s.student_id || s.id || '',
+    classAssigned: s.classAssigned || s.class_assigned || ''
+  }));
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [showReceipt, setShowReceipt] = useState(false);

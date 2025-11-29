@@ -1,20 +1,22 @@
 
-import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
-import { Save, Plus } from 'lucide-react';
+import useClasses from '@/hooks/useClasses';
+import useTeachers from '@/hooks/useTeachers';
+import { Plus, Save } from 'lucide-react';
+import React, { useState } from 'react';
 
 interface CreateClassFormProps {
   onSuccess?: () => void;
 }
 
 const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
-  const { addClass, teachers } = useData();
+  const { createClass } = useClasses();
+  const { teachers } = useTeachers();
   const [formData, setFormData] = useState({
     className: '',
     level: '',
@@ -30,10 +32,10 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
 
   const streams = ['Red', 'Blue', 'Green', 'Yellow', 'Orange', 'Purple', 'A', 'B', 'C', 'D'];
 
-  const activeTeachers = teachers.filter(teacher => 
-    teacher.employmentStatus === 'Active' && 
-    teacher.fullName && 
-    teacher.fullName.trim() !== ''
+  const activeTeachers = (teachers || []).filter((teacher: any) =>
+    teacher.employmentStatus === 'Active' &&
+    (teacher.fullName || teacher.full_name) &&
+    (teacher.fullName || teacher.full_name).trim() !== ''
   );
 
   const handleInputChange = (field: string, value: any) => {
@@ -45,7 +47,7 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Validation
     if (!formData.className || !formData.level) {
       toast({
@@ -57,16 +59,13 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
     }
 
     try {
-      addClass({
-        ...formData,
+      createClass.mutate({
+        className: formData.className,
+        level: formData.level,
         stream: formData.stream === 'no-stream' ? '' : formData.stream,
         assignedTeacher: formData.assignedTeacher === 'no-teacher' ? '' : formData.assignedTeacher,
+        maxClassSize: formData.maxClassSize,
         students: []
-      });
-      
-      toast({
-        title: "Class Created Successfully",
-        description: `${formData.className} has been added to the system`,
       });
 
       // Reset form

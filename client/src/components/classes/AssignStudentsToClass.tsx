@@ -1,16 +1,16 @@
-import React, { useState } from 'react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { useData } from '../../contexts/DataContext';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
-import { Users, ArrowRight } from 'lucide-react';
+import usePromotions from '@/hooks/usePromotions';
+import { ArrowRight, Users } from 'lucide-react';
+import { useState } from 'react';
 
 const AssignStudentsToClass = () => {
-  const { students, classes, updateStudent } = useData();
+  const { students, classes, promoteClassMutation, promoteStudentMutation, classIdToName } = usePromotions();
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
   const [filterCurrentClass, setFilterCurrentClass] = useState('all');
@@ -55,9 +55,9 @@ const AssignStudentsToClass = () => {
       return;
     }
 
-    selectedStudents.forEach(studentId => {
-      updateStudent(studentId, { classAssigned: targetClass.className });
-    });
+    // prepare batch updates: set class_id for each selected student
+    const updates = selectedStudents.map(sid => ({ id: Number(sid), class_id: Number(selectedClass) }));
+    promoteClassMutation.mutate(updates);
 
     toast({
       title: "Students Assigned Successfully",
@@ -238,10 +238,9 @@ const AssignStudentsToClass = () => {
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-2">
                           <div
-                            className={`h-2 rounded-full ${
-                              utilization >= 90 ? 'bg-red-500' :
-                              utilization >= 70 ? 'bg-yellow-500' : 'bg-green-500'
-                            }`}
+                            className={`h-2 rounded-full ${utilization >= 90 ? 'bg-red-500' :
+                                utilization >= 70 ? 'bg-yellow-500' : 'bg-green-500'
+                              }`}
                             style={{ width: `${Math.min(utilization, 100)}%` }}
                           ></div>
                         </div>

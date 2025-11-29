@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { useData } from '../../contexts/DataContext';
+import useTeachers from '@/hooks/useTeachers';
 import { toast } from '@/hooks/use-toast';
 import { UserPlus, X } from 'lucide-react';
 
@@ -20,7 +20,7 @@ interface AddTeacherFormProps {
 }
 
 const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
-  const { addTeacher } = useData();
+  const { createTeacher } = useTeachers();
   const [formData, setFormData] = useState({
     fullName: '',
     gender: '',
@@ -54,7 +54,7 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.fullName || !formData.email || !formData.phoneNumber || !formData.gender) {
       toast({
         title: "Validation Error",
@@ -71,7 +71,7 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
       ...formData,
       monthlySalary: salaryValue
     });
-    
+
     toast({
       title: "Teacher Added Successfully",
       description: `${formData.fullName} has been added to the system`,
@@ -227,21 +227,21 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
           <div className="space-y-2">
             <Label htmlFor="monthlySalary">Monthly Salary (GHS)</Label>
             <Input
-              id="monthlySalary"
-              type="text"
-              placeholder="Enter salary amount"
-              value={formData.monthlySalary}
-              onChange={(e) => setFormData(prev => ({ ...prev, monthlySalary: e.target.value }))}
-            />
-          </div>
+              createTeacher.mutate({
+              ...formData,
+              monthlySalary: salaryValue
+              }, {
+              onSuccess: () => {
+              toast({
+                title: 'Teacher Added Successfully',
+                description: `${formData.fullName} has been added to the system`
+              });
 
-          <div className="space-y-2">
-            <Label htmlFor="notes">Additional Notes</Label>
-            <Textarea
-              id="notes"
-              value={formData.notes}
+            // Reset form
+            setFormData({
+              value = { formData.notes }
               onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-              rows={3}
+            rows={3}
             />
           </div>
 
@@ -251,8 +251,11 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
           </Button>
         </form>
       </CardContent>
-    </Card>
-  );
-};
+                  });
 
-export default AddTeacherForm;
+      onSuccess();
+                },
+                onError: () => {
+        toast({ title: 'Error', description: 'Failed to add teacher', variant: 'destructive' });
+                }
+              });

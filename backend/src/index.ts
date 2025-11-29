@@ -18,7 +18,19 @@ const app = express();
 // Basic security headers
 app.use(helmet());
 
-app.use(cors());
+// Configure CORS to allow Vite dev server and local testing origins
+const corsOptions: any = {
+  origin: (origin: any, callback: any) => {
+    // allow requests with no origin (like mobile apps, curl, server-to-server)
+    if (!origin) return callback(null, true);
+    const allowed = [process.env.CLIENT_ORIGIN || 'http://localhost:5173', 'http://localhost:3000'];
+    if (allowed.includes(origin)) return callback(null, true);
+    return callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 

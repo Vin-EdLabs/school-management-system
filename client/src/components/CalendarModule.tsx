@@ -12,6 +12,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
 import { addMonths, format, isSameDay, isSameMonth, subMonths } from 'date-fns';
+import { useEffect } from 'react';
 import { Bell, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, Edit, Eye, MapPin, Plus, Tag, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -46,34 +47,89 @@ const eventCategories = [
   'Other'
 ];
 
+const defaultMockEvents: CalendarEvent[] = [
+  {
+    id: '1',
+    title: 'Parent-Teacher Conference',
+    date: new Date(),
+    time: '10:00',
+    description: 'Quarterly parent-teacher meetings',
+    color: 'bg-blue-500',
+    category: 'Academic',
+    reminder: true,
+    reminderTime: '30',
+    location: 'Main Hall'
+  },
+  {
+    id: '2',
+    title: 'School Sports Day',
+    date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    time: '09:00',
+    description: 'Annual athletics competition',
+    color: 'bg-emerald-500',
+    category: 'Sports',
+    reminder: true,
+    reminderTime: '60',
+    location: 'Sports Ground'
+  }
+];
+
 export default function CalendarModule() {
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [events, setEvents] = useState<CalendarEvent[]>([
-    {
-      id: '1',
-      title: 'Parent-Teacher Conference',
-      date: new Date(),
-      time: '10:00',
-      description: 'Quarterly parent-teacher meetings',
-      color: 'bg-blue-500',
-      category: 'Academic',
-      reminder: true,
-      reminderTime: '30',
-      location: 'Main Hall'
-    },
-    {
-      id: '2',
-      title: 'School Sports Day',
-      date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      time: '09:00',
-      description: 'Annual athletics competition',
-      color: 'bg-emerald-500',
-      category: 'Sports',
-      reminder: true,
-      reminderTime: '60',
-      location: 'Sports Ground'
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [loadedFromBackend, setLoadedFromBackend] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const base = import.meta.env.VITE_API_BASE as string | undefined;
+    if (!base) {
+      // No backend configured — keep local mock events
+      setEvents(defaultMockEvents);
+      setLoadedFromBackend(false);
+      return;
     }
-  ]);
+
+    let cancelled = false;
+    const url = `${base.replace(/\/$/, '')}/events`;
+
+    fetch(url)
+      .then((res) => {
+        if (!res.ok) throw new Error(`Failed to fetch events: ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        if (cancelled) return;
+        if (!Array.isArray(data)) throw new Error('Invalid events payload');
+        const mapped: CalendarEvent[] = data.map((e: any) => ({
+          id: String(e.id ?? e._id ?? Date.now()),
+          title: e.title ?? e.name ?? 'Untitled Event',
+          date: e.date ? new Date(e.date) : new Date(),
+          time: e.time ?? e.startTime ?? '',
+          description: e.description ?? '',
+          color: e.color ?? 'bg-blue-500',
+          category: e.category ?? 'Other',
+          reminder: !!e.reminder,
+          reminderTime: String(e.reminderTime ?? e.reminder_minutes ?? '30'),
+          location: e.location ?? ''
+        }));
+        setEvents(mapped);
+        setLoadedFromBackend(true);
+      })
+      .catch((err) => {
+        console.error('Events fetch error:', err);
+        toast({
+          title: 'Events Load Failed',
+          description: 'Could not load events from the backend — using local sample events.',
+        });
+        if (!cancelled) {
+          setEvents(defaultMockEvents);
+          setLoadedFromBackend(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);

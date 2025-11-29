@@ -7,7 +7,12 @@ import { toast } from '@/hooks/use-toast';
 import { Building, Download, Key, RefreshCw, Settings } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useData } from '../../contexts/DataContext';
+import useStudents from '@/hooks/useStudents';
+import useTeachers from '@/hooks/useTeachers';
+import useClasses from '@/hooks/useClasses';
+import usePayments from '@/hooks/usePayments';
+import useIncome from '@/hooks/useIncome';
+import useExpenses from '@/hooks/useExpenses';
 import AcademicTermManager from './AcademicTermManager';
 
 interface SchoolSettings {
@@ -24,7 +29,12 @@ interface AcademicSettings {
 
 const SettingsModule = () => {
   const { changePassword, user, hasAccess } = useAuth();
-  const { students, teachers, classes, payments, income, expenses } = useData();
+  const { students } = useStudents();
+  const { teachers } = useTeachers();
+  const { classes } = useClasses();
+  const { payments } = usePayments();
+  const { income } = useIncome();
+  const { expenses } = useExpenses();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [schoolInfo, setSchoolInfo] = useState<SchoolSettings>({

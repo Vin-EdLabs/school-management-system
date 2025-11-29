@@ -5,12 +5,47 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { useData } from '../../contexts/DataContext';
+import useStudents from '@/hooks/useStudents';
+import usePayments from '@/hooks/usePayments';
+import useFeeStructures from '@/hooks/useFeeStructures';
+import useClasses from '@/hooks/useClasses';
 import { Search, AlertCircle, CreditCard, TrendingUp } from 'lucide-react';
 import { getActiveAcademicTerm, calculateStudentFees, calculateStudentFeeStatus } from '../../utils/feeCalculations';
 
 const StudentBalances = () => {
-  const { students, payments, feeStructures, classes } = useData();
+  const { students: rawStudents } = useStudents();
+  const { payments: rawPayments } = usePayments();
+  const { feeStructures: rawFeeStructures } = useFeeStructures();
+  const { classes: rawClasses } = useClasses();
+
+  const students = (rawStudents || []).map((s: any) => ({
+    id: s.id ?? String(s.id),
+    firstName: s.first_name || s.firstName || '',
+    lastName: s.last_name || s.lastName || '',
+    studentId: s.studentId || s.student_id || s.id || '',
+    classAssigned: s.classAssigned || s.class_assigned || ''
+  }));
+
+  const payments = (rawPayments || []).map((p: any) => ({
+    id: p.id ?? String(p.id),
+    studentId: String(p.student_id || p.studentId || p.student),
+    term: p.term || p.term_name || p.termName || '',
+    amount: Number(p.amount || 0)
+  }));
+
+  const feeStructures = (rawFeeStructures || []).map((f: any) => ({
+    id: f.id ?? String(f.id),
+    className: f.className || f.class_name || '',
+    term: f.term || f.term_name || f.termName || '',
+    amount: Number(f.amount || f.fee || 0),
+    description: f.description || ''
+  }));
+
+  const classes = (rawClasses || []).map((c: any) => ({
+    id: c.id ?? String(c.id),
+    className: c.className || c.class_name || c.name || '',
+    maxClassSize: c.maxClassSize ?? c.max_class_size ?? c.capacity ?? 30
+  }));
   const [searchTerm, setSearchTerm] = useState('');
   const [filterClass, setFilterClass] = useState('all-classes');
   const [filterStatus, setFilterStatus] = useState('all-status');

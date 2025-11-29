@@ -3,12 +3,36 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '../../contexts/AuthContext';
-import { useData } from '../../contexts/DataContext';
+import useStudents from '@/hooks/useStudents';
+import useTeachers from '@/hooks/useTeachers';
+import useClasses from '@/hooks/useClasses';
 import { BookOpen, Users, Calendar, Clock, ChevronRight } from 'lucide-react';
 
 const TeacherClassesModule = () => {
   const { user } = useAuth();
-  const { students, teachers, classes } = useData();
+  const { students: rawStudents } = useStudents();
+  const { teachers: rawTeachers } = useTeachers();
+  const { classes: rawClasses } = useClasses();
+
+  const teachers = (rawTeachers || []).map((t: any) => ({
+    id: t.id ?? String(t.id),
+    fullName: t.fullName || t.full_name || `${t.firstName || ''} ${t.lastName || ''}`,
+    staffId: t.staffId || t.staff_id || '' ,
+    classAssigned: t.classAssigned || t.class_assigned || ''
+  }));
+
+  const students = (rawStudents || []).map((s: any) => ({
+    id: s.id ?? String(s.id),
+    firstName: s.first_name || s.firstName || '',
+    lastName: s.last_name || s.lastName || '',
+    admissionNumber: s.admissionNumber || s.admission_number || '' ,
+    classAssigned: s.classAssigned || s.class_assigned || ''
+  }));
+
+  const classes = (rawClasses || []).map((c: any) => ({
+    id: c.id ?? String(c.id),
+    className: c.className || c.class_name || c.name || ''
+  }));
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
 
   // Find the current teacher's data based on username or teacherId

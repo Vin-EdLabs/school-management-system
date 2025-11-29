@@ -4,31 +4,27 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
-import { GraduationCap, Lock, User, UserCheck } from 'lucide-react';
+import { Lock, User, UserCheck } from 'lucide-react';
 import React, { useState } from 'react';
-import { useAuth, UserRole } from '../contexts/AuthContext';
+import { useLogin } from '../hooks/useAuth';
 
 const LoginPage = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<UserRole>('administrator');
-  const { login } = useAuth();
+  const [role, setRole] = useState('administrator');
+  const loginMutation = useLogin();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (login(username, password, role)) {
-      toast({
-        title: "Login Successful",
-        description: `Welcome to Rosa Gardens School Management System as ${role.replace('-', ' ')}`,
-      });
-    } else {
-      toast({
-        title: "Login Failed",
-        description: "Invalid username or password for the selected role",
-        variant: "destructive",
-      });
-    }
+    loginMutation.mutate({ username, password }, {
+      onSuccess: (res: any) => {
+        toast({ title: 'Login Successful', description: `Welcome ${res?.user?.username ?? username}` });
+      },
+      onError: (err: any) => {
+        toast({ title: 'Login Failed', description: err?.message ?? 'Invalid credentials', variant: 'destructive' });
+      }
+    });
   };
 
   const roleCredentials = {

@@ -4,12 +4,39 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '../../contexts/AuthContext';
-import { useData } from '../../contexts/DataContext';
+import useStudents from '@/hooks/useStudents';
+import useTeachers from '@/hooks/useTeachers';
+import useClasses from '@/hooks/useClasses';
 import { School, Users, ClipboardCheck, BookOpen, Calendar, Clock } from 'lucide-react';
 
 const TeacherDashboard = () => {
   const { user } = useAuth();
-  const { students, teachers, classes } = useData();
+  const { students: rawStudents } = useStudents();
+  const { teachers: rawTeachers } = useTeachers();
+  const { classes: rawClasses } = useClasses();
+
+  const teachers = (rawTeachers || []).map((t: any) => ({
+    id: t.id ?? String(t.id),
+    fullName: t.fullName || t.full_name || `${t.firstName || ''} ${t.lastName || ''}`,
+    staffId: t.staffId || t.staff_id || t.staffID || '',
+    classAssigned: t.classAssigned || t.class_assigned || t.class || '',
+    subjectsTaught: t.subjectsTaught || t.subjects_taught || [] ,
+    email: t.email || '',
+    phoneNumber: t.phoneNumber || t.phone_number || ''
+  }));
+
+  const students = (rawStudents || []).map((s: any) => ({
+    id: s.id ?? String(s.id),
+    firstName: s.first_name || s.firstName || '',
+    lastName: s.last_name || s.lastName || '',
+    admissionNumber: s.admissionNumber || s.admission_number || s.admission_no || '' ,
+    classAssigned: s.classAssigned || s.class_assigned || s.class || ''
+  }));
+
+  const classes = (rawClasses || []).map((c: any) => ({
+    id: c.id ?? String(c.id),
+    className: c.className || c.class_name || c.name || '',
+  }));
 
   // Find the current teacher's data based on username or teacherId
   const currentTeacher = teachers.find(t => 

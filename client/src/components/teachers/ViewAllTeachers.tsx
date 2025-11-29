@@ -1,21 +1,26 @@
-import React, { useState } from 'react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { useData } from '../../contexts/DataContext';
-import { useAudit } from '../../contexts/AuditContext';
-import { Search, Edit, Trash2, Users, Eye } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-import TeacherDetailsDialog from './TeacherDetailsDialog';
-import EditTeacherDialog from './EditTeacherDialog';
+import { Edit, Eye, Search, Trash2, Users } from 'lucide-react';
+import { useState } from 'react';
+import { useAudit } from '../../hooks/useAudit';
+import { useClasses } from '../../hooks/useClasses';
+import { useDeleteTeacher, useTeachers } from '../../hooks/useTeachers';
 import PasswordAuthDialog from '../common/PasswordAuthDialog';
+import EditTeacherDialog from './EditTeacherDialog';
+import TeacherDetailsDialog from './TeacherDetailsDialog';
 
 const ViewAllTeachers = () => {
-  const { teachers, classes, deleteTeacher } = useData();
+  const teachersQuery = useTeachers();
+  const classesQuery = useClasses();
+  const deleteTeacherMutation = useDeleteTeacher();
   const { addAuditLog } = useAudit();
+  const teachers = teachersQuery.data?.data ?? [];
+  const classes = classesQuery.data?.data ?? [];
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all-status');
   const [filterClass, setFilterClass] = useState('all-classes');
@@ -23,17 +28,17 @@ const ViewAllTeachers = () => {
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
-  const [pendingAction, setPendingAction] = useState<{type: 'edit' | 'delete', teacher: any} | null>(null);
+  const [pendingAction, setPendingAction] = useState<{ type: 'edit' | 'delete', teacher: any } | null>(null);
 
-  const filteredTeachers = teachers.filter(teacher => {
-    const matchesSearch = searchTerm === '' || 
+  const filteredTeachers = teachers.filter((teacher: any) => {
+    const matchesSearch = searchTerm === '' ||
       teacher.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       teacher.staffId.toLowerCase().includes(searchTerm.toLowerCase()) ||
       teacher.email.toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     const matchesStatus = filterStatus === 'all-status' || teacher.employmentStatus === filterStatus;
-    const matchesClass = filterClass === 'all-classes' || filterClass === 'no-class' ? 
-      (filterClass === 'no-class' ? !teacher.classAssigned : true) : 
+    const matchesClass = filterClass === 'all-classes' || filterClass === 'no-class' ?
+      (filterClass === 'no-class' ? !teacher.classAssigned : true) :
       teacher.classAssigned === filterClass;
 
     return matchesSearch && matchesStatus && matchesClass;
@@ -92,10 +97,13 @@ const ViewAllTeachers = () => {
         reason: reason
       });
 
-      deleteTeacher(pendingAction.teacher.id);
-      toast({
-        title: "Teacher Deleted",
-        description: `${pendingAction.teacher.fullName} has been removed from the system`,
+      deleteTeacherMutation.mutate(pendingAction.teacher.id, {
+        onSuccess: () => {
+          toast({ title: 'Teacher Deleted', description: `${pendingAction.teacher.fullName} has been removed from the system` });
+        },
+        onError: (err: any) => {
+          toast({ title: 'Delete Failed', description: err?.message ?? 'Unable to delete teacher', variant: 'destructive' });
+        }
       });
     }
 
@@ -227,23 +235,23 @@ const ViewAllTeachers = () => {
                       </TableCell>
                       <TableCell>
                         <div className="flex space-x-2">
-                          <Button 
-                            size="sm" 
+                          <Button
+                            size="sm"
                             variant="outline"
                             onClick={() => handleViewTeacher(teacher)}
                           >
                             <Eye className="w-4 h-4" />
                           </Button>
-                          <Button 
-                            size="sm" 
+                          <Button
+                            size="sm"
                             variant="outline"
                             onClick={() => handleEditTeacher(teacher)}
                           >
                             <Edit className="w-4 h-4" />
                           </Button>
-                          <Button 
-                            size="sm" 
-                            variant="outline" 
+                          <Button
+                            size="sm"
+                            variant="outline"
                             onClick={() => handleDeleteClick(teacher)}
                             className="text-red-600 hover:text-red-800"
                           >

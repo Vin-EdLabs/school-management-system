@@ -3,11 +3,34 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calculator, ChevronDown, ChevronUp, DollarSign, TrendingUp } from 'lucide-react';
 import { useState } from 'react';
-import { useData } from '../../contexts/DataContext';
+import usePayments from '@/hooks/usePayments';
+import useIncome from '@/hooks/useIncome';
+import useExpenses from '@/hooks/useExpenses';
 
 const FinancialSummary = () => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const { payments, income, expenses } = useData();
+  const { payments: rawPayments } = usePayments();
+  const { income: rawIncome } = useIncome();
+  const { expenses: rawExpenses } = useExpenses();
+
+  const payments = (rawPayments || []).map((p: any) => ({
+    id: p.id ?? String(p.id),
+    amount: Number(p.amount || 0),
+    term: p.term || p.term_name || '',
+    date: p.date || p.created_at || new Date().toISOString()
+  }));
+
+  const income = (rawIncome || []).map((i: any) => ({
+    id: i.id ?? String(i.id),
+    amount: Number(i.amount || 0),
+    date: i.date || i.created_at || new Date().toISOString()
+  }));
+
+  const expenses = (rawExpenses || []).map((e: any) => ({
+    id: e.id ?? String(e.id),
+    amount: Number(e.amount || 0),
+    paymentDate: e.paymentDate || e.date || e.created_at || new Date().toISOString()
+  }));
 
   const currentTerm = 'Term 1';
 

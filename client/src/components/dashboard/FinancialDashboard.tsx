@@ -16,54 +16,63 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { useData } from '../../contexts/DataContext';
+import useStudents from '@/hooks/useStudents';
+import usePayments from '@/hooks/usePayments';
+import useIncome from '@/hooks/useIncome';
+import useExpenses from '@/hooks/useExpenses';
+import useFeeStructures from '@/hooks/useFeeStructures';
 import { getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
 import OutstandingFees from '../fees/OutstandingFees';
 import FinancialSummary from './FinancialSummary';
 
 const FinancialDashboard = () => {
-  const { students, payments, income, expenses, feeStructures } = useData();
+  const { students } = useStudents();
+  const { payments } = usePayments();
+  const { income } = useIncome();
+  const { expenses } = useExpenses();
+  const { feeStructures } = useFeeStructures();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Get active academic term and year
   const currentTerm = getActiveAcademicTerm();
   const currentYear = getActiveAcademicYear();
 
-  // Calculate financial metrics
-  const feesCollected = payments
-    .filter(payment => payment.term === currentTerm)
-    .reduce((sum, payment) => sum + payment.amount, 0);
+  // Normalization helpers for API shapes (camelCase / snake_case)
+  const getDate = (item: any) => new Date(item?.date ?? item?.paymentDate ?? item?.payment_date ?? Date.now());
+  const getAmount = (item: any) => Number(item?.amount ?? item?.value ?? 0) || 0;
+  const getTerm = (item: any) => item?.term ?? item?.payment_term ?? '';
+  const getExpenseCategory = (e: any) => e?.category ?? e?.title ?? 'Other';
+  const getIncomeSource = (i: any) => i?.source ?? i?.description ?? 'Income';
+  const getPaymentStudentId = (p: any) => p?.studentId ?? p?.student_id ?? p?.student?.id ?? null;
 
-  const otherIncome = income
-    .filter(inc => {
-      const incomeDate = new Date(inc.date);
-      const incomeYear = incomeDate.getFullYear().toString();
-      return incomeYear === currentYear;
-    })
-    .reduce((sum, inc) => sum + inc.amount, 0);
+  // Calculate financial metrics using normalized helpers
+  const feesCollected = (payments || [])
+    .filter((payment: any) => getTerm(payment) === currentTerm)
+    .reduce((sum: number, payment: any) => sum + getAmount(payment), 0);
+
+  const otherIncome = (income || [])
+    .filter((inc: any) => getDate(inc).getFullYear().toString() === currentYear)
+    .reduce((sum: number, inc: any) => sum + getAmount(inc), 0);
 
   const totalCombinedIncome = feesCollected + otherIncome;
 
-  const totalExpenses = expenses
-    .filter(expense => {
-      const expenseDate = new Date(expense.paymentDate);
-      const expenseYear = expenseDate.getFullYear().toString();
-      return expenseYear === currentYear;
-    })
-    .reduce((sum, expense) => sum + expense.amount, 0);
+  const totalExpenses = (expenses || [])
+    .filter((expense: any) => getDate(expense).getFullYear().toString() === currentYear)
+    .reduce((sum: number, expense: any) => sum + getAmount(expense), 0);
 
   const balanceLeft = totalCombinedIncome - totalExpenses;
 
   // Calculate outstanding balances
   const calculateOutstanding = () => {
     let totalOwed = 0;
-    students.forEach(student => {
-      const studentFee = feeStructures.find(fee => fee.className === student.classAssigned);
+    students.forEach((student: any) => {
+      const studentClassName = student?.classAssigned ?? student?.class_assigned ?? student?.className ?? '';
+      const studentFee = (feeStructures || []).find((fee: any) => (fee?.className ?? fee?.class_name) === studentClassName);
       if (studentFee) {
-        const studentPayments = payments
-          .filter(payment => payment.studentId === student.id && payment.term === currentTerm)
-          .reduce((sum, payment) => sum + payment.amount, 0);
-        totalOwed += Math.max(0, studentFee.amount - studentPayments);
+        const studentPayments = (payments || [])
+          .filter((payment: any) => getPaymentStudentId(payment) == (student?.id ?? student?.student_id) && getTerm(payment) === currentTerm)
+          .reduce((sum: number, payment: any) => sum + getAmount(payment), 0);
+        totalOwed += Math.max(0, (Number(studentFee.amount ?? studentFee?.value ?? 0) || 0) - studentPayments);
       }
     });
     return totalOwed;
@@ -74,15 +83,15 @@ const FinancialDashboard = () => {
   // Chart data for monthly income trend
   const monthlyIncomeData = Array.from({ length: 12 }, (_, i) => {
     const month = new Date(parseInt(currentYear), i, 1).toLocaleDateString('en-US', { month: 'short' });
-    const monthlyFees = payments.filter(payment => {
-      const paymentDate = new Date(payment.date);
+    const monthlyFees = (payments || []).filter((payment: any) => {
+      const paymentDate = getDate(payment);
       return paymentDate.getMonth() === i && paymentDate.getFullYear().toString() === currentYear;
-    }).reduce((sum, payment) => sum + payment.amount, 0);
+    }).reduce((sum: number, payment: any) => sum + getAmount(payment), 0);
 
-    const monthlyOtherIncome = income.filter(inc => {
-      const incomeDate = new Date(inc.date);
+    const monthlyOtherIncome = (income || []).filter((inc: any) => {
+      const incomeDate = getDate(inc);
       return incomeDate.getMonth() === i && incomeDate.getFullYear().toString() === currentYear;
-    }).reduce((sum, inc) => sum + inc.amount, 0);
+    }).reduce((sum: number, inc: any) => sum + getAmount(inc), 0);
 
     return {
       month,
@@ -93,8 +102,9 @@ const FinancialDashboard = () => {
   });
 
   // Expense breakdown for pie chart
-  const expenseCategories = expenses.reduce((acc, expense) => {
-    acc[expense.category] = (acc[expense.category] || 0) + expense.amount;
+  const expenseCategories = (expenses || []).reduce((acc: Record<string, number>, expense: any) => {
+    const key = getExpenseCategory(expense);
+    acc[key] = (acc[key] || 0) + getAmount(expense);
     return acc;
   }, {} as Record<string, number>);
 
@@ -107,26 +117,27 @@ const FinancialDashboard = () => {
 
   // Recent financial activities
   const recentActivities = [
-    ...payments.slice(-5).map(payment => {
-      const student = students.find(s => s.id === payment.studentId);
+    ...(payments || []).slice(-5).map((payment: any) => {
+      const studentId = getPaymentStudentId(payment);
+      const student = (students || []).find((s: any) => (s?.id ?? s?.student_id) == studentId);
       return {
-        text: `GHS${payment.amount} fee payment from ${student?.firstName} ${student?.lastName}`,
-        time: new Date(payment.date).toLocaleDateString(),
+        text: `GHS${getAmount(payment)} fee payment from ${ (student ? ( (student?.firstName ?? student?.first_name ?? student?.fullName ?? student?.full_name) + ' ' + (student?.lastName ?? student?.last_name ?? '') ) : 'Unknown Student') }`,
+        time: getDate(payment).toLocaleDateString(),
         type: 'payment',
-        amount: payment.amount
+        amount: getAmount(payment)
       };
     }),
-    ...income.slice(-3).map(inc => ({
-      text: `GHS${inc.amount} other income from ${inc.source}`,
-      time: new Date(inc.date).toLocaleDateString(),
+    ...(income || []).slice(-3).map((inc: any) => ({
+      text: `GHS${getAmount(inc)} other income from ${getIncomeSource(inc)}`,
+      time: getDate(inc).toLocaleDateString(),
       type: 'income',
-      amount: inc.amount
+      amount: getAmount(inc)
     })),
-    ...expenses.slice(-3).map(expense => ({
-      text: `GHS${expense.amount} expense for ${expense.title}`,
-      time: new Date(expense.paymentDate).toLocaleDateString(),
+    ...(expenses || []).slice(-3).map((expense: any) => ({
+      text: `GHS${getAmount(expense)} expense for ${expense?.title ?? expense?.name ?? 'Expense'}`,
+      time: getDate(expense).toLocaleDateString(),
       type: 'expense',
-      amount: expense.amount
+      amount: getAmount(expense)
     }))
   ].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
 

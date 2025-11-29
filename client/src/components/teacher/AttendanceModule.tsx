@@ -7,12 +7,36 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/hooks/use-toast';
 import { ClipboardCheck, Calendar, Users, Save } from 'lucide-react';
-import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
+import useStudents from '@/hooks/useStudents';
+import useTeachers from '@/hooks/useTeachers';
+import useClasses from '@/hooks/useClasses';
 
 const AttendanceModule = () => {
-  const { students, teachers, classes } = useData();
   const { user } = useAuth();
+  const { students: rawStudents } = useStudents();
+  const { teachers: rawTeachers } = useTeachers();
+  const { classes: rawClasses } = useClasses();
+
+  const teachers = (rawTeachers || []).map((t: any) => ({
+    id: t.id ?? String(t.id),
+    fullName: t.fullName || t.full_name || `${t.firstName || ''} ${t.lastName || ''}`,
+    staffId: t.staffId || t.staff_id || '' ,
+    classAssigned: t.classAssigned || t.class_assigned || ''
+  }));
+
+  const students = (rawStudents || []).map((s: any) => ({
+    id: s.id ?? String(s.id),
+    firstName: s.first_name || s.firstName || '',
+    lastName: s.last_name || s.lastName || '',
+    admissionNumber: s.admissionNumber || s.admission_number || '' ,
+    classAssigned: s.classAssigned || s.class_assigned || ''
+  }));
+
+  const classes = (rawClasses || []).map((c: any) => ({
+    id: c.id ?? String(c.id),
+    className: c.className || c.class_name || c.name || ''
+  }));
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [attendance, setAttendance] = useState<Record<string, boolean>>({});

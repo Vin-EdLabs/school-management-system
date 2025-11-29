@@ -7,7 +7,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from '@/hooks/use-toast';
 import { AlertTriangle, Clock, DollarSign, Download, Search, TrendingUp } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
-import { useData } from '../../contexts/DataContext';
+import useStudents from '@/hooks/useStudents';
+import useClasses from '@/hooks/useClasses';
+import useFeeStructures from '@/hooks/useFeeStructures';
+import usePayments from '@/hooks/usePayments';
 import { calculateStudentFees, getActiveAcademicTerm } from '../../utils/feeCalculations';
 
 interface OutstandingFeesProps {
@@ -15,7 +18,38 @@ interface OutstandingFeesProps {
 }
 
 const OutstandingFees: React.FC<OutstandingFeesProps> = ({ compact = false }) => {
-  const { students, classes, feeStructures, payments } = useData();
+  const { students: rawStudents } = useStudents();
+  const { classes: rawClasses } = useClasses();
+  const { feeStructures: rawFeeStructures } = useFeeStructures();
+  const { payments: rawPayments } = usePayments();
+
+  const students = (rawStudents || []).map((s: any) => ({
+    id: s.id ?? String(s.id),
+    firstName: s.first_name || s.firstName || '',
+    lastName: s.last_name || s.lastName || '',
+    studentId: s.studentId || s.student_id || s.id || '',
+    classAssigned: s.classAssigned || s.class_assigned || ''
+  }));
+
+  const classes = (rawClasses || []).map((c: any) => ({
+    id: c.id ?? String(c.id),
+    className: c.className || c.class_name || c.name || ''
+  }));
+
+  const feeStructures = (rawFeeStructures || []).map((f: any) => ({
+    id: f.id ?? String(f.id),
+    className: f.className || f.class_name || '',
+    term: f.term || f.term_name || f.termName || '',
+    amount: Number(f.amount || f.fee || 0),
+    arrears: f.arrears || 0
+  }));
+
+  const payments = (rawPayments || []).map((p: any) => ({
+    id: p.id ?? String(p.id),
+    studentId: String(p.student_id || p.studentId || p.student),
+    term: p.term || p.term_name || '',
+    amount: Number(p.amount || 0)
+  }));
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClass, setSelectedClass] = useState('All');
   const [selectedTerm, setSelectedTerm] = useState(getActiveAcademicTerm());

@@ -1,21 +1,24 @@
 
-import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
 import { Save, UserPlus } from 'lucide-react';
+import React, { useState } from 'react';
+import { useClasses } from '../../hooks/useClasses';
+import { useCreateStudent } from '../../hooks/useStudents';
 
 interface AddStudentFormProps {
   onSuccess?: () => void;
 }
 
 const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
-  const { addStudent, classes } = useData();
+  const createStudentMutation = useCreateStudent();
+  const classesQuery = useClasses();
+  const classes = classesQuery.data?.data ?? [];
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -43,7 +46,7 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Validation
     if (!formData.firstName || !formData.lastName || !formData.gender || !formData.dateOfBirth || !formData.classAssigned) {
       toast({
@@ -55,39 +58,58 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
     }
 
     try {
-      addStudent(formData);
-      
-      toast({
-        title: "Student Added Successfully",
-        description: `${formData.firstName} ${formData.lastName} has been added to the system`,
-      });
+      const payload = {
+        first_name: formData.firstName,
+        last_name: formData.lastName,
+        gender: formData.gender,
+        date_of_birth: formData.dateOfBirth,
+        nationality: formData.nationality,
+        admission_no: formData.admissionNumber || undefined,
+        class_id: formData.classAssigned || undefined,
+        guardian_name: formData.guardianName,
+        guardian_contact: formData.guardianContact,
+        home_address: formData.homeAddress,
+        number_of_siblings: formData.numberOfSiblings,
+        names_of_siblings: formData.namesOfSiblings,
+        previous_school: formData.previousSchool,
+        date_of_admission: formData.dateOfAdmission,
+        notes: formData.notes
+      };
 
-      // Reset form
-      setFormData({
-        firstName: '',
-        lastName: '',
-        gender: '',
-        dateOfBirth: '',
-        nationality: 'Ghanaian',
-        admissionNumber: '',
-        classAssigned: '',
-        guardianName: '',
-        guardianContact: '',
-        homeAddress: '',
-        numberOfSiblings: 0,
-        namesOfSiblings: '',
-        previousSchool: '',
-        dateOfAdmission: new Date().toISOString().split('T')[0],
-        notes: ''
-      });
+      createStudentMutation.mutate(payload, {
+        onSuccess: () => {
+          toast({
+            title: 'Student Added Successfully',
+            description: `${formData.firstName} ${formData.lastName} has been added to the system`,
+          });
 
-      if (onSuccess) onSuccess();
+          // Reset form
+          setFormData({
+            firstName: '',
+            lastName: '',
+            gender: '',
+            dateOfBirth: '',
+            nationality: 'Ghanaian',
+            admissionNumber: '',
+            classAssigned: '',
+            guardianName: '',
+            guardianContact: '',
+            homeAddress: '',
+            numberOfSiblings: 0,
+            namesOfSiblings: '',
+            previousSchool: '',
+            dateOfAdmission: new Date().toISOString().split('T')[0],
+            notes: ''
+          });
+
+          if (onSuccess) onSuccess();
+        },
+        onError: (err: any) => {
+          toast({ title: 'Error', description: err?.message ?? 'Failed to add student. Please try again.', variant: 'destructive' });
+        }
+      });
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to add student. Please try again.",
-        variant: "destructive"
-      });
+      toast({ title: 'Error', description: 'Failed to add student. Please try again.', variant: 'destructive' });
     }
   };
 
@@ -177,9 +199,9 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
                   <SelectValue placeholder="Select class" />
                 </SelectTrigger>
                 <SelectContent>
-                  {classes.map((cls) => (
-                    <SelectItem key={cls.id} value={cls.className}>
-                      {cls.className}
+                  {classes.map((cls: any) => (
+                    <SelectItem key={cls.id} value={String(cls.id)}>
+                      {cls.name ?? cls.className}
                     </SelectItem>
                   ))}
                 </SelectContent>

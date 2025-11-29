@@ -6,9 +6,9 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
+import useTeachers from '@/hooks/useTeachers';
 import { X } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import { useData } from '../../contexts/DataContext';
 
 interface Teacher {
   id: string;
@@ -45,7 +45,7 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
   onClose,
   onSuccess
 }) => {
-  const { updateTeacher } = useData();
+  const { updateTeacher } = useTeachers();
   const [formData, setFormData] = useState({
     fullName: '',
     gender: '',
@@ -111,18 +111,16 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
     // Convert salary to number for storage
     const salaryValue = formData.monthlySalary.trim() === '' ? 0 : parseFloat(formData.monthlySalary) || 0;
 
-    updateTeacher(teacher.id, {
-      ...formData,
-      monthlySalary: salaryValue
+    updateTeacher.mutate({ id: teacher.id, payload: { ...formData, monthlySalary: salaryValue } }, {
+      onSuccess: () => {
+        toast({ title: 'Teacher Updated', description: `${formData.fullName} has been updated successfully` });
+        onSuccess();
+        onClose();
+      },
+      onError: () => {
+        toast({ title: 'Error', description: 'Failed to update teacher', variant: 'destructive' });
+      }
     });
-
-    toast({
-      title: "Teacher Updated",
-      description: `${formData.fullName} has been updated successfully`,
-    });
-
-    onSuccess();
-    onClose();
   };
 
   if (!teacher) return null;

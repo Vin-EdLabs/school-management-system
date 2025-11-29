@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from '@/hooks/use-toast';
 import React, { useEffect, useState } from 'react';
+import useStaffPayroll from '@/hooks/useStaffPayroll';
 
 interface StaffMember {
     id: string;
@@ -27,6 +28,7 @@ const sampleData: StaffMember[] = [
 ];
 
 const StaffPayroll: React.FC = () => {
+    const { staff: staffFromApi, createStaff, updateStaff, payStaff } = useStaffPayroll();
     const [staff, setStaff] = useState<StaffMember[]>(sampleData);
     const [isAddOpen, setIsAddOpen] = useState(false);
     const [formName, setFormName] = useState('');
@@ -39,11 +41,17 @@ const StaffPayroll: React.FC = () => {
 
     const handlePay = (id: string) => {
         const paid = staff.find(s => s.id === id)?.name ?? 'Staff member';
+        // call API to record payment; fallback to local update for immediate UI
+        (payStaff as any).mutate({ id, payload: { date: today() } });
         setStaff((prev) => prev.map(s => s.id === id ? { ...s, lastPaid: today() } : s));
         toast({ title: 'Payment recorded', description: `${paid} marked as paid.` });
     };
 
     const handleProcessPayroll = () => {
+        // naive: call payStaff for each staff member (fire-and-forget)
+        (staffFromApi || []).forEach((s: any) => {
+            (payStaff as any).mutate({ id: s.id, payload: { date: today() } });
+        });
         setStaff((prev) => prev.map(s => ({ ...s, lastPaid: today() })));
         toast({ title: 'Payroll processed', description: 'Payroll processed for all staff.' });
     };
@@ -67,7 +75,8 @@ const StaffPayroll: React.FC = () => {
         const monthlySalary = typeof formSalary === 'number' ? formSalary : Number(formSalary) || 0;
 
         if (isEditing && editingId) {
-            // update existing
+            // update existing locally and via API
+            (updateStaff as any).mutate({ id: editingId, payload: { name: formName, position: formPosition || 'Staff', monthlySalary } });
             setStaff((prev) => prev.map(s => s.id === editingId ? { ...s, name: formName, position: formPosition || 'Staff', monthlySalary } : s));
             setIsEditing(false);
             setEditingId(null);
@@ -83,6 +92,9 @@ const StaffPayroll: React.FC = () => {
             monthlySalary,
         };
 
+        // create via API and update local list
+        // cast to any to satisfy the mutation's expected input type
+        createStaff.mutate(newStaff as any);
         setStaff((prev) => [newStaff, ...prev]);
         setIsAddOpen(false);
         toast({ title: 'Added', description: `${newStaff.name} added to payroll.` });
@@ -109,6 +121,20 @@ const StaffPayroll: React.FC = () => {
             setFormSalary('');
         }
     }, [isAddOpen]);
+
+    // Keep local `staff` in sync with API list when available
+    useEffect(() => {
+        if (staffFromApi && staffFromApi.length > 0) {
+            // map API fields into local StaffMember shape where possible
+            setStaff(staffFromApi.map((s: any) => ({
+                id: s.id ?? s._id ?? s.staffId ?? `s${Date.now()}`,
+                name: s.name ?? s.fullName ?? s.full_name ?? 'Staff',
+                position: s.position ?? s.role ?? 'Staff',
+                monthlySalary: Number(s.monthlySalary ?? s.salary ?? s.monthly_salary ?? 0) || 0,
+                lastPaid: s.lastPaid ?? s.last_paid ?? s.last_payment_date ?? undefined
+            })));
+        }
+    }, [staffFromApi]);
 
     return (
         <div className="p-6">

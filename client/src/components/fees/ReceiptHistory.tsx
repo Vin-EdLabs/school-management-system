@@ -1,13 +1,13 @@
 
-import React, { useState } from 'react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
 import usePayments from '@/hooks/usePayments';
 import useStudents from '@/hooks/useStudents';
-import { Search, Receipt, Eye } from 'lucide-react';
+import { Eye, Receipt, Search } from 'lucide-react';
+import { useState } from 'react';
 import ReceiptPrinter from '../common/ReceiptPrinter';
 
 const ReceiptHistory = () => {
@@ -19,7 +19,7 @@ const ReceiptHistory = () => {
     date: p.date || p.created_at || new Date().toISOString(),
     paymentMethod: p.paymentMethod || p.method || p.payment_method || '',
     term: p.term || p.term_name || '',
-    notes: p.notes || '' ,
+    notes: p.notes || '',
     studentId: String(p.student_id || p.studentId || p.student)
   }));
 
@@ -44,8 +44,8 @@ const ReceiptHistory = () => {
   const filteredPayments = payments.filter(payment => {
     const student = students.find(s => s.id === payment.studentId);
     const receiptNumber = generateReceiptNumber(payment.id, payment.date);
-    
-    return searchTerm === '' || 
+
+    return searchTerm === '' ||
       receiptNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (student && (
         student.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||

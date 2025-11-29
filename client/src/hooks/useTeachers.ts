@@ -4,27 +4,29 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 export function useTeachers() {
   const queryClient = useQueryClient();
+  const { data: teachersResp } = useQuery<any, Error, any>({ queryKey: ['teachers'], queryFn: teachersService.listTeachers });
+  const teachers = (teachersResp as any)?.data || [];
 
-  const { data: teachersResp } = useQuery(['teachers'], teachersService.listTeachers);
-  const teachers = teachersResp?.data || [];
-
-  const createTeacher = useMutation((payload: any) => teachersService.createTeacher(payload), {
+  const createTeacher = useMutation<any, Error, any>({
+    mutationFn: (payload: any) => teachersService.createTeacher(payload),
     onSuccess: () => {
-      queryClient.invalidateQueries(['teachers']);
+      queryClient.invalidateQueries({ queryKey: ['teachers'] });
       toast({ title: 'Teacher created', description: 'New teacher added.' });
     }
   });
 
-  const updateTeacher = useMutation((variables: { id: string | number; payload: any }) => teachersService.updateTeacher(variables.id, variables.payload), {
+  const updateTeacher = useMutation<any, Error, { id: string | number; payload: any }>({
+    mutationFn: (variables: { id: string | number; payload: any }) => teachersService.updateTeacher(variables.id, variables.payload),
     onSuccess: () => {
-      queryClient.invalidateQueries(['teachers']);
+      queryClient.invalidateQueries({ queryKey: ['teachers'] });
       toast({ title: 'Teacher updated', description: 'Teacher updated successfully.' });
     }
   });
 
-  const deleteTeacher = useMutation((id: string | number) => teachersService.deleteTeacher(id), {
+  const deleteTeacher = useMutation<any, Error, string | number>({
+    mutationFn: (id: string | number) => teachersService.deleteTeacher(id),
     onSuccess: () => {
-      queryClient.invalidateQueries(['teachers']);
+      queryClient.invalidateQueries({ queryKey: ['teachers'] });
       toast({ title: 'Teacher deleted', description: 'Teacher removed.' });
     }
   });
@@ -33,3 +35,11 @@ export function useTeachers() {
 }
 
 export default useTeachers;
+
+export function useDeleteTeacher() {
+  const qc = useQueryClient();
+  return useMutation<any, Error, string | number>({
+    mutationFn: (id: string | number) => teachersService.deleteTeacher(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['teachers'] }),
+  });
+}

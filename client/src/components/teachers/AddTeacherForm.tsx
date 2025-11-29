@@ -67,33 +67,42 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
     // Convert salary to number for storage, default to 0 if empty or invalid
     const salaryValue = formData.monthlySalary.trim() === '' ? 0 : parseFloat(formData.monthlySalary) || 0;
 
-    addTeacher({
-      ...formData,
-      monthlySalary: salaryValue
-    });
-
-    toast({
-      title: "Teacher Added Successfully",
-      description: `${formData.fullName} has been added to the system`,
-    });
-
-    // Reset form
-    setFormData({
-      fullName: '',
-      gender: '',
-      dateOfBirth: '',
-      phoneNumber: '',
-      email: '',
-      address: '',
-      subjectsTaught: [],
-      classAssigned: '',
-      employmentDate: '',
-      monthlySalary: '',
-      employmentStatus: 'Active',
-      notes: ''
-    });
-
-    onSuccess();
+    // Use the mutation returned by the hook to create the teacher
+        createTeacher.mutate(
+          {
+            ...formData,
+            monthlySalary: salaryValue
+          } as any,
+          {
+            onSuccess: () => {
+              toast({
+                title: 'Teacher Added Successfully',
+                description: `${formData.fullName} has been added to the system`
+              });
+    
+              // Reset form
+              setFormData({
+                fullName: '',
+                gender: '',
+                dateOfBirth: '',
+                phoneNumber: '',
+                email: '',
+                address: '',
+                subjectsTaught: [],
+                classAssigned: '',
+                employmentDate: '',
+                monthlySalary: '',
+                employmentStatus: 'Active',
+                notes: ''
+              });
+    
+              onSuccess();
+            },
+            onError: () => {
+              toast({ title: 'Error', description: 'Failed to add teacher', variant: 'destructive' });
+            }
+          }
+        );
   };
 
   return (
@@ -227,21 +236,19 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
           <div className="space-y-2">
             <Label htmlFor="monthlySalary">Monthly Salary (GHS)</Label>
             <Input
-              createTeacher.mutate({
-              ...formData,
-              monthlySalary: salaryValue
-              }, {
-              onSuccess: () => {
-              toast({
-                title: 'Teacher Added Successfully',
-                description: `${formData.fullName} has been added to the system`
-              });
+              id="monthlySalary"
+              value={formData.monthlySalary}
+              onChange={(e) => setFormData(prev => ({ ...prev, monthlySalary: e.target.value }))}
+            />
+          </div>
 
-            // Reset form
-            setFormData({
-              value = { formData.notes }
+          <div className="space-y-2">
+            <Label htmlFor="notes">Notes</Label>
+            <Textarea
+              id="notes"
+              value={formData.notes}
               onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-            rows={3}
+              rows={3}
             />
           </div>
 
@@ -251,11 +258,8 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
           </Button>
         </form>
       </CardContent>
-                  });
+    </Card>
+  );
+};
 
-      onSuccess();
-                },
-                onError: () => {
-        toast({ title: 'Error', description: 'Failed to add teacher', variant: 'destructive' });
-                }
-              });
+export default AddTeacherForm;

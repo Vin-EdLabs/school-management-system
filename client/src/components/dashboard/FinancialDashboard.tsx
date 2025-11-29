@@ -1,6 +1,11 @@
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import useExpenses from '@/hooks/useExpenses';
+import useFeeStructures from '@/hooks/useFeeStructures';
+import useIncome from '@/hooks/useIncome';
+import usePayments from '@/hooks/usePayments';
+import useStudents from '@/hooks/useStudents';
 import {
   AlertCircle,
   Calculator,
@@ -16,11 +21,6 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import useStudents from '@/hooks/useStudents';
-import usePayments from '@/hooks/usePayments';
-import useIncome from '@/hooks/useIncome';
-import useExpenses from '@/hooks/useExpenses';
-import useFeeStructures from '@/hooks/useFeeStructures';
 import { getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
 import OutstandingFees from '../fees/OutstandingFees';
 import FinancialSummary from './FinancialSummary';
@@ -121,7 +121,7 @@ const FinancialDashboard = () => {
       const studentId = getPaymentStudentId(payment);
       const student = (students || []).find((s: any) => (s?.id ?? s?.student_id) == studentId);
       return {
-        text: `GHS${getAmount(payment)} fee payment from ${ (student ? ( (student?.firstName ?? student?.first_name ?? student?.fullName ?? student?.full_name) + ' ' + (student?.lastName ?? student?.last_name ?? '') ) : 'Unknown Student') }`,
+        text: `GHS${getAmount(payment)} fee payment from ${(student ? ((student?.firstName ?? student?.first_name ?? student?.fullName ?? student?.full_name) + ' ' + (student?.lastName ?? student?.last_name ?? '')) : 'Unknown Student')}`,
         time: getDate(payment).toLocaleDateString(),
         type: 'payment',
         amount: getAmount(payment)

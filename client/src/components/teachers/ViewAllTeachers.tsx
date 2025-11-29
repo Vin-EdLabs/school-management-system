@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { toast } from '@/hooks/use-toast';
 import { Edit, Eye, Search, Trash2, Users } from 'lucide-react';
 import { useState } from 'react';
-import { useAudit } from '../../hooks/useAudit';
+import { useAudit } from '../../contexts/AuditContext';
 import { useClasses } from '../../hooks/useClasses';
 import { useDeleteTeacher, useTeachers } from '../../hooks/useTeachers';
 import PasswordAuthDialog from '../common/PasswordAuthDialog';
@@ -19,8 +19,8 @@ const ViewAllTeachers = () => {
   const classesQuery = useClasses();
   const deleteTeacherMutation = useDeleteTeacher();
   const { addAuditLog } = useAudit();
-  const teachers = teachersQuery.data?.data ?? [];
-  const classes = classesQuery.data?.data ?? [];
+  const teachers = teachersQuery.teachers ?? [];
+  const classes = classesQuery.classes ?? [];
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all-status');
   const [filterClass, setFilterClass] = useState('all-classes');

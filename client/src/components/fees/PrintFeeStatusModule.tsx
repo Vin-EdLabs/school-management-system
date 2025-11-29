@@ -1,16 +1,16 @@
 
-import React, { useState, useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import useStudents from '@/hooks/useStudents';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import useClasses from '@/hooks/useClasses';
 import useFeeStructures from '@/hooks/useFeeStructures';
 import usePayments from '@/hooks/usePayments';
-import { Printer, FileText, Users, GraduationCap, Search } from 'lucide-react';
-import { getActiveAcademicTerm, getActiveAcademicYear, calculateStudentFeeStatus } from '../../utils/feeCalculations';
+import useStudents from '@/hooks/useStudents';
+import { FileText, GraduationCap, Printer, Search, Users } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { calculateStudentFeeStatus, getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
 
 const PrintFeeStatusModule = () => {
   const { students } = useStudents();
@@ -59,11 +59,18 @@ const PrintFeeStatusModule = () => {
   const normalizedPayments = (payments || []).map(normalizePayment);
   const normalizedFees = (feeStructures || []).map(normalizeFee);
 
+  // Normalize classes to a safe shape so we can access `className` without TS errors
+  const normalizedClasses = (classes || []).map((c: any) => {
+    const id = c?.id ?? c?._id ?? c?.classId ?? c?.class_id ?? '';
+    const className = c?.className ?? c?.class_name ?? c?.name ?? c?.class ?? '';
+    return { id, className };
+  });
+
   // Filter classes based on search term
   const filteredClasses = useMemo(() => {
-    const all = classes || [];
+    const all = normalizedClasses;
     return all.filter((cls: any) => {
-      const name = cls?.className ?? cls?.class_name ?? '';
+      const name = cls.className ?? '';
       return name && name.trim() !== '' && name.toLowerCase().includes(searchTerm.toLowerCase());
     });
   }, [classes, searchTerm]);
@@ -91,9 +98,9 @@ const PrintFeeStatusModule = () => {
 
   const handlePrint = () => {
     if (!selectedClass || studentsOwingFees.length === 0) return;
-    
+
     setIsGenerating(true);
-    
+
     const printContent = `
       <!DOCTYPE html>
       <html>
@@ -265,7 +272,7 @@ const PrintFeeStatusModule = () => {
       </body>
       </html>
     `;
-    
+
     const printWindow = window.open('', '_blank');
     if (printWindow) {
       printWindow.document.write(printContent);
@@ -274,7 +281,7 @@ const PrintFeeStatusModule = () => {
       printWindow.print();
       printWindow.close();
     }
-    
+
     setIsGenerating(false);
   };
 
@@ -365,7 +372,7 @@ const PrintFeeStatusModule = () => {
                 </SelectContent>
               </Select>
             </div>
-            
+
             {selectedClass && (
               <div className="mt-4 p-4 bg-blue-50 rounded-lg">
                 <h3 className="font-semibold text-blue-900 mb-2">Report Preview</h3>
@@ -400,7 +407,7 @@ const PrintFeeStatusModule = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-                {studentsOwingFees.map((student) => (
+              {studentsOwingFees.map((student) => (
                 <div key={student.id} className="flex items-center justify-between p-3 border rounded-lg">
                   <div>
                     <p className="font-medium">{student.firstName} {student.lastName}</p>
@@ -430,13 +437,13 @@ const PrintFeeStatusModule = () => {
               {isGenerating ? 'Generating Report...' : 'Generate & Print Report'}
             </Button>
           </div>
-          
+
           {selectedClass && studentsOwingFees.length === 0 && (
             <div className="mt-4 text-center text-gray-500">
               <p>No students with outstanding fees found in {selectedClass}</p>
             </div>
           )}
-          
+
           {!selectedClass && (
             <div className="mt-4 text-center text-gray-500">
               <p>Please select a class to generate the fee status report</p>

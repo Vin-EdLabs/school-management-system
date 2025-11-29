@@ -7,8 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
-import useStudents from '@/hooks/useStudents';
 import useClasses from '@/hooks/useClasses';
+import useStudents from '@/hooks/useStudents';
 import { BookOpen, Edit3, Plus, Users } from 'lucide-react';
 import { useState } from 'react';
 

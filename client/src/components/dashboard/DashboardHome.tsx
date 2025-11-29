@@ -1,25 +1,24 @@
-import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import useStudents from '@/hooks/useStudents';
-import useTeachers from '@/hooks/useTeachers';
-import usePayments from '@/hooks/usePayments';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import useExpenses from '@/hooks/useExpenses';
 import useFeeStructures from '@/hooks/useFeeStructures';
 import useIncome from '@/hooks/useIncome';
-import { getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
-import FinancialSummary from './FinancialSummary';
+import usePayments from '@/hooks/usePayments';
+import useStudents from '@/hooks/useStudents';
+import useTeachers from '@/hooks/useTeachers';
 import {
-  Users,
-  CreditCard,
   AlertCircle,
-  TrendingDown,
+  CreditCard,
+  FileText,
   GraduationCap,
   Plus,
   Receipt,
-  FileText
+  TrendingDown,
+  Users
 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
+import FinancialSummary from './FinancialSummary';
 
 const DashboardHome = () => {
   const { students } = useStudents();
@@ -44,11 +43,11 @@ const DashboardHome = () => {
   // Calculate summary statistics
   const totalStudents = students.length;
   const totalTeachers = teachers.length;
-  
+
   const feesCollectedThisTerm = payments
     .filter(payment => payment.term === currentTerm)
     .reduce((sum, payment) => sum + payment.amount, 0);
-  
+
   const expensesThisTerm = expenses
     .filter(expense => {
       const expenseDate = new Date(expense.paymentDate);

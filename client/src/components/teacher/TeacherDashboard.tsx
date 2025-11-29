@@ -1,13 +1,12 @@
 
-import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { useAuth } from '../../contexts/AuthContext';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import useClasses from '@/hooks/useClasses';
 import useStudents from '@/hooks/useStudents';
 import useTeachers from '@/hooks/useTeachers';
-import useClasses from '@/hooks/useClasses';
-import { School, Users, ClipboardCheck, BookOpen, Calendar, Clock } from 'lucide-react';
+import { BookOpen, Calendar, ClipboardCheck, Clock, School, Users } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
 const TeacherDashboard = () => {
   const { user } = useAuth();
@@ -20,7 +19,7 @@ const TeacherDashboard = () => {
     fullName: t.fullName || t.full_name || `${t.firstName || ''} ${t.lastName || ''}`,
     staffId: t.staffId || t.staff_id || t.staffID || '',
     classAssigned: t.classAssigned || t.class_assigned || t.class || '',
-    subjectsTaught: t.subjectsTaught || t.subjects_taught || [] ,
+    subjectsTaught: t.subjectsTaught || t.subjects_taught || [],
     email: t.email || '',
     phoneNumber: t.phoneNumber || t.phone_number || ''
   }));
@@ -29,7 +28,7 @@ const TeacherDashboard = () => {
     id: s.id ?? String(s.id),
     firstName: s.first_name || s.firstName || '',
     lastName: s.last_name || s.lastName || '',
-    admissionNumber: s.admissionNumber || s.admission_number || s.admission_no || '' ,
+    admissionNumber: s.admissionNumber || s.admission_number || s.admission_no || '',
     classAssigned: s.classAssigned || s.class_assigned || s.class || ''
   }));
 
@@ -39,13 +38,13 @@ const TeacherDashboard = () => {
   }));
 
   // Find the current teacher's data based on username or teacherId
-  const currentTeacher = teachers.find(t => 
-    t.staffId === user?.teacherId || 
+  const currentTeacher = teachers.find(t =>
+    t.staffId === user?.teacherId ||
     t.fullName.toLowerCase().includes(user?.username?.toLowerCase() || '')
   );
-  
+
   // Get teacher's assigned classes and students
-  const teacherClasses = currentTeacher?.classAssigned 
+  const teacherClasses = currentTeacher?.classAssigned
     ? classes.filter(cls => cls.className === currentTeacher.classAssigned)
     : [];
 
@@ -90,11 +89,11 @@ const TeacherDashboard = () => {
           </div>
         </div>
         <div className="text-right text-sm text-gray-500">
-          <p>{new Date().toLocaleDateString('en-US', { 
-            weekday: 'long', 
-            year: 'numeric', 
-            month: 'long', 
-            day: 'numeric' 
+          <p>{new Date().toLocaleDateString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
           })}</p>
         </div>
       </div>

@@ -5,20 +5,32 @@ import type { LoginRequest, LoginResponse } from '../types/auth';
 
 export function useLogin() {
   const qc = useQueryClient();
-  return useMutation((payload: LoginRequest) => authService.login(payload), {
+  return useMutation<LoginResponse, Error, LoginRequest>({
+    mutationFn: (payload: LoginRequest) => authService.login(payload),
     onSuccess: (res: LoginResponse) => {
-      const token = res.token || (res as any).data?.token;
-      if (token) {
-        apiService.setAuthToken(token);
-      }
-      qc.invalidateQueries(['session']);
+        const user = res.user || (res as any).data?.user;
+
+        // Notify AuthProvider of the user — server sets httpOnly cookie
+        if (user) {
+          try {
+            localStorage.setItem('rosaGardensAuth', 'true');
+            localStorage.setItem('rosaGardensUser', JSON.stringify(user));
+            const event = new CustomEvent('userLogin', { detail: { user } });
+            window.dispatchEvent(event);
+          } catch (e) {
+            // ignore storage errors
+          }
+        }
+
+        qc.invalidateQueries({ queryKey: ['session'] });
     },
   });
 }
 
 export function useLogout() {
   const qc = useQueryClient();
-  return useMutation(() => authService.logout(), {
+  return useMutation<void, Error, void>({
+    mutationFn: () => authService.logout(),
     onSuccess: () => {
       apiService.setAuthToken(null);
       qc.clear();
@@ -27,5 +39,9 @@ export function useLogout() {
 }
 
 export function useSession() {
-  return useQuery(['session'], () => authService.session(), { retry: false });
+  return useQuery({
+    queryKey: ['session'],
+    queryFn: () => authService.session(),
+    retry: false,
+  });
 }

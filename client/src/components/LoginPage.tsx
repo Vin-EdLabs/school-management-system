@@ -2,17 +2,19 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+// Select removed — role selection not required
 import { toast } from '@/hooks/use-toast';
-import { Lock, User, UserCheck } from 'lucide-react';
+import { Lock, User } from 'lucide-react';
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useLogin } from '../hooks/useAuth';
 
 const LoginPage = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('administrator');
+
   const loginMutation = useLogin();
+  const navigate = useNavigate();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,6 +22,8 @@ const LoginPage = () => {
     loginMutation.mutate({ username, password }, {
       onSuccess: (res: any) => {
         toast({ title: 'Login Successful', description: `Welcome ${res?.user?.username ?? username}` });
+        // Redirect to dashboard route
+        navigate('/dashboard', { replace: true });
       },
       onError: (err: any) => {
         toast({ title: 'Login Failed', description: err?.message ?? 'Invalid credentials', variant: 'destructive' });
@@ -27,12 +31,6 @@ const LoginPage = () => {
     });
   };
 
-  const roleCredentials = {
-    'administrator': { password: 'admin123', description: 'Students, Teachers, Classes' },
-    'finance': { password: 'finance123', description: 'Financial Dashboard, Fees, Income, Expenses' },
-    'teacher': { password: 'teacher123', description: 'Classes, Attendance, Grades' },
-    'super-admin': { password: 'superadmin123', description: 'Full system access' }
-  };
 
   return (
     <div className="h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 overflow-hidden">
@@ -48,13 +46,7 @@ const LoginPage = () => {
               <p className="text-sm opacity-90">Management System</p>
             </div>
 
-            <div className="mt-2 w-full">
-              <p className="text-xs font-medium uppercase tracking-wide opacity-90">Selected Role Access:</p>
-              <div className="mt-3 bg-white/10 rounded-md p-4">
-                <p className="text-sm font-semibold">{role.replace('-', ' ').toUpperCase()}</p>
-                <p className="text-sm opacity-90">{roleCredentials[role].description}</p>
-              </div>
-            </div>
+            {/* Role info removed */}
           </div>
 
           <div className="mt-8 flex items-center justify-center">
@@ -81,25 +73,7 @@ const LoginPage = () => {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="role" className="text-sm font-medium text-gray-700">
-                Role
-              </Label>
-              <div className="relative">
-                <UserCheck className="absolute left-3 top-3 h-4 w-4 text-gray-400 z-10" />
-                <Select value={role} onValueChange={(value: UserRole) => setRole(value)}>
-                  <SelectTrigger className="pl-10 h-11 border-gray-200 focus:border-blue-500 focus:ring-blue-500">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="administrator">Administrator</SelectItem>
-                    <SelectItem value="finance">Finance Manager</SelectItem>
-                    <SelectItem value="teacher">Teacher</SelectItem>
-                    <SelectItem value="super-admin">Super Admin</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+            {/* Role selection removed - not required */}
 
             <div>
               <Label htmlFor="password" className="text-sm font-medium text-gray-700">Password</Label>
@@ -112,15 +86,7 @@ const LoginPage = () => {
             <Button type="submit" className="w-full h-11 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold">Sign In</Button>
           </form>
 
-          <div className="mt-6 grid grid-cols-1 gap-4">
-            <div className="bg-blue-50 rounded-lg p-4">
-              <p className="text-sm text-gray-600 font-medium mb-2">Login Credentials</p>
-              <div className="space-y-1 text-sm">
-                <p><span className="font-semibold text-gray-700">Username:</span> <code className="bg-white px-2 py-1 rounded text-blue-600">admin</code></p>
-                <p><span className="font-semibold text-gray-700">Password:</span> <code className="bg-white px-2 py-1 rounded text-blue-600">{roleCredentials[role].password}</code></p>
-              </div>
-            </div>
-          </div>
+          {/* Removed sample role credentials panel */}
         </div>
       </div>
     </div>

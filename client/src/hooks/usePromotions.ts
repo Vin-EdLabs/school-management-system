@@ -8,15 +8,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 export function usePromotions() {
   const queryClient = useQueryClient();
 
-  const { data: studentsResp } = useQuery(['students'], studentsService.listStudents);
-  const { data: classesResp } = useQuery(['classes'], classesService.listClasses);
-  const { data: feeStructuresResp } = useQuery(['feeStructures'], feeStructuresService.listFeeStructures);
-  const { data: paymentsResp } = useQuery(['payments'], paymentsService.listPayments);
+  const { data: studentsResp } = useQuery<any, Error, any>({ queryKey: ['students'], queryFn: studentsService.listStudents });
+  const { data: classesResp } = useQuery<any, Error, any>({ queryKey: ['classes'], queryFn: classesService.listClasses });
+  const { data: feeStructuresResp } = useQuery<any, Error, any>({ queryKey: ['feeStructures'], queryFn: feeStructuresService.listFeeStructures });
+  const { data: paymentsResp } = useQuery<any, Error, any>({ queryKey: ['payments'], queryFn: paymentsService.listPayments });
 
-  const studentsRaw = studentsResp?.data || [];
-  const classesRaw = classesResp?.data || [];
-  const feeStructuresRaw = feeStructuresResp?.data || [];
-  const paymentsRaw = paymentsResp?.data || [];
+  const studentsRaw = (studentsResp as any)?.data || [];
+  const classesRaw = (classesResp as any)?.data || [];
+  const feeStructuresRaw = (feeStructuresResp as any)?.data || [];
+  const paymentsRaw = (paymentsResp as any)?.data || [];
 
   const classIdToName: Record<number, string> = {};
   classesRaw.forEach((c: any) => {
@@ -50,25 +50,21 @@ export function usePromotions() {
     amount: Number(p.amount || 0)
   }));
 
-  const promoteStudentMutation = useMutation(
-    (payload: { id: number; class_id: number }) => studentsService.updateStudent(payload.id, { class_id: payload.class_id }),
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries(['students']);
-        toast({ title: 'Student Promoted', description: 'Student class updated successfully.' });
-      }
+  const promoteStudentMutation = useMutation<any, Error, { id: number; class_id: number }>({
+    mutationFn: (payload: { id: number; class_id: number }) => studentsService.updateStudent(payload.id, ({ class_id: payload.class_id } as any)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['students'] });
+      toast({ title: 'Student Promoted', description: 'Student class updated successfully.' });
     }
-  );
+  });
 
-  const promoteClassMutation = useMutation(
-    (updates: Array<{ id: number; class_id: number }>) => Promise.all(updates.map(u => studentsService.updateStudent(u.id, { class_id: u.class_id }))),
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries(['students']);
-        toast({ title: 'Class Promotion', description: 'All students updated successfully.' });
-      }
+  const promoteClassMutation = useMutation<any, Error, Array<{ id: number; class_id: number }>>({
+    mutationFn: (updates: Array<{ id: number; class_id: number }>) => Promise.all(updates.map(u => studentsService.updateStudent(u.id, ({ class_id: u.class_id } as any)))),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['students'] });
+      toast({ title: 'Class Promotion', description: 'All students updated successfully.' });
     }
-  );
+  });
 
   return {
     students,

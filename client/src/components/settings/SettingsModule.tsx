@@ -4,15 +4,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from '@/hooks/use-toast';
+import useClasses from '@/hooks/useClasses';
+import useExpenses from '@/hooks/useExpenses';
+import useIncome from '@/hooks/useIncome';
+import usePayments from '@/hooks/usePayments';
+import useStudents from '@/hooks/useStudents';
+import useTeachers from '@/hooks/useTeachers';
 import { Building, Download, Key, RefreshCw, Settings } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import useStudents from '@/hooks/useStudents';
-import useTeachers from '@/hooks/useTeachers';
-import useClasses from '@/hooks/useClasses';
-import usePayments from '@/hooks/usePayments';
-import useIncome from '@/hooks/useIncome';
-import useExpenses from '@/hooks/useExpenses';
 import AcademicTermManager from './AcademicTermManager';
 
 interface SchoolSettings {

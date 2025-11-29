@@ -1,16 +1,15 @@
 
-import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import useClasses from '@/hooks/useClasses';
+import useFeeStructures from '@/hooks/useFeeStructures';
+import usePayments from '@/hooks/usePayments';
 import useStudents from '@/hooks/useStudents';
 import useTeachers from '@/hooks/useTeachers';
-import useClasses from '@/hooks/useClasses';
-import usePayments from '@/hooks/usePayments';
-import useFeeStructures from '@/hooks/useFeeStructures';
-import { Users, GraduationCap, BookOpen, DollarSign, AlertCircle, Eye } from 'lucide-react';
-import { getActiveAcademicTerm, getActiveAcademicYear, calculateStudentFeeStatus } from '../../utils/feeCalculations';
+import { AlertCircle, BookOpen, DollarSign, Eye, GraduationCap, Users } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { calculateStudentFeeStatus, getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
 
 const AdministratorDashboard = () => {
   const { students: rawStudents } = useStudents();
@@ -24,7 +23,7 @@ const AdministratorDashboard = () => {
     firstName: s.first_name || s.firstName || '',
     lastName: s.last_name || s.lastName || '',
     studentId: s.studentId || s.student_id || s.id || '',
-    classAssigned: s.classAssigned || s.class_assigned || '' ,
+    classAssigned: s.classAssigned || s.class_assigned || '',
     gender: s.gender || s.sex || ''
   }));
 
@@ -79,8 +78,8 @@ const AdministratorDashboard = () => {
   const activeClasses = classes.filter(cls => cls.className && cls.className.trim() !== '').length;
 
   // Filter students by class
-  const filteredStudents = selectedClass === 'all-classes' 
-    ? students 
+  const filteredStudents = selectedClass === 'all-classes'
+    ? students
     : students.filter(student => student.classAssigned === selectedClass);
 
   // Calculate fee status for each student using real data

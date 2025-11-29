@@ -10,3 +10,4 @@ DROP TABLE IF EXISTS income;
 DROP INDEX IF EXISTS idx_payments_student;
 DROP INDEX IF EXISTS idx_payments_term;
 DROP TABLE IF EXISTS expenses;
+DROP TABLE IF EXISTS events;

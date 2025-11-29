@@ -4,13 +4,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 export function useIncome() {
   const queryClient = useQueryClient();
+  const { data: incomeResp } = useQuery<any, Error, any>({ queryKey: ['income'], queryFn: incomeService.listIncome });
+  const income = (incomeResp as any)?.data || [];
 
-  const { data: incomeResp } = useQuery(['income'], incomeService.listIncome);
-  const income = incomeResp?.data || [];
-
-  const createIncome = useMutation((payload: any) => incomeService.createIncome(payload), {
+  const createIncome = useMutation<any, Error, any>({
+    mutationFn: (payload: any) => incomeService.createIncome(payload),
     onSuccess: () => {
-      queryClient.invalidateQueries(['income']);
+      queryClient.invalidateQueries({ queryKey: ['income'] });
       toast({ title: 'Income recorded', description: 'Income entry created successfully.' });
     }
   });

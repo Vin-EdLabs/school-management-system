@@ -1,16 +1,16 @@
 
-import React, { useState } from 'react';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import useStudents from '@/hooks/useStudents';
-import usePayments from '@/hooks/usePayments';
-import useFeeStructures from '@/hooks/useFeeStructures';
 import useClasses from '@/hooks/useClasses';
-import { Search, AlertCircle, CreditCard, TrendingUp } from 'lucide-react';
-import { getActiveAcademicTerm, calculateStudentFees, calculateStudentFeeStatus } from '../../utils/feeCalculations';
+import useFeeStructures from '@/hooks/useFeeStructures';
+import usePayments from '@/hooks/usePayments';
+import useStudents from '@/hooks/useStudents';
+import { AlertCircle, CreditCard, Search, TrendingUp } from 'lucide-react';
+import { useState } from 'react';
+import { calculateStudentFees, calculateStudentFeeStatus, getActiveAcademicTerm } from '../../utils/feeCalculations';
 
 const StudentBalances = () => {
   const { students: rawStudents } = useStudents();
@@ -61,7 +61,7 @@ const StudentBalances = () => {
       feeStructures,
       payments
     );
-    
+
     const feeStatus = calculateStudentFeeStatus(
       student.id,
       currentTerm,
@@ -86,14 +86,14 @@ const StudentBalances = () => {
   const studentsWithBalances = students.map(calculateStudentBalance);
 
   const filteredStudents = studentsWithBalances.filter(student => {
-    const matchesSearch = searchTerm === '' || 
+    const matchesSearch = searchTerm === '' ||
       student.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       student.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       student.studentId.includes(searchTerm);
-    
+
     const matchesClass = filterClass === 'all-classes' || student.classAssigned === filterClass;
-    
-    const matchesStatus = filterStatus === 'all-status' || 
+
+    const matchesStatus = filterStatus === 'all-status' ||
       (filterStatus === 'outstanding' && student.balance > 0) ||
       (filterStatus === 'paid' && student.balance === 0 && student.feeStatus.status === 'Fully Paid') ||
       (filterStatus === 'credit' && student.feeStatus.status === 'Credit Balance') ||
@@ -117,7 +117,7 @@ const StudentBalances = () => {
     if (student.feeStatus.status === 'No Fee Set') {
       return <Badge variant="secondary">No Fee Set</Badge>;
     }
-    
+
     if (student.feeStatus.status === 'Credit Balance') {
       return (
         <Badge variant="default" className="bg-blue-500">
@@ -125,7 +125,7 @@ const StudentBalances = () => {
         </Badge>
       );
     }
-    
+
     if (student.balance > 0) {
       const hasArrears = student.arrears > 0;
       return (
@@ -135,7 +135,7 @@ const StudentBalances = () => {
         </Badge>
       );
     }
-    
+
     return (
       <Badge variant="default" className="bg-green-500">
         Fully Paid
@@ -298,9 +298,8 @@ const StudentBalances = () => {
                       </span>
                     </TableCell>
                     <TableCell>
-                      <span className={`font-mono ${
-                        student.arrears > 0 ? 'text-amber-600 font-bold' : 'text-gray-500'
-                      }`}>
+                      <span className={`font-mono ${student.arrears > 0 ? 'text-amber-600 font-bold' : 'text-gray-500'
+                        }`}>
                         GHS {student.arrears.toLocaleString()}
                       </span>
                     </TableCell>
@@ -315,9 +314,8 @@ const StudentBalances = () => {
                       </span>
                     </TableCell>
                     <TableCell>
-                      <span className={`font-mono font-bold ${
-                        student.balance > 0 ? 'text-red-600' : 'text-green-600'
-                      }`}>
+                      <span className={`font-mono font-bold ${student.balance > 0 ? 'text-red-600' : 'text-green-600'
+                        }`}>
                         GHS {student.balance.toLocaleString()}
                       </span>
                       {student.feeStatus.status === 'Credit Balance' && (

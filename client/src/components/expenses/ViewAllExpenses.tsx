@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
@@ -16,9 +16,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
 import useExpenses from '@/hooks/useExpenses';
 import { Search, TrendingDown } from 'lucide-react';
+import { useState } from 'react';
 
 const ViewAllExpenses = () => {
   const { expenses } = useExpenses();

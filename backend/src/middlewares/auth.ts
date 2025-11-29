@@ -9,11 +9,19 @@ export interface AuthRequest extends Request {
 }
 
 export function requireAuth(req: AuthRequest, res: Response, next: NextFunction) {
+  // Support Authorization header OR access_token cookie (httpOnly)
   const auth = req.headers.authorization;
-  if (!auth || !auth.startsWith('Bearer ')) {
-    return res.status(401).json(failure('Missing authorization token'));
+  let token: string | undefined;
+
+  if (auth && auth.startsWith('Bearer ')) {
+    token = auth.split(' ')[1];
+  } else if (req.headers.cookie) {
+    const match = String(req.headers.cookie).split(';').map(s => s.trim()).find(s => s.startsWith('access_token='));
+    if (match) token = match.split('=')[1];
   }
-  const token = auth.split(' ')[1]!; // non-null because we checked the scheme
+
+  if (!token) return res.status(401).json(failure('Missing authorization token'));
+
   try {
     const payload = jwt.verify(token, JWT_SECRET) as any;
     req.user = payload;

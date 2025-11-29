@@ -3,8 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as feeService from '../services/services/feeStructuresService';
 
 export function useFeeStructures() {
-  const { data: feeStructuresResp } = useQuery(['feeStructures'], feeStructuresService.listFeeStructures);
-  const feeStructures = feeStructuresResp?.data || [];
+  const { data: feeStructuresResp } = useQuery<any, Error, any>({ queryKey: ['feeStructures'], queryFn: feeStructuresService.listFeeStructures });
+  const feeStructures = (feeStructuresResp as any)?.data || [];
 
   return {
     feeStructures
@@ -13,17 +13,16 @@ export function useFeeStructures() {
 
 export default useFeeStructures;
 
-export function useFeeStructures() {
-  return useQuery(['feeStructures'], () => feeService.listFeeStructures());
+// Query-only hook (named differently to avoid duplicate export name)
+export function useFeeStructuresQuery() {
+  return useQuery<any, Error, any>({ queryKey: ['feeStructures'], queryFn: () => feeService.listFeeStructures() });
 }
 
 export function useCreateFeeStructure() {
   const qc = useQueryClient();
-  return useMutation((payload: any) => feeService.createFeeStructure(payload), {
-    onSuccess: () => qc.invalidateQueries(['feeStructures']),
-  });
+  return useMutation<any, Error, any>({ mutationFn: (payload: any) => feeService.createFeeStructure(payload), onSuccess: () => qc.invalidateQueries({ queryKey: ['feeStructures'] }) });
 }
 
 export function useFeeStructure(id: number) {
-  return useQuery(['feeStructure', id], () => feeService.getFeeStructure(id));
+  return useQuery<any, Error, any>({ queryKey: ['feeStructure', id], queryFn: () => feeService.getFeeStructure(id) });
 }

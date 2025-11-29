@@ -1,16 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import useStudents from '@/hooks/useStudents';
-import usePayments from '@/hooks/usePayments';
-import useIncome from '@/hooks/useIncome';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { toast } from '@/hooks/use-toast';
+import useClasses from '@/hooks/useClasses';
 import useExpenses from '@/hooks/useExpenses';
 import useFeeStructures from '@/hooks/useFeeStructures';
-import useClasses from '@/hooks/useClasses';
-import { toast } from '@/hooks/use-toast';
-import { BarChart3, Download, FileText, Calculator, DollarSign, TrendingUp, TrendingDown, Users, Calendar } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
+import useIncome from '@/hooks/useIncome';
+import usePayments from '@/hooks/usePayments';
+import useStudents from '@/hooks/useStudents';
+import { BarChart3, Calculator, Calendar, DollarSign, Download, FileText, TrendingDown, TrendingUp } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { reportService } from '../../services';
 import { getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
 
@@ -21,7 +20,7 @@ const ReportsModule = () => {
   const { expenses } = useExpenses();
   const { feeStructures } = useFeeStructures();
   const { classes } = useClasses();
-  
+
   // Normalizers - produce arrays with consistent fields used by reports
   const normalizePayment = (p: any) => ({
     ...p,
@@ -111,7 +110,7 @@ const ReportsModule = () => {
       const date = new Date(record.date);
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       const monthName = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-      
+
       if (!acc[monthKey]) {
         acc[monthKey] = { month: monthName, amount: 0, count: 0 };
       }
@@ -153,7 +152,7 @@ const ReportsModule = () => {
       const date = new Date(expense.date);
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       const monthName = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-      
+
       if (!acc[monthKey]) {
         acc[monthKey] = { month: monthName, amount: 0, count: 0 };
       }
@@ -205,7 +204,7 @@ const ReportsModule = () => {
         expenseBreakdown,
         selectedTerm
       });
-      
+
       const filename = `${reportType}-report-${selectedTerm.replace(/\s+/g, '-').toLowerCase()}.json`;
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -330,28 +329,28 @@ const ReportsModule = () => {
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                   <XAxis dataKey="month" stroke="#64748b" fontSize={12} />
                   <YAxis stroke="#64748b" fontSize={12} />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: 'white', 
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'white',
                       border: '1px solid #e2e8f0',
                       borderRadius: '8px',
                       boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
                     }}
                   />
-                  <Line 
-                    type="monotone" 
-                    dataKey="income" 
-                    stroke="#10B981" 
+                  <Line
+                    type="monotone"
+                    dataKey="income"
+                    stroke="#10B981"
                     strokeWidth={3}
-                    name="Income" 
+                    name="Income"
                     dot={{ fill: '#10B981', strokeWidth: 2, r: 4 }}
                   />
-                  <Line 
-                    type="monotone" 
-                    dataKey="expense" 
-                    stroke="#EF4444" 
+                  <Line
+                    type="monotone"
+                    dataKey="expense"
+                    stroke="#EF4444"
                     strokeWidth={3}
-                    name="Expense" 
+                    name="Expense"
                     dot={{ fill: '#EF4444', strokeWidth: 2, r: 4 }}
                   />
                 </LineChart>
@@ -384,10 +383,10 @@ const ReportsModule = () => {
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip 
+                  <Tooltip
                     formatter={(value: any) => [`GHS ${value.toLocaleString()}`, 'Amount']}
-                    contentStyle={{ 
-                      backgroundColor: 'white', 
+                    contentStyle={{
+                      backgroundColor: 'white',
                       border: '1px solid #e2e8f0',
                       borderRadius: '8px'
                     }}
@@ -420,10 +419,10 @@ const ReportsModule = () => {
                     <span className="text-2xl font-bold text-green-600">GHS {incomeBreakdown.total.toLocaleString()}</span>
                   </div>
                 </div>
-                
+
                 <div className="space-y-3">
                   {Object.entries(incomeBreakdown.bySource)
-                    .sort(([,a], [,b]) => (b as number) - (a as number))
+                    .sort(([, a], [, b]) => (b as number) - (a as number))
                     .map(([source, amount], index) => (
                       <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                         <span className="font-medium text-gray-700">{source}</span>
@@ -460,10 +459,10 @@ const ReportsModule = () => {
                     <span className="text-2xl font-bold text-red-600">GHS {expenseBreakdown.total.toLocaleString()}</span>
                   </div>
                 </div>
-                
+
                 <div className="space-y-3">
                   {Object.entries(expenseBreakdown.byCategory)
-                    .sort(([,a], [,b]) => (b as any).amount - (a as any).amount)
+                    .sort(([, a], [, b]) => (b as any).amount - (a as any).amount)
                     .map(([category, data], index) => (
                       <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                         <div>
@@ -517,26 +516,24 @@ const ReportsModule = () => {
                           {new Date(transaction.date).toLocaleDateString()}
                         </td>
                         <td className="p-3">
-                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                            transaction.type === 'Income' 
-                              ? 'bg-green-100 text-green-800' 
+                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${transaction.type === 'Income'
+                              ? 'bg-green-100 text-green-800'
                               : 'bg-red-100 text-red-800'
-                          }`}>
+                            }`}>
                             {transaction.type}
                           </span>
                         </td>
                         <td className="p-3 text-gray-700">
-                          {'description' in transaction ? transaction.description : 
-                           'source' in transaction ? `Income from ${transaction.source}` : 
-                           'Other transaction'}
+                          {'description' in transaction ? transaction.description :
+                            'source' in transaction ? `Income from ${transaction.source}` :
+                              'Other transaction'}
                         </td>
                         <td className="p-3 text-gray-600">
-                          {'category' in transaction ? transaction.category : 
-                           'source' in transaction ? transaction.source : 'N/A'}
+                          {'category' in transaction ? transaction.category :
+                            'source' in transaction ? transaction.source : 'N/A'}
                         </td>
-                        <td className={`p-3 font-bold text-right ${
-                          transaction.type === 'Income' ? 'text-green-600' : 'text-red-600'
-                        }`}>
+                        <td className={`p-3 font-bold text-right ${transaction.type === 'Income' ? 'text-green-600' : 'text-red-600'
+                          }`}>
                           {transaction.type === 'Income' ? '+' : '-'}GHS {transaction.amount.toLocaleString()}
                         </td>
                       </tr>

@@ -4,20 +4,20 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 export function usePayments() {
   const queryClient = useQueryClient();
+  const { data: paymentsResp } = useQuery<any, Error, any>({ queryKey: ['payments'], queryFn: paymentsService.listPayments });
+  const payments = (paymentsResp as any)?.data || [];
 
-  const { data: paymentsResp } = useQuery(['payments'], paymentsService.listPayments);
-  const payments = paymentsResp?.data || [];
-
-  const createPayment = useMutation((payload: any) => paymentsService.createPayment(payload), {
+  const createPayment = useMutation<any, Error, any>({
+    mutationFn: (payload: any) => paymentsService.createPayment(payload),
     onSuccess: () => {
-      queryClient.invalidateQueries(['payments']);
-      queryClient.invalidateQueries(['students']);
+      queryClient.invalidateQueries({ queryKey: ['payments'] });
+      queryClient.invalidateQueries({ queryKey: ['students'] });
       toast({ title: 'Payment recorded', description: 'Payment successfully saved.' });
     }
   });
 
-  const paymentsByStudent = async (studentId: number) => {
-    const res = await paymentsService.paymentsByStudent(studentId);
+  const paymentsByStudent = async (studentId: number): Promise<any[]> => {
+    const res = (await paymentsService.paymentsByStudent(studentId)) as any;
     return res?.data || [];
   };
 
@@ -29,22 +29,3 @@ export function usePayments() {
 }
 
 export default usePayments;
-
-export function usePayments() {
-  return useQuery(['payments'], () => paymentsService.listPayments());
-}
-
-export function useCreatePayment() {
-  const qc = useQueryClient();
-  return useMutation((payload: any) => paymentsService.createPayment(payload), {
-    onSuccess: () => qc.invalidateQueries(['payments']),
-  });
-}
-
-export function usePayment(id: number) {
-  return useQuery(['payment', id], () => paymentsService.getPayment(id));
-}
-
-export function usePaymentsByStudent(studentId: number) {
-  return useQuery(['payments', 'student', studentId], () => paymentsService.paymentsByStudent(studentId));
-}

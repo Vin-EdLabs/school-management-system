@@ -83,4 +83,21 @@ CREATE TABLE IF NOT EXISTS expenses (
 CREATE INDEX IF NOT EXISTS idx_expenses_year ON expenses(year);
 CREATE INDEX IF NOT EXISTS idx_income_year ON income(year);
 
+CREATE TABLE IF NOT EXISTS events (
+  id SERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  date TIMESTAMP WITH TIME ZONE NOT NULL,
+  time TEXT,
+  description TEXT,
+  color TEXT,
+  category TEXT,
+  reminder BOOLEAN DEFAULT false,
+  reminder_time INTEGER,
+  location TEXT,
+  meta JSONB,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_events_date ON events(date);
+
 -- Note: seed operations (e.g. creating admin user) should be performed separately

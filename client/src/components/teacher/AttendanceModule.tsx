@@ -1,16 +1,16 @@
 
-import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
-import { ClipboardCheck, Calendar, Users, Save } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import useClasses from '@/hooks/useClasses';
 import useStudents from '@/hooks/useStudents';
 import useTeachers from '@/hooks/useTeachers';
-import useClasses from '@/hooks/useClasses';
+import { Calendar, ClipboardCheck, Save, Users } from 'lucide-react';
+import { useState } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
 
 const AttendanceModule = () => {
   const { user } = useAuth();
@@ -21,7 +21,7 @@ const AttendanceModule = () => {
   const teachers = (rawTeachers || []).map((t: any) => ({
     id: t.id ?? String(t.id),
     fullName: t.fullName || t.full_name || `${t.firstName || ''} ${t.lastName || ''}`,
-    staffId: t.staffId || t.staff_id || '' ,
+    staffId: t.staffId || t.staff_id || '',
     classAssigned: t.classAssigned || t.class_assigned || ''
   }));
 
@@ -29,7 +29,7 @@ const AttendanceModule = () => {
     id: s.id ?? String(s.id),
     firstName: s.first_name || s.firstName || '',
     lastName: s.last_name || s.lastName || '',
-    admissionNumber: s.admissionNumber || s.admission_number || '' ,
+    admissionNumber: s.admissionNumber || s.admission_number || '',
     classAssigned: s.classAssigned || s.class_assigned || ''
   }));
 
@@ -42,18 +42,18 @@ const AttendanceModule = () => {
   const [attendance, setAttendance] = useState<Record<string, boolean>>({});
 
   // Find the current teacher's assigned classes based on username or teacherId
-  const currentTeacher = teachers.find(t => 
-    t.staffId === user?.teacherId || 
+  const currentTeacher = teachers.find(t =>
+    t.staffId === user?.teacherId ||
     t.fullName.toLowerCase().includes(user?.username?.toLowerCase() || '')
   );
-  
-  const teacherClasses = currentTeacher?.classAssigned 
+
+  const teacherClasses = currentTeacher?.classAssigned
     ? classes.filter(cls => cls.className === currentTeacher.classAssigned)
     : [];
 
   // Get students for the selected class
   const selectedClassData = classes.find(cls => cls.id === selectedClass);
-  const classStudents = selectedClassData 
+  const classStudents = selectedClassData
     ? students.filter(student => student.classAssigned === selectedClassData.className)
     : [];
 
@@ -254,7 +254,7 @@ const AttendanceModule = () => {
                             checked={attendance[student.id] === true}
                             onCheckedChange={(checked) => handleAttendanceChange(student.id, checked as boolean)}
                           />
-                          <label 
+                          <label
                             htmlFor={`present-${student.id}`}
                             className="text-sm font-medium text-green-600 cursor-pointer"
                           >
@@ -267,7 +267,7 @@ const AttendanceModule = () => {
                             checked={attendance[student.id] === false}
                             onCheckedChange={(checked) => handleAttendanceChange(student.id, !(checked as boolean))}
                           />
-                          <label 
+                          <label
                             htmlFor={`absent-${student.id}`}
                             className="text-sm font-medium text-red-600 cursor-pointer"
                           >

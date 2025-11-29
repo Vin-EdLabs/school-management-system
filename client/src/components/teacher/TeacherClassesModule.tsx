@@ -1,12 +1,10 @@
-import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { useAuth } from '../../contexts/AuthContext';
+import useClasses from '@/hooks/useClasses';
 import useStudents from '@/hooks/useStudents';
 import useTeachers from '@/hooks/useTeachers';
-import useClasses from '@/hooks/useClasses';
-import { BookOpen, Users, Calendar, Clock, ChevronRight } from 'lucide-react';
+import { BookOpen, ChevronRight, Users } from 'lucide-react';
+import { useState } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
 
 const TeacherClassesModule = () => {
   const { user } = useAuth();
@@ -17,7 +15,7 @@ const TeacherClassesModule = () => {
   const teachers = (rawTeachers || []).map((t: any) => ({
     id: t.id ?? String(t.id),
     fullName: t.fullName || t.full_name || `${t.firstName || ''} ${t.lastName || ''}`,
-    staffId: t.staffId || t.staff_id || '' ,
+    staffId: t.staffId || t.staff_id || '',
     classAssigned: t.classAssigned || t.class_assigned || ''
   }));
 
@@ -25,7 +23,7 @@ const TeacherClassesModule = () => {
     id: s.id ?? String(s.id),
     firstName: s.first_name || s.firstName || '',
     lastName: s.last_name || s.lastName || '',
-    admissionNumber: s.admissionNumber || s.admission_number || '' ,
+    admissionNumber: s.admissionNumber || s.admission_number || '',
     classAssigned: s.classAssigned || s.class_assigned || ''
   }));
 
@@ -36,19 +34,19 @@ const TeacherClassesModule = () => {
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
 
   // Find the current teacher's data based on username or teacherId
-  const currentTeacher = teachers.find(t => 
-    t.staffId === user?.teacherId || 
+  const currentTeacher = teachers.find(t =>
+    t.staffId === user?.teacherId ||
     t.fullName.toLowerCase().includes(user?.username?.toLowerCase() || '')
   );
 
   // Get teacher's assigned classes
-  const teacherClasses = currentTeacher?.classAssigned 
+  const teacherClasses = currentTeacher?.classAssigned
     ? classes.filter(cls => cls.className === currentTeacher.classAssigned)
     : [];
 
   // Get students for the selected class
   const selectedClassData = classes.find(cls => cls.id === selectedClass);
-  const classStudents = selectedClassData 
+  const classStudents = selectedClassData
     ? students.filter(student => student.classAssigned === selectedClassData.className)
     : [];
 
@@ -87,8 +85,8 @@ const TeacherClassesModule = () => {
               {teacherClasses.map(cls => {
                 const studentCount = students.filter(s => s.classAssigned === cls.className).length;
                 return (
-                  <div 
-                    key={cls.id} 
+                  <div
+                    key={cls.id}
                     className={`flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors ${selectedClass === cls.id ? 'ring-2 ring-blue-500' : ''}`}
                     onClick={() => setSelectedClass(cls.id)}
                     style={{ cursor: 'pointer' }}

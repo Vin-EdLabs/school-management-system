@@ -4,12 +4,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 export function useExpenses() {
   const qc = useQueryClient();
-  const { data: expensesResp } = useQuery(['expenses'], expensesService.listExpenses);
-  const expenses = expensesResp?.data || [];
+  const { data: expensesResp } = useQuery<any, Error, any>({ queryKey: ['expenses'], queryFn: expensesService.listExpenses });
+  const expenses = (expensesResp as any)?.data || [];
 
-  const createExpense = useMutation((payload: any) => expensesService.createExpense(payload), {
+  const createExpense = useMutation<any, Error, any>({
+    mutationFn: (payload: any) => expensesService.createExpense(payload),
     onSuccess: () => {
-      qc.invalidateQueries(['expenses']);
+      qc.invalidateQueries({ queryKey: ['expenses'] });
       toast({ title: 'Expense recorded', description: 'Expense entry created.' });
     }
   });

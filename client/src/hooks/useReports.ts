@@ -2,13 +2,13 @@ import { useQuery } from '@tanstack/react-query';
 import * as reportsService from '../services/services/reportsService';
 
 export function useReportsSummary() {
-  return useQuery(['reports','summary'], () => reportsService.summary());
+  return useQuery<any, Error, any>({ queryKey: ['reports','summary'], queryFn: () => reportsService.summary() });
 }
 
 export function useReportTerm(termId: number) {
-  return useQuery(['reports','term', termId], () => reportsService.termReport(termId));
+  return useQuery<any, Error, any>({ queryKey: ['reports','term', termId], queryFn: () => reportsService.termReport(termId) });
 }
 
 export function useReportYear(year: number) {
-  return useQuery(['reports','year', year], () => reportsService.yearReport(year));
+  return useQuery<any, Error, any>({ queryKey: ['reports','year', year], queryFn: () => reportsService.yearReport(year) });
 }

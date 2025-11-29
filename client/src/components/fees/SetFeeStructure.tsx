@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { toast } from '@/hooks/use-toast';
 import useClasses from '@/hooks/useClasses';
 import useFeeStructures, { useCreateFeeStructure } from '@/hooks/useFeeStructures';
-import { toast } from '@/hooks/use-toast';
 import { DollarSign, Save } from 'lucide-react';
+import React, { useState } from 'react';
 
 const SetFeeStructure = () => {
   const { classes: rawClasses } = useClasses();
@@ -36,7 +36,7 @@ const SetFeeStructure = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.className || !formData.amount) {
       toast({
         title: "Validation Error",

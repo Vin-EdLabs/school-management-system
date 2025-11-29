@@ -23,10 +23,15 @@ import TeacherClassesModule from './teacher/TeacherClassesModule';
 import TeacherDashboard from './teacher/TeacherDashboard';
 import TeachersModule from './teachers/TeachersModule';
 
-const Dashboard = () => {
+type DashboardProps = {
+  initialModule?: string;
+};
+
+const Dashboard: React.FC<DashboardProps> = ({ initialModule }) => {
   const { hasAccess, user } = useAuth();
   const [activeModule, setActiveModule] = useState(() => {
-    // Set default module based on user role
+    // Use the initialModule prop if provided, otherwise default by role
+    if (initialModule) return initialModule;
     if (user?.role === 'finance') {
       return 'financial-dashboard';
     } else if (user?.role === 'administrator') {

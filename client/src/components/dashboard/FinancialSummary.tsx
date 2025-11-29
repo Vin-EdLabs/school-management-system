@@ -1,11 +1,11 @@
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import useExpenses from '@/hooks/useExpenses';
+import useIncome from '@/hooks/useIncome';
+import usePayments from '@/hooks/usePayments';
 import { Calculator, ChevronDown, ChevronUp, DollarSign, TrendingUp } from 'lucide-react';
 import { useState } from 'react';
-import usePayments from '@/hooks/usePayments';
-import useIncome from '@/hooks/useIncome';
-import useExpenses from '@/hooks/useExpenses';
 
 const FinancialSummary = () => {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -134,7 +134,7 @@ const FinancialSummary = () => {
             <h4 className="font-medium text-gray-800 mb-2">Financial Health</h4>
             <div className="flex items-center space-x-2">
               <div className={`w-3 h-3 rounded-full ${balanceLeft > totalCombinedIncome * 0.2 ? 'bg-green-500' :
-                  balanceLeft > 0 ? 'bg-yellow-500' : 'bg-red-500'
+                balanceLeft > 0 ? 'bg-yellow-500' : 'bg-red-500'
                 }`}></div>
               <span className="text-sm text-gray-600">
                 {balanceLeft > totalCombinedIncome * 0.2 ? 'Excellent - Strong financial position' :

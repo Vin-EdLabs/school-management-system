@@ -30,7 +30,8 @@ export class ApiService {
   }
 
   private async request<T>(endpoint: string, opts: RequestInit = {}): Promise<T> {
-    const res = await fetch(`${this.baseURL}${endpoint}`, opts);
+    const finalOpts: RequestInit = { credentials: 'include', ...opts };
+    const res = await fetch(`${this.baseURL}${endpoint}`, finalOpts);
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       let body: any = text;

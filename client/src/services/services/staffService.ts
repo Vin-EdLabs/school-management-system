@@ -1,5 +1,4 @@
 import { apiService } from '../api';
-import ENDPOINTS from '../endpoints';
 
 const STAFF = '/staff';
 

@@ -1,5 +1,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { apiService } from '../services/api';
+import * as authService from '../services/services/authService';
 
 export type UserRole = 'administrator' | 'finance' | 'super-admin' | 'teacher';
 
@@ -19,10 +21,26 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export { AuthContext };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
+  // Initialize auth state from localStorage synchronously so refreshes don't flash unauthenticated
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('rosaGardensAuth') === 'true';
+    } catch (e) {
+      return false;
+    }
+  });
+
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const s = localStorage.getItem('rosaGardensUser');
+      return s ? JSON.parse(s) : null;
+    } catch (e) {
+      return null;
+    }
+  });
 
   // Default passwords for each role
   const [passwords, setPasswords] = useState({
@@ -33,18 +51,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   useEffect(() => {
-    const authStatus = localStorage.getItem('rosaGardensAuth');
-    const savedUser = localStorage.getItem('rosaGardensUser');
+    // On mount attempt to restore session from httpOnly cookie via API
+    let mounted = true;
+    (async () => {
+      try {
+        const resp: any = await authService.session();
+        const user = resp?.user || (resp?.data && resp.data.user) || null;
+        if (mounted && user) {
+          setIsAuthenticated(true);
+          setUser(user);
+          localStorage.setItem('rosaGardensAuth', 'true');
+          localStorage.setItem('rosaGardensUser', JSON.stringify(user));
+        }
+      } catch (e) {
+        // no session available
+      }
+    })();
+
     const savedPasswords = localStorage.getItem('rosaGardensPasswords');
-
-    if (authStatus === 'true' && savedUser) {
-      setIsAuthenticated(true);
-      setUser(JSON.parse(savedUser));
-    }
-
     if (savedPasswords) {
       setPasswords(JSON.parse(savedPasswords));
     }
+    return () => { mounted = false };
+  }, []);
+
+  // Listen for cross-component login events (e.g. API login via hook)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      const payloadUser = detail?.user || (detail?.username && { username: detail.username, role: detail.role });
+      if (payloadUser) {
+        try {
+          setIsAuthenticated(true);
+          setUser(payloadUser as User);
+          localStorage.setItem('rosaGardensAuth', 'true');
+          localStorage.setItem('rosaGardensUser', JSON.stringify(payloadUser));
+        } catch (err) {
+          // ignore
+        }
+      }
+    };
+
+    window.addEventListener('userLogin', handler as EventListener);
+    return () => window.removeEventListener('userLogin', handler as EventListener);
   }, []);
 
   const login = (username: string, password: string, role: UserRole): boolean => {
@@ -79,6 +128,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
     localStorage.removeItem('rosaGardensAuth');
     localStorage.removeItem('rosaGardensUser');
+    try { localStorage.removeItem('rosaGardensToken'); } catch (e) { }
+    apiService.setAuthToken(null);
   };
 
   const changePassword = (newPassword: string) => {

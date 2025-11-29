@@ -5,12 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
-import { AlertTriangle, Clock, DollarSign, Download, Search, TrendingUp } from 'lucide-react';
-import React, { useMemo, useState } from 'react';
-import useStudents from '@/hooks/useStudents';
 import useClasses from '@/hooks/useClasses';
 import useFeeStructures from '@/hooks/useFeeStructures';
 import usePayments from '@/hooks/usePayments';
+import useStudents from '@/hooks/useStudents';
+import { AlertTriangle, Clock, DollarSign, Download, Search, TrendingUp } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
 import { calculateStudentFees, getActiveAcademicTerm } from '../../utils/feeCalculations';
 
 interface OutstandingFeesProps {

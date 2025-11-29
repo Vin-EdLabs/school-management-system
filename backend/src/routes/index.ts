@@ -3,21 +3,23 @@ import aggregationsRoutes from './aggregations.routes.js';
 import auditRoutes from './audit.routes.js';
 import authRoutes from './auth.routes.js';
 import classesRoutes from './classes.routes.js';
+import eventsRoutes from './events.routes.js';
 import expensesRoutes from './expenses.routes.js';
 import feeRoutes from './fee-structures.routes.js';
 import incomeRoutes from './income.routes.js';
 import notificationsRoutes from './notifications.routes.js';
-import eventsRoutes from './events.routes.js';
 import paymentsRoutes from './payments.routes.js';
 import permissionsRoutes from './permissions.routes.js';
 import reportsRoutes from './reports.routes.js';
 import settingsRoutes from './settings.routes.js';
-import studentsRoutes from './students.routes.js'
+import studentsRoutes from './students.routes.js';
+import teachersRoutes from './teachers.routes.js';
 
 const router = Router();
 
 router.use('/auth', authRoutes);
 router.use('/students', studentsRoutes);
+router.use('/teachers', teachersRoutes);
 router.use('/classes', classesRoutes);
 router.use('/payments', paymentsRoutes);
 router.use('/income', incomeRoutes);

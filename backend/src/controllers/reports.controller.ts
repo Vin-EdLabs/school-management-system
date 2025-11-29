@@ -112,11 +112,3 @@ export async function exportExcel(req: Request, res: Response) {
     return res.status(500).json(failure(err.message));
   }
 }
-
-export async function exportExcel(req: Request, res: Response) {
-  try {
-    return res.json(success({ url: '/reports/export/excel?stub=1' }));
-  } catch (err: any) {
-    return res.status(500).json(failure(err.message));
-  }
-}

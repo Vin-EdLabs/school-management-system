@@ -5,9 +5,10 @@ import express from 'express';
 import morgan from 'morgan';
 import { errorHandler } from './middlewares/errorHandler.js';
 import routes from './routes/index.js';
+import  check  from './scripts/check-db.js';
 
 dotenv.config();
-
+check();
 const app = express();
 
 app.use(cors());

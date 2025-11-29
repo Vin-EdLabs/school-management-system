@@ -4,15 +4,33 @@ import { failure, success } from '../utils/response.js';
 
 export async function login(req: Request, res: Response) {
   const { username, password } = req.body ?? {};
+  // Log received payload (mask password) to aid debugging
+  try {
+    console.log(`Auth login attempt - username: ${String(username)}, passwordProvided: ${password ? 'yes' : 'no'}`);
+  } catch (e) {
+    // swallow logging errors
+  }
+
   if (!username || !password) {
     return res.status(400).json(failure('Username and password required', { field: 'username|password' }));
   }
+
   try {
     const result = await authService.login(username, password);
-    if (result.error) return res.status(401).json(failure(result.message));
+    if (result.error) {
+      // Log reason for failure from service
+      console.warn(`Auth failure for user=${String(username)}: ${result.message}`);
+      return res.status(401).json(failure(result.message));
+    }
     return res.json(success(result));
   } catch (err: any) {
-    return res.status(500).json(failure(err.message ?? 'Login failed'));
+    // Log full error with stack for debugging (only include stack in response in development)
+    console.error('Unhandled error during login:', err?.stack ?? err);
+    const message = err?.message ?? 'Login failed';
+    if (process.env.NODE_ENV === 'development') {
+      return res.status(500).json(failure(message, { stack: err?.stack }));
+    }
+    return res.status(500).json(failure(message));
   }
 }
 

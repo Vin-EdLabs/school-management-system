@@ -1,6 +1,4 @@
--- Initial schema for School Management System
--- Run with: psql -h $PG_HOST -U $PG_USER -d $PG_DATABASE -f 001_init.sql
-
+/* Replace with your SQL commands */
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
   username TEXT UNIQUE NOT NULL,
@@ -85,5 +83,4 @@ CREATE TABLE IF NOT EXISTS expenses (
 CREATE INDEX IF NOT EXISTS idx_expenses_year ON expenses(year);
 CREATE INDEX IF NOT EXISTS idx_income_year ON income(year);
 
--- seed an admin user placeholder (replace password hash after running migrations)
--- INSERT INTO users (username, password_hash, role) VALUES ('admin', '<bcrypt-hash-here>', 'admin');
+-- Note: seed operations (e.g. creating admin user) should be performed separately

@@ -1,6 +1,6 @@
 import bcrypt from 'bcrypt';
 import dotenv from 'dotenv';
-import * as jwt from 'jsonwebtoken';
+import jwt, { type Secret, type SignOptions } from 'jsonwebtoken';
 import * as auditRepo from '../repositories/audit.repository.js';
 import * as tokenRepo from '../repositories/token.repository.js';
 import * as userRepo from '../repositories/user.repository.js';
@@ -15,7 +15,7 @@ export async function login(username: string, password: string) {
   if (!user) return { error: true, message: 'Invalid credentials' };
   const match = await bcrypt.compare(password, user.password_hash);
   if (!match) return { error: true, message: 'Invalid credentials' };
-  const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET as jwt.Secret, { expiresIn: JWT_EXPIRES_IN } as jwt.SignOptions);
+  const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET as Secret, { expiresIn: JWT_EXPIRES_IN } as SignOptions);
   try {
     await auditRepo.insertLoginAudit(user.id, { username });
   } catch (e) {
@@ -34,7 +34,7 @@ export async function logout(token: string) {
 
 export async function session(token: string) {
   try {
-    const payload = jwt.verify(token, JWT_SECRET as jwt.Secret) as any;
+    const payload = jwt.verify(token, JWT_SECRET as Secret) as any;
     const blacklisted = await tokenRepo.isBlacklisted(token);
     if (blacklisted) throw new Error('Logged out');
     return { user: { id: payload.id, username: payload.username, role: payload.role } };

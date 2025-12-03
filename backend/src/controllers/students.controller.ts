@@ -18,6 +18,8 @@ export async function list(req: Request, res: Response) {
 
 export async function create(req: Request, res: Response) {
   try {
+    if (!req.body || !req.body.first_name) return res.status(400).json(failure('Missing first_name'));
+    if (!req.body || !req.body.last_name) return res.status(400).json(failure('Missing last_name'));
     const created = await studentsService.createStudent(req.body);
     return res.status(201).json(success(created));
   } catch (err: any) {

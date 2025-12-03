@@ -1,5 +1,6 @@
 import bcrypt from 'bcrypt';
 import pool from '../config/db.js';
+import { findByUsername, createUser } from '../repositories/user.repository.js';
 
 const seedscript = async () => {
   try {
@@ -23,10 +24,10 @@ const seedscript = async () => {
       return;
     }
 
-    // Check if user exists
-    const { rows } = await pool.query('SELECT id FROM users WHERE username = $1', [username]);
-    if (rows.length > 0) {
-      console.log(`User '${username}' already exists (id=${rows[0].id}).`);
+    // Check if user exists using repository helper
+    const existing = await findByUsername(username);
+    if (existing) {
+      console.log(`User '${username}' already exists (id=${existing.id}).`);
       if (force) {
         // update password and role
         const hash = await bcrypt.hash(password, rounds);
@@ -38,14 +39,15 @@ const seedscript = async () => {
       return;
     }
 
-    // Hash password and insert
+    // Hash password and insert via repository so meta column is populated
     const hash = await bcrypt.hash(password, rounds);
-    const insertRes = await pool.query(
-      'INSERT INTO users (username, password_hash, role, created_at) VALUES ($1, $2, $3, now()) RETURNING id',
-      [username, hash, role]
-    );
+    const meta = {
+      fullName: process.env.SEED_ADMIN_FULLNAME || username,
+      email: process.env.SEED_ADMIN_EMAIL || '',
+    };
+    const created = await createUser(username, hash, role, meta);
 
-    console.log(`Inserted admin user '${username}' with id=${insertRes.rows[0].id}`);
+    console.log(`Inserted admin user '${username}' with id=${created.id}`);
     return;
   } catch (err) {
     console.error('Failed to seed admin user:', err);

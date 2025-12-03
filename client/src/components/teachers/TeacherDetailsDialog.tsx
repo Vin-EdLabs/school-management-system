@@ -102,7 +102,7 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
               <div>
                 <label className="text-sm font-medium text-gray-500">Subjects Taught</label>
                 <div className="flex flex-wrap gap-2 mt-1">
-                  {teacher.subjectsTaught.map((subject, index) => (
+                  {(teacher?.subjectsTaught ?? []).map((subject, index) => (
                     <Badge key={index} variant="secondary">
                       {subject}
                     </Badge>
@@ -128,7 +128,7 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
                 <Calendar className="w-4 h-4 text-gray-500" />
                 <div>
                   <label className="text-sm font-medium text-gray-500">Employment Date</label>
-                  <p className="text-base">{new Date(teacher.employmentDate).toLocaleDateString()}</p>
+                  <p className="text-base">{teacher?.employmentDate ? new Date(teacher.employmentDate).toLocaleDateString() : 'Not provided'}</p>
                 </div>
               </div>
               <div className="flex items-center space-x-2">
@@ -151,7 +151,7 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
                 <div>
                   <label className="text-sm font-medium text-gray-500">Monthly Salary</label>
                   <p className="text-base font-mono">
-                    {teacher.monthlySalary > 0 ? `GHS ${teacher.monthlySalary.toLocaleString()}` : 'Not set'}
+                    {Number(teacher?.monthlySalary ?? 0) > 0 ? `GHS ${Number(teacher.monthlySalary).toLocaleString()}` : 'Not set'}
                   </p>
                 </div>
               </div>

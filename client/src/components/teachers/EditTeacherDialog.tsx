@@ -63,17 +63,17 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
   useEffect(() => {
     if (teacher) {
       setFormData({
-        fullName: teacher.fullName,
-        gender: teacher.gender,
-        dateOfBirth: teacher.dateOfBirth,
-        phoneNumber: teacher.phoneNumber,
-        email: teacher.email,
-        address: teacher.address,
-        subjectsTaught: teacher.subjectsTaught,
-        employmentDate: teacher.employmentDate,
-        monthlySalary: teacher.monthlySalary.toString(),
-        employmentStatus: teacher.employmentStatus,
-        notes: teacher.notes
+        fullName: teacher.fullName ?? '',
+        gender: teacher.gender ?? '',
+        dateOfBirth: teacher.dateOfBirth ?? '',
+        phoneNumber: teacher.phoneNumber ?? '',
+        email: teacher.email ?? '',
+        address: teacher.address ?? '',
+        subjectsTaught: teacher.subjectsTaught ?? [],
+        employmentDate: teacher.employmentDate ?? '',
+        monthlySalary: teacher.monthlySalary != null ? String(teacher.monthlySalary) : '',
+        employmentStatus: teacher.employmentStatus ?? '',
+        notes: teacher.notes ?? ''
       });
     }
   }, [teacher]);

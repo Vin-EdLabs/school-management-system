@@ -24,6 +24,9 @@ export async function get(req: Request, res: Response) {
 
 export async function create(req: Request, res: Response) {
   try {
+    if (!req.body || !req.body.username) return res.status(400).json(failure('Missing username'));
+    if (!req.body || !req.body.password) return res.status(400).json(failure('Missing password'));
+    // Pass all body fields through so service can extract profile meta
     const created = await service.createTeacher(req.body);
     return res.status(201).json(success(created));
   } catch (err: any) {

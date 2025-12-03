@@ -22,6 +22,8 @@ interface AddTeacherFormProps {
 const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
   const { createTeacher } = useTeachers();
   const [formData, setFormData] = useState({
+    username: '',
+    password: '',
     fullName: '',
     gender: '',
     dateOfBirth: '',
@@ -64,14 +66,35 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
       return;
     }
 
+    if (!formData.username || !formData.password) {
+      toast({
+        title: "Validation Error",
+        description: "Please provide a username and password for the teacher",
+        variant: "destructive"
+      });
+      return;
+    }
+
     // Convert salary to number for storage, default to 0 if empty or invalid
     const salaryValue = formData.monthlySalary.trim() === '' ? 0 : parseFloat(formData.monthlySalary) || 0;
 
     // Use the mutation returned by the hook to create the teacher
         createTeacher.mutate(
           {
-            ...formData,
-            monthlySalary: salaryValue
+            username: formData.username,
+            password: formData.password,
+            fullName: formData.fullName,
+            gender: formData.gender,
+            dateOfBirth: formData.dateOfBirth,
+            phoneNumber: formData.phoneNumber,
+            email: formData.email,
+            address: formData.address,
+            subjectsTaught: formData.subjectsTaught,
+            classAssigned: formData.classAssigned,
+            employmentDate: formData.employmentDate,
+            monthlySalary: salaryValue,
+            employmentStatus: formData.employmentStatus,
+            notes: formData.notes
           } as any,
           {
             onSuccess: () => {
@@ -82,6 +105,8 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
     
               // Reset form
               setFormData({
+                username: '',
+                password: '',
                 fullName: '',
                 gender: '',
                 dateOfBirth: '',
@@ -136,6 +161,28 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
                   <SelectItem value="Female">Female</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="username">Username *</Label>
+              <Input
+                id="username"
+                value={formData.username}
+                onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value }))}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">Password *</Label>
+              <Input
+                id="password"
+                type="password"
+                value={formData.password}
+                onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+                required
+              />
             </div>
           </div>
 

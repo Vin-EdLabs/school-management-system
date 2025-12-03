@@ -31,15 +31,19 @@ const ViewAllTeachers = () => {
   const [pendingAction, setPendingAction] = useState<{ type: 'edit' | 'delete', teacher: any } | null>(null);
 
   const filteredTeachers = teachers.filter((teacher: any) => {
-    const matchesSearch = searchTerm === '' ||
-      teacher.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      teacher.staffId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      teacher.email.toLowerCase().includes(searchTerm.toLowerCase());
+    const name = (teacher?.fullName ?? '').toString();
+    const staffId = (teacher?.staffId ?? '').toString();
+    const email = (teacher?.email ?? '').toString();
 
-    const matchesStatus = filterStatus === 'all-status' || teacher.employmentStatus === filterStatus;
+    const matchesSearch = searchTerm === '' ||
+      name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      staffId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      email.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchesStatus = filterStatus === 'all-status' || (teacher?.employmentStatus ?? '') === filterStatus;
     const matchesClass = filterClass === 'all-classes' || filterClass === 'no-class' ?
-      (filterClass === 'no-class' ? !teacher.classAssigned : true) :
-      teacher.classAssigned === filterClass;
+      (filterClass === 'no-class' ? !(teacher?.classAssigned) : true) :
+      (teacher?.classAssigned ?? '') === filterClass;
 
     return matchesSearch && matchesStatus && matchesClass;
   });
@@ -202,12 +206,12 @@ const ViewAllTeachers = () => {
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
-                          {teacher.subjectsTaught.slice(0, 2).map((subject, index) => (
+                          {(teacher?.subjectsTaught ?? []).slice(0, 2).map((subject, index) => (
                             <Badge key={index} variant="outline" className="text-xs">
                               {subject}
                             </Badge>
                           ))}
-                          {teacher.subjectsTaught.length > 2 && (
+                          {(teacher?.subjectsTaught ?? []).length > 2 && (
                             <Badge variant="outline" className="text-xs">
                               +{teacher.subjectsTaught.length - 2}
                             </Badge>
@@ -227,8 +231,8 @@ const ViewAllTeachers = () => {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {teacher.monthlySalary > 0 ? (
-                          <span className="font-mono">GHS {teacher.monthlySalary.toLocaleString()}</span>
+                        {Number(teacher?.monthlySalary ?? 0) > 0 ? (
+                          <span className="font-mono">GHS {Number(teacher.monthlySalary).toLocaleString()}</span>
                         ) : (
                           <span className="text-gray-400">-</span>
                         )}

@@ -1,19 +1,43 @@
 import { query } from '../config/db.js';
 
+function normalizeRow(row: any) {
+  if (!row) return null;
+  let meta = {};
+  try {
+    if (row.meta) meta = typeof row.meta === 'string' ? JSON.parse(row.meta) : row.meta;
+  } catch (e) {
+    meta = {};
+  }
+
+  const email = row.email ?? meta.email ?? null;
+  const displayName = row.display_name ?? meta.displayName ?? meta.display_name ?? null;
+
+  return {
+    id: row.id,
+    username: row.username,
+    role: row.role,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    email,
+    displayName,
+    meta
+  };
+}
+
 export async function listTeachers(limit = 1000) {
-  const res = await query('SELECT id, username, role, created_at FROM users WHERE role = $1 ORDER BY id DESC LIMIT $2', ['teacher', limit]);
-  return res.rows;
+  const res = await query('SELECT id, username, role, created_at, updated_at, meta, email, display_name FROM users WHERE role = $1 ORDER BY id DESC LIMIT $2', ['teacher', limit]);
+  return res.rows.map(normalizeRow);
 }
 
 export async function findTeacherById(id: number) {
-  const res = await query('SELECT id, username, role, created_at FROM users WHERE id = $1 AND role = $2 LIMIT 1', [id, 'teacher']);
-  return res.rows[0];
+  const res = await query('SELECT id, username, role, created_at, updated_at, meta, email, display_name FROM users WHERE id = $1 AND role = $2 LIMIT 1', [id, 'teacher']);
+  return normalizeRow(res.rows[0]);
 }
 
 export async function createTeacher(payload: any) {
-  // payload should contain username and password_hash (or password handled elsewhere)
-  const res = await query('INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3) RETURNING id, username, role', [payload.username, payload.password_hash ?? '', 'teacher']);
-  return res.rows[0];
+  // kept for compatibility but prefer using user.repository.createUser
+  const res = await query('INSERT INTO users (username, password_hash, role, meta) VALUES ($1, $2, $3, $4) RETURNING id, username, role, meta, created_at, updated_at, email, display_name', [payload.username, payload.password_hash ?? '', 'teacher', JSON.stringify(payload.meta ?? {})]);
+  return normalizeRow(res.rows[0]);
 }
 
 export async function updateTeacher(id: number, payload: any) {

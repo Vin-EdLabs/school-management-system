@@ -13,6 +13,7 @@ export async function list(req: Request, res: Response) {
 
 export async function create(req: Request, res: Response) {
   try {
+    if (!req.body || !req.body.name) return res.status(400).json(failure('Missing name'));
     const created = await classesService.createClass(req.body);
     return res.status(201).json(success(created));
   } catch (err: any) {

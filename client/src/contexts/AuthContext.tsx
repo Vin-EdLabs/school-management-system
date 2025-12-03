@@ -166,7 +166,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    // Provide a safe fallback to avoid runtime crashes when a component
+    // inadvertently calls useAuth outside of the provider (useful during
+    // development and tests). Consumers should treat `isAuthenticated === false`
+    // as unauthenticated.
+    return {
+      isAuthenticated: false,
+      user: null,
+      login: () => false,
+      logout: () => {},
+      changePassword: () => {},
+      hasAccess: () => false,
+    } as AuthContextType;
   }
   return context;
 };

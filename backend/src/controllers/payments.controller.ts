@@ -13,6 +13,9 @@ export async function list(req: Request, res: Response) {
 
 export async function create(req: Request, res: Response) {
   try {
+    if (!req.body || req.body.student_id == null) return res.status(400).json(failure('Missing student_id'));
+    if (req.body.amount == null) return res.status(400).json(failure('Missing amount'));
+    if (!req.body.method) return res.status(400).json(failure('Missing method'));
     const recorded = await paymentsService.recordPayment(req.body);
     return res.status(201).json(success(recorded));
   } catch (err: any) {

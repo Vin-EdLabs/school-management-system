@@ -1,14 +1,14 @@
-import React, { useState } from 'react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
-import useTeachers from '@/hooks/useTeachers';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
+import useTeachers from '@/hooks/useTeachers';
 import { UserPlus, X } from 'lucide-react';
+import React, { useState } from 'react';
 
 const SUBJECTS = [
   'Mathematics', 'English', 'Science', 'Social Studies', 'French',
@@ -79,55 +79,55 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
     const salaryValue = formData.monthlySalary.trim() === '' ? 0 : parseFloat(formData.monthlySalary) || 0;
 
     // Use the mutation returned by the hook to create the teacher
-        createTeacher.mutate(
-          {
-            username: formData.username,
-            password: formData.password,
-            fullName: formData.fullName,
-            gender: formData.gender,
-            dateOfBirth: formData.dateOfBirth,
-            phoneNumber: formData.phoneNumber,
-            email: formData.email,
-            address: formData.address,
-            subjectsTaught: formData.subjectsTaught,
-            classAssigned: formData.classAssigned,
-            employmentDate: formData.employmentDate,
-            monthlySalary: salaryValue,
-            employmentStatus: formData.employmentStatus,
-            notes: formData.notes
-          } as any,
-          {
-            onSuccess: () => {
-              toast({
-                title: 'Teacher Added Successfully',
-                description: `${formData.fullName} has been added to the system`
-              });
-    
-              // Reset form
-              setFormData({
-                username: '',
-                password: '',
-                fullName: '',
-                gender: '',
-                dateOfBirth: '',
-                phoneNumber: '',
-                email: '',
-                address: '',
-                subjectsTaught: [],
-                classAssigned: '',
-                employmentDate: '',
-                monthlySalary: '',
-                employmentStatus: 'Active',
-                notes: ''
-              });
-    
-              onSuccess();
-            },
-            onError: () => {
-              toast({ title: 'Error', description: 'Failed to add teacher', variant: 'destructive' });
-            }
-          }
-        );
+    createTeacher.mutate(
+      {
+        username: formData.username,
+        password: formData.password,
+        fullName: formData.fullName,
+        gender: formData.gender,
+        dateOfBirth: formData.dateOfBirth,
+        phoneNumber: formData.phoneNumber,
+        email: formData.email,
+        address: formData.address,
+        subjectsTaught: formData.subjectsTaught,
+        classAssigned: formData.classAssigned,
+        employmentDate: formData.employmentDate,
+        monthlySalary: salaryValue,
+        employmentStatus: formData.employmentStatus,
+        notes: formData.notes
+      } as any,
+      {
+        onSuccess: () => {
+          toast({
+            title: 'Teacher Added Successfully',
+            description: `${formData.fullName} has been added to the system`
+          });
+
+          // Reset form
+          setFormData({
+            username: '',
+            password: '',
+            fullName: '',
+            gender: '',
+            dateOfBirth: '',
+            phoneNumber: '',
+            email: '',
+            address: '',
+            subjectsTaught: [],
+            classAssigned: '',
+            employmentDate: '',
+            monthlySalary: '',
+            employmentStatus: 'Active',
+            notes: ''
+          });
+
+          onSuccess();
+        },
+        onError: () => {
+          toast({ title: 'Error', description: 'Failed to add teacher', variant: 'destructive' });
+        }
+      }
+    );
   };
 
   return (

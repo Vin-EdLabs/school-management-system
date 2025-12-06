@@ -30,18 +30,42 @@ function normalizeMetaRow(row: any) {
 }
 
 export async function findByUsername(username: string) {
-  // Try the richer select first (includes email/display_name if available)
-  try {
-    const res = await query('SELECT id, username, password_hash, role, email, display_name, meta, created_at, updated_at FROM users WHERE username = $1 LIMIT 1', [username]);
-    return normalizeMetaRow(res.rows[0]);
-  } catch (err) {
-    // Fall back to safer select for older schemas without email/display_name
-    const res = await query('SELECT id, username, password_hash, role, meta, created_at, updated_at FROM users WHERE username = $1 LIMIT 1', [username]);
-    return normalizeMetaRow(res.rows[0]);
+  // Try progressively simpler selects to handle schema differences (some DBs lack email/display_name/updated_at)
+  const attempts = [
+    'SELECT id, username, password_hash, role, email, display_name, meta, created_at, updated_at FROM users WHERE username = $1 LIMIT 1',
+    'SELECT id, username, password_hash, role, email, display_name, meta, created_at FROM users WHERE username = $1 LIMIT 1',
+    'SELECT id, username, password_hash, role, meta FROM users WHERE username = $1 LIMIT 1'
+  ];
+  for (const sql of attempts) {
+    try {
+      const res = await query(sql, [username]);
+      return normalizeMetaRow(res.rows[0]);
+    } catch (err) {
+      // try next attempt
+      continue;
+    }
   }
+
+  // If all attempts fail, return null (caller should handle missing user)
+  return null;
 }
 
 export async function createUser(username: string, passwordHash: string, role = 'staff', meta: any = {}) {
-  const res = await query('INSERT INTO users (username, password_hash, role, meta) VALUES ($1, $2, $3, $4) RETURNING id, username, role, meta, created_at, updated_at, email, display_name', [username, passwordHash, role, JSON.stringify(meta ?? {})]);
-  return normalizeMetaRow(res.rows[0]);
+  // Try RETURNING with various column sets to support older schemas
+  const attempts = [
+    'INSERT INTO users (username, password_hash, role, meta) VALUES ($1, $2, $3, $4) RETURNING id, username, role, meta, created_at, updated_at, email, display_name',
+    'INSERT INTO users (username, password_hash, role, meta) VALUES ($1, $2, $3, $4) RETURNING id, username, role, meta, created_at, updated_at, email, display_name',
+    'INSERT INTO users (username, password_hash, role, meta) VALUES ($1, $2, $3, $4) RETURNING id, username, role, meta'
+  ];
+
+  for (const sql of attempts) {
+    try {
+      const res = await query(sql, [username, passwordHash, role, JSON.stringify(meta ?? {})]);
+      return normalizeMetaRow(res.rows[0]);
+    } catch (err) {
+      continue;
+    }
+  }
+
+  throw new Error('Failed to insert into users with expected RETURNING columns');
 }

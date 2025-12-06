@@ -12,6 +12,7 @@ import paymentsRoutes from './payments.routes.js';
 import permissionsRoutes from './permissions.routes.js';
 import reportsRoutes from './reports.routes.js';
 import settingsRoutes from './settings.routes.js';
+import staffRoutes from './staff.routes.js';
 import studentsRoutes from './students.routes.js';
 import teachersRoutes from './teachers.routes.js';
 
@@ -19,6 +20,7 @@ const router = Router();
 
 router.use('/auth', authRoutes);
 router.use('/students', studentsRoutes);
+router.use('/staff', staffRoutes);
 router.use('/teachers', teachersRoutes);
 router.use('/classes', classesRoutes);
 router.use('/payments', paymentsRoutes);

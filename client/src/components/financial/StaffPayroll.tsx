@@ -21,15 +21,9 @@ interface StaffMember {
     lastPaid?: string;
 }
 
-const sampleData: StaffMember[] = [
-    { id: 's1', name: 'Alice Johnson', position: 'Accountant', monthlySalary: 3000, lastPaid: '2025-10-25' },
-    { id: 's2', name: 'Mark Benson', position: 'Clerk', monthlySalary: 1200, lastPaid: '2025-10-25' },
-    { id: 's3', name: 'Grace Lim', position: 'Admin Assistant', monthlySalary: 1500 },
-];
-
 const StaffPayroll: React.FC = () => {
     const { staff: staffFromApi, createStaff, updateStaff, payStaff } = useStaffPayroll();
-    const [staff, setStaff] = useState<StaffMember[]>(sampleData);
+    const [staff, setStaff] = useState<StaffMember[]>([]);
     const [isAddOpen, setIsAddOpen] = useState(false);
     const [formName, setFormName] = useState('');
     const [formPosition, setFormPosition] = useState('');
@@ -40,19 +34,15 @@ const StaffPayroll: React.FC = () => {
     const today = () => new Date().toISOString().split('T')[0];
 
     const handlePay = (id: string) => {
-        const paid = staff.find(s => s.id === id)?.name ?? 'Staff member';
-        // call API to record payment; fallback to local update for immediate UI
-        (payStaff as any).mutate({ id, payload: { date: today() } });
-        setStaff((prev) => prev.map(s => s.id === id ? { ...s, lastPaid: today() } : s));
-        toast({ title: 'Payment recorded', description: `${paid} marked as paid.` });
+        const date = today();
+        payStaff.mutate({ id, payload: { date } });
     };
 
     const handleProcessPayroll = () => {
-        // naive: call payStaff for each staff member (fire-and-forget)
-        (staffFromApi || []).forEach((s: any) => {
-            (payStaff as any).mutate({ id: s.id, payload: { date: today() } });
+        const date = today();
+        staff.forEach((s) => {
+            payStaff.mutate({ id: s.id, payload: { date } });
         });
-        setStaff((prev) => prev.map(s => ({ ...s, lastPaid: today() })));
         toast({ title: 'Payroll processed', description: 'Payroll processed for all staff.' });
     };
 
@@ -75,29 +65,28 @@ const StaffPayroll: React.FC = () => {
         const monthlySalary = typeof formSalary === 'number' ? formSalary : Number(formSalary) || 0;
 
         if (isEditing && editingId) {
-            // update existing locally and via API
-            (updateStaff as any).mutate({ id: editingId, payload: { name: formName, position: formPosition || 'Staff', monthlySalary } });
-            setStaff((prev) => prev.map(s => s.id === editingId ? { ...s, name: formName, position: formPosition || 'Staff', monthlySalary } : s));
+            const updatedMeta = {
+                name: formName,
+                position: formPosition || 'Staff',
+                monthlySalary
+            };
+            updateStaff.mutate({ id: editingId, payload: { meta: updatedMeta } });
             setIsEditing(false);
             setEditingId(null);
             setIsAddOpen(false);
-            toast({ title: 'Updated', description: `${formName} updated.` });
             return;
         }
 
-        const newStaff: StaffMember = {
-            id: `s${Date.now()}`,
+        const newStaff = {
+            username: `staff_${Date.now()}`,
+            password: 'temp123',
             name: formName,
             position: formPosition || 'Staff',
             monthlySalary,
         };
 
-        // create via API and update local list
-        // cast to any to satisfy the mutation's expected input type
         createStaff.mutate(newStaff as any);
-        setStaff((prev) => [newStaff, ...prev]);
         setIsAddOpen(false);
-        toast({ title: 'Added', description: `${newStaff.name} added to payroll.` });
     };
 
     const handleEditClick = (id: string) => {
@@ -124,14 +113,13 @@ const StaffPayroll: React.FC = () => {
 
     // Keep local `staff` in sync with API list when available
     useEffect(() => {
-        if (staffFromApi && staffFromApi.length > 0) {
-            // map API fields into local StaffMember shape where possible
+        if (staffFromApi && Array.isArray(staffFromApi)) {
             setStaff(staffFromApi.map((s: any) => ({
-                id: s.id ?? s._id ?? s.staffId ?? `s${Date.now()}`,
-                name: s.name ?? s.fullName ?? s.full_name ?? 'Staff',
-                position: s.position ?? s.role ?? 'Staff',
-                monthlySalary: Number(s.monthlySalary ?? s.salary ?? s.monthly_salary ?? 0) || 0,
-                lastPaid: s.lastPaid ?? s.last_paid ?? s.last_payment_date ?? undefined
+                id: String(s.id ?? s._id ?? s.staffId ?? ''),
+                name: s.meta?.name ?? s.name ?? s.fullName ?? s.full_name ?? 'Staff',
+                position: s.meta?.position ?? s.position ?? s.role ?? 'Staff',
+                monthlySalary: Number(s.meta?.monthlySalary ?? s.monthlySalary ?? s.salary ?? s.monthly_salary ?? 0),
+                lastPaid: s.meta?.lastPaid ?? s.lastPaid ?? s.last_paid ?? s.last_payment_date ?? undefined
             })));
         }
     }, [staffFromApi]);

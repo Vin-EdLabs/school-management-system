@@ -1,5 +1,5 @@
-import * as repo from '../repositories/teachers.repository.js';
 import bcrypt from 'bcrypt';
+import * as repo from '../repositories/teachers.repository.js';
 import * as userRepo from '../repositories/user.repository.js';
 
 export async function listTeachers() {

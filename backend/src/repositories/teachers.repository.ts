@@ -25,19 +25,61 @@ function normalizeRow(row: any) {
 }
 
 export async function listTeachers(limit = 1000) {
-  const res = await query('SELECT id, username, role, created_at, updated_at, meta, email, display_name FROM users WHERE role = $1 ORDER BY id DESC LIMIT $2', ['teacher', limit]);
-  return res.rows.map(normalizeRow);
+  const attempts = [
+    'SELECT id, username, role, created_at, updated_at, meta, email, display_name FROM users WHERE role = $1 ORDER BY id DESC LIMIT $2',
+    'SELECT id, username, role, created_at, meta, email, display_name FROM users WHERE role = $1 ORDER BY id DESC LIMIT $2',
+    'SELECT id, username, role, created_at, meta FROM users WHERE role = $1 ORDER BY id DESC LIMIT $2'
+  ];
+
+  for (const sql of attempts) {
+    try {
+      const res = await query(sql, ['teacher', limit]);
+      return res.rows.map(normalizeRow);
+    } catch (err) {
+      continue;
+    }
+  }
+
+  return [];
 }
 
 export async function findTeacherById(id: number) {
-  const res = await query('SELECT id, username, role, created_at, updated_at, meta, email, display_name FROM users WHERE id = $1 AND role = $2 LIMIT 1', [id, 'teacher']);
-  return normalizeRow(res.rows[0]);
+  const attempts = [
+    'SELECT id, username, role, created_at, updated_at, meta, email, display_name FROM users WHERE id = $1 AND role = $2 LIMIT 1',
+    'SELECT id, username, role, created_at, meta, email, display_name FROM users WHERE id = $1 AND role = $2 LIMIT 1',
+    'SELECT id, username, role, created_at, meta FROM users WHERE id = $1 AND role = $2 LIMIT 1'
+  ];
+
+  for (const sql of attempts) {
+    try {
+      const res = await query(sql, [id, 'teacher']);
+      return normalizeRow(res.rows[0]);
+    } catch (err) {
+      continue;
+    }
+  }
+
+  return null;
 }
 
 export async function createTeacher(payload: any) {
   // kept for compatibility but prefer using user.repository.createUser
-  const res = await query('INSERT INTO users (username, password_hash, role, meta) VALUES ($1, $2, $3, $4) RETURNING id, username, role, meta, created_at, updated_at, email, display_name', [payload.username, payload.password_hash ?? '', 'teacher', JSON.stringify(payload.meta ?? {})]);
-  return normalizeRow(res.rows[0]);
+  const attempts = [
+    'INSERT INTO users (username, password_hash, role, meta) VALUES ($1, $2, $3, $4) RETURNING id, username, role, meta, created_at, updated_at, email, display_name',
+    'INSERT INTO users (username, password_hash, role, meta) VALUES ($1, $2, $3, $4) RETURNING id, username, role, meta, created_at, email, display_name',
+    'INSERT INTO users (username, password_hash, role, meta) VALUES ($1, $2, $3, $4) RETURNING id, username, role, meta, created_at'
+  ];
+
+  for (const sql of attempts) {
+    try {
+      const res = await query(sql, [payload.username, payload.password_hash ?? '', 'teacher', JSON.stringify(payload.meta ?? {})]);
+      return normalizeRow(res.rows[0]);
+    } catch (err) {
+      continue;
+    }
+  }
+
+  throw new Error('Failed to insert teacher into users with expected RETURNING columns');
 }
 
 export async function updateTeacher(id: number, payload: any) {

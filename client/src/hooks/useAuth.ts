@@ -9,6 +9,17 @@ export function useLogin() {
     mutationFn: (payload: LoginRequest) => authService.login(payload),
     onSuccess: (res: LoginResponse) => {
         const user = res.user || (res as any).data?.user;
+        const token = res.token || (res as any).data?.token;
+
+        // Set token on apiService so subsequent requests include Authorization header
+        if (token) {
+          apiService.setAuthToken(token);
+          try {
+            localStorage.setItem('rosaGardensToken', token);
+          } catch (e) {
+            // ignore storage errors
+          }
+        }
 
         // Notify AuthProvider of the user — server sets httpOnly cookie
         if (user) {

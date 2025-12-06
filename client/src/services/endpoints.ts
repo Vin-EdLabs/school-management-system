@@ -18,6 +18,7 @@ export const ENDPOINTS = {
   reports: '/reports',
   aggregations: '/aggregations',
   settings: '/settings',
+  events: '/events',
 };
 
 export default ENDPOINTS;

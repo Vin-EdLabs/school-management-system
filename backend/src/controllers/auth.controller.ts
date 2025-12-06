@@ -22,7 +22,7 @@ export async function login(req: Request, res: Response) {
       console.warn(`Auth failure for user=${String(username)}: ${result.message}`);
       return res.status(401).json(failure(result.message));
     }
-    // Set access token as httpOnly cookie and return only user info
+    // Set access token as httpOnly cookie and return user info and token (token included as fallback)
     const token = (result as any).token;
     const user = (result as any).user;
     const cookieOptions: any = {
@@ -37,7 +37,8 @@ export async function login(req: Request, res: Response) {
     } catch (e) {
       console.warn('Failed to set cookie for login', e);
     }
-    return res.json(success({ user }));
+    // Include token in response body as a fallback for clients that can't persist httpOnly cookies
+    return res.json(success({ user, token }));
   } catch (err: any) {
     // Log full error with stack for debugging (only include stack in response in development)
     console.error('Unhandled error during login:', err?.stack ?? err);

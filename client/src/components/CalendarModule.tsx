@@ -11,6 +11,7 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
+import { apiService } from '@/services/api';
 import { addMonths, format, isSameDay, isSameMonth, subMonths } from 'date-fns';
 import { Bell, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, Edit, Eye, MapPin, Plus, Tag, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -88,17 +89,14 @@ export default function CalendarModule() {
     }
 
     let cancelled = false;
-    const url = `${base.replace(/\/$/, '')}/events`;
 
-    fetch(url)
-      .then((res) => {
-        if (!res.ok) throw new Error(`Failed to fetch events: ${res.status}`);
-        return res.json();
-      })
+    apiService.get<any>('/events')
       .then((data) => {
         if (cancelled) return;
-        if (!Array.isArray(data)) throw new Error('Invalid events payload');
-        const mapped: CalendarEvent[] = data.map((e: any) => ({
+        // Handle both direct array response and {error, data} response format
+        const eventsList = Array.isArray(data) ? data : (data?.data || data);
+        if (!Array.isArray(eventsList)) throw new Error('Invalid events payload');
+        const mapped: CalendarEvent[] = eventsList.map((e: any) => ({
           id: String(e.id ?? e._id ?? Date.now()),
           title: e.title ?? e.name ?? 'Untitled Event',
           date: e.date ? new Date(e.date) : new Date(),

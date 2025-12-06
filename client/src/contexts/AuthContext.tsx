@@ -55,6 +55,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let mounted = true;
     (async () => {
       try {
+        // Try to restore token from localStorage and set on apiService
+        const savedToken = localStorage.getItem('rosaGardensToken');
+        if (savedToken) {
+          apiService.setAuthToken(savedToken);
+        }
+
         const resp: any = await authService.session();
         const user = resp?.user || (resp?.data && resp.data.user) || null;
         if (mounted && user) {
@@ -174,8 +180,8 @@ export const useAuth = () => {
       isAuthenticated: false,
       user: null,
       login: () => false,
-      logout: () => {},
-      changePassword: () => {},
+      logout: () => { },
+      changePassword: () => { },
       hasAccess: () => false,
     } as AuthContextType;
   }

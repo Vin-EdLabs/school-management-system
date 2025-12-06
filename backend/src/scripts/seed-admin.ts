@@ -1,6 +1,6 @@
 import bcrypt from 'bcrypt';
 import pool from '../config/db.js';
-import { findByUsername, createUser } from '../repositories/user.repository.js';
+import { createUser, findByUsername } from '../repositories/user.repository.js';
 
 const seedscript = async () => {
   try {

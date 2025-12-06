@@ -13,8 +13,20 @@ export async function list(req: Request, res: Response) {
 
 export async function create(req: Request, res: Response) {
   try {
-    if (!req.body || !req.body.name) return res.status(400).json(failure('Missing name'));
-    const created = await classesService.createClass(req.body);
+    // Normalize payload: accept client-side `className`/`assignedTeacher` shape
+    const body = req.body || {};
+    const name = body.name || body.className || body.title;
+    if (!name) return res.status(400).json(failure('Missing name'));
+
+    const teacher_id = body.teacher_id ?? body.assignedTeacher ?? body.assigned_teacher ?? null;
+    const meta = {
+      level: body.level ?? null,
+      stream: body.stream ?? null,
+      maxClassSize: body.maxClassSize ?? body.max_class_size ?? null,
+      students: body.students ?? []
+    };
+
+    const created = await classesService.createClass({ name, teacher_id, meta });
     return res.status(201).json(success(created));
   } catch (err: any) {
     return res.status(500).json(failure(err.message));

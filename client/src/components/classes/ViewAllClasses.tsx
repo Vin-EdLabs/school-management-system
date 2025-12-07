@@ -11,18 +11,25 @@ import useStudents from '@/hooks/useStudents';
 import useTeachers from '@/hooks/useTeachers';
 import { Edit, Search, Trash2, UserPlus, Users } from 'lucide-react';
 import { useState } from 'react';
+import EditClassDialog from './EditClassDialog';
 
 const ViewAllClasses = () => {
-  const { classes: rawClasses, deleteClass } = useClasses();
+  const { classes: rawClasses, deleteClass, updateClass } = useClasses();
   const { students: rawStudents } = useStudents();
   const { teachers: rawTeachers } = useTeachers();
-  const classes = (rawClasses || []).map((c: any) => ({
-    id: c.id ?? c._id ?? String(c.id),
-    className: c.className || c.class_name || c.name || '',
-    level: c.level || c.grade || '',
-    stream: c.stream || '',
-    maxClassSize: c.maxClassSize ?? c.max_class_size ?? c.capacity ?? 30
-  }));
+  const classes = (rawClasses || []).map((c: any) => {
+    const level = c.level || c.grade || '';
+    const stream = c.stream || '';
+    const className = stream ? `${level} ${stream}` : level;
+    return {
+      id: c.id ?? c._id ?? String(c.id),
+      className: className,
+      level: level,
+      stream: stream,
+      maxClassSize: c.maxClassSize ?? c.max_class_size ?? c.capacity ?? 30,
+      teacher_id: c.teacher_id || c.teacherId
+    };
+  });
 
   const students = (rawStudents || []).map((s: any) => ({
     id: s.id ?? String(s.id),
@@ -62,7 +69,9 @@ const ViewAllClasses = () => {
 
   const getClassStats = (classItem: any) => {
     const studentsInClass = students.filter(student => student.classAssigned === classItem.className);
-    const assignedTeacher = teachers.find(teacher => teacher.classAssigned === classItem.className);
+    const assignedTeacher = classItem.teacher_id
+      ? teachers.find(teacher => String(teacher.id) === String(classItem.teacher_id))
+      : null;
 
     return {
       studentCount: studentsInClass.length,
@@ -86,6 +95,14 @@ const ViewAllClasses = () => {
     if (window.confirm(`Are you sure you want to delete ${classItem.className}?`)) {
       deleteClass.mutate(classItem.id);
     }
+  };
+
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [selectedClass, setSelectedClass] = useState<any | null>(null);
+
+  const handleEditClass = (classItem: any) => {
+    setSelectedClass(classItem);
+    setShowEditDialog(true);
   };
 
   if (classes.length === 0) {
@@ -197,7 +214,7 @@ const ViewAllClasses = () => {
                         <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
                           <div
                             className={`h-1.5 rounded-full ${capacityPercentage > 90 ? 'bg-red-500' :
-                                capacityPercentage > 75 ? 'bg-yellow-500' : 'bg-green-500'
+                              capacityPercentage > 75 ? 'bg-yellow-500' : 'bg-green-500'
                               }`}
                             style={{ width: `${Math.min(capacityPercentage, 100)}%` }}
                           ></div>
@@ -222,6 +239,7 @@ const ViewAllClasses = () => {
                             variant="ghost"
                             size="sm"
                             className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                            onClick={() => handleEditClass(classItem)}
                           >
                             <Edit className="w-4 h-4" />
                           </Button>
@@ -250,8 +268,17 @@ const ViewAllClasses = () => {
           </div>
         )}
       </CardContent>
+      {selectedClass && (
+        <EditClassDialog
+          classItem={selectedClass}
+          open={showEditDialog}
+          onClose={() => { setShowEditDialog(false); setSelectedClass(null); }}
+          onSuccess={() => setShowEditDialog(false)}
+        />
+      )}
     </Card>
   );
 };
 
 export default ViewAllClasses;
+

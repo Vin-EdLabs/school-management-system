@@ -21,7 +21,7 @@ export async function login(username: string, password: string) {
   } catch (e) {
     console.warn('Failed to write audit login', e);
   }
-  return { token, user: { id: user.id, username: user.username, role: user.role } };
+  return { token, user: { id: user.id, username: user.username, role: user.role, passwordChanged: user.password_changed } };
 }
 
 export async function logout(token: string) {
@@ -41,4 +41,23 @@ export async function session(token: string) {
   } catch (err) {
     throw new Error('Invalid or expired token');
   }
+}
+
+export async function changePassword(userId: number, oldPassword: string, newPassword: string) {
+  const user = await userRepo.findByUserId(userId);
+  if (!user) throw new Error('User not found');
+  
+  const match = await bcrypt.compare(oldPassword, user.password_hash);
+  if (!match) throw new Error('Current password is incorrect');
+  
+  const newHash = await bcrypt.hash(newPassword, 10);
+  return userRepo.updateUser(userId, { password_hash: newHash, password_changed: true });
+}
+
+export async function verifyPassword(userId: number, password: string) {
+  const user = await userRepo.findByUserId(userId);
+  if (!user) throw new Error('User not found');
+  
+  const match = await bcrypt.compare(password, user.password_hash);
+  return match;
 }

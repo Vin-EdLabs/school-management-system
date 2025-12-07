@@ -1,5 +1,5 @@
 import { toast } from '@/hooks/use-toast';
-import * as paymentsService from '@/services/services/paymentsService';
+import * as paymentsService from '@/services/paymentsService';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 export function usePayments() {

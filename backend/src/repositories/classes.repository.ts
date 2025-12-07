@@ -1,7 +1,7 @@
 import { query } from '../config/db.js';
 
-export async function createClass(payload: { name: string; teacher_id?: number; meta?: any }) {
-  const res = await query('INSERT INTO classes (name, teacher_id, meta) VALUES ($1, $2, $3) RETURNING *', [payload.name, payload.teacher_id ?? null, JSON.stringify(payload.meta ?? {})]);
+export async function createClass(payload: { teacher_id?: number; level: string; stream?: string; max_class_size?: number }) {
+  const res = await query('INSERT INTO classes (teacher_id, level, stream, max_class_size, meta) VALUES ($1, $2, $3, $4, $5) RETURNING *', [payload.teacher_id ?? null, payload.level, payload.stream ?? null, payload.max_class_size ?? 30, JSON.stringify({})]);
   return res.rows[0];
 }
 
@@ -11,7 +11,32 @@ export async function getClassById(id: number) {
 }
 
 export async function updateClass(id: number, payload: any) {
-  await query('UPDATE classes SET meta = $1, name = $2, teacher_id = $3 WHERE id = $4', [JSON.stringify(payload.meta ?? {}), payload.name, payload.teacher_id ?? null, id]);
+  const setClauses = [];
+  const values: any[] = [];
+  let paramIndex = 1;
+
+  if (payload.teacher_id !== undefined) {
+    setClauses.push(`teacher_id = $${paramIndex++}`);
+    values.push(payload.teacher_id ?? null);
+  }
+  if (payload.level !== undefined) {
+    setClauses.push(`level = $${paramIndex++}`);
+    values.push(payload.level ?? null);
+  }
+  if (payload.stream !== undefined) {
+    setClauses.push(`stream = $${paramIndex++}`);
+    values.push(payload.stream ?? null);
+  }
+  if (payload.max_class_size !== undefined) {
+    setClauses.push(`max_class_size = $${paramIndex++}`);
+    values.push(payload.max_class_size ?? 30);
+  }
+
+  if (setClauses.length === 0) return getClassById(id);
+
+  values.push(id);
+  const sql = `UPDATE classes SET ${setClauses.join(', ')} WHERE id = $${paramIndex}`;
+  await query(sql, values);
   return getClassById(id);
 }
 

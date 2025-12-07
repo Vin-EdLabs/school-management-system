@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { apiService } from '../services/api';
-import * as authService from '../services/services/authService';
+import * as authService from '../services/authService';
 
 export type UserRole = 'administrator' | 'finance' | 'super-admin' | 'teacher';
 

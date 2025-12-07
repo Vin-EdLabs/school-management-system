@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import * as aggService from '../services/services/aggregationsService';
+import * as aggService from '../services/aggregationsService';
 
 export function useFeesByTerm(termId: number) {
   return useQuery({

@@ -14,6 +14,7 @@ import FeesModule from './fees/FeesModule';
 import PrintFeeStatusModule from './fees/PrintFeeStatusModule';
 import StaffPayroll from './financial/StaffPayroll';
 import IncomeModule from './income/IncomeModule';
+import PayrollManagement from './payroll/PayrollManagement';
 import ReportsModule from './reports/ReportsModule';
 import SettingsModule from './settings/SettingsModule';
 import StudentsModule from './students/StudentsModule';
@@ -91,6 +92,8 @@ const Dashboard: React.FC<DashboardProps> = ({ initialModule }) => {
         return <ReportsModule />;
       case 'staff-payroll':
         return <StaffPayroll />;
+      case 'payroll':
+        return <PayrollManagement />;
       case 'print-fee-status':
         return <PrintFeeStatusModule />;
       case 'settings':

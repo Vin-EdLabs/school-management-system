@@ -1,6 +1,6 @@
 import * as classesRepo from '../repositories/classes.repository.js';
 
-export async function createClass(payload: { name: string; teacher_id?: number; meta?: any }) {
+export async function createClass(payload: { teacher_id?: number; level: string; stream?: string; max_class_size?: number }) {
   return classesRepo.createClass(payload);
 }
 

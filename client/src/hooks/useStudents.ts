@@ -1,5 +1,5 @@
 import { toast } from '@/hooks/use-toast';
-import * as studentsService from '@/services/services/studentsService';
+import * as studentsService from '@/services/studentsService';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CreateStudentPayload } from '../types/student';
 

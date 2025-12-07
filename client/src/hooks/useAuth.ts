@@ -1,7 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiService } from '../services/api';
-import * as authService from '../services/services/authService';
+import * as authService from '../services/authService';
 import type { LoginRequest, LoginResponse } from '../types/auth';
+
+type ChangePasswordPayload = {
+  oldPassword: string;
+  newPassword: string;
+};
 
 export function useLogin() {
   const qc = useQueryClient();
@@ -46,6 +51,23 @@ export function useLogout() {
       apiService.setAuthToken(null);
       qc.clear();
     },
+  });
+}
+
+export function useChangePassword() {
+  const qc = useQueryClient();
+  return useMutation<any, Error, ChangePasswordPayload>({
+    mutationFn: ({ oldPassword, newPassword }: ChangePasswordPayload) =>
+      authService.changePassword(oldPassword, newPassword),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['session'] });
+    },
+  });
+}
+
+export function useVerifyPassword() {
+  return useMutation<any, Error, string>({
+    mutationFn: (password: string) => authService.verifyPassword(password),
   });
 }
 

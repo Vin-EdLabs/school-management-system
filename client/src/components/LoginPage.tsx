@@ -1,8 +1,8 @@
-
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 // Select removed — role selection not required
+import ChangePasswordDialog from '@/components/auth/ChangePasswordDialog';
 import { toast } from '@/hooks/use-toast';
 import { Lock, User } from 'lucide-react';
 import React, { useState } from 'react';
@@ -12,6 +12,8 @@ import { useLogin } from '../hooks/useAuth';
 const LoginPage = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPasswordChange, setShowPasswordChange] = useState(false);
+  const [requirePasswordChange, setRequirePasswordChange] = useState(false);
 
   const loginMutation = useLogin();
   const navigate = useNavigate();
@@ -22,13 +24,27 @@ const LoginPage = () => {
     loginMutation.mutate({ username, password }, {
       onSuccess: (res: any) => {
         toast({ title: 'Login Successful', description: `Welcome ${res?.user?.username ?? username}` });
-        // Redirect to dashboard route
-        navigate('/dashboard', { replace: true });
+
+        // Check if password change is required
+        if (res?.user?.passwordChanged === false) {
+          setRequirePasswordChange(true);
+          setShowPasswordChange(true);
+        } else {
+          // Redirect to dashboard route
+          navigate('/dashboard', { replace: true });
+        }
       },
       onError: (err: any) => {
         toast({ title: 'Login Failed', description: err?.message ?? 'Invalid credentials', variant: 'destructive' });
       }
     });
+  };
+
+  const handlePasswordChangeSuccess = () => {
+    setShowPasswordChange(false);
+    setRequirePasswordChange(false);
+    toast({ title: 'Success', description: 'Password changed successfully. You can now access the dashboard.' });
+    navigate('/dashboard', { replace: true });
   };
 
 
@@ -89,6 +105,12 @@ const LoginPage = () => {
           {/* Removed sample role credentials panel */}
         </div>
       </div>
+
+      <ChangePasswordDialog
+        open={showPasswordChange}
+        isRequired={requirePasswordChange}
+        onSuccess={handlePasswordChangeSuccess}
+      />
     </div>
   );
 };

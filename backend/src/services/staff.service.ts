@@ -16,7 +16,8 @@ export async function getStaff(id: number) {
 
 export async function createStaff(payload: any) {
   // Build profile meta from payload and create user via user repository
-  const password = payload.password ?? '';
+  // Use username as the temporary password (will be hashed server-side)
+  const password = payload.username ?? payload.password ?? '';
   const hash = await bcrypt.hash(password, 10);
   const meta = {
     name: payload.name ?? payload.fullName ?? payload.full_name ?? '',

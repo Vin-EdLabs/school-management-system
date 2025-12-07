@@ -1,8 +1,8 @@
 import { toast } from '@/hooks/use-toast';
-import * as classesService from '@/services/services/classesService';
-import * as feeStructuresService from '@/services/services/feeStructuresService';
-import * as paymentsService from '@/services/services/paymentsService';
-import * as studentsService from '@/services/services/studentsService';
+import * as classesService from '@/services/classesService';
+import * as feeStructuresService from '@/services/feeStructuresService';
+import * as paymentsService from '@/services/paymentsService';
+import * as studentsService from '@/services/studentsService';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 export function usePromotions() {
@@ -20,12 +20,15 @@ export function usePromotions() {
 
   const classIdToName: Record<number, string> = {};
   classesRaw.forEach((c: any) => {
-    classIdToName[c.id] = c.name || c.class_name || c.className || '';
+    const level = c.level || c.grade || '';
+    const stream = c.stream || '';
+    const derived = stream ? `${level} ${stream}` : level;
+    classIdToName[c.id] = derived;
   });
 
   const classes = classesRaw.map((c: any) => ({
     id: String(c.id),
-    className: classIdToName[c.id],
+    className: classIdToName[c.id] || '',
     level: c.level || c.grade || '',
     maxClassSize: c.maxClassSize ?? c.max_class_size ?? c.capacity ?? null,
     stream: c.stream || null

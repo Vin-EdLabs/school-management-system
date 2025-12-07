@@ -1,5 +1,5 @@
 import { toast } from '@/hooks/use-toast';
-import * as teachersService from '@/services/services/teachersService';
+import * as teachersService from '@/services/teachersService';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 export function useTeachers() {

@@ -21,6 +21,7 @@ interface AddTeacherFormProps {
 
 const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
   const { createTeacher } = useTeachers();
+  const [userEditedUsername, setUserEditedUsername] = useState(false);
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -37,6 +38,22 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
     employmentStatus: 'Active',
     notes: ''
   });
+
+  const generateUsername = (name: string) => {
+    const base = name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '')
+      .slice(0, 12) || 'teacher';
+    const rand = Math.floor(100 + Math.random() * 900);
+    return `${base}${rand}`;
+  };
+
+  // Sync password with username whenever username changes
+  React.useEffect(() => {
+    if (formData.username && formData.password !== formData.username) {
+      setFormData(prev => ({ ...prev, password: prev.username }));
+    }
+  }, [formData.username]);
 
   const handleAddSubject = (subject: string) => {
     if (!formData.subjectsTaught.includes(subject)) {
@@ -120,6 +137,7 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
             employmentStatus: 'Active',
             notes: ''
           });
+          setUserEditedUsername(false);
 
           onSuccess();
         },
@@ -146,7 +164,16 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
               <Input
                 id="fullName"
                 value={formData.fullName}
-                onChange={(e) => setFormData(prev => ({ ...prev, fullName: e.target.value }))}
+                onChange={(e) => {
+                  const name = e.target.value;
+                  const username = userEditedUsername ? formData.username : generateUsername(name);
+                  setFormData(prev => ({
+                    ...prev,
+                    fullName: name,
+                    username,
+                    password: username
+                  }));
+                }}
                 required
               />
             </div>
@@ -166,21 +193,30 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="username">Username *</Label>
+              <Label htmlFor="username">Username (Auto-generated) *</Label>
               <Input
                 id="username"
                 value={formData.username}
-                onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value }))}
+                onChange={(e) => {
+                  setUserEditedUsername(true);
+                  const username = e.target.value;
+                  setFormData(prev => ({ ...prev, username, password: username }));
+                }}
+                disabled
+                className="bg-gray-100 text-gray-900 cursor-not-allowed"
                 required
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password *</Label>
+              <Label htmlFor="password">Password (Same as username, change on first login) *</Label>
               <Input
                 id="password"
-                type="password"
+                type="text"
                 value={formData.password}
+                placeholder={formData.username || 'Will auto-generate from username'}
                 onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+                disabled
+                className="bg-gray-100 text-gray-900 cursor-not-allowed"
                 required
               />
             </div>

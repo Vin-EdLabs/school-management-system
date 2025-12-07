@@ -1,5 +1,5 @@
 import { toast } from '@/hooks/use-toast';
-import * as staffService from '@/services/services/staffService';
+import * as staffService from '@/services/staffService';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 export default function useStaffPayroll() {

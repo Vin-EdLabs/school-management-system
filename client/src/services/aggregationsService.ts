@@ -1,5 +1,9 @@
-import { apiService } from '../api';
-import ENDPOINTS from '../endpoints';
+import { apiService } from './api';
+import ENDPOINTS from './endpoints';
+
+export async function getAggregations(filters?: any): Promise<{ data: any }> {
+  return apiService.get(ENDPOINTS.aggregations);
+}
 
 export async function feesByTerm(termId: number) {
   return apiService.get(`${ENDPOINTS.aggregations}/fees/term/${termId}`);
@@ -13,8 +17,4 @@ export async function expensesByYear(year: number) {
   return apiService.get(`${ENDPOINTS.aggregations}/expenses/year/${year}`);
 }
 
-export async function netByYear(year: number) {
-  return apiService.get(`${ENDPOINTS.aggregations}/net/year/${year}`);
-}
-
-export default { feesByTerm, incomeByYear, expensesByYear, netByYear };
+export default { getAggregations, feesByTerm, incomeByYear, expensesByYear };

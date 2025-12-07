@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS payroll_reports CASCADE;
+DROP TABLE IF EXISTS payroll_deductions CASCADE;
+DROP TABLE IF EXISTS payroll_payments CASCADE;
+DROP TABLE IF EXISTS payroll_items CASCADE;
+DROP TABLE IF EXISTS payroll_runs CASCADE;

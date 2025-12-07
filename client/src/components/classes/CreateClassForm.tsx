@@ -8,7 +8,7 @@ import { toast } from '@/hooks/use-toast';
 import useClasses from '@/hooks/useClasses';
 import useTeachers from '@/hooks/useTeachers';
 import { Plus, Save } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 
 interface CreateClassFormProps {
   onSuccess?: () => void;
@@ -18,9 +18,8 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
   const { createClass } = useClasses();
   const { teachers } = useTeachers();
   const [formData, setFormData] = useState({
-    className: '',
     level: '',
-    stream: 'no-stream',
+    stream: '',
     assignedTeacher: 'no-teacher',
     maxClassSize: 30
   });
@@ -32,11 +31,32 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
 
   const streams = ['Red', 'Blue', 'Green', 'Yellow', 'Orange', 'Purple', 'A', 'B', 'C', 'D'];
 
+  const resolvedLevel = useMemo(
+    () => formData.level.trim(),
+    [formData.level]
+  );
+
+  const resolvedStream = useMemo(
+    () => formData.stream.trim(),
+    [formData.stream]
+  );
+
+  const derivedClassName = useMemo(() => {
+    if (!resolvedLevel) return '';
+    if (!resolvedStream) return resolvedLevel;
+    return `${resolvedLevel} ${resolvedStream}`;
+  }, [resolvedLevel, resolvedStream]);
+
   const activeTeachers = (teachers || []).filter((teacher: any) =>
     teacher.employmentStatus === 'Active' &&
     (teacher.fullName || teacher.full_name) &&
     (teacher.fullName || teacher.full_name).trim() !== ''
   );
+
+  const selectedTeacher = useMemo(() => {
+    if (!formData.assignedTeacher || formData.assignedTeacher === 'no-teacher') return null;
+    return activeTeachers.find((teacher: any) => String(teacher.id) === formData.assignedTeacher);
+  }, [formData.assignedTeacher, activeTeachers]);
 
   const handleInputChange = (field: string, value: any) => {
     setFormData(prev => ({
@@ -49,10 +69,10 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
     e.preventDefault();
 
     // Validation
-    if (!formData.className || !formData.level) {
+    if (!resolvedLevel) {
       toast({
         title: "Validation Error",
-        description: "Please fill in class name and level",
+        description: "Please select or enter a level",
         variant: "destructive"
       });
       return;
@@ -60,19 +80,16 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
 
     try {
       createClass.mutate({
-        className: formData.className,
-        level: formData.level,
-        stream: formData.stream === 'no-stream' ? '' : formData.stream,
+        level: resolvedLevel,
+        stream: resolvedStream,
         assignedTeacher: formData.assignedTeacher === 'no-teacher' ? '' : formData.assignedTeacher,
-        maxClassSize: formData.maxClassSize,
-        students: []
+        maxClassSize: formData.maxClassSize
       });
 
       // Reset form
       setFormData({
-        className: '',
         level: '',
-        stream: 'no-stream',
+        stream: '',
         assignedTeacher: 'no-teacher',
         maxClassSize: 30
       });
@@ -99,48 +116,14 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="className">Class Name *</Label>
+              <Label htmlFor="className">Class Name (Preview) *</Label>
               <Input
                 id="className"
-                value={formData.className}
-                onChange={(e) => handleInputChange('className', e.target.value)}
-                placeholder="e.g., Primary 4 Yellow"
-                required
+                value={derivedClassName}
+                placeholder="Will be generated from level and stream"
+                readOnly
+                className="bg-muted"
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="level">Level *</Label>
-              <Select value={formData.level} onValueChange={(value) => handleInputChange('level', value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select level" />
-                </SelectTrigger>
-                <SelectContent>
-                  {levels.map((level) => (
-                    <SelectItem key={level} value={level}>
-                      {level}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="stream">Stream/Section</Label>
-              <Select value={formData.stream} onValueChange={(value) => handleInputChange('stream', value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select stream (optional)" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="no-stream">No stream</SelectItem>
-                  {streams.map((stream) => (
-                    <SelectItem key={stream} value={stream}>
-                      {stream}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="maxClassSize">Maximum Class Size</Label>
@@ -155,17 +138,53 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
             </div>
           </div>
 
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="level">Level *</Label>
+              <Input
+                id="level"
+                list="levels-list"
+                value={formData.level}
+                onChange={(e) => handleInputChange('level', e.target.value)}
+                placeholder="Select or type a level"
+                required
+              />
+              <datalist id="levels-list">
+                {levels.map((level) => (
+                  <option key={level} value={level} />
+                ))}
+              </datalist>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="stream">Stream/Section</Label>
+              <Input
+                id="stream"
+                list="streams-list"
+                value={formData.stream}
+                onChange={(e) => handleInputChange('stream', e.target.value)}
+                placeholder="Select or type a stream (optional)"
+              />
+              <datalist id="streams-list">
+                {streams.map((stream) => (
+                  <option key={stream} value={stream} />
+                ))}
+              </datalist>
+            </div>
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="assignedTeacher">Assigned Class Teacher</Label>
             <Select value={formData.assignedTeacher} onValueChange={(value) => handleInputChange('assignedTeacher', value)}>
               <SelectTrigger>
-                <SelectValue placeholder="Select teacher (optional)" />
+                <SelectValue placeholder="Select teacher (optional)">
+                  {selectedTeacher ? selectedTeacher.fullName || selectedTeacher.full_name : 'Select teacher (optional)'}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="no-teacher">No teacher assigned</SelectItem>
                 {activeTeachers.map((teacher) => (
-                  <SelectItem key={teacher.id} value={teacher.id}>
-                    {teacher.fullName} {teacher.classAssigned ? `(Currently: ${teacher.classAssigned})` : ''}
+                  <SelectItem key={teacher.id} value={String(teacher.id)}>
+                    {teacher.fullName || teacher.full_name} {teacher.classAssigned ? `(Currently: ${teacher.classAssigned})` : ''}
                   </SelectItem>
                 ))}
               </SelectContent>

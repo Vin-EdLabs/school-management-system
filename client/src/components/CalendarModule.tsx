@@ -11,7 +11,7 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
-import { apiService } from '@/services/api';
+import { useEvents } from '@/hooks/useEvents';
 import { addMonths, format, isSameDay, isSameMonth, subMonths } from 'date-fns';
 import { Bell, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, Edit, Eye, MapPin, Plus, Tag, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -78,55 +78,55 @@ export default function CalendarModule() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loadedFromBackend, setLoadedFromBackend] = useState<boolean | null>(null);
+  const base = import.meta.env.VITE_API_BASE as string | undefined;
+  const { events: fetchedEvents, isLoading: eventsLoading, isError: eventsError } = useEvents(!!base);
 
   useEffect(() => {
-    const base = import.meta.env.VITE_API_BASE as string | undefined;
     if (!base) {
-      // No backend configured — keep local mock events
       setEvents(defaultMockEvents);
       setLoadedFromBackend(false);
       return;
     }
 
-    let cancelled = false;
+    if (eventsLoading) return;
 
-    apiService.get<any>('/events')
-      .then((data) => {
-        if (cancelled) return;
-        // Handle both direct array response and {error, data} response format
-        const eventsList = Array.isArray(data) ? data : (data?.data || data);
-        if (!Array.isArray(eventsList)) throw new Error('Invalid events payload');
-        const mapped: CalendarEvent[] = eventsList.map((e: any) => ({
-          id: String(e.id ?? e._id ?? Date.now()),
-          title: e.title ?? e.name ?? 'Untitled Event',
-          date: e.date ? new Date(e.date) : new Date(),
-          time: e.time ?? e.startTime ?? '',
-          description: e.description ?? '',
-          color: e.color ?? 'bg-blue-500',
-          category: e.category ?? 'Other',
-          reminder: !!e.reminder,
-          reminderTime: String(e.reminderTime ?? e.reminder_minutes ?? '30'),
-          location: e.location ?? ''
-        }));
-        setEvents(mapped);
-        setLoadedFromBackend(true);
-      })
-      .catch((err) => {
-        console.error('Events fetch error:', err);
-        toast({
-          title: 'Events Load Failed',
-          description: 'Could not load events from the backend — using local sample events.',
-        });
-        if (!cancelled) {
-          setEvents(defaultMockEvents);
-          setLoadedFromBackend(false);
-        }
+    if (eventsError) {
+      toast({
+        title: 'Events Load Failed',
+        description: 'Could not load events from the backend — using local sample events.',
       });
+      setEvents(defaultMockEvents);
+      setLoadedFromBackend(false);
+      return;
+    }
 
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    try {
+      const eventsList = Array.isArray(fetchedEvents) ? fetchedEvents : (fetchedEvents as any)?.data || fetchedEvents;
+      if (!Array.isArray(eventsList)) throw new Error('Invalid events payload');
+      const mapped: CalendarEvent[] = eventsList.map((e: any) => ({
+        id: String(e.id ?? e._id ?? Date.now()),
+        title: e.title ?? e.name ?? 'Untitled Event',
+        date: e.date ? new Date(e.date) : new Date(),
+        time: e.time ?? e.startTime ?? '',
+        description: e.description ?? '',
+        color: e.color ?? 'bg-blue-500',
+        category: e.category ?? 'Other',
+        reminder: !!e.reminder,
+        reminderTime: String(e.reminderTime ?? e.reminder_minutes ?? '30'),
+        location: e.location ?? ''
+      }));
+      setEvents(mapped);
+      setLoadedFromBackend(true);
+    } catch (err) {
+      console.error('Events fetch error:', err);
+      toast({
+        title: 'Events Load Failed',
+        description: 'Could not load events from the backend — using local sample events.',
+      });
+      setEvents(defaultMockEvents);
+      setLoadedFromBackend(false);
+    }
+  }, [base, fetchedEvents, eventsLoading, eventsError]);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);

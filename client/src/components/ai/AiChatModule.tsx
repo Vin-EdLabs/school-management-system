@@ -1,16 +1,21 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { useData } from '../../contexts/DataContext';
-import { useAuth } from '../../contexts/AuthContext';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from '@/hooks/use-toast';
-import { Bot, Send, User, Receipt, Sparkles, MessageCircle, Clock, Trash2, Command, Zap, ArrowUp, Mic, FileText, BarChart3, TrendingUp, Calculator } from 'lucide-react';
-import ReceiptPrinter from '../common/ReceiptPrinter';
+import { useClasses } from '@/hooks/useClasses';
+import { useExpenses } from '@/hooks/useExpenses';
+import { useFeeStructures } from '@/hooks/useFeeStructures';
+import { useIncome } from '@/hooks/useIncome';
+import { usePayments } from '@/hooks/usePayments';
+import { useStudents } from '@/hooks/useStudents';
+import { useTeachers } from '@/hooks/useTeachers';
+import { ArrowUp, Bot, Clock, Command, FileText, MessageCircle, Mic, Receipt, Trash2, User, Zap } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
 import { useChatPersistence } from '../../hooks/useChatPersistence';
 import { AIProcessor } from '../../utils/aiProcessor';
+import ReceiptPrinter from '../common/ReceiptPrinter';
 import A4ReportPrinter from '../reports/A4ReportPrinter';
 
 interface ChatMessage {
@@ -121,7 +126,13 @@ const TypingMessage = () => (
 
 const AiChatModule = () => {
   const { user, hasAccess } = useAuth();
-  const { students, teachers, payments, feeStructures, addPayment, classes, income, expenses } = useData();
+  const { students } = useStudents();
+  const { teachers } = useTeachers();
+  const { payments, createPayment } = usePayments();
+  const { feeStructures } = useFeeStructures();
+  const { classes } = useClasses();
+  const { income } = useIncome();
+  const { expenses } = useExpenses();
   const { messages, addMessage, clearMessages } = useChatPersistence();
   const [inputValue, setInputValue] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -159,13 +170,13 @@ const AiChatModule = () => {
 
   const processUserInput = async (input: string): Promise<void> => {
     setIsProcessing(true);
-    
+
     const typingId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
     setTypingMessageId(typingId);
-    
+
     try {
       await new Promise(resolve => setTimeout(resolve, 2000));
-      
+
       const processor = new AIProcessor({
         students,
         teachers,
@@ -174,13 +185,13 @@ const AiChatModule = () => {
         classes,
         income: income as any[],
         expenses: expenses as any[],
-        addPayment
+        addPayment: (payment) => createPayment.mutate(payment)
       });
 
       const response = await processor.processInput(input);
-      
+
       setTypingMessageId(null);
-      
+
       const aiMessage: ChatMessage = {
         id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
         type: 'ai',
@@ -256,12 +267,12 @@ const AiChatModule = () => {
 
   const handleShowReceipt = (data: any) => {
     console.log('handleShowReceipt called with:', data);
-    
+
     if (data && (data.type === 'general' || data.type === 'income' || data.type === 'expenses')) {
       console.log('Opening A4 Report for type:', data.type);
       setReportData(data);
       setShowA4Report(true);
-    } 
+    }
     else if (data && data.studentName && data.amount !== undefined) {
       console.log('Opening Receipt Printer');
       setReceiptData(data);
@@ -333,45 +344,42 @@ const AiChatModule = () => {
             <div className="space-y-6 pb-6">
               {messages.map((message) => (
                 <div key={message.id} className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] ${
-                    message.type === 'user' 
-                      ? 'bg-white shadow-lg border border-gray-100' 
+                  <div className={`max-w-[85%] ${message.type === 'user'
+                      ? 'bg-white shadow-lg border border-gray-100'
                       : 'bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 shadow-sm'
-                  } rounded-2xl p-5`}>
-                    
+                    } rounded-2xl p-5`}>
+
                     <div className="flex items-start space-x-3">
-                      <div className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${
-                        message.type === 'user' 
-                          ? 'bg-gray-100 border border-gray-200' 
+                      <div className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${message.type === 'user'
+                          ? 'bg-gray-100 border border-gray-200'
                           : 'bg-gradient-to-br from-blue-500 to-indigo-600'
-                      }`}>
+                        }`}>
                         {message.type === 'ai' ? (
                           <Bot className="w-5 h-5 text-white" />
                         ) : (
                           <User className="w-5 h-5 text-gray-600" />
                         )}
                       </div>
-                      
+
                       <div className="flex-1 min-w-0">
-                        <div 
+                        <div
                           className="text-sm leading-relaxed prose prose-sm max-w-none text-gray-800"
-                          dangerouslySetInnerHTML={{ 
+                          dangerouslySetInnerHTML={{
                             __html: message.content
                               .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-900">$1</strong>')
-                              .replace(/\n/g, '<br />') 
+                              .replace(/\n/g, '<br />')
                           }}
                         />
-                        
+
                         {(message.action === 'receipt' || message.action === 'payment' || message.action === 'report') && message.data && (
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => handleShowReceipt(message.data)}
-                            className={`mt-4 ${
-                              message.type === 'user' 
-                                ? 'text-blue-600 hover:text-blue-700 hover:bg-blue-50' 
+                            className={`mt-4 ${message.type === 'user'
+                                ? 'text-blue-600 hover:text-blue-700 hover:bg-blue-50'
                                 : 'text-blue-600 hover:text-blue-700 hover:bg-blue-100'
-                            } rounded-xl`}
+                              } rounded-xl`}
                           >
                             {message.action === 'report' ? (
                               <>
@@ -386,10 +394,9 @@ const AiChatModule = () => {
                             )}
                           </Button>
                         )}
-                        
-                        <div className={`text-xs mt-3 ${
-                          message.type === 'user' ? 'text-gray-500' : 'text-blue-600/60'
-                        }`}>
+
+                        <div className={`text-xs mt-3 ${message.type === 'user' ? 'text-gray-500' : 'text-blue-600/60'
+                          }`}>
                           {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </div>
                       </div>
@@ -397,7 +404,7 @@ const AiChatModule = () => {
                   </div>
                 </div>
               ))}
-              
+
               {typingMessageId && <TypingMessage />}
             </div>
           </ScrollArea>
@@ -445,7 +452,7 @@ const AiChatModule = () => {
                 Auto-clear in 10min
               </Badge>
             </div>
-            
+
             <div className="flex items-end space-x-3">
               <div className="flex-1 relative">
                 <Input
@@ -458,8 +465,8 @@ const AiChatModule = () => {
                   disabled={isProcessing}
                 />
               </div>
-              <Button 
-                onClick={handleSendMessage} 
+              <Button
+                onClick={handleSendMessage}
                 disabled={!inputValue.trim() || isProcessing}
                 className="h-[52px] w-[52px] p-0 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
               >
@@ -476,19 +483,19 @@ const AiChatModule = () => {
             </div>
 
             <div className="mt-3 flex flex-wrap gap-2">
-              <button 
+              <button
                 onClick={() => handleQuickCommand('Record payment ₵500 for student 12345')}
                 className="text-xs bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full transition-colors duration-200"
               >
                 💡 Record payment ₵500 for student 12345
               </button>
-              <button 
+              <button
                 onClick={() => handleQuickCommand('Generate general report for current term')}
                 className="text-xs bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full transition-colors duration-200"
               >
                 📊 Generate general report for current term
               </button>
-              <button 
+              <button
                 onClick={() => handleQuickCommand('Which students owe money?')}
                 className="text-xs bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full transition-colors duration-200"
               >

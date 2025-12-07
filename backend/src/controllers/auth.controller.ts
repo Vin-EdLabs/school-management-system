@@ -78,7 +78,47 @@ export async function session(req: Request, res: Response) {
   }
 }
 
-export async function roles(req: Request, res: Response) {
+export async function changePassword(req: Request, res: Response) {
+  try {
+    const userId = (req as any).user?.id;
+    if (!userId) return res.status(401).json(failure('Unauthorized'));
+    
+    const { oldPassword, newPassword } = req.body ?? {};
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json(failure('Old password and new password are required'));
+    }
+
+    const result = await authService.changePassword(userId, oldPassword, newPassword);
+    if (!result) return res.status(500).json(failure('Failed to change password'));
+
+    return res.json(success({ message: 'Password changed successfully', passwordChanged: true }));
+  } catch (err: any) {
+    return res.status(400).json(failure(err.message ?? 'Failed to change password'));
+  }
+}
+
+export async function verifyPassword(req: Request, res: Response) {
+  try {
+    const userId = (req as any).user?.id;
+    if (!userId) return res.status(401).json(failure('Unauthorized'));
+    
+    const { password } = req.body ?? {};
+    if (!password) {
+      return res.status(400).json(failure('Password is required'));
+    }
+
+    const isValid = await authService.verifyPassword(userId, password);
+    if (!isValid) {
+      return res.status(401).json(failure('Invalid password'));
+    }
+
+    return res.json(success({ verified: true }));
+  } catch (err: any) {
+    return res.status(400).json(failure(err.message ?? 'Password verification failed'));
+  }
+}
+
+export default { login, logout, session, changePassword, verifyPassword };export async function roles(req: Request, res: Response) {
   // Static list for now
   return res.json(success(['admin', 'staff', 'teacher']));
 }

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import * as auditService from '../services/services/auditService';
+import * as auditService from '../services/auditService';
 
 export function useLoginAudits() {
   return useQuery({

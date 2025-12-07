@@ -1,5 +1,5 @@
 import { toast } from '@/hooks/use-toast';
-import * as incomeService from '@/services/services/incomeService';
+import * as incomeService from '@/services/incomeService';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 export function useIncome() {

@@ -13,20 +13,16 @@ export async function list(req: Request, res: Response) {
 
 export async function create(req: Request, res: Response) {
   try {
-    // Normalize payload: accept client-side `className`/`assignedTeacher` shape
+    // Normalize payload: level is required, others optional
     const body = req.body || {};
-    const name = body.name || body.className || body.title;
-    if (!name) return res.status(400).json(failure('Missing name'));
+    const level = body.level;
+    if (!level) return res.status(400).json(failure('Missing level'));
 
     const teacher_id = body.teacher_id ?? body.assignedTeacher ?? body.assigned_teacher ?? null;
-    const meta = {
-      level: body.level ?? null,
-      stream: body.stream ?? null,
-      maxClassSize: body.maxClassSize ?? body.max_class_size ?? null,
-      students: body.students ?? []
-    };
+    const stream = body.stream ?? null;
+    const max_class_size = body.maxClassSize ?? body.max_class_size ?? 30;
 
-    const created = await classesService.createClass({ name, teacher_id, meta });
+    const created = await classesService.createClass({ teacher_id, level, stream, max_class_size });
     return res.status(201).json(success(created));
   } catch (err: any) {
     return res.status(500).json(failure(err.message));

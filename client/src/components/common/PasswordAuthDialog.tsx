@@ -5,8 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
+import { useVerifyPassword } from '@/hooks/useAuth';
 import React, { useState } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
 
 interface PasswordAuthDialogProps {
   open: boolean;
@@ -25,10 +25,9 @@ const PasswordAuthDialog: React.FC<PasswordAuthDialogProps> = ({
   itemName,
   module
 }) => {
-  const { user } = useAuth();
   const [password, setPassword] = useState('');
   const [reason, setReason] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const { mutateAsync: verifyPassword, isPending } = useVerifyPassword();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,30 +40,37 @@ const PasswordAuthDialog: React.FC<PasswordAuthDialogProps> = ({
       return;
     }
 
-    setIsLoading(true);
+    try {
+      const response = await verifyPassword(password.trim());
+      const isVerified = (response as any)?.data?.verified ?? (response as any)?.verified;
 
-    // Get stored passwords from localStorage
-    const savedPasswords = localStorage.getItem('rosaGardensPasswords');
-    const passwords = savedPasswords ? JSON.parse(savedPasswords) : {
-      'super-admin': 'superadmin123',
-      'finance': 'finance123',
-      'administrator': 'admin123'
-    };
-
-    if (user && password === passwords[user.role]) {
-      onSuccess(reason.trim() || undefined);
-      setPassword('');
-      setReason('');
-      onClose();
-    } else {
+      if (isVerified) {
+        toast({
+          title: "Password Verified",
+          description: "Proceeding with your action...",
+          variant: "default"
+        });
+        onSuccess(reason.trim() || undefined);
+        setPassword('');
+        setReason('');
+        onClose();
+      } else {
+        toast({
+          title: "Authentication Failed",
+          description: "Incorrect password. Please try again.",
+          variant: "destructive"
+        });
+      }
+    } catch (error: any) {
+      const errorMessage = error?.response?.data?.message ||
+        error?.message ||
+        'Authentication failed. Please try again.';
       toast({
         title: "Authentication Failed",
-        description: "Incorrect password. Please try again.",
+        description: errorMessage,
         variant: "destructive"
       });
     }
-
-    setIsLoading(false);
   };
 
   const handleClose = () => {
@@ -101,6 +107,7 @@ const PasswordAuthDialog: React.FC<PasswordAuthDialogProps> = ({
               placeholder="Enter your password"
               required
               autoFocus
+              disabled={isPending}
             />
           </div>
 
@@ -112,19 +119,20 @@ const PasswordAuthDialog: React.FC<PasswordAuthDialogProps> = ({
               onChange={(e) => setReason(e.target.value)}
               placeholder="Enter reason for this action..."
               rows={3}
+              disabled={isPending}
             />
           </div>
 
           <DialogFooter className="flex gap-2">
-            <Button type="button" variant="outline" onClick={handleClose}>
+            <Button type="button" variant="outline" onClick={handleClose} disabled={isPending}>
               Cancel
             </Button>
             <Button
               type="submit"
               variant={action === 'delete' ? 'destructive' : 'default'}
-              disabled={isLoading}
+              disabled={isPending}
             >
-              {isLoading ? 'Authenticating...' : `Confirm ${action === 'edit' ? 'Edit' : 'Delete'}`}
+              {isPending ? 'Authenticating...' : `Confirm ${action === 'edit' ? 'Edit' : 'Delete'}`}
             </Button>
           </DialogFooter>
         </form>

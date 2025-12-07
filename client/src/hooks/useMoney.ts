@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import * as moneyService from '../services/services/moneyService';
+import * as moneyService from '../services/moneyService';
 
 export function useIncome(year?: number) {
   return useQuery<any, Error, any>({ queryKey: ['income', year], queryFn: () => (year ? moneyService.incomeByYear(year) : moneyService.listIncome()) });

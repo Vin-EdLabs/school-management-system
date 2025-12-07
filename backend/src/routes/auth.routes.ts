@@ -8,5 +8,7 @@ router.post('/login', authCtrl.login);
 router.post('/logout', requireAuth, authCtrl.logout);
 router.get('/session', authCtrl.session);
 router.get('/roles', authCtrl.roles);
+router.post('/change-password', requireAuth, authCtrl.changePassword);
+router.post('/verify-password', requireAuth, authCtrl.verifyPassword);
 
 export default router;

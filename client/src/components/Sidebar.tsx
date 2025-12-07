@@ -134,6 +134,11 @@ const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
       label: 'Staff Payroll',
       icon: Wallet,
     }] : []),
+    ...(hasAccess('payroll') ? [{
+      id: 'payroll',
+      label: 'Payroll Management',
+      icon: BarChart3,
+    }] : []),
   ],
 
   system: [

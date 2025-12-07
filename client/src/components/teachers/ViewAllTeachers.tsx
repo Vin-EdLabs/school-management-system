@@ -32,12 +32,12 @@ const ViewAllTeachers = () => {
 
   const filteredTeachers = teachers.filter((teacher: any) => {
     const name = (teacher?.fullName ?? '').toString();
-    const staffId = (teacher?.staffId ?? '').toString();
+    const username = (teacher?.username ?? '').toString();
     const email = (teacher?.email ?? '').toString();
 
     const matchesSearch = searchTerm === '' ||
       name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      staffId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      username.toLowerCase().includes(searchTerm.toLowerCase()) ||
       email.toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesStatus = filterStatus === 'all-status' || (teacher?.employmentStatus ?? '') === filterStatus;
@@ -129,7 +129,7 @@ const ViewAllTeachers = () => {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
               <Input
-                placeholder="Search by name, staff ID, or email..."
+                placeholder="Search by name, username, or email..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
@@ -170,7 +170,7 @@ const ViewAllTeachers = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead>Staff ID</TableHead>
+                  <TableHead>Username</TableHead>
                   <TableHead>Contact</TableHead>
                   <TableHead>Subjects</TableHead>
                   <TableHead>Class Assigned</TableHead>
@@ -196,7 +196,7 @@ const ViewAllTeachers = () => {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <span className="font-mono">{teacher.staffId}</span>
+                        <span className="font-mono">{teacher.username}</span>
                       </TableCell>
                       <TableCell>
                         <div className="text-sm">

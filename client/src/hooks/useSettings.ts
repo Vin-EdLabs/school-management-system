@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import * as settingsService from '../services/services/settingsService';
+import * as settingsService from '../services/settingsService';
 
 export function useActiveTerm() {
   return useQuery<any, Error, any>({ queryKey: ['settings','activeTerm'], queryFn: () => settingsService.getActiveTerm() });

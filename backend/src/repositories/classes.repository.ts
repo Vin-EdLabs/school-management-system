@@ -1,7 +1,7 @@
 import { query } from '../config/db.js';
 
-export async function createClass(payload: { teacher_id?: number; level: string; stream?: string; max_class_size?: number }) {
-  const res = await query('INSERT INTO classes (teacher_id, level, stream, max_class_size, meta) VALUES ($1, $2, $3, $4, $5) RETURNING *', [payload.teacher_id ?? null, payload.level, payload.stream ?? null, payload.max_class_size ?? 30, JSON.stringify({})]);
+export async function createClass(payload: { level: string; stream?: string; max_class_size?: number }) {
+  const res = await query('INSERT INTO classes (level, stream, max_class_size, meta) VALUES ($1, $2, $3, $4) RETURNING *', [payload.level, payload.stream ?? null, payload.max_class_size ?? 30, JSON.stringify({})]);
   return res.rows[0];
 }
 

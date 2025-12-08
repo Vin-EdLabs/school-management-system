@@ -16,8 +16,6 @@ interface Student {
   guardianName: string;
   guardianContact: string;
   homeAddress: string;
-  numberOfSiblings: number;
-  namesOfSiblings: string;
   previousSchool: string;
   dateOfAdmission: string;
   notes: string;

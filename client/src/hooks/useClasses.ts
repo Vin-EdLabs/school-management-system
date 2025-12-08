@@ -1,12 +1,41 @@
 import { toast } from '@/hooks/use-toast';
+import * as assignmentsService from '@/services/assignmentsService';
 import * as classesService from '@/services/classesService';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 
 export function useClasses() {
   const queryClient = useQueryClient();
 
   const { data: classesResp } = useQuery<any, Error, any>({ queryKey: ['classes'], queryFn: classesService.listClasses });
-  const classes = (classesResp as any)?.data || [];
+  const rawClasses = (classesResp as any)?.data || [];
+  const [classes, setClasses] = useState<any[]>(rawClasses || []);
+
+  useEffect(() => {
+    let mounted = true;
+    const enrich = async () => {
+      try {
+        const enriched = await Promise.all(rawClasses.map(async (cls: any) => {
+          try {
+            const res = await assignmentsService.listByClass(cls.id);
+            const teachers = (res as any)?.data || [];
+            const teacher = teachers[0];
+            const assignedTeacherId = teacher ? teacher.id ?? teacher.ID ?? teacher.user_id ?? null : null;
+            const assignedTeacherName = teacher ? (teacher.fullName ?? teacher.full_name ?? teacher.username ?? null) : null;
+            return { ...cls, assignedTeacher: assignedTeacherId, assignedTeacherName };
+          } catch (e) {
+            return { ...cls, assignedTeacher: null };
+          }
+        }));
+        if (mounted) setClasses(enriched);
+      } catch (e) {
+        if (mounted) setClasses(rawClasses);
+      }
+    };
+    if (rawClasses.length > 0) enrich();
+    else setClasses(rawClasses);
+    return () => { mounted = false; };
+  }, [classesResp]);
 
   const createClass = useMutation<any, Error, any>({
     mutationFn: (payload: any) => classesService.createClass(payload),

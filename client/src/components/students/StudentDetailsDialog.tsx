@@ -1,29 +1,10 @@
-
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Calendar, FileText, MapPin, Phone, School, User, Users } from 'lucide-react';
+import { Calendar, FileText, MapPin, Phone, School, User } from 'lucide-react';
 import React from 'react';
-
-interface Student {
-  id: string;
-  firstName: string;
-  lastName: string;
-  gender: string;
-  dateOfBirth: string;
-  nationality: string;
-  studentId: string;
-  admissionNumber: string;
-  classAssigned: string;
-  guardianName: string;
-  guardianContact: string;
-  homeAddress: string;
-  numberOfSiblings: number;
-  namesOfSiblings: string;
-  previousSchool: string;
-  dateOfAdmission: string;
-  notes: string;
-}
+import { useStudent } from '../../hooks/useStudents';
+import type { Student } from '../../types/student';
 
 interface StudentDetailsDialogProps {
   student: Student | null;
@@ -32,10 +13,16 @@ interface StudentDetailsDialogProps {
 }
 
 const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, open, onClose }) => {
-  if (!student) return null;
+  const studentId = student?.id ? Number(student.id) : null;
+  const studentQuery = studentId ? useStudent(studentId) : null;
+  const apiStudent = (studentQuery as any)?.data?.data ?? null;
+  const s: any = apiStudent ?? student;
 
-  const calculateAge = (dateOfBirth: string) => {
+  if (!s) return null;
+
+  const calculateAge = (dateOfBirth?: string) => {
     const today = new Date();
+    if (!dateOfBirth) return 'N/A';
     const birthDate = new Date(dateOfBirth);
     let age = today.getFullYear() - birthDate.getFullYear();
     const monthDiff = today.getMonth() - birthDate.getMonth();
@@ -65,27 +52,30 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
               <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
                 <div>
                   <h2 className="text-2xl font-bold text-gray-800">
-                    {student.firstName} {student.lastName}
+                    {(s.first_name ?? s.firstName ?? '')} {(s.last_name ?? s.lastName ?? '')}
                   </h2>
                   <div className="flex items-center space-x-4 mt-2">
-                    <Badge variant={student.gender === 'Male' ? 'default' : 'secondary'} className="text-sm">
-                      {student.gender}
+                    <Badge variant={(s.gender ?? s.meta?.gender) === 'Male' ? 'default' : 'secondary'} className="text-sm">
+                      {s.gender ?? s.meta?.gender}
                     </Badge>
                     <span className="text-sm text-gray-600">
-                      Age: {calculateAge(student.dateOfBirth)} years
+                      {(() => {
+                        const age = calculateAge(s.date_of_birth ?? s.dateOfBirth ?? s.meta?.date_of_birth);
+                        return age === 'N/A' ? 'Age: N/A' : `Age: ${age} years`;
+                      })()}
                     </span>
                     <Badge variant="outline" className="bg-white">
-                      {student.classAssigned}
+                      {s.classAssigned ?? s.class_id ?? s.classId ?? 'Unassigned'}
                     </Badge>
                   </div>
                 </div>
                 <div className="text-right">
                   <div className="text-sm text-gray-600">Student ID</div>
                   <div className="font-mono text-lg font-bold bg-white px-3 py-1 rounded border">
-                    {student.studentId}
+                    {s.student_id ?? s.studentId ?? s.id}
                   </div>
                   <div className="text-sm text-gray-600 mt-1">
-                    Admission: {student.admissionNumber}
+                    Admission: {s.admission_no ?? s.admissionNumber ?? s.meta?.admission_no ?? 'N/A'}
                   </div>
                 </div>
               </div>
@@ -105,11 +95,11 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-sm font-medium text-gray-500">First Name</label>
-                      <p className="font-medium">{student.firstName}</p>
+                      <p className="font-medium">{s.first_name ?? s.firstName ?? ''}</p>
                     </div>
                     <div>
                       <label className="text-sm font-medium text-gray-500">Last Name</label>
-                      <p className="font-medium">{student.lastName}</p>
+                      <p className="font-medium">{s.last_name ?? s.lastName ?? ''}</p>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
@@ -117,12 +107,12 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
                       <label className="text-sm font-medium text-gray-500">Date of Birth</label>
                       <div className="flex items-center space-x-2">
                         <Calendar className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm">{new Date(student.dateOfBirth).toLocaleDateString()}</span>
+                        <span className="text-sm">{new Date(s.date_of_birth ?? s.dateOfBirth ?? s.meta?.date_of_birth).toLocaleDateString()}</span>
                       </div>
                     </div>
                     <div>
                       <label className="text-sm font-medium text-gray-500">Nationality</label>
-                      <p>{student.nationality}</p>
+                      <p>{s.nationality ?? s.meta?.nationality}</p>
                     </div>
                   </div>
                 </div>
@@ -140,18 +130,18 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
                 <div className="space-y-3">
                   <div>
                     <label className="text-sm font-medium text-gray-500">Current Class</label>
-                    <Badge variant="outline" className="text-sm">{student.classAssigned}</Badge>
+                    <Badge variant="outline" className="text-sm">{s.classAssigned ?? s.class_id ?? s.classId ?? 'Unassigned'}</Badge>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-500">Date of Admission</label>
                     <div className="flex items-center space-x-2">
                       <Calendar className="w-4 h-4 text-gray-400" />
-                      <span className="text-sm">{new Date(student.dateOfAdmission).toLocaleDateString()}</span>
+                      <span className="text-sm">{new Date(s.date_of_admission ?? s.dateOfAdmission ?? s.meta?.date_of_admission).toLocaleDateString()}</span>
                     </div>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-500">Previous School</label>
-                    <p className="text-sm">{student.previousSchool || 'Not specified'}</p>
+                    <p className="text-sm">{(s.previous_school ?? s.previousSchool ?? s.meta?.previous_school) || 'Not specified'}</p>
                   </div>
                 </div>
               </CardContent>
@@ -169,49 +159,30 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-medium text-gray-500">Guardian Name</label>
-                  <p className="font-medium">{student.guardianName}</p>
+                  <p className="font-medium">{s.guardian_name ?? s.guardianName ?? s.meta?.guardian_name}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-500">Contact Number</label>
                   <div className="flex items-center space-x-2">
                     <Phone className="w-4 h-4 text-gray-400" />
-                    <span className="font-mono">{student.guardianContact}</span>
+                    <span className="font-mono">{s.guardian_contact ?? s.guardianContact ?? s.meta?.guardian_contact}</span>
                   </div>
                 </div>
                 <div className="md:col-span-2">
                   <label className="text-sm font-medium text-gray-500">Home Address</label>
                   <div className="flex items-start space-x-2 mt-1">
                     <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
-                    <span className="text-sm">{student.homeAddress}</span>
+                    <span className="text-sm">{s.home_address ?? s.homeAddress ?? s.meta?.home_address}</span>
                   </div>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Family Information */}
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center space-x-2 mb-4">
-                <Users className="w-4 h-4 text-orange-600" />
-                <h3 className="font-semibold">Family Information</h3>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Number of Siblings</label>
-                  <p className="text-lg font-semibold">{student.numberOfSiblings}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Names of Siblings</label>
-                  <p className="text-sm">{student.namesOfSiblings || 'None specified'}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          {/* (Sibling fields removed) */}
 
           {/* Additional Notes */}
-          {student.notes && (
+          {(s.notes ?? s.meta?.notes) && (
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center space-x-2 mb-4">
@@ -219,7 +190,7 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
                   <h3 className="font-semibold">Additional Notes</h3>
                 </div>
                 <div className="bg-gray-50 p-4 rounded-lg">
-                  <p className="text-gray-700 whitespace-pre-wrap">{student.notes}</p>
+                  <p className="text-gray-700 whitespace-pre-wrap">{s.notes ?? s.meta?.notes}</p>
                 </div>
               </CardContent>
             </Card>

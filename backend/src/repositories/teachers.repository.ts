@@ -83,7 +83,41 @@ export async function createTeacher(payload: any) {
 }
 
 export async function updateTeacher(id: number, payload: any) {
-  await query('UPDATE users SET username = $1 WHERE id = $2 AND role = $3', [payload.username, id, 'teacher']);
+  // Only update username if provided; merge other provided fields into the meta JSON
+  // Fetch existing meta
+  const res = await query('SELECT meta FROM users WHERE id = $1 AND role = $2 LIMIT 1', [id, 'teacher']);
+  const existing = res.rows[0];
+  let meta: any = {};
+  try {
+    if (existing && existing.meta) meta = typeof existing.meta === 'string' ? JSON.parse(existing.meta) : existing.meta;
+  } catch (e) {
+    meta = {};
+  }
+
+  // If payload contains a username, update it
+  if (Object.prototype.hasOwnProperty.call(payload, 'username')) {
+    await query('UPDATE users SET username = $1 WHERE id = $2 AND role = $3', [payload.username, id, 'teacher']);
+  }
+
+  // Merge other top-level payload fields into meta (except username)
+  const payloadMeta = { ...payload };
+  delete payloadMeta.username;
+
+  // If payload already contains a `meta` object, prefer merging that as well
+  if (payloadMeta.meta && typeof payloadMeta.meta === 'object') {
+    Object.assign(meta, payloadMeta.meta);
+    delete payloadMeta.meta;
+  }
+
+  // Merge remaining keys into meta
+  Object.keys(payloadMeta).forEach(k => {
+    // avoid accidentally overwriting numeric or id fields that aren't meta-related
+    // common teacher profile keys are allowed
+    meta[k] = (payloadMeta as any)[k];
+  });
+
+  await query('UPDATE users SET meta = $1 WHERE id = $2 AND role = $3', [JSON.stringify(meta ?? {}), id, 'teacher']);
+
   return findTeacherById(id);
 }
 

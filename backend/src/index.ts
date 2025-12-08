@@ -42,10 +42,19 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 // Basic rate limiter for API routes
+const isProd = process.env.NODE_ENV === 'production';
+const defaultWindow = 15 * 60 * 1000; // 15 minutes
 const apiLimiter = rateLimit({
-  windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000), // 15 minutes
-  max: Number(process.env.RATE_LIMIT_MAX || 200), // limit each IP
+  windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS ?? defaultWindow),
+  // in development allow a much higher limit to avoid 429s during local testing
+  max: Number(process.env.RATE_LIMIT_MAX ?? (isProd ? 200 : 10000)),
 });
+
+// log limiter config in dev for easier debugging
+if (!isProd) {
+  // eslint-disable-next-line no-console
+  console.debug('[rateLimit] windowMs=', apiLimiter.windowMs, ' max=', process.env.RATE_LIMIT_MAX ?? (isProd ? 200 : 10000));
+}
 // readiness flag (set true after DB check + seeding)
 let ready = false;
 

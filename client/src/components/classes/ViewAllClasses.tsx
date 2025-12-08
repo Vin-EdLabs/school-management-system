@@ -27,7 +27,10 @@ const ViewAllClasses = () => {
       level: level,
       stream: stream,
       maxClassSize: c.maxClassSize ?? c.max_class_size ?? c.capacity ?? 30,
-      teacher_id: c.teacher_id || c.teacherId
+      teacher_id: c.teacher_id || c.teacherId,
+      // prefer explicit assignedTeacherName set by useClasses enrichment; keep the raw id in assignedTeacherId
+      assignedTeacherName: (c as any).assignedTeacherName ?? (c as any).assigned_teacher_name ?? null,
+      assignedTeacherId: (c as any).assignedTeacher ?? (c as any).assigned_teacher ?? null,
     };
   });
 
@@ -69,8 +72,19 @@ const ViewAllClasses = () => {
 
   const getClassStats = (classItem: any) => {
     const studentsInClass = students.filter(student => student.classAssigned === classItem.className);
-    const assignedTeacher = classItem.teacher_id
-      ? teachers.find(teacher => String(teacher.id) === String(classItem.teacher_id))
+    // Prefer the assignedTeacherName populated by useClasses enrichment
+    if (classItem.assignedTeacherName && typeof classItem.assignedTeacherName === 'string') {
+      return {
+        studentCount: studentsInClass.length,
+        teacherName: classItem.assignedTeacherName,
+        hasTeacher: true
+      };
+    }
+
+    // Fall back to assignedTeacherId (if present) then teacher_id
+    const assignedTeacherId = classItem.assignedTeacherId ?? classItem.teacher_id;
+    const assignedTeacher = assignedTeacherId
+      ? teachers.find(teacher => String(teacher.id) === String(assignedTeacherId))
       : null;
 
     return {

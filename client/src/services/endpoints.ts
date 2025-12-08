@@ -22,6 +22,13 @@ export const ENDPOINTS = {
     update: (id: string) => `/teachers/${id}`,
     delete: (id: string) => `/teachers/${id}`,
   },
+  assignments: {
+    list: '/assignments',
+    create: '/assignments',
+    remove: '/assignments',
+    byTeacher: (id: string) => `/assignments/teacher/${id}`,
+    byClass: (id: string) => `/assignments/class/${id}`,
+  },
   staff: {
     list: '/staff',
     create: '/staff',

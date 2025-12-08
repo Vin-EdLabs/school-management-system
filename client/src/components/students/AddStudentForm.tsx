@@ -17,8 +17,7 @@ interface AddStudentFormProps {
 
 const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
   const createStudentMutation = useCreateStudent();
-  const classesQuery = useClasses();
-  const classes = classesQuery.data?.data ?? [];
+  const { classes } = useClasses();
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -30,8 +29,6 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
     guardianName: '',
     guardianContact: '',
     homeAddress: '',
-    numberOfSiblings: 0,
-    namesOfSiblings: '',
     previousSchool: '',
     dateOfAdmission: new Date().toISOString().split('T')[0],
     notes: ''
@@ -61,19 +58,18 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
       const payload = {
         first_name: formData.firstName,
         last_name: formData.lastName,
-        gender: formData.gender,
-        date_of_birth: formData.dateOfBirth,
-        nationality: formData.nationality,
         admission_no: formData.admissionNumber || undefined,
-        class_id: formData.classAssigned || undefined,
-        guardian_name: formData.guardianName,
-        guardian_contact: formData.guardianContact,
-        home_address: formData.homeAddress,
-        number_of_siblings: formData.numberOfSiblings,
-        names_of_siblings: formData.namesOfSiblings,
-        previous_school: formData.previousSchool,
+        class_id: formData.classAssigned ? Number(formData.classAssigned) : undefined,
         date_of_admission: formData.dateOfAdmission,
-        notes: formData.notes
+        status: 'active',
+        gender: formData.gender || undefined,
+        date_of_birth: formData.dateOfBirth || undefined,
+        nationality: formData.nationality || undefined,
+        guardian_name: formData.guardianName || undefined,
+        guardian_contact: formData.guardianContact || undefined,
+        home_address: formData.homeAddress || undefined,
+        previous_school: formData.previousSchool || undefined,
+        notes: formData.notes || undefined,
       };
 
       createStudentMutation.mutate(payload, {
@@ -95,8 +91,6 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
             guardianName: '',
             guardianContact: '',
             homeAddress: '',
-            numberOfSiblings: 0,
-            namesOfSiblings: '',
             previousSchool: '',
             dateOfAdmission: new Date().toISOString().split('T')[0],
             notes: ''
@@ -201,7 +195,7 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
                 <SelectContent>
                   {classes.map((cls: any) => (
                     <SelectItem key={cls.id} value={String(cls.id)}>
-                      {cls.name ?? cls.className}
+                      {cls.level ? `${cls.level}${cls.stream ? ' ' + cls.stream : ''}` : (cls.name ?? cls.className)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -242,28 +236,7 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
             />
           </div>
 
-          {/* Family Information */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="numberOfSiblings">Number of Siblings</Label>
-              <Input
-                id="numberOfSiblings"
-                type="number"
-                min="0"
-                value={formData.numberOfSiblings}
-                onChange={(e) => handleInputChange('numberOfSiblings', parseInt(e.target.value) || 0)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="namesOfSiblings">Names of Siblings</Label>
-              <Input
-                id="namesOfSiblings"
-                value={formData.namesOfSiblings}
-                onChange={(e) => handleInputChange('namesOfSiblings', e.target.value)}
-                placeholder="Enter sibling names (comma separated)"
-              />
-            </div>
-          </div>
+          {/* (Sibling fields removed) */}
 
           {/* Additional Information */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

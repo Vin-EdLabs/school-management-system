@@ -14,11 +14,9 @@ import EditStudentDialog from './EditStudentDialog';
 import StudentDetailsDialog from './StudentDetailsDialog';
 
 const ViewAllStudents = () => {
-  const studentsQuery = useStudents();
-  const classesQuery = useClasses();
+  const { students } = useStudents();
+  const { classes } = useClasses();
   const deleteStudentMutation = useDeleteStudent();
-  const students = studentsQuery.data?.data ?? [];
-  const classes = classesQuery.data?.data ?? [];
   const [searchTerm, setSearchTerm] = useState('');
   const [filterClass, setFilterClass] = useState('all-classes');
   const [filterGender, setFilterGender] = useState('all-genders');
@@ -43,7 +41,8 @@ const ViewAllStudents = () => {
 
     const clsName = (() => {
       const cls = classes.find((c: any) => c.id === (student.class_id ?? student.classId ?? null));
-      return cls?.name ?? cls?.className ?? 'Unassigned';
+      if (!cls) return 'Unassigned';
+      return cls.level ? `${cls.level}${cls.stream ? ' ' + cls.stream : ''}` : (cls?.name ?? cls?.className ?? 'Unassigned');
     })();
 
     const matchesClass = filterClass === 'all-classes' || clsName === filterClass;
@@ -135,11 +134,14 @@ const ViewAllStudents = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all-classes">All Classes</SelectItem>
-                  {classes.filter((cls: any) => (cls.name || cls.className)).map((cls: any) => (
-                    <SelectItem key={cls.id} value={cls.name ?? cls.className}>
-                      {cls.name ?? cls.className}
-                    </SelectItem>
-                  ))}
+                  {classes.map((cls: any) => {
+                    const display = cls.level ? `${cls.level}${cls.stream ? ' ' + cls.stream : ''}` : (cls.name ?? cls.className ?? 'Unassigned');
+                    return (
+                      <SelectItem key={cls.id} value={display}>
+                        {display}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
               <Select value={filterGender} onValueChange={setFilterGender}>
@@ -179,7 +181,7 @@ const ViewAllStudents = () => {
                 ) : (
                   filteredStudents.map((student: any) => {
                     const cls = classes.find((c: any) => c.id === (student.class_id ?? student.classId ?? null));
-                    const className = cls?.name ?? cls?.className ?? 'Unassigned';
+                    const className = cls ? (cls.level ? `${cls.level}${cls.stream ? ' ' + cls.stream : ''}` : (cls?.name ?? cls?.className ?? 'Unassigned')) : 'Unassigned';
                     const first = student.first_name ?? student.firstName ?? '';
                     const last = student.last_name ?? student.lastName ?? '';
                     const admission = student.admission_no ?? student.admissionNumber ?? student.meta?.admission_no ?? 'N/A';

@@ -1,11 +1,31 @@
 import { query } from '../config/db.js';
 
 export async function createStudent(payload: any) {
-  const res = await query('INSERT INTO students (first_name, last_name, meta) VALUES ($1, $2, $3) RETURNING id, first_name, last_name', [
-    payload.first_name,
-    payload.last_name,
-    JSON.stringify(payload.meta ?? {}),
-  ]);
+  const res = await query(
+    `INSERT INTO students (
+      first_name, last_name, admission_no, class_id, status,
+      gender, date_of_birth, nationality, date_of_admission,
+      guardian_name, guardian_contact, home_address,
+      previous_school, notes, meta
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+    [
+      payload.first_name,
+      payload.last_name,
+      payload.admission_no ?? null,
+      payload.class_id ?? null,
+      payload.status ?? 'active',
+      payload.gender ?? null,
+      payload.date_of_birth ?? null,
+      payload.nationality ?? null,
+      payload.date_of_admission ?? null,
+      payload.guardian_name ?? null,
+      payload.guardian_contact ?? null,
+      payload.home_address ?? null,
+      payload.previous_school ?? null,
+      payload.notes ?? null,
+      JSON.stringify(payload.meta ?? {}),
+    ]
+  );
   return res.rows[0];
 }
 
@@ -15,9 +35,35 @@ export async function findStudentById(id: number) {
 }
 
 export async function updateStudent(id: number, payload: any) {
-  // simple updater for demo
-  await query('UPDATE students SET meta = $1 WHERE id = $2', [JSON.stringify(payload.meta ?? {}), id]);
-  return findStudentById(id);
+  // update class assignment and meta if provided
+  // update assignment and other student attributes
+  const fields = [
+    'first_name', 'last_name', 'admission_no', 'class_id', 'status',
+    'gender', 'date_of_birth', 'nationality', 'date_of_admission',
+    'guardian_name', 'guardian_contact', 'home_address',
+    'previous_school', 'notes', 'meta'
+  ];
+
+  const updates: string[] = [];
+  const values: any[] = [];
+  let idx = 1;
+
+  for (const f of fields) {
+    if (Object.prototype.hasOwnProperty.call(payload, f)) {
+      updates.push(`${f} = $${idx++}`);
+      if (f === 'meta') values.push(JSON.stringify(payload.meta ?? {}));
+      else values.push((payload as any)[f]);
+    }
+  }
+
+  if (updates.length === 0) {
+    return findStudentById(id);
+  }
+
+  values.push(id);
+  const sql = `UPDATE students SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`;
+  const res = await query(sql, values);
+  return res.rows[0];
 }
 
 export async function searchStudents(q: string) {

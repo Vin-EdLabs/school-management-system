@@ -154,11 +154,14 @@ const ViewAllTeachers = () => {
                 <SelectContent>
                   <SelectItem value="all-classes">All Classes</SelectItem>
                   <SelectItem value="no-class">No Class Assigned</SelectItem>
-                  {classes.map((cls) => (
-                    <SelectItem key={cls.id} value={cls.className}>
-                      {cls.className}
-                    </SelectItem>
-                  ))}
+                  {classes.map((cls) => {
+                    const display = cls.className ?? (cls.level ? `${cls.level}${cls.stream ? ' ' + cls.stream : ''}` : `Class ${cls.id}`);
+                    return (
+                      <SelectItem key={cls.id} value={display}>
+                        {display}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>

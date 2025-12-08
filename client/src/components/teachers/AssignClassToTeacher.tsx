@@ -1,4 +1,3 @@
-
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,78 +6,77 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from '@/hooks/use-toast';
 import useClasses from '@/hooks/useClasses';
 import useTeachers from '@/hooks/useTeachers';
+import * as assignmentsService from '@/services/assignmentsService';
+import { useQueryClient } from '@tanstack/react-query';
 import { School, User, Users } from 'lucide-react';
-import { useState } from 'react';
+import React, { useState } from 'react';
 
-const AssignClassToTeacher = () => {
-  const { teachers, updateTeacher } = useTeachers();
-  const { classes, updateClass } = useClasses();
+const AssignClassToTeacher: React.FC = () => {
+  const { teachers } = useTeachers();
+  const { classes } = useClasses();
+  const queryClient = useQueryClient();
+  const [loading, setLoading] = useState(false);
   const [selectedTeacher, setSelectedTeacher] = useState('');
   const [selectedClass, setSelectedClass] = useState('');
 
-  const activeTeachers = teachers.filter(teacher => teacher.employmentStatus === 'Active');
+  const activeTeachers = (teachers || []).filter((teacher: any) => teacher.employmentStatus === 'Active');
 
-  const handleAssignClass = () => {
+  const handleAssignClass = async () => {
     if (!selectedTeacher || !selectedClass) {
-      toast({
-        title: "Validation Error",
-        description: "Please select both teacher and class",
-        variant: "destructive"
-      });
+      toast({ title: 'Validation Error', description: 'Please select both teacher and class', variant: 'destructive' });
       return;
     }
 
-    const teacher = teachers.find(t => t.id === selectedTeacher);
-    const classData = classes.find(c => c.id === selectedClass);
+    const teacher = (teachers || []).find((t: any) => String(t.id) === String(selectedTeacher));
+    const classData = (classes || []).find((c: any) => String(c.id) === String(selectedClass));
 
     if (!teacher || !classData) return;
 
-    // Check if teacher already has a class assigned
-    if (teacher.classAssigned) {
-      const previousClass = classes.find(c => c.className === teacher.classAssigned);
-      if (previousClass) {
-        updateClass.mutate({ id: previousClass.id, payload: { assignedTeacher: '' } });
+    try {
+      setLoading(true);
+
+      await assignmentsService.createAssignment({ teacher_id: Number(selectedTeacher), class_id: Number(selectedClass) });
+
+      if (classData?.assignedTeacher) {
+        try {
+          // classData.assignedTeacher is the teacher id (enriched by useClasses)
+          await assignmentsService.removeAssignment({ teacher_id: Number(classData.assignedTeacher), class_id: Number(selectedClass) });
+        } catch (err: any) {
+          toast({ title: 'Unassign Error', description: err.message || 'Failed to remove previous assignment', variant: 'destructive' });
+        }
       }
+
+      queryClient.invalidateQueries({ queryKey: ['teachers'] });
+      queryClient.invalidateQueries({ queryKey: ['classes'] });
+
+      toast({ title: 'Class Assigned Successfully', description: `${teacher.fullName || teacher.full_name} has been assigned to ${classData.className || (classData.level ? `${classData.level}${classData.stream ? ' ' + classData.stream : ''}` : 'Unassigned')}` });
+
+      setSelectedTeacher('');
+      setSelectedClass('');
+    } catch (err: any) {
+      toast({ title: 'Assignment Error', description: err.message || 'Failed to assign class', variant: 'destructive' });
+    } finally {
+      setLoading(false);
     }
-
-    // Check if class already has a teacher assigned
-    if (classData.assignedTeacher) {
-      const previousTeacher = teachers.find(t => t.id === classData.assignedTeacher);
-      if (previousTeacher) {
-        updateTeacher.mutate({ id: previousTeacher.id, payload: { classAssigned: '' } });
-      }
-    }
-
-    // Make new assignments via mutations
-    updateTeacher.mutate({ id: selectedTeacher, payload: { classAssigned: classData.className } });
-    updateClass.mutate({ id: selectedClass, payload: { assignedTeacher: selectedTeacher } });
-
-    toast({
-      title: "Class Assigned Successfully",
-      description: `${teacher.fullName} has been assigned to ${classData.className}`,
-    });
-
-    // Reset form
-    setSelectedTeacher('');
-    setSelectedClass('');
   };
 
   const getTeacherCurrentClass = (teacherId: string) => {
-    const teacher = teachers.find(t => t.id === teacherId);
+    const teacher = (teachers || []).find((t: any) => String(t.id) === String(teacherId));
     return teacher?.classAssigned || 'None';
   };
 
   const getClassCurrentTeacher = (classId: string) => {
-    const classData = classes.find(c => c.id === classId);
+    const classData = (classes || []).find((c: any) => String(c.id) === String(classId));
+    if (!classData) return 'None';
+    // prefer enriched name if available
+    if (classData.assignedTeacherName) return classData.assignedTeacherName;
     if (!classData?.assignedTeacher) return 'None';
-
-    const teacher = teachers.find(t => t.id === classData.assignedTeacher);
-    return teacher?.fullName || 'None';
+    const teacher = (teachers || []).find((t: any) => String(t.id) === String(classData.assignedTeacher));
+    return teacher?.fullName || teacher?.full_name || 'None';
   };
 
   return (
     <div className="space-y-6">
-      {/* Assignment Form */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
@@ -96,14 +94,15 @@ const AssignClassToTeacher = () => {
                     <SelectValue placeholder="Choose a teacher" />
                   </SelectTrigger>
                   <SelectContent>
-                    {activeTeachers.map((teacher) => (
-                      <SelectItem key={teacher.id} value={teacher.id}>
-                        {teacher.fullName} - Current: {teacher.classAssigned || 'No class'}
+                    {activeTeachers.map((teacher: any) => (
+                      <SelectItem key={teacher.id} value={String(teacher.id)}>
+                        {teacher.fullName || teacher.full_name} - Current: {teacher.classAssigned || 'No class'}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
+
               <div className="space-y-2">
                 <Label>Assign to Class</Label>
                 <Select value={selectedClass} onValueChange={setSelectedClass}>
@@ -111,11 +110,14 @@ const AssignClassToTeacher = () => {
                     <SelectValue placeholder="Select class" />
                   </SelectTrigger>
                   <SelectContent>
-                    {classes.map((cls) => (
-                      <SelectItem key={cls.id} value={cls.id}>
-                        {cls.className} - Current Teacher: {getClassCurrentTeacher(cls.id)}
-                      </SelectItem>
-                    ))}
+                    {classes.map((cls: any) => {
+                      const display = cls.level ? `${cls.level}${cls.stream ? ' ' + cls.stream : ''}` : (cls.name ?? cls.className ?? 'Unassigned');
+                      return (
+                        <SelectItem key={cls.id} value={String(cls.id)}>
+                          {display} - Current Teacher: {getClassCurrentTeacher(String(cls.id))}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>
@@ -125,26 +127,25 @@ const AssignClassToTeacher = () => {
               <div className="p-4 bg-blue-50 rounded-lg">
                 {selectedTeacher && (
                   <p className="text-sm text-blue-800 mb-1">
-                    <strong>Selected Teacher:</strong> {teachers.find(t => t.id === selectedTeacher)?.fullName}
+                    <strong>Selected Teacher:</strong> {(teachers || []).find((t: any) => String(t.id) === String(selectedTeacher))?.fullName}
                     <br />
-                    <span className="text-blue-600">
-                      Current Assignment: {getTeacherCurrentClass(selectedTeacher)}
-                    </span>
+                    <span className="text-blue-600">Current Assignment: {getTeacherCurrentClass(selectedTeacher)}</span>
                   </p>
                 )}
                 {selectedClass && (
                   <p className="text-sm text-blue-800">
-                    <strong>Selected Class:</strong> {classes.find(c => c.id === selectedClass)?.className}
+                    <strong>Selected Class:</strong> {(() => {
+                      const c = (classes || []).find((x: any) => String(x.id) === String(selectedClass));
+                      return c ? (c.level ? `${c.level}${c.stream ? ' ' + c.stream : ''}` : (c.name ?? c.className ?? 'Unassigned')) : 'Unknown';
+                    })()}
                     <br />
-                    <span className="text-blue-600">
-                      Current Teacher: {getClassCurrentTeacher(selectedClass)}
-                    </span>
+                    <span className="text-blue-600">Current Teacher: {getClassCurrentTeacher(selectedClass)}</span>
                   </p>
                 )}
               </div>
             )}
 
-            <Button onClick={handleAssignClass} className="w-full md:w-auto">
+            <Button onClick={handleAssignClass} className="w-full md:w-auto" disabled={loading}>
               <School className="w-4 h-4 mr-2" />
               Assign Class
             </Button>
@@ -152,9 +153,7 @@ const AssignClassToTeacher = () => {
         </CardContent>
       </Card>
 
-      {/* Current Assignments Overview */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Teachers and their Classes */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
@@ -164,13 +163,11 @@ const AssignClassToTeacher = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {activeTeachers.map((teacher) => (
+              {activeTeachers.map((teacher: any) => (
                 <div key={teacher.id} className="flex items-center justify-between p-3 border rounded-lg">
                   <div>
-                    <p className="font-medium">{teacher.fullName}</p>
-                    <p className="text-sm text-gray-500">
-                      Subjects: {teacher.subjectsTaught.join(', ') || 'None listed'}
-                    </p>
+                    <p className="font-medium">{teacher.fullName || teacher.full_name}</p>
+                    <p className="text-sm text-gray-500">Subjects: {(teacher.subjectsTaught || []).join(', ') || 'None listed'}</p>
                   </div>
                   <div>
                     {teacher.classAssigned ? (
@@ -185,7 +182,6 @@ const AssignClassToTeacher = () => {
           </CardContent>
         </Card>
 
-        {/* Classes and their Teachers */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
@@ -195,19 +191,22 @@ const AssignClassToTeacher = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {classes.map((cls) => {
-                const assignedTeacher = teachers.find(t => t.id === cls.assignedTeacher);
+              {classes.map((cls: any) => {
+                // prefer enriched display name from classes (assignedTeacherName), fall back to lookup by id
+                const assignedName = cls.assignedTeacherName ?? null;
+                const assignedId = cls.assignedTeacher ?? cls.assignedTeacherId ?? cls.teacher_id;
+                const assignedTeacher = assignedName ? null : (teachers || []).find((t: any) => String(t.id) === String(assignedId));
                 return (
                   <div key={cls.id} className="flex items-center justify-between p-3 border rounded-lg">
                     <div>
-                      <p className="font-medium">{cls.className}</p>
-                      <p className="text-sm text-gray-500">
-                        Level: {cls.level} {cls.stream ? `- ${cls.stream}` : ''}
-                      </p>
+                      <p className="font-medium">{cls.className ?? (cls.level ? `${cls.level}${cls.stream ? ' - ' + cls.stream : ''}` : '')}</p>
+                      <p className="text-sm text-gray-500">Level: {cls.level} {cls.stream ? `- ${cls.stream}` : ''}</p>
                     </div>
                     <div>
-                      {assignedTeacher ? (
-                        <Badge variant="default">{assignedTeacher.fullName}</Badge>
+                      {assignedName ? (
+                        <Badge variant="default">{assignedName}</Badge>
+                      ) : assignedTeacher ? (
+                        <Badge variant="default">{assignedTeacher.fullName || assignedTeacher.full_name}</Badge>
                       ) : (
                         <Badge variant="outline">No teacher assigned</Badge>
                       )}

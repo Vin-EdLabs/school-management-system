@@ -16,6 +16,7 @@ import settingsRoutes from './settings.routes.js';
 import staffRoutes from './staff.routes.js';
 import studentsRoutes from './students.routes.js';
 import teachersRoutes from './teachers.routes.js';
+import assignmentsRoutes from './assignments.routes.js';
 
 const router = Router();
 
@@ -24,6 +25,7 @@ router.use('/students', studentsRoutes);
 router.use('/staff', staffRoutes);
 router.use('/teachers', teachersRoutes);
 router.use('/classes', classesRoutes);
+router.use('/assignments', assignmentsRoutes);
 router.use('/payments', paymentsRoutes);
 router.use('/payroll', payrollRoutes);
 router.use('/income', incomeRoutes);

@@ -38,6 +38,8 @@ const ViewAllClasses = () => {
     id: s.id ?? String(s.id),
     firstName: s.first_name || s.firstName || s.first || '',
     lastName: s.last_name || s.lastName || s.last || '',
+    // backend stores class assignment as `class_id`; keep both id and display
+    classAssignedId: s.class_id ?? s.classId ?? s.class_assigned_id ?? null,
     classAssigned: s.classAssigned || s.class_assigned || s.class || ''
   }));
 
@@ -71,7 +73,13 @@ const ViewAllClasses = () => {
   const uniqueLevels = [...new Set(classes.map(c => c.level).filter(level => level && level.trim() !== ''))];
 
   const getClassStats = (classItem: any) => {
-    const studentsInClass = students.filter(student => student.classAssigned === classItem.className);
+    // Prefer matching students by class id (more reliable), fall back to name match
+    const studentsInClass = students.filter(student => {
+      if (student.classAssignedId != null && classItem.id != null) {
+        return String(student.classAssignedId) === String(classItem.id);
+      }
+      return student.classAssigned === classItem.className;
+    });
     // Prefer the assignedTeacherName populated by useClasses enrichment
     if (classItem.assignedTeacherName && typeof classItem.assignedTeacherName === 'string') {
       return {
@@ -202,7 +210,8 @@ const ViewAllClasses = () => {
               ) : (
                 filteredClasses.map((classItem) => {
                   const stats = getClassStats(classItem);
-                  const capacityPercentage = (stats.studentCount / classItem.maxClassSize) * 100;
+                  const maxSize = Number(classItem.maxClassSize) || 0;
+                  const capacityPercentage = maxSize > 0 ? (stats.studentCount / maxSize) * 100 : 0;
 
                   return (
                     <TableRow key={classItem.id}>
@@ -222,7 +231,7 @@ const ViewAllClasses = () => {
                           <Users className="w-4 h-4 text-gray-400" />
                           <span className="font-medium">{stats.studentCount}</span>
                           <span className="text-sm text-gray-500">
-                            / {classItem.maxClassSize}
+                            / {maxSize || '—'}
                           </span>
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">

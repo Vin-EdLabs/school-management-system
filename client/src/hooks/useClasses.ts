@@ -9,7 +9,10 @@ export function useClasses() {
 
   const { data: classesResp } = useQuery<any, Error, any>({ queryKey: ['classes'], queryFn: classesService.listClasses });
   const rawClasses = (classesResp as any)?.data || [];
-  const [classes, setClasses] = useState<any[]>(rawClasses || []);
+  // Try to reuse any previously-enriched classes cached in React Query to avoid
+  // refetching assignments for every hook instance.
+  const cachedEnriched = queryClient.getQueryData<any[]>(['classes', 'enriched']);
+  const [classes, setClasses] = useState<any[]>(cachedEnriched ?? rawClasses ?? []);
 
   useEffect(() => {
     let mounted = true;
@@ -27,13 +30,21 @@ export function useClasses() {
             return { ...cls, assignedTeacher: null };
           }
         }));
-        if (mounted) setClasses(enriched);
+        if (mounted) {
+          setClasses(enriched);
+          // Cache enriched classes so other hook instances can reuse them without
+          // making duplicate assignment API calls.
+          try { queryClient.setQueryData(['classes', 'enriched'], enriched); } catch (e) { /* ignore */ }
+        }
       } catch (e) {
         if (mounted) setClasses(rawClasses);
       }
     };
     if (rawClasses.length > 0) enrich();
-    else setClasses(rawClasses);
+    else {
+      setClasses(rawClasses);
+      try { queryClient.setQueryData(['classes', 'enriched'], rawClasses); } catch (e) { /* ignore */ }
+    }
     return () => { mounted = false; };
   }, [classesResp]);
 

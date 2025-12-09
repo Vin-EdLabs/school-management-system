@@ -78,6 +78,16 @@ const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
       label: 'Classes',
       icon: BookOpen,
     }] : []),
+    ...(hasAccess('schedules') ? [{
+      id: 'schedules',
+      label: 'Schedules',
+      icon: Calendar,
+    }] : []),
+    ...(hasAccess('schedules') ? [{
+      id: 'timetable',
+      label: 'Timetable',
+      icon: Calendar,
+    }] : []),
     ...(hasAccess('calendar') ? [{
       id: 'calendar',
       label: 'Calendar',

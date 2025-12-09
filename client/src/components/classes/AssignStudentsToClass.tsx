@@ -13,7 +13,8 @@ const AssignStudentsToClass = () => {
   const { students, classes, promoteClassMutation, promoteStudentMutation, classIdToName } = usePromotions();
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
-  const [filterCurrentClass, setFilterCurrentClass] = useState('all');
+  // default to showing only unassigned students
+  const [filterCurrentClass, setFilterCurrentClass] = useState('unassigned');
 
   const handleStudentSelect = (studentId: string, checked: boolean) => {
     if (checked) {
@@ -105,7 +106,7 @@ const AssignStudentsToClass = () => {
                         const currentCount = getStudentCount(cls.className);
                         const capacity = cls.maxClassSize ? ` (${currentCount}/${cls.maxClassSize})` : ` (${currentCount})`;
                         return (
-                          <SelectItem key={cls.id} value={cls.id}>
+                          <SelectItem key={cls.id} value={String(cls.id)}>
                             {cls.className}{capacity}
                           </SelectItem>
                         );
@@ -239,7 +240,7 @@ const AssignStudentsToClass = () => {
                         <div className="w-full bg-gray-200 rounded-full h-2">
                           <div
                             className={`h-2 rounded-full ${utilization >= 90 ? 'bg-red-500' :
-                                utilization >= 70 ? 'bg-yellow-500' : 'bg-green-500'
+                              utilization >= 70 ? 'bg-yellow-500' : 'bg-green-500'
                               }`}
                             style={{ width: `${Math.min(utilization, 100)}%` }}
                           ></div>

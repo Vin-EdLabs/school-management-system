@@ -16,6 +16,8 @@ import StaffPayroll from './financial/StaffPayroll';
 import IncomeModule from './income/IncomeModule';
 import PayrollManagement from './payroll/PayrollManagement';
 import ReportsModule from './reports/ReportsModule';
+import SchedulesModule from './schedules/SchedulesModule';
+import TimetableModule from './schedules/TimetableModule';
 import SettingsModule from './settings/SettingsModule';
 import StudentsModule from './students/StudentsModule';
 import AttendanceModule from './teacher/AttendanceModule';
@@ -74,6 +76,10 @@ const Dashboard: React.FC<DashboardProps> = ({ initialModule }) => {
         return <TeachersModule />;
       case 'classes':
         return <ClassesModule />;
+      case 'schedules':
+        return <SchedulesModule />;
+      case 'timetable':
+        return <TimetableModule />;
       case 'calendar':
         return <CalendarModule />;
       case 'teacher-classes':

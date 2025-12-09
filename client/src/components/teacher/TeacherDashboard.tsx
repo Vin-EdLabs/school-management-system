@@ -16,8 +16,11 @@ const TeacherDashboard = () => {
 
   const teachers = (rawTeachers || []).map((t: any) => ({
     id: t.id ?? String(t.id),
+    username: t.username || t.userName || t.user_name || undefined,
     fullName: t.fullName || t.full_name || `${t.firstName || ''} ${t.lastName || ''}`,
     staffId: t.staffId || t.staff_id || t.staffID || '',
+    // include both display and id forms for reliable matching
+    classAssignedId: t.classAssignedId ?? t.class_assigned_id ?? t.class_id ?? null,
     classAssigned: t.classAssigned || t.class_assigned || t.class || '',
     subjectsTaught: t.subjectsTaught || t.subjects_taught || [],
     email: t.email || '',
@@ -29,6 +32,7 @@ const TeacherDashboard = () => {
     firstName: s.first_name || s.firstName || '',
     lastName: s.last_name || s.lastName || '',
     admissionNumber: s.admissionNumber || s.admission_number || s.admission_no || '',
+    classAssignedId: s.class_id ?? s.classId ?? s.class_assigned_id ?? null,
     classAssigned: s.classAssigned || s.class_assigned || s.class || ''
   }));
 
@@ -38,25 +42,34 @@ const TeacherDashboard = () => {
   }));
 
   // Find the current teacher's data based on username or teacherId
+  // Match current user to a teacher record. Prefer explicit id or username match,
+  // fall back to the previous fullName contains(username) heuristic for demo flows.
   const currentTeacher = teachers.find(t =>
-    t.staffId === user?.teacherId ||
-    t.fullName.toLowerCase().includes(user?.username?.toLowerCase() || '')
+    String(t.id) === String(user?.id) ||
+    (t.username && user?.username && String(t.username).toLowerCase() === String(user.username).toLowerCase()) ||
+    (t.staffId && user?.teacherId && String(t.staffId) === String(user.teacherId)) ||
+    (t.fullName && user?.username && t.fullName.toLowerCase().includes(user.username.toLowerCase()))
   );
 
   // Get teacher's assigned classes and students
-  const teacherClasses = currentTeacher?.classAssigned
-    ? classes.filter(cls => cls.className === currentTeacher.classAssigned)
-    : [];
+  // Prefer matching by class id when available, otherwise fallback to class name
+  const teacherClasses = currentTeacher?.classAssignedId != null
+    ? classes.filter(cls => String(cls.id) === String(currentTeacher.classAssignedId))
+    : currentTeacher?.classAssigned
+      ? classes.filter(cls => cls.className === currentTeacher.classAssigned)
+      : [];
 
-  const teacherStudents = currentTeacher?.classAssigned
-    ? students.filter(student => student.classAssigned === currentTeacher.classAssigned)
-    : [];
+  const teacherStudents = currentTeacher?.classAssignedId != null
+    ? students.filter(student => String(student.classAssignedId) === String(currentTeacher.classAssignedId))
+    : currentTeacher?.classAssigned
+      ? students.filter(student => student.classAssigned === currentTeacher.classAssigned)
+      : [];
 
   // Mock today's schedule based on teacher's classes (you can enhance this with real schedule data)
   const todaySchedule = teacherClasses.map((cls, index) => ({
     id: cls.id,
     name: cls.className,
-    students: students.filter(s => s.classAssigned === cls.className).length,
+    students: students.filter(s => (s.classAssignedId != null ? String(s.classAssignedId) === String(cls.id) : s.classAssigned === cls.className)).length,
     time: ['08:00 AM', '10:00 AM', '02:00 PM'][index] || '09:00 AM',
     room: `Room ${101 + index}`
   }));

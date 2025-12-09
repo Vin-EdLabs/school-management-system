@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import * as service from '../services/schedules.service.js';
+import { ConflictError } from '../utils/errors.js';
 import { failure, success } from '../utils/response.js';
 
 export async function create(req: Request, res: Response) {
@@ -8,6 +9,9 @@ export async function create(req: Request, res: Response) {
     const created = await service.createSchedule(payload);
     return res.status(201).json(success(created));
   } catch (err: any) {
+    if (err instanceof ConflictError) {
+      return res.status(409).json(failure(err.message, err.details));
+    }
     return res.status(500).json(failure(err.message));
   }
 }
@@ -18,6 +22,9 @@ export async function update(req: Request, res: Response) {
     const updated = await service.updateSchedule(id, req.body || {});
     return res.json(success(updated));
   } catch (err: any) {
+    if (err instanceof ConflictError) {
+      return res.status(409).json(failure(err.message, err.details));
+    }
     return res.status(500).json(failure(err.message));
   }
 }

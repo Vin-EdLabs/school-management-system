@@ -25,8 +25,6 @@ const SchedulesModule: React.FC = () => {
     const [activeTab, setActiveTab] = useState('view-all');
     const [form, setForm] = useState({ teacher_id: '', class_id: '', day_of_week: 1, start_time: '08:00:00', end_time: '09:00:00', room: '', subject: '' });
     const [saving, setSaving] = useState(false);
-    const [saveError, setSaveError] = useState<string | null>(null);
-    const [validationErrors, setValidationErrors] = useState<string[] | null>(null);
     const [editingSchedule, setEditingSchedule] = useState<any | null>(null);
 
     if (!hasAccess('schedules')) {
@@ -97,12 +95,11 @@ const SchedulesModule: React.FC = () => {
     };
 
     const create = async () => {
-        setSaveError(null);
         setSaving(true);
         try {
             const errors = validate();
             if (errors.length > 0) {
-                setValidationErrors(errors);
+                toast({ title: 'Validation error', description: errors.join('; ') });
                 setSaving(false);
                 return;
             }
@@ -124,12 +121,29 @@ const SchedulesModule: React.FC = () => {
             await queryClient.invalidateQueries(['schedules', 'all']);
             await queryClient.invalidateQueries({ predicate: (query) => Array.isArray(query.queryKey) && query.queryKey[0] === 'schedules' });
             setActiveTab('view-all');
-            setValidationErrors(null);
             // reset form
             setForm({ teacher_id: '', class_id: '', day_of_week: 1, start_time: '08:00:00', end_time: '09:00:00', room: '', subject: '' });
             toast({ title: 'Schedule created', description: 'Schedule saved successfully.' });
         } catch (err: any) {
-            setSaveError(err?.message || 'Failed to create schedule');
+            const body = err?.body;
+            if (body && body.message) {
+                if (body.details && body.details.conflicts && Array.isArray(body.details.conflicts) && body.details.conflicts.length > 0) {
+                    const msgs = body.details.conflicts.map((c: any) => {
+                        const ex = c.existing || {};
+                        const className = ex.class_name || `Class ${ex.class_id ?? ''}`;
+                        const teacher = ex.teacher_name || ex.teacher_username || ex.teacher_id || '';
+                        const subject = ex.subject || '';
+                        const room = ex.room || '';
+                        const times = `${ex.start_time ?? ''}-${ex.end_time ?? ''}`;
+                        return `${c.type.toUpperCase()} conflict: ${className} — ${subject} (${times})${teacher ? ' — ' + teacher : ''}${room ? ' — room ' + room : ''}`;
+                    });
+                    toast({ title: body.message, description: msgs.join('\n') });
+                } else {
+                    toast({ title: body.message });
+                }
+            } else {
+                toast({ title: 'Error', description: err?.message || 'Failed to create schedule' });
+            }
         } finally {
             setSaving(false);
         }

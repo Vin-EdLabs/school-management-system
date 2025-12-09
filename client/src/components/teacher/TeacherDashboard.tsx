@@ -45,8 +45,7 @@ const TeacherDashboard = () => {
   // Match current user to a teacher record. Prefer explicit id or username match,
   // fall back to the previous fullName contains(username) heuristic for demo flows.
   const currentTeacher = teachers.find(t =>
-    String(t.id) === String(user?.id) ||
-    (t.username && user?.username && String(t.username).toLowerCase() === String(user.username).toLowerCase()) ||
+    (user?.username && t.username && String(t.username).toLowerCase() === String(user.username).toLowerCase()) ||
     (t.staffId && user?.teacherId && String(t.staffId) === String(user.teacherId)) ||
     (t.fullName && user?.username && t.fullName.toLowerCase().includes(user.username.toLowerCase()))
   );

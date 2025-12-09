@@ -95,7 +95,7 @@ const LoginPage = () => {
               <Label htmlFor="password" className="text-sm font-medium text-gray-700">Password</Label>
               <div className="relative mt-1">
                 <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input id="password" type="password" placeholder="Enter your password" value={password} onChange={(e) => setPassword(e.target.value)} className="pl-10 h-11 border-gray-200" required />
+                <Input id="password" type="password" placeholder="Enter your password" value={password} onChange={(e) => setPassword(e.target.value)} className="pl-10 h-11 border-gray-200" required autoComplete="current-password" />
               </div>
             </div>
 

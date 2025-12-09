@@ -22,8 +22,6 @@ const CreateSchedule: React.FC<Props> = ({ onCreated, initial = null, onUpdated,
 
     const [form, setForm] = useState({ teacher_id: '', class_id: '', day_of_week: 1, start_time: '08:00', end_time: '09:00', room: '', subject: '' });
     const [saving, setSaving] = useState(false);
-    const [saveError, setSaveError] = useState<string | null>(null);
-    const [validationErrors, setValidationErrors] = useState<string[] | null>(null);
 
     const handleChange = (k: string, v: any) => setForm(prev => ({ ...prev, [k]: v }));
 
@@ -48,12 +46,11 @@ const CreateSchedule: React.FC<Props> = ({ onCreated, initial = null, onUpdated,
     const normalizeTime = (t: string) => (t && t.length === 5 ? `${t}:00` : t);
 
     const create = async () => {
-        setSaveError(null);
         setSaving(true);
         try {
             const errors = validate();
             if (errors.length > 0) {
-                setValidationErrors(errors);
+                toast({ title: 'Validation error', description: errors.join('; ') });
                 setSaving(false);
                 return;
             }
@@ -71,22 +68,41 @@ const CreateSchedule: React.FC<Props> = ({ onCreated, initial = null, onUpdated,
             if (initial && initial.id) {
                 // update flow
                 await schedulesService.updateSchedule(initial.id, payload);
-                await queryClient.invalidateQueries(['schedules', 'all']);
+                await queryClient.invalidateQueries({ queryKey: ['schedules', 'all'] });
                 await queryClient.invalidateQueries({ predicate: (query) => Array.isArray(query.queryKey) && query.queryKey[0] === 'schedules' });
                 toast({ title: 'Schedule updated', description: 'Schedule updated successfully.' });
                 if (onUpdated) onUpdated();
             } else {
                 // create flow
                 await schedulesService.createSchedule(payload);
-                await queryClient.invalidateQueries(['schedules', 'all']);
+                await queryClient.invalidateQueries({ queryKey: ['schedules', 'all'] });
                 await queryClient.invalidateQueries({ predicate: (query) => Array.isArray(query.queryKey) && query.queryKey[0] === 'schedules' });
                 setForm({ teacher_id: '', class_id: '', day_of_week: 1, start_time: '08:00', end_time: '09:00', room: '', subject: '' });
-                setValidationErrors(null);
                 toast({ title: 'Schedule created', description: 'Schedule saved successfully.' });
                 if (onCreated) onCreated();
             }
         } catch (err: any) {
-            setSaveError(err?.message || 'Failed to create schedule');
+            // Prefer structured API body if present
+            const status = err?.status;
+            const body = err?.body;
+            if (body && body.message) {
+                if (body.details && body.details.conflicts && Array.isArray(body.details.conflicts) && body.details.conflicts.length > 0) {
+                    const msgs = body.details.conflicts.map((c: any) => {
+                        const ex = c.existing || {};
+                        const className = (ex.class_name || ex.class_name) ?? (ex.class_name || `Class ${ex.class_id ?? ''}`);
+                        const teacher = ex.teacher_name || ex.teacher_username || ex.teacher_id || '';
+                        const subject = ex.subject || '';
+                        const room = ex.room || '';
+                        const times = `${ex.start_time ?? ''}-${ex.end_time ?? ''}`;
+                        return `${c.type.toUpperCase()} conflict: ${className} — ${subject} (${times}) ${teacher ? ' — ' + teacher : ''} ${room ? ' — room ' + room : ''}`;
+                    });
+                    toast({ title: body.message, description: msgs.join('\n') });
+                } else {
+                    toast({ title: body.message, description: '' });
+                }
+            } else {
+                toast({ title: 'Error', description: err?.message || 'Failed to save schedule' });
+            }
         } finally {
             setSaving(false);
         }
@@ -156,18 +172,11 @@ const CreateSchedule: React.FC<Props> = ({ onCreated, initial = null, onUpdated,
                 <Input list="schedules-subjects-list" className="col-span-2" placeholder="Subject" value={form.subject} onChange={(e) => handleChange('subject', e.target.value)} />
 
                 <div className="flex items-center gap-2">
-                    <Button variant="default" onClick={create} disabled={saving}>{saving ? 'Saving...' : 'Save'}</Button>
-                    <Button variant="ghost" onClick={() => { setForm({ teacher_id: '', class_id: '', day_of_week: 1, start_time: '08:00', end_time: '09:00', room: '', subject: '' }); setValidationErrors(null); }}>Cancel</Button>
+                    <Button variant="default" onClick={create} disabled={saving}>{saving ? 'Saving...' : (initial && initial.id ? 'Update' : 'Save')}</Button>
+                    <Button variant="ghost" onClick={() => { setForm({ teacher_id: '', class_id: '', day_of_week: 1, start_time: '08:00', end_time: '09:00', room: '', subject: '' }); if (onCancel) onCancel(); }}>Cancel</Button>
                 </div>
             </div>
-            {saveError && <div className="text-red-600 mt-2">{saveError}</div>}
-            {validationErrors && (
-                <div className="mt-2 text-sm text-red-600">
-                    <ul className="list-disc pl-5">
-                        {validationErrors.map((err, idx) => <li key={idx}>{err}</li>)}
-                    </ul>
-                </div>
-            )}
+            {/* Errors are shown via toast notifications */}
         </div>
     );
 };

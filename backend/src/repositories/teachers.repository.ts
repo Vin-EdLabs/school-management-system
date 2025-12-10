@@ -2,7 +2,7 @@ import { query } from '../config/db.js';
 
 function normalizeRow(row: any) {
   if (!row) return null;
-  let meta = {};
+  let meta: any = {};
   try {
     if (row.meta) meta = typeof row.meta === 'string' ? JSON.parse(row.meta) : row.meta;
   } catch (e) {
@@ -73,7 +73,16 @@ export async function createTeacher(payload: any) {
   for (const sql of attempts) {
     try {
       const res = await query(sql, [payload.username, payload.password_hash ?? '', 'teacher', JSON.stringify(payload.meta ?? {})]);
-      return normalizeRow(res.rows[0]);
+      const row = res.rows[0];
+      // if caller provided explicit top-level fields like email or display_name, persist them to columns
+      if (row && (payload.email || payload.display_name)) {
+        try {
+          await query('UPDATE users SET email = $1, display_name = $2 WHERE id = $3', [payload.email ?? null, payload.display_name ?? null, row.id]);
+        } catch (e) {
+          // ignore update failure, return normalized row anyway
+        }
+      }
+      return normalizeRow(row);
     } catch (err) {
       continue;
     }
@@ -99,9 +108,18 @@ export async function updateTeacher(id: number, payload: any) {
     await query('UPDATE users SET username = $1 WHERE id = $2 AND role = $3', [payload.username, id, 'teacher']);
   }
 
-  // Merge other top-level payload fields into meta (except username)
+  // Merge other top-level payload fields into meta (except username).
+  // However, certain fields should be stored in top-level columns instead of meta.
   const payloadMeta = { ...payload };
   delete payloadMeta.username;
+
+  // Extract top-level fields we want to persist as columns
+  const emailToSet = Object.prototype.hasOwnProperty.call(payloadMeta, 'email') ? payloadMeta.email : undefined;
+  const displayNameToSet = Object.prototype.hasOwnProperty.call(payloadMeta, 'display_name') ? payloadMeta.display_name : (Object.prototype.hasOwnProperty.call(payloadMeta, 'displayName') ? payloadMeta.displayName : undefined);
+
+  // Remove those from payloadMeta so they are not merged into JSON meta
+  if (emailToSet !== undefined) delete payloadMeta.email;
+  if (displayNameToSet !== undefined) { delete payloadMeta.display_name; delete payloadMeta.displayName; }
 
   // If payload already contains a `meta` object, prefer merging that as well
   if (payloadMeta.meta && typeof payloadMeta.meta === 'object') {
@@ -109,14 +127,23 @@ export async function updateTeacher(id: number, payload: any) {
     delete payloadMeta.meta;
   }
 
-  // Merge remaining keys into meta
+  // Merge remaining keys into meta (but avoid copying sensitive or structural keys)
+  const forbidden = new Set(['id', 'role', 'password_hash', 'password', 'created_at', 'updated_at']);
   Object.keys(payloadMeta).forEach(k => {
-    // avoid accidentally overwriting numeric or id fields that aren't meta-related
-    // common teacher profile keys are allowed
+    if (forbidden.has(k)) return;
     meta[k] = (payloadMeta as any)[k];
   });
 
   await query('UPDATE users SET meta = $1 WHERE id = $2 AND role = $3', [JSON.stringify(meta ?? {}), id, 'teacher']);
+
+  // Persist extracted top-level columns if provided
+  if (emailToSet !== undefined || displayNameToSet !== undefined) {
+    try {
+      await query('UPDATE users SET email = $1, display_name = $2 WHERE id = $3 AND role = $4', [emailToSet ?? null, displayNameToSet ?? null, id, 'teacher']);
+    } catch (e) {
+      // ignore update failure
+    }
+  }
 
   return findTeacherById(id);
 }

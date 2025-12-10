@@ -3,20 +3,24 @@ import useClasses from '@/hooks/useClasses';
 import useStudents from '@/hooks/useStudents';
 import useTeachers from '@/hooks/useTeachers';
 import { BookOpen, ChevronRight, Users } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 
 const TeacherClassesModule = () => {
   const { user } = useAuth();
   const { students: rawStudents } = useStudents();
   const { teachers: rawTeachers } = useTeachers();
-  const { classes: rawClasses } = useClasses();
+  const { classes: rawClasses, getClassStudents } = useClasses();
 
   const teachers = (rawTeachers || []).map((t: any) => ({
     id: t.id ?? String(t.id),
     fullName: t.fullName || t.full_name || `${t.firstName || ''} ${t.lastName || ''}`,
     staffId: t.staffId || t.staff_id || '',
-    classAssigned: t.classAssigned || t.class_assigned || ''
+    classAssigned: t.classAssigned || t.class_assigned || '',
+    classAssignedId: t.classAssignedId ?? t.class_assigned_id ?? t.class_id ?? t.classId ?? null,
+    // preserve enriched arrays if present
+    classAssignedList: t.classAssignedList ?? t.class_assigned_list ?? [],
+    classAssignedIds: t.classAssignedIds ?? t.class_assigned_ids ?? []
   }));
 
   const students = (rawStudents || []).map((s: any) => ({
@@ -24,7 +28,8 @@ const TeacherClassesModule = () => {
     firstName: s.first_name || s.firstName || '',
     lastName: s.last_name || s.lastName || '',
     admissionNumber: s.admissionNumber || s.admission_number || '',
-    classAssigned: s.classAssigned || s.class_assigned || ''
+    classAssigned: s.classAssigned || s.class_assigned || (s.class_id ? String(s.class_id) : '') || (s.classId ? String(s.classId) : ''),
+    classAssignedId: s.class_id ?? s.classId ?? null
   }));
 
   const classes = (rawClasses || []).map((c: any) => ({
@@ -33,22 +38,101 @@ const TeacherClassesModule = () => {
   }));
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
 
-  // Find the current teacher's data based on username or teacherId
+  // Determine if the current user is a super-admin (allow some common variants)
+  const roleStr = String(user?.role || '').toLowerCase();
+  const isSuperAdmin = roleStr.includes('super');
+
+  // Find the current teacher's data based on username or teacherId (non-super-admin path)
   const currentTeacher = teachers.find(t =>
     t.staffId === user?.teacherId ||
-    t.fullName.toLowerCase().includes(user?.username?.toLowerCase() || '')
+    (t.fullName || '').toLowerCase().includes((user?.username || '').toLowerCase())
   );
 
-  // Get teacher's assigned classes
-  const teacherClasses = currentTeacher?.classAssigned
-    ? classes.filter(cls => cls.className === currentTeacher.classAssigned)
-    : [];
+  // Build the teacherClasses data:
+  // - For super-admin: list every teacher with their assigned classes (may be empty)
+  // - For regular teacher: show only classes assigned to the current teacher
+  let teacherClasses: any[] = [];
+  if (isSuperAdmin) {
+    teacherClasses = teachers.map(t => {
+      const assignedList = Array.isArray((t as any).classAssignedList) ? (t as any).classAssignedList.map((s: any) => String(s).trim()) : [];
+      const assignedIds = Array.isArray((t as any).classAssignedIds) ? (t as any).classAssignedIds.map((id: any) => String(id)) : [];
+      const assignedIdSet = new Set(assignedIds.filter(Boolean));
+      const assignedLabelSet = new Set(assignedList.filter(Boolean));
+      return {
+        teacher: t,
+        classes: classes.filter((cls: any) => {
+          const clsName = cls.className ? String(cls.className).trim() : '';
+          const clsId = String(cls.id);
+          if (assignedIdSet.size > 0) return assignedIdSet.has(clsId);
+          if (assignedLabelSet.size > 0) return assignedLabelSet.has(clsName);
+          return false;
+        })
+      };
+    });
+  } else {
+    if (!currentTeacher) {
+      teacherClasses = [];
+    } else {
+      const assignedList = Array.isArray((currentTeacher as any).classAssignedList) ? (currentTeacher as any).classAssignedList.map((s: any) => String(s).trim()) : [];
+      const assignedIds = Array.isArray((currentTeacher as any).classAssignedIds) ? (currentTeacher as any).classAssignedIds.map((id: any) => String(id)) : [];
+      const assignedIdSet = new Set(assignedIds.filter(Boolean));
+      const assignedLabelSet = new Set(assignedList.filter(Boolean));
+      teacherClasses = classes.filter((cls: any) => {
+        const clsName = cls.className ? String(cls.className).trim() : '';
+        const clsId = String(cls.id);
+        if (assignedIdSet.size > 0) return assignedIdSet.has(clsId);
+        if (assignedLabelSet.size > 0) return assignedLabelSet.has(clsName);
+        return false;
+      });
+    }
+  }
 
   // Get students for the selected class
   const selectedClassData = classes.find(cls => cls.id === selectedClass);
-  const classStudents = selectedClassData
-    ? students.filter(student => student.classAssigned === selectedClassData.className)
-    : [];
+  const [classStudents, setClassStudents] = useState<any[]>([]);
+  const [classStudentsLoading, setClassStudentsLoading] = useState(false);
+
+  // Helper: robustly compute student count for a class by id or name
+  const studentCountForClass = (cls: any) => {
+    try {
+      const cid = String(cls.id);
+      // look for common student-class fields
+      const byId = students.filter(s => {
+        const assigned = (s.classAssigned ?? s.class_assigned ?? s.classId ?? s.class_id ?? '').toString();
+        return assigned === cid;
+      }).length;
+      if (byId > 0) return byId;
+      const cname = (cls.className || '').toString();
+      const byName = students.filter(s => {
+        const assigned = (s.classAssigned ?? s.class_assigned ?? '').toString();
+        return assigned === cname;
+      }).length;
+      return byName;
+    } catch (e) {
+      return 0;
+    }
+  };
+
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      if (!selectedClassData) {
+        if (mounted) setClassStudents([]);
+        return;
+      }
+      setClassStudentsLoading(true);
+      try {
+        const rows = await getClassStudents(Number(selectedClassData.id));
+        if (mounted) setClassStudents(rows || []);
+      } catch (e) {
+        if (mounted) setClassStudents([]);
+      } finally {
+        if (mounted) setClassStudentsLoading(false);
+      }
+    };
+    load();
+    return () => { mounted = false; };
+  }, [selectedClass]);
 
   return (
     <div className="p-6 space-y-6">
@@ -70,35 +154,66 @@ const TeacherClassesModule = () => {
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <BookOpen className="w-5 h-5" />
-            <span>Assigned Classes</span>
+            <span>{isSuperAdmin ? 'Teachers & Assigned Classes' : 'Assigned Classes'}</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {teacherClasses.length === 0 ? (
+          {(!isSuperAdmin && teacherClasses.length === 0) || (isSuperAdmin && teacherClasses.length === 0) ? (
             <div className="text-center py-8">
               <BookOpen className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">No Classes Assigned</h3>
-              <p className="text-gray-500">You don't have any classes assigned yet.</p>
+              <p className="text-gray-500">No classes are assigned yet.</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {teacherClasses.map(cls => {
-                const studentCount = students.filter(s => s.classAssigned === cls.className).length;
-                return (
-                  <div
-                    key={cls.id}
-                    className={`flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors ${selectedClass === cls.id ? 'ring-2 ring-blue-500' : ''}`}
-                    onClick={() => setSelectedClass(cls.id)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <div>
-                      <h4 className="font-medium text-gray-900">{cls.className}</h4>
-                      <p className="text-sm text-gray-500">{studentCount} students</p>
+              {isSuperAdmin ? (
+                // show each teacher and their classes
+                teacherClasses.map((entry: any) => (
+                  <div key={entry.teacher.id} className="p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-medium text-gray-900">{entry.teacher.fullName || entry.teacher.username}</h4>
+                        <p className="text-sm text-gray-500">{entry.classes.length} assigned class{entry.classes.length !== 1 ? 'es' : ''}</p>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-gray-500" />
                     </div>
-                    <ChevronRight className="w-5 h-5 text-gray-500" />
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {entry.classes.length === 0 ? (
+                        <div className="text-sm text-gray-500 col-span-full">No classes assigned</div>
+                      ) : (
+                        entry.classes.map((cls: any) => (
+                          <div key={cls.id} className={`flex items-center justify-between p-2 bg-white border rounded ${selectedClass === cls.id ? 'ring-2 ring-blue-500' : ''}`} onClick={() => setSelectedClass(cls.id)} style={{ cursor: 'pointer' }}>
+                            <div>
+                              <div className="font-medium text-gray-900">{cls.className}</div>
+                              <div className="text-sm text-gray-500">{studentCountForClass(cls)} students</div>
+                            </div>
+                            <ChevronRight className="w-4 h-4 text-gray-400" />
+                          </div>
+                        ))
+                      )}
+                    </div>
                   </div>
-                );
-              })}
+                ))
+              ) : (
+                // non-super-admin: show classes as before
+                teacherClasses.map((cls: any) => {
+                  const studentCount = studentCountForClass(cls);
+                  return (
+                    <div
+                      key={cls.id}
+                      className={`flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors ${selectedClass === cls.id ? 'ring-2 ring-blue-500' : ''}`}
+                      onClick={() => setSelectedClass(cls.id)}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <div>
+                        <h4 className="font-medium text-gray-900">{cls.className}</h4>
+                        <p className="text-sm text-gray-500">{studentCount} students</p>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-gray-500" />
+                    </div>
+                  );
+                })
+              )}
             </div>
           )}
         </CardContent>
@@ -122,17 +237,24 @@ const TeacherClassesModule = () => {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {classStudents.map(student => (
-                  <div key={student.id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                    <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
-                      {student.firstName.charAt(0)}{student.lastName.charAt(0)}
+                {classStudents.map((student: any) => {
+                  const first = (student.firstName || student.first_name || student.first || '').toString();
+                  const last = (student.lastName || student.last_name || student.last || '').toString();
+                  const displayFirst = first.charAt ? first.charAt(0) : '';
+                  const displayLast = last.charAt ? last.charAt(0) : '';
+                  const admission = student.admissionNumber ?? student.admission_number ?? student.admission ?? '';
+                  return (
+                    <div key={student.id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                      <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
+                        {displayFirst}{displayLast}
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900">{(student.firstName ?? student.first_name ?? '')} {(student.lastName ?? student.last_name ?? '')}</p>
+                        <p className="text-sm text-gray-500">Admission: {admission}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-medium text-gray-900">{student.firstName} {student.lastName}</p>
-                      <p className="text-sm text-gray-500">Admission: {student.admissionNumber}</p>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CardContent>

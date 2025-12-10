@@ -12,7 +12,7 @@ import { School, User, Users } from 'lucide-react';
 import React, { useState } from 'react';
 
 const AssignClassToTeacher: React.FC = () => {
-  const { teachers } = useTeachers();
+  const { teachers, refreshTeachers } = useTeachers();
   const { classes } = useClasses();
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
@@ -46,8 +46,10 @@ const AssignClassToTeacher: React.FC = () => {
         }
       }
 
-      queryClient.invalidateQueries({ queryKey: ['teachers'] });
-      queryClient.invalidateQueries({ queryKey: ['classes'] });
+      // Refresh enriched teacher data and invalidate classes cache
+      try { await refreshTeachers(); } catch (e) { /* ignore */ }
+      try { queryClient.removeQueries({ queryKey: ['classes', 'enriched'] }); } catch (e) { /* ignore */ }
+      await queryClient.invalidateQueries({ queryKey: ['classes'] });
 
       toast({ title: 'Class Assigned Successfully', description: `${teacher.fullName || teacher.full_name} has been assigned to ${classData.className || (classData.level ? `${classData.level}${classData.stream ? ' ' + classData.stream : ''}` : 'Unassigned')}` });
 
@@ -55,6 +57,38 @@ const AssignClassToTeacher: React.FC = () => {
       setSelectedClass('');
     } catch (err: any) {
       toast({ title: 'Assignment Error', description: err.message || 'Failed to assign class', variant: 'destructive' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRemoveAssignment = async () => {
+    if (!selectedClass) {
+      toast({ title: 'Validation Error', description: 'Please select a class to unassign', variant: 'destructive' });
+      return;
+    }
+
+    const classData = (classes || []).find((c: any) => String(c.id) === String(selectedClass));
+    if (!classData) return;
+
+    // determine currently assigned teacher id (if any)
+    const currentTeacherId = classData?.assignedTeacher ?? classData?.assignedTeacherId ?? classData?.teacher_id ?? null;
+    if (!currentTeacherId) {
+      toast({ title: 'No assignment', description: 'This class has no teacher assigned', variant: 'default' });
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await assignmentsService.removeAssignment({ teacher_id: Number(currentTeacherId), class_id: Number(selectedClass) });
+      try { await refreshTeachers(); } catch (e) { /* ignore */ }
+      try { queryClient.removeQueries({ queryKey: ['classes', 'enriched'] }); } catch (e) { }
+      await queryClient.invalidateQueries({ queryKey: ['classes'] });
+      toast({ title: 'Assignment removed', description: `Teacher unassigned from ${classData.className || (classData.level ? `${classData.level}${classData.stream ? ' ' + classData.stream : ''}` : 'class')}` });
+      setSelectedTeacher('');
+      setSelectedClass('');
+    } catch (err: any) {
+      toast({ title: 'Unassign Error', description: err?.message || 'Failed to remove assignment', variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -145,10 +179,15 @@ const AssignClassToTeacher: React.FC = () => {
               </div>
             )}
 
-            <Button onClick={handleAssignClass} className="w-full md:w-auto" disabled={loading}>
-              <School className="w-4 h-4 mr-2" />
-              Assign Class
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={handleAssignClass} className="w-full md:w-auto" disabled={loading}>
+                <School className="w-4 h-4 mr-2" />
+                Assign Class
+              </Button>
+              <Button variant="destructive" onClick={handleRemoveAssignment} disabled={loading || !selectedClass}>
+                Remove Assignment
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

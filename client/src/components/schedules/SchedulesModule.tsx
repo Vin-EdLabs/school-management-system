@@ -118,7 +118,7 @@ const SchedulesModule: React.FC = () => {
             };
             await schedulesService.createSchedule(payload);
             // refresh schedules (invalidate the exact key and any schedules-related queries)
-            await queryClient.invalidateQueries(['schedules', 'all']);
+            await queryClient.invalidateQueries({ queryKey: ['schedules', 'all'] });
             await queryClient.invalidateQueries({ predicate: (query) => Array.isArray(query.queryKey) && query.queryKey[0] === 'schedules' });
             setActiveTab('view-all');
             // reset form
@@ -153,7 +153,7 @@ const SchedulesModule: React.FC = () => {
         if (!confirm('Delete this schedule? This action cannot be undone.')) return;
         try {
             await schedulesService.deleteSchedule(id);
-            await queryClient.invalidateQueries(['schedules', 'all']);
+            await queryClient.invalidateQueries({ queryKey: ['schedules', 'all'] });
             await queryClient.invalidateQueries({ predicate: (query) => Array.isArray(query.queryKey) && query.queryKey[0] === 'schedules' });
             toast({ title: 'Deleted', description: 'Schedule deleted successfully.' });
         } catch (err: any) {

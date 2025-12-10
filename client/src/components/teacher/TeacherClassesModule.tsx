@@ -3,7 +3,7 @@ import useClasses from '@/hooks/useClasses';
 import useStudents from '@/hooks/useStudents';
 import useTeachers from '@/hooks/useTeachers';
 import { BookOpen, ChevronRight, Users } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 
 const TeacherClassesModule = () => {
@@ -178,7 +178,7 @@ const TeacherClassesModule = () => {
                       <ChevronRight className="w-5 h-5 text-gray-500" />
                     </div>
                     <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              {entry.classes.length === 0 ? (
+                      {entry.classes.length === 0 ? (
                         <div className="text-sm text-gray-500 col-span-full">No classes assigned</div>
                       ) : (
                         entry.classes.map((cls: any) => (

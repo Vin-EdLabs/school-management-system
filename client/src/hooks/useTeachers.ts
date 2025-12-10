@@ -13,40 +13,61 @@ export function useTeachers() {
   const [teachers, setTeachers] = useState<any[]>(cachedEnriched ?? rawTeachers ?? []);
 
   // Enrich teachers with classAssigned by querying assignments for each teacher
+  // Extraction: a function that enriches a list of raw teachers by fetching assignments
+  const enrichTeachers = async (sourceTeachers: any[]) => {
+    const enriched = await Promise.all(sourceTeachers.map(async (t: any) => {
+      try {
+        const res = await assignmentsService.listByTeacher(t.id);
+        const classes = (res as any)?.data || [];
+        const assignedLabels: string[] = [];
+        const assignedIds: Array<string|number> = [];
+        for (const cls of classes) {
+          if (!cls) continue;
+          const classNameField = cls.className ?? cls.name ?? cls.class_name ?? cls.title ?? null;
+          const label = classNameField ?? (cls.level ? `${cls.level}${cls.stream ? ' ' + cls.stream : ''}` : `Class ${cls.id ?? ''}`);
+          assignedLabels.push(String(label));
+          assignedIds.push(cls.id ?? cls.ID ?? cls.class_id ?? cls.classId ?? '');
+        }
+        const classAssigned = assignedLabels.length > 0 ? assignedLabels.join(', ') : undefined;
+        const classAssignedId = assignedIds.length === 1 ? assignedIds[0] : null;
+        return { ...t, classAssigned, classAssignedList: assignedLabels, classAssignedId, classAssignedIds: assignedIds };
+      } catch (e) {
+        return { ...t, classAssigned: undefined, classAssignedId: null };
+      }
+    }));
+    return enriched;
+  };
+
   useEffect(() => {
     let mounted = true;
-    const enrich = async () => {
+    const run = async () => {
+      if ((rawTeachers || []).length === 0) {
+        setTeachers(rawTeachers);
+        try { queryClient.setQueryData(['teachers', 'enriched'], rawTeachers); } catch (e) { }
+        return;
+      }
       try {
-        const enriched = await Promise.all(rawTeachers.map(async (t: any) => {
-          try {
-            const res = await assignmentsService.listByTeacher(t.id);
-            const classes = (res as any)?.data || [];
-            const cls = classes[0];
-            const classAssigned = cls ? (cls.className ?? (cls.level ? `${cls.level}${cls.stream ? ' ' + cls.stream : ''}` : '')) : undefined;
-            const classAssignedId = cls ? (cls.id ?? cls.ID ?? cls.class_id ?? null) : null;
-            return { ...t, classAssigned, classAssignedId };
-          } catch (e) {
-            return { ...t, classAssigned: undefined, classAssignedId: null };
-          }
-        }));
-        if (mounted) {
-          setTeachers(enriched);
-          try { queryClient.setQueryData(['teachers', 'enriched'], enriched); } catch (e) { /* ignore */ }
-        }
+        const enriched = await enrichTeachers(rawTeachers);
+        if (!mounted) return;
+        setTeachers(enriched);
+        try { queryClient.setQueryData(['teachers', 'enriched'], enriched); } catch (e) { }
       } catch (e) {
-        if (mounted) {
-          setTeachers(rawTeachers);
-          try { queryClient.setQueryData(['teachers', 'enriched'], rawTeachers); } catch (e) { /* ignore */ }
-        }
+        if (!mounted) return;
+        setTeachers(rawTeachers);
+        try { queryClient.setQueryData(['teachers', 'enriched'], rawTeachers); } catch (e) { }
       }
     };
-    if (rawTeachers.length > 0) enrich();
-    else {
-      setTeachers(rawTeachers);
-      try { queryClient.setQueryData(['teachers', 'enriched'], rawTeachers); } catch (e) { /* ignore */ }
-    }
+    run();
     return () => { mounted = false; };
   }, [teachersResp]);
+
+  // expose a refresh function that UI components can call after assign/remove
+  const refreshTeachers = async () => {
+    const latest = queryClient.getQueryData<any[]>(['teachers']) || rawTeachers || [];
+    const enriched = await enrichTeachers(latest);
+    setTeachers(enriched);
+    try { queryClient.setQueryData(['teachers', 'enriched'], enriched); } catch (e) { }
+  };
 
   const createTeacher = useMutation<any, Error, any>({
     mutationFn: (payload: any) => teachersService.createTeacher(payload),
@@ -72,7 +93,7 @@ export function useTeachers() {
     }
   });
 
-  return { teachers, createTeacher, updateTeacher, deleteTeacher };
+  return { teachers, createTeacher, updateTeacher, deleteTeacher, refreshTeachers };
 }
 
 export default useTeachers;

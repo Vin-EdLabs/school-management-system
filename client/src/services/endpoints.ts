@@ -96,6 +96,9 @@ export const ENDPOINTS = {
   events: {
     list: '/events',
     create: '/events',
+    get: (id: string) => `/events/${id}`,
+    update: (id: string) => `/events/${id}`,
+    delete: (id: string) => `/events/${id}`,
   },
   payroll: {
     list: '/payroll',

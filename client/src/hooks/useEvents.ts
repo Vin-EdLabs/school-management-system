@@ -22,3 +22,19 @@ export function useCreateEvent() {
     },
   });
 }
+
+export function useUpdateEvent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string | number; payload: any }) => eventsService.updateEvent(id, payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['events'] }),
+  });
+}
+
+export function useDeleteEvent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string | number) => eventsService.deleteEvent(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['events'] }),
+  });
+}

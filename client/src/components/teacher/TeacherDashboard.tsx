@@ -7,7 +7,6 @@ import useSchedules from '@/hooks/useSchedules';
 import useStudents from '@/hooks/useStudents';
 import useTeachers from '@/hooks/useTeachers';
 import { BookOpen, Calendar, ClipboardCheck, Clock, School, Users } from 'lucide-react';
-import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 
 const TeacherDashboard = () => {
@@ -15,11 +14,6 @@ const TeacherDashboard = () => {
   const { students: rawStudents } = useStudents();
   const { teachers: rawTeachers } = useTeachers();
   const { classes: rawClasses } = useClasses();
-
-  // Placeholder for currentTeacher, will be set after teachers are loaded
-  const [currentTeacherId, setCurrentTeacherId] = useState<string | number | null>(null);
-  const { data: schedulesResp, isLoading: schedulesLoading } = useSchedules(currentTeacherId);
-  const schedules = (schedulesResp as any)?.data || [];
 
   const teachers = (rawTeachers || []).map((t: any) => ({
     id: t.id ?? String(t.id),
@@ -58,12 +52,9 @@ const TeacherDashboard = () => {
     (t.fullName && user?.username && t.fullName.toLowerCase().includes(user.username.toLowerCase()))
   );
 
-  // Update currentTeacherId for the schedules query whenever currentTeacher changes
-  React.useEffect(() => {
-    if (currentTeacher?.id) {
-      setCurrentTeacherId(currentTeacher.id);
-    }
-  }, [currentTeacher?.id]);
+  // Get schedules - will be fetched after currentTeacher is identified
+  const { data: schedulesResp, isLoading: schedulesLoading } = useSchedules(currentTeacher?.id);
+  const schedules = (schedulesResp as any)?.data || [];
 
   // Get teacher's assigned classes and students
   // Prefer matching by class id when available, otherwise fallback to class name
@@ -211,23 +202,42 @@ const TeacherDashboard = () => {
               </div>
             ) : (
               <div className="space-y-4">
-                {todaySchedule.map((cls) => (
-                  <div key={cls.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                    <div>
-                      <h4 className="font-medium text-gray-900">{cls.name}</h4>
-                      <div className="flex items-center space-x-4 text-sm text-gray-500 mt-1">
-                        <span className="flex items-center">
-                          <Clock className="w-4 h-4 mr-1" />
-                          {cls.time}
-                        </span>
-                        <span>{cls.room}</span>
-                        <span>{cls.subject}</span>
-                        <span>{cls.students} students</span>
+                {/* Group schedules by day index and render day headings */}
+                {(() => {
+                  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                  const grouped: any[][] = Array.from({ length: 7 }, () => []);
+                  todaySchedule.forEach((s) => {
+                    const idx = Number(s.dayOfWeek) || 0;
+                    if (!grouped[idx]) grouped[idx] = [];
+                    grouped[idx].push(s);
+                  });
+
+                  return grouped.map((items, idx) => (
+                    items && items.length > 0 ? (
+                      <div key={idx}>
+                        <h3 className="text-lg font-semibold text-gray-700 mb-2">{dayNames[idx]}</h3>
+                        <div className="space-y-2">
+                          {items.map((cls: any) => (
+                            <div key={cls.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                              <div>
+                                <h4 className="font-medium text-gray-900">{cls.name}</h4>
+                                <div className="flex items-center space-x-4 text-sm text-gray-500 mt-1">
+                                  <span className="flex items-center">
+                                    <Clock className="w-4 h-4 mr-1" />
+                                    {cls.time}
+                                  </span>
+                                  <span>{cls.room}</span>
+                                  <span>{cls.subject}</span>
+                                  <span>{cls.students} students</span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                    <Button size="sm">View Class</Button>
-                  </div>
-                ))}
+                    ) : null
+                  ));
+                })()}
               </div>
             )}
           </CardContent>

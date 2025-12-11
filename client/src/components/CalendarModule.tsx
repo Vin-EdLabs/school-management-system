@@ -10,8 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
-import { useEvents } from '@/hooks/useEvents';
+import { useCreateEvent, useDeleteEvent, useEvents, useUpdateEvent } from '@/hooks/useEvents';
 import { addMonths, format, isSameDay, isSameMonth, subMonths } from 'date-fns';
 import { Bell, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, Edit, Eye, MapPin, Plus, Tag, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -143,6 +144,10 @@ export default function CalendarModule() {
     reminderTime: '30'
   });
 
+  const { user } = useAuth();
+
+  const canEditEvents = !(user?.role === 'teacher' || user?.role === 'finance');
+
   const months = [
     subMonths(currentDate, 1),
     currentDate,
@@ -153,10 +158,41 @@ export default function CalendarModule() {
     return events.filter(event => isSameDay(event.date, date));
   };
 
-  const handleAddEvent = () => {
+  const createMutation = useCreateEvent();
+  const updateMutation = useUpdateEvent();
+  const deleteMutation = useDeleteEvent();
+
+  const handleAddEvent = async () => {
+    if (!canEditEvents) { toast({ title: 'Access Denied', description: 'You are not allowed to create events.' }); return; }
     if (!selectedDate || !eventForm.title.trim()) return;
 
-    const newEvent: CalendarEvent = {
+    const newEvent: any = {
+      title: eventForm.title,
+      description: eventForm.description,
+      time: eventForm.time,
+      location: eventForm.location,
+      date: selectedDate.toISOString(),
+      color: eventForm.color,
+      category: eventForm.category,
+      reminder: eventForm.reminder,
+      reminderTime: eventForm.reminderTime
+    };
+
+    if (base) {
+      try {
+        await createMutation.mutateAsync(newEvent);
+        resetForm();
+        toast({ title: 'Event Created', description: `${eventForm.title} has been added to your calendar.` });
+        return;
+      } catch (err) {
+        console.error('Create event error', err);
+        toast({ title: 'Create Failed', description: 'Could not create event.' });
+        return;
+      }
+    }
+
+    // fallback to local-only mode
+    const localEvent: CalendarEvent = {
       id: Date.now().toString(),
       title: eventForm.title,
       description: eventForm.description,
@@ -169,49 +205,68 @@ export default function CalendarModule() {
       reminderTime: eventForm.reminderTime
     };
 
-    setEvents([...events, newEvent]);
+    setEvents([...events, localEvent]);
     resetForm();
-
-    toast({
-      title: "Event Created",
-      description: `${eventForm.title} has been added to your calendar.`,
-    });
+    toast({ title: 'Event Created', description: `${eventForm.title} has been added to your calendar.` });
   };
 
-  const handleEditEvent = () => {
+  const handleEditEvent = async () => {
+    if (!canEditEvents) { toast({ title: 'Access Denied', description: 'You are not allowed to edit events.' }); return; }
     if (!editingEvent || !eventForm.title.trim()) return;
 
+    const payload: any = {
+      title: eventForm.title,
+      description: eventForm.description,
+      time: eventForm.time,
+      location: eventForm.location,
+      date: (selectedDate || editingEvent.date)?.toString(),
+      color: eventForm.color,
+      category: eventForm.category,
+      reminder: eventForm.reminder,
+      reminderTime: eventForm.reminderTime,
+    };
+
+    if (base && editingEvent.id && Number.isNaN(Number(editingEvent.id)) === false) {
+      try {
+        await updateMutation.mutateAsync({ id: editingEvent.id, payload });
+        resetForm();
+        toast({ title: 'Event Updated', description: `${eventForm.title} has been updated successfully.` });
+        return;
+      } catch (err) {
+        console.error('Update event error', err);
+        toast({ title: 'Update Failed', description: 'Could not update event.' });
+        return;
+      }
+    }
+
+    // local-only update
     setEvents(events.map(event =>
       event.id === editingEvent.id
-        ? {
-          ...event,
-          title: eventForm.title,
-          description: eventForm.description,
-          time: eventForm.time,
-          location: eventForm.location,
-          color: eventForm.color,
-          category: eventForm.category,
-          reminder: eventForm.reminder,
-          reminderTime: eventForm.reminderTime
-        }
+        ? { ...event, title: eventForm.title, description: eventForm.description, time: eventForm.time, location: eventForm.location, color: eventForm.color, category: eventForm.category, reminder: eventForm.reminder, reminderTime: eventForm.reminderTime }
         : event
     ));
     resetForm();
-
-    toast({
-      title: "Event Updated",
-      description: `${eventForm.title} has been updated successfully.`,
-    });
+    toast({ title: 'Event Updated', description: `${eventForm.title} has been updated successfully.` });
   };
 
-  const handleDeleteEvent = (eventId: string) => {
+  const handleDeleteEvent = async (eventId: string) => {
+    if (!canEditEvents) { toast({ title: 'Access Denied', description: 'You are not allowed to delete events.' }); return; }
     const event = events.find(e => e.id === eventId);
-    setEvents(events.filter(event => event.id !== eventId));
 
-    toast({
-      title: "Event Deleted",
-      description: `${event?.title} has been removed from your calendar.`,
-    });
+    if (base && eventId && Number.isNaN(Number(eventId)) === false) {
+      try {
+        await deleteMutation.mutateAsync(eventId);
+        toast({ title: 'Event Deleted', description: `${event?.title} has been removed from your calendar.` });
+        return;
+      } catch (err) {
+        console.error('Delete event error', err);
+        toast({ title: 'Delete Failed', description: 'Could not delete event.' });
+        return;
+      }
+    }
+
+    setEvents(events.filter(event => event.id !== eventId));
+    toast({ title: 'Event Deleted', description: `${event?.title} has been removed from your calendar.` });
   };
 
   const resetForm = () => {
@@ -290,13 +345,15 @@ export default function CalendarModule() {
               Organize your academic year with style and precision
             </p>
           </div>
-          <Button
-            onClick={() => openAddDialog()}
-            className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 px-8 py-3 rounded-xl text-lg font-semibold"
-          >
-            <Plus className="h-5 w-5 mr-2" />
-            Create Event
-          </Button>
+          {canEditEvents && (
+            <Button
+              onClick={() => openAddDialog()}
+              className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 px-8 py-3 rounded-xl text-lg font-semibold"
+            >
+              <Plus className="h-5 w-5 mr-2" />
+              Create Event
+            </Button>
+          )}
         </div>
 
         {/* Calendar Navigation */}
@@ -347,7 +404,8 @@ export default function CalendarModule() {
                       onSelect={(date) => {
                         if (date) {
                           setSelectedDate(date);
-                          openAddDialog(date);
+                          if (canEditEvents) openAddDialog(date);
+                          else toast({ title: 'Access Denied', description: 'You cannot create events.' });
                         }
                       }}
                       month={month}
@@ -381,7 +439,8 @@ export default function CalendarModule() {
                             `}
                                 onClick={() => {
                                   setSelectedDate(date);
-                                  openAddDialog(date);
+                                  if (canEditEvents) openAddDialog(date);
+                                  else toast({ title: 'Access Denied', description: 'You cannot create events.' });
                                 }}
                               >
                                 <span className="relative z-10">{format(date, 'd')}</span>
@@ -481,24 +540,28 @@ export default function CalendarModule() {
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openEditDialog(event)}
-                            className="h-10 w-10 p-0 hover:bg-purple-100 hover:text-purple-600 rounded-xl transition-all duration-200"
-                            title="Edit Event"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteEvent(event.id)}
-                            className="h-10 w-10 p-0 text-red-500 hover:bg-red-100 hover:text-red-600 rounded-xl transition-all duration-200"
-                            title="Delete Event"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          {canEditEvents && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openEditDialog(event)}
+                                className="h-10 w-10 p-0 hover:bg-purple-100 hover:text-purple-600 rounded-xl transition-all duration-200"
+                                title="Edit Event"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeleteEvent(event.id)}
+                                className="h-10 w-10 p-0 text-red-500 hover:bg-red-100 hover:text-red-600 rounded-xl transition-all duration-200"
+                                title="Delete Event"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -786,28 +849,32 @@ export default function CalendarModule() {
                   >
                     Close
                   </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setIsDetailsOpen(false);
-                      openEditDialog(viewingEvent);
-                    }}
-                    className="gap-2 px-6 py-3 rounded-xl border-2 border-purple-200 text-purple-600 hover:bg-purple-50"
-                  >
-                    <Edit className="h-4 w-4" />
-                    Edit
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    onClick={() => {
-                      setIsDetailsOpen(false);
-                      handleDeleteEvent(viewingEvent.id);
-                    }}
-                    className="gap-2 px-6 py-3 rounded-xl bg-red-500 hover:bg-red-600"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Delete
-                  </Button>
+                  {canEditEvents && (
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setIsDetailsOpen(false);
+                          openEditDialog(viewingEvent);
+                        }}
+                        className="gap-2 px-6 py-3 rounded-xl border-2 border-purple-200 text-purple-600 hover:bg-purple-50"
+                      >
+                        <Edit className="h-4 w-4" />
+                        Edit
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        onClick={() => {
+                          setIsDetailsOpen(false);
+                          handleDeleteEvent(viewingEvent.id);
+                        }}
+                        className="gap-2 px-6 py-3 rounded-xl bg-red-500 hover:bg-red-600"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Delete
+                      </Button>
+                    </>
+                  )}
                 </div>
               </div>
             )}

@@ -21,6 +21,7 @@ import TimetableModule from './schedules/TimetableModule';
 import SettingsModule from './settings/SettingsModule';
 import StudentsModule from './students/StudentsModule';
 import AttendanceModule from './teacher/AttendanceModule';
+import AttendanceReports from './teacher/AttendanceReports';
 import GradesModule from './teacher/GradesModule';
 import TeacherClassesModule from './teacher/TeacherClassesModule';
 import TeacherDashboard from './teacher/TeacherDashboard';
@@ -86,6 +87,8 @@ const Dashboard: React.FC<DashboardProps> = ({ initialModule }) => {
         return <TeacherClassesModule />;
       case 'attendance':
         return <AttendanceModule />;
+      case 'attendance-reports':
+        return <AttendanceReports />;
       case 'grades':
         return <GradesModule />;
       case 'fees':

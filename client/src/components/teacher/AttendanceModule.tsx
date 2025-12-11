@@ -5,11 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
+import useAttendance from '@/hooks/useAttendance';
 import useClasses from '@/hooks/useClasses';
 import useStudents from '@/hooks/useStudents';
 import useTeachers from '@/hooks/useTeachers';
 import { Calendar, ClipboardCheck, Save, Users } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 
 const AttendanceModule = () => {
@@ -20,9 +21,12 @@ const AttendanceModule = () => {
 
   const teachers = (rawTeachers || []).map((t: any) => ({
     id: t.id ?? String(t.id),
+    username: t.username || '',
     fullName: t.fullName || t.full_name || `${t.firstName || ''} ${t.lastName || ''}`,
     staffId: t.staffId || t.staff_id || '',
-    classAssigned: t.classAssigned || t.class_assigned || ''
+    classAssigned: t.classAssigned || t.class_assigned || '',
+    classAssignedList: t.classAssignedList ?? t.class_assigned_list ?? [],
+    classAssignedIds: t.classAssignedIds ?? t.class_assigned_ids ?? []
   }));
 
   const students = (rawStudents || []).map((s: any) => ({
@@ -30,32 +34,124 @@ const AttendanceModule = () => {
     firstName: s.first_name || s.firstName || '',
     lastName: s.last_name || s.lastName || '',
     admissionNumber: s.admissionNumber || s.admission_number || '',
-    classAssigned: s.classAssigned || s.class_assigned || ''
+    classAssigned: s.classAssigned || s.class_assigned || (s.class_id ? String(s.class_id) : '') || (s.classId ? String(s.classId) : ''),
+    classAssignedId: s.class_id ?? s.classId ?? null
   }));
 
-  const classes = (rawClasses || []).map((c: any) => ({
-    id: c.id ?? String(c.id),
-    className: c.className || c.class_name || c.name || ''
-  }));
+  const classes = (rawClasses || []).map((c: any) => {
+    const level = c.level || c.grade || '';
+    const stream = c.stream || '';
+    const derivedName = stream ? `${level} ${stream}` : level;
+    return {
+      id: c.id ?? String(c.id),
+      level,
+      stream,
+      className: c.className || c.class_name || c.name || derivedName || `Class ${c.id}`
+    };
+  });
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [attendance, setAttendance] = useState<Record<string, boolean>>({});
 
-  // Find the current teacher's assigned classes based on username or teacherId
-  const currentTeacher = teachers.find(t =>
-    t.staffId === user?.teacherId ||
-    t.fullName.toLowerCase().includes(user?.username?.toLowerCase() || '')
-  );
+  // Use attendance hook
+  const {
+    attendance: fetchedAttendance,
+    isLoading: isLoadingAttendance,
+    bulkMarkAttendance,
+    isBulkMarking,
+  } = useAttendance(selectedClass ? Number(selectedClass) : undefined, selectedDate);
 
-  const teacherClasses = currentTeacher?.classAssigned
-    ? classes.filter(cls => cls.className === currentTeacher.classAssigned)
-    : [];
+  // Determine if the current user is a super-admin
+  useEffect(() => {
+    if (fetchedAttendance && Array.isArray(fetchedAttendance)) {
+      const attendanceMap: Record<string, boolean> = {};
+      fetchedAttendance.forEach((record: any) => {
+        const studentId = String(record.student_id);
+        attendanceMap[studentId] = record.status === 'present';
+      });
+      setAttendance(attendanceMap);
+    } else {
+      setAttendance({});
+    }
+  }, [fetchedAttendance]);
+
+  // Determine if the current user is a super-admin
+  const roleStr = String(user?.role || '').toLowerCase();
+  const isSuperAdmin = roleStr.includes('super');
+
+  // Find the current teacher's data based on user ID or username match
+  const currentTeacher = teachers.find(t => {
+    const teacherId = Number(t.id);
+    const userId = Number(user?.id || 0);
+    const teacherUsername = (t.username || '').toLowerCase();
+    const userName = (user?.username || '').toLowerCase();
+
+    // Match by user ID first (most reliable), then exact username match
+    return teacherId === userId ||
+      (teacherUsername && userName && teacherUsername === userName);
+  });
+
+  // Build teacher classes: super-admin sees all classes, teacher sees only assigned
+  let teacherClasses: any[] = [];
+  if (isSuperAdmin) {
+    teacherClasses = classes;
+  } else if (currentTeacher) {
+    const assignedIds = Array.isArray(currentTeacher.classAssignedIds)
+      ? currentTeacher.classAssignedIds.map((id: any) => Number(id))
+      : [];
+    const assignedList = Array.isArray(currentTeacher.classAssignedList)
+      ? currentTeacher.classAssignedList.map((s: any) => String(s).trim())
+      : [];
+    const assignedIdSet = new Set(assignedIds.filter(id => !isNaN(id)));
+    const assignedLabelSet = new Set(assignedList.filter(Boolean));
+    const singleClassId = currentTeacher.classAssignedId ? Number(currentTeacher.classAssignedId) : null;
+    const singleClassName = currentTeacher.classAssigned ? String(currentTeacher.classAssigned).trim() : '';
+
+    // Filter classes by enriched assignment data, OR fallback to single class assignment if enriched data is empty
+    const filtered = classes.filter((cls: any) => {
+      const clsName = cls.className ? String(cls.className).trim() : '';
+      const clsId = Number(cls.id);
+      if (assignedIdSet.size > 0) return assignedIdSet.has(clsId);
+      if (assignedLabelSet.size > 0) return assignedLabelSet.has(clsName);
+      if (singleClassId && !isNaN(singleClassId)) return singleClassId === clsId;
+      if (singleClassName) return singleClassName === clsName;
+      return false;
+    });
+
+    teacherClasses = filtered;
+  }
 
   // Get students for the selected class
   const selectedClassData = classes.find(cls => cls.id === selectedClass);
   const classStudents = selectedClassData
-    ? students.filter(student => student.classAssigned === selectedClassData.className)
+    ? students.filter(student => {
+      const cid = String(selectedClassData.id);
+      const studentClassId = student.classAssignedId ? String(student.classAssignedId) : null;
+      if (studentClassId) return studentClassId === cid;
+      return student.classAssigned === selectedClassData.className;
+    })
     : [];
+
+  // Helper: robustly compute student count for a class by id or name
+  const studentCountForClass = (cls: any) => {
+    try {
+      const cid = String(cls.id);
+      // look for common student-class fields (prefer id)
+      const byId = students.filter(s => {
+        const assigned = (s.classAssigned ?? s.class_assigned ?? s.classId ?? s.class_id ?? '').toString();
+        return assigned === cid;
+      }).length;
+      if (byId > 0) return byId;
+      const cname = (cls.className || '').toString();
+      const byName = students.filter(s => {
+        const assigned = (s.classAssigned ?? s.class_assigned ?? '').toString();
+        return assigned === cname;
+      }).length;
+      return byName;
+    } catch (e) {
+      return 0;
+    }
+  };
 
   const handleAttendanceChange = (studentId: string, present: boolean) => {
     setAttendance(prev => ({
@@ -73,14 +169,16 @@ const AttendanceModule = () => {
       return;
     }
 
-    const presentCount = Object.values(attendance).filter(Boolean).length;
-    const totalStudents = classStudents.length;
+    // Build attendance records for all students
+    const records = classStudents.map(student => ({
+      class_id: Number(selectedClass),
+      student_id: Number(student.id),
+      attendance_date: selectedDate,
+      status: (attendance[student.id] ? 'present' : 'absent') as 'present' | 'absent',
+    }));
 
-    // Here you would save to backend or local storage
-    toast({
-      title: "Attendance Saved",
-      description: `Attendance for ${selectedDate} saved successfully. ${presentCount}/${totalStudents} students present.`
-    });
+    // Call the mutation
+    bulkMarkAttendance(records);
   };
 
   const handleMarkAllPresent = () => {
@@ -103,7 +201,7 @@ const AttendanceModule = () => {
   const totalStudents = classStudents.length;
   const attendancePercentage = totalStudents > 0 ? Math.round((presentCount / totalStudents) * 100) : 0;
 
-  if (!currentTeacher) {
+  if (!isSuperAdmin && !currentTeacher) {
     return (
       <div className="p-6">
         <Card>
@@ -117,7 +215,7 @@ const AttendanceModule = () => {
     );
   }
 
-  if (!currentTeacher.classAssigned) {
+  if (!isSuperAdmin && teacherClasses.length === 0) {
     return (
       <div className="p-6">
         <Card>
@@ -141,7 +239,7 @@ const AttendanceModule = () => {
           </div>
           <div>
             <h1 className="text-3xl font-bold text-gray-800">Attendance</h1>
-            <p className="text-gray-600">Take and manage student attendance</p>
+            <p className="text-gray-600">{isSuperAdmin ? 'View and manage all class attendance' : 'Take and manage student attendance'}</p>
           </div>
         </div>
       </div>
@@ -164,10 +262,10 @@ const AttendanceModule = () => {
                 </SelectTrigger>
                 <SelectContent>
                   {teacherClasses.map(cls => {
-                    const studentCount = students.filter(s => s.classAssigned === cls.className).length;
+                    const count = studentCountForClass(cls);
                     return (
                       <SelectItem key={cls.id} value={cls.id}>
-                        {cls.className} ({studentCount} students)
+                        {cls.className} ({count} students)
                       </SelectItem>
                     );
                   })}
@@ -204,14 +302,16 @@ const AttendanceModule = () => {
                     {attendancePercentage}%
                   </Badge>
                 </div>
-                <div className="flex space-x-2">
-                  <Button size="sm" variant="outline" onClick={handleMarkAllPresent}>
-                    Mark All Present
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={handleMarkAllAbsent}>
-                    Mark All Absent
-                  </Button>
-                </div>
+                {!isSuperAdmin && (
+                  <div className="flex space-x-2">
+                    <Button size="sm" variant="outline" onClick={handleMarkAllPresent}>
+                      Mark All Present
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={handleMarkAllAbsent}>
+                      Mark All Absent
+                    </Button>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -221,10 +321,16 @@ const AttendanceModule = () => {
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
                 <span>Student Attendance</span>
-                <Button onClick={handleSaveAttendance} className="flex items-center space-x-2">
-                  <Save className="w-4 h-4" />
-                  <span>Save Attendance</span>
-                </Button>
+                {!isSuperAdmin && (
+                  <Button
+                    onClick={handleSaveAttendance}
+                    disabled={isBulkMarking || isLoadingAttendance}
+                    className="flex items-center space-x-2"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>{isBulkMarking ? 'Saving...' : 'Save Attendance'}</span>
+                  </Button>
+                )}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -240,41 +346,43 @@ const AttendanceModule = () => {
                     <div key={student.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                       <div className="flex items-center space-x-3">
                         <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
-                          {student.admissionNumber?.slice(-3) || student.firstName.charAt(0)}
+                          {student.admissionNumber?.slice(-3) || (student.firstName?.charAt(0) || '') + (student.lastName?.charAt(0) || '')}
                         </div>
                         <div>
                           <p className="font-medium text-gray-900">{student.firstName} {student.lastName}</p>
-                          <p className="text-sm text-gray-500">Admission: {student.admissionNumber}</p>
+                          {student.admissionNumber && <p className="text-sm text-gray-500">Admission: {student.admissionNumber}</p>}
                         </div>
                       </div>
-                      <div className="flex items-center space-x-3">
-                        <div className="flex items-center space-x-2">
-                          <Checkbox
-                            id={`present-${student.id}`}
-                            checked={attendance[student.id] === true}
-                            onCheckedChange={(checked) => handleAttendanceChange(student.id, checked as boolean)}
-                          />
-                          <label
-                            htmlFor={`present-${student.id}`}
-                            className="text-sm font-medium text-green-600 cursor-pointer"
-                          >
-                            Present
-                          </label>
+                      {!isSuperAdmin && (
+                        <div className="flex items-center space-x-3">
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`present-${student.id}`}
+                              checked={attendance[student.id] === true}
+                              onCheckedChange={() => handleAttendanceChange(student.id, true)}
+                            />
+                            <label
+                              htmlFor={`present-${student.id}`}
+                              className="text-sm font-medium text-green-600 cursor-pointer"
+                            >
+                              Present
+                            </label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`absent-${student.id}`}
+                              checked={attendance[student.id] === false}
+                              onCheckedChange={() => handleAttendanceChange(student.id, false)}
+                            />
+                            <label
+                              htmlFor={`absent-${student.id}`}
+                              className="text-sm font-medium text-red-600 cursor-pointer"
+                            >
+                              Absent
+                            </label>
+                          </div>
                         </div>
-                        <div className="flex items-center space-x-2">
-                          <Checkbox
-                            id={`absent-${student.id}`}
-                            checked={attendance[student.id] === false}
-                            onCheckedChange={(checked) => handleAttendanceChange(student.id, !(checked as boolean))}
-                          />
-                          <label
-                            htmlFor={`absent-${student.id}`}
-                            className="text-sm font-medium text-red-600 cursor-pointer"
-                          >
-                            Absent
-                          </label>
-                        </div>
-                      </div>
+                      )}
                     </div>
                   ))}
                 </div>

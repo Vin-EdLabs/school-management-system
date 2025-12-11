@@ -14,6 +14,7 @@ const TeacherClassesModule = () => {
 
   const teachers = (rawTeachers || []).map((t: any) => ({
     id: t.id ?? String(t.id),
+    username: t.username || '',
     fullName: t.fullName || t.full_name || `${t.firstName || ''} ${t.lastName || ''}`,
     staffId: t.staffId || t.staff_id || '',
     classAssigned: t.classAssigned || t.class_assigned || '',
@@ -32,21 +33,34 @@ const TeacherClassesModule = () => {
     classAssignedId: s.class_id ?? s.classId ?? null
   }));
 
-  const classes = (rawClasses || []).map((c: any) => ({
-    id: c.id ?? String(c.id),
-    className: c.className || c.class_name || c.name || ''
-  }));
+  const classes = (rawClasses || []).map((c: any) => {
+    const level = c.level || c.grade || '';
+    const stream = c.stream || '';
+    const derivedName = stream ? `${level} ${stream}` : level;
+    return {
+      id: c.id ?? String(c.id),
+      level,
+      stream,
+      className: c.className || c.class_name || c.name || derivedName || `Class ${c.id}`
+    };
+  });
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
 
   // Determine if the current user is a super-admin (allow some common variants)
   const roleStr = String(user?.role || '').toLowerCase();
   const isSuperAdmin = roleStr.includes('super');
 
-  // Find the current teacher's data based on username or teacherId (non-super-admin path)
-  const currentTeacher = teachers.find(t =>
-    t.staffId === user?.teacherId ||
-    (t.fullName || '').toLowerCase().includes((user?.username || '').toLowerCase())
-  );
+  // Find the current teacher's data based on user ID or username match
+  const currentTeacher = teachers.find(t => {
+    const teacherId = Number(t.id);
+    const userId = Number(user?.id || 0);
+    const teacherUsername = (t.username || '').toLowerCase();
+    const userName = (user?.username || '').toLowerCase();
+
+    // Match by user ID first (most reliable), then exact username match
+    return teacherId === userId ||
+      (teacherUsername && userName && teacherUsername === userName);
+  });
 
   // Build the teacherClasses data:
   // - For super-admin: list every teacher with their assigned classes (may be empty)
@@ -55,14 +69,14 @@ const TeacherClassesModule = () => {
   if (isSuperAdmin) {
     teacherClasses = teachers.map(t => {
       const assignedList = Array.isArray((t as any).classAssignedList) ? (t as any).classAssignedList.map((s: any) => String(s).trim()) : [];
-      const assignedIds = Array.isArray((t as any).classAssignedIds) ? (t as any).classAssignedIds.map((id: any) => String(id)) : [];
-      const assignedIdSet = new Set(assignedIds.filter(Boolean));
+      const assignedIds = Array.isArray((t as any).classAssignedIds) ? (t as any).classAssignedIds.map((id: any) => Number(id)) : [];
+      const assignedIdSet = new Set(assignedIds.filter(id => !isNaN(id)));
       const assignedLabelSet = new Set(assignedList.filter(Boolean));
       return {
         teacher: t,
         classes: classes.filter((cls: any) => {
           const clsName = cls.className ? String(cls.className).trim() : '';
-          const clsId = String(cls.id);
+          const clsId = Number(cls.id);
           if (assignedIdSet.size > 0) return assignedIdSet.has(clsId);
           if (assignedLabelSet.size > 0) return assignedLabelSet.has(clsName);
           return false;
@@ -74,12 +88,12 @@ const TeacherClassesModule = () => {
       teacherClasses = [];
     } else {
       const assignedList = Array.isArray((currentTeacher as any).classAssignedList) ? (currentTeacher as any).classAssignedList.map((s: any) => String(s).trim()) : [];
-      const assignedIds = Array.isArray((currentTeacher as any).classAssignedIds) ? (currentTeacher as any).classAssignedIds.map((id: any) => String(id)) : [];
-      const assignedIdSet = new Set(assignedIds.filter(Boolean));
+      const assignedIds = Array.isArray((currentTeacher as any).classAssignedIds) ? (currentTeacher as any).classAssignedIds.map((id: any) => Number(id)) : [];
+      const assignedIdSet = new Set(assignedIds.filter(id => !isNaN(id)));
       const assignedLabelSet = new Set(assignedList.filter(Boolean));
       teacherClasses = classes.filter((cls: any) => {
         const clsName = cls.className ? String(cls.className).trim() : '';
-        const clsId = String(cls.id);
+        const clsId = Number(cls.id);
         if (assignedIdSet.size > 0) return assignedIdSet.has(clsId);
         if (assignedLabelSet.size > 0) return assignedLabelSet.has(clsName);
         return false;
@@ -184,8 +198,7 @@ const TeacherClassesModule = () => {
                         entry.classes.map((cls: any) => (
                           <div key={cls.id} className={`flex items-center justify-between p-2 bg-white border rounded ${selectedClass === cls.id ? 'ring-2 ring-blue-500' : ''}`} onClick={() => setSelectedClass(cls.id)} style={{ cursor: 'pointer' }}>
                             <div>
-                              <div className="font-medium text-gray-900">{cls.className}</div>
-                              <div className="text-sm text-gray-500">{studentCountForClass(cls)} students</div>
+                              <div className="font-medium text-gray-900">{cls.className} - {studentCountForClass(cls)} students</div>
                             </div>
                             <ChevronRight className="w-4 h-4 text-gray-400" />
                           </div>
@@ -206,8 +219,7 @@ const TeacherClassesModule = () => {
                       style={{ cursor: 'pointer' }}
                     >
                       <div>
-                        <h4 className="font-medium text-gray-900">{cls.className}</h4>
-                        <p className="text-sm text-gray-500">{studentCount} students</p>
+                        <h4 className="font-medium text-gray-900">{cls.className} - {studentCount} students</h4>
                       </div>
                       <ChevronRight className="w-5 h-5 text-gray-500" />
                     </div>

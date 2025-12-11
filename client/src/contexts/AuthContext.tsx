@@ -153,10 +153,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!user) return false;
 
     const rolePermissions = {
-      'administrator': ['students', 'teachers', 'classes', 'calendar', 'dashboard', 'settings-password-only', 'print-fee-status', 'schedules', 'timetable'],
+      'administrator': ['students', 'teachers', 'classes', 'calendar', 'dashboard', 'settings-password-only', 'print-fee-status', 'schedules', 'timetable', 'attendance', 'attendance-reports'],
       'finance': ['students-view-only', 'teachers-view-only', 'fees', 'income', 'expenses', 'reports', 'financial-dashboard', 'dashboard', 'settings-password-only', 'print-fee-status', 'ai-assistant', 'staff-payroll'],
-      'teacher': ['teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'calendar', 'settings-password-only'],
-      'super-admin': ['students', 'teachers', 'classes', 'calendar', 'fees', 'income', 'expenses', 'reports', 'dashboard', 'financial-dashboard', 'settings', 'audit', 'print-fee-status', 'teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'ai-assistant', 'staff-payroll', 'schedules', 'timetable']
+      'teacher': ['teacher-dashboard', 'teacher-classes', 'attendance', 'attendance-reports', 'grades', 'calendar', 'settings-password-only'],
+      'super-admin': ['students', 'teachers', 'classes', 'calendar', 'fees', 'income', 'expenses', 'reports', 'dashboard', 'financial-dashboard', 'settings', 'audit', 'print-fee-status', 'teacher-dashboard', 'teacher-classes', 'attendance', 'attendance-reports', 'grades', 'ai-assistant', 'staff-payroll', 'schedules', 'timetable']
     };
 
     return rolePermissions[user.role].includes(module);

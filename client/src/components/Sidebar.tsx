@@ -103,8 +103,13 @@ const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
     }] : []),
     ...(hasAccess('attendance') ? [{
       id: 'attendance',
-      label: 'Attendance',
+      label: 'Take Attendance',
       icon: UserCheck,
+    }] : []),
+    ...(hasAccess('attendance-reports') || hasAccess('attendance') ? [{
+      id: 'attendance-reports',
+      label: 'Attendance Reports',
+      icon: BarChart3,
     }] : []),
     ...(hasAccess('grades') ? [{
       id: 'grades',

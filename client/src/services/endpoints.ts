@@ -45,10 +45,14 @@ export const ENDPOINTS = {
     delete: (id: string) => `/classes/${id}`,
   },
   attendance: {
-    list: '/teacher/attendance',
-    create: '/teacher/attendance',
+    mark: '/attendance',
+    bulkMark: '/attendance/bulk',
+    byClass: (classId: string) => `/attendance/class/${classId}`,
+    byClassRange: (classId: string) => `/attendance/class/${classId}/range`,
+    byStudent: (studentId: string) => `/attendance/student/${studentId}`,
+    delete: (id: string) => `/attendance/${id}`,
   },
-  grades: {
+  schedules: {
     list: '/teacher/grades',
     create: '/teacher/grades',
     update: (id: string) => `/teacher/grades/${id}`,

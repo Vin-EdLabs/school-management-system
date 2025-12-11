@@ -3,9 +3,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import useClasses from '@/hooks/useClasses';
+import useSchedules from '@/hooks/useSchedules';
 import useStudents from '@/hooks/useStudents';
 import useTeachers from '@/hooks/useTeachers';
 import { BookOpen, Calendar, ClipboardCheck, Clock, School, Users } from 'lucide-react';
+import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 
 const TeacherDashboard = () => {
@@ -13,6 +15,11 @@ const TeacherDashboard = () => {
   const { students: rawStudents } = useStudents();
   const { teachers: rawTeachers } = useTeachers();
   const { classes: rawClasses } = useClasses();
+
+  // Placeholder for currentTeacher, will be set after teachers are loaded
+  const [currentTeacherId, setCurrentTeacherId] = useState<string | number | null>(null);
+  const { data: schedulesResp, isLoading: schedulesLoading } = useSchedules(currentTeacherId);
+  const schedules = (schedulesResp as any)?.data || [];
 
   const teachers = (rawTeachers || []).map((t: any) => ({
     id: t.id ?? String(t.id),
@@ -47,8 +54,16 @@ const TeacherDashboard = () => {
   const currentTeacher = teachers.find(t =>
     (user?.username && t.username && String(t.username).toLowerCase() === String(user.username).toLowerCase()) ||
     (t.staffId && user?.teacherId && String(t.staffId) === String(user.teacherId)) ||
+    (String(t.id) === String(user?.id)) ||
     (t.fullName && user?.username && t.fullName.toLowerCase().includes(user.username.toLowerCase()))
   );
+
+  // Update currentTeacherId for the schedules query whenever currentTeacher changes
+  React.useEffect(() => {
+    if (currentTeacher?.id) {
+      setCurrentTeacherId(currentTeacher.id);
+    }
+  }, [currentTeacher?.id]);
 
   // Get teacher's assigned classes and students
   // Prefer matching by class id when available, otherwise fallback to class name
@@ -64,14 +79,29 @@ const TeacherDashboard = () => {
       ? students.filter(student => student.classAssigned === currentTeacher.classAssigned)
       : [];
 
-  // Mock today's schedule based on teacher's classes (you can enhance this with real schedule data)
-  const todaySchedule = teacherClasses.map((cls, index) => ({
-    id: cls.id,
-    name: cls.className,
-    students: students.filter(s => (s.classAssignedId != null ? String(s.classAssignedId) === String(cls.id) : s.classAssigned === cls.className)).length,
-    time: ['08:00 AM', '10:00 AM', '02:00 PM'][index] || '09:00 AM',
-    room: `Room ${101 + index}`
-  }));
+  // Build today's schedule from real data with student counts
+  const todaySchedule = schedules.map((schedule: any) => {
+    const classId = schedule.class_id ?? schedule.classId;
+    const cls = classes.find((c: any) => String(c.id) === String(classId));
+    const classStudentCount = cls
+      ? students.filter(s => (s.classAssignedId != null ? String(s.classAssignedId) === String(cls.id) : s.classAssigned === cls.className)).length
+      : 0;
+    const startTime = schedule.start_time ? schedule.start_time.slice(0, 5) : '09:00';
+    const endTime = schedule.end_time ? schedule.end_time.slice(0, 5) : '10:00';
+
+    // Use class_name from schedule if available, otherwise from classes array
+    const className = schedule.class_name || cls?.className || schedule.className || `Class ${classId || 'Unknown'}`;
+
+    return {
+      id: schedule.id,
+      name: className,
+      students: classStudentCount,
+      time: `${startTime} - ${endTime}`,
+      room: schedule.room || 'TBA',
+      subject: schedule.subject || 'N/A',
+      dayOfWeek: schedule.day_of_week || 0
+    };
+  }).sort((a, b) => a.dayOfWeek - b.dayOfWeek);
 
   if (!currentTeacher) {
     return (
@@ -167,15 +197,17 @@ const TeacherDashboard = () => {
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <Calendar className="w-5 h-5" />
-              <span>My Classes</span>
+              <span>My Schedule</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {todaySchedule.length === 0 ? (
+            {schedulesLoading ? (
+              <div className="text-center py-8 text-gray-500">Loading schedules...</div>
+            ) : todaySchedule.length === 0 ? (
               <div className="text-center py-8">
                 <School className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No Classes Assigned</h3>
-                <p className="text-gray-500">You don't have any classes assigned yet.</p>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No Classes Scheduled</h3>
+                <p className="text-gray-500">You don't have any classes scheduled yet.</p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -189,6 +221,7 @@ const TeacherDashboard = () => {
                           {cls.time}
                         </span>
                         <span>{cls.room}</span>
+                        <span>{cls.subject}</span>
                         <span>{cls.students} students</span>
                       </div>
                     </div>

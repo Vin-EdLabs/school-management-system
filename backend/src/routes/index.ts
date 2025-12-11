@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import aggregationsRoutes from './aggregations.routes.js';
 import assignmentsRoutes from './assignments.routes.js';
+import attendanceRoutes from './attendance.routes.js';
 import auditRoutes from './audit.routes.js';
 import authRoutes from './auth.routes.js';
 import classesRoutes from './classes.routes.js';
@@ -28,6 +29,7 @@ router.use('/teachers', teachersRoutes);
 router.use('/classes', classesRoutes);
 router.use('/assignments', assignmentsRoutes);
 router.use('/schedules', schedulesRoutes);
+router.use('/attendance', attendanceRoutes);
 router.use('/payments', paymentsRoutes);
 router.use('/payroll', payrollRoutes);
 router.use('/income', incomeRoutes);

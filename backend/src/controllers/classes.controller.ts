@@ -4,7 +4,9 @@ import { failure, success } from '../utils/response.js';
 
 export async function list(req: Request, res: Response) {
   try {
-    const list = await classesService.listClasses();
+    // Pass authenticated user to service so it can apply role-based filters
+    const user = (req as any).user;
+    const list = await classesService.listClasses(user);
     return res.json(success(list));
   } catch (err: any) {
     return res.status(500).json(failure(err.message));

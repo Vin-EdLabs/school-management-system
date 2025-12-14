@@ -57,7 +57,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
     }] : []),
     ...(hasAccess('teacher-dashboard') ? [{
       id: 'teacher-dashboard',
-      label: 'Teacher Dashboard',
+      label: 'Dashboard',
       icon: GraduationCap,
     }] : []),
   ],

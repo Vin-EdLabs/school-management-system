@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS grade_audit;
+DROP INDEX IF EXISTS grades_exam_student_uq;
+DROP TABLE IF EXISTS grades;
+DROP TABLE IF EXISTS exams;
+DROP TABLE IF EXISTS exam_types;

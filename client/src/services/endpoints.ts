@@ -52,6 +52,15 @@ export const ENDPOINTS = {
     byStudent: (studentId: string) => `/attendance/student/${studentId}`,
     delete: (id: string) => `/attendance/${id}`,
   },
+  grades: {
+    base: '/grades',
+    types: '/grades/types',
+    boundaries: '/grades/boundaries'
+  },
+  subjects: {
+    list: '/subjects',
+    get: (id: string) => `/subjects/${id}`,
+  },
   schedules: {
     list: '/teacher/grades',
     create: '/teacher/grades',

@@ -54,3 +54,8 @@ export async function listClasses(limit = 500) {
   const res = await query('SELECT * FROM classes ORDER BY id DESC LIMIT $1', [limit]);
   return res.rows;
 }
+
+export async function listClassesAssignedToTeacher(teacherId: number) {
+  const res = await query('SELECT * FROM classes WHERE teacher_id = $1 ORDER BY id DESC', [teacherId]);
+  return res.rows;
+}

@@ -8,6 +8,7 @@ import classesRoutes from './classes.routes.js';
 import eventsRoutes from './events.routes.js';
 import expensesRoutes from './expenses.routes.js';
 import feeRoutes from './fee-structures.routes.js';
+import gradesRoutes from './grades.routes.js';
 import incomeRoutes from './income.routes.js';
 import notificationsRoutes from './notifications.routes.js';
 import paymentsRoutes from './payments.routes.js';
@@ -18,6 +19,7 @@ import schedulesRoutes from './schedules.routes.js';
 import settingsRoutes from './settings.routes.js';
 import staffRoutes from './staff.routes.js';
 import studentsRoutes from './students.routes.js';
+import subjectsRoutes from './subjects.routes.js';
 import teachersRoutes from './teachers.routes.js';
 
 const router = Router();
@@ -42,5 +44,7 @@ router.use('/aggregations', aggregationsRoutes);
 router.use('/settings', settingsRoutes);
 router.use('/notifications', notificationsRoutes);
 router.use('/permissions', permissionsRoutes);
+router.use('/grades', gradesRoutes);
+router.use('/subjects', subjectsRoutes);
 
 export default router;

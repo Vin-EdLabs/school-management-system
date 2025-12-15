@@ -1,4 +1,5 @@
 import bodyParser from 'body-parser';
+import { execSync } from 'child_process';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import express from 'express';
@@ -8,6 +9,7 @@ import morgan from 'morgan';
 import pool from './config/db.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 import routes from './routes/index.js';
+import applySchema from './scripts/apply-schema.js';
 import check from './scripts/check-db.js';
 import seedscript from './scripts/seed-admin.js';
 
@@ -64,6 +66,67 @@ const init = async () => {
   if (!ok) {
     console.error('Database not available, aborting startup.');
     process.exit(2);
+  }
+
+  // Check for required tables; if missing, attempt to run migrations
+  const requiredTables = ['users']; // adjust list as needed
+  const missing = await (async () => {
+    try {
+      const placeholders = requiredTables.map((_, i) => `$${i + 1}`).join(',');
+      const res = await pool.query(`SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name = ANY($1)`, [requiredTables]);
+      const present = (res.rows || []).map((r: any) => String(r.table_name));
+      return requiredTables.filter(t => !present.includes(t));
+    } catch (e) {
+      console.error('Failed to query information_schema for tables:', e);
+      return requiredTables;
+    }
+  })();
+
+  if (missing.length > 0) {
+    console.warn('Missing required tables:', missing.join(', '));
+    // If migrations are disabled in package.json or environment, skip
+    if (process.env.SKIP_MIGRATIONS === '1') {
+      console.warn('SKIP_MIGRATIONS=1 set; not running migrations.');
+    } else {
+      console.log('Attempting to run migrations (npm run migrate:up)');
+      try {
+        // Use shell exec for cross-platform reliability
+        execSync('npm run migrate:up', { stdio: 'inherit', cwd: process.cwd(), env: process.env, timeout: 5 * 60 * 1000 });
+        console.log('Migrations completed; re-checking tables');
+        // re-check once
+        try {
+          const res2 = await pool.query(`SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name = ANY($1)`, [requiredTables]);
+          const present2 = (res2.rows || []).map((r: any) => String(r.table_name));
+          const stillMissing = requiredTables.filter(t => !present2.includes(t));
+          if (stillMissing.length > 0) {
+            console.error('Tables still missing after migrations:', stillMissing.join(', '));
+            process.exit(2);
+          }
+        } catch (e) {
+          console.error('Failed to re-check tables after migrations:', e);
+          process.exit(2);
+        }
+      } catch (e: any) {
+        console.error('Failed to run migrations using shell command `npm run migrate:up`.', e?.message || e);
+        console.log('Attempting JS fallback: applying bundled SQL schema file.');
+        try {
+          await applySchema();
+          console.log('Schema applied via JS fallback; re-checking tables');
+          const res3 = await pool.query(`SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name = ANY($1)`, [requiredTables]);
+          const present3 = (res3.rows || []).map((r: any) => String(r.table_name));
+          const stillMissing2 = requiredTables.filter(t => !present3.includes(t));
+          if (stillMissing2.length > 0) {
+            console.error('Tables still missing after JS schema apply:', stillMissing2.join(', '));
+            console.error('Please run `npm run migrate:up` or `node ./dist/scripts/apply-schema.js` manually.');
+            process.exit(2);
+          }
+        } catch (e2) {
+          console.error('JS schema fallback failed:', e2);
+          console.error('Please run `npm run migrate:up` manually in the backend folder, or set SKIP_MIGRATIONS=1 to skip auto-migrations.');
+          process.exit(2);
+        }
+      }
+    }
   }
 
   // run seed script (will no-op if user exists)

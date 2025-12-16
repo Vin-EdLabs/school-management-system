@@ -20,3 +20,8 @@ export async function listIncomeByYear(year: number) {
   const res = await query('SELECT * FROM income WHERE year = $1 ORDER BY created_at DESC', [year]);
   return res.rows;
 }
+
+export async function getIncomeById(id: number) {
+  const res = await query('SELECT * FROM income WHERE id = $1 LIMIT 1', [id]);
+  return res.rows[0] ?? null;
+}

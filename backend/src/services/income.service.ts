@@ -15,3 +15,7 @@ export async function deleteIncome(id: number) {
 export async function listIncomeForYear(year: number) {
   return incomeRepo.listIncomeByYear(year);
 }
+
+export async function getIncome(id: number) {
+  return incomeRepo.getIncomeById(id);
+}

@@ -42,8 +42,8 @@ export async function getTrends() {
 export async function generatePdf(payload: any = {}) {
   // Build a simple PDF report based on payload or summary
   const doc = new PDFDocument({ size: 'A4', margin: 50 });
-  const chunks: any[] = [];
-  doc.on('data', (chunk) => chunks.push(chunk));
+  const chunks: Buffer[] = [];
+  doc.on('data', (chunk: Buffer) => chunks.push(chunk));
   const end = new Promise<Buffer>((resolve, reject) => {
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);

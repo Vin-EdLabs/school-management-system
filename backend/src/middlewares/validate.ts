@@ -1,4 +1,4 @@
-import { NextFunction, Request, Response } from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import { failure } from '../utils/response.js';
 
 export function requireFields(fields: string[]) {

@@ -52,11 +52,11 @@ const apiLimiter = rateLimit({
   max: Number(process.env.RATE_LIMIT_MAX ?? (isProd ? 200 : 10000)),
 });
 
-// log limiter config in dev for easier debugging
-if (!isProd) {
-  // eslint-disable-next-line no-console
-  console.debug('[rateLimit] windowMs=', apiLimiter.windowMs, ' max=', process.env.RATE_LIMIT_MAX ?? (isProd ? 200 : 10000));
-}
+  // log limiter config in dev for easier debugging
+  if (!isProd) {
+    // eslint-disable-next-line no-console
+    console.debug('[rateLimit] windowMs=', defaultWindow, ' max=', process.env.RATE_LIMIT_MAX ?? (isProd ? 200 : 10000));
+  }
 // readiness flag (set true after DB check + seeding)
 let ready = false;
 

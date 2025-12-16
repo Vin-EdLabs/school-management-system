@@ -33,6 +33,7 @@ export async function createTeacher(payload: any) {
     notes: payload.notes ?? ''
   };
   const created = await userRepo.createUser(payload.username, hash, 'teacher', meta);
+  if (!created) throw new Error('Failed to create teacher user');
   // return merged object to match frontend expectations
   return { id: created.id, username: created.username, role: created.role, created_at: created.created_at, ...meta };
 }

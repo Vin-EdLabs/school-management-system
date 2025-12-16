@@ -3,7 +3,7 @@ import { query } from '../config/db.js';
 function normalizeMetaRow(row: any) {
   if (!row) return null;
   // meta may be returned as an object or as a JSON string depending on driver
-  let meta = {};
+  let meta: any = {};
   try {
     if (row.meta) {
       meta = typeof row.meta === 'string' ? JSON.parse(row.meta) : row.meta;

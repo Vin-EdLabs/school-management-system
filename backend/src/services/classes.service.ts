@@ -29,7 +29,7 @@ export async function listClasses(user?: any, limit = 500) {
       const teacherId = Number(user.id);
       const assigned = await classesRepo.listClassesAssignedToTeacher(teacherId);
       // get scheduled classes via schedules service
-      const schedules = await schedulesService.listSchedulesByTeacher(teacherId);
+      const schedules = await schedulesService.listByTeacher(teacherId);
       const scheduledClasses = schedules
         .map((s: any) => ({ id: s.class_id, name: s.class_name ?? null, level: s.level ?? null, stream: s.stream ?? null }))
         // unique by id

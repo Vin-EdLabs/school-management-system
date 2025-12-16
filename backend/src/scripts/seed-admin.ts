@@ -46,7 +46,10 @@ const seedscript = async () => {
       email: process.env.SEED_ADMIN_EMAIL || '',
     };
     const created = await createUser(username, hash, role, meta);
-
+    if (!created) {
+      console.error('Failed to create admin user via repository');
+      return;
+    }
     console.log(`Inserted admin user '${username}' with id=${created.id}`);
     return;
   } catch (err) {

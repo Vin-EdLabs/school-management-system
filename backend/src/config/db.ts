@@ -6,21 +6,21 @@ dotenv.config();
 // Support using a single DATABASE_URL or individual PG_* vars.
 // When connecting to hosted Postgres (e.g., Supabase) we usually need SSL.
 // You can control SSL with `PGSSLMODE=disable` or `PG_SSL=false` in .env to opt out.
-// const useSslEnv = ((): boolean => {
-//   const mode = (process.env.PGSSLMODE || '').toLowerCase();
-//   if (mode) return mode !== 'disable' && mode !== '0' && mode !== 'false';
-//   const v = (process.env.PG_SSL || '').toLowerCase();
-//   if (v) return v !== '0' && v !== 'false';
-//   // Default to true when DATABASE_URL looks like a remote host (not localhost)
-//   return true;
-// })();
+const useSslEnv = ((): boolean => {
+  const mode = (process.env.PGSSLMODE || '').toLowerCase();
+  if (mode) return mode !== 'disable' && mode !== '0' && mode !== 'false';
+  const v = (process.env.PG_SSL || '').toLowerCase();
+  if (v) return v !== '0' && v !== 'false';
+  // Default to true when DATABASE_URL looks like a remote host (not localhost)
+  return true;
+})();
 
-// const sslOption = useSslEnv ? { rejectUnauthorized: false } : false;
+const sslOption = useSslEnv ? { rejectUnauthorized: false } : false;
 
 const pool = process.env.DATABASE_URL
   ? new Pool({
     connectionString: process.env.DATABASE_URL,
-    // ssl: sslOption
+    ssl: sslOption
   })
   : new Pool({
       host: process.env.PG_HOST ?? 'localhost',

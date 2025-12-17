@@ -5,8 +5,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
-import { useVerifyPassword } from '@/hooks/useAuth';
 import React, { useState } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
+import { apiService } from '../../services/api';
 
 interface PasswordAuthDialogProps {
   open: boolean;
@@ -25,9 +26,10 @@ const PasswordAuthDialog: React.FC<PasswordAuthDialogProps> = ({
   itemName,
   module
 }) => {
+  const { user } = useAuth();
   const [password, setPassword] = useState('');
   const [reason, setReason] = useState('');
-  const { mutateAsync: verifyPassword, isPending } = useVerifyPassword();
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,16 +42,17 @@ const PasswordAuthDialog: React.FC<PasswordAuthDialogProps> = ({
       return;
     }
 
-    try {
-      const response = await verifyPassword(password.trim());
-      const isVerified = (response as any)?.data?.verified ?? (response as any)?.verified;
+    setIsLoading(true);
 
-      if (isVerified) {
-        toast({
-          title: "Password Verified",
-          description: "Proceeding with your action...",
-          variant: "default"
-        });
+    try {
+      // Call the backend API to verify the password
+      const response = await apiService.post('/api/auth/verify-password', {
+        password: password.trim()
+      });
+
+      const verified = (response as any)?.verified ?? (response as any)?.data?.verified;
+
+      if (verified) {
         onSuccess(reason.trim() || undefined);
         setPassword('');
         setReason('');
@@ -70,6 +73,8 @@ const PasswordAuthDialog: React.FC<PasswordAuthDialogProps> = ({
         description: errorMessage,
         variant: "destructive"
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -107,7 +112,7 @@ const PasswordAuthDialog: React.FC<PasswordAuthDialogProps> = ({
               placeholder="Enter your password"
               required
               autoFocus
-              disabled={isPending}
+              disabled={isLoading}
             />
           </div>
 
@@ -119,20 +124,20 @@ const PasswordAuthDialog: React.FC<PasswordAuthDialogProps> = ({
               onChange={(e) => setReason(e.target.value)}
               placeholder="Enter reason for this action..."
               rows={3}
-              disabled={isPending}
+              disabled={isLoading}
             />
           </div>
 
           <DialogFooter className="flex gap-2">
-            <Button type="button" variant="outline" onClick={handleClose} disabled={isPending}>
+            <Button type="button" variant="outline" onClick={handleClose} disabled={isLoading}>
               Cancel
             </Button>
             <Button
               type="submit"
               variant={action === 'delete' ? 'destructive' : 'default'}
-              disabled={isPending}
+              disabled={isLoading}
             >
-              {isPending ? 'Authenticating...' : `Confirm ${action === 'edit' ? 'Edit' : 'Delete'}`}
+              {isLoading ? 'Authenticating...' : `Confirm ${action === 'edit' ? 'Edit' : 'Delete'}`}
             </Button>
           </DialogFooter>
         </form>

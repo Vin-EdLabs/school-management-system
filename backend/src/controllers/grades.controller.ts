@@ -96,11 +96,15 @@ export async function getGrades(req: Request, res: Response) {
       id: g.id ? String(g.id) : (g.grade_id ? String(g.grade_id) : null),
       studentId: String(g.student_id ?? g.studentId ?? g.student?.id ?? g.studentId),
       student_name: g.student_name ?? g.student?.name ?? null,
+      // `assignmentId` is what the client uses for exam/assignment id
+      assignmentId: String(g.exam_id ?? g.assignmentId ?? examId),
       exam_id: String(g.exam_id ?? g.assignmentId ?? examId),
       score: g.score === null || typeof g.score === 'undefined' ? null : Number(g.score),
       status: g.status ?? 'OK',
       remarks: g.remarks ?? '',
-      max_score: g.max_score ?? g.maxScore ?? null,
+      // Normalize max score naming for client (`maxScore`) while keeping raw
+      maxScore: g.max_score ?? g.maxScore ?? g.max_marks ?? null,
+      max_score: g.max_score ?? g.maxScore ?? g.max_marks ?? null,
       grade: g.grade ?? null
     }));
     return res.json(success(list));
@@ -122,7 +126,22 @@ export async function saveGrades(req: Request, res: Response) {
     const user = (req as any).user;
     const isAdmin = user?.role === 'administrator' || user?.role === 'super-admin';
     const isSubjectTeacher = subject && user && subject.teacher_id && Number(subject.teacher_id) === Number(user.id);
-    if (!isAdmin && !isSubjectTeacher) return res.status(403).json(failure('Forbidden: not allowed to save grades for this exam'));
+    // Additional tolerant check: match by teacher username when numeric ids don't match
+    const isSubjectTeacherByUsername = subject && user && subject.teacher_username && user.username && String(subject.teacher_username) === String(user.username);
+
+    if (!isAdmin && !isSubjectTeacher && !isSubjectTeacherByUsername) {
+      // Log diagnostic information to help debug mismatched identities
+      // eslint-disable-next-line no-console
+      console.error('[grades.controller.saveGrades] Forbidden save attempt:', {
+        examId,
+        examSubjectId: exam?.subject_id,
+        subjectTeacherId: subject?.teacher_id,
+        subjectTeacherUsername: subject?.teacher_username,
+        requestUser: user,
+        recordsCount: Array.isArray(records) ? records.length : 0
+      });
+      return res.status(403).json(failure('Forbidden: not allowed to save grades for this exam'));
+    }
 
     const result = await gradesService.saveGrades(examId, records, (req as any).user?.id);
     return res.json(success(result));

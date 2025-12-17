@@ -111,10 +111,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // For demo purposes, assign teacherId for teacher role
         ...(role === 'teacher' && { teacherId: 'teacher-1' })
       };
+
       setIsAuthenticated(true);
       setUser(newUser);
       localStorage.setItem('rosaGardensAuth', 'true');
       localStorage.setItem('rosaGardensUser', JSON.stringify(newUser));
+
+      // Try to perform a real backend login in the background so we get a token
+      (async () => {
+        try {
+          const resp: any = await authService.login({ username, password });
+          const token = resp?.token || (resp as any)?.data?.token;
+          const userFromServer = resp?.user || (resp as any)?.data?.user;
+          if (token) {
+            apiService.setAuthToken(token);
+            try { localStorage.setItem('rosaGardensToken', token); } catch (e) { /* ignore */ }
+          }
+          if (userFromServer) {
+            try {
+              localStorage.setItem('rosaGardensAuth', 'true');
+              localStorage.setItem('rosaGardensUser', JSON.stringify(userFromServer));
+              const event = new CustomEvent('userLogin', { detail: { user: userFromServer } });
+              window.dispatchEvent(event);
+            } catch (e) { /* ignore */ }
+          }
+        } catch (e) {
+          // If backend login fails, we still keep the local demo login
+          // eslint-disable-next-line no-console
+          console.debug('Backend login not available or failed; continuing with demo login');
+        }
+      })();
 
       // Add audit log for login (will be handled by AuditContext after login)
       setTimeout(() => {
@@ -126,6 +152,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return true;
     }
+
     return false;
   };
 

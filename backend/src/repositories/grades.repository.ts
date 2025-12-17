@@ -51,9 +51,16 @@ export async function lockExam(id: number, locked: boolean) {
 
 export async function getGradesByExam(examId: number) {
   const res = await query(`
-    SELECT g.*, s.first_name, s.last_name, s.admission_no
+    SELECT g.*, s.first_name, s.last_name, s.admission_no,
+           (s.first_name || ' ' || s.last_name) as student_name,
+           e.max_score,
+           gb.grade as grade
     FROM grades g
     JOIN students s ON g.student_id = s.id
+    LEFT JOIN exams e ON g.exam_id = e.id
+    LEFT JOIN grade_boundaries gb ON g.score IS NOT NULL
+      AND g.score >= gb.min AND g.score <= gb.max
+      AND gb.class_id IS NULL -- use global/school-wide boundaries by default
     WHERE g.exam_id = $1
     ORDER BY s.last_name, s.first_name
   `, [examId]);
@@ -67,8 +74,10 @@ export async function upsertGrades(examId: number, records: Array<any>, userId?:
   const placeholders: string[] = [];
   let idx = 1;
   for (const r of records) {
+    // Accept both snake_case (`student_id`) and camelCase (`studentId`) from client payloads
+    const studentId = (r.student_id ?? r.studentId) ?? null;
     placeholders.push(`($${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++})`);
-    values.push(examId, r.student_id, r.score ?? null, r.status ?? 'OK', r.remarks ?? null);
+    values.push(examId, studentId, r.score ?? null, r.status ?? 'OK', r.remarks ?? null);
   }
   const sql = `INSERT INTO grades (exam_id, student_id, score, status, remarks) VALUES ${placeholders.join(', ')}
     ON CONFLICT (exam_id, student_id) DO UPDATE SET score = EXCLUDED.score, status = EXCLUDED.status, remarks = EXCLUDED.remarks, updated_at = NOW()

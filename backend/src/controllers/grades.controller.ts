@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import * as subjectsRepo from '../repositories/subjects.repository.js';
-import * as gradesService from '../services/grades.service.js';
 import * as gradeBoundariesService from '../services/gradeBoundaries.service.js';
+import * as gradesService from '../services/grades.service.js';
 import { failure, success } from '../utils/response.js';
 
 export async function listExamTypes(req: Request, res: Response) {

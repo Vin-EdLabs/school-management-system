@@ -6,7 +6,10 @@
         "database": "school_db",
         "user": "postgres",
         "password": "Edm03nd",
-        "schema": "public"
+        "schema": "public",
+        "ssl": {
+            "rejectUnauthorized": false
+        }
     },
     "production": {
         "driver": "pg",
@@ -15,6 +18,9 @@
         "database": "${PGDATABASE}",
         "user": "${PGUSER}",
         "password": "${PGPASSWORD}",
-        "schema": "public"
+        "schema": "public",
+        "ssl": {
+            "rejectUnauthorized": true
+        }
     }
 }

@@ -10,7 +10,7 @@ import useFeeStructures from '@/hooks/useFeeStructures';
 import usePayments from '@/hooks/usePayments';
 import useStudents from '@/hooks/useStudents';
 import { AlertTriangle, Clock, DollarSign, Download, Search, TrendingUp } from 'lucide-react';
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { calculateStudentFees, getActiveAcademicTerm } from '../../utils/feeCalculations';
 
 interface OutstandingFeesProps {
@@ -23,20 +23,61 @@ const OutstandingFees: React.FC<OutstandingFeesProps> = ({ compact = false }) =>
   const { feeStructures: rawFeeStructures } = useFeeStructures();
   const { payments: rawPayments } = usePayments();
 
-  const students = (rawStudents || []).map((s: any) => ({
+  // fetched data from backend (used as fallback if hooks don't provide data)
+  const [fetchedStudents, setFetchedStudents] = useState<any[]>([]);
+  const [fetchedClasses, setFetchedClasses] = useState<any[]>([]);
+  const [fetchedFeeStructures, setFetchedFeeStructures] = useState<any[]>([]);
+  const [fetchedPayments, setFetchedPayments] = useState<any[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const fetchIfAvailable = async (url: string, setter: (v: any[]) => void) => {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) {
+          console.warn(`${url} returned ${res.status}`);
+          return;
+        }
+        const json = await res.json();
+        if (!mounted) return;
+        setter(Array.isArray(json) ? json : []);
+      } catch (err: any) {
+        console.warn(`Failed fetching ${url}:`, err);
+      }
+    };
+
+    // fetch individually so a single missing endpoint doesn't block others
+    fetchIfAvailable('/api/students', setFetchedStudents);
+    fetchIfAvailable('/api/classes', setFetchedClasses);
+    fetchIfAvailable('/api/fee-structures', setFetchedFeeStructures);
+    fetchIfAvailable('/api/payments', setFetchedPayments);
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const students = ((fetchedStudents.length ? fetchedStudents : rawStudents) || []).map((s: any) => ({
     id: s.id ?? String(s.id),
     firstName: s.first_name || s.firstName || '',
     lastName: s.last_name || s.lastName || '',
     studentId: s.studentId || s.student_id || s.id || '',
-    classAssigned: s.classAssigned || s.class_assigned || ''
+    classAssigned: (s.classAssigned || s.class_assigned || (() => {
+      const classesSource = (fetchedClasses.length ? fetchedClasses : rawClasses) || [];
+      const cid = s.class_id ?? s.classId ?? s.class;
+      if (!cid) return '';
+      const match = classesSource.find((c: any) => String(c.id) === String(cid) || String(c.class_id) === String(cid));
+      return match ? (match.className || match.name || match.class_name || '') : '';
+    })())
   }));
 
-  const classes = (rawClasses || []).map((c: any) => ({
+  const classes = ((fetchedClasses.length ? fetchedClasses : rawClasses) || []).map((c: any) => ({
     id: c.id ?? String(c.id),
     className: c.className || c.class_name || c.name || ''
   }));
 
-  const feeStructures = (rawFeeStructures || []).map((f: any) => ({
+  const feeStructures = ((fetchedFeeStructures.length ? fetchedFeeStructures : rawFeeStructures) || []).map((f: any) => ({
     id: f.id ?? String(f.id),
     className: f.className || f.class_name || '',
     term: f.term || f.term_name || f.termName || '',
@@ -44,7 +85,7 @@ const OutstandingFees: React.FC<OutstandingFeesProps> = ({ compact = false }) =>
     arrears: f.arrears || 0
   }));
 
-  const payments = (rawPayments || []).map((p: any) => ({
+  const payments = ((fetchedPayments.length ? fetchedPayments : rawPayments) || []).map((p: any) => ({
     id: p.id ?? String(p.id),
     studentId: String(p.student_id || p.studentId || p.student),
     term: p.term || p.term_name || '',
@@ -75,6 +116,7 @@ const OutstandingFees: React.FC<OutstandingFeesProps> = ({ compact = false }) =>
         studentName: `${student.firstName} ${student.lastName}`,
         className: student.classAssigned,
         currentTermFee: feeCalculation.currentTermFee,
+        matchedFeeStructure: feeCalculation.matchedFeeStructure ?? null,
         arrears: feeCalculation.arrears,
         creditBalance: feeCalculation.creditBalance,
         totalAmountDue: feeCalculation.totalAmountDue,
@@ -90,7 +132,11 @@ const OutstandingFees: React.FC<OutstandingFeesProps> = ({ compact = false }) =>
     return outstandingData
       .filter(student => student.outstanding > 0)
       .filter(student => {
-        const matchesSearch = student.studentName.toLowerCase().includes(searchTerm.toLowerCase());
+        const q = searchTerm.toLowerCase().trim();
+        const matchesSearch =
+          !q ||
+          (student.studentName || '').toLowerCase().includes(q) ||
+          (student.studentId || '').toLowerCase().includes(q);
         const matchesClass = selectedClass === 'All' || student.className === selectedClass;
         return matchesSearch && matchesClass;
       })
@@ -121,7 +167,12 @@ const OutstandingFees: React.FC<OutstandingFeesProps> = ({ compact = false }) =>
   // Get unique classes for filter
   const uniqueClasses = useMemo(() => {
     const classesArray = Array.isArray(classes) ? classes : [];
-    return ['All', ...classesArray.map(cls => cls.className)];
+    // filter out empty/falsy class names and deduplicate
+    const names = classesArray
+      .map(cls => cls.className)
+      .filter(name => !!name);
+    const unique = Array.from(new Set(names));
+    return ['All', ...unique];
   }, [classes]);
 
   const exportOutstandingReport = () => {
@@ -238,6 +289,20 @@ const OutstandingFees: React.FC<OutstandingFeesProps> = ({ compact = false }) =>
           </div>
         </CardHeader>
         <CardContent>
+          {/* Debug panel: shows resolved class and matched fee structure for first search match */}
+          {searchTerm.trim() !== '' && (() => {
+            const q = searchTerm.toLowerCase().trim();
+            const match = outstandingData.find(s => (s.studentName || '').toLowerCase().includes(q) || (String(s.studentId || '')).toLowerCase().includes(q));
+            if (!match) return null;
+            return (
+              <div className="mb-4 p-3 bg-gray-50 border rounded text-sm">
+                <div className="font-medium mb-1">Debug: Resolved Fee for {match.studentName}</div>
+                <div>Resolved Class: <span className="font-mono">{match.className || '[none]'}</span></div>
+                <div>Current Term Fee: GHS <span className="font-mono">{match.currentTermFee.toLocaleString()}</span></div>
+                <div>Matched Fee Structure: <pre className="whitespace-pre-wrap text-xs mt-2">{JSON.stringify(match.matchedFeeStructure ?? { matched: false }, null, 2)}</pre></div>
+              </div>
+            );
+          })()}
           <div className="flex flex-col md:flex-row gap-4 mb-6">
             <div className="relative flex-1">
               <Search className="w-4 h-4 absolute left-3 top-3 text-gray-400" />

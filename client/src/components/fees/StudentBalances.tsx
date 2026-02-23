@@ -22,8 +22,13 @@ const StudentBalances = () => {
     id: s.id ?? String(s.id),
     firstName: s.first_name || s.firstName || '',
     lastName: s.last_name || s.lastName || '',
-    studentId: s.studentId || s.student_id || s.id || '',
-    classAssigned: s.classAssigned || s.class_assigned || ''
+    studentId: String(s.studentId || s.student_id || s.id || ''),
+    classAssigned: (s.classAssigned || s.class_assigned || (() => {
+      const cid = s.class_id ?? s.classId ?? s.class;
+      if (!cid) return '';
+      const match = (rawClasses || []).find((c: any) => String(c.id) === String(cid) || String(c.class_id) === String(cid));
+      return match ? (match.className || match.name || match.class_name || '') : '';
+    })())
   }));
 
   const payments = (rawPayments || []).map((p: any) => ({
@@ -86,10 +91,12 @@ const StudentBalances = () => {
   const studentsWithBalances = students.map(calculateStudentBalance);
 
   const filteredStudents = studentsWithBalances.filter(student => {
-    const matchesSearch = searchTerm === '' ||
-      student.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      student.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      student.studentId.includes(searchTerm);
+    const q = (searchTerm || '').toLowerCase().trim();
+    const matchesSearch =
+      !q ||
+      (student.firstName || '').toLowerCase().includes(q) ||
+      (student.lastName || '').toLowerCase().includes(q) ||
+      String(student.studentId || '').toLowerCase().includes(q);
 
     const matchesClass = filterClass === 'all-classes' || student.classAssigned === filterClass;
 

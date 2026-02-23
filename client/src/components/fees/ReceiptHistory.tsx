@@ -14,7 +14,7 @@ const ReceiptHistory = () => {
   const { payments: rawPayments } = usePayments();
   const { students: rawStudents } = useStudents();
   const payments = (rawPayments || []).map((p: any) => ({
-    id: p.id ?? String(p.id),
+    id: String(p.id ?? ''),
     amount: Number(p.amount || 0),
     date: p.date || p.created_at || new Date().toISOString(),
     paymentMethod: p.paymentMethod || p.method || p.payment_method || '',
@@ -27,7 +27,7 @@ const ReceiptHistory = () => {
     id: s.id ?? String(s.id),
     firstName: s.first_name || s.firstName || '',
     lastName: s.last_name || s.lastName || '',
-    studentId: s.studentId || s.student_id || s.id || '',
+    studentId: String(s.studentId || s.student_id || s.id || ''),
     classAssigned: s.classAssigned || s.class_assigned || ''
   }));
   const [searchTerm, setSearchTerm] = useState('');
@@ -35,9 +35,10 @@ const ReceiptHistory = () => {
   const [showReceipt, setShowReceipt] = useState(false);
 
   // Generate receipt numbers consistently (same logic as RecordPayment)
-  const generateReceiptNumber = (paymentId: string, date: string) => {
+  const generateReceiptNumber = (paymentId: any, date: string) => {
     const timestamp = new Date(date).getTime().toString().slice(-6);
-    const idHash = paymentId.slice(-3);
+    const idStr = String(paymentId ?? '');
+    const idHash = idStr.slice(-3);
     return `RG${timestamp}${idHash}`;
   };
 

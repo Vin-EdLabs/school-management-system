@@ -112,15 +112,28 @@ const StaffPayroll: React.FC = () => {
     }, [isAddOpen]);
 
     // Keep local `staff` in sync with API list when available
+    // Only update local state when data actually differs to avoid update loops
     useEffect(() => {
         if (staffFromApi && Array.isArray(staffFromApi)) {
-            setStaff(staffFromApi.map((s: any) => ({
+            const mapped = staffFromApi.map((s: any) => ({
                 id: String(s.id ?? s._id ?? s.staffId ?? ''),
                 name: s.meta?.name ?? s.name ?? s.fullName ?? s.full_name ?? 'Staff',
                 position: s.meta?.position ?? s.position ?? s.role ?? 'Staff',
                 monthlySalary: Number(s.meta?.monthlySalary ?? s.monthlySalary ?? s.salary ?? s.monthly_salary ?? 0),
                 lastPaid: s.meta?.lastPaid ?? s.lastPaid ?? s.last_paid ?? s.last_payment_date ?? undefined
-            })));
+            }));
+
+            setStaff((prev) => {
+                const same = prev.length === mapped.length && prev.every((p, i) => (
+                    p.id === mapped[i].id &&
+                    p.name === mapped[i].name &&
+                    p.position === mapped[i].position &&
+                    p.monthlySalary === mapped[i].monthlySalary &&
+                    (p.lastPaid ?? '') === (mapped[i].lastPaid ?? '')
+                ));
+
+                return same ? prev : mapped;
+            });
         }
     }, [staffFromApi]);
 

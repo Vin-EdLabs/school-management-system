@@ -7,7 +7,7 @@ import { toast } from '@/hooks/use-toast';
 import useClasses from '@/hooks/useClasses';
 import useFeeStructures, { useCreateFeeStructure } from '@/hooks/useFeeStructures';
 import { DollarSign, Save } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 
 const SetFeeStructure = () => {
   const { classes: rawClasses } = useClasses();
@@ -15,10 +15,15 @@ const SetFeeStructure = () => {
   const createFeeStructure = useCreateFeeStructure();
   const classes = (rawClasses || []).map((c: any) => ({
     id: c.id ?? String(c.id),
-    className: c.className || c.class_name || c.name || ''
+    // backend stores `level` and `stream` — build a readable name if higher-level aliases are missing
+    className: c.className || c.class_name || c.name || (() => {
+      const level = c.level ?? c.level_name ?? c.levelName ?? '';
+      const stream = c.stream ?? c.section ?? c.stream_name ?? '';
+      return `${(level || '').toString().trim()}${stream ? ' ' + stream.toString().trim() : ''}`.trim();
+    })()
   }));
   const [formData, setFormData] = useState({
-    className: '',
+    classLevel: '',
     term: 'Term 1 2024',
     amount: '',
     dueDate: '',
@@ -26,6 +31,25 @@ const SetFeeStructure = () => {
   });
 
   console.log('SetFeeStructure: classes data:', classes);
+
+  const getClassLevelLabel = (name: string) => {
+    if (!name) return name;
+    // Trim and remove common separators with stream/section info
+    const sepIndex = name.search(/[-\/|:]/);
+    if (sepIndex > -1) return name.slice(0, sepIndex).trim();
+    const parts = name.trim().split(/\s+/);
+    const last = parts[parts.length - 1];
+    // If last token is a single letter (stream) or matches single-letter/number stream like 'A' or '1A', drop it
+    if (/^[A-Za-z]$/.test(last) || /^[0-9]+[A-Za-z]?$/.test(last) && /[A-Za-z]/.test(last)) {
+      return parts.slice(0, -1).join(' ');
+    }
+    return name;
+  };
+
+  const uniqueLevels = useMemo(() => {
+    const names = (classes || []).map(c => getClassLevelLabel(c.className)).filter(Boolean);
+    return Array.from(new Set(names));
+  }, [classes]);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({
@@ -37,7 +61,7 @@ const SetFeeStructure = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.className || !formData.amount) {
+    if (!formData.classLevel || !formData.amount) {
       toast({
         title: "Validation Error",
         description: "Please select a class and enter amount",
@@ -45,22 +69,27 @@ const SetFeeStructure = () => {
       });
       return;
     }
+    // Use selected level name and do not send a specific class_id (applies to level)
+    const selectedLevel = formData.classLevel;
 
     createFeeStructure.mutate({
-      className: formData.className,
-      term: formData.term,
-      amount: parseFloat(formData.amount),
-      dueDate: formData.dueDate,
-      description: formData.description
+      name: selectedLevel,
+      items: {
+        amount: parseFloat(formData.amount),
+        dueDate: formData.dueDate || null,
+        description: formData.description || ''
+      },
+      term_id: null,
+      class_id: null
     });
 
     toast({
       title: "Fee Structure Set",
-      description: `Fees set for ${formData.className}`,
+      description: `Fees set for ${selectedLevel}`,
     });
 
     setFormData({
-      className: '',
+      classLevel: '',
       term: 'Term 1 2024',
       amount: '',
       dueDate: '',
@@ -81,20 +110,17 @@ const SetFeeStructure = () => {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="className">Class *</Label>
-                <Select value={formData.className} onValueChange={(value) => handleInputChange('className', value)}>
+                <Label htmlFor="classLevel">Class *</Label>
+                <Select value={formData.classLevel} onValueChange={(value) => handleInputChange('classLevel', value)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select class" />
                   </SelectTrigger>
                   <SelectContent>
-                    {classes.filter(cls => cls.className && cls.className.trim() !== '').map((cls) => {
-                      console.log('SetFeeStructure: rendering class item:', cls.className);
-                      return (
-                        <SelectItem key={cls.id} value={cls.className}>
-                          {cls.className}
-                        </SelectItem>
-                      );
-                    })}
+                    {uniqueLevels.map(level => (
+                      <SelectItem key={level} value={level}>
+                        {level}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

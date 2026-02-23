@@ -6,6 +6,7 @@ export interface FeeCalculation {
   totalAmountDue: number;
   totalPaid: number;
   currentTermFee: number;
+  matchedFeeStructure?: any;
 }
 
 export interface StudentPaymentRecord {
@@ -83,11 +84,50 @@ export const calculateStudentFees = (
   feeStructures: any[],
   payments: any[]
 ): FeeCalculation => {
-  // Get current term fee structure
-  const currentFeeStructure = feeStructures.find(fee => 
-    fee.className === studentClass && fee.term === currentTerm
-  );
-  const currentTermFee = currentFeeStructure?.amount || 0;
+  // Helper to extract level from a class name (strip stream/section)
+  const extractLevel = (name: string) => {
+    if (!name) return name;
+    const sepIndex = name.search(/[-\/|:]/);
+    if (sepIndex > -1) return name.slice(0, sepIndex).trim();
+    const parts = name.trim().split(/\s+/);
+    const last = parts[parts.length - 1];
+    if (/^[A-Za-z]$/.test(last) || (/^[0-9]+[A-Za-z]?$/.test(last) && /[A-Za-z]/.test(last))) {
+      return parts.slice(0, -1).join(' ');
+    }
+    return name;
+  };
+
+  // Flexible matching: try exact class+term, then level fallback, and allow
+  // case-insensitive matches or matching by class id if present on fee structure.
+  const normalize = (v: any) => (v ?? '').toString().trim().toLowerCase();
+  const studentClassNorm = normalize(studentClass);
+  const termNorm = normalize(currentTerm);
+
+  let currentFeeStructure = feeStructures.find((fee: any) => {
+    const feeClassName = normalize(fee.className ?? fee.class_name ?? fee.class);
+    const feeTerm = normalize(fee.term ?? fee.academicTerm ?? fee.term_name);
+    const feeClassId = fee.classId ?? fee.class_id ?? fee.classId ?? fee.class_id;
+
+    const classMatches = (
+      (feeClassName && feeClassName === studentClassNorm) ||
+      (feeClassId !== undefined && String(feeClassId) === String(studentClass))
+    );
+
+    return classMatches && feeTerm === termNorm;
+  });
+
+  // Fallback: try matching by level (fee structure set for the whole level)
+  if (!currentFeeStructure) {
+    const levelName = extractLevel(studentClass);
+    const levelNorm = normalize(levelName);
+    currentFeeStructure = feeStructures.find((fee: any) => {
+      const feeClassName = normalize(fee.className ?? fee.class_name ?? fee.class);
+      const feeTerm = normalize(fee.term ?? fee.academicTerm ?? fee.term_name);
+      return feeClassName === levelNorm && feeTerm === termNorm;
+    });
+  }
+
+  const currentTermFee = Number(currentFeeStructure?.amount ?? currentFeeStructure?.amount_due ?? 0) || 0;
 
   // Get all payments for this student in current term
   const currentTermPayments = payments
@@ -123,6 +163,7 @@ export const calculateStudentFees = (
     totalAmountDue: totalAmountDue,
     totalPaid: totalPaid,
     currentTermFee: currentTermFee
+    ,matchedFeeStructure: currentFeeStructure ?? null
   };
 };
 

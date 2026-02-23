@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
+import useClasses from '@/hooks/useClasses';
 import useFeeStructures from '@/hooks/useFeeStructures';
 import usePayments from '@/hooks/usePayments';
 import useStudents from '@/hooks/useStudents';
@@ -33,11 +34,51 @@ const RecordPayment = () => {
   const currentTerm = getActiveAcademicTerm();
   const currentYear = getActiveAcademicYear();
 
-  const filteredStudents = students.filter(student =>
-    student.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    student.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    student.studentId.includes(searchTerm)
-  );
+  const { classes: classList } = useClasses();
+
+  // Normalize students to a consistent shape so the UI and fee calculations
+  // can work with different API shapes (snake_case, camelCase, meta fields)
+  const normalizedStudents = (students || []).map((s: any) => {
+    const id = String(s.id ?? s._id ?? s.student_id ?? s.studentId ?? '');
+    const firstName = (s.firstName ?? s.first_name ?? s.meta?.firstName ?? s.meta?.first_name ?? '').toString();
+    const lastName = (s.lastName ?? s.last_name ?? s.meta?.lastName ?? s.meta?.last_name ?? '').toString();
+    const studentId = (s.studentId ?? s.admission_no ?? s.meta?.admission_no ?? s.meta?.studentId ?? id).toString();
+    let classAssigned = (s.classAssigned ?? s.class_assigned ?? s.meta?.classAssigned ?? s.meta?.className ?? '');
+    // try resolving class name from class_id using classes hook
+    if ((!classAssigned || classAssigned === '') && s.class_id) {
+      const cls = (classList || []).find((c: any) => String(c.id) === String(s.class_id));
+      if (cls) classAssigned = cls.className || cls.class_name || cls.name || '';
+    }
+
+    return {
+      ...s,
+      id,
+      firstName,
+      lastName,
+      studentId,
+      classAssigned
+    };
+  });
+
+  const filteredStudents = normalizedStudents.filter(student => {
+    const q = (searchTerm || '').toLowerCase().trim();
+    if (!q) return false;
+
+    const tokens = q.split(/\s+/).filter(Boolean);
+    const first = (student.firstName ?? '').toLowerCase();
+    const last = (student.lastName ?? '').toLowerCase();
+    const metaName = ((student.meta?.name ?? student.name) ?? '').toString().toLowerCase();
+    const fullName = (`${student.firstName ?? ''} ${student.lastName ?? ''}`.trim() || metaName).toLowerCase();
+    const sid = (student.studentId ?? student.id ?? '').toString().toLowerCase();
+
+    return tokens.every(t => (
+      first.includes(t) ||
+      last.includes(t) ||
+      fullName.includes(t) ||
+      metaName.includes(t) ||
+      sid.includes(t)
+    ));
+  });
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({
@@ -53,7 +94,7 @@ const RecordPayment = () => {
   };
 
   const getStudentFeeDetails = (studentId: string) => {
-    const student = students.find(s => s.id === studentId);
+    const student = normalizedStudents.find((s: any) => String(s.id) === String(studentId));
     if (!student) return null;
 
     return calculateStudentFees(
@@ -77,7 +118,7 @@ const RecordPayment = () => {
       return;
     }
 
-    const student = students.find(s => s.id === formData.studentId);
+    const student = normalizedStudents.find((s: any) => String(s.id) === String(formData.studentId));
     if (!student) {
       toast({
         title: "Error",
@@ -186,61 +227,61 @@ const RecordPayment = () => {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="studentSearch">Search Student</Label>
-              <div className="relative">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
-                  id="studentSearch"
-                  placeholder="Search by name or student ID..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-              {searchTerm && (
-                <div className="border rounded-md max-h-60 overflow-y-auto">
-                  {filteredStudents.map((student) => {
-                    const feeDetails = getStudentFeeDetails(student.id);
-                    return (
-                      <div
-                        key={student.id}
-                        className="p-3 hover:bg-gray-50 cursor-pointer border-b last:border-b-0"
-                        onClick={() => {
-                          setFormData(prev => ({ ...prev, studentId: student.id }));
-                          setSearchTerm(`${student.firstName} ${student.lastName} - ${student.studentId}`);
-                        }}
-                      >
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="font-medium">{student.firstName} {student.lastName}</p>
-                            <p className="text-sm text-gray-500">
-                              ID: {student.studentId} | Class: {student.classAssigned}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            {feeDetails && (
-                              <div className="space-y-1">
-                                <p className="text-sm font-medium text-orange-600">
-                                  Due: GHS {feeDetails.totalAmountDue.toFixed(2)}
-                                </p>
-                                {feeDetails.arrears > 0 && (
-                                  <p className="text-xs text-red-600">
-                                    Arrears: GHS {feeDetails.arrears.toFixed(2)}
-                                  </p>
-                                )}
-                                {feeDetails.creditBalance > 0 && (
-                                  <p className="text-xs text-green-600">
-                                    Credit: GHS {feeDetails.creditBalance.toFixed(2)}
-                                  </p>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
+              <div>
+                <Select
+                  value={formData.studentId}
+                  onValueChange={(val) => {
+                    setFormData(prev => ({ ...prev, studentId: val }));
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Search by name or student ID..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <div className="p-2">
+                      <div className="relative mb-2">
+                        <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                        <Input
+                          id="studentSearch"
+                          placeholder="Type name or ID to filter..."
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          className="pl-10"
+                        />
                       </div>
-                    );
-                  })}
-                </div>
-              )}
+                      <div className="max-h-60 overflow-y-auto">
+                        {filteredStudents.length > 0 ? (
+                          filteredStudents.map((student) => {
+                            const feeDetails = getStudentFeeDetails(student.id);
+                            const label = `${student.firstName || ''} ${student.lastName || ''}`.trim() || (student.meta?.name ?? student.name ?? '');
+                            return (
+                              <SelectItem key={student.id} value={student.id}>
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <p className="font-medium">{label}</p>
+                                    <p className="text-sm text-gray-500">ID: {student.studentId || student.id} | Class: {student.classAssigned}</p>
+                                  </div>
+                                  <div className="text-right">
+                                    {feeDetails && (
+                                      <div className="space-y-1">
+                                        <p className="text-sm font-medium text-orange-600">Due: GHS {feeDetails.totalAmountDue.toFixed(2)}</p>
+                                        {feeDetails.arrears > 0 && <p className="text-xs text-red-600">Arrears: GHS {feeDetails.arrears.toFixed(2)}</p>}
+                                        {feeDetails.creditBalance > 0 && <p className="text-xs text-green-600">Credit: GHS {feeDetails.creditBalance.toFixed(2)}</p>}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </SelectItem>
+                            );
+                          })
+                        ) : (
+                          <div className="p-2 text-sm text-gray-500">No matching students</div>
+                        )}
+                      </div>
+                    </div>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {/* Fee Details Display */}

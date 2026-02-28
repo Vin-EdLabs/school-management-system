@@ -1,7 +1,6 @@
 
 import React from 'react';
-import LoginPage from '../components/LoginPage';
-import Dashboard from '../components/Dashboard';
+import { Navigate } from 'react-router-dom';
 import AuditLoginTracker from '../components/AuditLoginTracker';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -11,7 +10,7 @@ const Index = () => {
   return (
     <>
       <AuditLoginTracker />
-      {isAuthenticated ? <Dashboard /> : <LoginPage />}
+      {isAuthenticated ? <Navigate to="/dashboard" replace /> : <Navigate to="/login" replace />}
     </>
   );
 };

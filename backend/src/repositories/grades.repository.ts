@@ -28,7 +28,7 @@ export async function getExamById(id: number) {
 }
 
 export async function listExams(filter: { classId?: number; subjectId?: number; term?: string } = {}) {
-  let sql = `SELECT e.*, et.name as exam_type_name, s.name as subject_name, u.id as subject_teacher_id, u.username as subject_teacher_username
+  let sql = `SELECT e.*, et.name as exam_type_name, s.name as subject_name, u.id as subject_teacher_id, u.staff_id as subject_teacher_staff_id
              FROM exams e
              LEFT JOIN exam_types et ON e.exam_type_id = et.id
              LEFT JOIN subjects s ON e.subject_id = s.id
@@ -96,7 +96,7 @@ export async function updateGrade(gradeId: number, patch: any, userId?: number) 
   }
   if (fields.length === 0) return null;
   params.push(gradeId);
-  const sql = `UPDATE grades SET ${fields.join(', ')}, updated_at = NOW(), updated_by = $${idx} WHERE id = $${idx+1} RETURNING *`;
+  const sql = `UPDATE grades SET ${fields.join(', ')}, updated_at = NOW(), updated_by = $${idx} WHERE id = $${idx + 1} RETURNING *`;
   const res = await query(sql, params.concat([userId || null, gradeId]));
   return res.rows[0];
 }

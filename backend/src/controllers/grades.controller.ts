@@ -125,19 +125,57 @@ export async function saveGrades(req: Request, res: Response) {
     const subject = exam?.subject_id ? await subjectsRepo.getSubject(exam.subject_id) : null;
     const user = (req as any).user;
     const isAdmin = user?.role === 'administrator' || user?.role === 'super-admin';
-    const isSubjectTeacher = subject && user && subject.teacher_id && Number(subject.teacher_id) === Number(user.id);
-    // Additional tolerant check: match by teacher username when numeric ids don't match
-    const isSubjectTeacherByUsername = subject && user && subject.teacher_username && user.username && String(subject.teacher_username) === String(user.username);
 
-    if (!isAdmin && !isSubjectTeacher && !isSubjectTeacherByUsername) {
+    // Check 1: subjects.teacher_id directly matches user's id
+    const isSubjectTeacherById = !!(subject && user && subject.teacher_id && Number(subject.teacher_id) === Number(user.id));
+    // Check 2: subjects.teacher_staff_id matches user's staffId (tolerant fallback)
+    const isSubjectTeacherByStaffId = !!(subject && user && subject.teacher_staff_id && user.staffId && String(subject.teacher_staff_id) === String(user.staffId));
+
+    // Check 3: teacher is linked to the subject via the teacher_subjects junction table
+    let isLinkedViaTeacherSubjects = false;
+    if (!isAdmin && !isSubjectTeacherById && !isSubjectTeacherByStaffId && exam?.subject_id && user?.id) {
+      try {
+        const db = await import('../config/db.js');
+        const tsRes: any = await db.query(
+          'SELECT 1 FROM teacher_subjects WHERE teacher_id = $1 AND subject_id = $2 LIMIT 1',
+          [user.id, exam.subject_id]
+        );
+        isLinkedViaTeacherSubjects = (tsRes.rows?.length ?? 0) > 0;
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('[grades.controller.saveGrades] teacher_subjects check failed:', e);
+      }
+    }
+
+    // Check 4: teacher is assigned to the exam's class via teacher_classes junction table
+    let isAssignedToExamClass = false;
+    if (!isAdmin && !isSubjectTeacherById && !isSubjectTeacherByStaffId && !isLinkedViaTeacherSubjects && exam?.class_id && user?.id) {
+      try {
+        const db = await import('../config/db.js');
+        const tcRes: any = await db.query(
+          'SELECT 1 FROM teacher_classes WHERE teacher_id = $1 AND class_id = $2 LIMIT 1',
+          [user.id, exam.class_id]
+        );
+        isAssignedToExamClass = (tcRes.rows?.length ?? 0) > 0;
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('[grades.controller.saveGrades] teacher_classes check failed:', e);
+      }
+    }
+
+    const allowed = isAdmin || isSubjectTeacherById || isSubjectTeacherByStaffId || isLinkedViaTeacherSubjects || isAssignedToExamClass;
+
+    if (!allowed) {
       // Log diagnostic information to help debug mismatched identities
       // eslint-disable-next-line no-console
       console.error('[grades.controller.saveGrades] Forbidden save attempt:', {
         examId,
         examSubjectId: exam?.subject_id,
+        examClassId: exam?.class_id,
         subjectTeacherId: subject?.teacher_id,
-        subjectTeacherUsername: subject?.teacher_username,
-        requestUser: user,
+        subjectTeacherStaffId: subject?.teacher_staff_id,
+        requestUser: { id: user?.id, staffId: user?.staffId, role: user?.role },
+        checks: { isSubjectTeacherById, isSubjectTeacherByStaffId, isLinkedViaTeacherSubjects, isAssignedToExamClass },
         recordsCount: Array.isArray(records) ? records.length : 0
       });
       return res.status(403).json(failure('Forbidden: not allowed to save grades for this exam'));

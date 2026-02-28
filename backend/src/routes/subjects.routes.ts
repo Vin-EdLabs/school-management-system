@@ -7,5 +7,6 @@ const router = express.Router();
 router.get('/', requireAuth, controller.listSubjects);
 router.post('/', requireAuth, controller.createSubject);
 router.get('/:id', requireAuth, controller.getSubject);
+router.delete('/:id', requireAuth, controller.deleteSubject);
 
 export default router;

@@ -5,7 +5,7 @@ import { failure, success } from '../utils/response.js';
 export async function listSubjects(req: Request, res: Response) {
   try {
     const raw = await repo.listSubjects();
-    const list = (raw || []).map((s: any) => ({ id: String(s.id), name: s.name, code: s.code ?? null, teacher_id: s.teacher_id ? String(s.teacher_id) : null, teacher_username: s.teacher_username ?? null }));
+    const list = (raw || []).map((s: any) => ({ id: String(s.id), name: s.name, code: s.code ?? null, teacher_id: s.teacher_id ? String(s.teacher_id) : null, teacher_staff_id: s.teacher_staff_id ?? null }));
     return res.json(success(list));
   } catch (err: any) {
     return res.status(500).json(failure(err.message));
@@ -29,6 +29,16 @@ export async function getSubject(req: Request, res: Response) {
     const item = await repo.getSubject(id);
     if (!item) return res.status(404).json(failure('Subject not found'));
     return res.json(success(item));
+  } catch (err: any) {
+    return res.status(500).json(failure(err.message));
+  }
+}
+export async function deleteSubject(req: Request, res: Response) {
+  try {
+    const id = Number(req.params.id);
+    const item = await repo.deleteSubject(id);
+    if (!item) return res.status(404).json(failure('Subject not found'));
+    return res.json(success({ deleted: true, id }));
   } catch (err: any) {
     return res.status(500).json(failure(err.message));
   }

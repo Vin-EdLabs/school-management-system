@@ -13,6 +13,8 @@ import applySchema from './scripts/apply-schema.js';
 import check from './scripts/check-db.js';
 import seedscript from './scripts/seed-admin.js';
 
+// Force restart: 2026-02-27T13:07:00Z
+
 dotenv.config();
 
 const app = express();
@@ -25,7 +27,7 @@ const corsOptions: any = {
   origin: (origin: any, callback: any) => {
     // allow requests with no origin (like mobile apps, curl, server-to-server)
     if (!origin) return callback(null, true);
-    const allowed = [process.env.CLIENT_ORIGIN || 'http://localhost:5173', 'http://localhost:3000'];
+    const allowed = [process.env.CLIENT_ORIGIN || 'http://localhost:5173', 'http://localhost:3001'];
     if (allowed.includes(origin)) return callback(null, true);
     return callback(new Error('Not allowed by CORS'));
   },
@@ -52,11 +54,11 @@ const apiLimiter = rateLimit({
   max: Number(process.env.RATE_LIMIT_MAX ?? (isProd ? 200 : 10000)),
 });
 
-  // log limiter config in dev for easier debugging
-  if (!isProd) {
-    // eslint-disable-next-line no-console
-    console.debug('[rateLimit] windowMs=', defaultWindow, ' max=', process.env.RATE_LIMIT_MAX ?? (isProd ? 200 : 10000));
-  }
+// log limiter config in dev for easier debugging
+if (!isProd) {
+  // eslint-disable-next-line no-console
+  console.debug('[rateLimit] windowMs=', defaultWindow, ' max=', process.env.RATE_LIMIT_MAX ?? (isProd ? 200 : 10000));
+}
 // readiness flag (set true after DB check + seeding)
 let ready = false;
 
@@ -164,7 +166,7 @@ app.get('/ready', async (_req, res) => {
 
 app.use(errorHandler);
 
-const port = Number(process.env.PORT ?? 3000);
+const port = Number(process.env.PORT);
 const server = app.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);
 });

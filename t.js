@@ -1,0 +1,1 @@
+fetch('http://localhost:9999/api/teachers/20', {method: 'PATCH', headers: {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTUsInN0YWZmSWQiOiIwMDAwMSIsInJvbGUiOiJzdXBlci1hZG1pbiIsImlhdCI6MTc3MjExMTM5NywiZXhwIjoxNzcyNzE2MTk3fQ.81mt7TrjnsD-lKs8Xifsn-oOCeQIZmzjFmnpi70Hy50'}, body: '{}'}).then(r => r.text()).then(console.log)

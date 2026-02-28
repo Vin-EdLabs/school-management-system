@@ -4,6 +4,7 @@ import assignmentsRoutes from './assignments.routes.js';
 import attendanceRoutes from './attendance.routes.js';
 import auditRoutes from './audit.routes.js';
 import authRoutes from './auth.routes.js';
+import balancesRoutes from './balances.routes.js'; // Added import for balances routes
 import classesRoutes from './classes.routes.js';
 import eventsRoutes from './events.routes.js';
 import expensesRoutes from './expenses.routes.js';
@@ -46,5 +47,6 @@ router.use('/notifications', notificationsRoutes);
 router.use('/permissions', permissionsRoutes);
 router.use('/grades', gradesRoutes);
 router.use('/subjects', subjectsRoutes);
+router.use('/balances', balancesRoutes); // Registered balances routes
 
 export default router;

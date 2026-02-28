@@ -29,6 +29,10 @@ export async function addDeductions(itemId: string, payload: any) {
   return apiService.post(ENDPOINTS.payroll.addDeductions(itemId), payload);
 }
 
+export async function addBonuses(itemId: string, payload: any) {
+  return apiService.post(ENDPOINTS.payroll.addBonuses(itemId), payload);
+}
+
 export async function generateReport(id: string) {
   return apiService.post(ENDPOINTS.payroll.generateReport(id), {});
 }
@@ -41,5 +45,6 @@ export default {
   recordPayment,
   getStaffPaymentHistory,
   addDeductions,
+  addBonuses,
   generateReport
 };

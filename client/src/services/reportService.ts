@@ -45,21 +45,21 @@ export class ReportService {
             ...data.financial.currentYearExpenses
           ]
         };
-      
+
       case 'income':
         return {
           ...baseReport,
           incomeAnalysis: data.incomeBreakdown,
           totalIncome: data.financial.totalIncome
         };
-      
+
       case 'expense':
         return {
           ...baseReport,
           expenseAnalysis: data.expenseBreakdown,
           totalExpenses: data.financial.totalExpenses
         };
-      
+
       case 'summary':
         return {
           ...baseReport,
@@ -71,7 +71,7 @@ export class ReportService {
             topExpenseCategory: data.expenseBreakdown ? Object.keys(data.expenseBreakdown.byCategory)[0] : 'N/A'
           }
         };
-      
+
       default:
         return baseReport;
     }
@@ -82,39 +82,17 @@ export class ReportService {
       console.warn('No data to export');
       return;
     }
-    
+
     try {
-      // Create Excel content as CSV format (which Excel can open)
-      const headers = Object.keys(data[0]);
-      const csvContent = [
-        headers.join(','),
-        ...data.map(row => 
-          headers.map(header => {
-            const value = row[header];
-            // Handle different data types and escape commas
-            if (value === null || value === undefined) return '';
-            if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
-              return `"${value.replace(/"/g, '""')}"`;
-            }
-            return value;
-          }).join(',')
-        )
-      ].join('\n');
-      
-      // Create and download Excel file
-      const blob = new Blob(['\ufeff' + csvContent], { 
-        type: 'application/vnd.ms-excel;charset=utf-8;' 
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      
-      console.log(`Excel file exported: ${a.download}`);
+      const XLSX = await import('xlsx');
+      const worksheet = XLSX.utils.json_to_sheet(data);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+
+      const finalFilename = filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`;
+      XLSX.writeFile(workbook, finalFilename);
+
+      console.log(`Excel file exported: ${finalFilename}`);
     } catch (error) {
       console.error('Error exporting to Excel:', error);
       throw new Error('Failed to export to Excel format');
@@ -130,9 +108,9 @@ export class ReportService {
   async exportReportToExcel(reportData: any, reportType: string) {
     const timestamp = new Date().toISOString().split('T')[0];
     const filename = `${reportType}_report_${timestamp}.xlsx`;
-    
+
     let dataToExport: any[] = [];
-    
+
     switch (reportType) {
       case 'financial':
         if (reportData.transactions && reportData.transactions.length > 0) {
@@ -161,11 +139,11 @@ export class ReportService {
       default:
         dataToExport = Array.isArray(reportData) ? reportData : [reportData];
     }
-    
+
     if (dataToExport.length === 0) {
       throw new Error('No data available for export');
     }
-    
+
     await this.exportToExcel(dataToExport, filename, reportType);
   }
 }

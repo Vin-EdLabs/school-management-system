@@ -18,6 +18,7 @@ export const ENDPOINTS = {
   teachers: {
     list: '/teachers',
     create: '/teachers',
+    nextId: '/teachers/next-id',
     get: (id: string) => `/teachers/${id}`,
     update: (id: string) => `/teachers/${id}`,
     delete: (id: string) => `/teachers/${id}`,
@@ -59,7 +60,9 @@ export const ENDPOINTS = {
   },
   subjects: {
     list: '/subjects',
+    create: '/subjects',
     get: (id: string) => `/subjects/${id}`,
+    delete: (id: string) => `/subjects/${id}`,
   },
   schedules: {
     list: '/teacher/grades',
@@ -89,6 +92,8 @@ export const ENDPOINTS = {
     list: '/fee-structures',
     create: '/fee-structures',
     get: (id: string) => `/fee-structures/${id}`,
+    update: (id: string) => `/fee-structures/${id}`,
+    delete: (id: string) => `/fee-structures/${id}`,
   },
   audit: {
     list: '/audit',
@@ -101,6 +106,9 @@ export const ENDPOINTS = {
   settings: {
     list: '/settings',
     update: (key: string) => `/settings/${key}`,
+    terms: '/settings/terms',
+    term: (id: number | string) => `/settings/terms/${id}`,
+    activeTerm: (id: number | string) => `/settings/active-term/${id}`
   },
   events: {
     list: '/events',
@@ -117,6 +125,7 @@ export const ENDPOINTS = {
     recordPayment: (itemId: string) => `/payroll/${itemId}/payment`,
     staffHistory: (staffId: string) => `/payroll/staff/${staffId}/history`,
     addDeductions: (itemId: string) => `/payroll/${itemId}/deductions`,
+    addBonuses: (itemId: string) => `/payroll/${itemId}/bonuses`,
     generateReport: (id: string) => `/payroll/${id}/report`,
   },
 };

@@ -56,6 +56,10 @@ export class ApiService {
     return this.request<T>(endpoint, { method: 'PUT', headers: this.headers(), body: JSON.stringify(data) });
   }
 
+  async patch<T>(endpoint: string, data: any): Promise<T> {
+    return this.request<T>(endpoint, { method: 'PATCH', headers: this.headers(), body: JSON.stringify(data) });
+  }
+
   async delete<T>(endpoint: string): Promise<T> {
     return this.request<T>(endpoint, { method: 'DELETE', headers: this.headers() });
   }

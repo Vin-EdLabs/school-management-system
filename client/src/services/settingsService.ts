@@ -13,8 +13,8 @@ export async function getActiveTerm(): Promise<{ data: any }> {
   return apiService.get(`${ENDPOINTS.settings.list}/active-term`);
 }
 
-export async function setActiveTerm(payload: any) {
-  return apiService.put(`${ENDPOINTS.settings.list}/active-term`, payload);
+export async function setActiveTerm(id: number | string) {
+  return apiService.put(ENDPOINTS.settings.activeTerm(id), {});
 }
 
 export async function getActiveYear(): Promise<{ data: any }> {
@@ -25,4 +25,31 @@ export async function setActiveYear(payload: any) {
   return apiService.put(`${ENDPOINTS.settings.list}/active-year`, payload);
 }
 
-export default { getSettings, updateSetting, getActiveTerm, setActiveTerm, getActiveYear, setActiveYear };
+export async function listTerms(): Promise<{ data: any }> {
+  return apiService.get(ENDPOINTS.settings.terms);
+}
+
+export async function createTerm(payload: any) {
+  return apiService.post(ENDPOINTS.settings.terms, payload);
+}
+
+export async function updateTerm(id: number | string, payload: any) {
+  return apiService.put(ENDPOINTS.settings.term(id), payload);
+}
+
+export async function deleteTerm(id: number | string) {
+  return apiService.delete(ENDPOINTS.settings.term(id));
+}
+
+export default {
+  getSettings,
+  updateSetting,
+  getActiveTerm,
+  setActiveTerm,
+  getActiveYear,
+  setActiveYear,
+  listTerms,
+  createTerm,
+  updateTerm,
+  deleteTerm
+};

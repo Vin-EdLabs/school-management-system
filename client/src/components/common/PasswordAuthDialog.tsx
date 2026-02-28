@@ -46,7 +46,7 @@ const PasswordAuthDialog: React.FC<PasswordAuthDialogProps> = ({
 
     try {
       // Call the backend API to verify the password
-      const response = await apiService.post('/api/auth/verify-password', {
+      const response = await apiService.post('/auth/verify-password', {
         password: password.trim()
       });
 

@@ -47,7 +47,7 @@ export const AuditProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       ...log,
       id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
       timestamp: new Date(),
-      username: user.username,
+      username: (user as any).staffId ?? (user as any).username,
       role: user.role
     };
 

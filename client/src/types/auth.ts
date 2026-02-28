@@ -1,11 +1,11 @@
 export interface User {
   id: number;
-  username: string;
+  staffId?: string;
   role: string;
 }
 
 export interface LoginRequest {
-  username: string;
+  staffId?: string;
   password: string;
 }
 

@@ -3,10 +3,12 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { apiService } from '../services/api';
 import * as authService from '../services/authService';
 
-export type UserRole = 'administrator' | 'finance' | 'super-admin' | 'teacher';
+export type UserRole = 'administrator' | 'finance' | 'super-admin' | 'teacher' | 'accountant' | 'admin';
 
 interface User {
-  username: string;
+  id?: string | number;
+  username?: string;
+  staffId?: string;
   role: UserRole;
   teacherId?: string; // For teachers to identify which classes they teach
 }
@@ -14,7 +16,7 @@ interface User {
 interface AuthContextType {
   isAuthenticated: boolean;
   user: User | null;
-  login: (username: string, password: string, role: UserRole) => boolean;
+  login: (staffId: string, password: string, role: UserRole) => boolean;
   logout: () => void;
   changePassword: (newPassword: string) => void;
   hasAccess: (module: string) => boolean;
@@ -62,8 +64,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         const resp: any = await authService.session();
-        const user = resp?.user || (resp?.data && resp.data.user) || null;
-        if (mounted && user) {
+        const rawUser = resp?.user || (resp?.data && resp.data.user) || null;
+        if (mounted && rawUser) {
+          const normalizedRole = (rawUser.role || '').toString().toLowerCase().replace(/[_\s]+/g, '-');
+          const user = { ...rawUser, role: normalizedRole };
           setIsAuthenticated(true);
           setUser(user);
           localStorage.setItem('rosaGardensAuth', 'true');
@@ -85,11 +89,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent)?.detail;
-      const payloadUser = detail?.user || (detail?.username && { username: detail.username, role: detail.role });
-      if (payloadUser) {
+      const raw = detail?.user || (detail?.staffId && { staffId: detail.staffId, role: detail.role });
+      if (raw) {
         try {
+          const normalizedRole = (raw.role || '').toString().toLowerCase().replace(/[_\s]+/g, '-');
+          const payloadUser = { ...raw, role: normalizedRole } as User;
           setIsAuthenticated(true);
-          setUser(payloadUser as User);
+          setUser(payloadUser);
           localStorage.setItem('rosaGardensAuth', 'true');
           localStorage.setItem('rosaGardensUser', JSON.stringify(payloadUser));
         } catch (err) {
@@ -102,14 +108,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => window.removeEventListener('userLogin', handler as EventListener);
   }, []);
 
-  const login = (username: string, password: string, role: UserRole): boolean => {
-    // Check if username is 'admin' and password matches the role's password
-    if (username === 'admin' && password === passwords[role]) {
+  const login = (staffId: string, password: string, role: UserRole): boolean => {
+    // Check if staffId is 'admin' and password matches the role's password
+    if (staffId === 'admin' && password === passwords[role]) {
+      const normalizedRole = role.toString().toLowerCase().replace(/[_\s]+/g, '-');
       const newUser: User = {
-        username,
-        role,
+        staffId,
+        role: normalizedRole as UserRole,
         // For demo purposes, assign teacherId for teacher role
-        ...(role === 'teacher' && { teacherId: 'teacher-1' })
+        ...(normalizedRole === 'teacher' && { teacherId: 'teacher-1' })
       };
 
       setIsAuthenticated(true);
@@ -120,7 +127,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Try to perform a real backend login in the background so we get a token
       (async () => {
         try {
-          const resp: any = await authService.login({ username, password });
+          const resp: any = await authService.login({ staffId, password });
           const token = resp?.token || (resp as any)?.data?.token;
           const userFromServer = resp?.user || (resp as any)?.data?.user;
           if (token) {
@@ -145,7 +152,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Add audit log for login (will be handled by AuditContext after login)
       setTimeout(() => {
         const event = new CustomEvent('userLogin', {
-          detail: { username, role, timestamp: new Date() }
+          detail: { staffId, role, timestamp: new Date() }
         });
         window.dispatchEvent(event);
       }, 100);
@@ -180,13 +187,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!user) return false;
 
     const rolePermissions = {
-      'administrator': ['students', 'teachers', 'classes', 'calendar', 'dashboard', 'settings-password-only', 'print-fee-status', 'schedules', 'timetable', 'attendance', 'attendance-reports'],
-      'finance': ['students-view-only', 'teachers-view-only', 'fees', 'income', 'expenses', 'reports', 'financial-dashboard', 'dashboard', 'settings-password-only', 'print-fee-status', 'ai-assistant', 'staff-payroll'],
+      'administrator': ['students', 'teachers', 'staff', 'classes', 'subjects', 'calendar', 'dashboard', 'settings-password-only', 'print-fee-status', 'schedules', 'timetable', 'attendance', 'attendance-reports'],
+      'admin': ['students', 'teachers', 'staff', 'classes', 'subjects', 'calendar', 'dashboard', 'settings-password-only', 'print-fee-status', 'schedules', 'timetable', 'attendance', 'attendance-reports'],
+      'finance': ['students-view-only', 'teachers-view-only', 'staff-view-only', 'fees', 'income', 'expenses', 'reports', 'financial-dashboard', 'dashboard', 'settings-password-only', 'print-fee-status', 'ai-assistant', 'payroll'],
+      'accountant': ['students-view-only', 'teachers-view-only', 'staff-view-only', 'fees', 'income', 'expenses', 'reports', 'financial-dashboard', 'dashboard', 'settings-password-only', 'print-fee-status', 'ai-assistant', 'payroll'],
       'teacher': ['teacher-dashboard', 'teacher-classes', 'attendance', 'attendance-reports', 'grades', 'calendar', 'settings-password-only'],
-      'super-admin': ['students', 'teachers', 'classes', 'calendar', 'fees', 'income', 'expenses', 'reports', 'dashboard', 'financial-dashboard', 'settings', 'audit', 'print-fee-status', 'teacher-classes', 'attendance', 'attendance-reports', 'grades', 'ai-assistant', 'staff-payroll', 'schedules', 'timetable']
+      'staff': ['dashboard', 'settings-password-only'],
+      'super-admin': ['students', 'teachers', 'staff', 'classes', 'subjects', 'calendar', 'fees', 'income', 'expenses', 'reports', 'dashboard', 'financial-dashboard', 'settings', 'audit', 'print-fee-status', 'teacher-classes', 'attendance', 'attendance-reports', 'grades', 'ai-assistant', 'payroll', 'schedules', 'timetable']
     };
 
-    return rolePermissions[user.role].includes(module);
+    const perms = rolePermissions[user.role] ?? rolePermissions['staff'];
+    return perms.includes(module);
   };
 
   return (

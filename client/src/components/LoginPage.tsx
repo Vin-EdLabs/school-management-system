@@ -10,7 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { useLogin } from '../hooks/useAuth';
 
 const LoginPage = () => {
-  const [username, setUsername] = useState('');
+  const [staffId, setStaffId] = useState('');
   const [password, setPassword] = useState('');
   const [showPasswordChange, setShowPasswordChange] = useState(false);
   const [requirePasswordChange, setRequirePasswordChange] = useState(false);
@@ -21,9 +21,10 @@ const LoginPage = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    loginMutation.mutate({ username, password }, {
+    loginMutation.mutate({ staffId, password } as any, {
       onSuccess: (res: any) => {
-        toast({ title: 'Login Successful', description: `Welcome ${res?.user?.username ?? username}` });
+        const name = res?.user?.staffId ?? staffId;
+        toast({ title: 'Login Successful', description: `Welcome ${name}` });
 
         // Check if password change is required
         if (res?.user?.passwordChanged === false) {
@@ -82,10 +83,10 @@ const LoginPage = () => {
           </div>
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <Label htmlFor="username" className="text-sm font-medium text-gray-700">Username</Label>
+              <Label htmlFor="staffId" className="text-sm font-medium text-gray-700">Staff ID</Label>
               <div className="relative mt-1">
                 <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input id="username" type="text" placeholder="Enter your username" value={username} onChange={(e) => setUsername(e.target.value)} className="pl-10 h-11 border-gray-200" required />
+                <Input id="staffId" type="text" placeholder="Enter your staff ID" value={staffId} onChange={(e) => setStaffId(e.target.value)} className="pl-10 h-11 border-gray-200" required />
               </div>
             </div>
 

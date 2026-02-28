@@ -7,7 +7,8 @@ const AuditLoginTracker = () => {
 
   useEffect(() => {
     const handleLogin = (event: any) => {
-      const { username, role } = event.detail;
+      const { username, staffId, role } = event.detail;
+      // record login using the staffId when available
       addAuditLog({
         actionType: 'Login',
         module: 'Authentication'

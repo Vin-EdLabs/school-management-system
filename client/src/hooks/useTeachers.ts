@@ -2,83 +2,65 @@ import { toast } from '@/hooks/use-toast';
 import * as assignmentsService from '@/services/assignmentsService';
 import * as teachersService from '@/services/teachersService';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
 
+/**
+ * Hook for managing school teachers.
+ * Includes "enrichment" with class assignments managed via TanStack Query.
+ */
 export function useTeachers() {
   const queryClient = useQueryClient();
-  const { data: teachersResp } = useQuery<any, Error, any>({ queryKey: ['teachers'], queryFn: teachersService.listTeachers });
-  const rawTeachers = (teachersResp as any)?.data || [];
-  // Try to reuse any previously-enriched teachers cached in React Query
-  const cachedEnriched = queryClient.getQueryData<any[]>(['teachers', 'enriched']);
-  const [teachers, setTeachers] = useState<any[]>(cachedEnriched ?? rawTeachers ?? []);
 
-  // Enrich teachers with classAssigned by querying assignments for each teacher
-  // Extraction: a function that enriches a list of raw teachers by fetching assignments
-  const enrichTeachers = async (sourceTeachers: any[]) => {
-    const enriched = await Promise.all(sourceTeachers.map(async (t: any) => {
-      try {
-        const res = await assignmentsService.listByTeacher(t.id);
-        const classes = (res as any)?.data || [];
-        const assignedLabels: string[] = [];
-        const assignedIds: Array<string | number> = [];
-        for (const cls of classes) {
-          if (!cls) continue;
-          const classNameField = cls.className ?? cls.name ?? cls.class_name ?? cls.title ?? null;
-          const label = classNameField ?? (cls.level ? `${cls.level}${cls.stream ? ' ' + cls.stream : ''}` : `Class ${cls.id ?? ''}`);
-          assignedLabels.push(String(label));
-          assignedIds.push(cls.id ?? cls.ID ?? cls.class_id ?? cls.classId ?? '');
-        }
-        const classAssigned = assignedLabels.length > 0 ? assignedLabels.join(', ') : undefined;
-        const classAssignedId = assignedIds.length === 1 ? assignedIds[0] : null;
-        return { ...t, classAssigned, classAssignedList: assignedLabels, classAssignedId, classAssignedIds: assignedIds };
-      } catch (e) {
-        return { ...t, classAssigned: undefined, classAssignedId: null };
-      }
-    }));
-    return enriched;
-  };
+  // Primary query for teachers with enrichment logic inside queryFn
+  const { data: teachers = [], isLoading, error, refetch: refreshTeachers } = useQuery<any, Error, any[]>({
+    queryKey: ['teachers', 'enriched'],
+    queryFn: async () => {
+      const resp = await teachersService.listTeachers();
+      const rawTeachers = resp.data || resp || [];
 
-  useEffect(() => {
-    let mounted = true;
-    const run = async () => {
-      if ((rawTeachers || []).length === 0) {
-        setTeachers(rawTeachers);
-        try { queryClient.setQueryData(['teachers', 'enriched'], rawTeachers); } catch (e) { }
-        return;
-      }
-      try {
-        const enriched = await enrichTeachers(rawTeachers);
-        if (!mounted) return;
-        setTeachers(enriched);
-        try { queryClient.setQueryData(['teachers', 'enriched'], enriched); } catch (e) { }
-      } catch (e) {
-        if (!mounted) return;
-        setTeachers(rawTeachers);
-        try { queryClient.setQueryData(['teachers', 'enriched'], rawTeachers); } catch (e) { }
-      }
-    };
-    run();
-    return () => { mounted = false; };
-  }, [teachersResp]);
+      // Enrich each teacher with their class assignments
+      const enriched = await Promise.all(
+        rawTeachers.map(async (t: any) => {
+          try {
+            const res = await assignmentsService.listByTeacher(t.id);
+            const classes = (res as any)?.data || [];
 
-  // expose a refresh function — fetches fresh teachers from server then re-enriches immediately
-  const refreshTeachers = async () => {
-    try {
-      // staleTime: 0 forces an immediate server fetch even if cache is fresh
-      const result = await queryClient.fetchQuery({
-        queryKey: ['teachers'],
-        queryFn: teachersService.listTeachers,
-        staleTime: 0,
-      });
-      const fresh = (result as any)?.data || [];
-      const enriched = await enrichTeachers(fresh);
-      setTeachers(enriched);
-      queryClient.setQueryData(['teachers', 'enriched'], enriched);
-    } catch (e) {
-      // fallback: at least mark stale so next render picks it up
-      queryClient.invalidateQueries({ queryKey: ['teachers'] });
-    }
-  };
+            const assignedLabels: string[] = [];
+            const assignedIds: Array<string | number> = [];
+
+            for (const cls of classes) {
+              if (!cls) continue;
+              const classNameField = cls.className ?? cls.name ?? cls.class_name ?? cls.title ?? null;
+              const label = classNameField ?? (cls.level ? `${cls.level}${cls.stream ? ' ' + cls.stream : ''}` : `Class ${cls.id ?? ''}`);
+              assignedLabels.push(String(label));
+              assignedIds.push(cls.id ?? cls.ID ?? cls.class_id ?? cls.classId ?? '');
+            }
+
+            const classAssigned = assignedLabels.length > 0 ? assignedLabels.join(', ') : undefined;
+            const classAssignedId = assignedIds.length === 1 ? assignedIds[0] : null;
+
+            return {
+              ...t,
+              classAssigned,
+              classAssignedList: assignedLabels,
+              classAssignedId,
+              classAssignedIds: assignedIds
+            };
+          } catch (e) {
+            return {
+              ...t,
+              classAssigned: undefined,
+              classAssignedId: null,
+              classAssignedList: [],
+              classAssignedIds: []
+            };
+          }
+        })
+      );
+
+      return enriched;
+    },
+    // Standard stale-time applies, but we allow manual refresh from the return object
+  });
 
   const createTeacher = useMutation<any, Error, any>({
     mutationFn: (payload: any) => teachersService.createTeacher(payload),
@@ -89,30 +71,58 @@ export function useTeachers() {
   });
 
   const updateTeacher = useMutation<any, Error, { id: string | number; payload: any }>({
-    mutationFn: (variables: { id: string | number; payload: any }) => teachersService.updateTeacher(variables.id, variables.payload),
-    onSuccess: () => {
+    mutationFn: (variables: { id: string | number; payload: any }) =>
+      teachersService.updateTeacher(variables.id, variables.payload),
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['teachers'] });
+      queryClient.invalidateQueries({ queryKey: ['teacher', variables.id] });
       toast({ title: 'Teacher updated', description: 'Teacher updated successfully.' });
     }
   });
 
   const deleteTeacher = useMutation<any, Error, string | number>({
     mutationFn: (id: string | number) => teachersService.deleteTeacher(id),
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       queryClient.invalidateQueries({ queryKey: ['teachers'] });
+      queryClient.invalidateQueries({ queryKey: ['teacher', id] });
       toast({ title: 'Teacher deleted', description: 'Teacher removed.' });
     }
   });
 
-  return { teachers, createTeacher, updateTeacher, deleteTeacher, refreshTeachers };
+  return {
+    teachers,
+    isLoading,
+    error,
+    createTeacher,
+    updateTeacher,
+    deleteTeacher,
+    refreshTeachers
+  };
 }
 
-export default useTeachers;
+/**
+ * Use this for a specific teacher.
+ */
+export function useTeacher(id: number | string) {
+  return useQuery<any, Error, any>({
+    queryKey: ['teacher', Number(id)],
+    queryFn: () => teachersService.getTeacher(Number(id)),
+    enabled: !!id
+  });
+}
 
+/**
+ * Standalone delete teacher hook for consistency.
+ */
 export function useDeleteTeacher() {
   const qc = useQueryClient();
   return useMutation<any, Error, string | number>({
     mutationFn: (id: string | number) => teachersService.deleteTeacher(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['teachers'] }),
+    onSuccess: (_data, id) => {
+      qc.invalidateQueries({ queryKey: ['teachers'] });
+      qc.invalidateQueries({ queryKey: ['teacher', id] });
+    }
   });
 }
+
+export default useTeachers;

@@ -2,56 +2,57 @@ import { toast } from '@/hooks/use-toast';
 import * as assignmentsService from '@/services/assignmentsService';
 import * as classesService from '@/services/classesService';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
 
+/**
+ * Hook for managing school classes.
+ * Includes "enrichment" with teacher assignments managed via TanStack Query.
+ */
 export function useClasses() {
   const queryClient = useQueryClient();
 
-  const { data: classesResp } = useQuery<any, Error, any>({ queryKey: ['classes'], queryFn: classesService.listClasses });
-  const rawClasses = (classesResp as any)?.data || [];
-  // Try to reuse any previously-enriched classes cached in React Query to avoid
-  // refetching assignments for every hook instance.
-  const cachedEnriched = queryClient.getQueryData<any[]>(['classes', 'enriched']);
-  const [classes, setClasses] = useState<any[]>(cachedEnriched ?? rawClasses ?? []);
+  // Primary query for classes with enrichment logic inside queryFn
+  const { data: classes = [], isLoading, error } = useQuery<any, Error, any[]>({
+    queryKey: ['classes', 'enriched'],
+    queryFn: async () => {
+      const resp = await classesService.listClasses();
+      const rawClasses = resp.data || resp || [];
 
-  useEffect(() => {
-    let mounted = true;
-    const enrich = async () => {
-      try {
-        const enriched = await Promise.all(rawClasses.map(async (cls: any) => {
+      // Enrich each class with its teacher assignments
+      const enriched = await Promise.all(
+        rawClasses.map(async (cls: any) => {
           try {
             const res = await assignmentsService.listByClass(cls.id);
             const teachers = (res as any)?.data || [];
-            // Collect ALL teachers assigned to this class
+
             const assignedTeacherIds: (string | number)[] = teachers.map((t: any) => t.id).filter(Boolean);
             const assignedTeacherNames: string[] = teachers
               .map((t: any) => t.display_name ?? t.fullName ?? t.full_name ?? null)
               .filter(Boolean);
+
             const firstTeacher = teachers[0] ?? null;
-            const assignedTeacherId = firstTeacher?.id ?? null;
-            const assignedTeacherName = firstTeacher?.display_name ?? firstTeacher?.fullName ?? null;
-            return { ...cls, assignedTeacher: assignedTeacherId, assignedTeacherName, assignedTeacherIds, assignedTeacherNames };
+
+            return {
+              ...cls,
+              assignedTeacher: firstTeacher?.id ?? null,
+              assignedTeacherName: firstTeacher?.display_name ?? firstTeacher?.fullName ?? null,
+              assignedTeacherIds,
+              assignedTeacherNames
+            };
           } catch (e) {
-            return { ...cls, assignedTeacher: null, assignedTeacherIds: [], assignedTeacherNames: [] };
+            return {
+              ...cls,
+              assignedTeacher: null,
+              assignedTeacherIds: [],
+              assignedTeacherNames: []
+            };
           }
-        }));
-        if (mounted) {
-          setClasses(enriched);
-          // Cache enriched classes so other hook instances can reuse them without
-          // making duplicate assignment API calls.
-          try { queryClient.setQueryData(['classes', 'enriched'], enriched); } catch (e) { /* ignore */ }
-        }
-      } catch (e) {
-        if (mounted) setClasses(rawClasses);
-      }
-    };
-    if (rawClasses.length > 0) enrich();
-    else {
-      setClasses(rawClasses);
-      try { queryClient.setQueryData(['classes', 'enriched'], rawClasses); } catch (e) { /* ignore */ }
-    }
-    return () => { mounted = false; };
-  }, [classesResp]);
+        })
+      );
+
+      return enriched;
+    },
+    // We keep the data for 5 minutes (default) but allow manual invalidation
+  });
 
   const createClass = useMutation<any, Error, any>({
     mutationFn: (payload: any) => classesService.createClass(payload),
@@ -62,49 +63,71 @@ export function useClasses() {
   });
 
   const updateClass = useMutation<any, Error, { id: number | string; payload: any }>({
-    mutationFn: (variables: { id: number | string; payload: any }) => classesService.updateClass(variables.id, variables.payload),
-    onSuccess: () => {
+    mutationFn: (variables: { id: number | string; payload: any }) =>
+      classesService.updateClass(variables.id, variables.payload),
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['classes'] });
+      queryClient.invalidateQueries({ queryKey: ['class', variables.id] });
       toast({ title: 'Class updated', description: 'Class updated successfully.' });
     }
   });
 
   const deleteClass = useMutation<any, Error, number | string>({
     mutationFn: (id: number | string) => classesService.deleteClass(id),
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       queryClient.invalidateQueries({ queryKey: ['classes'] });
+      queryClient.invalidateQueries({ queryKey: ['class', id] });
       toast({ title: 'Class deleted', description: 'Class removed.' });
     }
   });
 
-  const getClassStudents = async (id: number): Promise<any[]> => {
-    const res = await classesService.getClassStudents(id) as { data?: any[] } | undefined;
-    return res?.data || [];
-  };
-
   return {
     classes,
+    isLoading,
+    error,
     createClass,
     updateClass,
-    deleteClass,
-    getClassStudents
+    deleteClass
   };
 }
 
-export default useClasses;
+/**
+ * Use this for a specific class with its students.
+ */
+export function useClass(id: number | string) {
+  return useQuery<any, Error, any>({
+    queryKey: ['class', Number(id)],
+    queryFn: () => classesService.getClass(Number(id)),
+    enabled: !!id
+  });
+}
 
+/**
+ * Use this for class students.
+ */
+export function useClassStudents(id: number | string) {
+  return useQuery<any, Error, any[]>({
+    queryKey: ['class', Number(id), 'students'],
+    queryFn: async () => {
+      const res = await classesService.getClassStudents(Number(id));
+      return (res as any)?.data || [];
+    },
+    enabled: !!id
+  });
+}
+
+/**
+ * Standalone create class hook.
+ */
 export function useCreateClass() {
   const qc = useQueryClient();
   return useMutation<any, Error, any>({
     mutationFn: (payload: any) => classesService.createClass(payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['classes'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['classes'] });
+      toast({ title: 'Class created', description: 'New class added.' });
+    }
   });
 }
 
-export function useClass(id: number) {
-  return useQuery<any, Error, any>({ queryKey: ['class', id], queryFn: () => classesService.getClass(id) });
-}
-
-export function useClassStudents(id: number) {
-  return useQuery<any, Error, any>({ queryKey: ['class', id, 'students'], queryFn: () => classesService.getClassStudents(id) });
-}
+export default useClasses;

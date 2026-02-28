@@ -16,6 +16,10 @@ export async function listIncomeForYear(year: number) {
   return incomeRepo.listIncomeByYear(year);
 }
 
+export async function listAllIncome() {
+  return incomeRepo.listAllIncome();
+}
+
 export async function getIncome(id: number) {
   return incomeRepo.getIncomeById(id);
 }

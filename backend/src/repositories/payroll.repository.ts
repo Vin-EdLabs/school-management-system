@@ -61,11 +61,11 @@ export async function createPayrollItem(payrollRunId: number, staffId: number, b
 export async function getPayrollItemsForRun(payrollRunId: number) {
   const sql = `
     SELECT pi.id, pi.payroll_run_id, pi.staff_id, pi.base_salary, pi.deductions, pi.bonuses, pi.net_amount, pi.status, pi.notes,
-           u.username, u.email
+           u.staff_id AS staff_id_code, u.email, u.display_name
     FROM payroll_items pi
     JOIN users u ON pi.staff_id = u.id
     WHERE pi.payroll_run_id = $1
-    ORDER BY u.username
+    ORDER BY u.display_name
   `;
   try {
     const res = await query(sql, [payrollRunId]);
@@ -83,10 +83,10 @@ export async function recordPayrollPayment(payrollItemId: number, staffId: numbe
   `;
   try {
     const res = await query(sql, [payrollItemId, staffId, amount, paymentDate, paymentMethod, referenceNumber || null]);
-    
+
     // Update payroll item status to paid
     await query('UPDATE payroll_items SET status = $1 WHERE id = $2', ['paid', payrollItemId]);
-    
+
     return res.rows[0];
   } catch (err) {
     throw new Error('Failed to record payroll payment');
@@ -120,9 +120,41 @@ export async function addPayrollDeduction(payrollItemId: number, deductionType: 
   `;
   try {
     const res = await query(sql, [payrollItemId, deductionType, amount, description || null]);
+    // Update payroll item
+    await query(`
+      UPDATE payroll_items 
+      SET deductions = deductions + $1, 
+          net_amount = net_amount - $1 
+      WHERE id = $2`,
+      [amount, payrollItemId]
+    );
+
     return res.rows[0];
   } catch (err) {
     throw new Error('Failed to add payroll deduction');
+  }
+}
+
+export async function addPayrollBonus(payrollItemId: number, bonusType: string, amount: number, description?: string) {
+  const sql = `
+    INSERT INTO payroll_bonuses (payroll_item_id, bonus_type, amount, description)
+    VALUES ($1, $2, $3, $4)
+    RETURNING id, payroll_item_id, bonus_type, amount, description
+  `;
+  try {
+    const res = await query(sql, [payrollItemId, bonusType, amount, description || null]);
+    // Update payroll item
+    await query(`
+      UPDATE payroll_items 
+      SET bonuses = bonuses + $1, 
+          net_amount = net_amount + $1 
+      WHERE id = $2`,
+      [amount, payrollItemId]
+    );
+
+    return res.rows[0];
+  } catch (err) {
+    throw new Error('Failed to add payroll bonus');
   }
 }
 
@@ -137,6 +169,22 @@ export async function getPayrollDeductions(payrollItemId: number) {
     return res.rows;
   } catch (err) {
     return [];
+  }
+}
+
+export async function getPayrollItemById(id: number) {
+  const sql = `
+    SELECT pi.*, u.display_name, u.staff_id AS staff_id_code
+    FROM payroll_items pi
+    JOIN users u ON pi.staff_id = u.id
+    WHERE pi.id = $1
+    LIMIT 1
+  `;
+  try {
+    const res = await query(sql, [id]);
+    return res.rows[0] || null;
+  } catch (err) {
+    return null;
   }
 }
 
@@ -165,6 +213,8 @@ export default {
   recordPayrollPayment,
   getPaymentHistory,
   addPayrollDeduction,
+  addPayrollBonus,
   getPayrollDeductions,
-  generatePayrollReport
+  generatePayrollReport,
+  getPayrollItemById
 };

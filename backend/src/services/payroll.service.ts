@@ -1,5 +1,6 @@
 import * as payrollRepo from '../repositories/payroll.repository.js';
 import * as staffRepo from '../repositories/staff.repository.js';
+import * as teacherRepo from '../repositories/teachers.repository.js';
 
 export async function createPayrollRun(monthYear: string) {
   // Validate format (YYYY-MM)
@@ -14,13 +15,18 @@ export async function createPayrollRun(monthYear: string) {
 export async function initializePayrollRun(payrollRunId: number) {
   // Get all active staff
   const staff = await staffRepo.listStaff();
-  
-  // Create payroll items for each staff member
-  for (const s of staff) {
-    if (!s) continue;
-    const salary = (s.meta?.monthlySalary ?? 0) as number;
+  const teachers = await teacherRepo.listTeachers();
+  const allEmployees = [...staff, ...teachers];
+
+  // Create payroll items for each employee
+  for (const employee of allEmployees) {
+    if (!employee) continue;
+
+    // Check both potential salary field names
+    const salary = Number(employee.monthly_salary ?? employee.monthlySalary ?? 0);
+
     if (salary > 0) {
-      await payrollRepo.createPayrollItem(payrollRunId, s.id, salary, 0, 0);
+      await payrollRepo.createPayrollItem(payrollRunId, employee.id, salary, 0, 0);
     }
   }
 
@@ -32,7 +38,7 @@ export async function getPayrollRunWithItems(payrollRunId: number) {
   if (!run) throw new Error('Payroll run not found');
 
   const items = await payrollRepo.getPayrollItemsForRun(payrollRunId);
-  
+
   return {
     ...run,
     items,
@@ -46,11 +52,20 @@ export async function listPayrollRuns() {
 }
 
 export async function processPayrollPayment(payrollItemId: number, paymentDate: string, paymentMethod: string = 'bank_transfer', referenceNumber?: string) {
-  // Get the payroll item to get staff_id and amount
-  const run = await payrollRepo.getPayrollRun(1); // This won't work - need to refactor
-  
-  // For now, return a generic response
-  return { success: true, message: 'Payment recorded' };
+  const item = await payrollRepo.getPayrollItemById(payrollItemId);
+  if (!item) throw new Error('Payroll item not found');
+  if (item.status === 'paid') throw new Error('Payroll item already paid');
+
+  const result = await payrollRepo.recordPayrollPayment(
+    payrollItemId,
+    item.staff_id,
+    item.net_amount,
+    paymentDate,
+    paymentMethod,
+    referenceNumber
+  );
+
+  return result;
 }
 
 export async function getStaffPaymentHistory(staffId: number) {
@@ -59,6 +74,10 @@ export async function getStaffPaymentHistory(staffId: number) {
 
 export async function addDeductionToPayrollItem(payrollItemId: number, deductionType: string, amount: number, description?: string) {
   return payrollRepo.addPayrollDeduction(payrollItemId, deductionType, amount, description);
+}
+
+export async function addBonusToPayrollItem(payrollItemId: number, bonusType: string, amount: number, description?: string) {
+  return payrollRepo.addPayrollBonus(payrollItemId, bonusType, amount, description);
 }
 
 export async function getPayrollDeductions(payrollItemId: number) {
@@ -77,6 +96,7 @@ export default {
   processPayrollPayment,
   getStaffPaymentHistory,
   addDeductionToPayrollItem,
+  addBonusToPayrollItem,
   getPayrollDeductions,
   generatePayrollReport
 };

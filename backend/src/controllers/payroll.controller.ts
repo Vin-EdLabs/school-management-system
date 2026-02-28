@@ -103,6 +103,28 @@ export async function addDeduction(req: Request, res: Response) {
   }
 }
 
+export async function addBonus(req: Request, res: Response) {
+  try {
+    const { payrollItemId } = req.params;
+    const { bonusType, amount, description } = req.body;
+
+    if (!bonusType || !amount) {
+      return res.status(400).json(failure('bonusType and amount are required'));
+    }
+
+    const result = await payrollService.addBonusToPayrollItem(
+      Number(payrollItemId),
+      bonusType,
+      amount,
+      description
+    );
+
+    return res.json(success(result));
+  } catch (err: any) {
+    return res.status(400).json(failure(err.message ?? 'Failed to add bonus'));
+  }
+}
+
 export async function getDeductions(req: Request, res: Response) {
   try {
     const { payrollItemId } = req.params;
@@ -137,6 +159,7 @@ export default {
   recordPayrollPayment,
   getStaffPaymentHistory,
   addDeduction,
+  addBonus,
   getDeductions,
   generateReport
 };

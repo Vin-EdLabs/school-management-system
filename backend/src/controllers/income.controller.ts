@@ -12,8 +12,8 @@ export async function list(req: Request, res: Response) {
       const list = await incomeService.listIncomeForYear(year);
       return res.json(success(list));
     }
-    // fallback: not implemented listing; return empty
-    return res.json(success([]));
+    const list = await incomeService.listAllIncome();
+    return res.json(success(list));
   } catch (err: any) {
     return res.status(500).json(failure(err.message));
   }

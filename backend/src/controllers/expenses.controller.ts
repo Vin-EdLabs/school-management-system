@@ -11,8 +11,8 @@ export async function list(req: Request, res: Response) {
       const list = await expensesService.listExpensesForYear(year);
       return res.json(success(list));
     }
-    // fallback empty list
-    return res.json(success([]));
+    const list = await expensesService.listAllExpenses();
+    return res.json(success(list));
   } catch (err: any) {
     return res.status(500).json(failure(err.message));
   }

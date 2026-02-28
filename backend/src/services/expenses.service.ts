@@ -16,6 +16,10 @@ export async function listExpensesForYear(year: number) {
   return expensesRepo.listExpensesByYear(year);
 }
 
+export async function listAllExpenses() {
+  return expensesRepo.listAllExpenses();
+}
+
 export async function listExpenseCategories() {
   return expensesRepo.listCategories();
 }

@@ -1,3 +1,4 @@
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from '@/hooks/use-toast';
@@ -8,26 +9,50 @@ import useIncome from '@/hooks/useIncome';
 import usePayments from '@/hooks/usePayments';
 import useStudents from '@/hooks/useStudents';
 import { BarChart3, Calculator, Calendar, DollarSign, Download, FileText, TrendingDown, TrendingUp } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import useAcademicTerms from '@/hooks/useAcademicTerms';
 import { reportService } from '../../services';
 import { getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell
+} from 'recharts';
 
 const ReportsModule = () => {
-  const { students } = useStudents();
+  const { feeStructures } = useFeeStructures();
+  const { classes } = useClasses();
+  const { terms } = useAcademicTerms();
   const { payments } = usePayments();
   const { income } = useIncome();
   const { expenses } = useExpenses();
-  const { feeStructures } = useFeeStructures();
-  const { classes } = useClasses();
 
   // Normalizers - produce arrays with consistent fields used by reports
-  const normalizePayment = (p: any) => ({
-    ...p,
-    term: p?.term ?? p?.payment_term ?? p?.term_name ?? '',
-    amount: Number(p?.amount ?? p?.value ?? 0) || 0,
-    date: p?.date ?? p?.paymentDate ?? p?.payment_date ?? new Date().toISOString(),
-  });
+  const normalizePayment = (p: any) => {
+    let termName = p?.term ?? p?.payment_term ?? p?.term_name ?? '';
+
+    // If we have a term_id but no term name, find it from our terms hook data
+    if (!termName && p?.term_id && terms && terms.length > 0) {
+      const termObj = terms.find((t: any) => String(t.id) === String(p.term_id));
+      if (termObj) termName = termObj.name;
+    }
+
+    return {
+      ...p,
+      term: termName,
+      amount: Number(p?.amount ?? p?.value ?? 0) || 0,
+      date: p?.date ?? p?.paymentDate ?? p?.payment_date ?? new Date().toISOString(),
+    };
+  };
 
   const normalizeIncome = (i: any) => ({
     ...i,
@@ -40,7 +65,7 @@ const ReportsModule = () => {
     ...e,
     category: e?.category ?? e?.type ?? 'Miscellaneous',
     amount: Number(e?.amount ?? e?.value ?? 0) || 0,
-    date: e?.date ?? e?.paymentDate ?? e?.payment_date ?? new Date().toISOString(),
+    date: e?.paymentDate ?? e?.payment_date ?? e?.date ?? new Date().toISOString(),
     description: e?.description ?? e?.title ?? ''
   });
 
@@ -49,15 +74,17 @@ const ReportsModule = () => {
   const normalizedExpenses = (expenses || []).map(normalizeExpense);
   const [selectedTerm, setSelectedTerm] = useState('');
 
-  // Get current term from settings - same as Financial Dashboard
+  // Get current term from settings
   useEffect(() => {
-    const currentTerm = getActiveAcademicTerm();
-    setSelectedTerm(currentTerm);
-  }, []);
+    if (terms && terms.length > 0) {
+      const currentTerm = getActiveAcademicTerm(terms);
+      setSelectedTerm(currentTerm);
+    }
+  }, [terms]);
 
   // Generate comprehensive financial summary using the same logic as Financial Dashboard
   const generateFinancialSummary = () => {
-    const currentYear = getActiveAcademicYear();
+    const currentYear = getActiveAcademicYear(terms);
 
     // Fees collected for the selected term
     const feesCollected = normalizedPayments
@@ -205,18 +232,11 @@ const ReportsModule = () => {
         selectedTerm
       });
 
-      const filename = `${reportType}-report-${selectedTerm.replace(/\s+/g, '-').toLowerCase()}.json`;
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
+      await reportService.exportReportToExcel(data, reportType);
 
       toast({
         title: "Report Exported Successfully",
-        description: `${reportType} report has been exported`,
+        description: `${reportType} report has been exported as XLSX`,
       });
     } catch (error) {
       toast({
@@ -240,7 +260,7 @@ const ReportsModule = () => {
               <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
                 Financial Reports & Analytics
               </h1>
-              <p className="text-gray-600 text-lg">Real-time financial insights for {selectedTerm} {getActiveAcademicYear()}</p>
+              <p className="text-gray-600 text-lg">Real-time financial insights for {selectedTerm} {getActiveAcademicYear(terms)}</p>
             </div>
           </div>
         </div>
@@ -517,8 +537,8 @@ const ReportsModule = () => {
                         </td>
                         <td className="p-3">
                           <span className={`px-3 py-1 rounded-full text-xs font-medium ${transaction.type === 'Income'
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-red-100 text-red-800'
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-red-100 text-red-800'
                             }`}>
                             {transaction.type}
                           </span>

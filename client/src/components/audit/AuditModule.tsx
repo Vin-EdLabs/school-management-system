@@ -7,10 +7,36 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Activity, Calendar, Search, Trash2, User } from 'lucide-react';
 import { useState } from 'react';
-import { useAudit } from '../../contexts/AuditContext';
+import { useActivity } from '../../hooks/useAudit';
 
 const AuditModule = () => {
-  const { auditLogs, deleteAuditLog, clearAllLogs } = useAudit();
+  const { data: resp, isLoading } = useActivity();
+  const auditLogsRaw = resp?.data || resp || [];
+
+  // Normalize backend logs to match UI expectations
+  const auditLogs = auditLogsRaw.map((log: any) => ({
+    id: log.id,
+    actionType: log.action === 'login' ? 'Login' :
+      (log.action === 'update' || log.action === 'edit') ? 'Edit' :
+        (log.action === 'delete') ? 'Delete' : 'Activity',
+    module: log.module || 'System',
+    itemName: log.item_name || log.message,
+    username: log.username || 'System',
+    role: log.role || 'user',
+    timestamp: new Date(log.created_at || log.timestamp),
+    reason: log.reason || ''
+  }));
+
+  const deleteAuditLog = (id: any) => {
+    // Backend delete not yet implemented in UI, but could be added as a mutation
+    console.log('Delete log requested for', id);
+  };
+
+  const clearAllLogs = () => {
+    // Backend clear not yet implemented
+    console.log('Clear all logs requested');
+  };
+
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
   const [filterModule, setFilterModule] = useState<string>('all');
@@ -44,7 +70,7 @@ const AuditModule = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Audit Logs</h1>
-          <p className="text-gray-600 mt-1">Track all system activities and changes</p>
+          <p className="text-gray-600 mt-1">Track all system activities and changes (Live from Server)</p>
         </div>
         <Dialog>
           <DialogTrigger asChild>
@@ -144,7 +170,7 @@ const AuditModule = () => {
               <div className="relative">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                 <Input
-                  placeholder="Search by username, module, item, or reason..."
+                  placeholder="Search by staff ID/username, module, item, or reason..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10"
@@ -183,47 +209,54 @@ const AuditModule = () => {
           <CardTitle>Activity Log ({filteredLogs.length} entries)</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <div className="space-y-3">
-              {filteredLogs.map((log) => (
-                <div key={log.id} className="border rounded-lg p-4 hover:bg-gray-50">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <Badge className={getActionBadgeColor(log.actionType)}>
-                        {log.actionType}
-                      </Badge>
-                      <div>
-                        <div className="font-medium text-gray-900">
-                          {log.itemName ? `${log.module}: ${log.itemName}` : log.module}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          by {log.username} ({log.role}) • {log.timestamp.toLocaleString()}
-                        </div>
-                        {log.reason && (
-                          <div className="text-sm text-gray-600 mt-1">
-                            <span className="font-medium">Reason:</span> {log.reason}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => deleteAuditLog(log.id)}
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-              {filteredLogs.length === 0 && (
-                <div className="text-center py-8 text-gray-500">
-                  No audit logs found matching your criteria.
-                </div>
-              )}
+          {isLoading ? (
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+              <p className="mt-4 text-gray-500">Loading logs from server...</p>
             </div>
-          </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <div className="space-y-3">
+                {filteredLogs.map((log) => (
+                  <div key={log.id} className="border rounded-lg p-4 hover:bg-gray-50">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <Badge className={getActionBadgeColor(log.actionType)}>
+                          {log.actionType}
+                        </Badge>
+                        <div>
+                          <div className="font-medium text-gray-900">
+                            {log.itemName ? `${log.module}: ${log.itemName}` : log.module}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            by {log.username} ({log.role}) • {log.timestamp.toLocaleString()}
+                          </div>
+                          {log.reason && (
+                            <div className="text-sm text-gray-600 mt-1">
+                              <span className="font-medium">Reason:</span> {log.reason}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => deleteAuditLog(log.id)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                {filteredLogs.length === 0 && (
+                  <div className="text-center py-8 text-gray-500">
+                    No audit logs found matching your criteria.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

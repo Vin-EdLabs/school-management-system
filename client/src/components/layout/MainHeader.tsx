@@ -142,9 +142,9 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick }) => {
         <div className="min-w-0">
           <h1
             className="text-lg font-semibold text-gray-900 truncate"
-            title={`${getWelcomeMessage()}, ${user?.username}`}
+            title={`${getWelcomeMessage()}, ${(user as any)?.staffId ?? user?.username}`}
           >
-            {getWelcomeMessage()}, {user?.username}!
+            {getWelcomeMessage()}, {(user as any)?.staffId ?? user?.username}!
           </h1>
           <p
             className="text-sm text-gray-600 capitalize truncate"

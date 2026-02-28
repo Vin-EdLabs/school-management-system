@@ -12,7 +12,7 @@ import FinancialDashboard from './dashboard/FinancialDashboard';
 import ExpensesModule from './expenses/ExpensesModule';
 import FeesModule from './fees/FeesModule';
 import PrintFeeStatusModule from './fees/PrintFeeStatusModule';
-import StaffPayroll from './financial/StaffPayroll';
+import StaffManagement from './staff/StaffManagement';
 import IncomeModule from './income/IncomeModule';
 import PayrollManagement from './payroll/PayrollManagement';
 import ReportsModule from './reports/ReportsModule';
@@ -20,6 +20,7 @@ import SchedulesModule from './schedules/SchedulesModule';
 import TimetableModule from './schedules/TimetableModule';
 import SettingsModule from './settings/SettingsModule';
 import StudentsModule from './students/StudentsModule';
+import SubjectsModule from './subjects/SubjectsModule';
 import AttendanceModule from './teacher/AttendanceModule';
 import AttendanceReports from './teacher/AttendanceReports';
 import GradesModule from './teacher/GradesModule';
@@ -62,17 +63,21 @@ const Dashboard: React.FC<DashboardProps> = ({ initialModule }) => {
       case 'dashboard':
         // Show different dashboard based on role
         if (user?.role === 'administrator') {
-          return <AdministratorDashboard />;
+          return <AdministratorDashboard onNavigate={setActiveModule} />;
         }
-        return <DashboardHome />;
+        return <DashboardHome onNavigate={setActiveModule} />;
       case 'financial-dashboard':
-        return <FinancialDashboard />;
+        return <FinancialDashboard onNavigate={setActiveModule} />;
       case 'teacher-dashboard':
-        return <TeacherDashboard />;
+        return <TeacherDashboard onNavigate={setActiveModule} />;
       case 'ai-assistant':
         return <AiChatModule />;
       case 'students':
         return <StudentsModule />;
+      case 'staff':
+        return <StaffManagement />;
+      case 'subjects':
+        return <SubjectsModule />;
       case 'teachers':
         return <TeachersModule />;
       case 'classes':
@@ -99,8 +104,6 @@ const Dashboard: React.FC<DashboardProps> = ({ initialModule }) => {
         return <ExpensesModule />;
       case 'reports':
         return <ReportsModule />;
-      case 'staff-payroll':
-        return <StaffPayroll />;
       case 'payroll':
         return <PayrollManagement />;
       case 'print-fee-status':

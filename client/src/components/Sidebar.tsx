@@ -24,6 +24,7 @@ import {
   DollarSign,
   FileText,
   GraduationCap,
+  Library,
   LayoutDashboard,
   LogOut,
   Settings,
@@ -73,6 +74,11 @@ const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
       label: 'Teachers',
       icon: GraduationCap,
     }] : []),
+    ...(hasAccess('staff') || hasAccess('staff-view-only') ? [{
+      id: 'staff',
+      label: 'Staff',
+      icon: Users,
+    }] : []),
     ...(hasAccess('classes') ? [{
       id: 'classes',
       label: 'Classes',
@@ -92,6 +98,11 @@ const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
       id: 'calendar',
       label: 'Calendar',
       icon: Calendar,
+    }] : []),
+    ...(hasAccess('subjects') ? [{
+      id: 'subjects',
+      label: 'Subjects',
+      icon: Library,
     }] : []),
   ],
 
@@ -144,15 +155,10 @@ const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
       label: 'Fee Status',
       icon: FileText,
     }] : []),
-    ...(hasAccess('staff-payroll') ? [{
-      id: 'staff-payroll',
-      label: 'Staff Payroll',
-      icon: Wallet,
-    }] : []),
     ...(hasAccess('payroll') ? [{
       id: 'payroll',
-      label: 'Payroll Management',
-      icon: BarChart3,
+      label: 'Payroll',
+      icon: Wallet,
     }] : []),
   ],
 

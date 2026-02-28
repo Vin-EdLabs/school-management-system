@@ -49,6 +49,7 @@ const App = () => (
               {/* Module active */}
               <Route path="/students" element={<ProtectedRoute moduleKey="students"><Dashboard initialModule="students" /></ProtectedRoute>} />
               <Route path="/teachers" element={<ProtectedRoute moduleKey="teachers"><Dashboard initialModule="teachers" /></ProtectedRoute>} />
+              <Route path="/subjects" element={<ProtectedRoute moduleKey="subjects"><Dashboard initialModule="subjects" /></ProtectedRoute>} />
               <Route path="/classes" element={<ProtectedRoute moduleKey="classes"><Dashboard initialModule="classes" /></ProtectedRoute>} />
               <Route path="/calendar" element={<ProtectedRoute moduleKey="calendar"><Dashboard initialModule="calendar" /></ProtectedRoute>} />
               <Route path="/teacher-classes" element={<ProtectedRoute moduleKey="teacher-classes"><Dashboard initialModule="teacher-classes" /></ProtectedRoute>} />

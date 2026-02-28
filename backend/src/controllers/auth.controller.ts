@@ -3,23 +3,24 @@ import * as authService from '../services/auth.service.js';
 import { failure, success } from '../utils/response.js';
 
 export async function login(req: Request, res: Response) {
-  const { username, password } = req.body ?? {};
+  const { staffId, password } = req.body ?? {};
+  const identifier = staffId;
   // Log received payload (mask password) to aid debugging
   try {
-    console.log(`Auth login attempt - username: ${String(username)}, passwordProvided: ${password ? 'yes' : 'no'}`);
+    console.log(`Auth login attempt - identifier: ${String(identifier)}, passwordProvided: ${password ? 'yes' : 'no'}`);
   } catch (e) {
     // swallow logging errors
   }
 
-  if (!username || !password) {
-    return res.status(400).json(failure('Username and password required', { field: 'username|password' }));
+  if (!identifier || !password) {
+    return res.status(400).json(failure('Staff ID and password required', { field: 'staffId|password' }));
   }
 
   try {
-    const result = await authService.login(username, password);
+    const result = await authService.login(identifier, password);
     if (result.error) {
       // Log reason for failure from service
-      console.warn(`Auth failure for user=${String(username)}: ${result.message}`);
+      console.warn(`Auth failure for identifier=${String(identifier)}: ${result.message}`);
       return res.status(401).json(failure(result.message));
     }
     // Set access token as httpOnly cookie and return user info and token (token included as fallback)
@@ -61,7 +62,7 @@ export async function logout(req: Request, res: Response) {
     console.warn('Error logging out token:', err?.message ?? err);
   }
   // clear cookie on logout
-  try { res.clearCookie('access_token'); } catch (e) {}
+  try { res.clearCookie('access_token'); } catch (e) { }
   return res.json(success({ loggedOut: true }));
 }
 
@@ -82,7 +83,7 @@ export async function changePassword(req: Request, res: Response) {
   try {
     const userId = (req as any).user?.id;
     if (!userId) return res.status(401).json(failure('Unauthorized'));
-    
+
     const { oldPassword, newPassword } = req.body ?? {};
     if (!oldPassword || !newPassword) {
       return res.status(400).json(failure('Old password and new password are required'));
@@ -101,7 +102,7 @@ export async function verifyPassword(req: Request, res: Response) {
   try {
     const userId = (req as any).user?.id;
     if (!userId) return res.status(401).json(failure('Unauthorized'));
-    
+
     const { password } = req.body ?? {};
     if (!password) {
       return res.status(400).json(failure('Password is required'));
@@ -118,7 +119,7 @@ export async function verifyPassword(req: Request, res: Response) {
   }
 }
 
-export default { login, logout, session, changePassword, verifyPassword };export async function roles(req: Request, res: Response) {
+export default { login, logout, session, changePassword, verifyPassword }; export async function roles(req: Request, res: Response) {
   // Static list for now
   return res.json(success(['admin', 'staff', 'teacher']));
 }

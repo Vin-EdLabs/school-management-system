@@ -10,18 +10,18 @@ dotenv.config();
 const JWT_SECRET = process.env.JWT_SECRET ?? 'dev-secret';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN ?? '7d';
 
-export async function login(username: string, password: string) {
-  const user = await userRepo.findByUsername(username);
+export async function login(staffId: string, password: string) {
+  const user = await userRepo.findByStaffId(staffId);
   if (!user) return { error: true, message: 'Invalid credentials' };
   const match = await bcrypt.compare(password, user.password_hash);
   if (!match) return { error: true, message: 'Invalid credentials' };
-  const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET as Secret, { expiresIn: JWT_EXPIRES_IN } as SignOptions);
+  const token = jwt.sign({ id: user.id, staffId: user.staffId, role: user.role }, JWT_SECRET as Secret, { expiresIn: JWT_EXPIRES_IN } as SignOptions);
   try {
-    await auditRepo.insertLoginAudit(user.id, { username });
+    await auditRepo.insertLoginAudit(user.id, { staffId: user.staffId });
   } catch (e) {
     console.warn('Failed to write audit login', e);
   }
-  return { token, user: { id: user.id, username: user.username, role: user.role, passwordChanged: user.password_changed } };
+  return { token, user: { id: user.id, staffId: user.staffId, role: user.role, passwordChanged: user.password_changed } };
 }
 
 export async function logout(token: string) {
@@ -37,7 +37,7 @@ export async function session(token: string) {
     const payload = jwt.verify(token, JWT_SECRET as Secret) as any;
     const blacklisted = await tokenRepo.isBlacklisted(token);
     if (blacklisted) throw new Error('Logged out');
-    return { user: { id: payload.id, username: payload.username, role: payload.role } };
+    return { user: { id: payload.id, staffId: payload.staffId, role: payload.role } };
   } catch (err) {
     throw new Error('Invalid or expired token');
   }
@@ -46,10 +46,10 @@ export async function session(token: string) {
 export async function changePassword(userId: number, oldPassword: string, newPassword: string) {
   const user = await userRepo.findByUserId(userId);
   if (!user) throw new Error('User not found');
-  
+
   const match = await bcrypt.compare(oldPassword, user.password_hash);
   if (!match) throw new Error('Current password is incorrect');
-  
+
   const newHash = await bcrypt.hash(newPassword, 10);
   return userRepo.updateUser(userId, { password_hash: newHash, password_changed: true });
 }
@@ -57,7 +57,7 @@ export async function changePassword(userId: number, oldPassword: string, newPas
 export async function verifyPassword(userId: number, password: string) {
   const user = await userRepo.findByUserId(userId);
   if (!user) throw new Error('User not found');
-  
+
   const match = await bcrypt.compare(password, user.password_hash);
   return match;
 }

@@ -385,7 +385,7 @@ CREATE TABLE "schedules" (
     "subject" TEXT,
     "created_at" TIMESTAMP(6) DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(6) DEFAULT CURRENT_TIMESTAMP,
-    "time_range" tstzrange DEFAULT make_schedule_time_range((day_of_week)::integer, start_time, end_time),
+    "time_range" tstzrange,
 
     CONSTRAINT "schedules_pkey" PRIMARY KEY ("id")
 );

@@ -103,6 +103,9 @@ export function useFeeStructure(id: number | string) {
 /**
  * Standardized create fee structure hook.
  */
+/**
+ * Standardized create fee structure hook.
+ */
 export function useCreateFeeStructure() {
   const qc = useQueryClient();
   return useMutation<any, Error, any>({
@@ -110,6 +113,30 @@ export function useCreateFeeStructure() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['feeStructures'] });
       toast({ title: 'Fee structure created', description: 'New fee structure added.' });
+    }
+  });
+}
+
+export function useUpdateFeeStructure() {
+  const qc = useQueryClient();
+  return useMutation<any, Error, { id: number | string; payload: any }>({
+    mutationFn: ({ id, payload }) => feeStructuresService.updateFeeStructure(Number(id), payload),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ['feeStructures'] });
+      qc.invalidateQueries({ queryKey: ['feeStructure', Number(variables.id)] });
+      toast({ title: 'Fee structure updated', description: 'Fee structure updated successfully.' });
+    }
+  });
+}
+
+export function useDeleteFeeStructure() {
+  const qc = useQueryClient();
+  return useMutation<any, Error, number | string>({
+    mutationFn: (id) => feeStructuresService.deleteFeeStructure(Number(id)),
+    onSuccess: (_data, id) => {
+      qc.invalidateQueries({ queryKey: ['feeStructures'] });
+      qc.invalidateQueries({ queryKey: ['feeStructure', Number(id)] });
+      toast({ title: 'Fee structure deleted', description: 'Fee structure removed.' });
     }
   });
 }

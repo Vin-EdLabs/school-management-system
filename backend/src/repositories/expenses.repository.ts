@@ -15,7 +15,7 @@ export async function createExpense(payload: {
   purpose?: string;
   notes?: string;
 }) {
-  const date = payload.payment_date ?? payload.paymentDate ?? new Date().toISOString().split('T')[0];
+  const date = (payload.payment_date ?? payload.paymentDate ?? new Date().toISOString().split('T')[0]) as string;
   const year = payload.year || new Date(date).getFullYear();
   const res = await query(
     'INSERT INTO expenses (amount, description, category, year, title, payee_name, payment_date, method, purpose, notes) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *',
@@ -36,8 +36,8 @@ export async function createExpense(payload: {
 }
 
 export async function updateExpense(id: number, payload: any) {
-  const date = payload.payment_date ?? payload.paymentDate;
-  const year = payload.year || (date ? new Date(date).getFullYear() : undefined);
+  const dateInput = payload.payment_date ?? payload.paymentDate;
+  const year = payload.year || (typeof dateInput === 'string' ? new Date(dateInput).getFullYear() : undefined);
   await query(
     'UPDATE expenses SET amount = $1, description = $2, category = $3, year = COALESCE($4, year), title = $5, payee_name = $6, payment_date = $7, method = $8, purpose = $9, notes = $10 WHERE id = $11',
     [
@@ -47,7 +47,7 @@ export async function updateExpense(id: number, payload: any) {
       year ?? null,
       payload.title ?? null,
       payload.payee_name ?? payload.payeeName ?? null,
-      date ?? null,
+      dateInput ?? null,
       payload.method ?? payload.paymentMethod ?? null,
       payload.purpose ?? payload.description ?? null,
       payload.notes ?? null,

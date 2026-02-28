@@ -1,8 +1,19 @@
 import * as classesRepo from '../repositories/classes.repository.js';
+import * as feeStructuresService from './feeStructures.service.js';
 import * as schedulesService from './schedules.service.js';
 
 export async function createClass(payload: { teacher_id?: number; level: string; stream?: string; max_class_size?: number }) {
-  return classesRepo.createClass(payload);
+  const created = await classesRepo.createClass(payload);
+  // After creating a class, ensure any level-wide fee structures apply to this new class
+  try {
+    const levelName = (payload.level || '').toString().trim();
+    if (levelName) {
+      await feeStructuresService.applyLevelFeesToClass(levelName, created.id);
+    }
+  } catch (e) {
+    // ignore errors so class creation doesn't fail on fee copying
+  }
+  return created;
 }
 
 export async function getClass(id: number) {

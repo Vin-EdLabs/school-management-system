@@ -16,7 +16,14 @@ export async function listByTeacher(teacherId: number) {
 }
 
 export async function listByClass(classId: number) {
-  const res = await query('SELECT u.* FROM users u JOIN teacher_classes tc ON u.id = tc.teacher_id WHERE tc.class_id = $1', [classId]);
+  const res = await query(
+    `SELECT u.id, u.staff_id, u.display_name, u.email, u.role
+     FROM users u
+     JOIN teacher_classes tc ON u.id = tc.teacher_id
+     WHERE tc.class_id = $1
+     ORDER BY u.display_name ASC NULLS LAST`,
+    [classId]
+  );
   return res.rows;
 }
 

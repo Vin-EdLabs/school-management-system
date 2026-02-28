@@ -1,4 +1,4 @@
-import { query } from '../config/db.js';
+import { query } from "../config/db.js";
 
 export async function createStudent(payload: any) {
   const res = await query(
@@ -6,14 +6,14 @@ export async function createStudent(payload: any) {
       first_name, last_name, admission_no, class_id, status,
       gender, date_of_birth, nationality, date_of_admission,
       guardian_name, guardian_contact, home_address,
-      previous_school, notes, meta
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+      previous_school, notes
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
     [
       payload.first_name,
       payload.last_name,
       payload.admission_no ?? null,
       payload.class_id ?? null,
-      payload.status ?? 'active',
+      payload.status ?? "active",
       payload.gender ?? null,
       payload.date_of_birth ?? null,
       payload.nationality ?? null,
@@ -23,25 +23,32 @@ export async function createStudent(payload: any) {
       payload.home_address ?? null,
       payload.previous_school ?? null,
       payload.notes ?? null,
-      JSON.stringify(payload.meta ?? {}),
-    ]
+    ],
   );
   return res.rows[0];
 }
 
 export async function findStudentById(id: number) {
-  const res = await query('SELECT * FROM students WHERE id = $1 LIMIT 1', [id]);
+  const res = await query("SELECT * FROM students WHERE id = $1 LIMIT 1", [id]);
   return res.rows[0];
 }
 
 export async function updateStudent(id: number, payload: any) {
-  // update class assignment and meta if provided
-  // update assignment and other student attributes
   const fields = [
-    'first_name', 'last_name', 'admission_no', 'class_id', 'status',
-    'gender', 'date_of_birth', 'nationality', 'date_of_admission',
-    'guardian_name', 'guardian_contact', 'home_address',
-    'previous_school', 'notes', 'meta'
+    "first_name",
+    "last_name",
+    "admission_no",
+    "class_id",
+    "status",
+    "gender",
+    "date_of_birth",
+    "nationality",
+    "date_of_admission",
+    "guardian_name",
+    "guardian_contact",
+    "home_address",
+    "previous_school",
+    "notes"
   ];
 
   const updates: string[] = [];
@@ -51,8 +58,7 @@ export async function updateStudent(id: number, payload: any) {
   for (const f of fields) {
     if (Object.prototype.hasOwnProperty.call(payload, f)) {
       updates.push(`${f} = $${idx++}`);
-      if (f === 'meta') values.push(JSON.stringify(payload.meta ?? {}));
-      else values.push((payload as any)[f]);
+      values.push((payload as any)[f]);
     }
   }
 
@@ -61,17 +67,31 @@ export async function updateStudent(id: number, payload: any) {
   }
 
   values.push(id);
-  const sql = `UPDATE students SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`;
+  const sql = `UPDATE students SET ${updates.join(", ")} WHERE id = $${idx} RETURNING *`;
   const res = await query(sql, values);
   return res.rows[0];
 }
 
 export async function searchStudents(q: string) {
-  const res = await query("SELECT * FROM students WHERE first_name ILIKE $1 OR last_name ILIKE $1 LIMIT 100", ['%' + q + '%']);
+  const res = await query(
+    "SELECT * FROM students WHERE first_name ILIKE $1 OR last_name ILIKE $1 LIMIT 100",
+    ["%" + q + "%"],
+  );
   return res.rows;
 }
 
 export async function listStudents(limit = 1000) {
-  const res = await query('SELECT * FROM students ORDER BY id DESC LIMIT $1', [limit]);
+  const res = await query("SELECT * FROM students ORDER BY id DESC LIMIT $1", [
+    limit,
+  ]);
   return res.rows;
+}
+
+export async function getMaxAdmissionSequence(prefix: string) {
+  // prefix should include the leading part, e.g. 'ADM2024'
+  const res = await query(
+    "SELECT MAX(CAST(SUBSTRING(admission_no FROM '\\d+$') AS INTEGER)) AS max_seq FROM students WHERE admission_no LIKE $1",
+    [prefix + "%"],
+  );
+  return res.rows[0]?.max_seq ?? null;
 }

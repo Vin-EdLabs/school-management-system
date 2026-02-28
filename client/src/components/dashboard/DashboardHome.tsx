@@ -6,6 +6,8 @@ import useIncome from '@/hooks/useIncome';
 import usePayments from '@/hooks/usePayments';
 import useStudents from '@/hooks/useStudents';
 import useTeachers from '@/hooks/useTeachers';
+import useAcademicTerms from '@/hooks/useAcademicTerms';
+import useClasses from '@/hooks/useClasses';
 import {
   AlertCircle,
   CreditCard,
@@ -17,56 +19,83 @@ import {
   Users
 } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
+import { calculateStudentFees, getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
 import FinancialSummary from './FinancialSummary';
 
-const DashboardHome = () => {
+interface DashboardHomeProps {
+  onNavigate?: (module: string) => void;
+}
+
+const DashboardHome = ({ onNavigate }: DashboardHomeProps) => {
   const { students } = useStudents();
   const { teachers } = useTeachers();
   const { payments } = usePayments();
   const { expenses } = useExpenses();
   const { feeStructures } = useFeeStructures();
   const { income } = useIncome();
+  const { terms } = useAcademicTerms();
+  const { classes } = useClasses();
 
   // Get active academic term and year
-  const currentTerm = getActiveAcademicTerm();
-  const currentYear = getActiveAcademicYear();
+  const currentTerm = getActiveAcademicTerm(terms);
+  const currentYear = getActiveAcademicYear(terms);
 
   // Normalization helpers (handle camelCase or snake_case API shapes)
   const getDate = (item: any) => new Date(item?.date ?? item?.paymentDate ?? item?.payment_date ?? item?.createdAt ?? item?.created_at ?? Date.now());
   const getAmount = (item: any) => Number(item?.amount ?? item?.value ?? item?.payment_amount ?? 0) || 0;
   const getStudentFirstName = (s: any) => s?.firstName ?? s?.first_name ?? s?.fullName ?? s?.full_name ?? '';
   const getStudentLastName = (s: any) => s?.lastName ?? s?.last_name ?? '';
-  const getStudentClass = (s: any) => s?.classAssigned ?? s?.class_assigned ?? s?.className ?? s?.class_name ?? '';
+  const getStudentClass = (s: any) => {
+    let className = s?.classAssigned ?? s?.class_assigned ?? s?.className ?? s?.class_name ?? '';
+    if (!className && s.class_id && classes && classes.length > 0) {
+      const cls = classes.find((c: any) => String(c.id) === String(s.class_id));
+      if (cls) {
+        className = (cls.level && cls.stream) ? `${cls.level} ${cls.stream}` : (cls.level || cls.class_name || '');
+      }
+    }
+    return className;
+  };
   const getFeeClassName = (f: any) => f?.className ?? f?.class_name ?? '';
+  const getTerm = (item: any) => {
+    let termName = item?.term ?? item?.payment_term ?? item?.term_name ?? '';
+    if (!termName && item?.term_id && terms && terms.length > 0) {
+      const termObj = terms.find((t: any) => String(t.id) === String(item.term_id));
+      if (termObj) termName = termObj.name;
+    }
+    return termName;
+  };
 
   // Calculate summary statistics
   const totalStudents = students.length;
   const totalTeachers = teachers.length;
 
   const feesCollectedThisTerm = payments
-    .filter(payment => payment.term === currentTerm)
-    .reduce((sum, payment) => sum + payment.amount, 0);
+    .filter(payment => getTerm(payment) === currentTerm)
+    .reduce((sum, payment) => sum + getAmount(payment), 0);
 
   const expensesThisTerm = expenses
     .filter(expense => {
-      const expenseDate = new Date(expense.paymentDate);
+      const expenseDate = getDate(expense);
       const expenseYear = expenseDate.getFullYear().toString();
       return expenseYear === currentYear;
     })
-    .reduce((sum, expense) => sum + expense.amount, 0);
+    .reduce((sum, expense) => sum + getAmount(expense), 0);
 
   // Calculate outstanding balances
   const calculateOutstanding = () => {
     let totalOwed = 0;
+    const activeTermObj = terms.find((t: any) => t.isActive || t.is_active) || currentTerm;
+
     students.forEach(student => {
-      const studentFee = feeStructures.find(fee => fee.className === student.classAssigned);
-      if (studentFee) {
-        const studentPayments = payments
-          .filter(payment => payment.studentId === student.id && payment.term === currentTerm)
-          .reduce((sum, payment) => sum + payment.amount, 0);
-        totalOwed += Math.max(0, studentFee.amount - studentPayments);
-      }
+      const studentClass = getStudentClass(student);
+      const calculation = calculateStudentFees(
+        student.id,
+        activeTermObj,
+        studentClass,
+        feeStructures,
+        payments
+      );
+      totalOwed += calculation.remainingBalance;
     });
     return totalOwed;
   };
@@ -242,15 +271,24 @@ const DashboardHome = () => {
             <CardTitle>Quick Actions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Button className="w-full justify-start bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200">
+            <Button
+              onClick={() => onNavigate?.('students')}
+              className="w-full justify-start bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200"
+            >
               <Plus className="w-4 h-4 mr-2" />
               Add Student
             </Button>
-            <Button className="w-full justify-start bg-green-50 text-green-700 hover:bg-green-100 border border-green-200">
+            <Button
+              onClick={() => onNavigate?.('fees')}
+              className="w-full justify-start bg-green-50 text-green-700 hover:bg-green-100 border border-green-200"
+            >
               <Receipt className="w-4 h-4 mr-2" />
               Record Payment
             </Button>
-            <Button className="w-full justify-start bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200">
+            <Button
+              onClick={() => onNavigate?.('expenses')}
+              className="w-full justify-start bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200"
+            >
               <FileText className="w-4 h-4 mr-2" />
               Add Expense
             </Button>

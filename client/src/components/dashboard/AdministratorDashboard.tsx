@@ -7,25 +7,38 @@ import useFeeStructures from '@/hooks/useFeeStructures';
 import usePayments from '@/hooks/usePayments';
 import useStudents from '@/hooks/useStudents';
 import useTeachers from '@/hooks/useTeachers';
+import useAcademicTerms from '@/hooks/useAcademicTerms';
 import { AlertCircle, BookOpen, DollarSign, Eye, GraduationCap, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { calculateStudentFeeStatus, getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
 
-const AdministratorDashboard = () => {
+interface AdministratorDashboardProps {
+  onNavigate?: (module: string) => void;
+}
+
+const AdministratorDashboard = ({ onNavigate }: AdministratorDashboardProps) => {
   const { students: rawStudents } = useStudents();
   const { teachers: rawTeachers } = useTeachers();
   const { classes: rawClasses } = useClasses();
   const { payments: rawPayments } = usePayments();
   const { feeStructures: rawFeeStructures } = useFeeStructures();
+  const { terms } = useAcademicTerms();
 
-  const students = (rawStudents || []).map((s: any) => ({
-    id: s.id ?? String(s.id),
-    firstName: s.first_name || s.firstName || '',
-    lastName: s.last_name || s.lastName || '',
-    studentId: s.studentId || s.student_id || s.id || '',
-    classAssigned: s.classAssigned || s.class_assigned || '',
-    gender: s.gender || s.sex || ''
-  }));
+  const students = (rawStudents || []).map((s: any) => {
+    let classAssigned = s.classAssigned || s.class_assigned || '';
+    if (!classAssigned && s.class_id && rawClasses && rawClasses.length > 0) {
+      const cls = rawClasses.find((c: any) => String(c.id) === String(s.class_id));
+      if (cls) classAssigned = (cls.level && cls.stream) ? `${cls.level} ${cls.stream}` : (cls.level || '');
+    }
+    return {
+      id: s.id ?? String(s.id),
+      firstName: s.first_name || s.firstName || '',
+      lastName: s.last_name || s.lastName || '',
+      studentId: s.studentId || s.student_id || s.id || '',
+      classAssigned,
+      gender: s.gender || s.sex || ''
+    };
+  });
 
   const teachers = (rawTeachers || []).map((t: any) => ({
     id: t.id ?? String(t.id),
@@ -37,32 +50,46 @@ const AdministratorDashboard = () => {
 
   const classes = (rawClasses || []).map((c: any) => ({
     id: c.id ?? String(c.id),
-    className: c.className || c.class_name || c.name || ''
+    className: c.level && c.stream ? `${c.level} ${c.stream}` : (c.level || c.className || c.class_name || c.name || '')
   }));
 
-  const payments = (rawPayments || []).map((p: any) => ({
-    id: p.id ?? String(p.id),
-    studentId: String(p.student_id || p.studentId || p.student),
-    term: p.term || p.term_name || '',
-    amount: Number(p.amount || 0)
-  }));
+  const payments = (rawPayments || []).map((p: any) => {
+    let termName = p.term || p.term_name || '';
+    if (!termName && p.term_id && terms && terms.length > 0) {
+      const termObj = terms.find((t: any) => String(t.id) === String(p.term_id));
+      if (termObj) termName = termObj.name;
+    }
+    return {
+      id: p.id ?? String(p.id),
+      studentId: String(p.student_id || p.studentId || p.student),
+      term: termName,
+      amount: Number(p.amount || 0)
+    };
+  });
 
-  const feeStructures = (rawFeeStructures || []).map((f: any) => ({
-    id: f.id ?? String(f.id),
-    className: f.className || f.class_name || '',
-    term: f.term || f.term_name || ''
-  }));
+  const feeStructures = (rawFeeStructures || []).map((f: any) => {
+    let termName = f.term || f.term_name || '';
+    if (!termName && f.term_id && terms && terms.length > 0) {
+      const termObj = terms.find((t: any) => String(t.id) === String(f.term_id));
+      if (termObj) termName = termObj.name;
+    }
+    return {
+      id: f.id ?? String(f.id),
+      className: f.className || f.class_name || '',
+      term: termName
+    };
+  });
   const [selectedClass, setSelectedClass] = useState('all-classes');
   const [activeAcademicTerm, setActiveAcademicTerm] = useState('');
   const [activeAcademicYear, setActiveAcademicYear] = useState('');
 
   // Load active academic settings
   useEffect(() => {
-    const activeTerm = getActiveAcademicTerm();
-    const activeYear = getActiveAcademicYear();
+    const activeTerm = getActiveAcademicTerm(terms);
+    const activeYear = getActiveAcademicYear(terms);
     setActiveAcademicTerm(activeTerm);
     setActiveAcademicYear(activeYear);
-  }, []);
+  }, [terms]);
 
   // Calculate real-time student statistics
   const totalStudents = students.length;

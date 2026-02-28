@@ -6,6 +6,8 @@ import useFeeStructures from '@/hooks/useFeeStructures';
 import useIncome from '@/hooks/useIncome';
 import usePayments from '@/hooks/usePayments';
 import useStudents from '@/hooks/useStudents';
+import useAcademicTerms from '@/hooks/useAcademicTerms';
+import useClasses from '@/hooks/useClasses';
 import {
   AlertCircle,
   Calculator,
@@ -21,26 +23,39 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
+import { calculateStudentFees, getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
 import OutstandingFees from '../fees/OutstandingFees';
 import FinancialSummary from './FinancialSummary';
 
-const FinancialDashboard = () => {
+interface FinancialDashboardProps {
+  onNavigate?: (module: string) => void;
+}
+
+const FinancialDashboard = ({ onNavigate }: FinancialDashboardProps) => {
   const { students } = useStudents();
   const { payments } = usePayments();
   const { income } = useIncome();
   const { expenses } = useExpenses();
   const { feeStructures } = useFeeStructures();
+  const { terms } = useAcademicTerms();
+  const { classes } = useClasses();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Get active academic term and year
-  const currentTerm = getActiveAcademicTerm();
-  const currentYear = getActiveAcademicYear();
+  const currentTerm = getActiveAcademicTerm(terms);
+  const currentYear = getActiveAcademicYear(terms);
 
   // Normalization helpers for API shapes (camelCase / snake_case)
   const getDate = (item: any) => new Date(item?.date ?? item?.paymentDate ?? item?.payment_date ?? Date.now());
   const getAmount = (item: any) => Number(item?.amount ?? item?.value ?? 0) || 0;
-  const getTerm = (item: any) => item?.term ?? item?.payment_term ?? '';
+  const getTerm = (item: any) => {
+    let termName = item?.term ?? item?.payment_term ?? item?.term_name ?? '';
+    if (!termName && item?.term_id && terms && terms.length > 0) {
+      const termObj = terms.find((t: any) => String(t.id) === String(item.term_id));
+      if (termObj) termName = termObj.name;
+    }
+    return termName;
+  };
   const getExpenseCategory = (e: any) => e?.category ?? e?.title ?? 'Other';
   const getIncomeSource = (i: any) => i?.source ?? i?.description ?? 'Income';
   const getPaymentStudentId = (p: any) => p?.studentId ?? p?.student_id ?? p?.student?.id ?? null;
@@ -65,15 +80,26 @@ const FinancialDashboard = () => {
   // Calculate outstanding balances
   const calculateOutstanding = () => {
     let totalOwed = 0;
+    const activeTermObj = terms.find((t: any) => t.isActive || t.is_active) || currentTerm;
+
     students.forEach((student: any) => {
-      const studentClassName = student?.classAssigned ?? student?.class_assigned ?? student?.className ?? '';
-      const studentFee = (feeStructures || []).find((fee: any) => (fee?.className ?? fee?.class_name) === studentClassName);
-      if (studentFee) {
-        const studentPayments = (payments || [])
-          .filter((payment: any) => getPaymentStudentId(payment) == (student?.id ?? student?.student_id) && getTerm(payment) === currentTerm)
-          .reduce((sum: number, payment: any) => sum + getAmount(payment), 0);
-        totalOwed += Math.max(0, (Number(studentFee.amount ?? studentFee?.value ?? 0) || 0) - studentPayments);
+      let studentClassName = student?.classAssigned ?? student?.class_assigned ?? student?.className ?? '';
+      if (!studentClassName && student.class_id && classes && classes.length > 0) {
+        const cls = classes.find((c: any) => String(c.id) === String(student.class_id));
+        if (cls) {
+          studentClassName = (cls.level && cls.stream) ? `${cls.level} ${cls.stream}` : (cls.level || cls.class_name || '');
+        }
       }
+
+      const calculation = calculateStudentFees(
+        student.id,
+        activeTermObj,
+        studentClassName,
+        feeStructures,
+        payments
+      );
+
+      totalOwed += calculation.remainingBalance;
     });
     return totalOwed;
   };
@@ -300,19 +326,31 @@ const FinancialDashboard = () => {
                 <CardTitle>Quick Financial Actions</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <Button className="w-full justify-start bg-green-50 text-green-700 hover:bg-green-100 border border-green-200">
+                <Button
+                  onClick={() => onNavigate?.('fees')}
+                  className="w-full justify-start bg-green-50 text-green-700 hover:bg-green-100 border border-green-200"
+                >
                   <Receipt className="w-4 h-4 mr-2" />
                   Record Fee Payment
                 </Button>
-                <Button className="w-full justify-start bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200">
+                <Button
+                  onClick={() => onNavigate?.('income')}
+                  className="w-full justify-start bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200"
+                >
                   <Plus className="w-4 h-4 mr-2" />
                   Add Other Income
                 </Button>
-                <Button className="w-full justify-start bg-red-50 text-red-700 hover:bg-red-100 border border-red-200">
+                <Button
+                  onClick={() => onNavigate?.('expenses')}
+                  className="w-full justify-start bg-red-50 text-red-700 hover:bg-red-100 border border-red-200"
+                >
                   <FileText className="w-4 h-4 mr-2" />
                   Record Expense
                 </Button>
-                <Button className="w-full justify-start bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200">
+                <Button
+                  onClick={() => onNavigate?.('reports')}
+                  className="w-full justify-start bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200"
+                >
                   <Calculator className="w-4 h-4 mr-2" />
                   Generate Financial Report
                 </Button>

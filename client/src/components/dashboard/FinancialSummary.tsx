@@ -4,6 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import useExpenses from '@/hooks/useExpenses';
 import useIncome from '@/hooks/useIncome';
 import usePayments from '@/hooks/usePayments';
+import useAcademicTerms from '@/hooks/useAcademicTerms';
+import { getActiveAcademicTerm } from '../../utils/feeCalculations';
 import { Calculator, ChevronDown, ChevronUp, DollarSign, TrendingUp } from 'lucide-react';
 import { useState } from 'react';
 
@@ -12,13 +14,21 @@ const FinancialSummary = () => {
   const { payments: rawPayments } = usePayments();
   const { income: rawIncome } = useIncome();
   const { expenses: rawExpenses } = useExpenses();
+  const { terms } = useAcademicTerms();
 
-  const payments = (rawPayments || []).map((p: any) => ({
-    id: p.id ?? String(p.id),
-    amount: Number(p.amount || 0),
-    term: p.term || p.term_name || '',
-    date: p.date || p.created_at || new Date().toISOString()
-  }));
+  const payments = (rawPayments || []).map((p: any) => {
+    let termName = p.term || p.term_name || '';
+    if (!termName && p.term_id && terms && terms.length > 0) {
+      const termObj = terms.find((t: any) => String(t.id) === String(p.term_id));
+      if (termObj) termName = termObj.name;
+    }
+    return {
+      id: p.id ?? String(p.id),
+      amount: Number(p.amount || 0),
+      term: termName,
+      date: p.date || p.created_at || new Date().toISOString()
+    };
+  });
 
   const income = (rawIncome || []).map((i: any) => ({
     id: i.id ?? String(i.id),
@@ -32,7 +42,7 @@ const FinancialSummary = () => {
     paymentDate: e.paymentDate || e.date || e.created_at || new Date().toISOString()
   }));
 
-  const currentTerm = 'Term 1';
+  const currentTerm = getActiveAcademicTerm(terms);
 
   // Calculate fees collected
   const feesCollected = payments

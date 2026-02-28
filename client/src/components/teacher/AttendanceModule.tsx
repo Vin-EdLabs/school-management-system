@@ -350,7 +350,7 @@ const AttendanceModule = () => {
                         </div>
                         <div>
                           <p className="font-medium text-gray-900">{student.firstName} {student.lastName}</p>
-                          {student.admissionNumber && <p className="text-sm text-gray-500">Admission: {student.admissionNumber}</p>}
+                          {(student.admission_no || student.admissionNumber) && <p className="text-sm text-gray-500">Admission: {student.admission_no || student.admissionNumber}</p>}
                         </div>
                       </div>
                       {!isSuperAdmin && (

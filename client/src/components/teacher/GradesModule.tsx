@@ -321,7 +321,7 @@ const GradesModule = () => {
   const [toastMessage, setToastMessage] = useState('');
 
   // Grade boundaries
-  const [gradeBoundaries, setGradeBoundaries] = useState([
+  const [gradeBoundaries, setGradeBoundaries] = useState<any[]>([
     { grade: 'A+', min: 97, max: 100 },
     { grade: 'A', min: 93, max: 96 },
     { grade: 'A-', min: 90, max: 92 },
@@ -370,8 +370,6 @@ const GradesModule = () => {
     });
   };
 
-  const [isLocked, setIsLocked] = useState(false);
-  const [isPublished, setIsPublished] = useState(false);
   const [showBoundariesDialog, setShowBoundariesDialog] = useState(false);
   const [showCreateExamDialog, setShowCreateExamDialog] = useState(false);
   const [activeTab, setActiveTab] = useState('entry');
@@ -394,7 +392,7 @@ const GradesModule = () => {
     if (!user || user.role !== 'teacher') return classes || [];
     const assigned = (classes || []).filter((c: any) => {
       const assignedId = c.assignedTeacher ?? c.assignedTeacherId ?? c.teacher_id ?? c.teacherId;
-      return assignedId !== undefined && assignedId !== null && String(assignedId) === String(user.id || user.teacherId);
+      return assignedId !== undefined && assignedId !== null && String(assignedId) === String((user as any).id || user.teacherId);
     });
     const scheduledClassIds = new Set(Array.isArray(schedulesForTeacher)
       ? schedulesForTeacher.map((s: any) => String(s.class_id ?? s.classId ?? s.class))
@@ -564,7 +562,6 @@ const GradesModule = () => {
       classId: selectedClass,
       subjectId: selectedSubject,
       term: selectedTerm,
-      isLocked: false,
       isPublished: false
     };
     // Add a local (optimistic) exam so the instructor can select it immediately
@@ -616,10 +613,6 @@ const GradesModule = () => {
   };
 
   const scheduleSave = (grade: any) => {
-    if (isLocked) {
-      showToast('This exam is locked. Unlock to edit.');
-      return;
-    }
 
     const key = `${grade.studentId}-${grade.assignmentId}`;
     if (saveTimers.current[key]) clearTimeout(saveTimers.current[key]);
@@ -796,10 +789,6 @@ const GradesModule = () => {
                 <Select value={selectedAssignment} onValueChange={(val: any) => {
                   setSelectedAssignment(val);
                   const exam = exams.find(e => e.id === val);
-                  if (exam) {
-                    setIsLocked(exam.isLocked);
-                    setIsPublished(exam.isPublished);
-                  }
                 }}>
                   <SelectTrigger>
                     {selectedAssignment ? (
@@ -830,54 +819,15 @@ const GradesModule = () => {
         {/* Status Bar */}
         {selectedAssignment && (
           <div className="flex items-center justify-between bg-white p-4 rounded-lg border shadow-sm animate-in fade-in slide-in-from-top-2">
-            <div className="flex items-center space-x-4">
-              <Badge variant={isLocked ? "destructive" : "default"} className="flex items-center space-x-1">
-                {isLocked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
-                <span>{isLocked ? 'Locked' : 'Unlocked'}</span>
-              </Badge>
-              <Badge variant={isPublished ? "default" : "secondary"} className="flex items-center space-x-1">
-                {isPublished ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                <span>{isPublished ? 'Published' : 'Draft'}</span>
-              </Badge>
-            </div>
 
-            <div className="flex items-center space-x-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setIsLocked(!isLocked);
-                  showToast(isLocked ? 'Grades unlocked for editing' : 'Grades locked successfully');
-                }}
-              >
-                {isLocked ? <Unlock className="w-4 h-4 mr-2" /> : <Lock className="w-4 h-4 mr-2" />}
-                {isLocked ? 'Unlock' : 'Lock'} Grades
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  if (!isLocked) {
-                    showToast('Please lock grades before publishing');
-                    return;
-                  }
-                  setIsPublished(!isPublished);
-                  showToast(isPublished ? 'Results unpublished' : 'Results published to students');
-                }}
-                disabled={!isLocked}
-              >
-                {isPublished ? <EyeOff className="w-4 h-4 mr-2" /> : <Eye className="w-4 h-4 mr-2" />}
-                {isPublished ? 'Unpublish' : 'Publish'}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleExport}
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Export
-              </Button>
-            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExport}
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Export
+            </Button>
           </div>
         )}
 
@@ -1012,7 +962,6 @@ const GradesModule = () => {
                                         });
                                       }
                                     }}
-                                    disabled={isLocked}
                                   />
                                   <span className="text-gray-500 text-xs">/ {currentMaxScore}</span>
                                 </div>
@@ -1067,7 +1016,6 @@ const GradesModule = () => {
                                       remarks: existing?.remarks || ''
                                     });
                                   }}
-                                  disabled={isLocked}
                                 >
                                   <SelectTrigger className="w-full">
                                     <SelectValue />
@@ -1121,7 +1069,6 @@ const GradesModule = () => {
                                       remarks
                                     });
                                   }}
-                                  disabled={isLocked}
                                 />
                               </td>
                             </tr>

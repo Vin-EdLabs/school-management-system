@@ -8,7 +8,8 @@ import useClasses from '@/hooks/useClasses';
 import useStudents from '@/hooks/useStudents';
 import useTeachers from '@/hooks/useTeachers';
 import { BarChart3, Calendar, Download, FileText, TrendingUp, Users } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useActiveTerm, useActiveYear } from '@/hooks/useSettings';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface AttendanceStats {
@@ -26,6 +27,8 @@ interface AttendanceStats {
 
 const AttendanceReports = () => {
     const { user } = useAuth();
+    const { data: activeTerm } = useActiveTerm();
+    const { data: activeYear } = useActiveYear();
     const { classes: rawClasses } = useClasses();
     const { students: rawStudents } = useStudents();
     const { teachers: rawTeachers } = useTeachers();
@@ -51,31 +54,37 @@ const AttendanceReports = () => {
         const derivedName = stream ? `${level} ${stream}` : level;
         return {
             id: c.id ?? String(c.id),
-            className: c.className || c.class_name || c.name || derivedName || `Class ${c.id}`
+            className: c.className || c.class_name || c.name || derivedName || `Class ${c.id}`,
+            teacherId: c.assignedTeacher ?? c.assignedTeacherId ?? c.teacher_id ?? c.teacherId
         };
     });
 
-    // Find the current teacher's data based on username match
+    // Find the current teacher's data based on user ID or username match
     const currentTeacher = teachers.find(t => {
+        const teacherId = Number(t.id);
+        const userId = Number(user?.id || 0);
         const teacherUsername = (t.username || '').toLowerCase();
         const userName = (user?.username || '').toLowerCase();
 
-        return teacherUsername && userName && teacherUsername === userName;
+        return (teacherId && userId && teacherId === userId) ||
+            (teacherUsername && userName && teacherUsername === userName);
     });
 
     // Filter classes for teachers (super-admin sees all)
     let availableClasses: any[] = [];
     if (isSuperAdmin) {
         availableClasses = classes;
-    } else if (currentTeacher) {
-        const assignedIds = Array.isArray(currentTeacher.classAssignedIds)
+    } else {
+        const assignedIds = currentTeacher && Array.isArray(currentTeacher.classAssignedIds)
             ? currentTeacher.classAssignedIds.map((id: any) => Number(id))
             : [];
         const assignedIdSet = new Set(assignedIds.filter(id => !isNaN(id)));
+        const userId = String(user?.id || (user as any)?.teacherId);
 
         availableClasses = classes.filter((cls: any) => {
             const clsId = Number(cls.id);
-            return assignedIdSet.has(clsId);
+            const isAssignedDirectly = cls.teacherId !== undefined && cls.teacherId !== null && String(cls.teacherId) === userId;
+            return assignedIdSet.has(clsId) || isAssignedDirectly;
         });
     }
 
@@ -154,10 +163,24 @@ const AttendanceReports = () => {
                 start.setDate(today.getDate() - 7);
                 break;
             case 'term':
-                start.setMonth(today.getMonth() - 3);
+                if (activeTerm?.start_date) {
+                    start = new Date(activeTerm.start_date);
+                    if (activeTerm.end_date) {
+                        end = new Date(activeTerm.end_date);
+                    }
+                } else {
+                    start.setMonth(today.getMonth() - 3);
+                }
                 break;
             case 'year':
-                start.setFullYear(today.getFullYear() - 1);
+                if (activeYear?.start_date) {
+                    start = new Date(activeYear.start_date);
+                    if (activeYear.end_date) {
+                        end = new Date(activeYear.end_date);
+                    }
+                } else {
+                    start.setMonth(0, 1); // Jan 1st
+                }
                 break;
         }
 
@@ -165,6 +188,13 @@ const AttendanceReports = () => {
         setEndDate(end.toISOString().split('T')[0]);
         setReportType(type);
     };
+
+    // Auto-initialize default range (Weekly)
+    useEffect(() => {
+        if (!startDate && !endDate) {
+            setDateRange('weekly');
+        }
+    }, [startDate, endDate]);
 
     const exportToCSV = () => {
         const headers = ['Admission No', 'Name', 'Gender', 'Total Days', 'Present', 'Absent', 'Late', 'Excused', 'Attendance %'];
@@ -249,15 +279,17 @@ const AttendanceReports = () => {
                                     size="sm"
                                     variant={reportType === 'term' ? 'default' : 'outline'}
                                     onClick={() => setDateRange('term')}
+                                    title={activeTerm?.name ? `Current Term: ${activeTerm.name}` : 'Term'}
                                 >
-                                    Term
+                                    {activeTerm?.name || 'Term'}
                                 </Button>
                                 <Button
                                     size="sm"
                                     variant={reportType === 'year' ? 'default' : 'outline'}
                                     onClick={() => setDateRange('year')}
+                                    title={activeYear?.year_label || activeYear || 'Year'}
                                 >
-                                    Year
+                                    {activeYear?.year_label || activeYear || 'Year'}
                                 </Button>
                             </div>
                         </div>

@@ -254,7 +254,7 @@ const TeacherClassesModule = () => {
                   const last = (student.lastName || student.last_name || student.last || '').toString();
                   const displayFirst = first.charAt ? first.charAt(0) : '';
                   const displayLast = last.charAt ? last.charAt(0) : '';
-                  const admission = student.admissionNumber ?? student.admission_number ?? student.admission ?? '';
+                  const admission = student.admission_no ?? student.admissionNumber ?? student.admission_number ?? student.admission ?? '';
                   return (
                     <div key={student.id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
                       <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-sm font-bold">

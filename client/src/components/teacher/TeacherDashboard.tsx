@@ -9,7 +9,11 @@ import useTeachers from '@/hooks/useTeachers';
 import { BookOpen, Calendar, ClipboardCheck, Clock, School, Users } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
-const TeacherDashboard = () => {
+interface TeacherDashboardProps {
+  onNavigate?: (module: string) => void;
+}
+
+const TeacherDashboard = ({ onNavigate }: TeacherDashboardProps) => {
   const { user } = useAuth();
   const { students: rawStudents } = useStudents();
   const { teachers: rawTeachers } = useTeachers();
@@ -39,16 +43,18 @@ const TeacherDashboard = () => {
 
   const classes = (rawClasses || []).map((c: any) => ({
     id: c.id ?? String(c.id),
-    className: c.className || c.class_name || c.name || '',
+    className: c.level && c.stream ? `${c.level} ${c.stream}` : (c.level || c.className || c.class_name || c.name || ''),
   }));
 
   // Find the current teacher's data based on username or teacherId
   // Match current user to a teacher record. Prefer explicit id or username match,
   // fall back to the previous fullName contains(username) heuristic for demo flows.
   const currentTeacher = teachers.find(t =>
+    ((user as any)?.staffId && t.staffId && String(t.staffId) === String((user as any).staffId)) ||
     (user?.username && t.username && String(t.username).toLowerCase() === String(user.username).toLowerCase()) ||
     (t.staffId && user?.teacherId && String(t.staffId) === String(user.teacherId)) ||
     (String(t.id) === String(user?.id)) ||
+    (t.fullName && (user as any)?.staffId && t.fullName.toLowerCase().includes(((user as any).staffId as string).toLowerCase())) ||
     (t.fullName && user?.username && t.fullName.toLowerCase().includes(user.username.toLowerCase()))
   );
 

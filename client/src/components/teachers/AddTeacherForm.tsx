@@ -6,24 +6,24 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
+import useSubjects from '@/hooks/useSubjects';
 import useTeachers from '@/hooks/useTeachers';
+import * as teachersService from '@/services/teachersService';
 import { UserPlus, X } from 'lucide-react';
 import React, { useState } from 'react';
-
-const SUBJECTS = [
-  'Mathematics', 'English', 'Science', 'Social Studies', 'French',
-  'Physical Education', 'Art', 'Music', 'Computer Studies', 'Religious Studies'
-];
 
 interface AddTeacherFormProps {
   onSuccess: () => void;
 }
 
 const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
-  const { createTeacher } = useTeachers();
-  const [userEditedUsername, setUserEditedUsername] = useState(false);
+  const { createTeacher, teachers } = useTeachers();
+  const { subjects: rawSubjects } = useSubjects();
+
+  // Extract subject names, falling back to an empty array
+  const subjects = (rawSubjects || []).map((s: any) => s.name || s.title || s.code).filter(Boolean);
   const [formData, setFormData] = useState({
-    username: '',
+    staffId: '',
     password: '',
     fullName: '',
     gender: '',
@@ -39,21 +39,22 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
     notes: ''
   });
 
-  const generateUsername = (name: string) => {
-    const base = name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '')
-      .slice(0, 12) || 'teacher';
-    const rand = Math.floor(100 + Math.random() * 900);
-    return `${base}${rand}`;
-  };
-
-  // Sync password with username whenever username changes
+  // Fetch next available Staff ID from the backend securely
   React.useEffect(() => {
-    if (formData.username && formData.password !== formData.username) {
-      setFormData(prev => ({ ...prev, password: prev.username }));
-    }
-  }, [formData.username]);
+    let mounted = true;
+    const fetchNextId = async () => {
+      try {
+        const res = await teachersService.getNextStaffId();
+        if (mounted && res?.data?.nextId) {
+          setFormData(prev => ({ ...prev, staffId: res.data.nextId }));
+        }
+      } catch (err) {
+        console.error('Failed to fetch next staff ID', err);
+      }
+    };
+    fetchNextId();
+    return () => { mounted = false; };
+  }, []);
 
   const handleAddSubject = (subject: string) => {
     if (!formData.subjectsTaught.includes(subject)) {
@@ -83,14 +84,7 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
       return;
     }
 
-    if (!formData.username || !formData.password) {
-      toast({
-        title: "Validation Error",
-        description: "Please provide a username and password for the teacher",
-        variant: "destructive"
-      });
-      return;
-    }
+    // staffId is optional (backend will generate if missing); password is optional and will default to staffId on backend
 
     // Convert salary to number for storage, default to 0 if empty or invalid
     const salaryValue = formData.monthlySalary.trim() === '' ? 0 : parseFloat(formData.monthlySalary) || 0;
@@ -98,8 +92,8 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
     // Use the mutation returned by the hook to create the teacher
     createTeacher.mutate(
       {
-        username: formData.username,
-        password: formData.password,
+        staffId: formData.staffId || undefined,
+        password: formData.password || formData.staffId || undefined,
         fullName: formData.fullName,
         gender: formData.gender,
         dateOfBirth: formData.dateOfBirth,
@@ -122,7 +116,7 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
 
           // Reset form
           setFormData({
-            username: '',
+            staffId: '',
             password: '',
             fullName: '',
             gender: '',
@@ -137,7 +131,6 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
             employmentStatus: 'Active',
             notes: ''
           });
-          setUserEditedUsername(false);
 
           onSuccess();
         },
@@ -164,16 +157,7 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
               <Input
                 id="fullName"
                 value={formData.fullName}
-                onChange={(e) => {
-                  const name = e.target.value;
-                  const username = userEditedUsername ? formData.username : generateUsername(name);
-                  setFormData(prev => ({
-                    ...prev,
-                    fullName: name,
-                    username,
-                    password: username
-                  }));
-                }}
+                onChange={(e) => setFormData(prev => ({ ...prev, fullName: e.target.value }))}
                 required
               />
             </div>
@@ -193,31 +177,23 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="username">Username (Auto-generated) *</Label>
+              <Label htmlFor="staffId">Staff ID (Auto-generated)</Label>
               <Input
-                id="username"
-                value={formData.username}
-                onChange={(e) => {
-                  setUserEditedUsername(true);
-                  const username = e.target.value;
-                  setFormData(prev => ({ ...prev, username, password: username }));
-                }}
+                id="staffId"
+                value={formData.staffId}
                 disabled
-                className="bg-gray-100 text-gray-900 cursor-not-allowed"
-                required
+                className="bg-gray-100 font-mono"
+                placeholder="Loading..."
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password (Same as username, change on first login) *</Label>
+              <Label htmlFor="password">Password (defaults to Staff ID if left blank)</Label>
               <Input
                 id="password"
                 type="text"
                 value={formData.password}
-                placeholder={formData.username || 'Will auto-generate from username'}
+                placeholder={formData.staffId || 'Will default to staff ID'}
                 onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                disabled
-                className="bg-gray-100 text-gray-900 cursor-not-allowed"
-                required
               />
             </div>
           </div>
@@ -271,7 +247,7 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
                 <SelectValue placeholder="Add subjects" />
               </SelectTrigger>
               <SelectContent>
-                {SUBJECTS.filter(subject => !formData.subjectsTaught.includes(subject)).map((subject) => (
+                {subjects.filter((subject: string) => !formData.subjectsTaught.includes(subject)).map((subject: string) => (
                   <SelectItem key={subject} value={subject}>
                     {subject}
                   </SelectItem>

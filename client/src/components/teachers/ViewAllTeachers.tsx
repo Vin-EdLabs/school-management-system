@@ -32,7 +32,7 @@ const ViewAllTeachers = () => {
 
   const filteredTeachers = teachers.filter((teacher: any) => {
     const name = (teacher?.fullName ?? '').toString();
-    const username = (teacher?.username ?? '').toString();
+    const username = (teacher?.staffId ?? teacher?.username ?? '').toString();
     const email = (teacher?.email ?? '').toString();
 
     const matchesSearch = searchTerm === '' ||
@@ -173,7 +173,7 @@ const ViewAllTeachers = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead>Username</TableHead>
+                  <TableHead>Staff ID</TableHead>
                   <TableHead>Contact</TableHead>
                   <TableHead>Subjects</TableHead>
                   <TableHead>Class Assigned</TableHead>
@@ -199,7 +199,7 @@ const ViewAllTeachers = () => {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <span className="font-mono">{teacher.username}</span>
+                        <span className="font-mono">{teacher.staffId ?? teacher.username}</span>
                       </TableCell>
                       <TableCell>
                         <div className="text-sm">

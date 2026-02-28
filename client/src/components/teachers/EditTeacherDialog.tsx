@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
+import useSubjects from '@/hooks/useSubjects';
 import useTeachers from '@/hooks/useTeachers';
 import { X } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
@@ -34,10 +35,7 @@ interface EditTeacherDialogProps {
   onSuccess: () => void;
 }
 
-const SUBJECTS = [
-  'Mathematics', 'English', 'Science', 'Social Studies', 'French',
-  'Physical Education', 'Art', 'Music', 'Computer Studies', 'Religious Studies'
-];
+
 
 const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
   teacher,
@@ -46,6 +44,7 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
   onSuccess
 }) => {
   const { updateTeacher } = useTeachers();
+  const { subjects } = useSubjects();
   const [formData, setFormData] = useState({
     fullName: '',
     gender: '',
@@ -62,18 +61,34 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
 
   useEffect(() => {
     if (teacher) {
+      const formatDate = (dateValue: any) => {
+        if (!dateValue) return '';
+        try {
+          // If it's already a string like "2024-05-12", return it
+          if (typeof dateValue === 'string' && dateValue.includes('-')) {
+            return dateValue.split('T')[0];
+          }
+          // If it's a date object
+          const date = new Date(dateValue);
+          if (isNaN(date.getTime())) return '';
+          return date.toISOString().split('T')[0];
+        } catch {
+          return '';
+        }
+      };
+
       setFormData({
-        fullName: teacher.fullName ?? '',
-        gender: teacher.gender ?? '',
-        dateOfBirth: teacher.dateOfBirth ?? '',
-        phoneNumber: teacher.phoneNumber ?? '',
-        email: teacher.email ?? '',
-        address: teacher.address ?? '',
-        subjectsTaught: teacher.subjectsTaught ?? [],
-        employmentDate: teacher.employmentDate ?? '',
-        monthlySalary: teacher.monthlySalary != null ? String(teacher.monthlySalary) : '',
-        employmentStatus: teacher.employmentStatus ?? '',
-        notes: teacher.notes ?? ''
+        fullName: teacher.fullName || (teacher as any).display_name || '',
+        gender: teacher.gender || '',
+        dateOfBirth: formatDate(teacher.dateOfBirth || (teacher as any).date_of_birth),
+        phoneNumber: teacher.phoneNumber || (teacher as any).phone || '',
+        email: teacher.email || '',
+        address: teacher.address || '',
+        subjectsTaught: teacher.subjectsTaught || (teacher as any).subjects_taught || [],
+        employmentDate: formatDate(teacher.employmentDate || (teacher as any).employment_date),
+        monthlySalary: teacher.monthlySalary != null ? String(teacher.monthlySalary) : ((teacher as any).monthly_salary != null ? String((teacher as any).monthly_salary) : ''),
+        employmentStatus: teacher.employmentStatus || (teacher as any).employment_status || '',
+        notes: teacher.notes || ''
       });
     }
   }, [teacher]);
@@ -207,11 +222,17 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
                 <SelectValue placeholder="Add subjects" />
               </SelectTrigger>
               <SelectContent>
-                {SUBJECTS.filter(subject => !formData.subjectsTaught.includes(subject)).map((subject) => (
-                  <SelectItem key={subject} value={subject}>
-                    {subject}
-                  </SelectItem>
-                ))}
+                {(subjects || []).filter((s: any) => {
+                  const name = s.name ?? s.title ?? s.code ?? '';
+                  return name && !formData.subjectsTaught.includes(name);
+                }).map((s: any) => {
+                  const name = s.name ?? s.title ?? s.code ?? '';
+                  return (
+                    <SelectItem key={s.id} value={name}>
+                      {name}{s.code ? ` (${s.code})` : ''}
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
             <div className="flex flex-wrap gap-2 mt-2">

@@ -37,19 +37,11 @@ const AssignClassToTeacher: React.FC = () => {
 
       await assignmentsService.createAssignment({ teacher_id: Number(selectedTeacher), class_id: Number(selectedClass) });
 
-      if (classData?.assignedTeacher) {
-        try {
-          // classData.assignedTeacher is the teacher id (enriched by useClasses)
-          await assignmentsService.removeAssignment({ teacher_id: Number(classData.assignedTeacher), class_id: Number(selectedClass) });
-        } catch (err: any) {
-          toast({ title: 'Unassign Error', description: err.message || 'Failed to remove previous assignment', variant: 'destructive' });
-        }
-      }
 
-      // Refresh enriched teacher data and invalidate classes cache
-      try { await refreshTeachers(); } catch (e) { /* ignore */ }
-      try { queryClient.removeQueries({ queryKey: ['classes', 'enriched'] }); } catch (e) { /* ignore */ }
-      await queryClient.invalidateQueries({ queryKey: ['classes'] });
+      // refreshTeachers force-fetches fresh data from server AND re-enriches — awaited so UI is ready
+      await refreshTeachers();
+      await queryClient.refetchQueries({ queryKey: ['classes'] });
+      queryClient.removeQueries({ queryKey: ['classes', 'enriched'] });
 
       toast({ title: 'Class Assigned Successfully', description: `${teacher.fullName || teacher.full_name} has been assigned to ${classData.className || (classData.level ? `${classData.level}${classData.stream ? ' ' + classData.stream : ''}` : 'Unassigned')}` });
 
@@ -67,23 +59,20 @@ const AssignClassToTeacher: React.FC = () => {
       toast({ title: 'Validation Error', description: 'Please select a class to unassign', variant: 'destructive' });
       return;
     }
+    if (!selectedTeacher) {
+      toast({ title: 'Validation Error', description: 'Please select a teacher to unassign from this class', variant: 'destructive' });
+      return;
+    }
 
     const classData = (classes || []).find((c: any) => String(c.id) === String(selectedClass));
     if (!classData) return;
 
-    // determine currently assigned teacher id (if any)
-    const currentTeacherId = classData?.assignedTeacher ?? classData?.assignedTeacherId ?? classData?.teacher_id ?? null;
-    if (!currentTeacherId) {
-      toast({ title: 'No assignment', description: 'This class has no teacher assigned', variant: 'default' });
-      return;
-    }
-
     try {
       setLoading(true);
-      await assignmentsService.removeAssignment({ teacher_id: Number(currentTeacherId), class_id: Number(selectedClass) });
-      try { await refreshTeachers(); } catch (e) { /* ignore */ }
-      try { queryClient.removeQueries({ queryKey: ['classes', 'enriched'] }); } catch (e) { }
-      await queryClient.invalidateQueries({ queryKey: ['classes'] });
+      await assignmentsService.removeAssignment({ teacher_id: Number(selectedTeacher), class_id: Number(selectedClass) });
+      await refreshTeachers();
+      await queryClient.refetchQueries({ queryKey: ['classes'] });
+      queryClient.removeQueries({ queryKey: ['classes', 'enriched'] });
       toast({ title: 'Assignment removed', description: `Teacher unassigned from ${classData.className || (classData.level ? `${classData.level}${classData.stream ? ' ' + classData.stream : ''}` : 'class')}` });
       setSelectedTeacher('');
       setSelectedClass('');
@@ -102,7 +91,8 @@ const AssignClassToTeacher: React.FC = () => {
   const getClassCurrentTeacher = (classId: string) => {
     const classData = (classes || []).find((c: any) => String(c.id) === String(classId));
     if (!classData) return 'None';
-    // prefer enriched name if available
+    // assignedTeacherNames is set by enriched useClasses if available
+    if (classData.assignedTeacherNames && classData.assignedTeacherNames.length > 0) return classData.assignedTeacherNames.join(', ');
     if (classData.assignedTeacherName) return classData.assignedTeacherName;
     if (!classData?.assignedTeacher) return 'None';
     const teacher = (teachers || []).find((t: any) => String(t.id) === String(classData.assignedTeacher));
@@ -208,12 +198,13 @@ const AssignClassToTeacher: React.FC = () => {
                     <p className="font-medium">{teacher.fullName || teacher.full_name}</p>
                     <p className="text-sm text-gray-500">Subjects: {(teacher.subjectsTaught || []).join(', ') || 'None listed'}</p>
                   </div>
-                  <div>
-                    {teacher.classAssigned ? (
-                      <Badge variant="default">{teacher.classAssigned}</Badge>
-                    ) : (
-                      <Badge variant="outline">No class assigned</Badge>
-                    )}
+                  <div className="flex flex-wrap gap-1 justify-end max-w-[50%]">
+                    {(teacher.classAssignedList && teacher.classAssignedList.length > 0)
+                      ? teacher.classAssignedList.map((cls: string, i: number) => (
+                        <Badge key={i} variant="default">{cls}</Badge>
+                      ))
+                      : <Badge variant="outline">No class assigned</Badge>
+                    }
                   </div>
                 </div>
               ))}
@@ -231,24 +222,19 @@ const AssignClassToTeacher: React.FC = () => {
           <CardContent>
             <div className="space-y-3">
               {classes.map((cls: any) => {
-                // prefer enriched display name from classes (assignedTeacherName), fall back to lookup by id
-                const assignedName = cls.assignedTeacherName ?? null;
-                const assignedId = cls.assignedTeacher ?? cls.assignedTeacherId ?? cls.teacher_id;
-                const assignedTeacher = assignedName ? null : (teachers || []).find((t: any) => String(t.id) === String(assignedId));
+                const className = cls.className ?? (cls.level ? `${cls.level}${cls.stream ? ' - ' + cls.stream : ''}` : `Class ${cls.id}`);
+                const names: string[] = cls.assignedTeacherNames ?? [];
                 return (
                   <div key={cls.id} className="flex items-center justify-between p-3 border rounded-lg">
                     <div>
-                      <p className="font-medium">{cls.className ?? (cls.level ? `${cls.level}${cls.stream ? ' - ' + cls.stream : ''}` : '')}</p>
-                      <p className="text-sm text-gray-500">Level: {cls.level} {cls.stream ? `- ${cls.stream}` : ''}</p>
+                      <p className="font-medium">{className}</p>
+                      <p className="text-sm text-gray-500">Level: {cls.level}{cls.stream ? ` - ${cls.stream}` : ''}</p>
                     </div>
-                    <div>
-                      {assignedName ? (
-                        <Badge variant="default">{assignedName}</Badge>
-                      ) : assignedTeacher ? (
-                        <Badge variant="default">{assignedTeacher.fullName || assignedTeacher.full_name}</Badge>
-                      ) : (
-                        <Badge variant="outline">No teacher assigned</Badge>
-                      )}
+                    <div className="flex flex-wrap gap-1 justify-end max-w-[55%]">
+                      {names.length > 0
+                        ? names.map((name, i) => <Badge key={i} variant="default">{name}</Badge>)
+                        : <Badge variant="outline">No teacher assigned</Badge>
+                      }
                     </div>
                   </div>
                 );

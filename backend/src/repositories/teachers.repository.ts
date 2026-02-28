@@ -1,157 +1,165 @@
 import { query } from '../config/db.js';
 
+const ROLE = 'teacher';
+
+// Base columns -- no meta, no subjects_taught array
+const COLS = `
+  u.id, u.staff_id, u.role, u.display_name, u.email, u.phone, u.gender,
+  u.date_of_birth, u.address, u.employment_date, u.employment_status,
+  u.monthly_salary, u.notes, u.created_at, u.updated_at,
+  COALESCE(
+    (SELECT array_agg(s.name ORDER BY s.name)
+     FROM teacher_subjects ts JOIN subjects s ON s.id = ts.subject_id
+     WHERE ts.teacher_id = u.id),
+  '{}') AS subjects_taught
+`.trim();
+
 function normalizeRow(row: any) {
   if (!row) return null;
-  let meta: any = {};
-  try {
-    if (row.meta) meta = typeof row.meta === 'string' ? JSON.parse(row.meta) : row.meta;
-  } catch (e) {
-    meta = {};
-  }
-
-  const email = row.email ?? meta.email ?? null;
-  const displayName = row.display_name ?? meta.displayName ?? meta.display_name ?? null;
-
   return {
     id: row.id,
-    username: row.username,
+    staff_id: row.staff_id,
     role: row.role,
+    display_name: row.display_name ?? null,
+    email: row.email ?? null,
+    phone: row.phone ?? null,
+    gender: row.gender ?? null,
+    date_of_birth: row.date_of_birth ?? null,
+    address: row.address ?? null,
+    employment_date: row.employment_date ?? null,
+    employment_status: row.employment_status ?? 'Active',
+    monthly_salary: row.monthly_salary ?? 0,
+    monthlySalary: row.monthly_salary ?? 0,
+    notes: row.notes ?? null,
+    subjects_taught: Array.isArray(row.subjects_taught) ? row.subjects_taught
+      : row.subjects_taught ? [row.subjects_taught] : [],
     created_at: row.created_at,
-    updated_at: row.updated_at,
-    email,
-    displayName,
-    meta
+    updated_at: row.updated_at ?? null,
   };
 }
 
-export async function listTeachers(limit = 1000) {
-  const attempts = [
-    'SELECT id, username, role, created_at, updated_at, meta, email, display_name FROM users WHERE role = $1 ORDER BY id DESC LIMIT $2',
-    'SELECT id, username, role, created_at, meta, email, display_name FROM users WHERE role = $1 ORDER BY id DESC LIMIT $2',
-    'SELECT id, username, role, created_at, meta FROM users WHERE role = $1 ORDER BY id DESC LIMIT $2'
-  ];
-
-  for (const sql of attempts) {
-    try {
-      const res = await query(sql, ['teacher', limit]);
-      return res.rows.map(normalizeRow);
-    } catch (err) {
-      continue;
-    }
-  }
-
-  return [];
+export async function listTeachers() {
+  const res = await query(
+    `SELECT ${COLS} FROM users u WHERE u.role = $1 ORDER BY u.display_name ASC NULLS LAST`,
+    [ROLE]
+  );
+  return res.rows.map(normalizeRow);
 }
 
 export async function findTeacherById(id: number) {
-  const attempts = [
-    'SELECT id, username, role, created_at, updated_at, meta, email, display_name FROM users WHERE id = $1 AND role = $2 LIMIT 1',
-    'SELECT id, username, role, created_at, meta, email, display_name FROM users WHERE id = $1 AND role = $2 LIMIT 1',
-    'SELECT id, username, role, created_at, meta FROM users WHERE id = $1 AND role = $2 LIMIT 1'
-  ];
+  const res = await query(
+    `SELECT ${COLS} FROM users u WHERE u.role = $1 AND u.id = $2 LIMIT 1`,
+    [ROLE, id]
+  );
+  return normalizeRow(res.rows[0] ?? null);
+}
 
-  for (const sql of attempts) {
-    try {
-      const res = await query(sql, [id, 'teacher']);
-      return normalizeRow(res.rows[0]);
-    } catch (err) {
-      continue;
-    }
-  }
-
-  return null;
+export async function findTeacherByStaffId(staffId: string) {
+  const res = await query(
+    `SELECT ${COLS} FROM users u WHERE u.role = $1 AND u.staff_id = $2 LIMIT 1`,
+    [ROLE, staffId]
+  );
+  return normalizeRow(res.rows[0] ?? null);
 }
 
 export async function createTeacher(payload: any) {
-  // kept for compatibility but prefer using user.repository.createUser
-  const attempts = [
-    'INSERT INTO users (username, password_hash, role, meta) VALUES ($1, $2, $3, $4) RETURNING id, username, role, meta, created_at, updated_at, email, display_name',
-    'INSERT INTO users (username, password_hash, role, meta) VALUES ($1, $2, $3, $4) RETURNING id, username, role, meta, created_at, email, display_name',
-    'INSERT INTO users (username, password_hash, role, meta) VALUES ($1, $2, $3, $4) RETURNING id, username, role, meta, created_at'
-  ];
+  // 1. Insert base user row
+  const res = await query(
+    `INSERT INTO users (
+       staff_id, password_hash, role,
+       display_name, email, phone, gender,
+       date_of_birth, address, employment_date, employment_status,
+       monthly_salary, notes
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+     RETURNING id`,
+    [
+      payload.staff_id ?? null,
+      payload.password_hash ?? '',
+      ROLE,
+      payload.display_name ?? null,
+      payload.email ?? null,
+      payload.phone ?? null,
+      payload.gender ?? null,
+      payload.date_of_birth || null,
+      payload.address ?? null,
+      payload.employment_date || null,
+      payload.employment_status ?? 'Active',
+      payload.monthly_salary ?? payload.monthlySalary ?? 0,
+      payload.notes ?? null,
+    ]
+  );
+  const newId = res.rows[0]?.id;
+  if (!newId) throw new Error('Insert returned no id');
 
-  for (const sql of attempts) {
-    try {
-      const res = await query(sql, [payload.username, payload.password_hash ?? '', 'teacher', JSON.stringify(payload.meta ?? {})]);
-      const row = res.rows[0];
-      // if caller provided explicit top-level fields like email or display_name, persist them to columns
-      if (row && (payload.email || payload.display_name)) {
-        try {
-          await query('UPDATE users SET email = $1, display_name = $2 WHERE id = $3', [payload.email ?? null, payload.display_name ?? null, row.id]);
-        } catch (e) {
-          // ignore update failure, return normalized row anyway
-        }
-      }
-      return normalizeRow(row);
-    } catch (err) {
-      continue;
-    }
+  // 2. Link subjects via teacher_subjects
+  await linkSubjects(newId, payload.subjects_taught ?? []);
+
+  return findTeacherById(newId);
+}
+
+/** Link a teacher to a list of subject names (replace existing). */
+async function linkSubjects(teacherId: number, subjectNames: string[]) {
+  // Remove all existing links for this teacher
+  await query('DELETE FROM teacher_subjects WHERE teacher_id = $1', [teacherId]);
+  if (!subjectNames || subjectNames.length === 0) return;
+  // Look up subject IDs by name (case-insensitive)
+  const subjectRes = await query(
+    `SELECT id, name FROM subjects WHERE lower(name) = ANY(ARRAY[${subjectNames.map((_, i) => `$${i + 1}`).join(',')}]::text[])`,
+    subjectNames.map(n => n.toLowerCase())
+  );
+  for (const sub of subjectRes.rows) {
+    await query(
+      'INSERT INTO teacher_subjects (teacher_id, subject_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+      [teacherId, sub.id]
+    );
   }
-
-  throw new Error('Failed to insert teacher into users with expected RETURNING columns');
 }
 
 export async function updateTeacher(id: number, payload: any) {
-  // Only update username if provided; merge other provided fields into the meta JSON
-  // Fetch existing meta
-  const res = await query('SELECT meta FROM users WHERE id = $1 AND role = $2 LIMIT 1', [id, 'teacher']);
-  const existing = res.rows[0];
-  let meta: any = {};
-  try {
-    if (existing && existing.meta) meta = typeof existing.meta === 'string' ? JSON.parse(existing.meta) : existing.meta;
-  } catch (e) {
-    meta = {};
-  }
+  // Verify exists
+  const check = await query('SELECT id FROM users WHERE id = $1 AND role = $2 LIMIT 1', [id, ROLE]);
+  if (!check.rows[0]) return null;
 
-  // If payload contains a username, update it
-  if (Object.prototype.hasOwnProperty.call(payload, 'username')) {
-    await query('UPDATE users SET username = $1 WHERE id = $2 AND role = $3', [payload.username, id, 'teacher']);
-  }
+  // Build SET clause dynamically for only provided scalar fields
+  const ALLOWED = [
+    'display_name', 'email', 'phone', 'gender', 'date_of_birth', 'address',
+    'employment_date', 'employment_status', 'monthly_salary', 'notes', 'staff_id',
+  ];
+  const sets: string[] = [];
+  const vals: any[] = [];
 
-  // Merge other top-level payload fields into meta (except username).
-  // However, certain fields should be stored in top-level columns instead of meta.
-  const payloadMeta = { ...payload };
-  delete payloadMeta.username;
-
-  // Extract top-level fields we want to persist as columns
-  const emailToSet = Object.prototype.hasOwnProperty.call(payloadMeta, 'email') ? payloadMeta.email : undefined;
-  const displayNameToSet = Object.prototype.hasOwnProperty.call(payloadMeta, 'display_name') ? payloadMeta.display_name : (Object.prototype.hasOwnProperty.call(payloadMeta, 'displayName') ? payloadMeta.displayName : undefined);
-
-  // Remove those from payloadMeta so they are not merged into JSON meta
-  if (emailToSet !== undefined) delete payloadMeta.email;
-  if (displayNameToSet !== undefined) { delete payloadMeta.display_name; delete payloadMeta.displayName; }
-
-  // If payload already contains a `meta` object, prefer merging that as well
-  if (payloadMeta.meta && typeof payloadMeta.meta === 'object') {
-    Object.assign(meta, payloadMeta.meta);
-    delete payloadMeta.meta;
-  }
-
-  // Merge remaining keys into meta (but avoid copying sensitive or structural keys)
-  const forbidden = new Set(['id', 'role', 'password_hash', 'password', 'created_at', 'updated_at']);
-  Object.keys(payloadMeta).forEach(k => {
-    if (forbidden.has(k)) return;
-    meta[k] = (payloadMeta as any)[k];
-  });
-
-  await query('UPDATE users SET meta = $1 WHERE id = $2 AND role = $3', [JSON.stringify(meta ?? {}), id, 'teacher']);
-
-  // Persist extracted top-level columns if provided
-  if (emailToSet !== undefined || displayNameToSet !== undefined) {
-    try {
-      await query('UPDATE users SET email = $1, display_name = $2 WHERE id = $3 AND role = $4', [emailToSet ?? null, displayNameToSet ?? null, id, 'teacher']);
-    } catch (e) {
-      // ignore update failure
+  for (const col of ALLOWED) {
+    const key = col === 'monthly_salary' ? (payload.monthly_salary !== undefined ? 'monthly_salary' : 'monthlySalary') : col;
+    if (key in payload && payload[key] !== undefined) {
+      sets.push(`${col} = $${vals.length + 1}`);
+      let val = payload[key];
+      if ((col === 'date_of_birth' || col === 'employment_date') && val === '') {
+        val = null;
+      }
+      vals.push(val);
     }
+  }
+  sets.push('updated_at = NOW()');
+
+  if (sets.length > 1) { // Only update if there are actual scalar fields to change (beyond updated_at)
+    vals.push(id, ROLE);
+    await query(
+      `UPDATE users SET ${sets.join(', ')} WHERE id = $${vals.length - 1} AND role = $${vals.length}`,
+      vals
+    );
+  }
+
+  // Update subject links if provided
+  if ('subjects_taught' in payload && payload.subjects_taught !== undefined) {
+    await linkSubjects(id, payload.subjects_taught);
   }
 
   return findTeacherById(id);
 }
 
 export async function deleteTeacher(id: number) {
-  // soft delete: remove role or mark archived; for now, delete row
-  await query('DELETE FROM users WHERE id = $1 AND role = $2', [id, 'teacher']);
+  await query('DELETE FROM users WHERE id = $1 AND role = $2', [id, ROLE]);
   return { deleted: true };
 }
 
-export default { listTeachers, findTeacherById, createTeacher, updateTeacher, deleteTeacher };
+export default { listTeachers, findTeacherById, findTeacherByStaffId, createTeacher, updateTeacher, deleteTeacher };

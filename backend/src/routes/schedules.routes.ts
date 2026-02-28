@@ -5,10 +5,10 @@ import { requireRole } from '../middlewares/roles.js';
 
 const router = Router();
 
-// Management routes (admin + super-admin)
-router.post('/', requireAuth, requireRole(['admin','super-admin']), controller.create);
-router.put('/:id', requireAuth, requireRole(['admin','super-admin']), controller.update);
-router.delete('/:id', requireAuth, requireRole(['admin','super-admin']), controller.remove);
+// Management routes (admin + super-admin + administrator)
+router.post('/', requireAuth, requireRole(['admin', 'super-admin', 'administrator']), controller.create);
+router.put('/:id', requireAuth, requireRole(['admin', 'super-admin', 'administrator']), controller.update);
+router.delete('/:id', requireAuth, requireRole(['admin', 'super-admin', 'administrator']), controller.remove);
 
 // Read routes (any authenticated user can view schedules)
 router.get('/teacher/:id', requireAuth, controller.byTeacher);

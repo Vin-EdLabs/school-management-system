@@ -15,17 +15,16 @@ async function detectClassTitleColumn() {
 }
 
 async function detectUserNameSelect() {
-  // prefer display_name, then full_name, then username, then first_name+last_name
+  // prefer display_name, then staff_id — never reference the banned username column
   const res = await query(
-    `SELECT column_name FROM information_schema.columns WHERE table_name = 'users' AND column_name IN ('display_name','full_name','username','first_name','last_name')`
+    `SELECT column_name FROM information_schema.columns WHERE table_name = 'users' AND column_name IN ('display_name','full_name','first_name','last_name','staff_id')`
   );
   const cols = (res.rows || []).map((r: any) => r.column_name);
   if (cols.includes('display_name')) return `u.display_name as teacher_name`;
   if (cols.includes('full_name')) return `u.full_name as teacher_name`;
-  if (cols.includes('username')) return `u.username as teacher_name`;
   if (cols.includes('first_name') && cols.includes('last_name')) return `(u.first_name || ' ' || u.last_name) as teacher_name`;
-  // fallback: username alias (may be null if missing)
-  return `u.username as teacher_name`;
+  // final fallback — staff_id is always present
+  return `u.staff_id as teacher_name`;
 }
 
 export async function createSchedule(payload: any) {
@@ -66,7 +65,7 @@ export async function listSchedulesByTeacher(teacherId: number) {
 }
 
 export async function listSchedulesByClass(classId: number) {
-  const res = await query('SELECT s.*, u.username as teacher_username FROM schedules s LEFT JOIN users u ON u.id = s.teacher_id WHERE s.class_id = $1 ORDER BY s.day_of_week, s.start_time', [classId]);
+  const res = await query('SELECT s.*, u.staff_id AS teacher_staff_id FROM schedules s LEFT JOIN users u ON u.id = s.teacher_id WHERE s.class_id = $1 ORDER BY s.day_of_week, s.start_time', [classId]);
   return res.rows;
 }
 
@@ -75,7 +74,7 @@ export async function listAllSchedules() {
   const classSelect = titleCol
     ? `COALESCE(c."${titleCol}", (CASE WHEN c.level IS NOT NULL THEN c.level || COALESCE(' ' || c.stream, '') ELSE 'Class ' || c.id::text END)) as class_name`
     : `(CASE WHEN c.level IS NOT NULL THEN c.level || COALESCE(' ' || c.stream, '') ELSE 'Class ' || c.id::text END) as class_name`;
-  const sql = `SELECT s.*, ${classSelect}, u.username as teacher_username FROM schedules s LEFT JOIN classes c ON c.id = s.class_id LEFT JOIN users u ON u.id = s.teacher_id ORDER BY s.day_of_week, s.start_time`;
+  const sql = `SELECT s.*, ${classSelect}, u.staff_id AS teacher_staff_id FROM schedules s LEFT JOIN classes c ON c.id = s.class_id LEFT JOIN users u ON u.id = s.teacher_id ORDER BY s.day_of_week, s.start_time`;
   const res = await query(sql);
   return res.rows;
 }
@@ -111,12 +110,11 @@ export async function findConflicts({ class_id, teacher_id, room, day_of_week, s
   }
   if (teacher_id != null) {
     try {
-      const thSel = teacherSelect.replace('u.', 'u.');
-      const tSql = `SELECT ${thSel}, u.username as teacher_username FROM users u WHERE u.id = $1 LIMIT 1`;
+      const tSql = `SELECT ${teacherSelect}, u.staff_id AS teacher_staff_id FROM users u WHERE u.id = $1 LIMIT 1`;
       const tRes = await query(tSql, [teacher_id]);
       if (tRes.rows && tRes.rows[0]) {
         proposed.teacher_name = tRes.rows[0].teacher_name;
-        proposed.teacher_username = tRes.rows[0].teacher_username;
+        proposed.teacher_staff_id = tRes.rows[0].teacher_staff_id;
       }
     } catch (e) {
       // ignore
@@ -125,7 +123,7 @@ export async function findConflicts({ class_id, teacher_id, room, day_of_week, s
 
   if (class_id != null) {
     const params: any[] = [dow, class_id, start_time, end_time];
-    let sql = `SELECT s.*, ${classSelect}, ${teacherSelect}, u.username as teacher_username FROM schedules s LEFT JOIN classes c ON c.id = s.class_id LEFT JOIN users u ON u.id = s.teacher_id WHERE s.day_of_week = $1 AND s.class_id = $2 AND ${overlapClause}`;
+    let sql = `SELECT s.*, ${classSelect}, ${teacherSelect}, u.staff_id AS teacher_staff_id FROM schedules s LEFT JOIN classes c ON c.id = s.class_id LEFT JOIN users u ON u.id = s.teacher_id WHERE s.day_of_week = $1 AND s.class_id = $2 AND ${overlapClause}`;
     if (excludeId) { sql += ' AND s.id <> $5'; params.push(excludeId); }
     const res = await query(sql, params);
     res.rows.forEach((r: any) => conflicts.push({ type: 'class', existing: r, proposed }));
@@ -133,7 +131,7 @@ export async function findConflicts({ class_id, teacher_id, room, day_of_week, s
 
   if (teacher_id != null) {
     const params: any[] = [dow, teacher_id, start_time, end_time];
-    let sql = `SELECT s.*, ${classSelect}, ${teacherSelect}, u.username as teacher_username FROM schedules s LEFT JOIN classes c ON c.id = s.class_id LEFT JOIN users u ON u.id = s.teacher_id WHERE s.day_of_week = $1 AND s.teacher_id = $2 AND ${overlapClause}`;
+    let sql = `SELECT s.*, ${classSelect}, ${teacherSelect}, u.staff_id AS teacher_staff_id FROM schedules s LEFT JOIN classes c ON c.id = s.class_id LEFT JOIN users u ON u.id = s.teacher_id WHERE s.day_of_week = $1 AND s.teacher_id = $2 AND ${overlapClause}`;
     if (excludeId) { sql += ' AND s.id <> $5'; params.push(excludeId); }
     const res = await query(sql, params);
     res.rows.forEach((r: any) => conflicts.push({ type: 'teacher', existing: r, proposed }));
@@ -142,7 +140,7 @@ export async function findConflicts({ class_id, teacher_id, room, day_of_week, s
   if (room != null) {
     const params: any[] = [dow, room, start_time, end_time];
     // room is text; compare on room
-    let sql = `SELECT s.*, ${classSelect}, ${teacherSelect}, u.username as teacher_username FROM schedules s LEFT JOIN classes c ON c.id = s.class_id LEFT JOIN users u ON u.id = s.teacher_id WHERE s.day_of_week = $1 AND s.room = $2 AND ${overlapClause}`;
+    let sql = `SELECT s.*, ${classSelect}, ${teacherSelect}, u.staff_id AS teacher_staff_id FROM schedules s LEFT JOIN classes c ON c.id = s.class_id LEFT JOIN users u ON u.id = s.teacher_id WHERE s.day_of_week = $1 AND s.room = $2 AND ${overlapClause}`;
     if (excludeId) { sql += ' AND s.id <> $5'; params.push(excludeId); }
     const res = await query(sql, params);
     res.rows.forEach((r: any) => conflicts.push({ type: 'room', existing: r, proposed }));

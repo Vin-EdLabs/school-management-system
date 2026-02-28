@@ -7,9 +7,7 @@
         "user": "postgres",
         "password": "Edm03nd",
         "schema": "public",
-        "ssl": {
-            "rejectUnauthorized": false
-        }
+        "ssl": false
     },
     "production": {
         "driver": "pg",

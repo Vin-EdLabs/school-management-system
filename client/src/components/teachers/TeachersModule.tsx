@@ -17,8 +17,8 @@ const TeachersModule = () => {
             <GraduationCap className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">Teachers Management</h1>
-            <p className="text-gray-600">Manage teaching staff information and assignments</p>
+            <h1 className="text-3xl font-bold text-foreground">Teachers Management</h1>
+            <p className="text-muted-foreground">Manage teaching staff information and assignments</p>
           </div>
         </div>
       </div>

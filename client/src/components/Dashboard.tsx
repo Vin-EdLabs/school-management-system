@@ -53,8 +53,8 @@ const Dashboard: React.FC<DashboardProps> = ({ initialModule }) => {
     if (!hasAccess(activeModule) && !hasAccess(activeModule + '-view-only')) {
       return (
         <div className="p-6 text-center">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">Access Denied</h2>
-          <p className="text-gray-600">You don't have permission to access this module.</p>
+          <h2 className="text-2xl font-bold text-foreground mb-4">Access Denied</h2>
+          <p className="text-muted-foreground">You don't have permission to access this module.</p>
         </div>
       );
     }

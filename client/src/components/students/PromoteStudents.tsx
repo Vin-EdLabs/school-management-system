@@ -280,7 +280,7 @@ const PromoteStudents = () => {
                 <p className="text-orange-800">
                   <strong>{feeImpactData.studentName}</strong> has an outstanding balance that will become arrears:
                 </p>
-                <div className="bg-white p-4 rounded-lg border border-orange-200">
+                <div className="bg-card p-4 rounded-lg border border-orange-200">
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <p className="font-medium">Current Class:</p>
@@ -317,7 +317,7 @@ const PromoteStudents = () => {
                 <p className="text-orange-800">
                   <strong>{feeImpactData.studentsWithOutstanding} out of {feeImpactData.totalStudents} students</strong> have outstanding balances:
                 </p>
-                <div className="bg-white p-4 rounded-lg border border-orange-200">
+                <div className="bg-card p-4 rounded-lg border border-orange-200">
                   <div className="flex items-center justify-between mb-3">
                     <span className="font-medium">Total Outstanding Amount:</span>
                     <span className="text-red-600 font-bold text-lg">
@@ -585,7 +585,7 @@ const PromoteStudents = () => {
               return (
                 <div key={cls.id} className="p-4 border rounded-lg shadow-sm hover:shadow-md transition-shadow">
                   <h3 className="font-semibold text-lg">{cls.className}</h3>
-                  <p className="text-sm text-gray-600 truncate">{cls.level || 'No Level'}</p>
+                  <p className="text-sm text-muted-foreground truncate">{cls.level || 'No Level'}</p>
                   <div className="mt-2 flex items-center space-x-2">
                     <Badge variant="outline">
                       {studentsInClass.length} students

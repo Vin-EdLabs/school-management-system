@@ -268,7 +268,7 @@ const StudentBalances = () => {
         {/* Search and Filters */}
         <div className="flex flex-col lg:flex-row gap-4 mb-6">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search by student name or ID..."
               value={searchTerm}
@@ -323,7 +323,7 @@ const StudentBalances = () => {
             <TableBody>
               {filteredStudents.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-8 text-gray-500">
+                  <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                     No students found matching your criteria
                   </TableCell>
                 </TableRow>
@@ -335,7 +335,7 @@ const StudentBalances = () => {
                         <div className="font-medium">
                           {student.firstName} {student.lastName}
                         </div>
-                        <div className="text-sm text-gray-500">
+                        <div className="text-sm text-muted-foreground">
                           ID: {student.studentId}
                         </div>
                       </div>
@@ -349,7 +349,7 @@ const StudentBalances = () => {
                       </span>
                     </TableCell>
                     <TableCell>
-                      <span className={`font-mono ${student.arrears > 0 ? 'text-amber-600 font-bold' : 'text-gray-500'
+                      <span className={`font-mono ${student.arrears > 0 ? 'text-amber-600 font-bold' : 'text-muted-foreground'
                         }`}>
                         GHS {student.arrears.toLocaleString()}
                       </span>
@@ -392,23 +392,23 @@ const StudentBalances = () => {
 
         {/* Summary */}
         {filteredStudents.length > 0 && (
-          <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+          <div className="mt-4 p-4 bg-muted/50 rounded-lg">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
               <div>
-                <p className="font-medium text-gray-800">Showing {filteredStudents.length} students</p>
-                <p className="text-gray-600">
+                <p className="font-medium text-foreground">Showing {filteredStudents.length} students</p>
+                <p className="text-muted-foreground">
                   {studentsWithOutstanding} have outstanding balances
                 </p>
               </div>
               <div>
-                <p className="font-medium text-gray-800">Total Outstanding: GHS {totalOutstanding.toLocaleString()}</p>
-                <p className="text-gray-600">
+                <p className="font-medium text-foreground">Total Outstanding: GHS {totalOutstanding.toLocaleString()}</p>
+                <p className="text-muted-foreground">
                   Arrears: GHS {totalArrears.toLocaleString()}
                 </p>
               </div>
               <div>
-                <p className="font-medium text-gray-800">Academic Period: {currentTermName}</p>
-                <p className="text-gray-600">
+                <p className="font-medium text-foreground">Academic Period: {currentTermName}</p>
+                <p className="text-muted-foreground">
                   Generated: {new Date().toLocaleDateString()}
                 </p>
               </div>

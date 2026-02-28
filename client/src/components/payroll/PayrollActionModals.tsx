@@ -73,7 +73,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
                             id="amount"
                             value={`₵ ${Number(payrollItem?.net_amount || 0).toLocaleString()}`}
                             disabled
-                            className="bg-gray-50 font-bold"
+                            className="bg-muted/50 font-bold"
                         />
                     </div>
                     <div className="space-y-2">

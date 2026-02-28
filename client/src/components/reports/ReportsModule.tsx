@@ -260,7 +260,7 @@ const ReportsModule = () => {
               <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
                 Financial Reports & Analytics
               </h1>
-              <p className="text-gray-600 text-lg">Real-time financial insights for {selectedTerm} {getActiveAcademicYear(terms)}</p>
+              <p className="text-muted-foreground text-lg">Real-time financial insights for {selectedTerm} {getActiveAcademicYear(terms)}</p>
             </div>
           </div>
         </div>
@@ -444,11 +444,11 @@ const ReportsModule = () => {
                   {Object.entries(incomeBreakdown.bySource)
                     .sort(([, a], [, b]) => (b as number) - (a as number))
                     .map(([source, amount], index) => (
-                      <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                        <span className="font-medium text-gray-700">{source}</span>
+                      <div key={index} className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
+                        <span className="font-medium text-muted-foreground">{source}</span>
                         <div className="text-right">
                           <div className="font-bold text-green-600">GHS {(amount as number).toLocaleString()}</div>
-                          <div className="text-sm text-gray-500">
+                          <div className="text-sm text-muted-foreground">
                             {((amount as number / incomeBreakdown.total) * 100).toFixed(1)}%
                           </div>
                         </div>
@@ -484,14 +484,14 @@ const ReportsModule = () => {
                   {Object.entries(expenseBreakdown.byCategory)
                     .sort(([, a], [, b]) => (b as any).amount - (a as any).amount)
                     .map(([category, data], index) => (
-                      <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                      <div key={index} className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
                         <div>
-                          <span className="font-medium text-gray-700">{category}</span>
-                          <div className="text-sm text-gray-500">{(data as any).count} transactions</div>
+                          <span className="font-medium text-muted-foreground">{category}</span>
+                          <div className="text-sm text-muted-foreground">{(data as any).count} transactions</div>
                         </div>
                         <div className="text-right">
                           <div className="font-bold text-red-600">GHS {((data as any).amount || 0).toLocaleString()}</div>
-                          <div className="text-sm text-gray-500">
+                          <div className="text-sm text-muted-foreground">
                             {(((data as any).amount / expenseBreakdown.total) * 100).toFixed(1)}%
                           </div>
                         </div>
@@ -515,12 +515,12 @@ const ReportsModule = () => {
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left p-3 font-semibold text-gray-700">Date</th>
-                    <th className="text-left p-3 font-semibold text-gray-700">Type</th>
-                    <th className="text-left p-3 font-semibold text-gray-700">Description</th>
-                    <th className="text-left p-3 font-semibold text-gray-700">Category/Source</th>
-                    <th className="text-right p-3 font-semibold text-gray-700">Amount</th>
+                  <tr className="border-b border-border">
+                    <th className="text-left p-3 font-semibold text-muted-foreground">Date</th>
+                    <th className="text-left p-3 font-semibold text-muted-foreground">Type</th>
+                    <th className="text-left p-3 font-semibold text-muted-foreground">Description</th>
+                    <th className="text-left p-3 font-semibold text-muted-foreground">Category/Source</th>
+                    <th className="text-right p-3 font-semibold text-muted-foreground">Amount</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -531,8 +531,8 @@ const ReportsModule = () => {
                     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                     .slice(0, 10)
                     .map((transaction, index) => (
-                      <tr key={index} className="border-b border-gray-100 hover:bg-gray-50">
-                        <td className="p-3 text-gray-600">
+                      <tr key={index} className="border-b border-gray-100 hover:bg-muted/50">
+                        <td className="p-3 text-muted-foreground">
                           {new Date(transaction.date).toLocaleDateString()}
                         </td>
                         <td className="p-3">
@@ -543,12 +543,12 @@ const ReportsModule = () => {
                             {transaction.type}
                           </span>
                         </td>
-                        <td className="p-3 text-gray-700">
+                        <td className="p-3 text-muted-foreground">
                           {'description' in transaction ? transaction.description :
                             'source' in transaction ? `Income from ${transaction.source}` :
                               'Other transaction'}
                         </td>
-                        <td className="p-3 text-gray-600">
+                        <td className="p-3 text-muted-foreground">
                           {'category' in transaction ? transaction.category :
                             'source' in transaction ? transaction.source : 'N/A'}
                         </td>

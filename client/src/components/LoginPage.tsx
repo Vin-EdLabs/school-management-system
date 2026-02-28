@@ -83,20 +83,20 @@ const LoginPage = () => {
           </div>
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <Label htmlFor="staffId" className="text-sm font-medium text-gray-700">Staff ID</Label>
+              <Label htmlFor="staffId" className="text-sm font-medium text-muted-foreground">Staff ID</Label>
               <div className="relative mt-1">
-                <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input id="staffId" type="text" placeholder="Enter your staff ID" value={staffId} onChange={(e) => setStaffId(e.target.value)} className="pl-10 h-11 border-gray-200" required />
+                <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input id="staffId" type="text" placeholder="Enter your staff ID" value={staffId} onChange={(e) => setStaffId(e.target.value)} className="pl-10 h-11 border-border" required />
               </div>
             </div>
 
             {/* Role selection removed - not required */}
 
             <div>
-              <Label htmlFor="password" className="text-sm font-medium text-gray-700">Password</Label>
+              <Label htmlFor="password" className="text-sm font-medium text-muted-foreground">Password</Label>
               <div className="relative mt-1">
-                <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input id="password" type="password" placeholder="Enter your password" value={password} onChange={(e) => setPassword(e.target.value)} className="pl-10 h-11 border-gray-200" required autoComplete="current-password" />
+                <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input id="password" type="password" placeholder="Enter your password" value={password} onChange={(e) => setPassword(e.target.value)} className="pl-10 h-11 border-border" required autoComplete="current-password" />
               </div>
             </div>
 

@@ -117,7 +117,7 @@ const TypingMessage = () => (
             <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
             <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
           </div>
-          <span className="text-sm text-gray-600 ml-2">AI is thinking...</span>
+          <span className="text-sm text-muted-foreground ml-2">AI is thinking...</span>
         </div>
       </div>
     </div>
@@ -148,12 +148,12 @@ const AiChatModule = () => {
   if (!hasAccess('ai-assistant')) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="max-w-md mx-auto text-center bg-white rounded-2xl p-8 shadow-lg">
-          <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
-            <Bot className="w-8 h-8 text-gray-400" />
+        <div className="max-w-md mx-auto text-center bg-card rounded-2xl p-8 shadow-lg">
+          <div className="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
+            <Bot className="w-8 h-8 text-muted-foreground" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">Access Denied</h2>
-          <p className="text-gray-600">Only Super Admin and Finance roles can access the AI Assistant.</p>
+          <h2 className="text-2xl font-bold text-foreground mb-4">Access Denied</h2>
+          <p className="text-muted-foreground">Only Super Admin and Finance roles can access the AI Assistant.</p>
         </div>
       </div>
     );
@@ -308,17 +308,17 @@ const AiChatModule = () => {
 
   return (
     <>
-      <div className="h-full flex flex-col bg-white">
+      <div className="h-full flex flex-col bg-card">
         {/* Fixed Chat Header */}
-        <div className="flex-shrink-0 p-6 bg-white border-b border-gray-200 shadow-sm">
+        <div className="flex-shrink-0 p-6 bg-card border-b border-border shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl text-white shadow-lg">
                 <Bot className="w-7 h-7" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">AI Assistant</h1>
-                <p className="text-sm text-gray-600">Rosa Gardens School Management</p>
+                <h1 className="text-2xl font-bold text-foreground">AI Assistant</h1>
+                <p className="text-sm text-muted-foreground">Rosa Gardens School Management</p>
               </div>
             </div>
             <div className="flex items-center space-x-3">
@@ -330,7 +330,7 @@ const AiChatModule = () => {
                 variant="ghost"
                 size="sm"
                 onClick={handleClearChat}
-                className="text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-xl"
+                className="text-muted-foreground hover:text-red-600 hover:bg-red-50 rounded-xl"
               >
                 <Trash2 className="w-4 h-4" />
               </Button>
@@ -345,28 +345,28 @@ const AiChatModule = () => {
               {messages.map((message) => (
                 <div key={message.id} className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[85%] ${message.type === 'user'
-                      ? 'bg-white shadow-lg border border-gray-100'
+                      ? 'bg-card shadow-lg border border-gray-100'
                       : 'bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 shadow-sm'
                     } rounded-2xl p-5`}>
 
                     <div className="flex items-start space-x-3">
                       <div className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${message.type === 'user'
-                          ? 'bg-gray-100 border border-gray-200'
+                          ? 'bg-muted border border-border'
                           : 'bg-gradient-to-br from-blue-500 to-indigo-600'
                         }`}>
                         {message.type === 'ai' ? (
                           <Bot className="w-5 h-5 text-white" />
                         ) : (
-                          <User className="w-5 h-5 text-gray-600" />
+                          <User className="w-5 h-5 text-muted-foreground" />
                         )}
                       </div>
 
                       <div className="flex-1 min-w-0">
                         <div
-                          className="text-sm leading-relaxed prose prose-sm max-w-none text-gray-800"
+                          className="text-sm leading-relaxed prose prose-sm max-w-none text-foreground"
                           dangerouslySetInnerHTML={{
                             __html: message.content
-                              .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-900">$1</strong>')
+                              .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-foreground">$1</strong>')
                               .replace(/\n/g, '<br />')
                           }}
                         />
@@ -395,7 +395,7 @@ const AiChatModule = () => {
                           </Button>
                         )}
 
-                        <div className={`text-xs mt-3 ${message.type === 'user' ? 'text-gray-500' : 'text-blue-600/60'
+                        <div className={`text-xs mt-3 ${message.type === 'user' ? 'text-muted-foreground' : 'text-blue-600/60'
                           }`}>
                           {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </div>
@@ -411,11 +411,11 @@ const AiChatModule = () => {
         </div>
 
         {/* Fixed Input Area */}
-        <div className="flex-shrink-0 border-t border-gray-200 bg-white">
+        <div className="flex-shrink-0 border-t border-border bg-card">
           {/* Quick Commands */}
           {showCommands && (
             <div className="p-4 border-b border-gray-100">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
+              <h3 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center">
                 <Zap className="w-4 h-4 mr-2 text-blue-500" />
                 Quick Commands
               </h3>
@@ -461,7 +461,7 @@ const AiChatModule = () => {
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyPress={handleKeyPress}
                   placeholder="Type a command, e.g. 'Record payment ₵500 for 12345' or 'Generate general report'"
-                  className="pr-12 min-h-[52px] text-sm border-gray-300 focus:border-blue-500 focus:ring-blue-500 rounded-xl shadow-sm"
+                  className="pr-12 min-h-[52px] text-sm border-border focus:border-blue-500 focus:ring-blue-500 rounded-xl shadow-sm"
                   disabled={isProcessing}
                 />
               </div>
@@ -475,29 +475,29 @@ const AiChatModule = () => {
               <Button
                 variant="outline"
                 size="sm"
-                className="h-[52px] w-[52px] p-0 border-gray-300 hover:bg-gray-50 rounded-xl"
+                className="h-[52px] w-[52px] p-0 border-border hover:bg-muted/50 rounded-xl"
                 disabled={isProcessing}
               >
-                <Mic className="w-5 h-5 text-gray-500" />
+                <Mic className="w-5 h-5 text-muted-foreground" />
               </Button>
             </div>
 
             <div className="mt-3 flex flex-wrap gap-2">
               <button
                 onClick={() => handleQuickCommand('Record payment ₵500 for student 12345')}
-                className="text-xs bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full transition-colors duration-200"
+                className="text-xs bg-muted hover:bg-secondary px-3 py-1 rounded-full transition-colors duration-200"
               >
                 💡 Record payment ₵500 for student 12345
               </button>
               <button
                 onClick={() => handleQuickCommand('Generate general report for current term')}
-                className="text-xs bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full transition-colors duration-200"
+                className="text-xs bg-muted hover:bg-secondary px-3 py-1 rounded-full transition-colors duration-200"
               >
                 📊 Generate general report for current term
               </button>
               <button
                 onClick={() => handleQuickCommand('Which students owe money?')}
-                className="text-xs bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full transition-colors duration-200"
+                className="text-xs bg-muted hover:bg-secondary px-3 py-1 rounded-full transition-colors duration-200"
               >
                 👥 Which students owe money?
               </button>

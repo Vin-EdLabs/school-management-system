@@ -183,7 +183,7 @@ const SetFeeStructure = () => {
               <span>{editingId ? 'Edit Fee Structure' : 'Set Fee Structure'}</span>
             </div>
             {editingId && (
-              <Button variant="ghost" size="sm" onClick={resetForm} className="text-slate-500">
+              <Button variant="ghost" size="sm" onClick={resetForm} className="text-muted-foreground">
                 <X className="w-4 h-4 mr-1" /> Cancel Edit
               </Button>
             )}
@@ -280,9 +280,9 @@ const SetFeeStructure = () => {
       </Card>
 
       {/* Current Fee Structures */}
-      <Card className="border-none shadow-xl bg-slate-50/50 backdrop-blur-sm">
+      <Card className="border-none shadow-xl bg-muted/50/50 backdrop-blur-sm">
         <CardHeader className="pb-2">
-          <CardTitle className="text-xl font-bold text-slate-800 flex items-center gap-2">
+          <CardTitle className="text-xl font-bold text-foreground flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-600">
               <DollarSign className="w-5 h-5" />
             </div>
@@ -300,21 +300,21 @@ const SetFeeStructure = () => {
               return (
                 <div
                   key={fee.id}
-                  className={`group relative bg-white border rounded-2xl p-5 hover:shadow-md transition-all duration-300 overflow-hidden ${editingId === fee.id ? 'border-indigo-400 ring-1 ring-indigo-400' : 'border-slate-200'}`}
+                  className={`group relative bg-card border rounded-2xl p-5 hover:shadow-md transition-all duration-300 overflow-hidden ${editingId === fee.id ? 'border-indigo-400 ring-1 ring-indigo-400' : 'border-border'}`}
                 >
                   <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-50/30 rounded-full -mr-12 -mt-12 group-hover:bg-indigo-50/50 transition-colors" />
 
                   <div className="relative flex justify-between items-start mb-4">
                     <div className="z-10">
                       <div className="flex items-center gap-2 mb-1">
-                        <h3 className="text-lg font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
+                        <h3 className="text-lg font-bold text-foreground group-hover:text-indigo-600 transition-colors">
                           {fee.className}
                         </h3>
-                        <Badge variant="outline" className="bg-slate-50 text-slate-600 border-slate-200 text-[10px] uppercase font-bold tracking-wider">
+                        <Badge variant="outline" className="bg-muted/50 text-muted-foreground border-border text-[10px] uppercase font-bold tracking-wider">
                           Level
                         </Badge>
                       </div>
-                      <div className="flex items-center gap-1.5 text-sm text-slate-500">
+                      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
                         <Badge variant="secondary" className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-none px-2 py-0 h-6">
                           {term ? `${term.name} ${term.year}` : 'Global Structure'}
                         </Badge>
@@ -322,14 +322,14 @@ const SetFeeStructure = () => {
                     </div>
                     <div className="text-right z-10">
                       <div className="text-2xl font-black text-indigo-600">
-                        <span className="text-sm font-medium text-slate-400 mr-1">GHS</span>
+                        <span className="text-sm font-medium text-muted-foreground mr-1">GHS</span>
                         {amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </div>
                       <div className="flex items-center justify-end gap-2 mt-2">
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 rounded-full text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
+                          className="h-8 w-8 rounded-full text-muted-foreground hover:text-indigo-600 hover:bg-indigo-50"
                           onClick={() => handleEdit(fee)}
                         >
                           <Edit className="h-4 w-4" />
@@ -337,7 +337,7 @@ const SetFeeStructure = () => {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 rounded-full text-slate-400 hover:text-red-600 hover:bg-red-50"
+                          className="h-8 w-8 rounded-full text-muted-foreground hover:text-red-600 hover:bg-red-50"
                           onClick={() => handleDelete(fee.id)}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -348,23 +348,23 @@ const SetFeeStructure = () => {
 
                   <div className="relative flex flex-col gap-3">
                     {description && (
-                      <p className="text-sm text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-dashed border-slate-200 line-clamp-2 italic">
+                      <p className="text-sm text-muted-foreground bg-muted/50 p-2.5 rounded-xl border border-dashed border-border line-clamp-2 italic">
                         "{description}"
                       </p>
                     )}
 
                     <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-100">
-                      <div className="flex items-center text-slate-500">
+                      <div className="flex items-center text-muted-foreground">
                         {dueDate ? (
                           <div className="flex items-center gap-1.5 text-amber-600 font-medium">
                             <Clock className="w-3.5 h-3.5" />
                             <span>Due: {new Date(dueDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                           </div>
                         ) : (
-                          <span className="text-slate-400">No due date set</span>
+                          <span className="text-muted-foreground">No due date set</span>
                         )}
                       </div>
-                      <div className="text-slate-400">
+                      <div className="text-muted-foreground">
                         Ref: #{fee.id.toString().padStart(4, '0')}
                       </div>
                     </div>
@@ -374,12 +374,12 @@ const SetFeeStructure = () => {
             })}
 
             {feeStructures.length === 0 && (
-              <div className="col-span-full py-16 text-center bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl">
-                <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <DollarSign className="w-8 h-8 text-slate-400" />
+              <div className="col-span-full py-16 text-center bg-muted/50 border-2 border-dashed border-border rounded-2xl">
+                <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+                  <DollarSign className="w-8 h-8 text-muted-foreground" />
                 </div>
-                <h3 className="text-lg font-medium text-slate-600">No fee structures set yet</h3>
-                <p className="text-slate-400 text-sm mt-1">Use the form above to configure fees for your classes.</p>
+                <h3 className="text-lg font-medium text-muted-foreground">No fee structures set yet</h3>
+                <p className="text-muted-foreground text-sm mt-1">Use the form above to configure fees for your classes.</p>
               </div>
             )}
           </div>

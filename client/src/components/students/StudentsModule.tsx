@@ -24,8 +24,8 @@ const StudentsModule = () => {
             <Users className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">Students Management</h1>
-            <p className="text-gray-600">Manage student information and records</p>
+            <h1 className="text-3xl font-bold text-foreground">Students Management</h1>
+            <p className="text-muted-foreground">Manage student information and records</p>
           </div>
         </div>
       </div>

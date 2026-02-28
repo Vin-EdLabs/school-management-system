@@ -36,7 +36,7 @@ const eventColors = [
   { name: 'Meeting', value: 'bg-purple-500', text: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200', dot: 'bg-purple-500' },
   { name: 'Holiday', value: 'bg-rose-500', text: 'text-rose-700', bg: 'bg-rose-50', border: 'border-rose-200', dot: 'bg-rose-500' },
   { name: 'Exam', value: 'bg-amber-500', text: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', dot: 'bg-amber-500' },
-  { name: 'Other', value: 'bg-slate-500', text: 'text-slate-700', bg: 'bg-slate-50', border: 'border-slate-200', dot: 'bg-slate-500' },
+  { name: 'Other', value: 'bg-muted/500', text: 'text-muted-foreground', bg: 'bg-muted/50', border: 'border-border', dot: 'bg-muted/500' },
 ];
 
 const eventCategories = [
@@ -363,13 +363,13 @@ export default function CalendarModule() {
               <Button
                 variant="outline"
                 onClick={() => navigateMonth('prev')}
-                className="gap-2 hover:bg-slate-50 border-slate-200 px-6 py-3 rounded-xl"
+                className="gap-2 hover:bg-muted/50 border-border px-6 py-3 rounded-xl"
               >
                 <ChevronLeft className="h-4 w-4" />
                 Previous
               </Button>
               <div className="text-center">
-                <h2 className="text-2xl font-bold text-slate-800">
+                <h2 className="text-2xl font-bold text-foreground">
                   {format(subMonths(currentDate, 1), 'MMM')} - {format(addMonths(currentDate, 1), 'MMM yyyy')}
                 </h2>
                 <p className="text-sm text-muted-foreground mt-1">Three month view</p>
@@ -377,7 +377,7 @@ export default function CalendarModule() {
               <Button
                 variant="outline"
                 onClick={() => navigateMonth('next')}
-                className="gap-2 hover:bg-slate-50 border-slate-200 px-6 py-3 rounded-xl"
+                className="gap-2 hover:bg-muted/50 border-border px-6 py-3 rounded-xl"
               >
                 Next
                 <ChevronRight className="h-4 w-4" />
@@ -390,8 +390,8 @@ export default function CalendarModule() {
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
           {months.map((month, index) => (
             <Card key={index} className="border-0 shadow-xl bg-white/90 backdrop-blur-sm hover:shadow-2xl transition-all duration-300 overflow-hidden">
-              <CardHeader className="bg-gradient-to-r from-slate-100 to-slate-50 border-b border-slate-200">
-                <CardTitle className="text-center text-xl font-bold text-slate-800">
+              <CardHeader className="bg-gradient-to-r from-slate-100 to-slate-50 border-b border-border">
+                <CardTitle className="text-center text-xl font-bold text-foreground">
                   {format(month, 'MMMM yyyy')}
                 </CardTitle>
               </CardHeader>
@@ -475,8 +475,8 @@ export default function CalendarModule() {
 
         {/* Events List */}
         <Card className="border-0 shadow-xl bg-white/90 backdrop-blur-sm">
-          <CardHeader className="bg-gradient-to-r from-slate-100 to-slate-50 border-b border-slate-200">
-            <CardTitle className="text-2xl font-bold text-slate-800 flex items-center gap-3">
+          <CardHeader className="bg-gradient-to-r from-slate-100 to-slate-50 border-b border-border">
+            <CardTitle className="text-2xl font-bold text-foreground flex items-center gap-3">
               <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
                 <Clock className="h-4 w-4 text-white" />
               </div>
@@ -509,10 +509,10 @@ export default function CalendarModule() {
                               </Badge>
                             )}
                           </div>
-                          <h3 className={`font-bold text-lg ${colorConfig.text} mb-3 group-hover:text-slate-800 transition-colors`}>
+                          <h3 className={`font-bold text-lg ${colorConfig.text} mb-3 group-hover:text-foreground transition-colors`}>
                             {event.title}
                           </h3>
-                          <div className="flex items-center gap-6 text-sm text-slate-600 mb-3">
+                          <div className="flex items-center gap-6 text-sm text-muted-foreground mb-3">
                             {event.time && (
                               <div className="flex items-center gap-2">
                                 <Clock className="h-4 w-4" />
@@ -527,7 +527,7 @@ export default function CalendarModule() {
                             )}
                           </div>
                           {event.description && (
-                            <p className="text-sm text-slate-600 line-clamp-2 leading-relaxed">{event.description}</p>
+                            <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">{event.description}</p>
                           )}
                         </div>
                         <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
@@ -569,11 +569,11 @@ export default function CalendarModule() {
                 })}
               {events.length === 0 && (
                 <div className="text-center py-12">
-                  <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <CalendarIcon className="h-8 w-8 text-slate-400" />
+                  <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+                    <CalendarIcon className="h-8 w-8 text-muted-foreground" />
                   </div>
-                  <h3 className="text-lg font-semibold text-slate-600 mb-2">No events scheduled</h3>
-                  <p className="text-slate-500">Click on any date to create your first event</p>
+                  <h3 className="text-lg font-semibold text-muted-foreground mb-2">No events scheduled</h3>
+                  <p className="text-muted-foreground">Click on any date to create your first event</p>
                 </div>
               )}
             </div>
@@ -583,8 +583,8 @@ export default function CalendarModule() {
         {/* Event Dialog */}
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto border-0 shadow-2xl bg-white/95 backdrop-blur-sm">
-            <DialogHeader className="pb-6 border-b border-slate-200">
-              <DialogTitle className="text-2xl font-bold text-slate-800 flex items-center gap-3">
+            <DialogHeader className="pb-6 border-b border-border">
+              <DialogTitle className="text-2xl font-bold text-foreground flex items-center gap-3">
                 <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
                   <CalendarIcon className="h-4 w-4 text-white" />
                 </div>
@@ -602,7 +602,7 @@ export default function CalendarModule() {
                       <CalendarIcon className="h-5 w-5 text-white" />
                     </div>
                     <div>
-                      <span className="text-sm font-medium text-slate-600">Selected Date</span>
+                      <span className="text-sm font-medium text-muted-foreground">Selected Date</span>
                       <div className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
                         {format(selectedDate, 'EEEE, MMMM d, yyyy')}
                       </div>
@@ -613,7 +613,7 @@ export default function CalendarModule() {
 
               {/* Event Title */}
               <div className="space-y-3">
-                <Label htmlFor="title" className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                <Label htmlFor="title" className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
                   Event Title <span className="text-red-500">*</span>
                 </Label>
                 <Input
@@ -621,27 +621,27 @@ export default function CalendarModule() {
                   value={eventForm.title}
                   onChange={(e) => setEventForm({ ...eventForm, title: e.target.value })}
                   placeholder="Enter a descriptive title for your event"
-                  className="h-12 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:ring-0 text-lg"
+                  className="h-12 border-2 border-border rounded-xl focus:border-blue-500 focus:ring-0 text-lg"
                 />
               </div>
 
               {/* Description */}
               <div className="space-y-3">
-                <Label htmlFor="description" className="text-sm font-semibold text-slate-700">Description</Label>
+                <Label htmlFor="description" className="text-sm font-semibold text-muted-foreground">Description</Label>
                 <Textarea
                   id="description"
                   value={eventForm.description}
                   onChange={(e) => setEventForm({ ...eventForm, description: e.target.value })}
                   placeholder="Add details about your event..."
                   rows={4}
-                  className="resize-none border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:ring-0"
+                  className="resize-none border-2 border-border rounded-xl focus:border-blue-500 focus:ring-0"
                 />
               </div>
 
               {/* Time and Category Row */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-3">
-                  <Label htmlFor="time" className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                  <Label htmlFor="time" className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
                     <Clock className="h-4 w-4" />
                     Time
                   </Label>
@@ -650,19 +650,19 @@ export default function CalendarModule() {
                     type="time"
                     value={eventForm.time}
                     onChange={(e) => setEventForm({ ...eventForm, time: e.target.value })}
-                    className="h-12 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:ring-0"
+                    className="h-12 border-2 border-border rounded-xl focus:border-blue-500 focus:ring-0"
                   />
                 </div>
                 <div className="space-y-3">
-                  <Label htmlFor="category" className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                  <Label htmlFor="category" className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
                     <Tag className="h-4 w-4" />
                     Category
                   </Label>
                   <Select value={eventForm.category} onValueChange={(value) => setEventForm({ ...eventForm, category: value })}>
-                    <SelectTrigger className="h-12 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:ring-0">
+                    <SelectTrigger className="h-12 border-2 border-border rounded-xl focus:border-blue-500 focus:ring-0">
                       <SelectValue placeholder="Select category" />
                     </SelectTrigger>
-                    <SelectContent className="rounded-xl border-2 border-slate-200">
+                    <SelectContent className="rounded-xl border-2 border-border">
                       {eventCategories.map((category) => (
                         <SelectItem key={category} value={category} className="rounded-lg">
                           {category}
@@ -675,7 +675,7 @@ export default function CalendarModule() {
 
               {/* Location */}
               <div className="space-y-3">
-                <Label htmlFor="location" className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                <Label htmlFor="location" className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
                   <MapPin className="h-4 w-4" />
                   Location
                 </Label>
@@ -684,18 +684,18 @@ export default function CalendarModule() {
                   value={eventForm.location}
                   onChange={(e) => setEventForm({ ...eventForm, location: e.target.value })}
                   placeholder="Where will this event take place?"
-                  className="h-12 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:ring-0"
+                  className="h-12 border-2 border-border rounded-xl focus:border-blue-500 focus:ring-0"
                 />
               </div>
 
               {/* Color Tag */}
               <div className="space-y-3">
-                <Label htmlFor="color" className="text-sm font-semibold text-slate-700">Color Theme</Label>
+                <Label htmlFor="color" className="text-sm font-semibold text-muted-foreground">Color Theme</Label>
                 <Select value={eventForm.color} onValueChange={(value) => setEventForm({ ...eventForm, color: value })}>
-                  <SelectTrigger className="h-12 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:ring-0">
+                  <SelectTrigger className="h-12 border-2 border-border rounded-xl focus:border-blue-500 focus:ring-0">
                     <SelectValue placeholder="Choose a color theme" />
                   </SelectTrigger>
-                  <SelectContent className="rounded-xl border-2 border-slate-200">
+                  <SelectContent className="rounded-xl border-2 border-border">
                     {eventColors.map((color) => (
                       <SelectItem key={color.value} value={color.value} className="rounded-lg">
                         <div className="flex items-center gap-3">
@@ -714,11 +714,11 @@ export default function CalendarModule() {
               <div className="space-y-6">
                 <div className="flex items-center justify-between p-4 bg-amber-50 rounded-xl border border-amber-200">
                   <div className="space-y-1">
-                    <Label htmlFor="reminder" className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                    <Label htmlFor="reminder" className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
                       <Bell className="h-4 w-4" />
                       Set Reminder
                     </Label>
-                    <p className="text-xs text-slate-600">Get notified before the event starts</p>
+                    <p className="text-xs text-muted-foreground">Get notified before the event starts</p>
                   </div>
                   <Switch
                     id="reminder"
@@ -729,9 +729,9 @@ export default function CalendarModule() {
 
                 {eventForm.reminder && (
                   <div className="space-y-3 pl-6 border-l-4 border-amber-300 bg-amber-50/50 py-4 rounded-r-xl">
-                    <Label htmlFor="reminderTime" className="text-sm font-semibold text-slate-700">Remind me</Label>
+                    <Label htmlFor="reminderTime" className="text-sm font-semibold text-muted-foreground">Remind me</Label>
                     <Select value={eventForm.reminderTime} onValueChange={(value) => setEventForm({ ...eventForm, reminderTime: value })}>
-                      <SelectTrigger className="h-12 border-2 border-amber-200 rounded-xl focus:border-amber-500 focus:ring-0 bg-white">
+                      <SelectTrigger className="h-12 border-2 border-amber-200 rounded-xl focus:border-amber-500 focus:ring-0 bg-card">
                         <SelectValue placeholder="Select reminder time" />
                       </SelectTrigger>
                       <SelectContent className="rounded-xl border-2 border-amber-200">
@@ -748,11 +748,11 @@ export default function CalendarModule() {
             </div>
 
             {/* Dialog Actions */}
-            <div className="flex justify-end gap-4 pt-6 border-t border-slate-200">
+            <div className="flex justify-end gap-4 pt-6 border-t border-border">
               <Button
                 variant="outline"
                 onClick={resetForm}
-                className="px-8 py-3 rounded-xl border-2 border-slate-200 hover:bg-slate-50"
+                className="px-8 py-3 rounded-xl border-2 border-border hover:bg-muted/50"
               >
                 Cancel
               </Button>
@@ -770,8 +770,8 @@ export default function CalendarModule() {
         {/* Event Details Dialog */}
         <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
           <DialogContent className="sm:max-w-[600px] border-0 shadow-2xl bg-white/95 backdrop-blur-sm">
-            <DialogHeader className="border-b border-slate-200 pb-6">
-              <DialogTitle className="flex items-center gap-3 text-2xl font-bold text-slate-800">
+            <DialogHeader className="border-b border-border pb-6">
+              <DialogTitle className="flex items-center gap-3 text-2xl font-bold text-foreground">
                 <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
                   <Eye className="h-4 w-4 text-white" />
                 </div>
@@ -782,7 +782,7 @@ export default function CalendarModule() {
             {viewingEvent && (
               <div className="space-y-6 py-6">
                 <div className="text-center space-y-4">
-                  <h2 className="text-3xl font-bold text-slate-800">{viewingEvent.title}</h2>
+                  <h2 className="text-3xl font-bold text-foreground">{viewingEvent.title}</h2>
                   <div className="flex justify-center gap-3">
                     <Badge className={`${getColorConfig(viewingEvent.color).value} text-white px-4 py-2 text-sm font-semibold rounded-xl shadow-sm`}>
                       {format(viewingEvent.date, 'EEEE, MMMM d, yyyy')}
@@ -798,29 +798,29 @@ export default function CalendarModule() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {viewingEvent.time && (
                     <div className="space-y-2">
-                      <Label className="text-sm font-semibold text-slate-600 flex items-center gap-2">
+                      <Label className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
                         <Clock className="h-4 w-4" />
                         Time
                       </Label>
-                      <p className="text-lg font-medium text-slate-800">{viewingEvent.time}</p>
+                      <p className="text-lg font-medium text-foreground">{viewingEvent.time}</p>
                     </div>
                   )}
 
                   {viewingEvent.location && (
                     <div className="space-y-2">
-                      <Label className="text-sm font-semibold text-slate-600 flex items-center gap-2">
+                      <Label className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
                         <MapPin className="h-4 w-4" />
                         Location
                       </Label>
-                      <p className="text-lg font-medium text-slate-800">{viewingEvent.location}</p>
+                      <p className="text-lg font-medium text-foreground">{viewingEvent.location}</p>
                     </div>
                   )}
                 </div>
 
                 {viewingEvent.description && (
                   <div className="space-y-3">
-                    <Label className="text-sm font-semibold text-slate-600">Description</Label>
-                    <p className="text-slate-700 bg-slate-50 p-4 rounded-xl leading-relaxed">
+                    <Label className="text-sm font-semibold text-muted-foreground">Description</Label>
+                    <p className="text-muted-foreground bg-muted/50 p-4 rounded-xl leading-relaxed">
                       {viewingEvent.description}
                     </p>
                   </div>
@@ -828,7 +828,7 @@ export default function CalendarModule() {
 
                 {viewingEvent.reminder && (
                   <div className="space-y-2">
-                    <Label className="text-sm font-semibold text-slate-600 flex items-center gap-2">
+                    <Label className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
                       <Bell className="h-4 w-4" />
                       Reminder
                     </Label>
@@ -845,7 +845,7 @@ export default function CalendarModule() {
                   <Button
                     variant="outline"
                     onClick={() => setIsDetailsOpen(false)}
-                    className="px-6 py-3 rounded-xl border-2 border-slate-200 hover:bg-slate-50"
+                    className="px-6 py-3 rounded-xl border-2 border-border hover:bg-muted/50"
                   >
                     Close
                   </Button>

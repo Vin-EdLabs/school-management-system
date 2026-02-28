@@ -49,9 +49,9 @@ const Button = React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HT
     const variants = {
       default: "bg-purple-600 text-white hover:bg-purple-700 shadow-sm",
       destructive: "bg-red-500 text-white hover:bg-red-600 shadow-sm",
-      outline: "border border-gray-200 bg-transparent shadow-sm hover:bg-gray-100 text-gray-900",
-      secondary: "bg-gray-100 text-gray-900 hover:bg-gray-200",
-      ghost: "hover:bg-gray-100 hover:text-gray-900",
+      outline: "border border-border bg-transparent shadow-sm hover:bg-muted text-foreground",
+      secondary: "bg-muted text-foreground hover:bg-secondary",
+      ghost: "hover:bg-muted hover:text-foreground",
       link: "text-purple-900 underline-offset-4 hover:underline",
     };
     const sizes = {
@@ -83,7 +83,7 @@ const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLI
       <input
         type={type}
         className={cn(
-          "flex h-9 w-full rounded-md border border-gray-200 bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-gray-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-purple-950 disabled:cursor-not-allowed disabled:opacity-50",
+          "flex h-9 w-full rounded-md border border-border bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-purple-950 disabled:cursor-not-allowed disabled:opacity-50",
           className
         )}
         ref={ref}
@@ -110,9 +110,9 @@ Label.displayName = "Label";
 const Badge = ({ className, variant = "default", ...props }: React.HTMLAttributes<HTMLDivElement> & { variant?: "default" | "secondary" | "destructive" | "outline" }) => {
   const variants = {
     default: "border-transparent bg-purple-600 text-white shadow hover:bg-purple-700",
-    secondary: "border-transparent bg-gray-100 text-gray-900 hover:bg-gray-200",
+    secondary: "border-transparent bg-muted text-foreground hover:bg-secondary",
     destructive: "border-transparent bg-red-500 text-white shadow hover:bg-red-600",
-    outline: "text-gray-900 border-gray-200",
+    outline: "text-foreground border-border",
   };
   return (
     <div className={cn("inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-purple-950 focus:ring-offset-2", variants[variant], className)} {...props} />
@@ -121,7 +121,7 @@ const Badge = ({ className, variant = "default", ...props }: React.HTMLAttribute
 
 // -- Card --
 const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn("rounded-xl border bg-white text-gray-950 shadow", className)} {...props} />
+  <div ref={ref} className={cn("rounded-xl border bg-card text-gray-950 shadow", className)} {...props} />
 ));
 const CardHeader = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ className, ...props }, ref) => (
   <div ref={ref} className={cn("flex flex-col space-y-1.5 p-6", className)} {...props} />
@@ -149,7 +149,7 @@ const Tabs = ({ value, onValueChange, children, className }: any) => (
   </TabsContext.Provider>
 );
 const TabsList = ({ className, children }: any) => (
-  <div className={cn("inline-flex h-9 items-center justify-center rounded-lg bg-gray-100 p-1 text-gray-500", className)}>{children}</div>
+  <div className={cn("inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground", className)}>{children}</div>
 );
 const TabsTrigger = ({ value, className, children }: any) => {
   const { value: selected, onValueChange } = useContext(TabsContext);
@@ -158,7 +158,7 @@ const TabsTrigger = ({ value, className, children }: any) => {
       onClick={() => onValueChange(value)}
       className={cn(
         "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-white transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-950 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
-        selected === value ? "bg-white text-gray-950 shadow" : "hover:bg-gray-200 hover:text-gray-900",
+        selected === value ? "bg-card text-gray-950 shadow" : "hover:bg-secondary hover:text-foreground",
         className
       )}
     >
@@ -185,8 +185,8 @@ const Dialog = ({ open, onOpenChange, children }: any) => {
   );
 };
 const DialogContent = ({ children, className, onClose }: any) => (
-  <div className={cn("relative z-50 grid w-full max-w-lg gap-4 border bg-white p-6 shadow-lg duration-200 sm:rounded-lg", className)}>
-    <button onClick={onClose} className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-white transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-purple-950 focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-gray-100 data-[state=open]:text-gray-500">
+  <div className={cn("relative z-50 grid w-full max-w-lg gap-4 border bg-card p-6 shadow-lg duration-200 sm:rounded-lg", className)}>
+    <button onClick={onClose} className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-white transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-purple-950 focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-muted data-[state=open]:text-muted-foreground">
       <X className="h-4 w-4" />
       <span className="sr-only">Close</span>
     </button>
@@ -200,7 +200,7 @@ const DialogTitle = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<
   <h2 ref={ref} className={cn("text-lg font-semibold leading-none tracking-tight", className)} {...props} />
 ));
 const DialogDescription = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<HTMLParagraphElement>>(({ className, ...props }, ref) => (
-  <p ref={ref} className={cn("text-sm text-gray-500", className)} {...props} />
+  <p ref={ref} className={cn("text-sm text-muted-foreground", className)} {...props} />
 ));
 
 // -- Select (Simplified Custom Implementation) --
@@ -233,7 +233,7 @@ const SelectTrigger = ({ className, children }: any) => {
     <button
       onClick={() => setOpen(!open)}
       className={cn(
-        "flex h-9 w-full items-center justify-between rounded-md border border-gray-200 bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-white placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-purple-950 disabled:cursor-not-allowed disabled:opacity-50",
+        "flex h-9 w-full items-center justify-between rounded-md border border-border bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-white placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-purple-950 disabled:cursor-not-allowed disabled:opacity-50",
         className
       )}
     >
@@ -246,7 +246,7 @@ const SelectTrigger = ({ className, children }: any) => {
 const SelectValue = ({ placeholder }: any) => {
   const { value } = useContext(SelectContext);
   // Minimal SelectValue: prefer human-readable value if provided, otherwise placeholder.
-  if (!value) return <span className="text-gray-500">{placeholder}</span>;
+  if (!value) return <span className="text-muted-foreground">{placeholder}</span>;
   // If value is a primitive string/number return it directly. More advanced
   // label resolution can be added later by lifting option lists into the
   // Select context.
@@ -257,7 +257,7 @@ const SelectContent = ({ children, className }: any) => {
   const { open } = useContext(SelectContext);
   if (!open) return null;
   return (
-    <div className={cn("absolute z-50 min-w-[8rem] overflow-hidden rounded-md border bg-white text-gray-950 shadow-md animate-in fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-2 top-full mt-1 w-full", className)}>
+    <div className={cn("absolute z-50 min-w-[8rem] overflow-hidden rounded-md border bg-card text-gray-950 shadow-md animate-in fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-2 top-full mt-1 w-full", className)}>
       <div className="p-1 max-h-60 overflow-y-auto">{children}</div>
     </div>
   );
@@ -273,8 +273,8 @@ const SelectItem = ({ value, children, className }: any) => {
         setOpen(false);
       }}
       className={cn(
-        "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-2 pr-8 text-sm outline-none hover:bg-gray-100 focus:bg-gray-100 focus:text-gray-900 data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
-        selectedValue === value && "font-semibold bg-gray-50",
+        "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-2 pr-8 text-sm outline-none hover:bg-muted focus:bg-muted focus:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+        selectedValue === value && "font-semibold bg-muted/50",
         className
       )}
     >
@@ -715,12 +715,12 @@ const GradesModule = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 font-sans">
+    <div className="min-h-screen bg-muted/50 p-6 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Toast */}
         {toastMessage && (
           <div className="fixed top-4 right-4 z-50 animate-in slide-in-from-top fade-in duration-300">
-            <Alert className="bg-white shadow-lg border-green-500">
+            <Alert className="bg-card shadow-lg border-green-500">
               <CheckCircle className="w-4 h-4 text-green-600" />
               <AlertDescription>{toastMessage}</AlertDescription>
             </Alert>
@@ -734,8 +734,8 @@ const GradesModule = () => {
               <BookOpen className="w-7 h-7 text-white" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Grade Management</h1>
-              <p className="text-gray-600">Smart grade entry and analytics system</p>
+              <h1 className="text-3xl font-bold text-foreground">Grade Management</h1>
+              <p className="text-muted-foreground">Smart grade entry and analytics system</p>
             </div>
           </div>
 
@@ -821,7 +821,7 @@ const GradesModule = () => {
                     )}
                   </SelectTrigger>
                   <SelectContent>
-                    {exams.filter((e: any) => String(e.classId) === String(selectedClass)).length === 0 && <div className="p-2 text-sm text-gray-500">No exams yet</div>}
+                    {exams.filter((e: any) => String(e.classId) === String(selectedClass)).length === 0 && <div className="p-2 text-sm text-muted-foreground">No exams yet</div>}
                     {exams
                       .filter((e: any) => String(e.classId) === String(selectedClass) && (!selectedSubject || String(e.subjectId) === String(selectedSubject)))
                       .map((a: any) => (
@@ -841,7 +841,7 @@ const GradesModule = () => {
 
         {/* Status Bar */}
         {selectedAssignment && (
-          <div className="flex items-center justify-between bg-white p-4 rounded-lg border shadow-sm animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center justify-between bg-card p-4 rounded-lg border shadow-sm animate-in fade-in slide-in-from-top-2">
 
             <Button
               variant="outline"
@@ -879,7 +879,7 @@ const GradesModule = () => {
                         : "Student Grades Grid"}
                     </span>
                   </div>
-                  <div className="text-sm font-normal text-gray-600">
+                  <div className="text-sm font-normal text-muted-foreground">
                     {filteredStudents.length} students
                   </div>
                 </CardTitle>
@@ -887,9 +887,9 @@ const GradesModule = () => {
               <CardContent>
                 {!selectedAssignment ? (
                   <div className="text-center py-12">
-                    <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">No Exam Selected</h3>
-                    <p className="text-gray-500 mb-4">Create or select an exam to start entering grades</p>
+                    <AlertCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-foreground mb-2">No Exam Selected</h3>
+                    <p className="text-muted-foreground mb-4">Create or select an exam to start entering grades</p>
                     <Button onClick={() => setShowCreateExamDialog(true)} className="bg-gradient-to-r from-purple-500 to-pink-600 text-white border-0">
                       <Plus className="w-4 h-4 mr-2" />
                       Create New Exam
@@ -898,13 +898,13 @@ const GradesModule = () => {
                 ) : (
                   <div className="overflow-x-visible">
                     <table className="w-full text-sm">
-                      <thead className="bg-gray-50 border-b-2 border-gray-200">
+                      <thead className="bg-muted/50 border-b-2 border-border">
                         <tr>
-                          <th className="text-left py-3 px-4 font-semibold text-gray-700">Student</th>
-                          <th className="text-center py-3 px-4 font-semibold text-gray-700">Score</th>
-                          <th className="text-center py-3 px-4 font-semibold text-gray-700">Grade</th>
-                          <th className="text-center py-3 px-4 font-semibold text-gray-700">Status</th>
-                          <th className="text-left py-3 px-4 font-semibold text-gray-700">Remarks</th>
+                          <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Student</th>
+                          <th className="text-center py-3 px-4 font-semibold text-muted-foreground">Score</th>
+                          <th className="text-center py-3 px-4 font-semibold text-muted-foreground">Grade</th>
+                          <th className="text-center py-3 px-4 font-semibold text-muted-foreground">Status</th>
+                          <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Remarks</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -919,7 +919,7 @@ const GradesModule = () => {
                           return (
                             <tr
                               key={student.id}
-                              className={`border-b hover:bg-gray-50 transition-colors ${isHighest ? 'bg-green-50' : isLowest ? 'bg-red-50' : ''
+                              className={`border-b hover:bg-muted/50 transition-colors ${isHighest ? 'bg-green-50' : isLowest ? 'bg-red-50' : ''
                                 }`}
                             >
                               <td className="py-3 px-4">
@@ -928,8 +928,8 @@ const GradesModule = () => {
                                     {idx + 1}
                                   </div>
                                   <div>
-                                    <p className="font-medium text-gray-900">{student.name}</p>
-                                    <p className="text-xs text-gray-500">{student.rollNo}</p>
+                                    <p className="font-medium text-foreground">{student.name}</p>
+                                    <p className="text-xs text-muted-foreground">{student.rollNo}</p>
                                   </div>
                                 </div>
                               </td>
@@ -986,7 +986,7 @@ const GradesModule = () => {
                                       }
                                     }}
                                   />
-                                  <span className="text-gray-500 text-xs">/ {currentMaxScore}</span>
+                                  <span className="text-muted-foreground text-xs">/ {currentMaxScore}</span>
                                 </div>
                               </td>
                               <td className="py-3 px-4 text-center">
@@ -1101,27 +1101,27 @@ const GradesModule = () => {
                     </table>
 
                     {/* Quick Summary */}
-                    <div className="mt-6 p-4 bg-gray-50 rounded-lg border">
+                    <div className="mt-6 p-4 bg-muted/50 rounded-lg border">
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
                         <div>
-                          <div className="text-2xl font-bold text-gray-900">{scores.length}</div>
-                          <div className="text-xs text-gray-600">Entered</div>
+                          <div className="text-2xl font-bold text-foreground">{scores.length}</div>
+                          <div className="text-xs text-muted-foreground">Entered</div>
                         </div>
                         <div>
                           <div className="text-2xl font-bold text-green-600">{passCount}</div>
-                          <div className="text-xs text-gray-600">Passed</div>
+                          <div className="text-xs text-muted-foreground">Passed</div>
                         </div>
                         <div>
                           <div className="text-2xl font-bold text-red-600">{failCount}</div>
-                          <div className="text-xs text-gray-600">Failed</div>
+                          <div className="text-xs text-muted-foreground">Failed</div>
                         </div>
                         <div>
                           <div className="text-2xl font-bold text-blue-600">{passRate}%</div>
-                          <div className="text-xs text-gray-600">Pass Rate</div>
+                          <div className="text-xs text-muted-foreground">Pass Rate</div>
                         </div>
                         <div>
                           <div className="text-2xl font-bold text-purple-600">{avgScore.toFixed(1)}</div>
-                          <div className="text-xs text-gray-600">Average</div>
+                          <div className="text-xs text-muted-foreground">Average</div>
                         </div>
                       </div>
                     </div>
@@ -1136,9 +1136,9 @@ const GradesModule = () => {
               <Card>
                 <CardContent className="py-12">
                   <div className="text-center">
-                    <BarChart3 className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">No Exam Selected</h3>
-                    <p className="text-gray-500">Select an exam to view analytics</p>
+                    <BarChart3 className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-foreground mb-2">No Exam Selected</h3>
+                    <p className="text-muted-foreground">Select an exam to view analytics</p>
                   </div>
                 </CardContent>
               </Card>
@@ -1191,17 +1191,17 @@ const GradesModule = () => {
 
                         return (
                           <div key={item.grade} className="flex items-center text-sm">
-                            <div className="w-8 font-bold text-gray-700">{item.grade}</div>
+                            <div className="w-8 font-bold text-muted-foreground">{item.grade}</div>
                             <div className="flex-1 mx-3">
-                              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                              <div className="h-2 bg-muted rounded-full overflow-hidden">
                                 <div
                                   className="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-500"
                                   style={{ width: `${percentage}%` }}
                                 />
                               </div>
                             </div>
-                            <div className="w-12 text-right text-gray-600">
-                              {item.count} <span className="text-xs text-gray-400">({percentage.toFixed(0)}%)</span>
+                            <div className="w-12 text-right text-muted-foreground">
+                              {item.count} <span className="text-xs text-muted-foreground">({percentage.toFixed(0)}%)</span>
                             </div>
                           </div>
                         );
@@ -1330,7 +1330,7 @@ const GradesModule = () => {
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
-              <div className="grid grid-cols-3 gap-4 font-medium text-sm text-gray-500 mb-2">
+              <div className="grid grid-cols-3 gap-4 font-medium text-sm text-muted-foreground mb-2">
                 <div>Grade</div>
                 <div>Min (%)</div>
                 <div>Max (%)</div>
@@ -1339,7 +1339,7 @@ const GradesModule = () => {
                 {isSuperAdmin ? (
                   <Button variant="outline" size="sm" onClick={addBoundary}>Add Boundary</Button>
                 ) : (
-                  <div className="text-sm text-gray-500">Viewing only — contact super-admin to change</div>
+                  <div className="text-sm text-muted-foreground">Viewing only — contact super-admin to change</div>
                 )}
               </div>
               {gradeBoundaries.map((boundary, index) => (
@@ -1349,7 +1349,7 @@ const GradesModule = () => {
                       value={boundary.grade}
                       onChange={(e) => isSuperAdmin && updateBoundaryLabel(index, e.target.value)}
                       readOnly={!isSuperAdmin}
-                      className="font-bold text-center bg-gray-100 p-2 rounded text-sm"
+                      className="font-bold text-center bg-muted p-2 rounded text-sm"
                     />
 
                     {isSuperAdmin && (
@@ -1357,7 +1357,7 @@ const GradesModule = () => {
                         <button
                           type="button"
                           onClick={() => moveBoundary(index, 'up')}
-                          className="rounded p-1 bg-white border text-xs shadow hover:bg-gray-50"
+                          className="rounded p-1 bg-card border text-xs shadow hover:bg-muted/50"
                           title="Move up"
                         >
                           <ChevronUp className="w-3 h-3" />
@@ -1365,7 +1365,7 @@ const GradesModule = () => {
                         <button
                           type="button"
                           onClick={() => moveBoundary(index, 'down')}
-                          className="rounded p-1 bg-white border text-xs shadow hover:bg-gray-50"
+                          className="rounded p-1 bg-card border text-xs shadow hover:bg-muted/50"
                           title="Move down"
                         >
                           <ChevronDown className="w-3 h-3" />
@@ -1374,7 +1374,7 @@ const GradesModule = () => {
                     )}
 
                     {isSuperAdmin && (
-                      <button onClick={() => removeBoundary(index)} className="rounded-full bg-white border p-1 text-xs shadow hover:bg-gray-50" title="Remove">
+                      <button onClick={() => removeBoundary(index)} className="rounded-full bg-card border p-1 text-xs shadow hover:bg-muted/50" title="Remove">
                         <X className="w-3 h-3" />
                       </button>
                     )}

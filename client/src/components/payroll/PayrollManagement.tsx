@@ -75,7 +75,7 @@ const PayrollManagement: React.FC = () => {
   };
 
   const statusMap: Record<string, { label: string; color: string; icon: any }> = {
-    draft: { label: 'Draft', color: 'bg-slate-100 text-slate-800', icon: AlertCircle },
+    draft: { label: 'Draft', color: 'bg-muted text-foreground', icon: AlertCircle },
     processing: { label: 'Processing', color: 'bg-blue-100 text-blue-800', icon: Play },
     finalized: { label: 'Finalized', color: 'bg-emerald-100 text-emerald-800', icon: CheckCircle2 },
   };
@@ -102,8 +102,8 @@ const PayrollManagement: React.FC = () => {
       {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Payroll Management</h1>
-          <p className="text-slate-500">Manage monthly staff salaries, deductions, and bonuses.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Payroll Management</h1>
+          <p className="text-muted-foreground">Manage monthly staff salaries, deductions, and bonuses.</p>
         </div>
         <CreatePayrollRunDialog onSuccess={refetchRuns} />
       </div>
@@ -164,7 +164,7 @@ const PayrollManagement: React.FC = () => {
 
       {loadingRuns ? (
         <Card className="border-0 shadow-xl overflow-hidden">
-          <CardContent className="py-20 text-center text-slate-400">
+          <CardContent className="py-20 text-center text-muted-foreground">
             <div className="flex flex-col items-center gap-2">
               <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
               <p>Loading payroll history...</p>
@@ -172,20 +172,20 @@ const PayrollManagement: React.FC = () => {
           </CardContent>
         </Card>
       ) : runsData.length === 0 ? (
-        <Card className="border-0 shadow-xl overflow-hidden bg-slate-50/50">
-          <CardContent className="py-20 text-center text-slate-500">
+        <Card className="border-0 shadow-xl overflow-hidden bg-muted/50/50">
+          <CardContent className="py-20 text-center text-muted-foreground">
             <div className="max-w-xs mx-auto">
-              <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <DollarSign className="w-8 h-8 text-slate-400" />
+              <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+                <DollarSign className="w-8 h-8 text-muted-foreground" />
               </div>
-              <h3 className="text-lg font-semibold text-slate-900">No payroll runs yet</h3>
+              <h3 className="text-lg font-semibold text-foreground">No payroll runs yet</h3>
               <p className="text-sm mt-1">Create your first payroll run to start managing staff salaries.</p>
             </div>
           </CardContent>
         </Card>
       ) : (
         <Card className="border-0 shadow-xl overflow-hidden">
-          <CardHeader className="bg-slate-50/50 border-b">
+          <CardHeader className="bg-muted/50/50 border-b">
             <CardTitle className="text-lg">Payroll History</CardTitle>
             <CardDescription>Recently created and processed payroll runs</CardDescription>
           </CardHeader>
@@ -193,7 +193,7 @@ const PayrollManagement: React.FC = () => {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-slate-50/50 pointer-events-none">
+                  <TableRow className="bg-muted/50/50 pointer-events-none">
                     <TableHead className="font-semibold">Period</TableHead>
                     <TableHead className="font-semibold">Status</TableHead>
                     <TableHead className="font-semibold text-center">Staff Count</TableHead>
@@ -207,8 +207,8 @@ const PayrollManagement: React.FC = () => {
                     const status = statusMap[run.status] || statusMap.draft;
                     const StatusIcon = status.icon;
                     return (
-                      <TableRow key={run.id} className="hover:bg-slate-50/80 transition-colors">
-                        <TableCell className="font-semibold text-slate-900">
+                      <TableRow key={run.id} className="hover:bg-muted/50/80 transition-colors">
+                        <TableCell className="font-semibold text-foreground">
                           {new Date(`${run.month_year}-01`).toLocaleDateString('en-US', {
                             year: 'numeric',
                             month: 'long'
@@ -220,16 +220,16 @@ const PayrollManagement: React.FC = () => {
                             {status.label}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-center text-slate-600 font-medium">
+                        <TableCell className="text-center text-muted-foreground font-medium">
                           <span className="flex items-center justify-center gap-1">
-                            <Users className="w-4 h-4 text-slate-400" />
+                            <Users className="w-4 h-4 text-muted-foreground" />
                             {run.totalStaff ?? 0}
                           </span>
                         </TableCell>
-                        <TableCell className="text-right font-bold text-slate-900">
+                        <TableCell className="text-right font-bold text-foreground">
                           {formatCurrency(run.total_amount || 0)}
                         </TableCell>
-                        <TableCell className="text-sm text-slate-500">
+                        <TableCell className="text-sm text-muted-foreground">
                           {new Date(run.created_at).toLocaleDateString()}
                         </TableCell>
                         <TableCell className="text-right px-6">
@@ -238,7 +238,7 @@ const PayrollManagement: React.FC = () => {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="h-8 w-8 p-0 border-slate-200 hover:border-blue-500 hover:text-blue-500"
+                                className="h-8 w-8 p-0 border-border hover:border-blue-500 hover:text-blue-500"
                                 onClick={() => handleInitializeRun(run.id)}
                                 title="Initialize with all staff"
                               >
@@ -248,7 +248,7 @@ const PayrollManagement: React.FC = () => {
                             <Button
                               size="sm"
                               variant="outline"
-                              className="h-8 w-8 p-0 border-slate-200 hover:border-slate-800"
+                              className="h-8 w-8 p-0 border-border hover:border-slate-800"
                               onClick={() => handleGenerateReport(run.id)}
                               title="Export Report"
                             >
@@ -306,7 +306,7 @@ const PayrollRunDetails: React.FC<PayrollRunDetailsProps> = ({ payrollRun, onBac
   return (
     <div className="space-y-6 animate-in slide-in-from-right duration-300">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" onClick={onBack} className="text-slate-500 hover:text-slate-900">
+        <Button variant="ghost" size="sm" onClick={onBack} className="text-muted-foreground hover:text-foreground">
           <ChevronLeft className="w-4 h-4 mr-1" />
           Back to list
         </Button>
@@ -314,18 +314,18 @@ const PayrollRunDetails: React.FC<PayrollRunDetailsProps> = ({ payrollRun, onBac
 
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900">
+          <h2 className="text-2xl font-bold text-foreground">
             {new Date(`${payrollRun.month_year}-01`).toLocaleDateString('en-US', {
               year: 'numeric',
               month: 'long'
             })} Run
           </h2>
           <div className="flex items-center gap-2 mt-1">
-            <Badge variant="outline" className="text-slate-500 font-medium">#{payrollRun.id}</Badge>
+            <Badge variant="outline" className="text-muted-foreground font-medium">#{payrollRun.id}</Badge>
             <Badge className={
               payrollRun.status === 'finalized' ? 'bg-emerald-100 text-emerald-800 border-0' :
                 payrollRun.status === 'processing' ? 'bg-blue-100 text-blue-800 border-0' :
-                  'bg-slate-100 text-slate-800 border-0'
+                  'bg-muted text-foreground border-0'
             }>
               {payrollRun.status.toUpperCase()}
             </Badge>
@@ -334,21 +334,21 @@ const PayrollRunDetails: React.FC<PayrollRunDetailsProps> = ({ payrollRun, onBac
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="border-0 shadow-md bg-white">
+        <Card className="border-0 shadow-md bg-card">
           <CardContent className="p-4">
-            <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Gross Total</p>
-            <p className="text-xl font-bold text-slate-900 mt-1">{formatCurrency(totals.base)}</p>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Gross Total</p>
+            <p className="text-xl font-bold text-foreground mt-1">{formatCurrency(totals.base)}</p>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-md bg-white">
+        <Card className="border-0 shadow-md bg-card">
           <CardContent className="p-4">
-            <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Total Deductions</p>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total Deductions</p>
             <p className="text-xl font-bold text-red-600 mt-1">-{formatCurrency(totals.deductions)}</p>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-md bg-white">
+        <Card className="border-0 shadow-md bg-card">
           <CardContent className="p-4">
-            <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Total Bonuses</p>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total Bonuses</p>
             <p className="text-xl font-bold text-emerald-600 mt-1">+{formatCurrency(totals.bonuses)}</p>
           </CardContent>
         </Card>
@@ -363,15 +363,15 @@ const PayrollRunDetails: React.FC<PayrollRunDetailsProps> = ({ payrollRun, onBac
       <Card className="border-0 shadow-xl overflow-hidden">
         <CardContent className="p-0">
           {loadingDetails ? (
-            <div className="text-center py-20 text-slate-400">
-              <div className="w-6 h-6 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin mx-auto mb-2" />
+            <div className="text-center py-20 text-muted-foreground">
+              <div className="w-6 h-6 border-2 border-border border-t-slate-600 rounded-full animate-spin mx-auto mb-2" />
               Loading items...
             </div>
           ) : items.length === 0 ? (
-            <div className="text-center py-20 bg-slate-50/50">
+            <div className="text-center py-20 bg-muted/50/50">
               <AlertCircle className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-slate-900">No payroll items found</h3>
-              <p className="text-slate-500 mt-1">Please initialize this run to generate items for all active staff.</p>
+              <h3 className="text-lg font-medium text-foreground">No payroll items found</h3>
+              <p className="text-muted-foreground mt-1">Please initialize this run to generate items for all active staff.</p>
               <Button
                 className="mt-6 bg-slate-900 hover:bg-slate-800"
                 onClick={() => {
@@ -385,7 +385,7 @@ const PayrollRunDetails: React.FC<PayrollRunDetailsProps> = ({ payrollRun, onBac
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-slate-50/50 hover:bg-slate-50/50">
+                  <TableRow className="bg-muted/50/50 hover:bg-muted/50/50">
                     <TableHead className="py-4 font-semibold">Staff Member</TableHead>
                     <TableHead className="py-4 font-semibold text-right">Base Salary</TableHead>
                     <TableHead className="py-4 font-semibold text-right">Deductions</TableHead>
@@ -397,19 +397,19 @@ const PayrollRunDetails: React.FC<PayrollRunDetailsProps> = ({ payrollRun, onBac
                 </TableHeader>
                 <TableBody>
                   {items.map((item: any) => (
-                    <TableRow key={item.id} className="hover:bg-slate-50/30 transition-colors border-b last:border-0">
+                    <TableRow key={item.id} className="hover:bg-muted/50/30 transition-colors border-b last:border-0">
                       <TableCell>
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">
+                          <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground">
                             {item.display_name?.charAt(0) || item.email?.charAt(0) || 'S'}
                           </div>
                           <div>
-                            <p className="font-semibold text-slate-900">{item.display_name || item.email}</p>
-                            <p className="text-xs text-slate-500 font-mono uppercase tracking-tighter">{item.staff_id_code}</p>
+                            <p className="font-semibold text-foreground">{item.display_name || item.email}</p>
+                            <p className="text-xs text-muted-foreground font-mono uppercase tracking-tighter">{item.staff_id_code}</p>
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="text-right font-medium text-slate-600">
+                      <TableCell className="text-right font-medium text-muted-foreground">
                         {formatCurrency(item.base_salary)}
                       </TableCell>
                       <TableCell className="text-right font-medium text-red-600">
@@ -418,7 +418,7 @@ const PayrollRunDetails: React.FC<PayrollRunDetailsProps> = ({ payrollRun, onBac
                       <TableCell className="text-right font-medium text-emerald-600">
                         {item.bonuses > 0 ? `+${formatCurrency(item.bonuses)}` : '—'}
                       </TableCell>
-                      <TableCell className="text-right font-bold text-slate-900">
+                      <TableCell className="text-right font-bold text-foreground">
                         {formatCurrency(item.net_amount)}
                       </TableCell>
                       <TableCell className="text-center">
@@ -439,7 +439,7 @@ const PayrollRunDetails: React.FC<PayrollRunDetailsProps> = ({ payrollRun, onBac
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="h-8 border-slate-200 text-slate-600 hover:text-red-600 hover:border-red-200 hover:bg-red-50"
+                                className="h-8 border-border text-muted-foreground hover:text-red-600 hover:border-red-200 hover:bg-red-50"
                                 onClick={() => {
                                   setActiveItem(item);
                                   setModalType('deduction');
@@ -451,7 +451,7 @@ const PayrollRunDetails: React.FC<PayrollRunDetailsProps> = ({ payrollRun, onBac
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="h-8 border-slate-200 text-slate-600 hover:text-emerald-600 hover:border-emerald-200 hover:bg-emerald-50"
+                                className="h-8 border-border text-muted-foreground hover:text-emerald-600 hover:border-emerald-200 hover:bg-emerald-50"
                                 onClick={() => {
                                   setActiveItem(item);
                                   setModalType('bonus');

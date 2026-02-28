@@ -17,8 +17,8 @@ const ClassesModule = () => {
             <School className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">Classes Management</h1>
-            <p className="text-gray-600">Manage class information and student assignments</p>
+            <h1 className="text-3xl font-bold text-foreground">Classes Management</h1>
+            <p className="text-muted-foreground">Manage class information and student assignments</p>
           </div>
         </div>
       </div>

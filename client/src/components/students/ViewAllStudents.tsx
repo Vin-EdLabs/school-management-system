@@ -119,7 +119,7 @@ const ViewAllStudents = () => {
           {/* Search and Filters */}
           <div className="flex flex-col lg:flex-row gap-4 mb-6">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search by name, student ID, or admission number..."
                 value={searchTerm}
@@ -174,7 +174,7 @@ const ViewAllStudents = () => {
               <TableBody>
                 {filteredStudents.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                       No students found matching your criteria
                     </TableCell>
                   </TableRow>
@@ -192,17 +192,17 @@ const ViewAllStudents = () => {
                       <TableRow key={student.id}>
                         <TableCell>
                           <div className="space-y-1">
-                            <div className="font-medium text-gray-900">
+                            <div className="font-medium text-foreground">
                               {first} {last}
                             </div>
-                            <div className="text-sm text-gray-500">Admission: {admission}</div>
+                            <div className="text-sm text-muted-foreground">Admission: {admission}</div>
                             <Badge variant={gender === 'Male' ? 'default' : 'secondary'} className="text-xs">
                               {gender}
                             </Badge>
                           </div>
                         </TableCell>
                         <TableCell>
-                          <span className="font-mono text-sm bg-gray-100 px-2 py-1 rounded">{sid}</span>
+                          <span className="font-mono text-sm bg-muted px-2 py-1 rounded">{sid}</span>
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline">{className}</Badge>
@@ -239,7 +239,7 @@ const ViewAllStudents = () => {
 
           {/* Summary */}
           {filteredStudents.length > 0 && (
-            <div className="mt-4 text-sm text-gray-600">
+            <div className="mt-4 text-sm text-muted-foreground">
               Showing {filteredStudents.length} of {students.length} students
             </div>
           )}

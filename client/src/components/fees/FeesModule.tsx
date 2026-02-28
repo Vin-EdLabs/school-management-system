@@ -22,8 +22,8 @@ const FeesModule = () => {
             <DollarSign className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">Fees Management</h1>
-            <p className="text-gray-600">Manage school fees, payments, and financial records</p>
+            <h1 className="text-3xl font-bold text-foreground">Fees Management</h1>
+            <p className="text-muted-foreground">Manage school fees, payments, and financial records</p>
           </div>
         </div>
       </div>

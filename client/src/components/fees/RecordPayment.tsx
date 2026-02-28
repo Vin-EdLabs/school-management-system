@@ -216,7 +216,7 @@ const RecordPayment = () => {
               <Badge variant="outline" className="mb-1">
                 {currentTermName}
               </Badge>
-              <p className="text-sm text-gray-600">Academic Year: {currentYear}</p>
+              <p className="text-sm text-muted-foreground">Academic Year: {currentYear}</p>
             </div>
           </CardTitle>
         </CardHeader>
@@ -238,7 +238,7 @@ const RecordPayment = () => {
                   <SelectContent>
                     <div className="p-2">
                       <div className="relative mb-2">
-                        <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                        <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                         <Input
                           id="studentSearch"
                           placeholder="Type name or ID to filter..."
@@ -257,12 +257,12 @@ const RecordPayment = () => {
                                 <div className="flex justify-between items-start">
                                   <div>
                                     <p className="font-medium">{label}</p>
-                                    <p className="text-sm text-gray-500">ID: {student.studentId || student.id} | Class: {student.classAssigned}</p>
+                                    <p className="text-sm text-muted-foreground">ID: {student.studentId || student.id} | Class: {student.classAssigned}</p>
                                   </div>
                                   <div className="text-right">
                                     {feeDetails && (
                                       <div className="space-y-1">
-                                        <p className="text-xs text-gray-500">Total Due: GHS {feeDetails.totalAmountDue.toFixed(2)}</p>
+                                        <p className="text-xs text-muted-foreground">Total Due: GHS {feeDetails.totalAmountDue.toFixed(2)}</p>
                                         <p className="text-sm font-bold text-blue-600">Money Left: GHS {feeDetails.remainingBalance.toFixed(2)}</p>
                                         {feeDetails.arrears > 0 && <p className="text-xs text-red-600">Incl. Arrears: GHS {feeDetails.arrears.toFixed(2)}</p>}
                                       </div>
@@ -273,7 +273,7 @@ const RecordPayment = () => {
                             );
                           })
                         ) : (
-                          <div className="p-2 text-sm text-gray-500">No matching students</div>
+                          <div className="p-2 text-sm text-muted-foreground">No matching students</div>
                         )}
                       </div>
                     </div>
@@ -288,24 +288,24 @@ const RecordPayment = () => {
                 <h3 className="font-medium text-blue-800 mb-2">Fee Details for {currentTermName}</h3>
                 {(() => {
                   const feeDetails = getStudentFeeDetails(formData.studentId);
-                  if (!feeDetails) return <p className="text-sm text-gray-600">No fee structure found</p>;
+                  if (!feeDetails) return <p className="text-sm text-muted-foreground">No fee structure found</p>;
 
                   return (
                     <>
                       <div className="grid grid-cols-2 gap-4 text-sm">
                         <div>
-                          <p className="text-gray-600">Current Term Fee:</p>
+                          <p className="text-muted-foreground">Current Term Fee:</p>
                           <p className="font-medium">GHS {feeDetails.currentTermFee.toFixed(2)}</p>
                         </div>
                         {feeDetails.arrears > 0 && (
                           <div>
-                            <p className="text-gray-600">Arrears:</p>
+                            <p className="text-muted-foreground">Arrears:</p>
                             <p className="font-medium text-red-600">GHS {feeDetails.arrears.toFixed(2)}</p>
                           </div>
                         )}
                         {feeDetails.creditBalance > 0 && (
                           <div>
-                            <p className="text-gray-600">Credit Balance:</p>
+                            <p className="text-muted-foreground">Credit Balance:</p>
                             <p className="font-medium text-green-600">GHS {feeDetails.creditBalance.toFixed(2)}</p>
                           </div>
                         )}

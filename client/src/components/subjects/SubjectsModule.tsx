@@ -44,8 +44,8 @@ const SubjectsModule = () => {
                     <Library className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-800">Subjects Management</h1>
-                    <p className="text-gray-600">Manage academic subjects</p>
+                    <h1 className="text-3xl font-bold text-foreground">Subjects Management</h1>
+                    <p className="text-muted-foreground">Manage academic subjects</p>
                 </div>
             </div>
 
@@ -92,7 +92,7 @@ const SubjectsModule = () => {
                         </CardHeader>
                         <CardContent>
                             {isLoading ? (
-                                <div className="py-8 text-center text-gray-500">Loading subjects...</div>
+                                <div className="py-8 text-center text-muted-foreground">Loading subjects...</div>
                             ) : (
                                 <div className="rounded-md border overflow-hidden">
                                     <Table>
@@ -107,7 +107,7 @@ const SubjectsModule = () => {
                                         <TableBody>
                                             {subjects.length === 0 ? (
                                                 <TableRow>
-                                                    <TableCell colSpan={4} className="text-center py-8 text-gray-500">
+                                                    <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
                                                         No subjects found.
                                                     </TableCell>
                                                 </TableRow>

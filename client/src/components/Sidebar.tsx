@@ -231,10 +231,21 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
   const menuItems = getMenuItems(hasAccess);
 
   return (
-    <Sidebar variant="sidebar" collapsible="icon" className="border-r border-gray-200">
-      <SidebarHeader className="border-b border-gray-200 p-1">
-        {/* Logo moved to top menu header; keep sidebar header minimal */}
-        <div className="h-10" />
+    <Sidebar variant="sidebar" collapsible="icon" className="border-r border-border shadow-sm">
+      <SidebarHeader
+        className="border-b border-border h-16 flex justify-center items-center px-2 cursor-pointer hover:bg-sidebar-accent/50 transition-colors"
+        onClick={() => toggleSidebar()}
+      >
+        <div className="flex items-center justify-center w-full overflow-hidden">
+          <div className="w-10 h-10 flex flex-shrink-0 items-center justify-center bg-primary/10 rounded-md">
+            <img src="/rosa.png" alt="Logo" className="w-7 h-7 object-contain" />
+          </div>
+          {state === "expanded" && (
+            <span className="font-bold text-lg text-primary tracking-tight whitespace-nowrap ml-3">
+              Rosa Gardens
+            </span>
+          )}
+        </div>
       </SidebarHeader>
 
       <SidebarContent className="px-1 py-4">
@@ -279,12 +290,12 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
         />
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-gray-200">
+      <SidebarFooter className="border-t border-border">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
               onClick={logout}
-              className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
+              className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
               tooltip="Logout"
             >
               <LogOut className="h-4 w-4" />
@@ -294,9 +305,10 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
         </SidebarMenu>
 
         {state === "expanded" && (
-          <div className="px-2 py-3 border-t border-gray-200">
-            <p className="text-xs text-gray-500 text-center">
-              Powered by <span className="font-semibold text-gray-700">Technerve</span>
+          <div className="px-2 py-3 border-t border-border">
+            <p className="text-xs text-muted-foreground text-center">
+              Powered by <span className="font-semibold text-foreground">Technerve</span>
+              <img src="/technerve.jpg" alt="tech nerve icon" className="w-6 h-6 inline rounded" />
             </p>
           </div>
         )}

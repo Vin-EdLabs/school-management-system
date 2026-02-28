@@ -197,8 +197,8 @@ const StaffManagement: React.FC = () => {
         <div className="p-6 space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Staff Management</h1>
-                    <p className="text-slate-500">Manage administrative and non-teaching staff records.</p>
+                    <h1 className="text-3xl font-bold text-foreground tracking-tight">Staff Management</h1>
+                    <p className="text-muted-foreground">Manage administrative and non-teaching staff records.</p>
                 </div>
                 <Button onClick={handleOpenAdd} className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200 transition-all active:scale-95">
                     <UserPlus className="w-4 h-4 mr-2" />
@@ -210,16 +210,16 @@ const StaffManagement: React.FC = () => {
                 <CardContent className="p-4">
                     <div className="flex flex-col md:flex-row gap-4">
                         <div className="relative flex-1">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             <Input
                                 placeholder="Search by name, ID, or role..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
-                                className="pl-10 border-slate-200 focus:ring-indigo-500 rounded-lg shadow-inner bg-slate-50/50"
+                                className="pl-10 border-border focus:ring-indigo-500 rounded-lg shadow-inner bg-muted/50/50"
                             />
                         </div>
                         <Select value={filterStatus} onValueChange={setFilterStatus}>
-                            <SelectTrigger className="w-full md:w-[180px] border-slate-200 rounded-lg bg-slate-50/50">
+                            <SelectTrigger className="w-full md:w-[180px] border-border rounded-lg bg-muted/50/50">
                                 <SelectValue placeholder="Status" />
                             </SelectTrigger>
                             <SelectContent>
@@ -233,63 +233,63 @@ const StaffManagement: React.FC = () => {
                 </CardContent>
             </Card>
 
-            <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+            <div className="bg-card rounded-xl shadow-sm border border-slate-100 overflow-hidden">
                 <Table>
-                    <TableHeader className="bg-slate-50/80">
+                    <TableHeader className="bg-muted/50/80">
                         <TableRow>
-                            <TableHead className="px-6 py-4 font-semibold text-slate-700">Staff Info</TableHead>
-                            <TableHead className="font-semibold text-slate-700">Role & Category</TableHead>
-                            <TableHead className="font-semibold text-slate-700">Contact</TableHead>
-                            <TableHead className="font-semibold text-slate-700 text-right">Monthly Salary</TableHead>
-                            <TableHead className="font-semibold text-slate-700 text-center">Status</TableHead>
-                            <TableHead className="px-6 font-semibold text-slate-700 text-right">Actions</TableHead>
+                            <TableHead className="px-6 py-4 font-semibold text-muted-foreground">Staff Info</TableHead>
+                            <TableHead className="font-semibold text-muted-foreground">Role & Category</TableHead>
+                            <TableHead className="font-semibold text-muted-foreground">Contact</TableHead>
+                            <TableHead className="font-semibold text-muted-foreground text-right">Monthly Salary</TableHead>
+                            <TableHead className="font-semibold text-muted-foreground text-center">Status</TableHead>
+                            <TableHead className="px-6 font-semibold text-muted-foreground text-right">Actions</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {filteredStaff.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={6} className="h-40 text-center text-slate-400 italic">
+                                <TableCell colSpan={6} className="h-40 text-center text-muted-foreground italic">
                                     No staff members found matching your search.
                                 </TableCell>
                             </TableRow>
                         ) : (
                             filteredStaff.map((s: any) => (
-                                <TableRow key={s.id} className="hover:bg-slate-50/50 transition-colors group">
+                                <TableRow key={s.id} className="hover:bg-muted/50/50 transition-colors group">
                                     <TableCell className="px-6 py-4">
                                         <div className="flex items-center gap-3">
                                             <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 font-bold border border-indigo-100 shadow-sm">
                                                 {(s.display_name || s.name || 'S').charAt(0).toUpperCase()}
                                             </div>
                                             <div>
-                                                <div className="font-semibold text-slate-900 leading-none mb-1">
+                                                <div className="font-semibold text-foreground leading-none mb-1">
                                                     {s.display_name || s.name}
                                                 </div>
-                                                <div className="text-xs font-mono text-slate-500 uppercase flex items-center">
-                                                    <span className="bg-slate-100 px-1 rounded mr-1">ID</span> {s.staff_id || 'N/A'}
+                                                <div className="text-xs font-mono text-muted-foreground uppercase flex items-center">
+                                                    <span className="bg-muted px-1 rounded mr-1">ID</span> {s.staff_id || 'N/A'}
                                                 </div>
                                             </div>
                                         </div>
                                     </TableCell>
                                     <TableCell>
                                         <div className="flex items-center gap-2">
-                                            <Briefcase className="w-3 h-3 text-slate-400" />
-                                            <span className="text-sm font-medium text-slate-700">{s.role || 'Staff'}</span>
+                                            <Briefcase className="w-3 h-3 text-muted-foreground" />
+                                            <span className="text-sm font-medium text-muted-foreground">{s.role || 'Staff'}</span>
                                         </div>
                                     </TableCell>
                                     <TableCell>
                                         <div className="space-y-1">
-                                            <div className="text-sm text-slate-600 flex items-center gap-2">
-                                                <Phone className="w-3 h-3 text-slate-400" />
+                                            <div className="text-sm text-muted-foreground flex items-center gap-2">
+                                                <Phone className="w-3 h-3 text-muted-foreground" />
                                                 {s.phone || '-'}
                                             </div>
-                                            <div className="text-xs text-slate-400 flex items-center gap-2 italic">
+                                            <div className="text-xs text-muted-foreground flex items-center gap-2 italic">
                                                 <Mail className="w-3 h-3 text-slate-300" />
                                                 {s.email || '-'}
                                             </div>
                                         </div>
                                     </TableCell>
                                     <TableCell className="text-right">
-                                        <span className="font-semibold text-slate-900 whitespace-nowrap">₵ {Number(s.monthly_salary || 0).toLocaleString()}</span>
+                                        <span className="font-semibold text-foreground whitespace-nowrap">₵ {Number(s.monthly_salary || 0).toLocaleString()}</span>
                                     </TableCell>
                                     <TableCell className="text-center">
                                         {getStatusBadge(s.employment_status || 'Active')}
@@ -299,7 +299,7 @@ const StaffManagement: React.FC = () => {
                                             <Button
                                                 size="icon"
                                                 variant="ghost"
-                                                className="h-8 w-8 text-slate-600 hover:bg-slate-200"
+                                                className="h-8 w-8 text-muted-foreground hover:bg-slate-200"
                                                 onClick={() => handleOpenEdit(s)}
                                             >
                                                 <Edit className="h-4 w-4" />
@@ -332,7 +332,7 @@ const StaffManagement: React.FC = () => {
                                 <DialogTitle className="text-xl font-bold">
                                     {isEditing ? 'Edit Staff Member' : 'New Staff Registration'}
                                 </DialogTitle>
-                                <DialogDescription className="text-slate-400">
+                                <DialogDescription className="text-muted-foreground">
                                     {isEditing ? 'Update the details for this staff member.' : 'Enter the professional and personal information below.'}
                                 </DialogDescription>
                             </div>
@@ -342,20 +342,20 @@ const StaffManagement: React.FC = () => {
                     <form onSubmit={handleSubmit} className="p-6 space-y-6">
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label className="text-xs font-bold text-slate-500 uppercase">Full Name *</Label>
+                                <Label className="text-xs font-bold text-muted-foreground uppercase">Full Name *</Label>
                                 <Input
                                     placeholder="Enter full name"
-                                    className="border-slate-200 focus:ring-indigo-500 rounded-lg"
+                                    className="border-border focus:ring-indigo-500 rounded-lg"
                                     value={formData.name}
                                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                                     required
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label className="text-xs font-bold text-slate-500 uppercase">Staff ID (Auto-generated)</Label>
+                                <Label className="text-xs font-bold text-muted-foreground uppercase">Staff ID (Auto-generated)</Label>
                                 <Input
                                     placeholder="Loading..."
-                                    className="border-slate-200 focus:ring-indigo-500 rounded-lg font-mono bg-slate-50 cursor-not-allowed"
+                                    className="border-border focus:ring-indigo-500 rounded-lg font-mono bg-muted/50 cursor-not-allowed"
                                     value={formData.staffId}
                                     readOnly
                                     disabled
@@ -363,9 +363,9 @@ const StaffManagement: React.FC = () => {
                             </div>
 
                             <div className="space-y-2">
-                                <Label className="text-xs font-bold text-slate-500 uppercase">Assign Role *</Label>
+                                <Label className="text-xs font-bold text-muted-foreground uppercase">Assign Role *</Label>
                                 <Select value={formData.role} onValueChange={(v) => setFormData({ ...formData, role: v })}>
-                                    <SelectTrigger className="border-slate-200 rounded-lg">
+                                    <SelectTrigger className="border-border rounded-lg">
                                         <SelectValue placeholder="Select role" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -378,10 +378,10 @@ const StaffManagement: React.FC = () => {
 
                             {formData.role === 'Other' && (
                                 <div className="space-y-2">
-                                    <Label className="text-xs font-bold text-slate-500 uppercase">Custom Role *</Label>
+                                    <Label className="text-xs font-bold text-muted-foreground uppercase">Custom Role *</Label>
                                     <Input
                                         placeholder="Enter custom role"
-                                        className="border-slate-200 focus:ring-indigo-500 rounded-lg"
+                                        className="border-border focus:ring-indigo-500 rounded-lg"
                                         value={formData.customRole}
                                         onChange={(e) => setFormData({ ...formData, customRole: e.target.value })}
                                         required
@@ -390,9 +390,9 @@ const StaffManagement: React.FC = () => {
                             )}
 
                             <div className="space-y-2">
-                                <Label className="text-xs font-bold text-slate-500 uppercase">Gender *</Label>
+                                <Label className="text-xs font-bold text-muted-foreground uppercase">Gender *</Label>
                                 <Select value={formData.gender} onValueChange={(v) => setFormData({ ...formData, gender: v })}>
-                                    <SelectTrigger className="border-slate-200 rounded-lg">
+                                    <SelectTrigger className="border-border rounded-lg">
                                         <SelectValue placeholder="Select" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -403,39 +403,39 @@ const StaffManagement: React.FC = () => {
                                 </Select>
                             </div>
                             <div className="space-y-2">
-                                <Label className="text-xs font-bold text-slate-500 uppercase truncate">Primary Email</Label>
+                                <Label className="text-xs font-bold text-muted-foreground uppercase truncate">Primary Email</Label>
                                 <Input
                                     placeholder="email@school.com"
                                     type="email"
-                                    className="border-slate-200 focus:ring-indigo-500 rounded-lg"
+                                    className="border-border focus:ring-indigo-500 rounded-lg"
                                     value={formData.email}
                                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label className="text-xs font-bold text-slate-500 uppercase">Phone Number</Label>
+                                <Label className="text-xs font-bold text-muted-foreground uppercase">Phone Number</Label>
                                 <Input
                                     placeholder="+233..."
-                                    className="border-slate-200 focus:ring-indigo-500 rounded-lg"
+                                    className="border-border focus:ring-indigo-500 rounded-lg"
                                     value={formData.phone}
                                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label className="text-xs font-bold text-slate-500 uppercase">Salary (GHS) *</Label>
+                                <Label className="text-xs font-bold text-muted-foreground uppercase">Salary (GHS) *</Label>
                                 <Input
                                     type="number"
                                     placeholder="0.00"
-                                    className="border-slate-200 focus:ring-indigo-500 rounded-lg font-semibold"
+                                    className="border-border focus:ring-indigo-500 rounded-lg font-semibold"
                                     value={formData.monthlySalary}
                                     onChange={(e) => setFormData({ ...formData, monthlySalary: e.target.value })}
                                     required
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label className="text-xs font-bold text-slate-500 uppercase">Employment Status</Label>
+                                <Label className="text-xs font-bold text-muted-foreground uppercase">Employment Status</Label>
                                 <Select value={formData.employmentStatus} onValueChange={(v) => setFormData({ ...formData, employmentStatus: v })}>
-                                    <SelectTrigger className="border-slate-200 rounded-lg">
+                                    <SelectTrigger className="border-border rounded-lg">
                                         <SelectValue placeholder="Select" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -446,10 +446,10 @@ const StaffManagement: React.FC = () => {
                                 </Select>
                             </div>
                             <div className="space-y-2">
-                                <Label className="text-xs font-bold text-slate-500 uppercase">Employment Date</Label>
+                                <Label className="text-xs font-bold text-muted-foreground uppercase">Employment Date</Label>
                                 <Input
                                     type="date"
-                                    className="border-slate-200 focus:ring-indigo-500 rounded-lg"
+                                    className="border-border focus:ring-indigo-500 rounded-lg"
                                     value={formData.employmentDate}
                                     onChange={(e) => setFormData({ ...formData, employmentDate: e.target.value })}
                                 />
@@ -457,27 +457,27 @@ const StaffManagement: React.FC = () => {
                         </div>
 
                         <div className="space-y-2">
-                            <Label className="text-xs font-bold text-slate-500 uppercase">Resident Address</Label>
+                            <Label className="text-xs font-bold text-muted-foreground uppercase">Resident Address</Label>
                             <Input
                                 placeholder="Enter street and house number"
-                                className="border-slate-200 focus:ring-indigo-500 rounded-lg"
+                                className="border-border focus:ring-indigo-500 rounded-lg"
                                 value={formData.address}
                                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                             />
                         </div>
 
                         <div className="space-y-2">
-                            <Label className="text-xs font-bold text-slate-500 uppercase">Internal Notes</Label>
+                            <Label className="text-xs font-bold text-muted-foreground uppercase">Internal Notes</Label>
                             <Textarea
                                 placeholder="Any additional information about this staff member..."
-                                className="border-slate-200 focus:ring-indigo-500 rounded-lg min-h-[80px]"
+                                className="border-border focus:ring-indigo-500 rounded-lg min-h-[80px]"
                                 value={formData.notes}
                                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                             />
                         </div>
 
                         <DialogFooter className="pt-4 gap-2">
-                            <Button type="button" variant="ghost" className="text-slate-500" onClick={() => setIsDialogOpen(false)}>
+                            <Button type="button" variant="ghost" className="text-muted-foreground" onClick={() => setIsDialogOpen(false)}>
                                 Discard
                             </Button>
                             <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white min-w-[120px] rounded-lg shadow-lg shadow-indigo-100">

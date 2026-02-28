@@ -196,7 +196,7 @@ const AssignClassToTeacher: React.FC = () => {
                 <div key={teacher.id} className="flex items-center justify-between p-3 border rounded-lg">
                   <div>
                     <p className="font-medium">{teacher.fullName || teacher.full_name}</p>
-                    <p className="text-sm text-gray-500">Subjects: {(teacher.subjectsTaught || []).join(', ') || 'None listed'}</p>
+                    <p className="text-sm text-muted-foreground">Subjects: {(teacher.subjectsTaught || []).join(', ') || 'None listed'}</p>
                   </div>
                   <div className="flex flex-wrap gap-1 justify-end max-w-[50%]">
                     {(teacher.classAssignedList && teacher.classAssignedList.length > 0)
@@ -228,7 +228,7 @@ const AssignClassToTeacher: React.FC = () => {
                   <div key={cls.id} className="flex items-center justify-between p-3 border rounded-lg">
                     <div>
                       <p className="font-medium">{className}</p>
-                      <p className="text-sm text-gray-500">Level: {cls.level}{cls.stream ? ` - ${cls.stream}` : ''}</p>
+                      <p className="text-sm text-muted-foreground">Level: {cls.level}{cls.stream ? ` - ${cls.stream}` : ''}</p>
                     </div>
                     <div className="flex flex-wrap gap-1 justify-end max-w-[55%]">
                       {names.length > 0

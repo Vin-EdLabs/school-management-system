@@ -53,12 +53,12 @@ const TimetableModule: React.FC = () => {
         <div className="space-y-6 p-6">
             <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-semibold">Timetable</h2>
-                <p className="text-sm text-gray-500">Per-class timetable: days as rows and times as columns</p>
+                <p className="text-sm text-muted-foreground">Per-class timetable: days as rows and times as columns</p>
             </div>
 
             {sortedClassKeys.length === 0 && (
                 <Card>
-                    <CardContent className="py-12 text-center text-gray-500">No timetable entries found.</CardContent>
+                    <CardContent className="py-12 text-center text-muted-foreground">No timetable entries found.</CardContent>
                 </Card>
             )}
 
@@ -109,7 +109,7 @@ const TimetableModule: React.FC = () => {
                             <CardContent>
                                 <div className="flex justify-end mb-2">
                                     <button
-                                        className="px-3 py-1 rounded bg-gray-100 text-sm hover:bg-gray-200"
+                                        className="px-3 py-1 rounded bg-muted text-sm hover:bg-secondary"
                                         onClick={() => {
                                             // create a printable HTML string for this class card
                                             const w = window.open('', '_blank');
@@ -169,14 +169,14 @@ const TimetableModule: React.FC = () => {
                                                 <TableRow key={d}>
                                                     <TableCell className="font-medium">{DAY_NAMES[d]}</TableCell>
                                                     {slots.length === 0 ? (
-                                                        <TableCell colSpan={1} className="text-sm text-gray-500">No scheduled times</TableCell>
+                                                        <TableCell colSpan={1} className="text-sm text-muted-foreground">No scheduled times</TableCell>
                                                     ) : (
                                                         slots.map((s, i) => {
                                                             const slotKey = `${s.start}__${s.end}`;
                                                             const e = lookup[`${d}__${slotKey}`];
                                                             if (!e) {
                                                                 return (
-                                                                    <TableCell key={i} className="text-sm text-gray-400">—</TableCell>
+                                                                    <TableCell key={i} className="text-sm text-muted-foreground">—</TableCell>
                                                                 );
                                                             }
                                                             const teacher = getTeacherName(e.teacher_id ?? e.teacherId ?? e.teacher);
@@ -184,7 +184,7 @@ const TimetableModule: React.FC = () => {
                                                             return (
                                                                 <TableCell key={i} className="space-y-0">
                                                                     <div className="text-sm font-semibold">{teacher || '—'}</div>
-                                                                    <div className="text-xs text-gray-600">{subject || '—'}</div>
+                                                                    <div className="text-xs text-muted-foreground">{subject || '—'}</div>
                                                                 </TableCell>
                                                             );
                                                         })

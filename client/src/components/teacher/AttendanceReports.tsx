@@ -228,8 +228,8 @@ const AttendanceReports = () => {
                         <BarChart3 className="w-6 h-6 text-white" />
                     </div>
                     <div>
-                        <h1 className="text-3xl font-bold text-gray-800">Attendance Reports</h1>
-                        <p className="text-gray-600">Weekly, Term, and Annual attendance analysis</p>
+                        <h1 className="text-3xl font-bold text-foreground">Attendance Reports</h1>
+                        <p className="text-muted-foreground">Weekly, Term, and Annual attendance analysis</p>
                     </div>
                 </div>
                 {stats.length > 0 && (
@@ -251,7 +251,7 @@ const AttendanceReports = () => {
                 <CardContent>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700">Class</label>
+                            <label className="text-sm font-medium text-muted-foreground">Class</label>
                             <Select value={selectedClass} onValueChange={setSelectedClass}>
                                 <SelectTrigger>
                                     <SelectValue placeholder="Select a class" />
@@ -266,7 +266,7 @@ const AttendanceReports = () => {
                             </Select>
                         </div>
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700">Report Type</label>
+                            <label className="text-sm font-medium text-muted-foreground">Report Type</label>
                             <div className="flex space-x-2">
                                 <Button
                                     size="sm"
@@ -294,21 +294,21 @@ const AttendanceReports = () => {
                             </div>
                         </div>
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700">Start Date</label>
+                            <label className="text-sm font-medium text-muted-foreground">Start Date</label>
                             <input
                                 type="date"
                                 value={startDate}
                                 onChange={(e) => setStartDate(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
                         </div>
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700">End Date</label>
+                            <label className="text-sm font-medium text-muted-foreground">End Date</label>
                             <input
                                 type="date"
                                 value={endDate}
                                 onChange={(e) => setEndDate(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
                         </div>
                     </div>
@@ -323,7 +323,7 @@ const AttendanceReports = () => {
                             <CardContent className="p-4">
                                 <div className="flex items-center justify-between">
                                     <div>
-                                        <p className="text-sm text-gray-600">Total Students</p>
+                                        <p className="text-sm text-muted-foreground">Total Students</p>
                                         <p className="text-2xl font-bold">{stats.length}</p>
                                     </div>
                                     <Users className="w-8 h-8 text-blue-500" />
@@ -334,7 +334,7 @@ const AttendanceReports = () => {
                             <CardContent className="p-4">
                                 <div className="flex items-center justify-between">
                                     <div>
-                                        <p className="text-sm text-gray-600">Avg Attendance</p>
+                                        <p className="text-sm text-muted-foreground">Avg Attendance</p>
                                         <p className="text-2xl font-bold">
                                             {stats.length > 0
                                                 ? Math.round(stats.reduce((sum, s) => sum + s.attendanceRate, 0) / stats.length)
@@ -349,9 +349,9 @@ const AttendanceReports = () => {
                             <CardContent className="p-4">
                                 <div className="flex items-center justify-between">
                                     <div>
-                                        <p className="text-sm text-gray-600">Male Avg</p>
+                                        <p className="text-sm text-muted-foreground">Male Avg</p>
                                         <p className="text-2xl font-bold">{avgAttendanceByGender.male}%</p>
-                                        <p className="text-xs text-gray-500">{genderStats.male.length} students</p>
+                                        <p className="text-xs text-muted-foreground">{genderStats.male.length} students</p>
                                     </div>
                                     <FileText className="w-8 h-8 text-purple-500" />
                                 </div>
@@ -361,9 +361,9 @@ const AttendanceReports = () => {
                             <CardContent className="p-4">
                                 <div className="flex items-center justify-between">
                                     <div>
-                                        <p className="text-sm text-gray-600">Female Avg</p>
+                                        <p className="text-sm text-muted-foreground">Female Avg</p>
                                         <p className="text-2xl font-bold">{avgAttendanceByGender.female}%</p>
-                                        <p className="text-xs text-gray-500">{genderStats.female.length} students</p>
+                                        <p className="text-xs text-muted-foreground">{genderStats.female.length} students</p>
                                     </div>
                                     <FileText className="w-8 h-8 text-pink-500" />
                                 </div>
@@ -388,21 +388,21 @@ const AttendanceReports = () => {
                                 <CardContent>
                                     <div className="overflow-x-auto">
                                         <table className="w-full">
-                                            <thead className="bg-gray-50">
+                                            <thead className="bg-muted/50">
                                                 <tr>
-                                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Admission No</th>
-                                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Gender</th>
-                                                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Total Days</th>
-                                                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Present</th>
-                                                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Absent</th>
-                                                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Late</th>
-                                                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Attendance %</th>
+                                                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Admission No</th>
+                                                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Name</th>
+                                                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Gender</th>
+                                                    <th className="px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase">Total Days</th>
+                                                    <th className="px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase">Present</th>
+                                                    <th className="px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase">Absent</th>
+                                                    <th className="px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase">Late</th>
+                                                    <th className="px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase">Attendance %</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-200">
                                                 {stats.map(student => (
-                                                    <tr key={student.studentId} className="hover:bg-gray-50">
+                                                    <tr key={student.studentId} className="hover:bg-muted/50">
                                                         <td className="px-4 py-3 text-sm">{student.admissionNo}</td>
                                                         <td className="px-4 py-3 text-sm font-medium">{student.studentName}</td>
                                                         <td className="px-4 py-3 text-sm">{student.gender}</td>
@@ -436,19 +436,19 @@ const AttendanceReports = () => {
                                 <CardContent>
                                     <div className="overflow-x-auto">
                                         <table className="w-full">
-                                            <thead className="bg-gray-50">
+                                            <thead className="bg-muted/50">
                                                 <tr>
-                                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Admission No</th>
-                                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                                                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Total Days</th>
-                                                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Present</th>
-                                                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Absent</th>
-                                                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Attendance %</th>
+                                                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Admission No</th>
+                                                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Name</th>
+                                                    <th className="px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase">Total Days</th>
+                                                    <th className="px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase">Present</th>
+                                                    <th className="px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase">Absent</th>
+                                                    <th className="px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase">Attendance %</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-200">
                                                 {genderStats.male.map(student => (
-                                                    <tr key={student.studentId} className="hover:bg-gray-50">
+                                                    <tr key={student.studentId} className="hover:bg-muted/50">
                                                         <td className="px-4 py-3 text-sm">{student.admissionNo}</td>
                                                         <td className="px-4 py-3 text-sm font-medium">{student.studentName}</td>
                                                         <td className="px-4 py-3 text-sm text-center">{student.totalDays}</td>
@@ -476,19 +476,19 @@ const AttendanceReports = () => {
                                 <CardContent>
                                     <div className="overflow-x-auto">
                                         <table className="w-full">
-                                            <thead className="bg-gray-50">
+                                            <thead className="bg-muted/50">
                                                 <tr>
-                                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Admission No</th>
-                                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                                                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Total Days</th>
-                                                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Present</th>
-                                                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Absent</th>
-                                                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Attendance %</th>
+                                                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Admission No</th>
+                                                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Name</th>
+                                                    <th className="px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase">Total Days</th>
+                                                    <th className="px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase">Present</th>
+                                                    <th className="px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase">Absent</th>
+                                                    <th className="px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase">Attendance %</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-200">
                                                 {genderStats.female.map(student => (
-                                                    <tr key={student.studentId} className="hover:bg-gray-50">
+                                                    <tr key={student.studentId} className="hover:bg-muted/50">
                                                         <td className="px-4 py-3 text-sm">{student.admissionNo}</td>
                                                         <td className="px-4 py-3 text-sm font-medium">{student.studentName}</td>
                                                         <td className="px-4 py-3 text-sm text-center">{student.totalDays}</td>
@@ -516,20 +516,20 @@ const AttendanceReports = () => {
                                 <CardContent>
                                     <div className="overflow-x-auto">
                                         <table className="w-full">
-                                            <thead className="bg-gray-50">
+                                            <thead className="bg-muted/50">
                                                 <tr>
-                                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Admission No</th>
-                                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Gender</th>
-                                                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Total Days</th>
-                                                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Present</th>
-                                                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Absent</th>
-                                                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Attendance %</th>
+                                                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Admission No</th>
+                                                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Name</th>
+                                                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Gender</th>
+                                                    <th className="px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase">Total Days</th>
+                                                    <th className="px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase">Present</th>
+                                                    <th className="px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase">Absent</th>
+                                                    <th className="px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase">Attendance %</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-200">
                                                 {stats.filter(s => s.attendanceRate < 75).map(student => (
-                                                    <tr key={student.studentId} className="hover:bg-gray-50">
+                                                    <tr key={student.studentId} className="hover:bg-muted/50">
                                                         <td className="px-4 py-3 text-sm">{student.admissionNo}</td>
                                                         <td className="px-4 py-3 text-sm font-medium">{student.studentName}</td>
                                                         <td className="px-4 py-3 text-sm">{student.gender}</td>
@@ -556,9 +556,9 @@ const AttendanceReports = () => {
             {!selectedClass && (
                 <Card>
                     <CardContent className="p-8 text-center">
-                        <BarChart3 className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                        <h3 className="text-lg font-medium text-gray-900 mb-2">Select Class and Date Range</h3>
-                        <p className="text-gray-500">Choose a class and date range to generate attendance reports.</p>
+                        <BarChart3 className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                        <h3 className="text-lg font-medium text-foreground mb-2">Select Class and Date Range</h3>
+                        <p className="text-muted-foreground">Choose a class and date range to generate attendance reports.</p>
                     </CardContent>
                 </Card>
             )}

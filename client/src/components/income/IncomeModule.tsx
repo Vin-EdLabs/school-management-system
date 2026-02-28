@@ -16,8 +16,8 @@ const IncomeModule = () => {
             <TrendingUp className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">Other Income</h1>
-            <p className="text-gray-600">Manage additional income sources</p>
+            <h1 className="text-3xl font-bold text-foreground">Other Income</h1>
+            <p className="text-muted-foreground">Manage additional income sources</p>
           </div>
         </div>
       </div>

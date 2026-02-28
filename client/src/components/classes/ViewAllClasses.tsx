@@ -140,8 +140,8 @@ const ViewAllClasses = () => {
       <Card>
         <CardContent className="text-center py-12">
           <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-gray-600 mb-2">No Classes Found</h3>
-          <p className="text-gray-500 mb-6">
+          <h3 className="text-lg font-semibold text-muted-foreground mb-2">No Classes Found</h3>
+          <p className="text-muted-foreground mb-6">
             Get started by creating your first class. Classes help organize students by grade level and streams.
           </p>
           <Button className="bg-blue-600 hover:bg-blue-700">
@@ -169,7 +169,7 @@ const ViewAllClasses = () => {
         {/* Search and Filters */}
         <div className="flex flex-col lg:flex-row gap-4 mb-6">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search by class name, level, or stream..."
               value={searchTerm}
@@ -211,7 +211,7 @@ const ViewAllClasses = () => {
             <TableBody>
               {filteredClasses.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                     No classes found matching your criteria
                   </TableCell>
                 </TableRow>
@@ -224,7 +224,7 @@ const ViewAllClasses = () => {
                   return (
                     <TableRow key={classItem.id}>
                       <TableCell>
-                        <div className="font-medium text-gray-900">
+                        <div className="font-medium text-foreground">
                           {classItem.className}
                         </div>
                       </TableCell>
@@ -236,13 +236,13 @@ const ViewAllClasses = () => {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center space-x-2">
-                          <Users className="w-4 h-4 text-gray-400" />
+                          <Users className="w-4 h-4 text-muted-foreground" />
                           <span className="font-medium">{stats.studentCount}</span>
-                          <span className="text-sm text-gray-500">
+                          <span className="text-sm text-muted-foreground">
                             / {maxSize || '—'}
                           </span>
                         </div>
-                        <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+                        <div className="w-full bg-secondary rounded-full h-1.5 mt-1">
                           <div
                             className={`h-1.5 rounded-full ${capacityPercentage > 90 ? 'bg-red-500' :
                               capacityPercentage > 75 ? 'bg-yellow-500' : 'bg-green-500'
@@ -294,7 +294,7 @@ const ViewAllClasses = () => {
 
         {/* Summary */}
         {filteredClasses.length > 0 && (
-          <div className="mt-4 text-sm text-gray-600">
+          <div className="mt-4 text-sm text-muted-foreground">
             Showing {filteredClasses.length} of {classes.length} classes
           </div>
         )}

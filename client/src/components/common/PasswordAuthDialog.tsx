@@ -96,7 +96,7 @@ const PasswordAuthDialog: React.FC<PasswordAuthDialogProps> = ({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-muted-foreground">
               You are about to {action} <strong>{itemName}</strong> in the <strong>{module}</strong> module.
               Please enter your password to continue.
             </p>

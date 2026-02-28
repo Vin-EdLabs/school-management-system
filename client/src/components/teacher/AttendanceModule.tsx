@@ -206,9 +206,9 @@ const AttendanceModule = () => {
       <div className="p-6">
         <Card>
           <CardContent className="p-8 text-center">
-            <ClipboardCheck className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Teacher Not Found</h3>
-            <p className="text-gray-500">You must be logged in as a teacher to access attendance.</p>
+            <ClipboardCheck className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-foreground mb-2">Teacher Not Found</h3>
+            <p className="text-muted-foreground">You must be logged in as a teacher to access attendance.</p>
           </CardContent>
         </Card>
       </div>
@@ -220,9 +220,9 @@ const AttendanceModule = () => {
       <div className="p-6">
         <Card>
           <CardContent className="p-8 text-center">
-            <ClipboardCheck className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No Class Assigned</h3>
-            <p className="text-gray-500">You don't have any classes assigned yet. Please contact the administrator.</p>
+            <ClipboardCheck className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-foreground mb-2">No Class Assigned</h3>
+            <p className="text-muted-foreground">You don't have any classes assigned yet. Please contact the administrator.</p>
           </CardContent>
         </Card>
       </div>
@@ -238,8 +238,8 @@ const AttendanceModule = () => {
             <ClipboardCheck className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">Attendance</h1>
-            <p className="text-gray-600">{isSuperAdmin ? 'View and manage all class attendance' : 'Take and manage student attendance'}</p>
+            <h1 className="text-3xl font-bold text-foreground">Attendance</h1>
+            <p className="text-muted-foreground">{isSuperAdmin ? 'View and manage all class attendance' : 'Take and manage student attendance'}</p>
           </div>
         </div>
       </div>
@@ -255,7 +255,7 @@ const AttendanceModule = () => {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">Class</label>
+              <label className="text-sm font-medium text-muted-foreground">Class</label>
               <Select value={selectedClass} onValueChange={setSelectedClass}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select a class" />
@@ -273,12 +273,12 @@ const AttendanceModule = () => {
               </Select>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">Date</label>
+              <label className="text-sm font-medium text-muted-foreground">Date</label>
               <input
                 type="date"
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -293,7 +293,7 @@ const AttendanceModule = () => {
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-4">
                   <div className="flex items-center space-x-2">
-                    <Users className="w-5 h-5 text-gray-500" />
+                    <Users className="w-5 h-5 text-muted-foreground" />
                     <span className="text-sm font-medium">
                       {presentCount} / {totalStudents} Present
                     </span>
@@ -336,21 +336,21 @@ const AttendanceModule = () => {
             <CardContent>
               {classStudents.length === 0 ? (
                 <div className="text-center py-8">
-                  <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">No Students Found</h3>
-                  <p className="text-gray-500">No students are assigned to this class yet.</p>
+                  <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-foreground mb-2">No Students Found</h3>
+                  <p className="text-muted-foreground">No students are assigned to this class yet.</p>
                 </div>
               ) : (
                 <div className="space-y-3">
                   {classStudents.map(student => (
-                    <div key={student.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                    <div key={student.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg hover:bg-muted transition-colors">
                       <div className="flex items-center space-x-3">
                         <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
                           {student.admissionNumber?.slice(-3) || (student.firstName?.charAt(0) || '') + (student.lastName?.charAt(0) || '')}
                         </div>
                         <div>
-                          <p className="font-medium text-gray-900">{student.firstName} {student.lastName}</p>
-                          {(student.admission_no || student.admissionNumber) && <p className="text-sm text-gray-500">Admission: {student.admission_no || student.admissionNumber}</p>}
+                          <p className="font-medium text-foreground">{student.firstName} {student.lastName}</p>
+                          {(student.admission_no || student.admissionNumber) && <p className="text-sm text-muted-foreground">Admission: {student.admission_no || student.admissionNumber}</p>}
                         </div>
                       </div>
                       {!isSuperAdmin && (
@@ -395,9 +395,9 @@ const AttendanceModule = () => {
       {!selectedClass && (
         <Card>
           <CardContent className="p-8 text-center">
-            <ClipboardCheck className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Class</h3>
-            <p className="text-gray-500">Choose a class from the dropdown above to take attendance.</p>
+            <ClipboardCheck className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-foreground mb-2">Select a Class</h3>
+            <p className="text-muted-foreground">Choose a class from the dropdown above to take attendance.</p>
           </CardContent>
         </Card>
       )}

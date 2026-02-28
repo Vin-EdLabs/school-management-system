@@ -247,8 +247,8 @@ const PrintFeeStatusModule = () => {
             <Printer className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">Print Fee Status Report</h1>
-            <p className="text-gray-600">Generate printable reports for students with outstanding fees</p>
+            <h1 className="text-3xl font-bold text-foreground">Print Fee Status Report</h1>
+            <p className="text-muted-foreground">Generate printable reports for students with outstanding fees</p>
           </div>
         </div>
       </div>
@@ -263,11 +263,11 @@ const PrintFeeStatusModule = () => {
         <CardContent>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <p className="text-sm text-gray-500">Academic Year</p>
+              <p className="text-sm text-muted-foreground">Academic Year</p>
               <p className="font-semibold">{currentYear}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-500">Current Term</p>
+              <p className="text-sm text-muted-foreground">Current Term</p>
               <p className="font-semibold">{currentTermName}</p>
             </div>
           </div>
@@ -284,11 +284,11 @@ const PrintFeeStatusModule = () => {
         <CardContent>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-muted-foreground mb-2">
                 Search Classes
               </label>
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
                 <Input
                   placeholder="Type to search classes..."
                   value={searchTerm}
@@ -299,17 +299,17 @@ const PrintFeeStatusModule = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-muted-foreground mb-2">
                 Choose Class
               </label>
               <Select value={selectedClass} onValueChange={setSelectedClass}>
-                <SelectTrigger className="w-full bg-white">
+                <SelectTrigger className="w-full bg-card">
                   <SelectValue placeholder="Select a class to generate report" />
                 </SelectTrigger>
-                <SelectContent className="bg-white border shadow-lg z-50">
+                <SelectContent className="bg-card border shadow-lg z-50">
                   {filteredClasses.length > 0 ? (
                     filteredClasses.map((cls) => (
-                      <SelectItem key={cls.id} value={cls.className} className="hover:bg-gray-50">
+                      <SelectItem key={cls.id} value={cls.className} className="hover:bg-muted/50">
                         {cls.className}
                       </SelectItem>
                     ))
@@ -359,7 +359,7 @@ const PrintFeeStatusModule = () => {
                 <div key={student.id} className="flex items-center justify-between p-3 border rounded-lg">
                   <div>
                     <p className="font-medium">{student.firstName} {student.lastName}</p>
-                    <p className="text-sm text-gray-500">ID: {student.studentId} • {student.classAssigned}</p>
+                    <p className="text-sm text-muted-foreground">ID: {student.studentId} • {student.classAssigned}</p>
                   </div>
                   <Badge variant="destructive">
                     GHS {(student.feeStatus?.balance || 0).toLocaleString()}
@@ -386,13 +386,13 @@ const PrintFeeStatusModule = () => {
           </div>
 
           {selectedClass && studentsOwingFees.length === 0 && (
-            <div className="mt-4 text-center text-gray-500">
+            <div className="mt-4 text-center text-muted-foreground">
               <p>No students with outstanding fees found in {selectedClass}</p>
             </div>
           )}
 
           {!selectedClass && (
-            <div className="mt-4 text-center text-gray-500">
+            <div className="mt-4 text-center text-muted-foreground">
               <p>Please select a class to generate the fee status report</p>
             </div>
           )}

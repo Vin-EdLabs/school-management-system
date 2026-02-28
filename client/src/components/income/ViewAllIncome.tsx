@@ -61,7 +61,7 @@ const ViewAllIncome: React.FC = () => {
       <CardContent>
         <div className="flex flex-col md:flex-row gap-4 mb-6">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+            <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
             <Input
               placeholder="Search by source or received by..."
               value={searchTerm}
@@ -99,7 +99,7 @@ const ViewAllIncome: React.FC = () => {
             <TableBody>
               {filteredIncome.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                     No income records found matching your criteria
                   </TableCell>
                 </TableRow>
@@ -128,7 +128,7 @@ const ViewAllIncome: React.FC = () => {
         </div>
 
         {filteredIncome.length > 0 && (
-          <div className="mt-4 text-sm text-gray-600">
+          <div className="mt-4 text-sm text-muted-foreground">
             Showing {filteredIncome.length} of {income.length} income records
           </div>
         )}

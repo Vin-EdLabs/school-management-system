@@ -147,12 +147,12 @@ const DashboardHome = ({ onNavigate }: DashboardHomeProps) => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-800">Dashboard</h1>
-          <p className="text-gray-600">Welcome to Rosa Gardens School Management System</p>
+          <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
+          <p className="text-muted-foreground">Welcome to Rosa Gardens School Management System</p>
         </div>
         <div className="text-right">
-          <p className="text-sm text-gray-500">Current Term</p>
-          <p className="text-lg font-semibold text-gray-800">{currentTerm}</p>
+          <p className="text-sm text-muted-foreground">Current Term</p>
+          <p className="text-lg font-semibold text-foreground">{currentTerm}</p>
         </div>
       </div>
 
@@ -302,11 +302,11 @@ const DashboardHome = ({ onNavigate }: DashboardHomeProps) => {
           <CardContent>
             <div className="space-y-3">
               {recentActivities.slice(0, 5).map((activity, index) => (
-                <div key={index} className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
+                <div key={index} className="flex items-start space-x-3 p-3 bg-muted/50 rounded-lg">
                   <div className={`w-2 h-2 rounded-full mt-2 ${activity.type === 'payment' ? 'bg-green-500' : 'bg-red-500'}`}></div>
                   <div className="flex-1">
-                    <p className="text-sm text-gray-800">{activity.text}</p>
-                    <p className="text-xs text-gray-500">{activity.time}</p>
+                    <p className="text-sm text-foreground">{activity.text}</p>
+                    <p className="text-xs text-muted-foreground">{activity.time}</p>
                   </div>
                 </div>
               ))}

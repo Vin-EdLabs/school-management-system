@@ -181,8 +181,8 @@ const SettingsModule = () => {
               <Key className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-800">Account Settings</h1>
-              <p className="text-gray-600">Change your password</p>
+              <h1 className="text-3xl font-bold text-foreground">Account Settings</h1>
+              <p className="text-muted-foreground">Change your password</p>
             </div>
           </div>
         </div>
@@ -352,8 +352,8 @@ const SettingsModule = () => {
             <Settings className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">System Settings</h1>
-            <p className="text-gray-600">Configure system settings and preferences</p>
+            <h1 className="text-3xl font-bold text-foreground">System Settings</h1>
+            <p className="text-muted-foreground">Configure system settings and preferences</p>
           </div>
         </div>
       </div>
@@ -484,7 +484,7 @@ const SettingsModule = () => {
             <div className="space-y-4">
               <div>
                 <h4 className="font-medium mb-2">Export/Backup Data</h4>
-                <p className="text-sm text-gray-600 mb-3">
+                <p className="text-sm text-muted-foreground mb-3">
                   Download all your school data as a backup file
                 </p>
                 <Button onClick={handleExportData} variant="outline" className="w-full">
@@ -495,7 +495,7 @@ const SettingsModule = () => {
 
               <div>
                 <h4 className="font-medium mb-2">Import Data</h4>
-                <p className="text-sm text-gray-600 mb-3">
+                <p className="text-sm text-muted-foreground mb-3">
                   Import data from a backup file
                 </p>
                 <Input
@@ -508,7 +508,7 @@ const SettingsModule = () => {
 
               <div>
                 <h4 className="font-medium mb-2 text-red-700">Reset All Data</h4>
-                <p className="text-sm text-gray-600 mb-3">
+                <p className="text-sm text-muted-foreground mb-3">
                   ⚠️ Permanently delete all data and start fresh
                 </p>
                 <Button

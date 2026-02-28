@@ -165,12 +165,12 @@ const AssignStudentsToClass = () => {
         <CardContent>
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {filteredStudents.length === 0 ? (
-              <p className="text-center py-8 text-gray-500">
+              <p className="text-center py-8 text-muted-foreground">
                 No students found for the selected filter
               </p>
             ) : (
               filteredStudents.map((student) => (
-                <div key={student.id} className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-gray-50">
+                <div key={student.id} className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50">
                   <Checkbox
                     checked={selectedStudents.includes(student.id)}
                     onCheckedChange={(checked) => handleStudentSelect(student.id, checked as boolean)}
@@ -181,7 +181,7 @@ const AssignStudentsToClass = () => {
                         <p className="font-medium">
                           {student.firstName} {student.lastName}
                         </p>
-                        <p className="text-sm text-gray-500">
+                        <p className="text-sm text-muted-foreground">
                           ID: {student.studentId} | Admission: {student.admission_no || student.admissionNumber || 'N/A'}
                         </p>
                       </div>
@@ -221,7 +221,7 @@ const AssignStudentsToClass = () => {
               return (
                 <div key={cls.id} className="p-4 border rounded-lg">
                   <h3 className="font-semibold text-lg">{cls.className}</h3>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-muted-foreground">
                     {cls.level} {cls.stream ? `- ${cls.stream}` : ''}
                   </p>
                   <div className="mt-2 space-y-2">
@@ -237,7 +237,7 @@ const AssignStudentsToClass = () => {
                           <span>Capacity</span>
                           <span>{utilization}%</span>
                         </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div className="w-full bg-secondary rounded-full h-2">
                           <div
                             className={`h-2 rounded-full ${utilization >= 90 ? 'bg-red-500' :
                               utilization >= 70 ? 'bg-yellow-500' : 'bg-green-500'

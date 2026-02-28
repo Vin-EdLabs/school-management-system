@@ -51,30 +51,30 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
             <CardContent className="pt-6">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-800">
+                  <h2 className="text-2xl font-bold text-foreground">
                     {(s.first_name ?? s.firstName ?? '')} {(s.last_name ?? s.lastName ?? '')}
                   </h2>
                   <div className="flex items-center space-x-4 mt-2">
                     <Badge variant={(s.gender ?? s.meta?.gender) === 'Male' ? 'default' : 'secondary'} className="text-sm">
                       {s.gender ?? s.meta?.gender}
                     </Badge>
-                    <span className="text-sm text-gray-600">
+                    <span className="text-sm text-muted-foreground">
                       {(() => {
                         const age = calculateAge(s.date_of_birth ?? s.dateOfBirth ?? s.meta?.date_of_birth);
                         return age === 'N/A' ? 'Age: N/A' : `Age: ${age} years`;
                       })()}
                     </span>
-                    <Badge variant="outline" className="bg-white">
+                    <Badge variant="outline" className="bg-card">
                       {s.classAssigned ?? s.class_id ?? s.classId ?? 'Unassigned'}
                     </Badge>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-sm text-gray-600">Student ID</div>
-                  <div className="font-mono text-lg font-bold bg-white px-3 py-1 rounded border">
+                  <div className="text-sm text-muted-foreground">Student ID</div>
+                  <div className="font-mono text-lg font-bold bg-card px-3 py-1 rounded border">
                     {s.student_id ?? s.studentId ?? s.id}
                   </div>
-                  <div className="text-sm text-gray-600 mt-1">
+                  <div className="text-sm text-muted-foreground mt-1">
                     Admission: {s.admission_no ?? s.admissionNumber ?? s.meta?.admission_no ?? 'N/A'}
                   </div>
                 </div>
@@ -94,24 +94,24 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="text-sm font-medium text-gray-500">First Name</label>
+                      <label className="text-sm font-medium text-muted-foreground">First Name</label>
                       <p className="font-medium">{s.first_name ?? s.firstName ?? ''}</p>
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-gray-500">Last Name</label>
+                      <label className="text-sm font-medium text-muted-foreground">Last Name</label>
                       <p className="font-medium">{s.last_name ?? s.lastName ?? ''}</p>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="text-sm font-medium text-gray-500">Date of Birth</label>
+                      <label className="text-sm font-medium text-muted-foreground">Date of Birth</label>
                       <div className="flex items-center space-x-2">
-                        <Calendar className="w-4 h-4 text-gray-400" />
+                        <Calendar className="w-4 h-4 text-muted-foreground" />
                         <span className="text-sm">{new Date(s.date_of_birth ?? s.dateOfBirth ?? s.meta?.date_of_birth).toLocaleDateString()}</span>
                       </div>
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-gray-500">Nationality</label>
+                      <label className="text-sm font-medium text-muted-foreground">Nationality</label>
                       <p>{s.nationality ?? s.meta?.nationality}</p>
                     </div>
                   </div>
@@ -129,18 +129,18 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
 
                 <div className="space-y-3">
                   <div>
-                    <label className="text-sm font-medium text-gray-500">Current Class</label>
+                    <label className="text-sm font-medium text-muted-foreground">Current Class</label>
                     <Badge variant="outline" className="text-sm">{s.classAssigned ?? s.class_id ?? s.classId ?? 'Unassigned'}</Badge>
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-gray-500">Date of Admission</label>
+                    <label className="text-sm font-medium text-muted-foreground">Date of Admission</label>
                     <div className="flex items-center space-x-2">
-                      <Calendar className="w-4 h-4 text-gray-400" />
+                      <Calendar className="w-4 h-4 text-muted-foreground" />
                       <span className="text-sm">{new Date(s.date_of_admission ?? s.dateOfAdmission ?? s.meta?.date_of_admission).toLocaleDateString()}</span>
                     </div>
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-gray-500">Previous School</label>
+                    <label className="text-sm font-medium text-muted-foreground">Previous School</label>
                     <p className="text-sm">{(s.previous_school ?? s.previousSchool ?? s.meta?.previous_school) || 'Not specified'}</p>
                   </div>
                 </div>
@@ -158,20 +158,20 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-sm font-medium text-gray-500">Guardian Name</label>
+                  <label className="text-sm font-medium text-muted-foreground">Guardian Name</label>
                   <p className="font-medium">{s.guardian_name ?? s.guardianName ?? s.meta?.guardian_name}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-500">Contact Number</label>
+                  <label className="text-sm font-medium text-muted-foreground">Contact Number</label>
                   <div className="flex items-center space-x-2">
-                    <Phone className="w-4 h-4 text-gray-400" />
+                    <Phone className="w-4 h-4 text-muted-foreground" />
                     <span className="font-mono">{s.guardian_contact ?? s.guardianContact ?? s.meta?.guardian_contact}</span>
                   </div>
                 </div>
                 <div className="md:col-span-2">
-                  <label className="text-sm font-medium text-gray-500">Home Address</label>
+                  <label className="text-sm font-medium text-muted-foreground">Home Address</label>
                   <div className="flex items-start space-x-2 mt-1">
-                    <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
+                    <MapPin className="w-4 h-4 text-muted-foreground mt-0.5" />
                     <span className="text-sm">{s.home_address ?? s.homeAddress ?? s.meta?.home_address}</span>
                   </div>
                 </div>
@@ -186,11 +186,11 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center space-x-2 mb-4">
-                  <FileText className="w-4 h-4 text-gray-600" />
+                  <FileText className="w-4 h-4 text-muted-foreground" />
                   <h3 className="font-semibold">Additional Notes</h3>
                 </div>
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <p className="text-gray-700 whitespace-pre-wrap">{s.notes ?? s.meta?.notes}</p>
+                <div className="bg-muted/50 p-4 rounded-lg">
+                  <p className="text-muted-foreground whitespace-pre-wrap">{s.notes ?? s.meta?.notes}</p>
                 </div>
               </CardContent>
             </Card>

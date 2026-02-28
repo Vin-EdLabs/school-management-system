@@ -100,14 +100,14 @@ const FinancialSummary = () => {
         <CardContent className="pt-0 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Total Combined Income */}
-            <div className="bg-white rounded-lg p-4 border border-purple-100">
+            <div className="bg-card rounded-lg p-4 border border-purple-100">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Total Combined Income</p>
+                  <p className="text-sm text-muted-foreground mb-1">Total Combined Income</p>
                   <p className="text-2xl font-bold text-green-600">
                     GHS {totalCombinedIncome.toLocaleString()}
                   </p>
-                  <div className="text-xs text-gray-500 mt-2">
+                  <div className="text-xs text-muted-foreground mt-2">
                     <p>Fees: GHS {feesCollected.toLocaleString()}</p>
                     <p>Other Income: GHS {otherIncome.toLocaleString()}</p>
                   </div>
@@ -119,14 +119,14 @@ const FinancialSummary = () => {
             </div>
 
             {/* Balance Left */}
-            <div className="bg-white rounded-lg p-4 border border-purple-100">
+            <div className="bg-card rounded-lg p-4 border border-purple-100">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Balance Left</p>
+                  <p className="text-sm text-muted-foreground mb-1">Balance Left</p>
                   <p className={`text-2xl font-bold ${balanceLeft >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
                     GHS {balanceLeft.toLocaleString()}
                   </p>
-                  <div className="text-xs text-gray-500 mt-2">
+                  <div className="text-xs text-muted-foreground mt-2">
                     <p>Income: GHS {totalCombinedIncome.toLocaleString()}</p>
                     <p>Expenses: GHS {totalExpenses.toLocaleString()}</p>
                   </div>
@@ -140,13 +140,13 @@ const FinancialSummary = () => {
           </div>
 
           {/* Financial Health Indicator */}
-          <div className="bg-white rounded-lg p-4 border border-purple-100">
-            <h4 className="font-medium text-gray-800 mb-2">Financial Health</h4>
+          <div className="bg-card rounded-lg p-4 border border-purple-100">
+            <h4 className="font-medium text-foreground mb-2">Financial Health</h4>
             <div className="flex items-center space-x-2">
               <div className={`w-3 h-3 rounded-full ${balanceLeft > totalCombinedIncome * 0.2 ? 'bg-green-500' :
                 balanceLeft > 0 ? 'bg-yellow-500' : 'bg-red-500'
                 }`}></div>
-              <span className="text-sm text-gray-600">
+              <span className="text-sm text-muted-foreground">
                 {balanceLeft > totalCombinedIncome * 0.2 ? 'Excellent - Strong financial position' :
                   balanceLeft > 0 ? 'Good - Positive balance maintained' :
                     'Attention needed - Expenses exceed income'}

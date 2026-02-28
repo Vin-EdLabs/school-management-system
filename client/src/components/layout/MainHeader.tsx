@@ -6,6 +6,7 @@ import { Bot, Calendar, Clock, GraduationCap, Menu, User } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { getActiveAcademicTerm } from '../../utils/feeCalculations';
+import { ModeToggle } from '../ModeToggle';
 
 interface MainHeaderProps {
   onAiAssistantClick?: () => void;
@@ -116,75 +117,55 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick }) => {
 
   return (
     <div className="relative flex items-center justify-between w-full">
-      {/* Mobile sidebar toggle (separate so it doesn't add spacing to the left group) */}
-      <div className="md:hidden mr-2 flex-shrink-0">
-        <button onClick={() => toggleSidebar()} aria-label="Open sidebar" className="flex items-center">
-          <Menu className="w-6 h-6 text-gray-700" />
+      {/* Left: Mobile Toggle & Welcome Section */}
+      <div className="flex items-center gap-4">
+        <button
+          onClick={() => toggleSidebar()}
+          aria-label="Toggle sidebar"
+          className="md:hidden p-2 -ml-2 rounded-md hover:bg-secondary text-muted-foreground transition-colors"
+        >
+          <Menu className="w-5 h-5" />
         </button>
-      </div>
 
-      {/* Left: Logo (when sidebar collapsed) + Welcome Section */}
-      <div className="flex items-center space-x-4">
-        {/* Logo block visually attached to the sidebar; fixed to top-left and matches sidebar width */}
-        <div className="hidden md:block">
-          <div className={`relative z-20 flex items-center h-16 rounded-r-lg bg-sidebar border-r border-sidebar-border shadow-sm pr-10 ${state === 'collapsed' ? 'w-[var(--sidebar-width-icon)]' : 'w-[var(--sidebar-width)]'}`}>
-            <button
-              onClick={() => toggleSidebar()}
-              aria-label="Toggle sidebar"
-              title="Toggle sidebar"
-              className="flex items-center gap-3 ml-1"
-            >
-              <div className="w-9 h-9 flex items-center justify-center">
-                <img src="/rosa.png" alt="" />
-              </div>
-              <div className={state === 'collapsed' ? 'hidden' : 'hidden sm:block text-sidebar-foreground'}>
-                <span className="font-semibold">Rosa Gardens</span>
-              </div>
-            </button>
+        <div className="hidden sm:flex items-center gap-3">
+          <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center flex-shrink-0">
+            <User className="w-5 h-auto text-primary-foreground mx-auto" />
           </div>
-        </div>
-
-        <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center flex-shrink-0">
-          <User className="w-5 h-auto text-white mx-auto" />
-        </div>
-        <div className="min-w-0">
-          <h1
-            className="text-lg font-semibold text-gray-900 truncate"
-            title={`${getWelcomeMessage()}, ${getFirstName()}`}
-          >
-            {getWelcomeMessage()}, {getFirstName()}!
-          </h1>
-          <p
-            className="text-sm text-gray-600 capitalize truncate"
-            title={`${user?.role?.replace('-', ' ')} Dashboard`}
-          >
-            {user?.role?.replace('-', ' ')} Dashboard
-          </p>
+          <div className="min-w-0">
+            <h1 className="text-sm font-semibold text-foreground truncate tracking-tight">
+              {getWelcomeMessage()}, {getFirstName()}
+            </h1>
+            <p className="text-xs text-muted-foreground capitalize truncate font-medium">
+              {user?.role?.replace('-', ' ')}
+            </p>
+          </div>
         </div>
       </div>
 
       {/* Right: Academic Term, Date & Time Section + AI button */}
       {/* Hidden on small screens; replaced by compact toggle below */}
       <div className="hidden lg:flex items-center space-x-6">
-        <div className="flex items-center space-x-4 text-sm min-w-0">
+        <div className="flex items-center space-x-4 text-sm min-w-0 pr-2">
           {/* Current Academic Term */}
-          <div className="flex items-center space-x-2 px-3 py-2 bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-lg">
-            <GraduationCap className="w-4 h-4 text-purple-600" />
-            <span className="text-purple-700 font-medium truncate max-w-[140px]" title={currentTerm}>{currentTerm}</span>
+          <div className="flex items-center space-x-2 px-3 py-2 bg-secondary/50 border border-border rounded-lg">
+            <GraduationCap className="w-4 h-4 text-primary" />
+            <span className="text-foreground font-medium truncate max-w-[140px]" title={currentTerm}>{currentTerm}</span>
           </div>
 
           {/* Current Date */}
-          <div className="flex items-center space-x-2 px-3 py-2 bg-gray-50 rounded-lg">
-            <Calendar className="w-4 h-4 text-gray-500" />
-            <span className="text-gray-700 font-medium truncate max-w-[220px]" title={formatDate(currentTime)}>{formatDate(currentTime)}</span>
+          <div className="flex items-center space-x-2 px-3 py-2 bg-secondary/50 rounded-lg">
+            <Calendar className="w-4 h-4 text-muted-foreground" />
+            <span className="text-foreground font-medium truncate max-w-[220px]" title={formatDate(currentTime)}>{formatDate(currentTime)}</span>
           </div>
 
           {/* Current Time */}
-          <div className="flex items-center space-x-2 px-3 py-2 bg-gray-50 rounded-lg">
-            <Clock className="w-4 h-4 text-gray-500" />
-            <span className="font-mono text-gray-700 font-medium truncate max-w-[120px]" title={formatTime(currentTime)}>{formatTime(currentTime)}</span>
+          <div className="flex items-center space-x-2 px-3 py-2 bg-secondary/50 rounded-lg">
+            <Clock className="w-4 h-4 text-muted-foreground" />
+            <span className="font-mono text-foreground font-medium truncate max-w-[120px]" title={formatTime(currentTime)}>{formatTime(currentTime)}</span>
           </div>
         </div>
+
+        <ModeToggle />
 
         {/* AI Assistant Button */}
         {(user?.role === 'finance' || user?.role === 'super-admin') && (
@@ -204,39 +185,40 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick }) => {
       </div>
 
       {/* Small screen compact toggle: visible on small screens only */}
-      <div className="lg:hidden flex items-center">
+      <div className="lg:hidden flex items-center space-x-2">
+        <ModeToggle />
         <button
           ref={smallMenuButtonRef}
           onClick={() => setShowSmallMenu((s) => !s)}
           aria-expanded={showSmallMenu}
           aria-controls="mobile-header-panel"
-          className="p-2 rounded-md hover:bg-gray-100 flex-shrink-0"
+          className="p-2 rounded-md hover:bg-secondary flex-shrink-0"
           title="Show header details"
         >
           <span className="sr-only">Show header details</span>
-          <svg className="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v.01M12 12v.01M12 18v.01"></path></svg>
+          <svg className="w-6 h-6 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v.01M12 12v.01M12 18v.01"></path></svg>
         </button>
 
         {showSmallMenu && (
           <div
             id="mobile-header-panel"
             ref={smallMenuRef}
-            className="absolute right-3 top-14 z-50 w-72 bg-white border border-gray-200 rounded-lg shadow-lg p-3"
+            className="absolute right-3 top-14 z-50 w-72 bg-popover border border-border rounded-lg shadow-lg p-3"
           >
             <div className="space-y-2 text-sm">
-              <div className="flex items-center space-x-2 px-2 py-1 bg-gradient-to-r from-purple-50 to-indigo-50 rounded">
-                <GraduationCap className="w-4 h-4 text-purple-600" />
-                <span className="text-purple-700 font-medium">{currentTerm || '—'}</span>
+              <div className="flex items-center space-x-2 px-2 py-1 bg-secondary/50 rounded">
+                <GraduationCap className="w-4 h-4 text-primary" />
+                <span className="text-foreground font-medium">{currentTerm || '—'}</span>
               </div>
 
-              <div className="flex items-center space-x-2 px-2 py-1 bg-gray-50 rounded">
-                <Calendar className="w-4 h-4 text-gray-500" />
-                <span className="text-gray-700">{formatDate(currentTime)}</span>
+              <div className="flex items-center space-x-2 px-2 py-1 bg-secondary/50 rounded">
+                <Calendar className="w-4 h-4 text-muted-foreground" />
+                <span className="text-foreground">{formatDate(currentTime)}</span>
               </div>
 
-              <div className="flex items-center space-x-2 px-2 py-1 bg-gray-50 rounded">
-                <Clock className="w-4 h-4 text-gray-500" />
-                <span className="font-mono text-gray-700">{formatTime(currentTime)}</span>
+              <div className="flex items-center space-x-2 px-2 py-1 bg-secondary/50 rounded">
+                <Clock className="w-4 h-4 text-muted-foreground" />
+                <span className="font-mono text-foreground">{formatTime(currentTime)}</span>
               </div>
 
               {(user?.role === 'finance' || user?.role === 'super-admin') && (

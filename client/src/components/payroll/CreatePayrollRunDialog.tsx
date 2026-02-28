@@ -89,7 +89,7 @@ const CreatePayrollRunDialog: React.FC<CreatePayrollRunDialogProps> = ({ onSucce
             <Calendar className="w-6 h-6 text-blue-600" />
           </div>
           <DialogTitle className="text-2xl font-bold">Create Payroll Run</DialogTitle>
-          <DialogDescription className="text-slate-500">
+          <DialogDescription className="text-muted-foreground">
             Select the month and year you wish to process salaries for.
           </DialogDescription>
         </DialogHeader>
@@ -97,7 +97,7 @@ const CreatePayrollRunDialog: React.FC<CreatePayrollRunDialogProps> = ({ onSucce
           <div className="space-y-2">
             <Label htmlFor="monthYear" className="text-sm font-semibold">Select Payroll Period</Label>
             <Select value={monthYear} onValueChange={setMonthYear}>
-              <SelectTrigger className="h-12 border-slate-200 focus:ring-blue-500">
+              <SelectTrigger className="h-12 border-border focus:ring-blue-500">
                 <SelectValue placeholder="Chose a month..." />
               </SelectTrigger>
               <SelectContent>
@@ -118,7 +118,7 @@ const CreatePayrollRunDialog: React.FC<CreatePayrollRunDialogProps> = ({ onSucce
               type="button"
               variant="ghost"
               onClick={() => setOpen(false)}
-              className="text-slate-500"
+              className="text-muted-foreground"
             >
               Cancel
             </Button>

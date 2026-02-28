@@ -99,7 +99,7 @@ const ViewPayments = () => {
         {/* Search and Filters */}
         <div className="flex flex-col lg:flex-row gap-4 mb-6">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search by student name or ID..."
               value={searchTerm}
@@ -155,7 +155,7 @@ const ViewPayments = () => {
             <TableBody>
               {filteredPayments.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                     No payments found matching your criteria
                   </TableCell>
                 </TableRow>
@@ -164,7 +164,7 @@ const ViewPayments = () => {
                   const student = students.find(s => s.id === payment.studentId);
                   return (
                     <TableRow key={payment.id}>
-                      <TableCell className="font-mono text-xs text-slate-500">
+                      <TableCell className="font-mono text-xs text-muted-foreground">
                         {payment.receiptNumber || `-`}
                       </TableCell>
                       <TableCell>
@@ -172,7 +172,7 @@ const ViewPayments = () => {
                           <div className="font-medium">
                             {student?.fullName || 'Unknown Student'}
                           </div>
-                          <div className="text-sm text-gray-500">
+                          <div className="text-sm text-muted-foreground">
                             ID: {student?.studentId || payment.studentId}
                           </div>
                         </div>
@@ -203,7 +203,7 @@ const ViewPayments = () => {
 
         {/* Summary */}
         {filteredPayments.length > 0 && (
-          <div className="mt-4 text-sm text-gray-600">
+          <div className="mt-4 text-sm text-muted-foreground">
             Showing {filteredPayments.length} of {payments.length} payments
           </div>
         )}

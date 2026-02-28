@@ -182,7 +182,7 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
                 id="staffId"
                 value={formData.staffId}
                 disabled
-                className="bg-gray-100 font-mono"
+                className="bg-muted font-mono"
                 placeholder="Loading..."
               />
             </div>

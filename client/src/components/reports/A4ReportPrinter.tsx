@@ -683,16 +683,16 @@ const A4ReportPrinter: React.FC<A4ReportPrinterProps> = ({
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto">
-          <div id="printable-report" className="bg-white p-6">
+          <div id="printable-report" className="bg-card p-6">
             {/* Report Header */}
             <div className="header text-center border-b-2 border-blue-600 pb-6 mb-8">
               <div className="school-name text-2xl font-bold text-blue-800 mb-2">
                 ROSA GARDENS SCHOOL
               </div>
-              <div className="report-title text-lg font-semibold text-gray-700 mb-3">
+              <div className="report-title text-lg font-semibold text-muted-foreground mb-3">
                 {reportData.reportType || 'Comprehensive Financial Report'}
               </div>
-              <div className="report-meta text-sm text-gray-500 flex justify-around">
+              <div className="report-meta text-sm text-muted-foreground flex justify-around">
                 <div>Academic Term: {reportData.term || 'Current Term'}</div>
                 <div>Report Period: {reportData.year || 'Current Year'}</div>
                 <div>Generated: {new Date(reportData.date || Date.now()).toLocaleDateString()} at {new Date(reportData.date || Date.now()).toLocaleTimeString()}</div>

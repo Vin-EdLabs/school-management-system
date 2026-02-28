@@ -175,8 +175,8 @@ const FinancialDashboard = ({ onNavigate }: FinancialDashboardProps) => {
           {/* Header */}
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-800">Financial Dashboard</h1>
-              <p className="text-gray-600">Comprehensive financial overview and management</p>
+              <h1 className="text-3xl font-bold text-foreground">Financial Dashboard</h1>
+              <p className="text-muted-foreground">Comprehensive financial overview and management</p>
             </div>
             <div className="flex items-center space-x-4">
               <Button
@@ -189,8 +189,8 @@ const FinancialDashboard = ({ onNavigate }: FinancialDashboardProps) => {
                 {sidebarOpen ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
               </Button>
               <div className="text-right">
-                <p className="text-sm text-gray-500">Current Term</p>
-                <p className="text-lg font-semibold text-gray-800">{currentTerm} {currentYear}</p>
+                <p className="text-sm text-muted-foreground">Current Term</p>
+                <p className="text-lg font-semibold text-foreground">{currentTerm} {currentYear}</p>
               </div>
             </div>
           </div>
@@ -303,13 +303,13 @@ const FinancialDashboard = ({ onNavigate }: FinancialDashboardProps) => {
               <CardContent>
                 <div className="space-y-3 max-h-80 overflow-y-auto">
                   {recentActivities.slice(0, 10).map((activity, index) => (
-                    <div key={index} className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
+                    <div key={index} className="flex items-start space-x-3 p-3 bg-muted/50 rounded-lg">
                       <div className={`w-2 h-2 rounded-full mt-2 ${activity.type === 'payment' ? 'bg-green-500' :
                         activity.type === 'income' ? 'bg-blue-500' : 'bg-red-500'
                         }`}></div>
                       <div className="flex-1">
-                        <p className="text-sm text-gray-800">{activity.text}</p>
-                        <p className="text-xs text-gray-500">{activity.time}</p>
+                        <p className="text-sm text-foreground">{activity.text}</p>
+                        <p className="text-xs text-muted-foreground">{activity.time}</p>
                       </div>
                       <div className={`text-sm font-medium ${activity.type === 'expense' ? 'text-red-600' : 'text-green-600'
                         }`}>
@@ -362,9 +362,9 @@ const FinancialDashboard = ({ onNavigate }: FinancialDashboardProps) => {
 
       {/* Outstanding Fees Sidebar */}
       {sidebarOpen && (
-        <div className="fixed right-0 top-0 h-full w-96 bg-white shadow-lg border-l border-gray-200 z-50 overflow-y-auto">
-          <div className="sticky top-0 z-40 bg-white p-4 border-b border-gray-200 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-800">Outstanding Fees by Class</h2>
+        <div className="fixed right-0 top-0 h-full w-96 bg-card shadow-lg border-l border-border z-50 overflow-y-auto">
+          <div className="sticky top-0 z-40 bg-card p-4 border-b border-border flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-foreground">Outstanding Fees by Class</h2>
             <Button
               onClick={() => setSidebarOpen(false)}
               variant="ghost"

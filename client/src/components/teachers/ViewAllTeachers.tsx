@@ -57,7 +57,7 @@ const ViewAllTeachers = () => {
       case 'Suspended':
         return 'bg-yellow-100 text-yellow-800';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-muted text-foreground';
     }
   };
 
@@ -127,7 +127,7 @@ const ViewAllTeachers = () => {
           {/* Search and Filters */}
           <div className="flex flex-col lg:flex-row gap-4 mb-6">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search by name, username, or email..."
                 value={searchTerm}
@@ -185,7 +185,7 @@ const ViewAllTeachers = () => {
               <TableBody>
                 {filteredTeachers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                       No teachers found matching your criteria
                     </TableCell>
                   </TableRow>
@@ -195,7 +195,7 @@ const ViewAllTeachers = () => {
                       <TableCell>
                         <div>
                           <div className="font-medium">{teacher.fullName}</div>
-                          <div className="text-sm text-gray-500">{teacher.gender}</div>
+                          <div className="text-sm text-muted-foreground">{teacher.gender}</div>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -204,7 +204,7 @@ const ViewAllTeachers = () => {
                       <TableCell>
                         <div className="text-sm">
                           <div>{teacher.phoneNumber}</div>
-                          <div className="text-gray-500">{teacher.email}</div>
+                          <div className="text-muted-foreground">{teacher.email}</div>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -225,7 +225,7 @@ const ViewAllTeachers = () => {
                         {teacher.classAssigned ? (
                           <Badge variant="secondary">{teacher.classAssigned}</Badge>
                         ) : (
-                          <span className="text-gray-400">No class</span>
+                          <span className="text-muted-foreground">No class</span>
                         )}
                       </TableCell>
                       <TableCell>
@@ -237,7 +237,7 @@ const ViewAllTeachers = () => {
                         {Number(teacher?.monthlySalary ?? 0) > 0 ? (
                           <span className="font-mono">GHS {Number(teacher.monthlySalary).toLocaleString()}</span>
                         ) : (
-                          <span className="text-gray-400">-</span>
+                          <span className="text-muted-foreground">-</span>
                         )}
                       </TableCell>
                       <TableCell>
@@ -275,7 +275,7 @@ const ViewAllTeachers = () => {
 
           {/* Summary */}
           {filteredTeachers.length > 0 && (
-            <div className="mt-4 text-sm text-gray-600">
+            <div className="mt-4 text-sm text-muted-foreground">
               Showing {filteredTeachers.length} of {teachers.length} teachers
             </div>
           )}

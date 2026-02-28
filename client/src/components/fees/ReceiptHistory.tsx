@@ -121,7 +121,7 @@ const ReceiptHistory = () => {
           <div className="space-y-4">
             <div className="flex flex-col lg:flex-row gap-4">
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Search by receipt number, student name, or ID..."
                   value={searchTerm}
@@ -160,7 +160,7 @@ const ReceiptHistory = () => {
                 <TableBody>
                   {filteredPayments.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                         No receipts found matching your criteria
                       </TableCell>
                     </TableRow>
@@ -171,7 +171,7 @@ const ReceiptHistory = () => {
                       return (
                         <TableRow key={payment.id}>
                           <TableCell>
-                            <span className="font-mono text-sm bg-gray-100 px-2 py-1 rounded">
+                            <span className="font-mono text-sm bg-muted px-2 py-1 rounded">
                               {receiptNumber}
                             </span>
                           </TableCell>
@@ -180,7 +180,7 @@ const ReceiptHistory = () => {
                               <div className="font-medium">
                                 {student?.fullName || 'Unknown Student'}
                               </div>
-                              <div className="text-sm text-gray-500">
+                              <div className="text-sm text-muted-foreground">
                                 ID: {student?.studentId || payment.studentId}
                               </div>
                             </div>
@@ -192,7 +192,7 @@ const ReceiptHistory = () => {
                           </TableCell>
                           <TableCell>{new Date(payment.date).toLocaleDateString()}</TableCell>
                           <TableCell>
-                            <span className="text-sm font-medium text-slate-600">{payment.term}</span>
+                            <span className="text-sm font-medium text-muted-foreground">{payment.term}</span>
                           </TableCell>
                           <TableCell>
                             <Badge variant="secondary">{payment.paymentMethod}</Badge>
@@ -216,7 +216,7 @@ const ReceiptHistory = () => {
             </div>
 
             {filteredPayments.length > 0 && (
-              <div className="text-sm text-gray-600">
+              <div className="text-sm text-muted-foreground">
                 Showing {filteredPayments.length} of {payments.length} receipts
               </div>
             )}

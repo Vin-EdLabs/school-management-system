@@ -219,9 +219,9 @@ const OutstandingFees: React.FC<OutstandingFeesProps> = ({ compact = false }) =>
             <div className="flex items-center space-x-2">
               <AlertTriangle className="w-5 h-5 text-orange-500" />
               <div>
-                <p className="text-sm text-gray-600">Students Owing</p>
+                <p className="text-sm text-muted-foreground">Students Owing</p>
                 <p className="text-2xl font-bold">{summaryStats.studentsOwing}</p>
-                <p className="text-xs text-gray-500">of {summaryStats.totalStudents} total</p>
+                <p className="text-xs text-muted-foreground">of {summaryStats.totalStudents} total</p>
               </div>
             </div>
           </CardContent>
@@ -232,9 +232,9 @@ const OutstandingFees: React.FC<OutstandingFeesProps> = ({ compact = false }) =>
             <div className="flex items-center space-x-2">
               <DollarSign className="w-5 h-5 text-red-500" />
               <div>
-                <p className="text-sm text-gray-600">Total Outstanding</p>
+                <p className="text-sm text-muted-foreground">Total Outstanding</p>
                 <p className="text-2xl font-bold">GHS {summaryStats.totalOutstanding.toLocaleString()}</p>
-                <p className="text-xs text-gray-500">across all students</p>
+                <p className="text-xs text-muted-foreground">across all students</p>
               </div>
             </div>
           </CardContent>
@@ -245,9 +245,9 @@ const OutstandingFees: React.FC<OutstandingFeesProps> = ({ compact = false }) =>
             <div className="flex items-center space-x-2">
               <Clock className="w-5 h-5 text-yellow-500" />
               <div>
-                <p className="text-sm text-gray-600">Total Arrears</p>
+                <p className="text-sm text-muted-foreground">Total Arrears</p>
                 <p className="text-2xl font-bold">GHS {summaryStats.totalArrears.toLocaleString()}</p>
-                <p className="text-xs text-gray-500">from previous terms</p>
+                <p className="text-xs text-muted-foreground">from previous terms</p>
               </div>
             </div>
           </CardContent>
@@ -258,9 +258,9 @@ const OutstandingFees: React.FC<OutstandingFeesProps> = ({ compact = false }) =>
             <div className="flex items-center space-x-2">
               <TrendingUp className="w-5 h-5 text-blue-500" />
               <div>
-                <p className="text-sm text-gray-600">Average Outstanding</p>
+                <p className="text-sm text-muted-foreground">Average Outstanding</p>
                 <p className="text-2xl font-bold">GHS {summaryStats.averageOutstanding.toLocaleString()}</p>
-                <p className="text-xs text-gray-500">per student owing</p>
+                <p className="text-xs text-muted-foreground">per student owing</p>
               </div>
             </div>
           </CardContent>
@@ -304,7 +304,7 @@ const OutstandingFees: React.FC<OutstandingFeesProps> = ({ compact = false }) =>
         <CardContent>
           <div className="flex flex-col md:flex-row gap-4 mb-6">
             <div className="relative flex-1">
-              <Search className="w-4 h-4 absolute left-3 top-3 text-gray-400" />
+              <Search className="w-4 h-4 absolute left-3 top-3 text-muted-foreground" />
               <Input
                 placeholder="Search students..."
                 value={searchTerm}
@@ -344,11 +344,11 @@ const OutstandingFees: React.FC<OutstandingFeesProps> = ({ compact = false }) =>
                 </thead>
                 <tbody>
                   {filteredStudents.map((student, index) => (
-                    <tr key={student.studentId} className="border-b hover:bg-gray-50">
+                    <tr key={student.studentId} className="border-b hover:bg-muted/50">
                       <td className="p-3">
                         <div>
                           <p className="font-medium">{student.studentName}</p>
-                          <p className="text-sm text-gray-500">ID: {student.studentId}</p>
+                          <p className="text-sm text-muted-foreground">ID: {student.studentId}</p>
                         </div>
                       </td>
                       <td className="p-3">{student.className}</td>
@@ -359,7 +359,7 @@ const OutstandingFees: React.FC<OutstandingFeesProps> = ({ compact = false }) =>
                             GHS {student.arrears.toLocaleString()}
                           </span>
                         ) : (
-                          <span className="text-gray-400">-</span>
+                          <span className="text-muted-foreground">-</span>
                         )}
                       </td>
                       <td className="p-3">GHS {student.totalAmountDue.toLocaleString()}</td>
@@ -392,9 +392,9 @@ const OutstandingFees: React.FC<OutstandingFeesProps> = ({ compact = false }) =>
             </div>
           ) : (
             <div className="text-center py-8">
-              <AlertTriangle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No Outstanding Fees</h3>
-              <p className="text-gray-600">
+              <AlertTriangle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-foreground mb-2">No Outstanding Fees</h3>
+              <p className="text-muted-foreground">
                 {searchTerm || selectedClass !== 'All'
                   ? 'No students match your current filters.'
                   : 'All students have paid their fees for this term.'}

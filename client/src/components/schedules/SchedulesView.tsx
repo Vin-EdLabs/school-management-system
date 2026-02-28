@@ -46,7 +46,7 @@ const SchedulesView: React.FC<Props> = ({ schedules, onDelete, onEdit }) => {
                 <TableBody>
                     {schedules.length === 0 ? (
                         <TableRow>
-                            <TableCell colSpan={8} className="text-center py-8 text-gray-500">No schedules found.</TableCell>
+                            <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No schedules found.</TableCell>
                         </TableRow>
                     ) : (
                         schedules.map((s: any) => (

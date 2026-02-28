@@ -133,8 +133,8 @@ const AdministratorDashboard = ({ onNavigate }: AdministratorDashboardProps) => 
             <GraduationCap className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">Administrator Dashboard</h1>
-            <p className="text-gray-600">Academic Year: {activeAcademicYear} | {activeAcademicTerm}</p>
+            <h1 className="text-3xl font-bold text-foreground">Administrator Dashboard</h1>
+            <p className="text-muted-foreground">Academic Year: {activeAcademicYear} | {activeAcademicTerm}</p>
           </div>
         </div>
       </div>
@@ -227,7 +227,7 @@ const AdministratorDashboard = ({ onNavigate }: AdministratorDashboardProps) => 
         <CardContent>
           <div className="space-y-4">
             {studentsWithFeeStatus.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
+              <div className="text-center py-8 text-muted-foreground">
                 No students found in the selected class
               </div>
             ) : (
@@ -239,7 +239,7 @@ const AdministratorDashboard = ({ onNavigate }: AdministratorDashboardProps) => 
                         <div className="font-medium">
                           {student.firstName} {student.lastName}
                         </div>
-                        <div className="text-sm text-gray-500">
+                        <div className="text-sm text-muted-foreground">
                           {student.classAssigned} • ID: {student.studentId}
                         </div>
                       </div>

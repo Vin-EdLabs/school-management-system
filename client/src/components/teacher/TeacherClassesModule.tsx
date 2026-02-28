@@ -157,8 +157,8 @@ const TeacherClassesModule = () => {
             <BookOpen className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">My Classes</h1>
-            <p className="text-gray-600">Manage and view your assigned classes</p>
+            <h1 className="text-3xl font-bold text-foreground">My Classes</h1>
+            <p className="text-muted-foreground">Manage and view your assigned classes</p>
           </div>
         </div>
       </div>
@@ -174,33 +174,33 @@ const TeacherClassesModule = () => {
         <CardContent>
           {(!isSuperAdmin && teacherClasses.length === 0) || (isSuperAdmin && teacherClasses.length === 0) ? (
             <div className="text-center py-8">
-              <BookOpen className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No Classes Assigned</h3>
-              <p className="text-gray-500">No classes are assigned yet.</p>
+              <BookOpen className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-foreground mb-2">No Classes Assigned</h3>
+              <p className="text-muted-foreground">No classes are assigned yet.</p>
             </div>
           ) : (
             <div className="space-y-3">
               {isSuperAdmin ? (
                 // show each teacher and their classes
                 teacherClasses.map((entry: any) => (
-                  <div key={entry.teacher.id} className="p-3 bg-gray-50 rounded-lg">
+                  <div key={entry.teacher.id} className="p-3 bg-muted/50 rounded-lg">
                     <div className="flex items-center justify-between">
                       <div>
-                        <h4 className="font-medium text-gray-900">{entry.teacher.fullName || entry.teacher.username}</h4>
-                        <p className="text-sm text-gray-500">{entry.classes.length} assigned class{entry.classes.length !== 1 ? 'es' : ''}</p>
+                        <h4 className="font-medium text-foreground">{entry.teacher.fullName || entry.teacher.username}</h4>
+                        <p className="text-sm text-muted-foreground">{entry.classes.length} assigned class{entry.classes.length !== 1 ? 'es' : ''}</p>
                       </div>
-                      <ChevronRight className="w-5 h-5 text-gray-500" />
+                      <ChevronRight className="w-5 h-5 text-muted-foreground" />
                     </div>
                     <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {entry.classes.length === 0 ? (
-                        <div className="text-sm text-gray-500 col-span-full">No classes assigned</div>
+                        <div className="text-sm text-muted-foreground col-span-full">No classes assigned</div>
                       ) : (
                         entry.classes.map((cls: any) => (
-                          <div key={cls.id} className={`flex items-center justify-between p-2 bg-white border rounded ${selectedClass === cls.id ? 'ring-2 ring-blue-500' : ''}`} onClick={() => setSelectedClass(cls.id)} style={{ cursor: 'pointer' }}>
+                          <div key={cls.id} className={`flex items-center justify-between p-2 bg-card border rounded ${selectedClass === cls.id ? 'ring-2 ring-blue-500' : ''}`} onClick={() => setSelectedClass(cls.id)} style={{ cursor: 'pointer' }}>
                             <div>
-                              <div className="font-medium text-gray-900">{cls.className} - {studentCountForClass(cls)} students</div>
+                              <div className="font-medium text-foreground">{cls.className} - {studentCountForClass(cls)} students</div>
                             </div>
-                            <ChevronRight className="w-4 h-4 text-gray-400" />
+                            <ChevronRight className="w-4 h-4 text-muted-foreground" />
                           </div>
                         ))
                       )}
@@ -214,14 +214,14 @@ const TeacherClassesModule = () => {
                   return (
                     <div
                       key={cls.id}
-                      className={`flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors ${selectedClass === cls.id ? 'ring-2 ring-blue-500' : ''}`}
+                      className={`flex items-center justify-between p-4 bg-muted/50 rounded-lg hover:bg-muted transition-colors ${selectedClass === cls.id ? 'ring-2 ring-blue-500' : ''}`}
                       onClick={() => setSelectedClass(cls.id)}
                       style={{ cursor: 'pointer' }}
                     >
                       <div>
-                        <h4 className="font-medium text-gray-900">{cls.className} - {studentCount} students</h4>
+                        <h4 className="font-medium text-foreground">{cls.className} - {studentCount} students</h4>
                       </div>
-                      <ChevronRight className="w-5 h-5 text-gray-500" />
+                      <ChevronRight className="w-5 h-5 text-muted-foreground" />
                     </div>
                   );
                 })
@@ -243,9 +243,9 @@ const TeacherClassesModule = () => {
           <CardContent>
             {classStudents.length === 0 ? (
               <div className="text-center py-8">
-                <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No Students in Class</h3>
-                <p className="text-gray-500">No students are assigned to this class yet.</p>
+                <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-foreground mb-2">No Students in Class</h3>
+                <p className="text-muted-foreground">No students are assigned to this class yet.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -256,13 +256,13 @@ const TeacherClassesModule = () => {
                   const displayLast = last.charAt ? last.charAt(0) : '';
                   const admission = student.admission_no ?? student.admissionNumber ?? student.admission_number ?? student.admission ?? '';
                   return (
-                    <div key={student.id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                    <div key={student.id} className="flex items-center space-x-3 p-3 bg-muted/50 rounded-lg">
                       <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
                         {displayFirst}{displayLast}
                       </div>
                       <div>
-                        <p className="font-medium text-gray-900">{(student.firstName ?? student.first_name ?? '')} {(student.lastName ?? student.last_name ?? '')}</p>
-                        <p className="text-sm text-gray-500">Admission: {admission}</p>
+                        <p className="font-medium text-foreground">{(student.firstName ?? student.first_name ?? '')} {(student.lastName ?? student.last_name ?? '')}</p>
+                        <p className="text-sm text-muted-foreground">Admission: {admission}</p>
                       </div>
                     </div>
                   );

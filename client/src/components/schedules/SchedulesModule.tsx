@@ -31,7 +31,7 @@ const SchedulesModule: React.FC = () => {
         return (
             <div className="p-6 text-center">
                 <h2 className="text-2xl font-bold">Access Denied</h2>
-                <p className="text-gray-600">You do not have permission to manage schedules.</p>
+                <p className="text-muted-foreground">You do not have permission to manage schedules.</p>
             </div>
         );
     }
@@ -176,7 +176,7 @@ const SchedulesModule: React.FC = () => {
                         </div>
                         <div>
                             <div className="text-lg font-semibold">Schedules Management</div>
-                            <div className="text-sm text-gray-500">Create and view class schedules</div>
+                            <div className="text-sm text-muted-foreground">Create and view class schedules</div>
                         </div>
                     </div>
                     <div className="flex items-center space-x-2">

@@ -52,19 +52,19 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
             <h3 className="text-lg font-semibold mb-3">Basic Information</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="text-sm font-medium text-gray-500">Full Name</label>
+                <label className="text-sm font-medium text-muted-foreground">Full Name</label>
                 <p className="text-base">{teacher.fullName}</p>
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-500">Staff ID</label>
+                <label className="text-sm font-medium text-muted-foreground">Staff ID</label>
                 <p className="text-base font-mono">{teacher.staffId}</p>
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-500">Gender</label>
+                <label className="text-sm font-medium text-muted-foreground">Gender</label>
                 <p className="text-base">{teacher.gender}</p>
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-500">Date of Birth</label>
+                <label className="text-sm font-medium text-muted-foreground">Date of Birth</label>
                 <p className="text-base">
                   {teacher.dateOfBirth ? new Date(teacher.dateOfBirth).toLocaleDateString() : 'Not provided'}
                 </p>
@@ -79,15 +79,15 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
             <h3 className="text-lg font-semibold mb-3">Contact Information</h3>
             <div className="space-y-3">
               <div className="flex items-center space-x-2">
-                <Phone className="w-4 h-4 text-gray-500" />
+                <Phone className="w-4 h-4 text-muted-foreground" />
                 <span>{teacher.phoneNumber}</span>
               </div>
               <div className="flex items-center space-x-2">
-                <Mail className="w-4 h-4 text-gray-500" />
+                <Mail className="w-4 h-4 text-muted-foreground" />
                 <span>{teacher.email}</span>
               </div>
               <div className="flex items-start space-x-2">
-                <MapPin className="w-4 h-4 text-gray-500 mt-1" />
+                <MapPin className="w-4 h-4 text-muted-foreground mt-1" />
                 <span>{teacher.address}</span>
               </div>
             </div>
@@ -100,7 +100,7 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
             <h3 className="text-lg font-semibold mb-3">Academic Information</h3>
             <div className="space-y-3">
               <div>
-                <label className="text-sm font-medium text-gray-500">Subjects Taught</label>
+                <label className="text-sm font-medium text-muted-foreground">Subjects Taught</label>
                 <div className="flex flex-wrap gap-2 mt-1">
                   {(teacher?.subjectsTaught ?? []).map((subject, index) => (
                     <Badge key={index} variant="secondary">
@@ -110,7 +110,7 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
                 </div>
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-500">Class Assigned</label>
+                <label className="text-sm font-medium text-muted-foreground">Class Assigned</label>
                 <p className="text-base">
                   {teacher.classAssigned || 'No class assigned'}
                 </p>
@@ -125,16 +125,16 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
             <h3 className="text-lg font-semibold mb-3">Employment Information</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="flex items-center space-x-2">
-                <Calendar className="w-4 h-4 text-gray-500" />
+                <Calendar className="w-4 h-4 text-muted-foreground" />
                 <div>
-                  <label className="text-sm font-medium text-gray-500">Employment Date</label>
+                  <label className="text-sm font-medium text-muted-foreground">Employment Date</label>
                   <p className="text-base">{teacher?.employmentDate ? new Date(teacher.employmentDate).toLocaleDateString() : 'Not provided'}</p>
                 </div>
               </div>
               <div className="flex items-center space-x-2">
-                <Briefcase className="w-4 h-4 text-gray-500" />
+                <Briefcase className="w-4 h-4 text-muted-foreground" />
                 <div>
-                  <label className="text-sm font-medium text-gray-500">Status</label>
+                  <label className="text-sm font-medium text-muted-foreground">Status</label>
                   <Badge
                     className={
                       teacher.employmentStatus === 'Active' ? 'bg-green-100 text-green-800' :
@@ -147,9 +147,9 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
                 </div>
               </div>
               <div className="flex items-center space-x-2">
-                <DollarSign className="w-4 h-4 text-gray-500" />
+                <DollarSign className="w-4 h-4 text-muted-foreground" />
                 <div>
-                  <label className="text-sm font-medium text-gray-500">Monthly Salary</label>
+                  <label className="text-sm font-medium text-muted-foreground">Monthly Salary</label>
                   <p className="text-base font-mono">
                     {Number(teacher?.monthlySalary ?? 0) > 0 ? `GHS ${Number(teacher.monthlySalary).toLocaleString()}` : 'Not set'}
                   </p>
@@ -163,7 +163,7 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
               <Separator />
               <div>
                 <h3 className="text-lg font-semibold mb-3">Notes</h3>
-                <p className="text-base text-gray-700">{teacher.notes}</p>
+                <p className="text-base text-muted-foreground">{teacher.notes}</p>
               </div>
             </>
           )}

@@ -16,8 +16,8 @@ const ExpensesModule = () => {
             <TrendingDown className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">Expenses Management</h1>
-            <p className="text-gray-600">Track and manage school expenses</p>
+            <h1 className="text-3xl font-bold text-foreground">Expenses Management</h1>
+            <p className="text-muted-foreground">Track and manage school expenses</p>
           </div>
         </div>
       </div>

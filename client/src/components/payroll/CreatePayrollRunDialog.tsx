@@ -1,9 +1,17 @@
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
+} from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
-import { Plus } from 'lucide-react';
+import { Plus, Calendar } from 'lucide-react';
 import React, { useState } from 'react';
 import { useCreatePayrollRun } from './usePayrollManagement';
 
@@ -68,52 +76,63 @@ const CreatePayrollRunDialog: React.FC<CreatePayrollRunDialogProps> = ({ onSucce
   }
 
   return (
-    <div>
-      {open ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Create New Payroll Run</CardTitle>
-            <CardDescription>Start a new payroll run for the selected month</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="monthYear">Select Month & Year</Label>
-                <Select value={monthYear} onValueChange={setMonthYear}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a month" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {months.map((month) => (
-                      <SelectItem key={month} value={month}>
-                        {new Date(`${month}-01`).toLocaleDateString('en-US', {
-                          year: 'numeric',
-                          month: 'long'
-                        })}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex gap-2">
-                <Button type="submit" disabled={createRun.isPending}>
-                  {createRun.isPending ? 'Creating...' : 'Create Payroll Run'}
-                </Button>
-                <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                  Cancel
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-      ) : (
-        <Button onClick={() => setOpen(true)}>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button className="bg-slate-900 hover:bg-slate-800 text-white shadow-lg transition-all active:scale-95">
           <Plus className="w-4 h-4 mr-2" />
           New Payroll Run
         </Button>
-      )}
-    </div>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center mb-4">
+            <Calendar className="w-6 h-6 text-blue-600" />
+          </div>
+          <DialogTitle className="text-2xl font-bold">Create Payroll Run</DialogTitle>
+          <DialogDescription className="text-slate-500">
+            Select the month and year you wish to process salaries for.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-6 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="monthYear" className="text-sm font-semibold">Select Payroll Period</Label>
+            <Select value={monthYear} onValueChange={setMonthYear}>
+              <SelectTrigger className="h-12 border-slate-200 focus:ring-blue-500">
+                <SelectValue placeholder="Chose a month..." />
+              </SelectTrigger>
+              <SelectContent>
+                {months.map((month) => (
+                  <SelectItem key={month} value={month} className="py-3">
+                    {new Date(`${month}-01`).toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'long'
+                    })}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setOpen(false)}
+              className="text-slate-500"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={createRun.isPending}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-8"
+            >
+              {createRun.isPending ? 'Working...' : 'Initialize Run'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 };
 

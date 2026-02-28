@@ -50,3 +50,39 @@ export function usePayrollRunDetails(runId?: number) {
     },
   });
 }
+
+export function useAddDeduction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ itemId, payload }: { itemId: string; payload: any }) =>
+      payrollService.addDeductions(itemId, payload),
+    onSuccess: (_, { itemId }) => {
+      qc.invalidateQueries({ queryKey: ['payroll'] });
+      qc.invalidateQueries({ queryKey: ['payroll', 'run'] });
+    },
+  });
+}
+
+export function useAddBonus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ itemId, payload }: { itemId: string; payload: any }) =>
+      payrollService.addBonuses(itemId, payload),
+    onSuccess: (_, { itemId }) => {
+      qc.invalidateQueries({ queryKey: ['payroll'] });
+      qc.invalidateQueries({ queryKey: ['payroll', 'run'] });
+    },
+  });
+}
+
+export function useRecordPayment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ itemId, payload }: { itemId: string; payload: any }) =>
+      payrollService.recordPayment(itemId, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['payroll', 'runs'] });
+      qc.invalidateQueries({ queryKey: ['payroll'] });
+    },
+  });
+}

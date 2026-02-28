@@ -1,434 +1,277 @@
-
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { toast } from '@/hooks/use-toast';
-import useFeeStructures from '@/hooks/useFeeStructures';
-import usePayments from '@/hooks/usePayments';
-import useStudents from '@/hooks/useStudents';
-import { Calendar, CheckCircle, Edit2, Plus, Trash2 } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
-import { processArrearsForTermChange } from '../../utils/feeCalculations';
-
-interface AcademicTerm {
-  id: string;
-  name: string;
-  year: string;
-  startDate: string;
-  endDate: string;
-  isActive: boolean;
-}
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useToast } from '@/hooks/use-toast';
+import { useAcademicTerms } from '@/hooks/useAcademicTerms';
+import { Calendar, Plus, Save, Trash2 } from 'lucide-react';
+import React, { useState } from 'react';
 
 const AcademicTermManager = () => {
-  const { students: rawStudents } = useStudents();
-  const { payments: rawPayments } = usePayments();
-  const { feeStructures: rawFeeStructures } = useFeeStructures();
+  const { toast } = useToast();
+  const { terms, isLoading, createTerm, updateTerm, deleteTerm, setActiveTerm } = useAcademicTerms();
 
-  const students = (rawStudents || []).map((s: any) => ({
-    id: s.id ?? String(s.id),
-    firstName: s.first_name || s.firstName || '',
-    lastName: s.last_name || s.lastName || '',
-    classAssigned: s.classAssigned || s.class_assigned || ''
-  }));
-
-  const payments = (rawPayments || []).map((p: any) => ({
-    id: p.id ?? String(p.id),
-    studentId: String(p.student_id || p.studentId || p.student),
-    term: p.term || p.term_name || p.termName || '',
-    amount: Number(p.amount || 0)
-  }));
-
-  const feeStructures = (rawFeeStructures || []).map((f: any) => ({
-    id: f.id ?? String(f.id),
-    classId: f.class_id || f.classId || null,
-    term: f.term || f.term_name || f.termName || '',
-    amount: Number(f.amount || f.fee || 0)
-  }));
-  const [terms, setTerms] = useState<AcademicTerm[]>([]);
-  const [isAddingTerm, setIsAddingTerm] = useState(false);
-  const [editingTerm, setEditingTerm] = useState<string | null>(null);
-  const [newTerm, setNewTerm] = useState({
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingTerm, setEditingTerm] = useState<any>(null);
+  const [formData, setFormData] = useState({
     name: '',
     year: new Date().getFullYear().toString(),
     startDate: '',
-    endDate: ''
+    endDate: '',
+    isActive: false
   });
 
-  // Helper function to dispatch settings change event
-  const dispatchSettingsChange = () => {
-    window.dispatchEvent(new CustomEvent('academicSettingsChanged'));
-  };
-
-  // Load terms from localStorage on component mount
-  useEffect(() => {
-    const savedTerms = localStorage.getItem('academicTerms');
-    if (savedTerms) {
-      try {
-        const parsedTerms = JSON.parse(savedTerms);
-        setTerms(parsedTerms);
-      } catch (error) {
-        console.error('Error loading academic terms:', error);
-      }
+  const handleOpenDialog = (term?: any) => {
+    if (term) {
+      setEditingTerm(term);
+      setFormData({
+        name: term.name,
+        year: term.year,
+        startDate: term.start_date ? term.start_date.split('T')[0] : '',
+        endDate: term.end_date ? term.end_date.split('T')[0] : '',
+        isActive: term.is_active || false
+      });
     } else {
-      // Create default terms if none exist
-      const defaultTerms: AcademicTerm[] = [
-        {
-          id: '1',
-          name: 'Term 1',
-          year: '2024',
-          startDate: '2024-01-15',
-          endDate: '2024-04-12',
-          isActive: true
-        },
-        {
-          id: '2',
-          name: 'Term 2',
-          year: '2024',
-          startDate: '2024-04-29',
-          endDate: '2024-07-26',
-          isActive: false
-        },
-        {
-          id: '3',
-          name: 'Term 3',
-          year: '2024',
-          startDate: '2024-09-09',
-          endDate: '2024-12-13',
-          isActive: false
+      setEditingTerm(null);
+      setFormData({
+        name: '',
+        year: new Date().getFullYear().toString(),
+        startDate: '',
+        endDate: '',
+        isActive: false
+      });
+    }
+    setIsDialogOpen(true);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.name || !formData.year) {
+      toast({
+        title: "Validation Error",
+        description: "Term name and year are required",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (editingTerm) {
+      updateTerm.mutate({ id: editingTerm.id, payload: formData }, {
+        onSuccess: () => {
+          toast({ title: "Updated", description: "Academic term updated successfully" });
+          setIsDialogOpen(false);
         }
-      ];
-      setTerms(defaultTerms);
-      localStorage.setItem('academicTerms', JSON.stringify(defaultTerms));
-    }
-  }, []);
-
-  const saveTerms = (updatedTerms: AcademicTerm[]) => {
-    setTerms(updatedTerms);
-    localStorage.setItem('academicTerms', JSON.stringify(updatedTerms));
-    dispatchSettingsChange(); // Notify header of changes
-  };
-
-  const handleAddTerm = () => {
-    if (!newTerm.name || !newTerm.year || !newTerm.startDate || !newTerm.endDate) {
-      toast({
-        title: "Missing Information",
-        description: "Please fill in all fields",
-        variant: "destructive"
       });
-      return;
-    }
-
-    const newTermData: AcademicTerm = {
-      id: Date.now().toString(),
-      name: newTerm.name,
-      year: newTerm.year,
-      startDate: newTerm.startDate,
-      endDate: newTerm.endDate,
-      isActive: false
-    };
-
-    const updatedTerms = [...terms, newTermData];
-    saveTerms(updatedTerms);
-
-    toast({
-      title: "Term Added",
-      description: `${newTerm.name} ${newTerm.year} has been added successfully`,
-    });
-
-    setNewTerm({ name: '', year: new Date().getFullYear().toString(), startDate: '', endDate: '' });
-    setIsAddingTerm(false);
-  };
-
-  const handleSetActiveTerm = (termId: string) => {
-    const currentActiveTerm = terms.find(t => t.isActive);
-    const newActiveTerm = terms.find(t => t.id === termId);
-
-    if (!newActiveTerm) return;
-
-    // Process arrears for term change if there's a current active term
-    if (currentActiveTerm && currentActiveTerm.id !== termId) {
-      const previousTermName = `${currentActiveTerm.name} ${currentActiveTerm.year}`;
-      const newTermName = `${newActiveTerm.name} ${newActiveTerm.year}`;
-
-      processArrearsForTermChange(
-        students,
-        payments,
-        feeStructures,
-        previousTermName,
-        newTermName
-      );
-    }
-
-    const updatedTerms = terms.map(term => ({
-      ...term,
-      isActive: term.id === termId
-    }));
-
-    saveTerms(updatedTerms);
-
-    toast({
-      title: "Active Term Changed",
-      description: `${newActiveTerm.name} ${newActiveTerm.year} is now the active term`,
-    });
-  };
-
-  const handleDeleteTerm = (termId: string) => {
-    const termToDelete = terms.find(t => t.id === termId);
-    if (!termToDelete) return;
-
-    if (termToDelete.isActive) {
-      toast({
-        title: "Cannot Delete Active Term",
-        description: "Please set another term as active before deleting this term",
-        variant: "destructive"
+    } else {
+      createTerm.mutate(formData, {
+        onSuccess: () => {
+          toast({ title: "Created", description: "New academic term created" });
+          setIsDialogOpen(false);
+        }
       });
-      return;
     }
+  };
 
-    const updatedTerms = terms.filter(t => t.id !== termId);
-    saveTerms(updatedTerms);
-
-    toast({
-      title: "Term Deleted",
-      description: `${termToDelete.name} ${termToDelete.year} has been deleted`,
+  const handleToggleActive = (id: number | string) => {
+    setActiveTerm.mutate(id, {
+      onSuccess: () => {
+        toast({ title: "Active Term Changed", description: "The system active term has been updated" });
+      }
     });
   };
 
-  const handleUpdateTerm = (termId: string, updatedData: Partial<AcademicTerm>) => {
-    const updatedTerms = terms.map(term =>
-      term.id === termId ? { ...term, ...updatedData } : term
-    );
-    saveTerms(updatedTerms);
-    setEditingTerm(null);
-
-    toast({
-      title: "Term Updated",
-      description: "Academic term has been updated successfully",
-    });
+  const handleDeleteTerm = (id: number | string) => {
+    if (confirm('Are you sure you want to delete this term?')) {
+      deleteTerm.mutate(id, {
+        onSuccess: () => {
+          toast({ title: "Deleted", description: "Academic term removed" });
+        }
+      });
+    }
   };
-
-  const activeTerm = terms.find(t => t.isActive);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center space-x-2">
-          <Calendar className="w-5 h-5" />
-          <span>Academic Term Management</span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {/* Current Active Term Display */}
-        {activeTerm && (
-          <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold text-green-800">Current Active Term</h3>
-                <p className="text-green-700">{activeTerm.name} {activeTerm.year}</p>
-                <p className="text-sm text-green-600">
-                  {new Date(activeTerm.startDate).toLocaleDateString()} - {new Date(activeTerm.endDate).toLocaleDateString()}
-                </p>
-              </div>
-              <Badge className="bg-green-500">
-                <CheckCircle className="w-3 h-3 mr-1" />
-                Active
-              </Badge>
-            </div>
+    <div className="space-y-6 p-6">
+      <div className="flex items-center justify-between font-outfit">
+        <div className="flex items-center space-x-3">
+          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200">
+            <Calendar className="w-6 h-6 text-white" />
           </div>
-        )}
-
-        {/* Add New Term Form */}
-        {isAddingTerm && (
-          <div className="p-4 border border-gray-200 rounded-lg space-y-4">
-            <h3 className="font-semibold">Add New Academic Term</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="termName">Term Name</Label>
-                <Input
-                  id="termName"
-                  value={newTerm.name}
-                  onChange={(e) => setNewTerm({ ...newTerm, name: e.target.value })}
-                  placeholder="e.g., Term 1, First Semester"
-                />
-              </div>
-              <div>
-                <Label htmlFor="termYear">Academic Year</Label>
-                <Input
-                  id="termYear"
-                  value={newTerm.year}
-                  onChange={(e) => setNewTerm({ ...newTerm, year: e.target.value })}
-                  placeholder="e.g., 2024"
-                />
-              </div>
-              <div>
-                <Label htmlFor="startDate">Start Date</Label>
-                <Input
-                  id="startDate"
-                  type="date"
-                  value={newTerm.startDate}
-                  onChange={(e) => setNewTerm({ ...newTerm, startDate: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label htmlFor="endDate">End Date</Label>
-                <Input
-                  id="endDate"
-                  type="date"
-                  value={newTerm.endDate}
-                  onChange={(e) => setNewTerm({ ...newTerm, endDate: e.target.value })}
-                />
-              </div>
-            </div>
-            <div className="flex space-x-2">
-              <Button onClick={handleAddTerm}>Add Term</Button>
-              <Button variant="outline" onClick={() => setIsAddingTerm(false)}>Cancel</Button>
-            </div>
+          <div>
+            <h1 className="text-3xl font-bold text-slate-800">Academic Terms</h1>
+            <p className="text-slate-500">Manage school terms and academic years</p>
           </div>
-        )}
+        </div>
+        <Button onClick={() => handleOpenDialog()} className="bg-indigo-600 hover:bg-indigo-700 h-11 px-6 rounded-xl transition-all hover:scale-105 active:scale-95 shadow-lg shadow-indigo-100">
+          <Plus className="w-4 h-4 mr-2" />
+          Add New Term
+        </Button>
+      </div>
 
-        {/* Add Term Button */}
-        {!isAddingTerm && (
-          <Button onClick={() => setIsAddingTerm(true)} variant="outline" className="w-full">
-            <Plus className="w-4 h-4 mr-2" />
-            Add New Academic Term
-          </Button>
-        )}
-
-        {/* Terms List */}
-        <div className="space-y-3">
-          <h3 className="font-semibold">All Academic Terms</h3>
-          {terms.length === 0 ? (
-            <p className="text-gray-500 text-center py-4">No academic terms found</p>
-          ) : (
-            <div className="space-y-2">
-              {terms.map((term) => (
-                <div key={term.id} className={`p-3 border rounded-lg ${term.isActive ? 'border-green-300 bg-green-50' : 'border-gray-200'}`}>
-                  {editingTerm === term.id ? (
-                    <EditTermForm
-                      term={term}
-                      onSave={(updatedData) => handleUpdateTerm(term.id, updatedData)}
-                      onCancel={() => setEditingTerm(null)}
-                    />
-                  ) : (
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="flex items-center space-x-2">
-                          <h4 className="font-medium">{term.name} {term.year}</h4>
-                          {term.isActive && (
-                            <Badge variant="default" className="bg-green-500">
-                              Active
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-sm text-gray-600">
-                          {new Date(term.startDate).toLocaleDateString()} - {new Date(term.endDate).toLocaleDateString()}
-                        </p>
-                      </div>
-                      <div className="flex space-x-2">
-                        {!term.isActive && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleSetActiveTerm(term.id)}
-                          >
-                            Set Active
-                          </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setEditingTerm(term.id)}
-                        >
-                          <Edit2 className="w-3 h-3" />
-                        </Button>
-                        {!term.isActive && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleDeleteTerm(term.id)}
-                            className="text-red-600 hover:text-red-700"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </Button>
-                        )}
-                      </div>
+      <Card className="border-none shadow-xl shadow-slate-200/50 bg-white/70 backdrop-blur-sm rounded-2xl overflow-hidden">
+        <CardHeader className="bg-slate-50/50 border-b border-slate-100">
+          <CardTitle className="text-xl font-semibold text-slate-800">School Terms List</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader className="bg-slate-50/30">
+              <TableRow>
+                <TableHead className="font-semibold text-slate-600 h-14">Term Name</TableHead>
+                <TableHead className="font-semibold text-slate-600 h-14">Year</TableHead>
+                <TableHead className="font-semibold text-slate-600 h-14">Start Date</TableHead>
+                <TableHead className="font-semibold text-slate-600 h-14">End Date</TableHead>
+                <TableHead className="font-semibold text-slate-600 h-14">Status</TableHead>
+                <TableHead className="text-right font-semibold text-slate-600 h-14 pr-6">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-20">
+                    <div className="flex flex-col items-center justify-center space-y-4">
+                      <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                      <p className="text-slate-500 font-medium">Loading terms...</p>
                     </div>
-                  )}
-                </div>
-              ))}
+                  </TableCell>
+                </TableRow>
+              ) : terms.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-20">
+                    <div className="flex flex-col items-center justify-center space-y-3 opacity-60">
+                      <Calendar className="w-16 h-16 text-slate-300" />
+                      <p className="text-slate-500 text-lg font-medium">No terms defined yet.</p>
+                      <Button variant="ghost" className="text-indigo-600" onClick={() => handleOpenDialog()}>Click here to create your first term</Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                terms.map((term: any) => (
+                  <TableRow key={term.id} className={`${term.is_active ? 'bg-indigo-50/40 hover:bg-indigo-50/60' : 'hover:bg-slate-50/50'} transition-colors border-slate-100`}>
+                    <TableCell className="font-medium text-slate-900 py-5">{term.name}</TableCell>
+                    <TableCell className="text-slate-600">{term.year}</TableCell>
+                    <TableCell className="text-slate-600">{term.start_date ? new Date(term.start_date).toLocaleDateString() : '-'}</TableCell>
+                    <TableCell className="text-slate-600">{term.end_date ? new Date(term.end_date).toLocaleDateString() : '-'}</TableCell>
+                    <TableCell>
+                      {term.is_active ? (
+                        <div className="flex items-center space-x-2">
+                          <span className="relative flex h-2 w-2">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                          </span>
+                          <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-emerald-200">System Active</Badge>
+                        </div>
+                      ) : (
+                        <Badge variant="secondary" className="bg-slate-100 text-slate-500 border-slate-200">Inactive</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right space-x-2 pr-6 py-5">
+                      {!term.is_active && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleToggleActive(term.id)}
+                          className="border-indigo-200 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-lg px-4 h-9 font-medium"
+                        >
+                          Mark Active
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="sm" onClick={() => handleOpenDialog(term)} className="text-slate-600 hover:bg-slate-100 rounded-lg">Edit</Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-rose-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
+                        onClick={() => handleDeleteTerm(term.id)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="sm:max-w-[425px] rounded-2xl border-none shadow-2xl p-0 overflow-hidden font-outfit">
+          <form onSubmit={handleSubmit}>
+            <div className="bg-indigo-600 p-8 text-white">
+              <DialogTitle className="text-2xl font-bold">{editingTerm ? 'Edit Academic Term' : 'Add Academic Term'}</DialogTitle>
+              <DialogDescription className="text-indigo-100 mt-2">
+                Set the name and duration for the school term.
+              </DialogDescription>
             </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-};
 
-// Component for editing a term
-const EditTermForm: React.FC<{
-  term: AcademicTerm;
-  onSave: (data: Partial<AcademicTerm>) => void;
-  onCancel: () => void;
-}> = ({ term, onSave, onCancel }) => {
-  const [editData, setEditData] = useState({
-    name: term.name,
-    year: term.year,
-    startDate: term.startDate,
-    endDate: term.endDate
-  });
+            <div className="px-8 py-6 space-y-5 bg-white">
+              <div className="space-y-2">
+                <Label htmlFor="name" className="text-slate-600 font-medium">Term Name</Label>
+                <Select
+                  value={formData.name}
+                  onValueChange={(v) => setFormData({ ...formData, name: v })}
+                >
+                  <SelectTrigger className="h-11 rounded-xl border-slate-200 focus:ring-indigo-500 focus:border-indigo-500">
+                    <SelectValue placeholder="Select Term" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Term 1">Term 1</SelectItem>
+                    <SelectItem value="Term 2">Term 2</SelectItem>
+                    <SelectItem value="Term 3">Term 3</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-  const handleSave = () => {
-    if (!editData.name || !editData.year || !editData.startDate || !editData.endDate) {
-      toast({
-        title: "Missing Information",
-        description: "Please fill in all fields",
-        variant: "destructive"
-      });
-      return;
-    }
-    onSave(editData);
-  };
+              <div className="space-y-2">
+                <Label htmlFor="year" className="text-slate-600 font-medium">Academic Year</Label>
+                <Input
+                  id="year"
+                  type="number"
+                  value={formData.year}
+                  onChange={(e) => setFormData({ ...formData, year: e.target.value })}
+                  placeholder="e.g. 2024"
+                  className="h-11 rounded-xl border-slate-200 focus:ring-indigo-500 focus:border-indigo-500"
+                  required
+                />
+              </div>
 
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <Label>Term Name</Label>
-          <Input
-            value={editData.name}
-            onChange={(e) => setEditData({ ...editData, name: e.target.value })}
-          />
-        </div>
-        <div>
-          <Label>Academic Year</Label>
-          <Input
-            value={editData.year}
-            onChange={(e) => setEditData({ ...editData, year: e.target.value })}
-          />
-        </div>
-        <div>
-          <Label>Start Date</Label>
-          <Input
-            type="date"
-            value={editData.startDate}
-            onChange={(e) => setEditData({ ...editData, startDate: e.target.value })}
-          />
-        </div>
-        <div>
-          <Label>End Date</Label>
-          <Input
-            type="date"
-            value={editData.endDate}
-            onChange={(e) => setEditData({ ...editData, endDate: e.target.value })}
-          />
-        </div>
-      </div>
-      <div className="flex space-x-2">
-        <Button size="sm" onClick={handleSave}>Save</Button>
-        <Button size="sm" variant="outline" onClick={onCancel}>Cancel</Button>
-      </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="startDate" className="text-slate-600 font-medium">Start Date</Label>
+                  <Input
+                    id="startDate"
+                    type="date"
+                    value={formData.startDate}
+                    onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                    className="h-11 rounded-xl border-slate-200 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="endDate" className="text-slate-600 font-medium">End Date</Label>
+                  <Input
+                    id="endDate"
+                    type="date"
+                    value={formData.endDate}
+                    onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                    className="h-11 rounded-xl border-slate-200 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="px-8 py-6 bg-slate-50/80 border-t border-slate-100 flex-row justify-end space-x-3">
+              <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)} className="rounded-xl h-11 px-6 font-medium text-slate-600">Cancel</Button>
+              <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700 rounded-xl h-11 px-6 font-medium shadow-lg shadow-indigo-100">
+                <Save className="w-4 h-4 mr-2" />
+                {editingTerm ? 'Update Term' : 'Create Term'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

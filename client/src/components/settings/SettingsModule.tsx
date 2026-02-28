@@ -11,9 +11,12 @@ import usePayments from '@/hooks/usePayments';
 import useStudents from '@/hooks/useStudents';
 import useTeachers from '@/hooks/useTeachers';
 import { Building, Download, Key, RefreshCw, Settings } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import AcademicTermManager from './AcademicTermManager';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import * as settingsService from '@/services/settingsService';
+import * as authService from '@/services/authService';
 
 interface SchoolSettings {
   name: string;
@@ -28,25 +31,48 @@ interface AcademicSettings {
 }
 
 const SettingsModule = () => {
-  const { changePassword, user, hasAccess } = useAuth();
+  const { user, hasAccess, logout } = useAuth();
+  const queryClient = useQueryClient();
   const { students } = useStudents();
   const { teachers } = useTeachers();
   const { classes } = useClasses();
   const { payments } = usePayments();
   const { income } = useIncome();
   const { expenses } = useExpenses();
+
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [schoolInfo, setSchoolInfo] = useState<SchoolSettings>({
-    name: 'Rosa Gardens School',
-    address: 'Accra, Ghana',
-    contact: '+233 XX XXX XXXX',
-    email: 'info@rosagardens.edu.gh'
-  });
+  const [currentPassword, setCurrentPassword] = useState(''); // Added for backend validation
   const [academicSettings, setAcademicSettings] = useState<AcademicSettings>({
-    currentYear: '2024',
+    currentYear: new Date().getFullYear().toString(),
     currentTerm: 'Term 1'
   });
+
+  const [schoolInfo, setSchoolInfo] = useState<SchoolSettings>({
+    name: '',
+    address: '',
+    contact: '',
+    email: ''
+  });
+
+  // Load backend settings
+  const { data: backendSettings, isLoading: settingsLoading } = useQuery({
+    queryKey: ['settings'],
+    queryFn: async () => {
+      const resp = await settingsService.getSettings();
+      return resp.data || resp;
+    }
+  });
+
+  useEffect(() => {
+    if (backendSettings?.school_info) {
+      setSchoolInfo(backendSettings.school_info);
+    } else {
+      // Fallback to localStorage if backend is empty
+      const saved = localStorage.getItem('schoolInfo');
+      if (saved) setSchoolInfo(JSON.parse(saved));
+    }
+  }, [backendSettings]);
 
   const isSuperAdmin = hasAccess('settings');
 
@@ -75,9 +101,10 @@ const SettingsModule = () => {
   // Helper function to dispatch settings change event
   const dispatchSettingsChange = () => {
     window.dispatchEvent(new CustomEvent('academicSettingsChanged'));
+    queryClient.invalidateQueries({ queryKey: ['settings'] });
   };
 
-  const handlePasswordChange = (e: React.FormEvent) => {
+  const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (newPassword !== confirmPassword) {
@@ -89,35 +116,59 @@ const SettingsModule = () => {
       return;
     }
 
-    if (newPassword.length < 6) {
+    if (!currentPassword) {
       toast({
-        title: "Password Too Short",
-        description: "Password must be at least 6 characters long",
+        title: "Current Password Required",
+        description: "Please enter your current password to verify identity",
         variant: "destructive"
       });
       return;
     }
 
-    changePassword(newPassword);
+    try {
+      await authService.changePassword(currentPassword, newPassword);
 
-    toast({
-      title: "Password Changed",
-      description: "Your password has been updated successfully",
-    });
+      toast({
+        title: "Password Changed",
+        description: "Your password has been updated successfully. Please log in again.",
+      });
 
-    setNewPassword('');
-    setConfirmPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setCurrentPassword('');
+
+      // Forces re-login to ensure security
+      setTimeout(() => logout(), 2000);
+    } catch (err: any) {
+      toast({
+        title: "Update Failed",
+        description: err.body?.message || err.message || "Failed to change password",
+        variant: "destructive"
+      });
+    }
   };
 
-  const handleSchoolInfoUpdate = (e: React.FormEvent) => {
+  const handleSchoolInfoUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isSuperAdmin) return;
 
-    localStorage.setItem('schoolInfo', JSON.stringify(schoolInfo));
-    toast({
-      title: "School Information Updated",
-      description: "School details have been saved successfully",
-    });
+    try {
+      await settingsService.updateSetting('school_info', schoolInfo);
+      localStorage.setItem('schoolInfo', JSON.stringify(schoolInfo));
+
+      toast({
+        title: "School Information Updated",
+        description: "School details have been saved successfully to the server",
+      });
+
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+    } catch (err: any) {
+      toast({
+        title: "Update Failed",
+        description: "Failed to save school information to the server",
+        variant: "destructive"
+      });
+    }
   };
 
   // If user is not Super Admin, show limited settings (password only)
@@ -145,6 +196,17 @@ const SettingsModule = () => {
           </CardHeader>
           <CardContent>
             <form onSubmit={handlePasswordChange} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="currentPassword">Current Password</Label>
+                <Input
+                  id="currentPassword"
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="Enter current password"
+                  required
+                />
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="newPassword">New Password</Label>
                 <Input
@@ -310,6 +372,17 @@ const SettingsModule = () => {
           </CardHeader>
           <CardContent>
             <form onSubmit={handlePasswordChange} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="currentPasswordMain">Current Password</Label>
+                <Input
+                  id="currentPasswordMain"
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="Enter current password"
+                  required
+                />
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="newPassword">New Password</Label>
                 <Input

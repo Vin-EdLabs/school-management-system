@@ -3,9 +3,12 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import usePayments from '@/hooks/usePayments';
 import useStudents from '@/hooks/useStudents';
+import useClasses from '@/hooks/useClasses';
+import { useAcademicTerms } from '@/hooks/useAcademicTerms';
 import { Eye, Receipt, Search } from 'lucide-react';
 import { useState } from 'react';
 import ReceiptPrinter from '../common/ReceiptPrinter';
@@ -13,46 +16,76 @@ import ReceiptPrinter from '../common/ReceiptPrinter';
 const ReceiptHistory = () => {
   const { payments: rawPayments } = usePayments();
   const { students: rawStudents } = useStudents();
-  const payments = (rawPayments || []).map((p: any) => ({
-    id: String(p.id ?? ''),
-    amount: Number(p.amount || 0),
-    date: p.date || p.created_at || new Date().toISOString(),
-    paymentMethod: p.paymentMethod || p.method || p.payment_method || '',
-    term: p.term || p.term_name || '',
-    notes: p.notes || '',
-    studentId: String(p.student_id || p.studentId || p.student)
-  }));
+  const { classes: rawClasses } = useClasses();
+  const { terms } = useAcademicTerms();
 
-  const students = (rawStudents || []).map((s: any) => ({
-    id: s.id ?? String(s.id),
-    firstName: s.first_name || s.firstName || '',
-    lastName: s.last_name || s.lastName || '',
-    studentId: String(s.studentId || s.student_id || s.id || ''),
-    classAssigned: s.classAssigned || s.class_assigned || ''
-  }));
+  const students = (rawStudents || []).map((s: any) => {
+    const id = String(s.id ?? s.student_id ?? '');
+    const firstName = s.first_name || s.firstName || '';
+    const lastName = s.last_name || s.lastName || '';
+    const studentId = String(s.admission_no || s.studentId || s.id || '');
+    const fullName = `${firstName} ${lastName}`.trim() || s.name || s.full_name || 'Unknown Student';
+
+    let classAssigned = (s.class_assigned || s.classAssigned || '');
+    if ((!classAssigned || classAssigned === '') && s.class_id) {
+      const cls = (rawClasses || []).find((c: any) => String(c.id) === String(s.class_id));
+      if (cls) {
+        classAssigned = cls.level && cls.stream ? `${cls.level} ${cls.stream}` : (cls.level || cls.class_name || cls.className || cls.name || '');
+      }
+    }
+
+    return {
+      ...s,
+      id,
+      firstName,
+      lastName,
+      fullName,
+      studentId,
+      classAssigned
+    };
+  });
+
+  const payments = (rawPayments || []).map((p: any) => {
+    const termId = p.term_id || p.termId;
+    const termName = p.term || p.term_name || p.termName || (termId ? (terms || []).find((t: any) => String(t.id) === String(termId))?.name : '');
+
+    return {
+      id: p.id ?? String(p.id),
+      studentId: String(p.student_id || p.studentId || p.student),
+      term: termName || '',
+      amount: Number(p.amount || 0),
+      paymentMethod: p.paymentMethod || p.method || p.payment_method || '',
+      date: p.payment_date || p.date || p.created_at || new Date().toISOString(),
+      notes: p.notes || p.description || '',
+      receiptNumber: p.receipt_number || p.receiptNumber || `R-${p.id}`
+    };
+  });
+
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterTerm, setFilterTerm] = useState('all-terms');
   const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [showReceipt, setShowReceipt] = useState(false);
 
-  // Generate receipt numbers consistently (same logic as RecordPayment)
-  const generateReceiptNumber = (paymentId: any, date: string) => {
-    const timestamp = new Date(date).getTime().toString().slice(-6);
-    const idStr = String(paymentId ?? '');
-    const idHash = idStr.slice(-3);
-    return `RG${timestamp}${idHash}`;
+  const getReceiptNo = (payment: any) => {
+    return payment.receiptNumber || `R-${payment.id}`;
   };
 
   const filteredPayments = payments.filter(payment => {
     const student = students.find(s => s.id === payment.studentId);
-    const receiptNumber = generateReceiptNumber(payment.id, payment.date);
+    const receiptNumber = getReceiptNo(payment);
 
-    return searchTerm === '' ||
+    const matchesSearch = searchTerm === '' ||
       receiptNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (student && (
         student.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         student.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        student.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         student.studentId.includes(searchTerm)
       ));
+
+    const matchesTerm = filterTerm === 'all-terms' || payment.term === filterTerm;
+
+    return matchesSearch && matchesTerm;
   });
 
   const handleViewReceipt = (payment: any) => {
@@ -60,14 +93,14 @@ const ReceiptHistory = () => {
     if (!student) return;
 
     const receiptData = {
-      studentName: `${student.firstName} ${student.lastName}`,
+      studentName: student.fullName,
       studentId: student.studentId,
       className: student.classAssigned,
       amount: payment.amount,
       date: payment.date,
       paymentMethod: payment.paymentMethod,
       term: payment.term,
-      receiptNumber: generateReceiptNumber(payment.id, payment.date),
+      receiptNumber: getReceiptNo(payment),
       notes: payment.notes
     };
 
@@ -86,14 +119,29 @@ const ReceiptHistory = () => {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Search by receipt number, student name, or ID..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
+            <div className="flex flex-col lg:flex-row gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Input
+                  placeholder="Search by receipt number, student name, or ID..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <Select value={filterTerm} onValueChange={setFilterTerm}>
+                <SelectTrigger className="w-full lg:w-48">
+                  <SelectValue placeholder="Filter by Term" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all-terms">All Terms</SelectItem>
+                  {(terms || []).map((t: any) => (
+                    <SelectItem key={t.id} value={t.name}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="rounded-md border overflow-x-auto">
@@ -104,6 +152,7 @@ const ReceiptHistory = () => {
                     <TableHead>Student</TableHead>
                     <TableHead>Amount</TableHead>
                     <TableHead>Date</TableHead>
+                    <TableHead>Term</TableHead>
                     <TableHead>Method</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
@@ -111,14 +160,14 @@ const ReceiptHistory = () => {
                 <TableBody>
                   {filteredPayments.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-gray-500">
-                        No receipts found matching your search
+                      <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                        No receipts found matching your criteria
                       </TableCell>
                     </TableRow>
                   ) : (
                     filteredPayments.map((payment) => {
                       const student = students.find(s => s.id === payment.studentId);
-                      const receiptNumber = generateReceiptNumber(payment.id, payment.date);
+                      const receiptNumber = getReceiptNo(payment);
                       return (
                         <TableRow key={payment.id}>
                           <TableCell>
@@ -129,10 +178,10 @@ const ReceiptHistory = () => {
                           <TableCell>
                             <div>
                               <div className="font-medium">
-                                {student?.firstName} {student?.lastName}
+                                {student?.fullName || 'Unknown Student'}
                               </div>
                               <div className="text-sm text-gray-500">
-                                ID: {student?.studentId}
+                                ID: {student?.studentId || payment.studentId}
                               </div>
                             </div>
                           </TableCell>
@@ -142,6 +191,9 @@ const ReceiptHistory = () => {
                             </span>
                           </TableCell>
                           <TableCell>{new Date(payment.date).toLocaleDateString()}</TableCell>
+                          <TableCell>
+                            <span className="text-sm font-medium text-slate-600">{payment.term}</span>
+                          </TableCell>
                           <TableCell>
                             <Badge variant="secondary">{payment.paymentMethod}</Badge>
                           </TableCell>

@@ -9,64 +9,91 @@ import useFeeStructures from '@/hooks/useFeeStructures';
 import usePayments from '@/hooks/usePayments';
 import useStudents from '@/hooks/useStudents';
 import { FileText, GraduationCap, Printer, Search, Users } from 'lucide-react';
-import { useMemo, useState } from 'react';
-import { calculateStudentFeeStatus, getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
+import React, { useMemo, useState } from 'react';
+import { calculateStudentFeeStatus } from '../../utils/feeCalculations';
+import { useActiveTerm } from '@/hooks/useSettings';
+import { useBalances } from '@/hooks/useBalances';
+import useAcademicTerms from '@/hooks/useAcademicTerms';
 
 const PrintFeeStatusModule = () => {
   const { students } = useStudents();
   const { classes } = useClasses();
   const { feeStructures } = useFeeStructures();
   const { payments } = usePayments();
+  const { terms } = useAcademicTerms();
+
+  const { data: activeTermData } = useActiveTerm();
+  const currentTermId = activeTermData?.id;
+  const currentTermName = activeTermData?.name || 'Term 1';
+  const currentYear = activeTermData?.year || new Date().getFullYear().toString();
+
+  const { arrearsMap, creditMap } = useBalances(currentTermId);
+
   const [selectedClass, setSelectedClass] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
 
-  const activeAcademicTerm = getActiveAcademicTerm();
-  const activeAcademicYear = getActiveAcademicYear();
-
-  console.log('Active term:', activeAcademicTerm);
-  console.log('Students:', students);
-  console.log('Fee structures:', feeStructures);
-  console.log('Payments:', payments);
-
   // Normalizers to tolerate camelCase / snake_case shapes
   const normalizeStudent = (s: any) => {
     const id = s?.id ?? s?.studentId ?? s?.student_id ?? s?._id ?? '';
+    let classAssigned = s?.classAssigned ?? s?.class_assigned ?? s?.className ?? s?.class_name ?? '';
+
+    if (!classAssigned && s.class_id && classes && classes.length > 0) {
+      const cls = classes.find((c: any) => String(c.id) === String(s.class_id));
+      if (cls) {
+        classAssigned = cls.level && cls.stream ? `${cls.level} ${cls.stream}` : (cls.level || cls.class_name || cls.className || cls.name || '');
+      }
+    }
+
     return {
       id,
       studentId: s?.studentId ?? s?.student_id ?? id,
       firstName: s?.firstName ?? s?.first_name ?? s?.fullName ?? s?.full_name ?? '',
       lastName: s?.lastName ?? s?.last_name ?? '',
-      classAssigned: s?.classAssigned ?? s?.class_assigned ?? s?.className ?? s?.class_name ?? ''
+      classAssigned
     };
   };
 
-  const normalizePayment = (p: any) => ({
-    studentId: p?.studentId ?? p?.student_id ?? p?.student?.id ?? null,
-    term: p?.term ?? p?.payment_term ?? p?.term_name ?? '',
-    amount: Number(p?.amount ?? p?.value ?? 0) || 0,
-    date: p?.date ?? p?.paymentDate ?? p?.payment_date ?? '',
-    paymentMethod: p?.paymentMethod ?? p?.payment_method ?? p?.method ?? ''
-  });
+  const normalizePayment = (p: any) => {
+    let termName = p?.term ?? p?.payment_term ?? p?.term_name ?? '';
+    if (!termName && p?.term_id && terms && terms.length > 0) {
+      const termObj = terms.find((t: any) => String(t.id) === String(p.term_id));
+      if (termObj) termName = termObj.name;
+    }
+    return {
+      studentId: p?.studentId ?? p?.student_id ?? p?.student?.id ?? null,
+      term: termName,
+      amount: Number(p?.amount ?? p?.value ?? 0) || 0,
+      date: p?.date ?? p?.paymentDate ?? p?.payment_date ?? '',
+      paymentMethod: p?.paymentMethod ?? p?.payment_method ?? p?.method ?? ''
+    };
+  };
 
-  const normalizeFee = (f: any) => ({
-    className: f?.className ?? f?.class_name ?? '',
-    term: f?.term ?? f?.term_name ?? '',
-    amount: Number(f?.amount ?? f?.value ?? 0) || 0
-  });
+  const normalizeFee = (f: any) => {
+    let termName = f?.term ?? f?.term_name ?? '';
+    if (!termName && (f?.term_id || f?.academicTermId) && terms && terms.length > 0) {
+      const tId = f?.term_id ?? f?.academicTermId;
+      const termObj = terms.find((t: any) => String(t.id) === String(tId));
+      if (termObj) termName = termObj.name;
+    }
+    return {
+      className: f?.className ?? f?.class_name ?? '',
+      term: termName,
+      amount: Number(f?.amount ?? f?.value ?? 0) || 0
+    };
+  };
 
   const normalizedStudents = (students || []).map(normalizeStudent);
   const normalizedPayments = (payments || []).map(normalizePayment);
   const normalizedFees = (feeStructures || []).map(normalizeFee);
 
-  // Normalize classes to a safe shape so we can access `className` without TS errors
   const normalizedClasses = (classes || []).map((c: any) => {
     const id = c?.id ?? c?._id ?? c?.classId ?? c?.class_id ?? '';
-    const className = c?.className ?? c?.class_name ?? c?.name ?? c?.class ?? '';
+    const name = c?.className ?? c?.class_name ?? c?.name ?? c?.class ?? '';
+    const className = (c.level && c.stream) ? `${c.level} ${c.stream}` : (c.level || name);
     return { id, className };
   });
 
-  // Filter classes based on search term
   const filteredClasses = useMemo(() => {
     const all = normalizedClasses;
     return all.filter((cls: any) => {
@@ -75,14 +102,21 @@ const PrintFeeStatusModule = () => {
     });
   }, [classes, searchTerm]);
 
-  // Get students for selected class with fee status
   const getStudentsWithFeeStatus = () => {
     if (!selectedClass) return [];
 
     const classStudents = normalizedStudents.filter(s => s.classAssigned === selectedClass);
 
     return classStudents.map(student => {
-      const feeStatus = calculateStudentFeeStatus(student.id, activeAcademicTerm, normalizedStudents, normalizedFees, normalizedPayments);
+      const feeStatus = calculateStudentFeeStatus(
+        student.id,
+        currentTermName,
+        normalizedStudents,
+        normalizedFees,
+        normalizedPayments,
+        arrearsMap,
+        creditMap
+      );
       return {
         ...student,
         feeStatus
@@ -92,9 +126,6 @@ const PrintFeeStatusModule = () => {
 
   const studentsOwingFees = getStudentsWithFeeStatus();
   const totalOwing = studentsOwingFees.reduce((sum, student) => sum + (student.feeStatus?.balance || 0), 0);
-
-  console.log('Students owing fees:', studentsOwingFees);
-  console.log('Total owing:', totalOwing);
 
   const handlePrint = () => {
     if (!selectedClass || studentsOwingFees.length === 0) return;
@@ -107,105 +138,29 @@ const PrintFeeStatusModule = () => {
       <head>
         <title>Student Fee Status Report - ${selectedClass}</title>
         <style>
-          body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            color: #333;
-          }
-          .header {
-            text-align: center;
-            margin-bottom: 30px;
-            border-bottom: 2px solid #3B82F6;
-            padding-bottom: 20px;
-          }
-          .school-name {
-            font-size: 24px;
-            font-weight: bold;
-            color: #1F2937;
-            margin-bottom: 5px;
-          }
-          .school-subtitle {
-            font-size: 14px;
-            color: #6B7280;
-            margin-bottom: 10px;
-          }
-          .report-title {
-            font-size: 18px;
-            font-weight: bold;
-            color: #3B82F6;
-            margin-top: 15px;
-          }
-          .report-info {
-            background-color: #F3F4F6;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 25px;
-          }
-          .info-row {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 8px;
-          }
-          .info-label {
-            font-weight: bold;
-            color: #374151;
-          }
-          .info-value {
-            color: #6B7280;
-          }
-          .students-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-          }
-          .students-table th,
-          .students-table td {
-            border: 1px solid #D1D5DB;
-            padding: 12px;
-            text-align: left;
-          }
-          .students-table th {
-            background-color: #3B82F6;
-            color: white;
-            font-weight: bold;
-          }
-          .students-table tr:nth-child(even) {
-            background-color: #F9FAFB;
-          }
-          .amount-owing {
-            color: #DC2626;
-            font-weight: bold;
-          }
-          .summary {
-            margin-top: 25px;
-            padding: 15px;
-            background-color: #FEF3C7;
-            border-radius: 8px;
-            border-left: 4px solid #F59E0B;
-          }
-          .summary-text {
-            font-size: 16px;
-            font-weight: bold;
-            color: #92400E;
-          }
-          .footer {
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 1px solid #D1D5DB;
-            font-size: 12px;
-            color: #6B7280;
-            text-align: center;
-          }
-          @media print {
-            body { margin: 0; }
-            .no-print { display: none; }
-          }
+          body { font-family: Arial, sans-serif; margin: 20px; color: #333; }
+          .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #3B82F6; padding-bottom: 20px; }
+          .school-name { font-size: 24px; font-weight: bold; color: #1F2937; margin-bottom: 5px; }
+          .school-subtitle { font-size: 14px; color: #6B7280; margin-bottom: 10px; }
+          .report-title { font-size: 18px; font-weight: bold; color: #3B82F6; margin-top: 15px; }
+          .report-info { background-color: #F3F4F6; padding: 15px; border-radius: 8px; margin-bottom: 25px; }
+          .info-row { display: flex; justify-content: space-between; margin-bottom: 8px; }
+          .info-label { font-weight: bold; color: #374151; }
+          .info-value { color: #6B7280; }
+          .students-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+          .students-table th, .students-table td { border: 1px solid #D1D5DB; padding: 12px; text-align: left; }
+          .students-table th { background-color: #3B82F6; color: white; font-weight: bold; }
+          .students-table tr:nth-child(even) { background-color: #F9FAFB; }
+          .amount-owing { color: #DC2626; font-weight: bold; }
+          .summary { margin-top: 25px; padding: 15px; background-color: #FEF3C7; border-radius: 8px; border-left: 4px solid #F59E0B; }
+          .summary-text { font-size: 16px; font-weight: bold; color: #92400E; }
+          .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #D1D5DB; font-size: 12px; color: #6B7280; text-align: center; }
+          @media print { body { margin: 0; } .no-print { display: none; } }
         </style>
       </head>
       <body>
         <div class="header">
-          <div class="school-name">Rosa Gardens School</div>
-          <div class="school-subtitle">School Management System</div>
+          <div class="school-name">School Management System</div>
           <div class="report-title">Student Fee Status Report</div>
         </div>
         
@@ -216,11 +171,11 @@ const PrintFeeStatusModule = () => {
           </div>
           <div class="info-row">
             <span class="info-label">Academic Year:</span>
-            <span class="info-value">${activeAcademicYear}</span>
+            <span class="info-value">${currentYear}</span>
           </div>
           <div class="info-row">
             <span class="info-label">Term:</span>
-            <span class="info-value">${activeAcademicTerm}</span>
+            <span class="info-value">${currentTermName}</span>
           </div>
           <div class="info-row">
             <span class="info-label">Report Date:</span>
@@ -253,7 +208,7 @@ const PrintFeeStatusModule = () => {
                 <td>${student.firstName} ${student.lastName}</td>
                 <td>${student.classAssigned}</td>
                 <td class="amount-owing">${student.feeStatus.balance.toLocaleString()}</td>
-                <td>${activeAcademicTerm} ${activeAcademicYear}</td>
+                <td>${currentTermName} ${currentYear}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -266,8 +221,7 @@ const PrintFeeStatusModule = () => {
         </div>
         
         <div class="footer">
-          <p>Generated by Rosa Gardens School Management System</p>
-          <p>Powered by TechNerve</p>
+          <p>Generated by School Management System</p>
         </div>
       </body>
       </html>
@@ -287,7 +241,6 @@ const PrintFeeStatusModule = () => {
 
   return (
     <div className="p-6 space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-red-600 rounded-lg flex items-center justify-center">
@@ -300,7 +253,6 @@ const PrintFeeStatusModule = () => {
         </div>
       </div>
 
-      {/* Academic Period Info */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
@@ -312,17 +264,16 @@ const PrintFeeStatusModule = () => {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <p className="text-sm text-gray-500">Academic Year</p>
-              <p className="font-semibold">{activeAcademicYear}</p>
+              <p className="font-semibold">{currentYear}</p>
             </div>
             <div>
               <p className="text-sm text-gray-500">Current Term</p>
-              <p className="font-semibold">{activeAcademicTerm}</p>
+              <p className="font-semibold">{currentTermName}</p>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Class Selection */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
@@ -332,7 +283,6 @@ const PrintFeeStatusModule = () => {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {/* Search Input */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Search Classes
@@ -348,7 +298,6 @@ const PrintFeeStatusModule = () => {
               </div>
             </div>
 
-            {/* Class Selection */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Choose Class
@@ -396,7 +345,6 @@ const PrintFeeStatusModule = () => {
         </CardContent>
       </Card>
 
-      {/* Students Preview */}
       {selectedClass && studentsOwingFees.length > 0 && (
         <Card>
           <CardHeader>
@@ -423,7 +371,6 @@ const PrintFeeStatusModule = () => {
         </Card>
       )}
 
-      {/* Print Button */}
       <Card>
         <CardContent className="pt-6">
           <div className="flex items-center justify-center">

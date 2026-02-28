@@ -6,20 +6,34 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { toast } from '@/hooks/use-toast';
+import { useToast } from '@/hooks/use-toast';
+import { CreditCard, Search, AlertCircle } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Link } from 'react-router-dom';
+import React, { useState } from 'react';
+import { calculateStudentFees } from '../../utils/feeCalculations';
+import ReceiptPrinter from '../common/ReceiptPrinter';
 import useClasses from '@/hooks/useClasses';
 import useFeeStructures from '@/hooks/useFeeStructures';
 import usePayments from '@/hooks/usePayments';
 import useStudents from '@/hooks/useStudents';
-import { CreditCard, Search } from 'lucide-react';
-import React, { useState } from 'react';
-import { calculateStudentFees, getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
-import ReceiptPrinter from '../common/ReceiptPrinter';
+import { useActiveTerm } from '@/hooks/useSettings';
+import { useBalances } from '@/hooks/useBalances';
 
 const RecordPayment = () => {
+  const { toast } = useToast();
   const { students } = useStudents();
   const { payments, createPayment } = usePayments();
   const { feeStructures } = useFeeStructures();
+  const { data: activeTermData } = useActiveTerm();
+  const hasActiveTerm = !!activeTermData;
+
+  const currentTermId = activeTermData?.id;
+  const currentTermName = activeTermData?.name || 'Term 1';
+  const currentYear = activeTermData?.year || new Date().getFullYear().toString();
+
+  const { arrearsMap, creditMap } = useBalances(currentTermId);
+
   const [formData, setFormData] = useState({
     studentId: '',
     amount: '',
@@ -31,23 +45,17 @@ const RecordPayment = () => {
   const [showReceipt, setShowReceipt] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
 
-  const currentTerm = getActiveAcademicTerm();
-  const currentYear = getActiveAcademicYear();
-
   const { classes: classList } = useClasses();
 
-  // Normalize students to a consistent shape so the UI and fee calculations
-  // can work with different API shapes (snake_case, camelCase, meta fields)
   const normalizedStudents = (students || []).map((s: any) => {
-    const id = String(s.id ?? s._id ?? s.student_id ?? s.studentId ?? '');
-    const firstName = (s.firstName ?? s.first_name ?? s.meta?.firstName ?? s.meta?.first_name ?? '').toString();
-    const lastName = (s.lastName ?? s.last_name ?? s.meta?.lastName ?? s.meta?.last_name ?? '').toString();
-    const studentId = (s.studentId ?? s.admission_no ?? s.meta?.admission_no ?? s.meta?.studentId ?? id).toString();
-    let classAssigned = (s.classAssigned ?? s.class_assigned ?? s.meta?.classAssigned ?? s.meta?.className ?? '');
-    // try resolving class name from class_id using classes hook
+    const id = String(s.id ?? s.student_id ?? '');
+    const firstName = (s.first_name ?? s.firstName ?? '').toString();
+    const lastName = (s.last_name ?? s.lastName ?? '').toString();
+    const studentId = (s.admission_no ?? s.studentId ?? id).toString();
+    let classAssigned = (s.class_assigned ?? s.classAssigned ?? '');
     if ((!classAssigned || classAssigned === '') && s.class_id) {
       const cls = (classList || []).find((c: any) => String(c.id) === String(s.class_id));
-      if (cls) classAssigned = cls.className || cls.class_name || cls.name || '';
+      if (cls) classAssigned = cls.level && cls.stream ? `${cls.level} ${cls.stream}` : (cls.level || cls.class_name || cls.className || cls.name || '');
     }
 
     return {
@@ -67,15 +75,13 @@ const RecordPayment = () => {
     const tokens = q.split(/\s+/).filter(Boolean);
     const first = (student.firstName ?? '').toLowerCase();
     const last = (student.lastName ?? '').toLowerCase();
-    const metaName = ((student.meta?.name ?? student.name) ?? '').toString().toLowerCase();
-    const fullName = (`${student.firstName ?? ''} ${student.lastName ?? ''}`.trim() || metaName).toLowerCase();
-    const sid = (student.studentId ?? student.id ?? '').toString().toLowerCase();
+    const fullName = `${first} ${last}`.toLowerCase();
+    const sid = student.studentId.toLowerCase();
 
     return tokens.every(t => (
       first.includes(t) ||
       last.includes(t) ||
       fullName.includes(t) ||
-      metaName.includes(t) ||
       sid.includes(t)
     ));
   });
@@ -87,22 +93,18 @@ const RecordPayment = () => {
     }));
   };
 
-  const generateReceiptNumber = () => {
-    const timestamp = Date.now().toString().slice(-6);
-    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-    return `RG${timestamp}${random}`;
-  };
-
   const getStudentFeeDetails = (studentId: string) => {
     const student = normalizedStudents.find((s: any) => String(s.id) === String(studentId));
     if (!student) return null;
 
     return calculateStudentFees(
       studentId,
-      currentTerm,
+      activeTermData,
       student.classAssigned,
       feeStructures,
-      payments
+      payments,
+      arrearsMap,
+      creditMap
     );
   };
 
@@ -119,59 +121,49 @@ const RecordPayment = () => {
     }
 
     const student = normalizedStudents.find((s: any) => String(s.id) === String(formData.studentId));
-    if (!student) {
-      toast({
-        title: "Error",
-        description: "Student not found",
-        variant: "destructive"
-      });
-      return;
-    }
+    if (!student) return;
 
-    const receiptNumber = generateReceiptNumber();
     const paymentAmount = parseFloat(formData.amount);
-
-    // Get fee details before payment
     const feeDetails = getStudentFeeDetails(formData.studentId);
-    if (!feeDetails) {
+    if (!feeDetails) return;
+
+    // Overpayment validation
+    const remainingBalance = feeDetails.totalAmountDue - feeDetails.totalPaid;
+    if (paymentAmount > remainingBalance) {
       toast({
-        title: "Error",
-        description: "Could not calculate fee details",
+        title: "Overpayment Error",
+        description: `Payment amount (GHS ${paymentAmount.toFixed(2)}) exceeds the remaining balance (GHS ${remainingBalance.toFixed(2)}).`,
         variant: "destructive"
       });
       return;
     }
 
-    // Build payload for API (cast to any to allow meta fields)
     const payload: any = {
       student_id: Number(formData.studentId),
       amount: paymentAmount,
       method: formData.paymentMethod,
-      // include date and notes in meta for server-side storage if supported
-      meta: { date: formData.date, notes: formData.notes, receiptNumber }
+      term_id: currentTermId,
+      payment_date: formData.date,
+      notes: formData.notes
     };
 
     createPayment.mutate(payload, {
       onSuccess: (res: any) => {
-        // Calculate new balances after payment (based on current feeDetails)
+        const recordedPayment = res.data;
+        const receiptNumber = recordedPayment?.receipt_number || 'RCP-' + Date.now().toString().slice(-6);
+
         const newPaidAmount = feeDetails.totalPaid + paymentAmount;
         const newBalance = Math.max(0, feeDetails.totalAmountDue - newPaidAmount);
         const newCreditBalance = Math.max(0, newPaidAmount - feeDetails.totalAmountDue);
 
-        // Update credit balance if overpayment
-        if (newCreditBalance > 0) {
-          localStorage.setItem(`credit-${formData.studentId}`, newCreditBalance.toString());
-        }
-
-        // Prepare receipt data
-        const newReceiptData = {
+        setReceiptData({
           studentName: `${student.firstName} ${student.lastName}`,
           studentId: student.studentId,
           className: student.classAssigned,
           amount: paymentAmount,
-          date: formData.date,
+          date: recordedPayment?.payment_date || formData.date,
           paymentMethod: formData.paymentMethod,
-          term: currentTerm,
+          term: currentTermName,
           year: currentYear,
           receiptNumber: receiptNumber,
           notes: formData.notes,
@@ -180,17 +172,15 @@ const RecordPayment = () => {
           arrears: feeDetails.arrears,
           currentTermFee: feeDetails.currentTermFee,
           totalAmountDue: feeDetails.totalAmountDue
-        };
+        } as any);
 
-        setReceiptData(newReceiptData);
         setShowReceipt(true);
 
         toast({
           title: 'Payment Recorded',
-          description: `GHS ${paymentAmount.toFixed(2)} payment recorded for ${student.firstName} ${student.lastName}`
+          description: `Receipt #${receiptNumber} generated for ${student.firstName}`
         });
 
-        // Reset form
         setFormData({
           studentId: '',
           amount: '',
@@ -199,15 +189,22 @@ const RecordPayment = () => {
           notes: ''
         });
         setSearchTerm('');
-      },
-      onError: (err: any) => {
-        toast({ title: 'Error', description: 'Failed to record payment', variant: 'destructive' });
       }
     });
   };
 
   return (
     <>
+      {!hasActiveTerm && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>No Active Academic Term</AlertTitle>
+          <AlertDescription>
+            You must have an active academic term before recording payments.
+            Please go to <Link to="/dashboard/settings" className="font-bold underline">Settings</Link> to set an active term.
+          </AlertDescription>
+        </Alert>
+      )}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
@@ -217,7 +214,7 @@ const RecordPayment = () => {
             </div>
             <div className="text-right">
               <Badge variant="outline" className="mb-1">
-                {currentTerm}
+                {currentTermName}
               </Badge>
               <p className="text-sm text-gray-600">Academic Year: {currentYear}</p>
             </div>
@@ -230,6 +227,7 @@ const RecordPayment = () => {
               <div>
                 <Select
                   value={formData.studentId}
+                  disabled={!hasActiveTerm}
                   onValueChange={(val) => {
                     setFormData(prev => ({ ...prev, studentId: val }));
                   }}
@@ -264,9 +262,9 @@ const RecordPayment = () => {
                                   <div className="text-right">
                                     {feeDetails && (
                                       <div className="space-y-1">
-                                        <p className="text-sm font-medium text-orange-600">Due: GHS {feeDetails.totalAmountDue.toFixed(2)}</p>
-                                        {feeDetails.arrears > 0 && <p className="text-xs text-red-600">Arrears: GHS {feeDetails.arrears.toFixed(2)}</p>}
-                                        {feeDetails.creditBalance > 0 && <p className="text-xs text-green-600">Credit: GHS {feeDetails.creditBalance.toFixed(2)}</p>}
+                                        <p className="text-xs text-gray-500">Total Due: GHS {feeDetails.totalAmountDue.toFixed(2)}</p>
+                                        <p className="text-sm font-bold text-blue-600">Money Left: GHS {feeDetails.remainingBalance.toFixed(2)}</p>
+                                        {feeDetails.arrears > 0 && <p className="text-xs text-red-600">Incl. Arrears: GHS {feeDetails.arrears.toFixed(2)}</p>}
                                       </div>
                                     )}
                                   </div>
@@ -287,34 +285,38 @@ const RecordPayment = () => {
             {/* Fee Details Display */}
             {formData.studentId && (
               <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <h3 className="font-medium text-blue-800 mb-2">Fee Details for {currentTerm}</h3>
+                <h3 className="font-medium text-blue-800 mb-2">Fee Details for {currentTermName}</h3>
                 {(() => {
                   const feeDetails = getStudentFeeDetails(formData.studentId);
                   if (!feeDetails) return <p className="text-sm text-gray-600">No fee structure found</p>;
 
                   return (
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <p className="text-gray-600">Current Term Fee:</p>
-                        <p className="font-medium">GHS {feeDetails.currentTermFee.toFixed(2)}</p>
-                      </div>
-                      {feeDetails.arrears > 0 && (
+                    <>
+                      <div className="grid grid-cols-2 gap-4 text-sm">
                         <div>
-                          <p className="text-gray-600">Arrears:</p>
-                          <p className="font-medium text-red-600">GHS {feeDetails.arrears.toFixed(2)}</p>
+                          <p className="text-gray-600">Current Term Fee:</p>
+                          <p className="font-medium">GHS {feeDetails.currentTermFee.toFixed(2)}</p>
                         </div>
-                      )}
-                      {feeDetails.creditBalance > 0 && (
-                        <div>
-                          <p className="text-gray-600">Credit Balance:</p>
-                          <p className="font-medium text-green-600">GHS {feeDetails.creditBalance.toFixed(2)}</p>
-                        </div>
-                      )}
-                      <div>
-                        <p className="text-gray-600">Total Amount Due:</p>
-                        <p className="font-medium text-orange-600">GHS {feeDetails.totalAmountDue.toFixed(2)}</p>
+                        {feeDetails.arrears > 0 && (
+                          <div>
+                            <p className="text-gray-600">Arrears:</p>
+                            <p className="font-medium text-red-600">GHS {feeDetails.arrears.toFixed(2)}</p>
+                          </div>
+                        )}
+                        {feeDetails.creditBalance > 0 && (
+                          <div>
+                            <p className="text-gray-600">Credit Balance:</p>
+                            <p className="font-medium text-green-600">GHS {feeDetails.creditBalance.toFixed(2)}</p>
+                          </div>
+                        )}
                       </div>
-                    </div>
+                      <div className="flex justify-between items-center bg-blue-50 p-3 rounded-lg border border-blue-100 mt-4">
+                        <span className="font-semibold text-blue-900">Money Left</span>
+                        <Badge className="bg-blue-600 text-white text-lg px-4 py-1">
+                          GHS {feeDetails.remainingBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </Badge>
+                      </div>
+                    </>
                   );
                 })()}
               </div>
@@ -371,9 +373,18 @@ const RecordPayment = () => {
               />
             </div>
 
-            <Button type="submit" className="w-full md:w-auto" disabled={!formData.studentId}>
-              Record Payment & Generate Receipt
-            </Button>
+            <div className="flex flex-col items-end space-y-2 pt-4 border-t">
+              {!hasActiveTerm && <p className="text-sm text-red-500 font-medium pb-2">Please set an active academic term in settings to record payments.</p>}
+              <Button
+                type="submit"
+                disabled={!hasActiveTerm || createPayment.isPending}
+                size="lg"
+                className="w-full md:w-auto bg-gradient-to-r from-blue-600 to-indigo-700"
+              >
+                <CreditCard className="w-5 h-5 mr-2" />
+                {createPayment.isPending ? 'Processing...' : 'Record Payment'}
+              </Button>
+            </div>
           </form>
         </CardContent>
       </Card>

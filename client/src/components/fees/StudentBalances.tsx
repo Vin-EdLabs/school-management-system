@@ -1,4 +1,3 @@
-
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -10,7 +9,9 @@ import usePayments from '@/hooks/usePayments';
 import useStudents from '@/hooks/useStudents';
 import { AlertCircle, CreditCard, Search, TrendingUp } from 'lucide-react';
 import { useState } from 'react';
-import { calculateStudentFees, calculateStudentFeeStatus, getActiveAcademicTerm } from '../../utils/feeCalculations';
+import { calculateStudentFees, calculateStudentFeeStatus } from '../../utils/feeCalculations';
+import { useActiveTerm } from '@/hooks/useSettings';
+import { useBalances } from '@/hooks/useBalances';
 
 const StudentBalances = () => {
   const { students: rawStudents } = useStudents();
@@ -18,61 +19,87 @@ const StudentBalances = () => {
   const { feeStructures: rawFeeStructures } = useFeeStructures();
   const { classes: rawClasses } = useClasses();
 
-  const students = (rawStudents || []).map((s: any) => ({
-    id: s.id ?? String(s.id),
-    firstName: s.first_name || s.firstName || '',
-    lastName: s.last_name || s.lastName || '',
-    studentId: String(s.studentId || s.student_id || s.id || ''),
-    classAssigned: (s.classAssigned || s.class_assigned || (() => {
-      const cid = s.class_id ?? s.classId ?? s.class;
-      if (!cid) return '';
-      const match = (rawClasses || []).find((c: any) => String(c.id) === String(cid) || String(c.class_id) === String(cid));
-      return match ? (match.className || match.name || match.class_name || '') : '';
-    })())
-  }));
+  const { data: activeTermData, isLoading: termLoading } = useActiveTerm();
+  const currentTermId = activeTermData?.id;
+  const currentTermName = activeTermData?.name || 'Term 1';
+
+  const { arrearsMap, creditMap, isLoading: balancesLoading } = useBalances(currentTermId);
+  const isDataLoading = balancesLoading || termLoading;
+
+  const students = (rawStudents || []).map((s: any) => {
+    const id = String(s.id ?? s.student_id ?? '');
+    const firstName = s.first_name || s.firstName || '';
+    const lastName = s.last_name || s.lastName || '';
+    const studentId = String(s.admission_no || s.studentId || s.id || '');
+
+    let classAssigned = (s.class_assigned || s.classAssigned || '');
+    if ((!classAssigned || classAssigned === '') && s.class_id) {
+      const cls = (rawClasses || []).find((c: any) => String(c.id) === String(s.class_id));
+      if (cls) {
+        classAssigned = cls.level && cls.stream ? `${cls.level} ${cls.stream}` : (cls.level || cls.class_name || cls.className || cls.name || '');
+      }
+    }
+
+    return {
+      ...s,
+      id,
+      firstName,
+      lastName,
+      studentId,
+      classAssigned,
+      classId: s.class_id || s.classId
+    };
+  });
 
   const payments = (rawPayments || []).map((p: any) => ({
+    ...p,
     id: p.id ?? String(p.id),
     studentId: String(p.student_id || p.studentId || p.student),
     term: p.term || p.term_name || p.termName || '',
+    term_id: p.term_id || p.termId,
     amount: Number(p.amount || 0)
   }));
 
   const feeStructures = (rawFeeStructures || []).map((f: any) => ({
+    ...f,
     id: f.id ?? String(f.id),
-    className: f.className || f.class_name || '',
+    className: f.name || f.className || f.class_name || '',
+    class_id: f.class_id || f.classId,
     term: f.term || f.term_name || f.termName || '',
-    amount: Number(f.amount || f.fee || 0),
-    description: f.description || ''
+    term_id: f.term_id || f.academicTermId || f.termId,
+    amount: Number(f.items?.amount || f.amount || 0),
+    description: f.items?.description || f.description || ''
   }));
 
   const classes = (rawClasses || []).map((c: any) => ({
     id: c.id ?? String(c.id),
-    className: c.className || c.class_name || c.name || '',
+    className: c.level && c.stream ? `${c.level} ${c.stream}` : (c.level || c.className || c.class_name || c.name || ''),
     maxClassSize: c.maxClassSize ?? c.max_class_size ?? c.capacity ?? 30
   }));
   const [searchTerm, setSearchTerm] = useState('');
   const [filterClass, setFilterClass] = useState('all-classes');
   const [filterStatus, setFilterStatus] = useState('all-status');
 
-  const currentTerm = getActiveAcademicTerm();
-
   // Calculate comprehensive balance for each student
   const calculateStudentBalance = (student: any) => {
     const feeCalculation = calculateStudentFees(
       student.id,
-      currentTerm,
+      activeTermData,
       student.classAssigned,
       feeStructures,
-      payments
+      payments,
+      arrearsMap,
+      creditMap
     );
 
     const feeStatus = calculateStudentFeeStatus(
       student.id,
-      currentTerm,
+      activeTermData,
       students,
       feeStructures,
-      payments
+      payments,
+      arrearsMap,
+      creditMap
     );
 
     return {
@@ -82,9 +109,20 @@ const StudentBalances = () => {
       creditBalance: feeCalculation.creditBalance,
       totalAmountDue: feeCalculation.totalAmountDue,
       totalPaid: feeCalculation.totalPaid,
-      balance: Math.max(0, feeCalculation.totalAmountDue - feeCalculation.totalPaid),
+      balance: feeCalculation.remainingBalance,
       feeStatus: feeStatus,
-      paymentCount: payments.filter(p => p.studentId === student.id && p.term === currentTerm).length
+      paymentCount: payments.filter(p => {
+        const isStudent = String(p.studentId || p.student_id) === String(student.id);
+        const pTermId = p.term_id || p.termId;
+        const pTermName = p.term || p.term_name || p.termName;
+
+        const termMatches = (
+          (activeTermData?.id && pTermId && String(pTermId) === String(activeTermData.id)) ||
+          (pTermName && pTermName === currentTermName)
+        );
+
+        return isStudent && termMatches;
+      }).length
     };
   };
 
@@ -154,7 +192,7 @@ const StudentBalances = () => {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
-          <span>Student Balances - {currentTerm}</span>
+          <span>Student Balances - {currentTermName}</span>
           <div className="flex items-center space-x-4">
             <Badge variant="outline" className="text-sm">
               Outstanding: {studentsWithOutstanding} students
@@ -166,6 +204,12 @@ const StudentBalances = () => {
         </CardTitle>
       </CardHeader>
       <CardContent>
+        {isDataLoading && (
+          <div className="mb-4 p-4 bg-blue-50 text-blue-700 rounded-lg flex items-center justify-center space-x-2 animate-pulse">
+            <TrendingUp className="w-5 h-5 animate-bounce" />
+            <span className="font-medium text-lg">Loading and calculating student balances...</span>
+          </div>
+        )}
         {/* Enhanced Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
@@ -271,7 +315,7 @@ const StudentBalances = () => {
                 <TableHead>Arrears</TableHead>
                 <TableHead>Total Due</TableHead>
                 <TableHead>Amount Paid</TableHead>
-                <TableHead>Balance</TableHead>
+                <TableHead>Money Left</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Payments</TableHead>
               </TableRow>
@@ -363,7 +407,7 @@ const StudentBalances = () => {
                 </p>
               </div>
               <div>
-                <p className="font-medium text-gray-800">Academic Period: {currentTerm}</p>
+                <p className="font-medium text-gray-800">Academic Period: {currentTermName}</p>
                 <p className="text-gray-600">
                   Generated: {new Date().toLocaleDateString()}
                 </p>

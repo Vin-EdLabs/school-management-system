@@ -182,7 +182,7 @@ const AssignStudentsToClass = () => {
                           {student.firstName} {student.lastName}
                         </p>
                         <p className="text-sm text-gray-500">
-                          ID: {student.studentId} | Admission: {student.admissionNumber || 'N/A'}
+                          ID: {student.studentId} | Admission: {student.admission_no || student.admissionNumber || 'N/A'}
                         </p>
                       </div>
                       <div className="text-right">

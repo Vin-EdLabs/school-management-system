@@ -28,7 +28,8 @@ const ViewAllClasses = () => {
       stream: stream,
       maxClassSize: c.maxClassSize ?? c.max_class_size ?? c.capacity ?? 30,
       teacher_id: c.teacher_id || c.teacherId,
-      // prefer explicit assignedTeacherName set by useClasses enrichment; keep the raw id in assignedTeacherId
+      // prefer explicit assignedTeacherNames set by useClasses enrichment
+      assignedTeacherNames: (c as any).assignedTeacherNames ?? [],
       assignedTeacherName: (c as any).assignedTeacherName ?? (c as any).assigned_teacher_name ?? null,
       assignedTeacherId: (c as any).assignedTeacher ?? (c as any).assigned_teacher ?? null,
     };
@@ -80,7 +81,14 @@ const ViewAllClasses = () => {
       }
       return student.classAssigned === classItem.className;
     });
-    // Prefer the assignedTeacherName populated by useClasses enrichment
+    // Prefer the assignedTeacherNames populated by useClasses enrichment
+    if (classItem.assignedTeacherNames && classItem.assignedTeacherNames.length > 0) {
+      return {
+        studentCount: studentsInClass.length,
+        teacherName: classItem.assignedTeacherNames.join(', '),
+        hasTeacher: true
+      };
+    }
     if (classItem.assignedTeacherName && typeof classItem.assignedTeacherName === 'string') {
       return {
         studentCount: studentsInClass.length,

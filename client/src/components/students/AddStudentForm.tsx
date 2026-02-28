@@ -10,6 +10,7 @@ import { Save, UserPlus } from 'lucide-react';
 import React, { useState } from 'react';
 import { useClasses } from '../../hooks/useClasses';
 import { useCreateStudent } from '../../hooks/useStudents';
+import { useActiveTerm } from '@/hooks/useSettings';
 
 interface AddStudentFormProps {
   onSuccess?: () => void;
@@ -18,6 +19,8 @@ interface AddStudentFormProps {
 const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
   const createStudentMutation = useCreateStudent();
   const { classes } = useClasses();
+  const { data: activeTerm } = useActiveTerm();
+  const hasActiveTerm = !!activeTerm;
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -271,10 +274,15 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
             />
           </div>
 
-          <div className="flex justify-end space-x-4">
-            <Button type="submit" className="bg-gradient-to-r from-blue-500 to-purple-600">
+          <div className="flex flex-col items-end space-y-2">
+            {!hasActiveTerm && <p className="text-sm text-red-500 font-medium">Please set an active academic term in settings to add students.</p>}
+            <Button
+              type="submit"
+              disabled={!hasActiveTerm || createStudentMutation.isPending}
+              className="bg-gradient-to-r from-blue-500 to-purple-600"
+            >
               <Save className="w-4 h-4 mr-2" />
-              Add Student
+              {createStudentMutation.isPending ? 'Adding...' : 'Add Student'}
             </Button>
           </div>
         </form>

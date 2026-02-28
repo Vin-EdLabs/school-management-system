@@ -1,20 +1,21 @@
-
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { toast } from '@/hooks/use-toast';
+import { useToast } from '@/hooks/use-toast';
 import usePromotions from '@/hooks/usePromotions';
 import { AlertTriangle, DollarSign, TrendingUp, User, Users } from 'lucide-react';
-import { useState } from 'react';
+import React, { useState } from 'react';
 import {
   calculateStudentFees,
-  getActiveAcademicTerm,
   processFeesForClassPromotion
 } from '../../utils/feeCalculations';
+import { useActiveTerm } from '@/hooks/useSettings';
+import { useBalances } from '@/hooks/useBalances';
 
 const PromoteStudents = () => {
+  const { toast } = useToast();
   const {
     students,
     classes,
@@ -24,16 +25,19 @@ const PromoteStudents = () => {
     promoteStudentMutation,
     promoteClassMutation
   } = usePromotions();
+
+  const { data: activeTermData } = useActiveTerm();
+  const currentTermId = activeTermData?.id;
+  const currentTermName = activeTermData?.name || 'Term 1';
+
+  const { arrearsMap, creditMap, updateBalance } = useBalances(currentTermId);
+
   const [promotionType, setPromotionType] = useState<'individual' | 'class'>('individual');
   const [selectedStudent, setSelectedStudent] = useState('');
   const [selectedCurrentClass, setSelectedCurrentClass] = useState('');
   const [selectedNewClass, setSelectedNewClass] = useState('');
   const [showFeeWarning, setShowFeeWarning] = useState(false);
   const [feeImpactData, setFeeImpactData] = useState<any>(null);
-
-
-
-  const currentTerm = getActiveAcademicTerm();
 
   // Calculate fee impact for individual promotion
   const calculateIndividualFeeImpact = (studentId: string, newClass: string) => {
@@ -42,13 +46,15 @@ const PromoteStudents = () => {
 
     const currentFeeCalc = calculateStudentFees(
       studentId,
-      currentTerm,
+      activeTermData,
       student.classAssigned,
       feeStructures,
-      payments
+      payments,
+      arrearsMap,
+      creditMap
     );
 
-    const outstandingBalance = Math.max(0, currentFeeCalc.totalAmountDue - currentFeeCalc.totalPaid);
+    const outstandingBalance = currentFeeCalc.remainingBalance;
 
     return {
       studentName: `${student.firstName} ${student.lastName}`,
@@ -69,13 +75,15 @@ const PromoteStudents = () => {
     const impactData = studentsInClass.map(student => {
       const feeCalc = calculateStudentFees(
         student.id,
-        currentTerm,
+        activeTermData,
         student.classAssigned,
         feeStructures,
-        payments
+        payments,
+        arrearsMap,
+        creditMap
       );
 
-      const outstandingBalance = Math.max(0, feeCalc.totalAmountDue - feeCalc.totalPaid);
+      const outstandingBalance = feeCalc.remainingBalance;
 
       return {
         studentId: student.id,
@@ -127,33 +135,36 @@ const PromoteStudents = () => {
     const student = students.find(s => s.id === selectedStudent);
     if (!student) return;
 
-    // Process fee arrears if any
     const newClassName = classIdToName[Number(selectedNewClass)];
     const outstandingAmount = processFeesForClassPromotion(
       selectedStudent,
       student.classAssigned,
       newClassName,
-      currentTerm,
+      activeTermData,
       feeStructures,
-      payments
+      payments,
+      arrearsMap,
+      creditMap
     );
 
-    // Promote the student via API
-    const studentIdNum = Number(selectedStudent);
-    // cast to any to satisfy mutate typing from the hook
-    promoteStudentMutation.mutate({ id: studentIdNum, class_id: Number(selectedNewClass) } as any);
+    // Persist to backend if there's an outstanding balance
+    if (outstandingAmount > 0 && currentTermId) {
+      updateBalance.mutate({
+        studentId: selectedStudent,
+        termId: currentTermId,
+        data: { arrears: (arrearsMap[selectedStudent] || 0) + outstandingAmount }
+      });
+    }
+
+    promoteStudentMutation.mutate({ id: Number(selectedStudent), class_id: Number(selectedNewClass) } as any);
 
     let message = `${student.firstName} ${student.lastName} has been promoted to ${newClassName}`;
     if (outstandingAmount > 0) {
       message += `. Outstanding balance of GHS ${outstandingAmount.toLocaleString()} has been added to arrears.`;
     }
 
-    toast({
-      title: "Student Promoted Successfully",
-      description: message,
-    });
+    toast({ title: "Student Promoted Successfully", description: message });
 
-    // Reset form
     setSelectedStudent('');
     setSelectedNewClass('');
     setShowFeeWarning(false);
@@ -172,7 +183,6 @@ const PromoteStudents = () => {
 
     const currentClassName = classIdToName[Number(selectedCurrentClass)];
     const newClassName = classIdToName[Number(selectedNewClass)];
-
     const feeImpact = calculateClassFeeImpact(currentClassName, newClassName);
 
     if (feeImpact.studentsWithOutstanding > 0) {
@@ -186,25 +196,32 @@ const PromoteStudents = () => {
   const executeClassPromotion = () => {
     const currentClassName = classIdToName[Number(selectedCurrentClass)];
     const newClassName = classIdToName[Number(selectedNewClass)];
-
     const studentsInClass = students.filter(s => s.classAssigned === currentClassName);
 
-    // Process fee arrears for each student
     let totalArrears = 0;
     studentsInClass.forEach(student => {
       const outstandingAmount = processFeesForClassPromotion(
         student.id,
         student.classAssigned,
         newClassName,
-        currentTerm,
+        currentTermName,
         feeStructures,
-        payments
+        payments,
+        arrearsMap,
+        creditMap
       );
       totalArrears += outstandingAmount;
+
+      if (outstandingAmount > 0 && currentTermId) {
+        updateBalance.mutate({
+          studentId: student.id,
+          termId: currentTermId,
+          data: { arrears: (arrearsMap[student.id] || 0) + outstandingAmount }
+        });
+      }
     });
 
     const updates = studentsInClass.map(s => ({ id: Number(s.id), class_id: Number(selectedNewClass) }));
-    // cast to any to satisfy mutate typing from the hook
     promoteClassMutation.mutate(updates as any);
 
     let message = `All ${studentsInClass.length} students from ${currentClassName} have been promoted to ${newClassName}`;
@@ -212,12 +229,7 @@ const PromoteStudents = () => {
       message += `. Total arrears of GHS ${totalArrears.toLocaleString()} have been carried forward.`;
     }
 
-    toast({
-      title: "Class Promoted Successfully",
-      description: message,
-    });
-
-    // Reset form
+    toast({ title: "Class Promoted Successfully", description: message });
     setSelectedCurrentClass('');
     setSelectedNewClass('');
     setShowFeeWarning(false);
@@ -234,10 +246,12 @@ const PromoteStudents = () => {
 
     const feeCalc = calculateStudentFees(
       studentId,
-      currentTerm,
+      currentTermName,
       student.classAssigned,
       feeStructures,
-      payments
+      payments,
+      arrearsMap,
+      creditMap
     );
 
     const outstandingBalance = Math.max(0, feeCalc.totalAmountDue - feeCalc.totalPaid);
@@ -295,7 +309,7 @@ const PromoteStudents = () => {
                   </div>
                 </div>
                 <p className="text-sm text-orange-700">
-                  The outstanding balance will be automatically added to the student's arrears in the new class.
+                  The outstanding balance will be automatically added to the student's arrears in the new class and term.
                 </p>
               </div>
             ) : (
@@ -322,7 +336,7 @@ const PromoteStudents = () => {
                   </div>
                 </div>
                 <p className="text-sm text-orange-700">
-                  All outstanding balances will be automatically carried forward as arrears.
+                  All outstanding balances will be automatically carried forward as arrears to the active term.
                 </p>
               </div>
             )}
@@ -352,7 +366,7 @@ const PromoteStudents = () => {
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <TrendingUp className="w-5 h-5" />
-            <span>Student Promotion - {currentTerm}</span>
+            <span>Student Promotion - {currentTermName}</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -569,41 +583,19 @@ const PromoteStudents = () => {
               });
 
               return (
-                <div key={cls.id} className="p-4 border rounded-lg">
+                <div key={cls.id} className="p-4 border rounded-lg shadow-sm hover:shadow-md transition-shadow">
                   <h3 className="font-semibold text-lg">{cls.className}</h3>
-                  <p className="text-sm text-gray-600">{cls.level}</p>
+                  <p className="text-sm text-gray-600 truncate">{cls.level || 'No Level'}</p>
                   <div className="mt-2 flex items-center space-x-2">
                     <Badge variant="outline">
                       {studentsInClass.length} students
                     </Badge>
                     {studentsWithOutstanding.length > 0 && (
                       <Badge variant="destructive" className="text-xs">
-                        {studentsWithOutstanding.length} owing fees
+                        {studentsWithOutstanding.length} owing
                       </Badge>
                     )}
                   </div>
-                  {studentsInClass.length > 0 && (
-                    <div className="mt-3 space-y-1">
-                      {studentsInClass.slice(0, 3).map((student) => {
-                        const studentWithFee = getStudentWithFeeInfo(student.id);
-                        return (
-                          <div key={student.id} className="flex items-center justify-between">
-                            <p className="text-xs text-gray-500">
-                              {student.firstName} {student.lastName}
-                            </p>
-                            {studentWithFee?.hasOutstanding && (
-                              <DollarSign className="w-3 h-3 text-red-500" />
-                            )}
-                          </div>
-                        );
-                      })}
-                      {studentsInClass.length > 3 && (
-                        <p className="text-xs text-gray-400">
-                          +{studentsInClass.length - 3} more...
-                        </p>
-                      )}
-                    </div>
-                  )}
                 </div>
               );
             })}

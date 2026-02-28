@@ -5,6 +5,7 @@ import { requireAuth } from '../middlewares/auth.js';
 const router = express.Router();
 
 router.get('/', requireAuth, controller.list);
+router.get('/next-id', requireAuth, controller.getNextId);
 router.post('/', requireAuth, controller.create);
 router.get('/:id', requireAuth, controller.get);
 router.put('/:id', requireAuth, controller.update);

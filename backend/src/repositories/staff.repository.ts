@@ -1,123 +1,111 @@
+
 import { query } from '../config/db.js';
+
+const ROLE = 'staff';
+
+const COLS_FULL = 'id, staff_id, role, created_at, updated_at, email, display_name, phone, gender, date_of_birth, address, employment_date, employment_status, monthly_salary, notes';
+const COLS_MIN = 'id, staff_id, role, created_at, email, display_name';
 
 function normalizeRow(row: any) {
   if (!row) return null;
-  let meta: any = {};
-  try {
-    if (row.meta) meta = typeof row.meta === 'string' ? JSON.parse(row.meta) : row.meta;
-  } catch (e) {
-    meta = {};
-  }
-
-  const email = row.email ?? meta?.email ?? null;
-  const displayName = row.display_name ?? meta?.displayName ?? meta?.display_name ?? null;
-
   return {
-    id: row.id,
-    username: row.username,
-    role: row.role,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-    email,
-    displayName,
-    meta
+    ...row,
+    staffId: row.staff_id ?? null,
+    displayName: row.display_name ?? null,
+    monthlySalary: row.monthly_salary ? Number(row.monthly_salary) : 0
   };
 }
 
 export async function listStaff(limit = 1000) {
-  const attempts = [
-    'SELECT id, username, role, created_at, updated_at, meta, email, display_name FROM users WHERE role = $1 ORDER BY id DESC LIMIT $2',
-    'SELECT id, username, role, created_at, meta, email, display_name FROM users WHERE role = $1 ORDER BY id DESC LIMIT $2',
-    'SELECT id, username, role, created_at, meta FROM users WHERE role = $1 ORDER BY id DESC LIMIT $2'
-  ];
-
-  for (const sql of attempts) {
-    try {
-      const res = await query(sql, ['staff', limit]);
-      return res.rows.map(normalizeRow);
-    } catch (err) {
-      continue;
-    }
+  try {
+    const res = await query(
+      `SELECT ${COLS_FULL} FROM users WHERE role NOT IN ('teacher', 'super-admin', 'administrator', 'finance') ORDER BY id DESC LIMIT $1`,
+      [limit]
+    );
+    return res.rows.map(normalizeRow);
+  } catch {
+    const res = await query(
+      `SELECT ${COLS_MIN} FROM users WHERE role NOT IN ('teacher', 'super-admin', 'administrator', 'finance') ORDER BY id DESC LIMIT $1`,
+      [limit]
+    );
+    return res.rows.map(normalizeRow);
   }
-
-  return [];
 }
 
 export async function findStaffById(id: number) {
-  const attempts = [
-    'SELECT id, username, role, created_at, updated_at, meta, email, display_name FROM users WHERE id = $1 AND role = $2 LIMIT 1',
-    'SELECT id, username, role, created_at, meta, email, display_name FROM users WHERE id = $1 AND role = $2 LIMIT 1',
-    'SELECT id, username, role, created_at, meta FROM users WHERE id = $1 AND role = $2 LIMIT 1'
-  ];
-
-  for (const sql of attempts) {
-    try {
-      const res = await query(sql, [id, 'staff']);
-      return normalizeRow(res.rows[0]);
-    } catch (err) {
-      continue;
-    }
+  try {
+    const res = await query(
+      `SELECT ${COLS_FULL} FROM users WHERE id = $1 AND role NOT IN ('teacher', 'super-admin', 'administrator', 'finance') LIMIT 1`,
+      [id]
+    );
+    return normalizeRow(res.rows[0] ?? null);
+  } catch {
+    const res = await query(
+      `SELECT ${COLS_MIN} FROM users WHERE id = $1 AND role NOT IN ('teacher', 'super-admin', 'administrator', 'finance') LIMIT 1`,
+      [id]
+    );
+    return normalizeRow(res.rows[0] ?? null);
   }
-
-  return null;
 }
 
 export async function createStaff(payload: any) {
-  // kept for compatibility but prefer using user.repository.createUser
-  const attempts = [
-    'INSERT INTO users (username, password_hash, role, meta) VALUES ($1, $2, $3, $4) RETURNING id, username, role, meta, created_at, updated_at, email, display_name',
-    'INSERT INTO users (username, password_hash, role, meta) VALUES ($1, $2, $3, $4) RETURNING id, username, role, meta, created_at, email, display_name',
-    'INSERT INTO users (username, password_hash, role, meta) VALUES ($1, $2, $3, $4) RETURNING id, username, role, meta, created_at'
-  ];
+  const staffId = payload.staffId ?? payload.staff_id ?? null;
+  const passwordHash = payload.password_hash || '';
+  const role = payload.role || ROLE;
 
-  for (const sql of attempts) {
-    try {
-      const res = await query(sql, [payload.username, payload.password_hash ?? '', 'staff', JSON.stringify(payload.meta ?? {})]);
-      return normalizeRow(res.rows[0]);
-    } catch (err) {
-      continue;
-    }
-  }
-
-  throw new Error('Failed to create staff member');
+  const res = await query(
+    `INSERT INTO users (staff_id, password_hash, role, email, display_name, phone, gender, date_of_birth, address, employment_date, employment_status, monthly_salary, notes)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING ${COLS_FULL}`,
+    [
+      staffId, passwordHash, role, payload.email ?? null, payload.displayName ?? payload.display_name ?? payload.name ?? null,
+      payload.phone ?? null, payload.gender ?? null, payload.date_of_birth ?? null,
+      payload.address ?? null, payload.employment_date ?? null, payload.employment_status ?? payload.employmentStatus ?? 'active',
+      payload.monthly_salary ?? payload.monthlySalary ?? 0, payload.notes ?? null
+    ]
+  );
+  return normalizeRow(res.rows[0]);
 }
 
 export async function updateStaff(id: number, payload: any) {
-  const attempts = [
-    'UPDATE users SET meta = $1, updated_at = now() WHERE id = $2 AND role = $3 RETURNING id, username, role, meta, created_at, updated_at, email, display_name',
-    'UPDATE users SET meta = $1, updated_at = now() WHERE id = $2 AND role = $3 RETURNING id, username, role, meta, created_at, email, display_name',
-    'UPDATE users SET meta = $1 WHERE id = $2 AND role = $3 RETURNING id, username, role, meta, created_at'
+  const fields = [
+    'email', 'display_name', 'phone', 'gender', 'date_of_birth', 'address',
+    'employment_date', 'employment_status', 'monthly_salary', 'notes'
   ];
 
-  for (const sql of attempts) {
-    try {
-      const res = await query(sql, [JSON.stringify(payload.meta ?? {}), id, 'staff']);
-      if (res.rows.length === 0) return null;
-      return normalizeRow(res.rows[0]);
-    } catch (err) {
-      continue;
+  const updates: string[] = [];
+  const values: any[] = [];
+  let idx = 1;
+
+  for (const f of fields) {
+    let key = f;
+    if (f === 'monthly_salary') {
+      key = payload.monthly_salary !== undefined ? 'monthly_salary' : 'monthlySalary';
+    } else if (f === 'display_name') {
+      key = payload.display_name !== undefined ? 'display_name' : (payload.displayName !== undefined ? 'displayName' : 'name');
+    } else if (f === 'employment_status') {
+      key = payload.employment_status !== undefined ? 'employment_status' : 'employmentStatus';
+    }
+
+    if (payload[key] !== undefined) {
+      updates.push(`${f} = $${idx++}`);
+      values.push(payload[key]);
     }
   }
 
-  throw new Error('Failed to update staff member');
+  if (updates.length > 0) {
+    values.push(id);
+    const sql = `UPDATE users SET ${updates.join(', ')}, updated_at = now() WHERE id = $${idx++} AND role NOT IN ('teacher', 'super-admin', 'administrator', 'finance') RETURNING ${COLS_FULL}`;
+    const res = await query(sql, values);
+    if (res.rows.length === 0) return null;
+    return normalizeRow(res.rows[0]);
+  }
+
+  return findStaffById(id);
 }
 
 export async function deleteStaff(id: number) {
-  const attempts = [
-    'DELETE FROM users WHERE id = $1 AND role = $2 RETURNING id',
-    'DELETE FROM users WHERE id = $1 AND role = $2'
-  ];
-
-  for (const sql of attempts) {
-    try {
-      const res = await query(sql, [id, 'staff']);
-      return res.rows.length > 0;
-    } catch (err) {
-      continue;
-    }
-  }
-
-  return false;
+  await query("DELETE FROM users WHERE id = $1 AND role NOT IN ('teacher', 'super-admin', 'administrator', 'finance')", [id]);
+  return { deleted: true };
 }
 
 export default { listStaff, findStaffById, createStaff, updateStaff, deleteStaff };

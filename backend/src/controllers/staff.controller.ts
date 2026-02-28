@@ -22,10 +22,18 @@ export async function get(req: Request, res: Response) {
   }
 }
 
+export async function getNextId(req: Request, res: Response) {
+  try {
+    const nextId = await service.getNextStaffId();
+    return res.json(success({ nextId }));
+  } catch (err: any) {
+    return res.status(500).json(failure(err.message));
+  }
+}
+
 export async function create(req: Request, res: Response) {
   try {
-    if (!req.body || !req.body.username) return res.status(400).json(failure('Missing username'));
-    if (!req.body || !req.body.password) return res.status(400).json(failure('Missing password'));
+    if (!req.body || (!req.body.username && !req.body.staffId && !req.body.staff_id)) return res.status(400).json(failure('Missing staff identifier'));
     // Pass all body fields through so service can extract profile meta
     const created = await service.createStaff(req.body);
     return res.status(201).json(success(created));
@@ -65,4 +73,4 @@ export async function pay(req: Request, res: Response) {
   }
 }
 
-export default { list, get, create, update, remove, pay };
+export default { list, get, getNextId, create, update, remove, pay };

@@ -62,3 +62,13 @@ export async function assignTerm(req: Request, res: Response) {
     return res.status(500).json(failure(err.message));
   }
 }
+
+export async function remove(req: Request, res: Response) {
+  try {
+    const id = Number(req.params.id);
+    await feeService.deleteStructure(id);
+    return res.json(success({ deleted: true }));
+  } catch (err: any) {
+    return res.status(500).json(failure(err.message));
+  }
+}

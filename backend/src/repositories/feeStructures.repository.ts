@@ -18,4 +18,7 @@ export async function updateStructure(id: number, payload: any) {
 export async function listStructures() {
   const res = await query('SELECT * FROM fee_structures ORDER BY created_at DESC');
   return res.rows;
+} export async function deleteStructure(id: number) {
+  await query('DELETE FROM fee_structures WHERE id = $1', [id]);
+  return true;
 }

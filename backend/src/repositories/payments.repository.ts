@@ -1,9 +1,27 @@
 import { query } from '../config/db.js';
 
-export async function createPayment(payload: { student_id: number; amount: number; method: string; term_id?: number; meta?: any }) {
+export async function createPayment(payload: {
+  student_id: number;
+  amount: number;
+  method: string;
+  term_id?: number;
+  payment_date?: string;
+  notes?: string;
+  receipt_number?: string;
+}) {
+  const receiptNo = payload.receipt_number || 'RCP' + Date.now().toString().slice(-8);
+
   const res = await query(
-    'INSERT INTO payments (student_id, amount, method, term_id, meta) VALUES ($1, $2, $3, $4, $5) RETURNING id, student_id, amount, method, term_id, created_at',
-    [payload.student_id, payload.amount, payload.method, payload.term_id ?? null, JSON.stringify(payload.meta ?? {})]
+    'INSERT INTO payments (student_id, amount, method, term_id, payment_date, notes, receipt_number) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+    [
+      payload.student_id,
+      payload.amount,
+      payload.method,
+      payload.term_id ?? null,
+      payload.payment_date || new Date().toISOString().split('T')[0],
+      payload.notes || null,
+      receiptNo
+    ]
   );
   return res.rows[0];
 }

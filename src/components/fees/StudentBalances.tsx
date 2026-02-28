@@ -7,48 +7,46 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
 import { Search, AlertCircle, CreditCard, TrendingUp } from 'lucide-react';
-import { getActiveAcademicTerm, calculateStudentFees, calculateStudentFeeStatus } from '../../utils/feeCalculations';
+import { useActiveTerm } from '../../contexts/ActiveTermContext';
+import { getActiveAcademicTerm, calculateStudentFeesSync, calculateStudentFeeStatusSync } from '../../utils/feeCalculations';
 
 const StudentBalances = () => {
-  const { students, payments, feeStructures, classes } = useData();
+  const { students, payments, feeStructures, classes, arrearsBalances } = useData();
+  const { currentTerm: activeTerm } = useActiveTerm();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterClass, setFilterClass] = useState('all-classes');
   const [filterStatus, setFilterStatus] = useState('all-status');
 
-  const currentTerm = getActiveAcademicTerm();
+  const currentTerm = activeTerm || getActiveAcademicTerm();
 
-  // Calculate comprehensive balance for each student
+  // Calculate comprehensive balance for each student (sync - uses local data)
   const calculateStudentBalance = (student: any) => {
-    const feeCalculation = calculateStudentFees(
+    const feeCalculation = calculateStudentFeesSync(
       student.id,
       currentTerm,
       student.classAssigned,
-      feeStructures,
-      payments
+      feeStructures || [],
+      payments || [],
+      student.classAssignedId,
+      arrearsBalances
     );
-    
-    const feeStatus = calculateStudentFeeStatus(
-      student.id,
-      currentTerm,
-      students,
-      feeStructures,
-      payments
-    );
+    const feeStatus = calculateStudentFeeStatusSync(feeCalculation);
+    const balance = Math.max(0, feeCalculation.totalAmountDue - feeCalculation.totalPaid);
 
     return {
       ...student,
-      currentTermFee: feeCalculation.currentTermFee,
-      arrears: feeCalculation.arrears,
-      creditBalance: feeCalculation.creditBalance,
-      totalAmountDue: feeCalculation.totalAmountDue,
-      totalPaid: feeCalculation.totalPaid,
-      balance: Math.max(0, feeCalculation.totalAmountDue - feeCalculation.totalPaid),
-      feeStatus: feeStatus,
-      paymentCount: payments.filter(p => p.studentId === student.id && p.term === currentTerm).length
+      currentTermFee: feeCalculation.currentTermFee ?? 0,
+      arrears: feeCalculation.arrears ?? 0,
+      creditBalance: feeCalculation.creditBalance ?? 0,
+      totalAmountDue: feeCalculation.totalAmountDue ?? 0,
+      totalPaid: feeCalculation.totalPaid ?? 0,
+      balance,
+      feeStatus,
+      paymentCount: (payments || []).filter((p: any) => String(p.studentId) === String(student.id) && (p.term === currentTerm || p.term?.includes?.(currentTerm))).length
     };
   };
 
-  const studentsWithBalances = students.map(calculateStudentBalance);
+  const studentsWithBalances = (students || []).map(calculateStudentBalance);
 
   const filteredStudents = studentsWithBalances.filter(student => {
     const matchesSearch = searchTerm === '' || 
@@ -60,9 +58,10 @@ const StudentBalances = () => {
     
     const matchesStatus = filterStatus === 'all-status' || 
       (filterStatus === 'outstanding' && student.balance > 0) ||
-      (filterStatus === 'paid' && student.balance === 0 && student.feeStatus.status === 'Fully Paid') ||
-      (filterStatus === 'credit' && student.feeStatus.status === 'Credit Balance') ||
-      (filterStatus === 'no-fee' && student.feeStatus.status === 'No Fee Set') ||
+      (filterStatus === 'paid' && (student.balance === 0 && student.feeStatus?.status === 'Paid')) ||
+      (filterStatus === 'partial' && student.feeStatus?.status === 'Partially Paid') ||
+      (filterStatus === 'credit' && student.feeStatus?.status === 'Credit Balance') ||
+      (filterStatus === 'no-fee' && student.feeStatus?.status === 'No Fee Set') ||
       (filterStatus === 'arrears' && student.arrears > 0);
 
     return matchesSearch && matchesClass && matchesStatus;
@@ -74,38 +73,33 @@ const StudentBalances = () => {
   const totalArrears = filteredStudents.reduce((sum, student) => sum + student.arrears, 0);
   const studentsWithArrears = filteredStudents.filter(student => student.arrears > 0).length;
   const totalCreditBalance = filteredStudents
-    .filter(student => student.feeStatus.status === 'Credit Balance')
-    .reduce((sum, student) => sum + Math.abs(student.feeStatus.balance), 0);
-  const studentsWithCredit = filteredStudents.filter(student => student.feeStatus.status === 'Credit Balance').length;
+    .filter(student => student.feeStatus?.status === 'Credit Balance')
+    .reduce((sum, student) => sum + Math.abs(student.feeStatus?.balance ?? 0), 0);
+  const studentsWithCredit = filteredStudents.filter(student => student.feeStatus?.status === 'Credit Balance').length;
 
   const getStatusBadge = (student: any) => {
-    if (student.feeStatus.status === 'No Fee Set') {
-      return <Badge variant="secondary">No Fee Set</Badge>;
+    const status = student.feeStatus?.status;
+    if (status === 'No Fee Set') return <Badge variant="secondary">No Fee Set</Badge>;
+    if (status === 'Credit Balance' || (student.creditBalance > 0 && student.balance <= 0)) {
+      return <Badge variant="default" className="bg-blue-500">Credit Balance</Badge>;
     }
-    
-    if (student.feeStatus.status === 'Credit Balance') {
+    if (status === 'Partially Paid' || (student.balance > 0 && student.totalPaid > 0)) {
       return (
-        <Badge variant="default" className="bg-blue-500">
-          Credit Balance
+        <Badge variant="outline" className="border-amber-500 text-amber-700">
+          Partially Paid
         </Badge>
       );
     }
-    
-    if (student.balance > 0) {
+    if (status === 'Unpaid' || (student.balance > 0 && student.totalPaid === 0)) {
       const hasArrears = student.arrears > 0;
       return (
         <Badge variant="destructive" className="flex items-center space-x-1">
           <AlertCircle className="w-3 h-3" />
-          <span>{hasArrears ? 'Outstanding + Arrears' : 'Outstanding'}</span>
+          <span>{hasArrears ? 'Outstanding + Arrears' : 'Unpaid'}</span>
         </Badge>
       );
     }
-    
-    return (
-      <Badge variant="default" className="bg-green-500">
-        Fully Paid
-      </Badge>
-    );
+    return <Badge variant="default" className="bg-green-500">Paid</Badge>;
   };
 
   return (
@@ -210,7 +204,8 @@ const StudentBalances = () => {
             <SelectContent>
               <SelectItem value="all-status">All Statuses</SelectItem>
               <SelectItem value="outstanding">Outstanding</SelectItem>
-              <SelectItem value="paid">Fully Paid</SelectItem>
+              <SelectItem value="paid">Paid</SelectItem>
+              <SelectItem value="partial">Partially Paid</SelectItem>
               <SelectItem value="credit">Credit Balance</SelectItem>
               <SelectItem value="arrears">With Arrears</SelectItem>
               <SelectItem value="no-fee">No Fee Set</SelectItem>
@@ -259,35 +254,35 @@ const StudentBalances = () => {
                     </TableCell>
                     <TableCell>
                       <span className="font-mono">
-                        GHS {student.currentTermFee.toLocaleString()}
+                        GHS {(student.currentTermFee ?? 0).toLocaleString()}
                       </span>
                     </TableCell>
                     <TableCell>
                       <span className={`font-mono ${
-                        student.arrears > 0 ? 'text-amber-600 font-bold' : 'text-gray-500'
+                        (student.arrears ?? 0) > 0 ? 'text-amber-600 font-bold' : 'text-gray-500'
                       }`}>
-                        GHS {student.arrears.toLocaleString()}
+                        GHS {(student.arrears ?? 0).toLocaleString()}
                       </span>
                     </TableCell>
                     <TableCell>
                       <span className="font-mono font-bold">
-                        GHS {student.totalAmountDue.toLocaleString()}
+                        GHS {(student.totalAmountDue ?? 0).toLocaleString()}
                       </span>
                     </TableCell>
                     <TableCell>
                       <span className="font-mono text-green-600">
-                        GHS {student.totalPaid.toLocaleString()}
+                        GHS {(student.totalPaid ?? 0).toLocaleString()}
                       </span>
                     </TableCell>
                     <TableCell>
                       <span className={`font-mono font-bold ${
-                        student.balance > 0 ? 'text-red-600' : 'text-green-600'
+                        (student.balance ?? 0) > 0 ? 'text-red-600' : 'text-green-600'
                       }`}>
-                        GHS {student.balance.toLocaleString()}
+                        GHS {(student.balance ?? 0).toLocaleString()}
                       </span>
-                      {student.feeStatus.status === 'Credit Balance' && (
+                      {student.feeStatus?.status === 'Credit Balance' && (
                         <div className="text-xs text-blue-600 mt-1">
-                          Credit: GHS {Math.abs(student.feeStatus.balance).toLocaleString()}
+                          Credit: GHS {Math.abs(student.feeStatus.balance ?? 0).toLocaleString()}
                         </div>
                       )}
                     </TableCell>

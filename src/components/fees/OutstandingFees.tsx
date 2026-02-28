@@ -8,32 +8,37 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
 import { Search, AlertTriangle, Download, DollarSign, Clock, TrendingUp } from 'lucide-react';
-import { calculateStudentFees, getActiveAcademicTerm } from '../../utils/feeCalculations';
+import { calculateStudentFeesSync, getActiveAcademicTerm } from '../../utils/feeCalculations';
+import { useActiveTerm } from '../../contexts/ActiveTermContext';
 
 const OutstandingFees = () => {
-  const { students, classes, feeStructures, payments } = useData();
+  const { students, classes, feeStructures, payments, arrearsBalances } = useData();
+  const { currentTerm } = useActiveTerm();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClass, setSelectedClass] = useState('All');
-  const [selectedTerm, setSelectedTerm] = useState(getActiveAcademicTerm());
+  const selectedTerm = currentTerm && currentTerm !== 'Not Set' ? currentTerm : getActiveAcademicTerm();
 
-  // Calculate outstanding fees for all students
+  // Calculate outstanding fees for all students (sync - uses local data)
   const outstandingData = useMemo(() => {
     const studentsArray = Array.isArray(students) ? students : [];
     const paymentsArray = Array.isArray(payments) ? payments : [];
     
     return studentsArray.map(student => {
-      const feeCalculation = calculateStudentFees(
+      const feeCalculation = calculateStudentFeesSync(
         student.id,
         selectedTerm,
         student.classAssigned,
-        feeStructures,
-        paymentsArray
+        feeStructures || [],
+        paymentsArray,
+        student.classAssignedId,
+        arrearsBalances
       );
 
-      const outstanding = Math.max(0, feeCalculation.totalAmountDue - feeCalculation.totalPaid);
+      const outstanding = Math.max(0, (feeCalculation.totalAmountDue ?? feeCalculation.currentTermFee) - feeCalculation.totalPaid);
 
       return {
         studentId: student.id,
+        admissionNo: student.studentId || student.admissionNumber || String(student.id),
         studentName: `${student.firstName} ${student.lastName}`,
         className: student.classAssigned,
         currentTermFee: feeCalculation.currentTermFee,
@@ -42,10 +47,13 @@ const OutstandingFees = () => {
         totalAmountDue: feeCalculation.totalAmountDue,
         totalPaid: feeCalculation.totalPaid,
         outstanding: outstanding,
-        paymentHistory: paymentsArray.filter(p => p.studentId === student.id)
+        paymentHistory: paymentsArray.filter((p: any) =>
+          String(p.studentId) === String(student.id) &&
+          (p.term === selectedTerm || (p.term && (p.term.includes(selectedTerm) || selectedTerm.includes(p.term))))
+        )
       };
     });
-  }, [students, payments, feeStructures, selectedTerm]);
+  }, [students, payments, feeStructures, selectedTerm, arrearsBalances]);
 
   // Filter students with outstanding balances
   const filteredStudents = useMemo(() => {
@@ -178,18 +186,8 @@ const OutstandingFees = () => {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle>Outstanding Fees Overview</CardTitle>
+            <CardTitle>Outstanding Fees Overview - {selectedTerm}</CardTitle>
             <div className="flex items-center space-x-2">
-              <Select value={selectedTerm} onValueChange={setSelectedTerm}>
-                <SelectTrigger className="w-40">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Term 1 2024">Term 1 2024</SelectItem>
-                  <SelectItem value="Term 2 2024">Term 2 2024</SelectItem>
-                  <SelectItem value="Term 3 2024">Term 3 2024</SelectItem>
-                </SelectContent>
-              </Select>
               <Button onClick={exportOutstandingReport} size="sm">
                 <Download className="w-4 h-4 mr-2" />
                 Export
@@ -244,7 +242,7 @@ const OutstandingFees = () => {
                       <td className="p-3">
                         <div>
                           <p className="font-medium">{student.studentName}</p>
-                          <p className="text-sm text-gray-500">ID: {student.studentId}</p>
+                          <p className="text-sm text-gray-500 break-all">ID: {student.admissionNo}</p>
                         </div>
                       </td>
                       <td className="p-3">{student.className}</td>

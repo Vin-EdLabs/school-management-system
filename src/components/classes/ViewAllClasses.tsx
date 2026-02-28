@@ -37,7 +37,9 @@ const ViewAllClasses = () => {
 
   const getClassStats = (classItem: any) => {
     const studentsInClass = students.filter(student => student.classAssigned === classItem.className);
-    const assignedTeacher = teachers.find(teacher => teacher.classAssigned === classItem.className);
+    const assignedTeacher = classItem.assignedTeacherId
+      ? teachers.find(t => String(t.id) === String(classItem.assignedTeacherId))
+      : null;
     
     return {
       studentCount: studentsInClass.length,

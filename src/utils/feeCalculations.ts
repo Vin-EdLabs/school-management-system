@@ -1,4 +1,6 @@
 
+import { apiService } from '../services/api';
+
 export interface FeeCalculation {
   totalFee: number;
   arrears: number;
@@ -18,7 +20,7 @@ export interface StudentPaymentRecord {
 }
 
 export interface StudentFeeStatus {
-  status: 'Fully Paid' | 'Amount Owing' | 'Credit Balance' | 'No Fee Set';
+  status: 'Paid' | 'Partially Paid' | 'Unpaid' | 'Fully Paid' | 'Amount Owing' | 'Credit Balance' | 'No Fee Set';
   balance: number;
 }
 
@@ -31,10 +33,10 @@ export const generateReceiptNumber = (): string => {
 
 export const getSchoolSettings = () => {
   const defaultSettings = {
-    name: 'Rosa Gardens School',
-    address: 'Accra, Ghana',
-    contact: '+233 XX XXX XXXX',
-    email: 'info@rosagardens.edu.gh'
+    name: 'School',
+    address: '',
+    contact: '',
+    email: ''
   };
   
   const savedSettings = localStorage.getItem('schoolInfo');
@@ -48,102 +50,160 @@ export const getSchoolSettings = () => {
   return defaultSettings;
 };
 
-export const getActiveAcademicTerm = () => {
-  const savedTerms = localStorage.getItem('academicTerms');
-  if (savedTerms) {
-    try {
-      const terms = JSON.parse(savedTerms);
-      const activeTerm = terms.find((term: any) => term.isActive);
-      return activeTerm ? `${activeTerm.name} ${activeTerm.year}` : 'Term 1 2024';
-    } catch (error) {
-      console.error('Error loading academic terms:', error);
-    }
-  }
-  return 'Term 1 2024';
+// Cache updated by ActiveTermContext - fallback when used outside React tree
+let _cachedTerm = 'Not Set';
+let _cachedYear = new Date().getFullYear().toString();
+
+export const setActiveTermCache = (term: string, year: string) => {
+  _cachedTerm = term;
+  _cachedYear = year;
 };
 
-export const getActiveAcademicYear = () => {
-  const savedTerms = localStorage.getItem('academicTerms');
-  if (savedTerms) {
-    try {
-      const terms = JSON.parse(savedTerms);
-      const activeTerm = terms.find((term: any) => term.isActive);
-      return activeTerm ? activeTerm.year : '2024';
-    } catch (error) {
-      console.error('Error loading academic terms:', error);
-    }
-  }
-  return '2024';
-};
+export const getActiveAcademicTerm = () => _cachedTerm;
 
-export const calculateStudentFees = (
+export const getActiveAcademicYear = () => _cachedYear;
+
+export const calculateStudentFees = async (
   studentId: string,
   currentTerm: string,
   studentClass: string,
   feeStructures: any[],
-  payments: any[]
-): FeeCalculation => {
-  // Get current term fee structure
-  const currentFeeStructure = feeStructures.find(fee => 
-    fee.className === studentClass && fee.term === currentTerm
-  );
-  const currentTermFee = currentFeeStructure?.amount || 0;
-
-  // Get all payments for this student in current term
-  const currentTermPayments = payments
-    .filter(payment => payment.studentId === studentId && payment.term === currentTerm)
-    .reduce((sum, payment) => sum + payment.amount, 0);
-
-  // Get arrears from previous terms
-  const arrearsKey = `arrears-${currentTerm.toLowerCase().replace(/\s+/g, '-')}`;
-  const arrearsData = localStorage.getItem(arrearsKey);
-  const arrears = arrearsData ? (JSON.parse(arrearsData)[studentId] || 0) : 0;
-
-  // Get credit balance from previous terms
-  const creditKey = `credit-${studentId}`;
-  const creditData = localStorage.getItem(creditKey);
-  const creditBalance = creditData ? parseFloat(creditData) : 0;
-
-  // Calculate total amount due (current term fee + arrears - credit balance)
-  const totalAmountDue = Math.max(0, currentTermFee + arrears - creditBalance);
-  
-  // Calculate if student has overpaid
-  const totalPaid = currentTermPayments;
-  const newCreditBalance = Math.max(0, totalPaid - totalAmountDue);
-  
-  // Update credit balance if there's an overpayment
-  if (newCreditBalance > 0 && newCreditBalance !== creditBalance) {
-    localStorage.setItem(creditKey, newCreditBalance.toString());
+  payments: any[],
+  academicYear?: string
+): Promise<FeeCalculation> => {
+  try {
+    // Try to get from backend API first
+    const year = academicYear || getActiveAcademicYear();
+    const termParts = currentTerm.split(' ');
+    const term = termParts.slice(0, -1).join(' '); // Remove year part
+    
+    const response: any = await apiService.get(
+      `/fee-calculations/student/${studentId}?term=${encodeURIComponent(term)}&academicYear=${year}`
+    );
+    
+    if (response && response.feeCalculation) {
+      const fc = response.feeCalculation;
+      return {
+        totalFee: fc.totalFees ?? fc.currentTermFee ?? 0,
+        arrears: fc.arrears ?? 0,
+        creditBalance: fc.credit ?? fc.creditBalance ?? 0,
+        totalAmountDue: fc.totalFees ?? fc.totalAmountDue ?? fc.currentTermFee ?? 0,
+        totalPaid: fc.totalPaid ?? 0,
+        currentTermFee: fc.totalFees ?? fc.currentTermFee ?? 0,
+      };
+    }
+  } catch (error) {
+    console.warn('Backend fee calculation failed, using fallback:', error);
   }
+  
+  // Fallback to local calculation if backend fails
+  const syncResult = calculateStudentFeesSync(
+    studentId,
+    currentTerm,
+    studentClass,
+    feeStructures || [],
+    payments || []
+  );
+  const currentTermFee = syncResult.currentTermFee;
+  const currentTermPayments = syncResult.totalPaid;
 
   return {
     totalFee: currentTermFee,
-    arrears: arrears,
-    creditBalance: creditBalance,
-    totalAmountDue: totalAmountDue,
-    totalPaid: totalPaid,
+    arrears: 0,
+    creditBalance: 0,
+    totalAmountDue: currentTermFee,
+    totalPaid: currentTermPayments,
     currentTermFee: currentTermFee
   };
 };
 
-export const calculateStudentFeeStatus = (
+/** Check if two terms match (e.g. "Term 1" matches "Term 1 2024" and vice versa) */
+function termsMatch(term1: string | undefined, term2: string | undefined): boolean {
+  if (!term1 || !term2) return false;
+  if (term1 === term2) return true;
+  return term1.includes(term2) || term2.includes(term1);
+}
+
+/** Sync version - Matches backend: total_outstanding = previous_arrears + current_term_fee, remaining = total_outstanding - total_paid */
+export const calculateStudentFeesSync = (
+  studentId: string,
+  currentTerm: string,
+  studentClass: string,
+  feeStructures: any[],
+  payments: any[],
+  studentClassId?: number | string | null,
+  arrearsBalances?: Record<string, number> | null
+): FeeCalculation => {
+  if (!currentTerm || currentTerm === 'Not Set') {
+    return { totalFee: 0, arrears: 0, creditBalance: 0, totalAmountDue: 0, totalPaid: 0, currentTermFee: 0 };
+  }
+  const classMatch = (fee: any) => {
+    if (studentClassId != null && fee.class_id != null) return Number(fee.class_id) === Number(studentClassId);
+    if (fee.classId != null && studentClassId != null) return Number(fee.classId) === Number(studentClassId);
+    const cn = (fee.class_name || fee.className || '').trim();
+    const sc = (studentClass || '').trim();
+    return cn === sc || cn.includes(sc) || sc.includes(cn);
+  };
+  const termMatch = (t: string | undefined) => termsMatch(currentTerm, t);
+  const matchingFees = (feeStructures || []).filter((fee: any) => classMatch(fee) && termMatch(fee.term));
+  const currentTermFee = matchingFees.reduce((sum: number, f: any) => sum + (parseFloat(f.amount) || 0), 0);
+  const previousArrears = (arrearsBalances && arrearsBalances[studentId]) ? arrearsBalances[studentId] : 0;
+  const totalPaid = (payments || [])
+    .filter((p: any) => {
+      const matchById = String(p.studentId) === String(studentId) || String(p.studentIdNum) === String(studentId);
+      return matchById && termMatch(p.term);
+    })
+    .reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+  const totalAmountDue = Math.max(0, previousArrears + currentTermFee);
+  const remainingBalance = totalAmountDue - totalPaid;
+  // Arrears = carryover from previous term only, NOT the full balance
+  const arrears = previousArrears;
+  return {
+    totalFee: currentTermFee,
+    arrears,
+    creditBalance: remainingBalance < 0 ? Math.abs(remainingBalance) : 0,
+    totalAmountDue,
+    totalPaid,
+    currentTermFee,
+  };
+};
+
+/** Sync fee status from fee calculation */
+export const calculateStudentFeeStatusSync = (
+  feeCalculation: FeeCalculation
+): StudentFeeStatus => {
+  if (feeCalculation.currentTermFee === 0) {
+    return { status: 'No Fee Set', balance: 0 };
+  }
+  const totalAmountDue = feeCalculation.totalAmountDue ?? feeCalculation.currentTermFee;
+  const totalPaid = feeCalculation.totalPaid ?? 0;
+  const balance = Math.max(0, totalAmountDue - totalPaid);
+  if (totalPaid > totalAmountDue) return { status: 'Credit Balance', balance: -(totalPaid - totalAmountDue) };
+  if (totalPaid >= totalAmountDue) return { status: 'Paid', balance: 0 };
+  if (totalPaid > 0 && totalPaid < totalAmountDue) return { status: 'Partially Paid', balance };
+  return { status: 'Unpaid', balance };
+};
+
+export const calculateStudentFeeStatus = async (
   studentId: string,
   currentTerm: string,
   students: any[],
   feeStructures: any[],
-  payments: any[]
-): StudentFeeStatus => {
+  payments: any[],
+  academicYear?: string
+): Promise<StudentFeeStatus> => {
   const student = students.find(s => s.id === studentId);
   if (!student) {
     return { status: 'No Fee Set', balance: 0 };
   }
 
-  const feeCalculation = calculateStudentFees(
+  const feeCalculation = await calculateStudentFees(
     studentId,
     currentTerm,
     student.classAssigned,
     feeStructures,
-    payments
+    payments,
+    academicYear
   );
 
   // If no fee structure is set for this class/term
@@ -163,86 +223,52 @@ export const calculateStudentFeeStatus = (
   }
 };
 
-export const processArrearsForTermChange = (
-  students: any[],
-  payments: any[],
-  feeStructures: any[],
+export const processArrearsForTermChange = async (
   previousTerm: string,
-  newTerm: string
+  newTerm: string,
+  academicYear: string
 ) => {
-  const arrearsData: Record<string, number> = {};
-  const creditUpdates: Record<string, number> = {};
-  
-  students.forEach(student => {
-    const calculation = calculateStudentFees(
-      student.id,
-      previousTerm,
-      student.classAssigned,
-      feeStructures,
-      payments
-    );
+  try {
+    const termParts = previousTerm.split(' ');
+    const prevTerm = termParts.slice(0, -1).join(' ');
+    const newTermParts = newTerm.split(' ');
+    const newTermName = newTermParts.slice(0, -1).join(' ');
     
-    // If student owes money, add to arrears
-    if (calculation.totalAmountDue > calculation.totalPaid) {
-      arrearsData[student.id] = calculation.totalAmountDue - calculation.totalPaid;
-    }
+    const response: any = await apiService.post('/fee-calculations/process-term-change', {
+      previousTerm: prevTerm,
+      newTerm: newTermName,
+      academicYear,
+    });
     
-    // If student has overpaid, update credit balance
-    if (calculation.totalPaid > calculation.totalAmountDue) {
-      const creditBalance = calculation.totalPaid - calculation.totalAmountDue;
-      creditUpdates[student.id] = creditBalance;
-      localStorage.setItem(`credit-${student.id}`, creditBalance.toString());
-    }
-  });
-
-  // Store arrears for the new term
-  const arrearsKey = `arrears-${newTerm.toLowerCase().replace(/\s+/g, '-')}`;
-  localStorage.setItem(arrearsKey, JSON.stringify(arrearsData));
-  
-  console.log(`Processed arrears for term change from ${previousTerm} to ${newTerm}:`, {
-    studentsWithArrears: Object.keys(arrearsData).length,
-    totalArrears: Object.values(arrearsData).reduce((sum, amount) => sum + amount, 0),
-    studentsWithCredit: Object.keys(creditUpdates).length,
-    totalCredit: Object.values(creditUpdates).reduce((sum, amount) => sum + amount, 0)
-  });
-  
-  return { arrearsData, creditUpdates };
+    return response;
+  } catch (error) {
+    console.error('Failed to process term change:', error);
+    throw error;
+  }
 };
 
 // Function to handle class promotion with fee calculations
-export const processFeesForClassPromotion = (
+export const processFeesForClassPromotion = async (
   studentId: string,
-  oldClass: string,
-  newClass: string,
+  oldClassId: number,
+  newClassId: number,
   currentTerm: string,
-  feeStructures: any[],
-  payments: any[]
+  academicYear: string
 ) => {
-  // Calculate any outstanding balance in old class
-  const oldClassCalculation = calculateStudentFees(
-    studentId,
-    currentTerm,
-    oldClass,
-    feeStructures,
-    payments
-  );
-  
-  // If there's an outstanding balance, it becomes arrears for the new class
-  const outstandingBalance = Math.max(0, oldClassCalculation.totalAmountDue - oldClassCalculation.totalPaid);
-  
-  if (outstandingBalance > 0) {
-    // Add to arrears for current term
-    const arrearsKey = `arrears-${currentTerm.toLowerCase().replace(/\s+/g, '-')}`;
-    const existingArrears = localStorage.getItem(arrearsKey);
-    const arrearsData = existingArrears ? JSON.parse(existingArrears) : {};
+  try {
+    const response: any = await apiService.post('/fee-calculations/process-class-promotion', {
+      studentId: parseInt(studentId),
+      oldClassId,
+      newClassId,
+      currentTerm,
+      academicYear,
+    });
     
-    arrearsData[studentId] = (arrearsData[studentId] || 0) + outstandingBalance;
-    localStorage.setItem(arrearsKey, JSON.stringify(arrearsData));
-    
-    console.log(`Added arrears for student ${studentId} promotion from ${oldClass} to ${newClass}: GHS ${outstandingBalance}`);
+    return response.outstandingCarriedOver || 0;
+  } catch (error) {
+    console.error('Failed to process class promotion fees:', error);
+    return 0;
   }
-  
-  return outstandingBalance;
 };
 
 // Function to get receipt header information

@@ -307,7 +307,7 @@ const AiChatModule = () => {
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">AI Assistant</h1>
-                <p className="text-sm text-gray-600">Rosa Gardens School Management</p>
+                <p className="text-sm text-gray-600">School Management by TECHNERVE</p>
               </div>
             </div>
             <div className="flex items-center space-x-3">

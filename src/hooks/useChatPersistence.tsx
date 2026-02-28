@@ -19,7 +19,7 @@ export const useChatPersistence = () => {
     {
       id: '1',
       type: 'ai',
-      content: 'Hello! I\'m your AI assistant for Rosa Gardens School. I can help you with:\n\n💰 Record payments and generate receipts\n📊 Get school statistics and reports\n👥 Find student information and balances\n📋 List students by various criteria\n📄 Generate and view receipts\n\nWhat would you like to do today?',
+      content: 'Hello! I\'m your AI assistant for school management. I can help you with:\n\n💰 Record payments and generate receipts\n📊 Get school statistics and reports\n👥 Find student information and balances\n📋 List students by various criteria\n📄 Generate and view receipts\n\nWhat would you like to do today?',
       timestamp: new Date()
     }
   ]);
@@ -66,7 +66,7 @@ export const useChatPersistence = () => {
       setMessages([{
         id: '1',
         type: 'ai',
-        content: 'Hello! I\'m your AI assistant for Rosa Gardens School. I can help you with:\n\n💰 Record payments and generate receipts\n📊 Get school statistics and reports\n👥 Find student information and balances\n📋 List students by various criteria\n📄 Generate and view receipts\n\nWhat would you like to do today?',
+        content: 'Hello! I\'m your AI assistant for school management. I can help you with:\n\n💰 Record payments and generate receipts\n📊 Get school statistics and reports\n👥 Find student information and balances\n📋 List students by various criteria\n📄 Generate and view receipts\n\nWhat would you like to do today?',
         timestamp: new Date()
       }]);
     }, CHAT_EXPIRY_TIME);
@@ -87,7 +87,7 @@ export const useChatPersistence = () => {
     setMessages([{
       id: '1',
       type: 'ai',
-      content: 'Hello! I\'m your AI assistant for Rosa Gardens School. I can help you with:\n\n💰 Record payments and generate receipts\n📊 Get school statistics and reports\n👥 Find student information and balances\n📋 List students by various criteria\n📄 Generate and view receipts\n\nWhat would you like to do today?',
+      content: 'Hello! I\'m your AI assistant for school management. I can help you with:\n\n💰 Record payments and generate receipts\n📊 Get school statistics and reports\n👥 Find student information and balances\n📋 List students by various criteria\n📄 Generate and view receipts\n\nWhat would you like to do today?',
       timestamp: new Date()
     }]);
   }, []);

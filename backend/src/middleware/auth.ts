@@ -1,0 +1,103 @@
+import { Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
+import { query } from '../db/connection.js';
+
+export interface AuthRequest extends Request {
+  user?: {
+    id: number;
+    tenantId: number | null;
+    username: string;
+    role: string;
+    isPrimaryAdmin?: boolean;
+    teacherId?: string | null;
+    otherStaffId?: number | null;
+  };
+}
+
+export const authenticate = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    
+    if (!token) {
+      return res.status(401).json({ error: 'No token provided' });
+    }
+    
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as any;
+    
+    // Verify user still exists and is active
+    const result = await query(
+      'SELECT id, tenant_id, username, role, is_primary_admin, teacher_id, other_staff_id FROM users WHERE id = $1 AND is_active = true',
+      [decoded.userId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+    
+    const row = result.rows[0];
+    req.user = {
+      id: row.id,
+      tenantId: row.tenant_id,
+      username: row.username,
+      role: row.role,
+      isPrimaryAdmin: row.is_primary_admin === true,
+      teacherId: row.teacher_id ? String(row.teacher_id) : null,
+      otherStaffId: row.other_staff_id || null,
+    };
+    
+    next();
+  } catch (error) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+};
+
+export const requireRole = (...roles: string[]) => {
+  return (req: AuthRequest, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    
+    next();
+  };
+};
+
+export const requirePrimaryAdminOrSuperAdmin = (req: AuthRequest, res: Response, next: NextFunction) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  if (req.user.role === 'super-admin') return next();
+  if (req.user.role === 'administrator' && req.user.isPrimaryAdmin) return next();
+  return res.status(403).json({ error: 'Primary admin or super admin required' });
+};
+
+export const requireTenant = (req: AuthRequest, res: Response, next: NextFunction) => {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  
+  if (req.user.role === 'super-admin') {
+    return next();
+  }
+  
+  if (!req.user.tenantId) {
+    return res.status(403).json({ error: 'No tenant assigned' });
+  }
+  
+  next();
+};
+
+export const validateTenantAccess = (req: AuthRequest, res: Response, next: NextFunction) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  if (req.user.role === 'super-admin') return next();
+  const requestedTenantId = parseInt(req.query.tenantId as string) || req.user.tenantId;
+  if (req.user.tenantId !== requestedTenantId) {
+    return res.status(403).json({ error: 'Cross-tenant access denied' });
+  }
+  next();
+};

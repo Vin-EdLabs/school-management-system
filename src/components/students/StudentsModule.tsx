@@ -12,32 +12,25 @@ const StudentsModule = () => {
   const [activeTab, setActiveTab] = useState('view-all');
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-            <Users className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-800">Students Management</h1>
-            <p className="text-gray-600">Manage student information and records</p>
-          </div>
-        </div>
+    <div className="p-6 md:p-8">
+      <div className="mb-8">
+        <h1 className="text-xl font-semibold text-slate-800">Students</h1>
+        <p className="text-sm text-slate-500 mt-0.5">Manage student information and records</p>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:grid-cols-3">
-          <TabsTrigger value="view-all" className="flex items-center space-x-2">
+        <TabsList className="grid w-full max-w-md grid-cols-3 bg-slate-100 p-1 rounded-lg h-10">
+          <TabsTrigger value="view-all" className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md px-4">
             <Eye className="w-4 h-4" />
-            <span>View All</span>
+            View All
           </TabsTrigger>
-          <TabsTrigger value="add-student" className="flex items-center space-x-2">
+          <TabsTrigger value="add-student" className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md px-4">
             <UserPlus className="w-4 h-4" />
-            <span>Add Student</span>
+            Add Student
           </TabsTrigger>
-          <TabsTrigger value="promote" className="flex items-center space-x-2">
+          <TabsTrigger value="promote" className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md px-4">
             <TrendingUp className="w-4 h-4" />
-            <span>Promote</span>
+            Promote
           </TabsTrigger>
         </TabsList>
 

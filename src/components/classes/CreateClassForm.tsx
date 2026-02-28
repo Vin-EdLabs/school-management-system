@@ -43,7 +43,7 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     // Validation
@@ -56,11 +56,18 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
       return;
     }
 
+    const assignedTeacherId = formData.assignedTeacher && formData.assignedTeacher !== 'no-teacher'
+      ? parseInt(formData.assignedTeacher, 10)
+      : undefined;
+
     try {
-      addClass({
-        ...formData,
+      await addClass({
+        className: formData.className,
+        level: formData.level,
         stream: formData.stream === 'no-stream' ? '' : formData.stream,
         assignedTeacher: formData.assignedTeacher === 'no-teacher' ? '' : formData.assignedTeacher,
+        assignedTeacherId,
+        maxClassSize: formData.maxClassSize,
         students: []
       });
       

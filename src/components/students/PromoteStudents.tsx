@@ -9,14 +9,15 @@ import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
 import { TrendingUp, Users, User, AlertTriangle, DollarSign } from 'lucide-react';
 import { 
-  getActiveAcademicTerm, 
   calculateStudentFees, 
   processFeesForClassPromotion,
   processArrearsForTermChange 
 } from '../../utils/feeCalculations';
+import { useActiveTerm } from '../../contexts/ActiveTermContext';
 
 const PromoteStudents = () => {
   const { students, classes, promoteStudent, promoteClass, feeStructures, payments } = useData();
+  const { currentTerm, currentYear } = useActiveTerm();
   const [promotionType, setPromotionType] = useState<'individual' | 'class'>('individual');
   const [selectedStudent, setSelectedStudent] = useState('');
   const [selectedCurrentClass, setSelectedCurrentClass] = useState('');
@@ -24,19 +25,18 @@ const PromoteStudents = () => {
   const [showFeeWarning, setShowFeeWarning] = useState(false);
   const [feeImpactData, setFeeImpactData] = useState<any>(null);
 
-  const currentTerm = getActiveAcademicTerm();
-
   // Calculate fee impact for individual promotion
-  const calculateIndividualFeeImpact = (studentId: string, newClass: string) => {
+  const calculateIndividualFeeImpact = async (studentId: string, newClass: string) => {
     const student = students.find(s => s.id === studentId);
     if (!student) return null;
 
-    const currentFeeCalc = calculateStudentFees(
+    const currentFeeCalc = await calculateStudentFees(
       studentId,
       currentTerm,
       student.classAssigned,
       feeStructures,
-      payments
+      payments,
+      currentYear
     );
 
     const outstandingBalance = Math.max(0, currentFeeCalc.totalAmountDue - currentFeeCalc.totalPaid);
@@ -54,16 +54,17 @@ const PromoteStudents = () => {
   };
 
   // Calculate fee impact for class promotion
-  const calculateClassFeeImpact = (currentClass: string, newClass: string) => {
+  const calculateClassFeeImpact = async (currentClass: string, newClass: string) => {
     const studentsInClass = students.filter(s => s.classAssigned === currentClass);
     
-    const impactData = studentsInClass.map(student => {
-      const feeCalc = calculateStudentFees(
+    const impactDataPromises = studentsInClass.map(async (student) => {
+      const feeCalc = await calculateStudentFees(
         student.id,
         currentTerm,
         student.classAssigned,
         feeStructures,
-        payments
+        payments,
+        currentYear
       );
 
       const outstandingBalance = Math.max(0, feeCalc.totalAmountDue - feeCalc.totalPaid);
@@ -78,6 +79,8 @@ const PromoteStudents = () => {
         willBecomeArrears: outstandingBalance > 0
       };
     });
+    
+    const impactData = await Promise.all(impactDataPromises);
 
     const studentsWithOutstanding = impactData.filter(s => s.willBecomeArrears);
     const totalOutstanding = studentsWithOutstanding.reduce((sum, s) => sum + s.outstandingBalance, 0);
@@ -90,7 +93,7 @@ const PromoteStudents = () => {
     };
   };
 
-  const handleIndividualPromotion = () => {
+  const handleIndividualPromotion = async () => {
     if (!selectedStudent || !selectedNewClass) {
       toast({
         title: "Validation Error",
@@ -103,32 +106,43 @@ const PromoteStudents = () => {
     const student = students.find(s => s.id === selectedStudent);
     if (!student) return;
 
-    const feeImpact = calculateIndividualFeeImpact(selectedStudent, selectedNewClass);
+    const feeImpact = await calculateIndividualFeeImpact(selectedStudent, selectedNewClass);
     
     if (feeImpact && feeImpact.willBecomeArrears) {
       setFeeImpactData(feeImpact);
       setShowFeeWarning(true);
     } else {
-      executeIndividualPromotion();
+      await executeIndividualPromotion();
     }
   };
 
-  const executeIndividualPromotion = () => {
+  const executeIndividualPromotion = async () => {
     const student = students.find(s => s.id === selectedStudent);
     if (!student) return;
 
-    // Process fee arrears if any
-    const outstandingAmount = processFeesForClassPromotion(
+    const newClassObj = classes.find(c => c.id === selectedNewClass || c.className === selectedNewClass);
+    const oldClassObj = classes.find(c => c.id === student.classAssignedId?.toString() || c.className === student.classAssigned);
+    
+    if (!newClassObj || !oldClassObj) {
+      toast({
+        title: "Error",
+        description: "Could not find class information",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Process fee arrears if any (this is now handled by backend)
+    const outstandingAmount = await processFeesForClassPromotion(
       selectedStudent,
-      student.classAssigned,
-      selectedNewClass,
+      parseInt(oldClassObj.id),
+      parseInt(newClassObj.id),
       currentTerm,
-      feeStructures,
-      payments
+      currentYear
     );
 
-    // Promote the student
-    promoteStudent(selectedStudent, selectedNewClass);
+    // Promote the student (backend handles fee carryover)
+    await promoteStudent(selectedStudent, selectedNewClass, currentTerm, currentYear);
     
     let message = `${student.firstName} ${student.lastName} has been promoted to ${selectedNewClass}`;
     if (outstandingAmount > 0) {
@@ -167,25 +181,27 @@ const PromoteStudents = () => {
     }
   };
 
-  const executeClassPromotion = () => {
+  const executeClassPromotion = async () => {
     const studentsInClass = students.filter(s => s.classAssigned === selectedCurrentClass);
-    
-    // Process fee arrears for each student
+    const currentClassObj = classes.find(c => c.className === selectedCurrentClass || c.id === selectedCurrentClass);
+    const newClassObj = classes.find(c => c.className === selectedNewClass || c.id === selectedNewClass);
+    if (!currentClassObj || !newClassObj) return;
+
+    // Process fee arrears/credits for each student (outstanding→arrears, credit→student_credits)
     let totalArrears = 0;
-    studentsInClass.forEach(student => {
-      const outstandingAmount = processFeesForClassPromotion(
+    await Promise.all(studentsInClass.map(async (student) => {
+      const outstandingAmount = await processFeesForClassPromotion(
         student.id,
-        student.classAssigned,
-        selectedNewClass,
+        parseInt(currentClassObj.id),
+        parseInt(newClassObj.id),
         currentTerm,
-        feeStructures,
-        payments
+        currentYear
       );
       totalArrears += outstandingAmount;
-    });
+    }));
 
     // Promote the entire class
-    promoteClass(selectedCurrentClass, selectedNewClass);
+    await promoteClass(selectedCurrentClass, selectedNewClass);
     
     let message = `All ${studentsInClass.length} students from ${selectedCurrentClass} have been promoted to ${selectedNewClass}`;
     if (totalArrears > 0) {

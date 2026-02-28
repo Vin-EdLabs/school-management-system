@@ -28,7 +28,7 @@ const A4ReportPrinter: React.FC<A4ReportPrinterProps> = ({
           <!DOCTYPE html>
           <html>
             <head>
-              <title>Rosa Gardens School Report</title>
+              <title>School Report</title>
               <style>
                 @page {
                   size: A4 landscape;
@@ -228,7 +228,7 @@ const A4ReportPrinter: React.FC<A4ReportPrinterProps> = ({
             <body>
               ${printContent.innerHTML}
               <div class="footer">
-                Rosa Gardens School Management System - Comprehensive Financial Report - Generated on ${new Date().toLocaleString()}
+                School Management System - Comprehensive Financial Report - Generated on ${new Date().toLocaleString()}
               </div>
             </body>
           </html>

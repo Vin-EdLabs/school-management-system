@@ -707,7 +707,7 @@ ${studentsText}`,
     }).length;
 
     return {
-      content: `📊 **Rosa Gardens School Statistics:**
+      content: `📊 **School Statistics:**
 
 👥 **Students:** ${this.data.students.length}
 👨‍🏫 **Teachers:** ${this.data.teachers.length}

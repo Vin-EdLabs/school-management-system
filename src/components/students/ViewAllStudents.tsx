@@ -6,15 +6,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
+import { useActiveTerm } from '../../contexts/ActiveTermContext';
 import { useAudit } from '../../contexts/AuditContext';
-import { Search, Filter, Edit, Trash2, Eye } from 'lucide-react';
+import { Search, Edit, Trash2, Eye } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { resolveLogoUrl } from '../../services/tenantService';
 import StudentDetailsDialog from './StudentDetailsDialog';
 import EditStudentDialog from './EditStudentDialog';
-import PasswordAuthDialog from '../common/PasswordAuthDialog';
 
 const ViewAllStudents = () => {
-  const { students, classes, deleteStudent } = useData();
+  const { students, classes, deleteStudent, payments, feeStructures } = useData();
+  const { currentTerm } = useActiveTerm();
   const { addAuditLog } = useAudit();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterClass, setFilterClass] = useState('all-classes');
@@ -22,8 +25,6 @@ const ViewAllStudents = () => {
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
-  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
-  const [pendingAction, setPendingAction] = useState<{type: 'edit' | 'delete', student: any} | null>(null);
 
   // Filter students based on search and filters
   const filteredStudents = students.filter(student => {
@@ -44,49 +45,31 @@ const ViewAllStudents = () => {
     setShowDetailsDialog(true);
   };
 
-  const handleEditStudent = (student) => {
-    setPendingAction({ type: 'edit', student });
-    setShowPasswordDialog(true);
+  const handleEditStudent = (student: any) => {
+    addAuditLog({
+      actionType: 'Edit',
+      module: 'Students',
+      itemId: student.id,
+      itemName: `${student.firstName} ${student.lastName}`,
+    });
+    setSelectedStudent(student);
+    setShowEditDialog(true);
   };
 
-  const handleDeleteClick = (student) => {
-    setPendingAction({ type: 'delete', student });
-    setShowPasswordDialog(true);
-  };
-
-  const handlePasswordSuccess = (reason?: string) => {
-    if (!pendingAction) return;
-
-    if (pendingAction.type === 'edit') {
-      // Add audit log for edit attempt
-      addAuditLog({
-        actionType: 'Edit',
-        module: 'Students',
-        itemId: pendingAction.student.id,
-        itemName: `${pendingAction.student.firstName} ${pendingAction.student.lastName}`,
-        reason: reason
-      });
-
-      setSelectedStudent(pendingAction.student);
-      setShowEditDialog(true);
-    } else if (pendingAction.type === 'delete') {
-      // Add audit log for delete
+  const handleDeleteClick = (student: any) => {
+    if (window.confirm(`Are you sure you want to delete ${student.firstName} ${student.lastName}?`)) {
       addAuditLog({
         actionType: 'Delete',
         module: 'Students',
-        itemId: pendingAction.student.id,
-        itemName: `${pendingAction.student.firstName} ${pendingAction.student.lastName}`,
-        reason: reason
+        itemId: student.id,
+        itemName: `${student.firstName} ${student.lastName}`,
       });
-
-      deleteStudent(pendingAction.student.id);
+      deleteStudent(student.id);
       toast({
         title: "Student Deleted",
-        description: `${pendingAction.student.firstName} ${pendingAction.student.lastName} has been removed from the system`,
+        description: `${student.firstName} ${student.lastName} has been removed from the system`,
       });
     }
-
-    setPendingAction(null);
   };
 
   const calculateAge = (dateOfBirth: string) => {
@@ -159,6 +142,7 @@ const ViewAllStudents = () => {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-14">Photo</TableHead>
                   <TableHead>Student Info</TableHead>
                   <TableHead>Student ID</TableHead>
                   <TableHead>Class</TableHead>
@@ -171,13 +155,23 @@ const ViewAllStudents = () => {
               <TableBody>
                 {filteredStudents.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={8} className="text-center py-8 text-gray-500">
                       No students found matching your criteria
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredStudents.map((student) => (
                     <TableRow key={student.id}>
+                      <TableCell>
+                        <Avatar className="h-10 w-10 rounded-full border border-slate-200">
+                          {student.passportPhotoUrl ? (
+                            <AvatarImage src={resolveLogoUrl(student.passportPhotoUrl) || undefined} alt={`${student.firstName} ${student.lastName}`} className="object-cover" />
+                          ) : null}
+                          <AvatarFallback className="bg-slate-200 text-slate-600 text-sm font-medium">
+                            {student.firstName?.[0]}{student.lastName?.[0]}
+                          </AvatarFallback>
+                        </Avatar>
+                      </TableCell>
                       <TableCell>
                         <div className="space-y-1">
                           <div className="font-medium text-gray-900">
@@ -262,6 +256,18 @@ const ViewAllStudents = () => {
           setShowDetailsDialog(false);
           setSelectedStudent(null);
         }}
+        payments={(payments || []).filter((p: any) =>
+          currentTerm && currentTerm !== 'Not Set' &&
+          (p.term === currentTerm || (p.term && (p.term.includes(currentTerm) || currentTerm.includes(p.term))))
+        )}
+        totalFeesForStudent={selectedStudent ? (() => {
+          const fs = feeStructures || [];
+          const classMatch = (f: any) =>
+            (f.classId != null && selectedStudent.classAssignedId != null && Number(f.classId) === Number(selectedStudent.classAssignedId)) ||
+            (f.class_name === selectedStudent.classAssigned || f.className === selectedStudent.classAssigned);
+          const termMatch = (f: any) => !currentTerm || currentTerm === 'Not Set' || !f.term ? false : f.term === currentTerm || f.term.includes(currentTerm) || currentTerm.includes(f.term);
+          return fs.filter((f: any) => classMatch(f) && termMatch(f)).reduce((sum: number, f: any) => sum + (parseFloat(f.amount) || 0), 0);
+        })() : 0}
       />
 
       {/* Edit Student Dialog */}
@@ -278,18 +284,6 @@ const ViewAllStudents = () => {
         }}
       />
 
-      {/* Password Authentication Dialog */}
-      <PasswordAuthDialog
-        open={showPasswordDialog}
-        onClose={() => {
-          setShowPasswordDialog(false);
-          setPendingAction(null);
-        }}
-        onSuccess={handlePasswordSuccess}
-        action={pendingAction?.type || 'edit'}
-        itemName={pendingAction ? `${pendingAction.student.firstName} ${pendingAction.student.lastName}` : ''}
-        module="Students"
-      />
     </>
   );
 };

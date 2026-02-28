@@ -1,41 +1,89 @@
-
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { useAuth } from '../../contexts/AuthContext';
+import { School, Users, ClipboardCheck, BookOpen, Wallet, CheckCircle, XCircle } from 'lucide-react';
+import { apiService } from '../../services/api';
+import { useSchool } from '../../contexts/SchoolContext';
 import { useData } from '../../contexts/DataContext';
-import { School, Users, ClipboardCheck, BookOpen, Calendar, Clock } from 'lucide-react';
+
+interface TeacherProfile {
+  id: number;
+  full_name: string;
+  staff_id: string;
+  email: string | null;
+  phone_number: string | null;
+  subjects_taught: string[];
+  class_name: string | null;
+  monthly_salary: number;
+}
+
+interface TeacherClass {
+  id: number;
+  class_name: string;
+  level: string | null;
+  stream: string | null;
+  is_main: boolean;
+  student_count: string;
+}
+
+interface SalaryInfo {
+  fullName: string;
+  staffId: string;
+  monthlySalary: number;
+  currentMonthStatus: string;
+}
 
 const TeacherDashboard = () => {
-  const { user } = useAuth();
-  const { students, teachers, classes } = useData();
+  const { schoolId } = useSchool();
+  const { students } = useData();
+  const [profile, setProfile] = useState<TeacherProfile | null>(null);
+  const [teacherClasses, setTeacherClasses] = useState<TeacherClass[]>([]);
+  const [salaryInfo, setSalaryInfo] = useState<SalaryInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [profileError, setProfileError] = useState(false);
 
-  // Find the current teacher's data based on username or teacherId
-  const currentTeacher = teachers.find(t => 
-    t.staffId === user?.teacherId || 
-    t.fullName.toLowerCase().includes(user?.username?.toLowerCase() || '')
-  );
-  
-  // Get teacher's assigned classes and students
-  const teacherClasses = currentTeacher?.classAssigned 
-    ? classes.filter(cls => cls.className === currentTeacher.classAssigned)
+  useEffect(() => {
+    if (schoolId != null) apiService.setTenantContext(schoolId);
+  }, [schoolId]);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      setProfileError(false);
+      try {
+        const [profRes, classesRes, salaryRes] = await Promise.all([
+          apiService.get<TeacherProfile>('/teachers/me').catch(() => null),
+          apiService.get<TeacherClass[]>('/teachers/me/classes').catch(() => []),
+          apiService.get<SalaryInfo>('/payroll/my-salary').catch(() => null),
+        ]);
+        setProfile(profRes);
+        setTeacherClasses(Array.isArray(classesRes) ? classesRes : []);
+        setSalaryInfo(salaryRes);
+        if (!profRes) setProfileError(true);
+      } catch {
+        setProfileError(true);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [schoolId]);
+
+  const teacherStudents = profile
+    ? students.filter(s => teacherClasses.some(c => s.classAssigned === c.class_name || (s.classAssignedId && String(s.classAssignedId) === String(c.id))))
     : [];
+  const totalStudents = teacherStudents.length || teacherClasses.reduce((sum, c) => sum + parseInt(c.student_count || '0', 10), 0);
 
-  const teacherStudents = currentTeacher?.classAssigned
-    ? students.filter(student => student.classAssigned === currentTeacher.classAssigned)
-    : [];
+  if (loading) {
+    return (
+      <div className="p-6">
+        <div className="animate-pulse text-slate-500">Loading your dashboard...</div>
+      </div>
+    );
+  }
 
-  // Mock today's schedule based on teacher's classes (you can enhance this with real schedule data)
-  const todaySchedule = teacherClasses.map((cls, index) => ({
-    id: cls.id,
-    name: cls.className,
-    students: students.filter(s => s.classAssigned === cls.className).length,
-    time: ['08:00 AM', '10:00 AM', '02:00 PM'][index] || '09:00 AM',
-    room: `Room ${101 + index}`
-  }));
-
-  if (!currentTeacher) {
+  if (profileError || !profile) {
     return (
       <div className="p-6">
         <Card>
@@ -58,17 +106,12 @@ const TeacherDashboard = () => {
             <BookOpen className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">Welcome back, {currentTeacher.fullName}!</h1>
+            <h1 className="text-3xl font-bold text-gray-800">Welcome back, {profile.full_name}!</h1>
             <p className="text-gray-600">Here's your teaching overview for today</p>
           </div>
         </div>
         <div className="text-right text-sm text-gray-500">
-          <p>{new Date().toLocaleDateString('en-US', { 
-            weekday: 'long', 
-            year: 'numeric', 
-            month: 'long', 
-            day: 'numeric' 
-          })}</p>
+          <p>{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
         </div>
       </div>
 
@@ -91,7 +134,7 @@ const TeacherDashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Students</p>
-                <p className="text-3xl font-bold text-gray-900">{teacherStudents.length}</p>
+                <p className="text-3xl font-bold text-gray-900">{totalStudents}</p>
               </div>
               <Users className="w-8 h-8 text-green-500" />
             </div>
@@ -103,7 +146,7 @@ const TeacherDashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Subjects</p>
-                <p className="text-3xl font-bold text-gray-900">{currentTeacher.subjectsTaught.length}</p>
+                <p className="text-3xl font-bold text-gray-900">{profile.subjects_taught?.length || 0}</p>
               </div>
               <ClipboardCheck className="w-8 h-8 text-purple-500" />
             </div>
@@ -115,7 +158,7 @@ const TeacherDashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Staff ID</p>
-                <p className="text-xl font-bold text-gray-900">{currentTeacher.staffId}</p>
+                <p className="text-xl font-bold text-gray-900">{profile.staff_id}</p>
               </div>
               <BookOpen className="w-8 h-8 text-orange-500" />
             </div>
@@ -124,37 +167,32 @@ const TeacherDashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Today's Classes */}
+        {/* My Classes */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
-              <Calendar className="w-5 h-5" />
+              <School className="w-5 h-5" />
               <span>My Classes</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {todaySchedule.length === 0 ? (
+            {teacherClasses.length === 0 ? (
               <div className="text-center py-8">
                 <School className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">No Classes Assigned</h3>
                 <p className="text-gray-500">You don't have any classes assigned yet.</p>
               </div>
             ) : (
-              <div className="space-y-4">
-                {todaySchedule.map((cls) => (
+              <div className="space-y-3">
+                {teacherClasses.map((cls) => (
                   <div key={cls.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                     <div>
-                      <h4 className="font-medium text-gray-900">{cls.name}</h4>
-                      <div className="flex items-center space-x-4 text-sm text-gray-500 mt-1">
-                        <span className="flex items-center">
-                          <Clock className="w-4 h-4 mr-1" />
-                          {cls.time}
-                        </span>
-                        <span>{cls.room}</span>
-                        <span>{cls.students} students</span>
+                      <h4 className="font-medium text-gray-900">{cls.class_name}</h4>
+                      <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
+                        <span>{cls.student_count} students</span>
+                        {cls.is_main && <Badge variant="secondary">Main</Badge>}
                       </div>
                     </div>
-                    <Button size="sm">View Class</Button>
                   </div>
                 ))}
               </div>
@@ -162,49 +200,51 @@ const TeacherDashboard = () => {
           </CardContent>
         </Card>
 
-        {/* Teacher Info */}
+        {/* Profile & Salary */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <Users className="w-5 h-5" />
-              <span>Teacher Information</span>
+              <span>My Profile & Salary</span>
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex justify-between">
-                <span className="text-sm font-medium text-gray-600">Full Name:</span>
-                <span className="text-sm text-gray-900">{currentTeacher.fullName}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm font-medium text-gray-600">Staff ID:</span>
-                <span className="text-sm text-gray-900">{currentTeacher.staffId}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm font-medium text-gray-600">Email:</span>
-                <span className="text-sm text-gray-900">{currentTeacher.email}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm font-medium text-gray-600">Phone:</span>
-                <span className="text-sm text-gray-900">{currentTeacher.phoneNumber}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm font-medium text-gray-600">Class Assigned:</span>
-                <span className="text-sm text-gray-900">{currentTeacher.classAssigned || 'None'}</span>
-              </div>
+          <CardContent className="space-y-4">
+            <div className="space-y-3">
+              <div className="flex justify-between"><span className="text-sm text-gray-600">Name:</span><span className="font-medium">{profile.full_name}</span></div>
+              <div className="flex justify-between"><span className="text-sm text-gray-600">Staff ID:</span><span className="font-mono">{profile.staff_id}</span></div>
+              <div className="flex justify-between"><span className="text-sm text-gray-600">Email:</span><span>{profile.email || '—'}</span></div>
+              <div className="flex justify-between"><span className="text-sm text-gray-600">Phone:</span><span>{profile.phone_number || '—'}</span></div>
+              <div className="flex justify-between"><span className="text-sm text-gray-600">Classes:</span><span>{teacherClasses.map(c => c.class_name).join(', ') || 'None'}</span></div>
               <div>
-                <span className="text-sm font-medium text-gray-600">Subjects:</span>
+                <span className="text-sm text-gray-600">Subjects:</span>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {currentTeacher.subjectsTaught.length > 0 ? (
-                    currentTeacher.subjectsTaught.map((subject, index) => (
-                      <Badge key={index} variant="outline">{subject}</Badge>
-                    ))
-                  ) : (
-                    <span className="text-sm text-gray-500">No subjects assigned</span>
-                  )}
+                  {profile.subjects_taught?.length ? profile.subjects_taught.map((s, i) => <Badge key={i} variant="outline">{s}</Badge>) : <span className="text-gray-500">None</span>}
                 </div>
               </div>
             </div>
+
+            {salaryInfo && (
+              <div className="pt-4 border-t">
+                <h4 className="font-medium flex items-center gap-2 mb-3">
+                  <Wallet className="w-4 h-4" />
+                  Salary Summary
+                </h4>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-600">Monthly Salary:</span>
+                    <span className="font-semibold">GHS {salaryInfo.monthlySalary.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">This Month:</span>
+                    <Badge variant={salaryInfo.currentMonthStatus === 'Paid' ? 'default' : 'secondary'} className={salaryInfo.currentMonthStatus === 'Paid' ? 'bg-emerald-600' : ''}>
+                      {salaryInfo.currentMonthStatus === 'Paid' ? <CheckCircle className="w-3 h-3 mr-1 inline" /> : <XCircle className="w-3 h-3 mr-1 inline" />}
+                      {salaryInfo.currentMonthStatus}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">View full payment history in the Payment History section.</p>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -227,18 +267,11 @@ const TeacherDashboard = () => {
                   </div>
                   <div>
                     <p className="font-medium text-gray-900">{student.firstName} {student.lastName}</p>
-                    <p className="text-sm text-gray-500">{student.admissionNumber}</p>
+                    <p className="text-sm text-gray-500">{student.studentId}</p>
                   </div>
                 </div>
               ))}
             </div>
-            {teacherStudents.length > 6 && (
-              <div className="mt-4 text-center">
-                <Button variant="outline" size="sm">
-                  View All Students ({teacherStudents.length})
-                </Button>
-              </div>
-            )}
           </CardContent>
         </Card>
       )}

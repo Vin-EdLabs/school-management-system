@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useData } from '../../contexts/DataContext';
-import { getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
+import { getActiveAcademicTerm, getActiveAcademicYear, calculateStudentFeesSync } from '../../utils/feeCalculations';
 import FinancialSummary from './FinancialSummary';
 import OutstandingFees from '../fees/OutstandingFees';
 import {
@@ -22,7 +22,7 @@ import {
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 
 const FinancialDashboard = () => {
-  const { students, payments, income, expenses, feeStructures } = useData();
+  const { students, payments, income, expenses, feeStructures, arrearsBalances } = useData();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Get active academic term and year
@@ -35,6 +35,7 @@ const FinancialDashboard = () => {
     .reduce((sum, payment) => sum + payment.amount, 0);
 
   const otherIncome = income
+    .filter(inc => inc.category !== 'Fee Payment')
     .filter(inc => {
       const incomeDate = new Date(inc.date);
       const incomeYear = incomeDate.getFullYear().toString();
@@ -54,22 +55,20 @@ const FinancialDashboard = () => {
 
   const balanceLeft = totalCombinedIncome - totalExpenses;
 
-  // Calculate outstanding balances
-  const calculateOutstanding = () => {
-    let totalOwed = 0;
-    students.forEach(student => {
-      const studentFee = feeStructures.find(fee => fee.className === student.classAssigned);
-      if (studentFee) {
-        const studentPayments = payments
-          .filter(payment => payment.studentId === student.id && payment.term === currentTerm)
-          .reduce((sum, payment) => sum + payment.amount, 0);
-        totalOwed += Math.max(0, studentFee.amount - studentPayments);
-      }
-    });
-    return totalOwed;
-  };
-
-  const outstandingBalances = calculateOutstanding();
+  // Calculate outstanding balances using proper fee structure matching (class_id + term)
+  const outstandingBalances = students.reduce((totalOwed, student) => {
+    const feeCalc = calculateStudentFeesSync(
+      student.id,
+      currentTerm,
+      student.classAssigned,
+      feeStructures || [],
+      payments || [],
+      student.classAssignedId,
+      arrearsBalances
+    );
+    const outstanding = Math.max(0, (feeCalc.totalAmountDue ?? feeCalc.currentTermFee) - feeCalc.totalPaid);
+    return totalOwed + outstanding;
+  }, 0);
 
   // Chart data for monthly income trend
   const monthlyIncomeData = Array.from({length: 12}, (_, i) => {
@@ -79,10 +78,12 @@ const FinancialDashboard = () => {
       return paymentDate.getMonth() === i && paymentDate.getFullYear().toString() === currentYear;
     }).reduce((sum, payment) => sum + payment.amount, 0);
     
-    const monthlyOtherIncome = income.filter(inc => {
-      const incomeDate = new Date(inc.date);
-      return incomeDate.getMonth() === i && incomeDate.getFullYear().toString() === currentYear;
-    }).reduce((sum, inc) => sum + inc.amount, 0);
+    const monthlyOtherIncome = income
+      .filter(inc => inc.category !== 'Fee Payment')
+      .filter(inc => {
+        const incomeDate = new Date(inc.date);
+        return incomeDate.getMonth() === i && incomeDate.getFullYear().toString() === currentYear;
+      }).reduce((sum, inc) => sum + inc.amount, 0);
 
     return {
       month,
@@ -116,7 +117,7 @@ const FinancialDashboard = () => {
         amount: payment.amount
       };
     }),
-    ...income.slice(-3).map(inc => ({
+    ...income.filter(inc => inc.category !== 'Fee Payment').slice(-3).map(inc => ({
       text: `GHS${inc.amount} other income from ${inc.source}`,
       time: new Date(inc.date).toLocaleDateString(),
       type: 'income',
@@ -162,7 +163,7 @@ const FinancialDashboard = () => {
           <FinancialSummary />
 
           {/* Key Financial Metrics */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-6">
             <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Fees Collected</CardTitle>
@@ -185,6 +186,17 @@ const FinancialDashboard = () => {
               </CardContent>
             </Card>
 
+            <Card className="bg-gradient-to-br from-teal-500 to-teal-600 text-white">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Income</CardTitle>
+                <TrendingUp className="h-4 w-4" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">GHS {totalCombinedIncome.toLocaleString()}</div>
+                <p className="text-xs text-teal-100">Fees + Other Income</p>
+              </CardContent>
+            </Card>
+
             <Card className="bg-gradient-to-br from-red-500 to-red-600 text-white">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Total Expenses</CardTitle>
@@ -193,6 +205,17 @@ const FinancialDashboard = () => {
               <CardContent>
                 <div className="text-2xl font-bold">GHS {totalExpenses.toLocaleString()}</div>
                 <p className="text-xs text-red-100">This year</p>
+              </CardContent>
+            </Card>
+
+            <Card className={`bg-gradient-to-br ${balanceLeft >= 0 ? 'from-indigo-500 to-indigo-600' : 'from-amber-500 to-amber-600'} text-white`}>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Net Balance</CardTitle>
+                <Calculator className="h-4 w-4" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">GHS {balanceLeft.toLocaleString()}</div>
+                <p className="text-xs opacity-90">Income − Expenses</p>
               </CardContent>
             </Card>
 

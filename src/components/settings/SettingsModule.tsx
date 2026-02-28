@@ -1,21 +1,25 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
+import { useSchool } from '../../contexts/SchoolContext';
+import { apiService } from '../../services/api';
 import { toast } from '@/hooks/use-toast';
-import { Settings, Key, Calendar, Building, Download, Upload, RefreshCw, Shield } from 'lucide-react';
+import { Settings, Key, Building, Download, Upload, RefreshCw, Receipt, GraduationCap, Copy, ExternalLink } from 'lucide-react';
 import AcademicTermManager from './AcademicTermManager';
+import SchoolManager from './SchoolManager';
 
 interface SchoolSettings {
   name: string;
   address: string;
   contact: string;
   email: string;
+  primaryColor: string;
+  secondaryColor: string;
 }
 
 interface AcademicSettings {
@@ -24,97 +28,153 @@ interface AcademicSettings {
 }
 
 const SettingsModule = () => {
-  const { changePassword, user, hasAccess } = useAuth();
+  const { user, hasAccess, changePassword } = useAuth();
+  const { school } = useSchool();
   const { students, teachers, classes, payments, income, expenses } = useData();
+  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [schoolInfo, setSchoolInfo] = useState<SchoolSettings>({
-    name: 'Rosa Gardens School',
+    name: 'School',
     address: 'Accra, Ghana',
     contact: '+233 XX XXX XXXX',
-    email: 'info@rosagardens.edu.gh'
+    email: 'info@rosagardens.edu.gh',
+    primaryColor: '#2563eb',
+    secondaryColor: '#7c3aed',
   });
   const [academicSettings, setAcademicSettings] = useState<AcademicSettings>({
     currentYear: '2024',
     currentTerm: 'Term 1 2024'
   });
+  const [receiptSettings, setReceiptSettings] = useState({
+    receipt_prefix: 'R',
+    postal_address: '',
+    contact_phone: '',
+    receipt_footer: '',
+    bank_details: '',
+  });
 
-  const isSuperAdmin = hasAccess('settings');
+  const isSuperAdmin = hasAccess('schools');
+  const hasSettingsFull = hasAccess('settings-full');
 
-  // Load settings from localStorage on component mount
+  const loadSettings = useCallback(async () => {
+    if (!hasSettingsFull) return;
+    try {
+      const settings = await apiService.get('/settings');
+      if (settings) {
+        setSchoolInfo({
+          name: settings.school_name || 'School',
+          address: settings.address || '',
+          contact: settings.contact || '',
+          email: settings.email || '',
+          primaryColor: school?.primary_color || '#2563eb',
+          secondaryColor: school?.secondary_color || '#7c3aed',
+        });
+        setAcademicSettings({
+          currentYear: settings.current_year || new Date().getFullYear().toString(),
+          currentTerm: settings.current_term || '',
+        });
+        setReceiptSettings({
+          receipt_prefix: settings.receipt_prefix || 'R',
+          postal_address: settings.postal_address || '',
+          contact_phone: settings.contact_phone || '',
+          receipt_footer: settings.receipt_footer || '',
+          bank_details: settings.bank_details || '',
+        });
+      }
+    } catch (error) {
+      console.error('Error loading settings:', error);
+      toast({
+        title: 'Error',
+        description: 'Could not load system settings.',
+        variant: 'destructive',
+      });
+    }
+  }, [hasSettingsFull, school?.primary_color, school?.secondary_color]);
+
   useEffect(() => {
-    const savedSchoolInfo = localStorage.getItem('schoolInfo');
-    const savedAcademicSettings = localStorage.getItem('academicSettings');
-    
-    if (savedSchoolInfo) {
-      try {
-        setSchoolInfo(JSON.parse(savedSchoolInfo));
-      } catch (error) {
-        console.error('Error loading school info:', error);
-      }
-    }
-    
-    if (savedAcademicSettings) {
-      try {
-        setAcademicSettings(JSON.parse(savedAcademicSettings));
-      } catch (error) {
-        console.error('Error loading academic settings:', error);
-      }
-    }
-  }, []);
+    loadSettings();
+  }, [loadSettings]);
 
-  // Helper function to dispatch settings change event
+  useEffect(() => {
+    if (school && hasSettingsFull) {
+      setSchoolInfo(prev => ({
+        ...prev,
+        primaryColor: school.primary_color || prev.primaryColor,
+        secondaryColor: school.secondary_color || prev.secondaryColor,
+      }));
+    }
+  }, [school?.primary_color, school?.secondary_color, hasSettingsFull]);
+
   const dispatchSettingsChange = () => {
     window.dispatchEvent(new CustomEvent('academicSettingsChanged'));
   };
 
-  const handlePasswordChange = (e: React.FormEvent) => {
+  const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     if (newPassword !== confirmPassword) {
-      toast({
-        title: "Password Mismatch",
-        description: "Passwords do not match",
-        variant: "destructive"
-      });
+      toast({ title: "Password Mismatch", description: "Passwords do not match", variant: "destructive" });
       return;
     }
-
     if (newPassword.length < 6) {
-      toast({
-        title: "Password Too Short",
-        description: "Password must be at least 6 characters long",
-        variant: "destructive"
-      });
+      toast({ title: "Password Too Short", description: "Password must be at least 6 characters long", variant: "destructive" });
       return;
     }
-
-    changePassword(newPassword);
-    
-    toast({
-      title: "Password Changed",
-      description: "Your password has been updated successfully",
-    });
-
-    setNewPassword('');
-    setConfirmPassword('');
+    if (!currentPassword) {
+      toast({ title: "Current Password Required", description: "Enter your current password to change it", variant: "destructive" });
+      return;
+    }
+    try {
+      const ok = await changePassword(currentPassword, newPassword);
+      if (ok) {
+        toast({ title: "Password Updated", description: "Your password has been changed successfully" });
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      } else {
+        toast({ title: "Update Failed", description: "Current password may be incorrect", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Update Failed", description: "Current password may be incorrect", variant: "destructive" });
+    }
   };
 
-  const handleSchoolInfoUpdate = (e: React.FormEvent) => {
+  const handleSchoolInfoUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isSuperAdmin) return;
+    if (!hasSettingsFull) return;
     
-    localStorage.setItem('schoolInfo', JSON.stringify(schoolInfo));
-    toast({
-      title: "School Information Updated",
-      description: "School details have been saved successfully",
-    });
+    try {
+      await apiService.put('/settings', {
+        school_name: schoolInfo.name,
+        address: schoolInfo.address,
+        contact: schoolInfo.contact,
+        email: schoolInfo.email,
+        primary_color: schoolInfo.primaryColor,
+        secondary_color: schoolInfo.secondaryColor,
+      });
+      
+      toast({
+        title: "School Information Updated",
+        description: "School details have been saved successfully",
+      });
+      loadSettings(); // Re-load settings after update
+    } catch (error: any) {
+      toast({
+        title: "Update Failed",
+        description: error.message || "Failed to update school information",
+        variant: "destructive"
+      });
+    }
   };
 
-  // If user is not Super Admin, show limited settings (password only)
-  if (!isSuperAdmin) {
+  if (!hasSettingsFull && !hasAccess('settings-password-only')) {
+    return null;
+  }
+
+  if (!hasSettingsFull) {
+    // Regular user settings view
     return (
-      <div className="p-6 space-y-6">
+        <div className="p-6 space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 bg-gradient-to-br from-gray-500 to-gray-600 rounded-lg flex items-center justify-center">
@@ -137,6 +197,17 @@ const SettingsModule = () => {
           <CardContent>
             <form onSubmit={handlePasswordChange} className="space-y-4">
               <div className="space-y-2">
+                <Label htmlFor="currentPassword">Current Password</Label>
+                <Input
+                  id="currentPassword"
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="Enter your current password"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="newPassword">New Password</Label>
                 <Input
                   id="newPassword"
@@ -160,7 +231,7 @@ const SettingsModule = () => {
                   minLength={6}
                 />
               </div>
-              <Button type="submit" className="w-full" disabled={!newPassword || !confirmPassword}>
+              <Button type="submit" className="w-full" disabled={!currentPassword || !newPassword || !confirmPassword}>
                 Update Password
               </Button>
             </form>
@@ -170,111 +241,9 @@ const SettingsModule = () => {
     );
   }
 
-  const handleExportData = () => {
-    const data = {
-      students,
-      teachers,
-      classes,
-      payments,
-      income,
-      expenses,
-      schoolInfo,
-      academicSettings,
-      exportDate: new Date().toISOString(),
-      exportVersion: '1.0'
-    };
-    
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `rosa-gardens-backup-${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    
-    toast({
-      title: "Data Exported",
-      description: "Your data has been exported successfully",
-    });
-  };
-
-  const handleImportData = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const importedData = JSON.parse(e.target?.result as string);
-        
-        if (importedData.students && Array.isArray(importedData.students)) {
-          localStorage.setItem('rosaGardensData', JSON.stringify({
-            students: importedData.students,
-            teachers: importedData.teachers || [],
-            classes: importedData.classes || [],
-            feeStructures: importedData.feeStructures || [],
-            payments: importedData.payments || [],
-            income: importedData.income || [],
-            expenses: importedData.expenses || []
-          }));
-          
-          if (importedData.schoolInfo) {
-            localStorage.setItem('schoolInfo', JSON.stringify(importedData.schoolInfo));
-            setSchoolInfo(importedData.schoolInfo);
-          }
-          
-          if (importedData.academicSettings) {
-            localStorage.setItem('academicSettings', JSON.stringify(importedData.academicSettings));
-            setAcademicSettings(importedData.academicSettings);
-            dispatchSettingsChange(); // Notify header of changes
-          }
-          
-          toast({
-            title: "Data Imported Successfully",
-            description: "Data has been imported. Please refresh the page to see changes.",
-          });
-          
-          event.target.value = '';
-        } else {
-          throw new Error('Invalid data format');
-        }
-      } catch (error) {
-        console.error('Import error:', error);
-        toast({
-          title: "Import Failed",
-          description: "Failed to import data. Please check the file format and try again.",
-          variant: "destructive"
-        });
-        event.target.value = '';
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const resetAllData = () => {
-    const isConfirmed = window.confirm(
-      'Are you sure you want to reset all data? This action cannot be undone.'
-    );
-    
-    if (isConfirmed) {
-      localStorage.removeItem('rosaGardensData');
-      localStorage.removeItem('schoolInfo');
-      localStorage.removeItem('academicSettings');
-      localStorage.removeItem('academicTerms');
-      
-      // Notify header of changes
-      dispatchSettingsChange();
-      
-      toast({
-        title: "Data Reset Complete",
-        description: "All data has been reset. Please refresh the page.",
-      });
-    }
-  };
-
+  // Super-admin / Primary admin settings view
   return (
     <div className="p-6 space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <div className="w-10 h-10 bg-gradient-to-br from-gray-500 to-gray-600 rounded-lg flex items-center justify-center">
@@ -286,12 +255,13 @@ const SettingsModule = () => {
           </div>
         </div>
       </div>
+      
+      {/* School Management - Super-Admin only */}
+      {isSuperAdmin && <SchoolManager />}
 
-      {/* Academic Term & Year Management */}
-      <AcademicTermManager />
+      {hasSettingsFull && <AcademicTermManager />}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Password Change */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
@@ -301,6 +271,17 @@ const SettingsModule = () => {
           </CardHeader>
           <CardContent>
             <form onSubmit={handlePasswordChange} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="currentPasswordFull">Current Password</Label>
+                <Input
+                  id="currentPasswordFull"
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="Enter current password"
+                  required
+                />
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="newPassword">New Password</Label>
                 <Input
@@ -325,14 +306,14 @@ const SettingsModule = () => {
                   minLength={6}
                 />
               </div>
-              <Button type="submit" className="w-full" disabled={!newPassword || !confirmPassword}>
+              <Button type="submit" className="w-full" disabled={!currentPassword || !newPassword || !confirmPassword}>
                 Update Password
               </Button>
             </form>
           </CardContent>
         </Card>
 
-        {/* School Information */}
+        {hasSettingsFull && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
@@ -383,14 +364,148 @@ const SettingsModule = () => {
                   required
                 />
               </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Primary Color (Login & Branding)</Label>
+                  <div className="flex gap-2">
+                    <Input type="color" value={schoolInfo.primaryColor} onChange={(e) => setSchoolInfo({...schoolInfo, primaryColor: e.target.value})} className="w-14 h-10 p-1 cursor-pointer" />
+                    <Input value={schoolInfo.primaryColor} onChange={(e) => setSchoolInfo({...schoolInfo, primaryColor: e.target.value})} className="flex-1" />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Secondary Color</Label>
+                  <div className="flex gap-2">
+                    <Input type="color" value={schoolInfo.secondaryColor} onChange={(e) => setSchoolInfo({...schoolInfo, secondaryColor: e.target.value})} className="w-14 h-10 p-1 cursor-pointer" />
+                    <Input value={schoolInfo.secondaryColor} onChange={(e) => setSchoolInfo({...schoolInfo, secondaryColor: e.target.value})} className="flex-1" />
+                  </div>
+                </div>
+              </div>
               <Button type="submit" className="w-full">
                 Update School Information
               </Button>
             </form>
           </CardContent>
         </Card>
+        )}
 
-        {/* Data Management */}
+        {hasSettingsFull && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Receipt className="w-5 h-5" />
+              <span>Receipt Customization</span>
+            </CardTitle>
+            <p className="text-sm text-gray-500">Customize how receipts appear when printing</p>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              try {
+                await apiService.put('/settings', {
+                  receipt_prefix: receiptSettings.receipt_prefix,
+                  postal_address: receiptSettings.postal_address,
+                  contact_phone: receiptSettings.contact_phone,
+                  receipt_footer: receiptSettings.receipt_footer,
+                  bank_details: receiptSettings.bank_details,
+                });
+                toast({ title: 'Receipt settings saved' });
+              } catch (err: any) {
+                toast({ title: 'Error', description: err?.message, variant: 'destructive' });
+              }
+            }} className="space-y-4">
+              <div className="space-y-2">
+                <Label>Receipt Number Prefix</Label>
+                <Input
+                  value={receiptSettings.receipt_prefix}
+                  onChange={(e) => setReceiptSettings({ ...receiptSettings, receipt_prefix: e.target.value })}
+                  placeholder="R (default)"
+                  maxLength={5}
+                />
+                <p className="text-xs text-gray-500">e.g. R for R00012345</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Postal Address (for receipt header)</Label>
+                <Input
+                  value={receiptSettings.postal_address}
+                  onChange={(e) => setReceiptSettings({ ...receiptSettings, postal_address: e.target.value })}
+                  placeholder="P.O. Box 123, Accra"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Contact Number</Label>
+                <Input
+                  value={receiptSettings.contact_phone}
+                  onChange={(e) => setReceiptSettings({ ...receiptSettings, contact_phone: e.target.value })}
+                  placeholder="+233 XX XXX XXXX"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Footer Message</Label>
+                <Input
+                  value={receiptSettings.receipt_footer}
+                  onChange={(e) => setReceiptSettings({ ...receiptSettings, receipt_footer: e.target.value })}
+                  placeholder="Thank you for your payment!"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Bank Details (optional)</Label>
+                <Input
+                  value={receiptSettings.bank_details}
+                  onChange={(e) => setReceiptSettings({ ...receiptSettings, bank_details: e.target.value })}
+                  placeholder="Bank: XYZ, Account: 1234567890"
+                />
+              </div>
+              <Button type="submit" className="w-full">Save Receipt Settings</Button>
+            </form>
+          </CardContent>
+        </Card>
+        )}
+
+        {/* Parent Portal Link */}
+        {hasSettingsFull && school?.id && (
+          <Card className="border-purple-200 bg-purple-50/30">
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2 text-purple-700">
+                <GraduationCap className="w-5 h-5" />
+                <span>Parent Portal</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-gray-600">
+                Share this link with parents so they can view their child's grades, attendance and fee balance. 
+                Parents log in using their child's <strong>Student ID</strong> as both username and initial password.
+              </p>
+              <div className="flex items-center gap-2 bg-white border border-purple-200 rounded-lg p-2.5">
+                <code className="text-xs text-purple-700 flex-1 truncate select-all">
+                  {window.location.origin}/portal/{school.id}
+                </code>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(`${window.location.origin}/portal/${school.id}`);
+                    toast({ title: 'Link copied!', description: 'Parent portal link copied to clipboard.' });
+                  }}
+                  className="text-purple-500 hover:text-purple-700 transition-colors shrink-0"
+                  title="Copy link"
+                >
+                  <Copy className="w-4 h-4" />
+                </button>
+                <a
+                  href={`/portal/${school.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-purple-500 hover:text-purple-700 transition-colors shrink-0"
+                  title="Open portal"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+              </div>
+              <p className="text-xs text-gray-400">
+                First-time login: Student ID is both the username and default password. Parents are prompted to change it on first login.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
@@ -405,7 +520,7 @@ const SettingsModule = () => {
                 <p className="text-sm text-gray-600 mb-3">
                   Download all your school data as a backup file
                 </p>
-                <Button onClick={handleExportData} variant="outline" className="w-full">
+                <Button variant="outline" className="w-full">
                   <Download className="w-4 h-4 mr-2" />
                   Export Data
                 </Button>
@@ -419,7 +534,6 @@ const SettingsModule = () => {
                 <Input
                   type="file"
                   accept=".json"
-                  onChange={handleImportData}
                   className="w-full"
                 />
               </div>
@@ -430,7 +544,6 @@ const SettingsModule = () => {
                   ⚠️ Permanently delete all data and start fresh
                 </p>
                 <Button 
-                  onClick={resetAllData} 
                   variant="destructive" 
                   className="w-full"
                 >

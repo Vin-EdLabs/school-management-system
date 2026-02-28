@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,7 +7,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { useData } from '../../contexts/DataContext';
 import { useAudit } from '../../contexts/AuditContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
+import { Camera, Trash2 } from 'lucide-react';
+import { apiService } from '../../services/api';
 
 interface Student {
   id: string;
@@ -28,6 +30,7 @@ interface Student {
   previousSchool: string;
   dateOfAdmission: string;
   notes: string;
+  passportPhotoUrl?: string;
 }
 
 interface EditStudentDialogProps {
@@ -37,16 +40,44 @@ interface EditStudentDialogProps {
   onSuccess: () => void;
 }
 
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api').replace('/api', '');
+
 const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, onClose, onSuccess }) => {
   const { classes, updateStudent } = useData();
   const { addAuditLog } = useAudit();
+  const { verifyPassword, user } = useAuth();
   const [formData, setFormData] = useState<Student | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [password, setPassword] = useState('');
+
+  // Photo state
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (student) {
       setFormData({ ...student });
+      setPhotoFile(null);
+      setPhotoPreview(null);
     }
   }, [student]);
+
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoFile(file);
+    const reader = new FileReader();
+    reader.onload = ev => setPhotoPreview(ev.target?.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemovePhoto = () => {
+    setPhotoFile(null);
+    setPhotoPreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   const handleInputChange = (field: keyof Student, value: string | number) => {
     if (formData) {
@@ -57,28 +88,60 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
     }
   };
 
+
+  const performUpdate = async () => {
+    if (!formData) return;
+    setPhotoUploading(true);
+    try {
+      // Upload photo first if a new file was selected
+      if (photoFile) {
+        const result = await apiService.uploadStudentPhoto(formData.id, photoFile) as any;
+        if (result?.passport_photo_url) {
+          formData.passportPhotoUrl = result.passport_photo_url;
+        }
+      }
+      await updateStudent(formData.id, formData);
+      addAuditLog({
+        actionType: 'Edit',
+        module: 'Students',
+        itemId: formData.id,
+        itemName: `${formData.firstName} ${formData.lastName}`,
+        reason: 'Student information updated successfully'
+      });
+      toast({ title: "Student Updated", description: `${formData.firstName} ${formData.lastName} has been updated successfully` });
+      onSuccess();
+      onClose();
+    } catch (err: any) {
+      toast({ title: 'Update Failed', description: err?.message || 'Failed to update student', variant: 'destructive' });
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData) return;
+    if (user?.role === 'super-admin') {
+      performUpdate();
+    } else {
+      setShowPassword(true);
+    }
+  };
 
-    updateStudent(formData.id, formData);
-    
-    // Add additional audit log for successful edit completion
-    addAuditLog({
-      actionType: 'Edit',
-      module: 'Students',
-      itemId: formData.id,
-      itemName: `${formData.firstName} ${formData.lastName}`,
-      reason: 'Student information updated successfully'
-    });
-    
-    toast({
-      title: "Student Updated",
-      description: `${formData.firstName} ${formData.lastName} has been updated successfully`,
-    });
-
-    onSuccess();
-    onClose();
+  const handlePasswordConfirmAndUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!password.trim()) {
+      toast({ title: 'Password required', description: 'Enter your password to continue', variant: 'destructive' });
+      return;
+    }
+    const valid = await verifyPassword(password);
+    if (!valid) {
+      toast({ title: 'Incorrect password', description: 'Please try again', variant: 'destructive' });
+      return;
+    }
+    setShowPassword(false);
+    setPassword('');
+    performUpdate();
   };
 
   if (!formData) return null;
@@ -91,6 +154,61 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
         </DialogHeader>
         
         <form onSubmit={handleSubmit} className="space-y-6">
+
+          {/* Passport Photo */}
+          <div className="space-y-3">
+            <h3 className="font-semibold text-lg">Passport Photo</h3>
+            <div className="flex items-center gap-4">
+              {/* Preview */}
+              <div className="w-20 h-24 rounded-lg overflow-hidden bg-slate-100 border-2 border-dashed border-slate-300 flex items-center justify-center shrink-0">
+                {photoPreview ? (
+                  <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+                ) : formData?.passportPhotoUrl ? (
+                  <img
+                    src={`${API_BASE}${formData.passportPhotoUrl}`}
+                    alt="Current"
+                    className="w-full h-full object-cover"
+                    onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
+                ) : (
+                  <Camera className="w-6 h-6 text-slate-400" />
+                )}
+              </div>
+              <div className="flex-1 space-y-2">
+                <p className="text-sm text-gray-500">
+                  {formData?.passportPhotoUrl && !photoPreview
+                    ? 'Current photo shown. Select a new file to replace it.'
+                    : 'Upload a passport-size photo (JPG, PNG).'}
+                </p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handlePhotoChange}
+                  className="hidden"
+                  id="student-photo-input"
+                />
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="gap-1.5"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                    {formData?.passportPhotoUrl ? 'Change Photo' : 'Upload Photo'}
+                  </Button>
+                  {photoPreview && (
+                    <Button type="button" variant="ghost" size="sm" onClick={handleRemovePhoto} className="text-red-500 hover:text-red-700 gap-1">
+                      <Trash2 className="w-3.5 h-3.5" /> Remove
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Personal Information */}
           <div className="space-y-4">
             <h3 className="font-semibold text-lg">Personal Information</h3>
@@ -145,12 +263,12 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="admissionNumber">Admission Number</Label>
-                <Input
-                  id="admissionNumber"
-                  value={formData.admissionNumber}
-                  onChange={(e) => handleInputChange('admissionNumber', e.target.value)}
-                />
+                <Label>Student ID</Label>
+                <Input value={formData.studentId} readOnly disabled className="bg-slate-50 cursor-not-allowed" />
+              </div>
+              <div className="space-y-2">
+                <Label>Admission Number</Label>
+                <Input value={formData.admissionNumber} readOnly disabled className="bg-slate-50 cursor-not-allowed" />
               </div>
             </div>
           </div>
@@ -269,10 +387,25 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
           </div>
         </form>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit}>Update Student</Button>
-        </DialogFooter>
+        {showPassword && (
+          <div className="border-t pt-4 space-y-4">
+            <Label>Enter your password to confirm this update</Label>
+            <form onSubmit={handlePasswordConfirmAndUpdate} className="flex gap-2">
+              <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Your password" required className="flex-1" />
+              <Button type="button" variant="outline" onClick={() => { setShowPassword(false); setPassword(''); }}>Cancel</Button>
+              <Button type="submit">Confirm</Button>
+            </form>
+          </div>
+        )}
+
+        {!showPassword && (
+          <DialogFooter>
+            <Button variant="outline" onClick={onClose} disabled={photoUploading}>Cancel</Button>
+            <Button type="submit" disabled={photoUploading}>
+              {photoUploading ? 'Saving…' : 'Update Student'}
+            </Button>
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   );

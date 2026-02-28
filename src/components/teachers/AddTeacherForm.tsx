@@ -6,9 +6,15 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
-import { UserPlus, X } from 'lucide-react';
+import { UserPlus, X, Copy, KeyRound } from 'lucide-react';
 
 const SUBJECTS = [
   'Mathematics', 'English', 'Science', 'Social Studies', 'French',
@@ -21,6 +27,8 @@ interface AddTeacherFormProps {
 
 const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
   const { addTeacher } = useData();
+  const [credentialsOpen, setCredentialsOpen] = useState(false);
+  const [loginCredentials, setLoginCredentials] = useState<{ staffId: string; pin: string } | null>(null);
   const [formData, setFormData] = useState({
     fullName: '',
     gender: '',
@@ -52,7 +60,7 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!formData.fullName || !formData.email || !formData.phoneNumber || !formData.gender) {
@@ -67,36 +75,50 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
     // Convert salary to number for storage, default to 0 if empty or invalid
     const salaryValue = formData.monthlySalary.trim() === '' ? 0 : parseFloat(formData.monthlySalary) || 0;
 
-    addTeacher({
-      ...formData,
-      monthlySalary: salaryValue
-    });
-    
-    toast({
-      title: "Teacher Added Successfully",
-      description: `${formData.fullName} has been added to the system`,
-    });
+    try {
+      const result = await addTeacher({
+        ...formData,
+        monthlySalary: salaryValue
+      });
+      
+      toast({
+        title: "Teacher Added Successfully",
+        description: `${formData.fullName} has been added to the system`,
+      });
 
-    // Reset form
-    setFormData({
-      fullName: '',
-      gender: '',
-      dateOfBirth: '',
-      phoneNumber: '',
-      email: '',
-      address: '',
-      subjectsTaught: [],
-      classAssigned: '',
-      employmentDate: '',
-      monthlySalary: '',
-      employmentStatus: 'Active',
-      notes: ''
-    });
+      if (result?.loginStaffId && result?.loginPin) {
+        setLoginCredentials({ staffId: result.loginStaffId, pin: result.loginPin });
+        setCredentialsOpen(true);
+      }
 
-    onSuccess();
+      // Reset form
+      setFormData({
+        fullName: '',
+        gender: '',
+        dateOfBirth: '',
+        phoneNumber: '',
+        email: '',
+        address: '',
+        subjectsTaught: [],
+        classAssigned: '',
+        employmentDate: '',
+        monthlySalary: '',
+        employmentStatus: 'Active',
+        notes: ''
+      });
+
+      onSuccess();
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to add teacher. Please try again.",
+        variant: "destructive"
+      });
+    }
   };
 
   return (
+    <>
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center space-x-2">
@@ -252,6 +274,49 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
         </form>
       </CardContent>
     </Card>
+
+    {/* Login credentials dialog - admin can see and copy PIN */}
+    <Dialog open={credentialsOpen} onOpenChange={setCredentialsOpen}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <KeyRound className="w-5 h-5 text-emerald-600" />
+            Login Credentials for Teacher
+          </DialogTitle>
+        </DialogHeader>
+        {loginCredentials && (
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-slate-600">
+              Share these credentials with the teacher. They login using <strong>Staff ID</strong> as username and <strong>PIN</strong> as password.
+            </p>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide">Staff ID (Username)</p>
+                  <p className="font-mono font-semibold text-slate-800">{loginCredentials.staffId}</p>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => { navigator.clipboard.writeText(loginCredentials.staffId); toast({ title: 'Copied', description: 'Staff ID copied to clipboard' }); }}>
+                  <Copy className="w-4 h-4" />
+                </Button>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide">PIN (Password) — 5 digits</p>
+                  <p className="font-mono font-semibold text-slate-800">{loginCredentials.pin}</p>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => { navigator.clipboard.writeText(loginCredentials.pin); toast({ title: 'Copied', description: 'PIN copied to clipboard' }); }}>
+                  <Copy className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+            <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded">
+              Save this PIN now. It cannot be retrieved later. For Teacher/Staff login, select the school, choose &quot;Teacher / Staff&quot; role, then enter Staff ID and PIN.
+            </p>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+    </>
   );
 };
 

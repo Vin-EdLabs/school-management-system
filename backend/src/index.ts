@@ -1,0 +1,94 @@
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import { initializeDatabase } from './db/connection.js';
+import authRoutes from './routes/auth.js';
+import schoolRoutes from './routes/schools.js';
+import studentRoutes from './routes/students.js';
+import teacherRoutes from './routes/teachers.js';
+import classRoutes from './routes/classes.js';
+import feeRoutes from './routes/fees.js';
+import paymentRoutes from './routes/payments.js';
+import incomeRoutes from './routes/income.js';
+import expenseRoutes from './routes/expenses.js';
+import settingsRoutes from './routes/settings.js';
+import auditRoutes from './routes/audit.js';
+import feeCalculationsRoutes from './routes/feeCalculations.js';
+import payrollRoutes from './routes/payroll.js';
+import attendanceRoutes from './routes/attendance.js';
+import gradesRoutes from './routes/grades.js';
+import tenantRoutes from './routes/tenant.js';
+import schoolRegistrationsRoutes from './routes/schoolRegistrations.js';
+import supportChatRoutes from './routes/supportChat.js';
+import recordsRoutes from './routes/records.js';
+import reportsRoutes from './routes/reports.js';
+import financeRoutes from './routes/finance.js';
+import parentRoutes from './routes/parent.js';
+import { errorHandler } from './middleware/errorHandler.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const app = express();
+const PORT = process.env.PORT || 3001;
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Serve uploaded files
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', message: 'TECHNERVE School Management API' });
+});
+
+// Public tenant resolution (no auth)
+app.use('/api/tenant', tenantRoutes);
+
+// School registrations (POST public, GET requires super-admin)
+app.use('/api/school-registrations', schoolRegistrationsRoutes);
+
+// Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/schools', schoolRoutes);
+app.use('/api/students', studentRoutes);
+app.use('/api/teachers', teacherRoutes);
+app.use('/api/classes', classRoutes);
+app.use('/api/fees', feeRoutes);
+app.use('/api/payments', paymentRoutes);
+app.use('/api/income', incomeRoutes);
+app.use('/api/expenses', expenseRoutes);
+app.use('/api/settings', settingsRoutes);
+app.use('/api/audit', auditRoutes);
+app.use('/api/fee-calculations', feeCalculationsRoutes);
+app.use('/api/payroll', payrollRoutes);
+app.use('/api/attendance', attendanceRoutes);
+app.use('/api/grades', gradesRoutes);
+app.use('/api/support-chat', supportChatRoutes);
+app.use('/api/records', recordsRoutes);
+app.use('/api/reports', reportsRoutes);
+app.use('/api/finance', financeRoutes);
+app.use('/api/parent', parentRoutes);
+
+// Error handling middleware
+app.use(errorHandler);
+
+// Initialize database and start server
+initializeDatabase()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`📊 Database connected`);
+    });
+  })
+  .catch((error) => {
+    console.error('❌ Failed to initialize database:', error);
+    process.exit(1);
+  });

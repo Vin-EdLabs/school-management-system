@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
 import { X } from 'lucide-react';
 
@@ -46,6 +47,9 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
   onSuccess
 }) => {
   const { updateTeacher } = useData();
+  const { verifyPassword, user } = useAuth();
+  const [showPassword, setShowPassword] = useState(false);
+  const [password, setPassword] = useState('');
   const [formData, setFormData] = useState({
     fullName: '',
     gender: '',
@@ -94,35 +98,60 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    
+  const performUpdate = async () => {
     if (!teacher) return;
-
-    if (!formData.fullName || !formData.email || !formData.phoneNumber) {
-      toast({
-        title: "Validation Error",
-        description: "Please fill in all required fields",
-        variant: "destructive"
+    const salaryValue = formData.monthlySalary.trim() === '' ? 0 : parseFloat(formData.monthlySalary) || 0;
+    try {
+      await updateTeacher(teacher.id, {
+        fullName: formData.fullName,
+        gender: formData.gender,
+        dateOfBirth: formData.dateOfBirth || undefined,
+        phoneNumber: formData.phoneNumber,
+        email: formData.email,
+        address: formData.address,
+        subjectsTaught: formData.subjectsTaught,
+        employmentDate: formData.employmentDate || undefined,
+        monthlySalary: salaryValue,
+        employmentStatus: formData.employmentStatus,
+        notes: formData.notes
       });
+      toast({ title: "Teacher Updated", description: `${formData.fullName} has been updated successfully` });
+      onSuccess();
+      onClose();
+    } catch (err: any) {
+      toast({ title: "Update Failed", description: err?.message || "Failed to update teacher. Please try again.", variant: "destructive" });
+    }
+  };
+
+  const handlePasswordConfirm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!password.trim()) {
+      toast({ title: 'Password required', description: 'Enter your password to continue', variant: 'destructive' });
       return;
     }
+    const valid = await verifyPassword(password);
+    if (!valid) {
+      toast({ title: 'Incorrect password', description: 'Please try again', variant: 'destructive' });
+      return;
+    }
+    setShowPassword(false);
+    setPassword('');
+    await performUpdate();
+  };
 
-    // Convert salary to number for storage
-    const salaryValue = formData.monthlySalary.trim() === '' ? 0 : parseFloat(formData.monthlySalary) || 0;
-
-    updateTeacher(teacher.id, {
-      ...formData,
-      monthlySalary: salaryValue
-    });
-    
-    toast({
-      title: "Teacher Updated",
-      description: `${formData.fullName} has been updated successfully`,
-    });
-
-    onSuccess();
-    onClose();
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!teacher) return;
+    if (!formData.fullName || !formData.email || !formData.phoneNumber) {
+      toast({ title: "Validation Error", description: "Please fill in all required fields", variant: "destructive" });
+      return;
+    }
+    // Super-admin can update without password; tenant users must verify their password
+    if (user?.role === 'super-admin') {
+      await performUpdate();
+    } else {
+      setShowPassword(true);
+    }
   };
 
   if (!teacher) return null;
@@ -136,6 +165,10 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Staff ID</Label>
+              <Input value={teacher.staffId} readOnly disabled className="bg-slate-50 cursor-not-allowed" />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="fullName">Full Name *</Label>
               <Input
@@ -274,14 +307,23 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
             />
           </div>
 
-          <div className="flex justify-end space-x-2 pt-4">
-            <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit">
-              Update Teacher
-            </Button>
-          </div>
+          {showPassword && (
+            <div className="border-t pt-4 space-y-4">
+              <Label>Enter your password to confirm this update</Label>
+              <form onSubmit={handlePasswordConfirm} className="flex gap-2">
+                <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Your password" required className="flex-1" />
+                <Button type="button" variant="outline" onClick={() => { setShowPassword(false); setPassword(''); }}>Cancel</Button>
+                <Button type="submit">Confirm</Button>
+              </form>
+            </div>
+          )}
+
+          {!showPassword && (
+            <div className="flex justify-end space-x-2 pt-4">
+              <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+              <Button type="submit">Update Teacher</Button>
+            </div>
+          )}
         </form>
       </DialogContent>
     </Dialog>

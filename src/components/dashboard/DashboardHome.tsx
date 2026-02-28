@@ -2,7 +2,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useData } from '../../contexts/DataContext';
-import { getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
+import { getActiveAcademicTerm, getActiveAcademicYear, calculateStudentFeesSync } from '../../utils/feeCalculations';
 import FinancialSummary from './FinancialSummary';
 import {
   Users,
@@ -17,7 +17,7 @@ import {
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 const DashboardHome = () => {
-  const { students, teachers, payments, expenses, feeStructures, income } = useData();
+  const { students, teachers, classes = [], payments, expenses, feeStructures, income, arrearsBalances } = useData();
 
   // Get active academic term and year
   const currentTerm = getActiveAcademicTerm();
@@ -28,10 +28,23 @@ const DashboardHome = () => {
   const totalTeachers = teachers.length;
   
   const feesCollectedThisTerm = payments
-    .filter(payment => payment.term === currentTerm)
+    .filter(payment => {
+      const pt = payment.term || '';
+      return pt === currentTerm || pt.includes(currentTerm) || currentTerm.includes(pt);
+    })
     .reduce((sum, payment) => sum + payment.amount, 0);
+
+  const otherIncomeThisYear = income
+    .filter(inc => inc.category !== 'Fee Payment')
+    .filter(inc => {
+      const d = new Date(inc.date);
+      return d.getFullYear().toString() === currentYear;
+    })
+    .reduce((sum, inc) => sum + inc.amount, 0);
+
+  const totalIncome = feesCollectedThisTerm + otherIncomeThisYear;
   
-  const expensesThisTerm = expenses
+  const expensesThisYear = expenses
     .filter(expense => {
       const expenseDate = new Date(expense.paymentDate);
       const expenseYear = expenseDate.getFullYear().toString();
@@ -39,30 +52,32 @@ const DashboardHome = () => {
     })
     .reduce((sum, expense) => sum + expense.amount, 0);
 
-  // Calculate outstanding balances
-  const calculateOutstanding = () => {
-    let totalOwed = 0;
-    students.forEach(student => {
-      const studentFee = feeStructures.find(fee => fee.className === student.classAssigned);
-      if (studentFee) {
-        const studentPayments = payments
-          .filter(payment => payment.studentId === student.id && payment.term === currentTerm)
-          .reduce((sum, payment) => sum + payment.amount, 0);
-        totalOwed += Math.max(0, studentFee.amount - studentPayments);
-      }
-    });
-    return totalOwed;
-  };
+  const netBalance = totalIncome - expensesThisYear;
 
-  const outstandingBalances = calculateOutstanding();
+  // Calculate outstanding balances using proper fee structure matching (class + term)
+  const outstandingBalances = students.reduce((totalOwed, student) => {
+    const feeCalc = calculateStudentFeesSync(
+      student.id,
+      currentTerm,
+      student.classAssigned,
+      feeStructures || [],
+      payments || [],
+      student.classAssignedId,
+      arrearsBalances
+    );
+    const outstanding = Math.max(0, (feeCalc.totalAmountDue ?? feeCalc.currentTermFee) - feeCalc.totalPaid);
+    return totalOwed + outstanding;
+  }, 0);
 
-  // Prepare chart data
-  const classFeesData = feeStructures.map(fee => ({
-    name: fee.className,
+  // Prepare chart data - fees collected per class (one bar per class)
+  const uniqueClassNames = [...new Set(classes.map(c => c.className).filter(Boolean))];
+  const classFeesData = uniqueClassNames.map(className => ({
+    name: className,
     fees: payments
       .filter(payment => {
         const student = students.find(s => s.id === payment.studentId);
-        return student && student.classAssigned === fee.className && payment.term === currentTerm;
+        const termMatch = (payment.term || '') === currentTerm || (payment.term || '').includes(currentTerm) || currentTerm.includes(payment.term || '');
+        return student && student.classAssigned === className && termMatch;
       })
       .reduce((sum, payment) => sum + payment.amount, 0)
   }));
@@ -97,16 +112,16 @@ const DashboardHome = () => {
   ].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 md:p-8 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-800">Dashboard</h1>
-          <p className="text-gray-600">Welcome to Rosa Gardens School Management System</p>
+          <h1 className="text-xl font-semibold text-slate-800">Dashboard</h1>
+          <p className="text-sm text-slate-500 mt-0.5">School overview and quick actions</p>
         </div>
-        <div className="text-right">
-          <p className="text-sm text-gray-500">Current Term</p>
-          <p className="text-lg font-semibold text-gray-800">{currentTerm}</p>
+        <div className="flex items-center gap-3 px-3 py-2 bg-slate-100 rounded-lg w-fit">
+          <span className="text-sm text-slate-500">Term</span>
+          <span className="text-sm font-medium text-slate-800">{currentTerm}</span>
         </div>
       </div>
 
@@ -114,59 +129,70 @@ const DashboardHome = () => {
       <FinancialSummary />
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-6">
-        <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
+        <Card className="border-slate-200/80 bg-white shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Students</CardTitle>
-            <Users className="h-4 w-4" />
+            <CardTitle className="text-sm font-medium text-slate-600">Total Students</CardTitle>
+            <Users className="h-4 w-4 text-slate-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalStudents}</div>
-            <p className="text-xs text-blue-100">Active enrollments</p>
+            <div className="text-2xl font-bold text-slate-800">{totalStudents}</div>
+            <p className="text-xs text-slate-500">Active enrollments</p>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white">
+        <Card className="border-slate-200/80 bg-white shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Fees Collected</CardTitle>
-            <CreditCard className="h-4 w-4" />
+            <CardTitle className="text-sm font-medium text-slate-600">Total Income</CardTitle>
+            <CreditCard className="h-4 w-4 text-slate-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">GHS {feesCollectedThisTerm.toLocaleString()}</div>
-            <p className="text-xs text-green-100">This term</p>
+            <div className="text-2xl font-bold text-slate-800">GHS {totalIncome.toLocaleString()}</div>
+            <p className="text-xs text-slate-500">Fees + other</p>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white">
+        <Card className="border-slate-200/80 bg-white shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Outstanding</CardTitle>
-            <AlertCircle className="h-4 w-4" />
+            <CardTitle className="text-sm font-medium text-slate-600">Expenses</CardTitle>
+            <TrendingDown className="h-4 w-4 text-slate-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">GHS {outstandingBalances.toLocaleString()}</div>
-            <p className="text-xs text-orange-100">Pending payments</p>
+            <div className="text-2xl font-bold text-slate-800">GHS {expensesThisYear.toLocaleString()}</div>
+            <p className="text-xs text-slate-500">This year</p>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-red-500 to-red-600 text-white">
+        <Card className="border-slate-200/80 bg-white shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Expenses</CardTitle>
-            <TrendingDown className="h-4 w-4" />
+            <CardTitle className="text-sm font-medium text-slate-600">Net Balance</CardTitle>
+            <CreditCard className="h-4 w-4 text-slate-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">GHS {expensesThisTerm.toLocaleString()}</div>
-            <p className="text-xs text-red-100">This term</p>
+            <div className={`text-2xl font-bold ${netBalance >= 0 ? 'text-emerald-600' : 'text-amber-600'}`}>GHS {netBalance.toLocaleString()}</div>
+            <p className="text-xs text-slate-500">Income − Expenses</p>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white">
+        <Card className="border-slate-200/80 bg-white shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Teachers</CardTitle>
-            <GraduationCap className="h-4 w-4" />
+            <CardTitle className="text-sm font-medium text-slate-600">Outstanding</CardTitle>
+            <AlertCircle className="h-4 w-4 text-slate-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalTeachers}</div>
-            <p className="text-xs text-purple-100">Active staff</p>
+            <div className="text-2xl font-bold text-slate-800">GHS {outstandingBalances.toLocaleString()}</div>
+            <p className="text-xs text-slate-500">Pending payments</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-slate-200/80 bg-white shadow-sm">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-slate-600">Total Teachers</CardTitle>
+            <GraduationCap className="h-4 w-4 text-slate-400" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-slate-800">{totalTeachers}</div>
+            <p className="text-xs text-slate-500">Active staff</p>
           </CardContent>
         </Card>
       </div>

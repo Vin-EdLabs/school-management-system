@@ -1,30 +1,37 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
-import { Calendar, Plus, Edit2, Trash2, CheckCircle, AlertCircle } from 'lucide-react';
-import { useData } from '../../contexts/DataContext';
-import { processArrearsForTermChange } from '../../utils/feeCalculations';
+import { Calendar, Plus, Edit2, Trash2, CheckCircle } from 'lucide-react';
+import { apiService } from '../../services/api';
+import { useActiveTerm } from '../../contexts/ActiveTermContext';
 
 interface AcademicTerm {
   id: string;
-  name: string;
+  term_name: string;
   year: string;
-  startDate: string;
-  endDate: string;
-  isActive: boolean;
+  start_date: string;
+  end_date: string;
+  is_active: boolean;
+}
+
+interface LedgerTerm {
+  id: number;
+  name: string;
+  is_current: boolean;
+  academic_year_id: number;
+  academic_year_name: string;
 }
 
 const AcademicTermManager = () => {
-  const { students, payments, feeStructures } = useData();
+  const { refresh } = useActiveTerm();
   const [terms, setTerms] = useState<AcademicTerm[]>([]);
+  const [ledgerTerms, setLedgerTerms] = useState<LedgerTerm[]>([]);
   const [isAddingTerm, setIsAddingTerm] = useState(false);
   const [editingTerm, setEditingTerm] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [newTerm, setNewTerm] = useState({
     name: '',
     year: new Date().getFullYear().toString(),
@@ -32,61 +39,44 @@ const AcademicTermManager = () => {
     endDate: ''
   });
 
-  // Helper function to dispatch settings change event
-  const dispatchSettingsChange = () => {
-    window.dispatchEvent(new CustomEvent('academicSettingsChanged'));
+  const loadTerms = async () => {
+    setLoading(true);
+    try {
+      const [academicData, ledgerData] = await Promise.all([
+        apiService.get<AcademicTerm[]>('/settings/academic-terms').catch(() => []),
+        apiService.get<LedgerTerm[]>('/finance/terms').catch(() => [])
+      ]);
+      const list = Array.isArray(academicData) ? academicData : [];
+      setTerms(list.map((t: any) => ({
+        id: t.id.toString(),
+        term_name: t.term_name,
+        year: t.year,
+        start_date: t.start_date || '',
+        end_date: t.end_date || '',
+        is_active: t.is_active
+      })));
+      const ledgerList = Array.isArray(ledgerData) ? ledgerData : [];
+      setLedgerTerms(ledgerList.map((t: any) => ({
+        id: parseInt(String(t.id), 10),
+        name: t.name || '',
+        is_current: t.is_current || false,
+        academic_year_id: parseInt(String(t.academic_year_id), 10),
+        academic_year_name: t.academic_year_name || ''
+      })));
+    } catch (error) {
+      console.error('Error loading terms:', error);
+      setTerms([]);
+      setLedgerTerms([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Load terms from localStorage on component mount
   useEffect(() => {
-    const savedTerms = localStorage.getItem('academicTerms');
-    if (savedTerms) {
-      try {
-        const parsedTerms = JSON.parse(savedTerms);
-        setTerms(parsedTerms);
-      } catch (error) {
-        console.error('Error loading academic terms:', error);
-      }
-    } else {
-      // Create default terms if none exist
-      const defaultTerms: AcademicTerm[] = [
-        {
-          id: '1',
-          name: 'Term 1',
-          year: '2024',
-          startDate: '2024-01-15',
-          endDate: '2024-04-12',
-          isActive: true
-        },
-        {
-          id: '2',
-          name: 'Term 2',
-          year: '2024',
-          startDate: '2024-04-29',
-          endDate: '2024-07-26',
-          isActive: false
-        },
-        {
-          id: '3',
-          name: 'Term 3',
-          year: '2024',
-          startDate: '2024-09-09',
-          endDate: '2024-12-13',
-          isActive: false
-        }
-      ];
-      setTerms(defaultTerms);
-      localStorage.setItem('academicTerms', JSON.stringify(defaultTerms));
-    }
+    loadTerms();
   }, []);
 
-  const saveTerms = (updatedTerms: AcademicTerm[]) => {
-    setTerms(updatedTerms);
-    localStorage.setItem('academicTerms', JSON.stringify(updatedTerms));
-    dispatchSettingsChange(); // Notify header of changes
-  };
-
-  const handleAddTerm = () => {
+  const handleAddTerm = async () => {
     if (!newTerm.name || !newTerm.year || !newTerm.startDate || !newTerm.endDate) {
       toast({
         title: "Missing Information",
@@ -96,65 +86,195 @@ const AcademicTermManager = () => {
       return;
     }
 
-    const newTermData: AcademicTerm = {
-      id: Date.now().toString(),
-      name: newTerm.name,
-      year: newTerm.year,
-      startDate: newTerm.startDate,
-      endDate: newTerm.endDate,
-      isActive: false
-    };
+    try {
+      await apiService.post('/settings/academic-terms', {
+        term_name: newTerm.name,
+        year: newTerm.year,
+        start_date: newTerm.startDate,
+        end_date: newTerm.endDate,
+        is_active: false
+      });
 
-    const updatedTerms = [...terms, newTermData];
-    saveTerms(updatedTerms);
+      toast({
+        title: "Term Added",
+        description: `${newTerm.name} ${newTerm.year} has been added successfully`,
+      });
 
-    toast({
-      title: "Term Added",
-      description: `${newTerm.name} ${newTerm.year} has been added successfully`,
-    });
-
-    setNewTerm({ name: '', year: new Date().getFullYear().toString(), startDate: '', endDate: '' });
-    setIsAddingTerm(false);
-  };
-
-  const handleSetActiveTerm = (termId: string) => {
-    const currentActiveTerm = terms.find(t => t.isActive);
-    const newActiveTerm = terms.find(t => t.id === termId);
-    
-    if (!newActiveTerm) return;
-
-    // Process arrears for term change if there's a current active term
-    if (currentActiveTerm && currentActiveTerm.id !== termId) {
-      const previousTermName = `${currentActiveTerm.name} ${currentActiveTerm.year}`;
-      const newTermName = `${newActiveTerm.name} ${newActiveTerm.year}`;
-      
-      processArrearsForTermChange(
-        students,
-        payments,
-        feeStructures,
-        previousTermName,
-        newTermName
-      );
+      setNewTerm({ name: '', year: new Date().getFullYear().toString(), startDate: '', endDate: '' });
+      setIsAddingTerm(false);
+      await loadTerms();
+      await refresh();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to add term",
+        variant: "destructive"
+      });
     }
-
-    const updatedTerms = terms.map(term => ({
-      ...term,
-      isActive: term.id === termId
-    }));
-
-    saveTerms(updatedTerms);
-
-    toast({
-      title: "Active Term Changed",
-      description: `${newActiveTerm.name} ${newActiveTerm.year} is now the active term`,
-    });
   };
 
-  const handleDeleteTerm = (termId: string) => {
+  const handleSetActiveTerm = async (termId: string) => {
+    const termToActivate = terms.find(t => t.id === termId);
+    if (!termToActivate) return;
+
+    try {
+      const previousActive = terms.find(t => t.is_active);
+      
+      // Find ledger terms by matching name and year (try exact match first, then cleaned name)
+      const cleanTermName = (name: string) => name.replace(/\s+\d{4}$/, '').trim();
+      
+      // First, ensure ledger terms exist - if not, create them
+      let prevLedgerTerm = previousActive
+        ? ledgerTerms.find(lt => {
+            const cleanPrev = cleanTermName(previousActive.term_name);
+            return (lt.name === previousActive.term_name || lt.name === cleanPrev) &&
+                   lt.academic_year_name === previousActive.year;
+          })
+        : null;
+      
+      let newLedgerTerm = ledgerTerms.find(lt => {
+        const cleanNew = cleanTermName(termToActivate.term_name);
+        return (lt.name === termToActivate.term_name || lt.name === cleanNew) &&
+               lt.academic_year_name === termToActivate.year;
+      });
+      
+      // If ledger terms don't exist, create them by updating settings (which triggers resolveLedgerTermFromSettings)
+      if (!newLedgerTerm) {
+        try {
+          // Force create ledger term by updating settings first
+          await apiService.put('/settings', {
+            current_term: `${termToActivate.term_name} ${termToActivate.year}`,
+            current_year: termToActivate.year,
+            skip_auto_post: true,
+          });
+          // Reload ledger terms to get the newly created one
+          const updatedLedgerData = await apiService.get<LedgerTerm[]>('/finance/terms');
+          const updatedLedgerList = Array.isArray(updatedLedgerData) ? updatedLedgerData : [];
+          setLedgerTerms(updatedLedgerList.map((t: any) => ({
+            id: parseInt(String(t.id), 10),
+            name: t.name || '',
+            is_current: t.is_current || false,
+            academic_year_id: parseInt(String(t.academic_year_id), 10),
+            academic_year_name: t.academic_year_name || ''
+          })));
+          // Find it again
+          newLedgerTerm = updatedLedgerList.find((lt: any) => {
+            const cleanNew = cleanTermName(termToActivate.term_name);
+            return (lt.name === termToActivate.term_name || lt.name === cleanNew) &&
+                   lt.academic_year_name === termToActivate.year;
+          });
+        } catch (err: any) {
+          throw new Error(
+            `CRITICAL: Failed to create ledger term for ${termToActivate.term_name} ${termToActivate.year}. ` +
+            `Error: ${err?.message || 'Unknown error'}. Term switching requires ledger terms.`
+          );
+        }
+      }
+      
+      // If previous term exists but ledger term not found, try to create it
+      if (previousActive && !prevLedgerTerm) {
+        try {
+          await apiService.put('/settings', {
+            current_term: `${previousActive.term_name} ${previousActive.year}`,
+            current_year: previousActive.year,
+            skip_auto_post: true,
+          });
+          const updatedLedgerData = await apiService.get<LedgerTerm[]>('/finance/terms');
+          const updatedLedgerList = Array.isArray(updatedLedgerData) ? updatedLedgerData : [];
+          setLedgerTerms(updatedLedgerList.map((t: any) => ({
+            id: parseInt(String(t.id), 10),
+            name: t.name || '',
+            is_current: t.is_current || false,
+            academic_year_id: parseInt(String(t.academic_year_id), 10),
+            academic_year_name: t.academic_year_name || ''
+          })));
+          prevLedgerTerm = updatedLedgerList.find((lt: any) => {
+            const cleanPrev = cleanTermName(previousActive.term_name);
+            return (lt.name === previousActive.term_name || lt.name === cleanPrev) &&
+                   lt.academic_year_name === previousActive.year;
+          });
+        } catch (err: any) {
+          // If we can't create previous term's ledger term, we can still proceed if it's the first term
+          console.warn(`Could not create ledger term for previous term ${previousActive.term_name} ${previousActive.year}:`, err);
+        }
+      }
+
+      // MANDATORY: newLedgerTerm MUST exist. prevLedgerTerm can be null for first term.
+      if (!newLedgerTerm) {
+        throw new Error(
+          `CRITICAL: Cannot switch terms - ledger term for new term not found and could not be created. ` +
+          `New term: ${termToActivate.term_name} ${termToActivate.year}. ` +
+          `This is a system error - term switching requires valid ledger terms.`
+        );
+      }
+      
+      // If no previous term (first term ever), we can still switch - just won't carry arrears
+      // But if there WAS a previous active term and we can't find its ledger term, that's an error
+      if (!prevLedgerTerm && previousActive) {
+        throw new Error(
+          `CRITICAL: Cannot switch terms - ledger term for previous term not found. ` +
+          `Previous: ${previousActive.term_name} ${previousActive.year}. ` +
+          `This should not happen - ledger terms should be created when academic terms are created. ` +
+          `Try refreshing the page or contact support.`
+        );
+      }
+      
+      // If no previous term at all (first term ever), we can't carry arrears but can still switch
+      // In this case, prevLedgerTerm will be null, which is OK
+
+      if (prevLedgerTerm && prevLedgerTerm.id === newLedgerTerm.id) {
+        throw new Error(
+          `CRITICAL: Cannot switch to the same term (ID: ${newLedgerTerm.id}). ` +
+          `Previous and new terms must be different.`
+        );
+      }
+
+      // FORCE term switch - this MUST succeed or throw error
+      // If no previous term (first term), currentTermId will be undefined and backend will handle it
+      await apiService.post('/finance/switch-term', {
+        currentTermId: prevLedgerTerm?.id,
+        newTermId: newLedgerTerm.id,
+      });
+
+      // Update academic_terms table (UI state)
+      await apiService.put(`/settings/academic-terms/${termId}`, {
+        is_active: true
+      });
+
+      // Update settings for display ONLY, and explicitly skip any automatic
+      // fee/arrears posting here. All finance logic is handled by /finance/switch-term.
+      await apiService.put('/settings', {
+        current_term: `${termToActivate.term_name} ${termToActivate.year}`,
+        current_year: termToActivate.year,
+        skip_auto_post: true,
+      });
+
+      toast({
+        title: "Active Term Changed",
+        description: `${termToActivate.term_name} ${termToActivate.year} is now the active term${newLedgerTerm ? ` (Ledger ID: ${newLedgerTerm.id})` : ''}`,
+      });
+
+      await loadTerms();
+      await refresh();
+    } catch (error: any) {
+      // DO NOT SWALLOW ERRORS - show them clearly
+      const errorMsg = error?.response?.data?.error || error?.message || 'CRITICAL: Term switch failed';
+      toast({
+        title: "CRITICAL ERROR - Term Switch Failed",
+        description: `${errorMsg}. The system could not carry arrears automatically. Please check backend logs.`,
+        variant: "destructive"
+      });
+      // Re-throw so it shows in console too
+      console.error('[AcademicTermManager] CRITICAL: Term switch failed:', error);
+      throw error; // Let it crash - user needs to see this
+    }
+  };
+
+  const handleDeleteTerm = async (termId: string) => {
     const termToDelete = terms.find(t => t.id === termId);
     if (!termToDelete) return;
 
-    if (termToDelete.isActive) {
+    if (termToDelete.is_active) {
       toast({
         title: "Cannot Delete Active Term",
         description: "Please set another term as active before deleting this term",
@@ -163,29 +283,50 @@ const AcademicTermManager = () => {
       return;
     }
 
-    const updatedTerms = terms.filter(t => t.id !== termId);
-    saveTerms(updatedTerms);
-
-    toast({
-      title: "Term Deleted",
-      description: `${termToDelete.name} ${termToDelete.year} has been deleted`,
-    });
+    try {
+      await apiService.delete(`/settings/academic-terms/${termId}`);
+      toast({
+        title: "Term Deleted",
+        description: `${termToDelete.term_name} ${termToDelete.year} has been deleted`,
+      });
+      await loadTerms();
+      await refresh();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete term",
+        variant: "destructive"
+      });
+    }
   };
 
-  const handleUpdateTerm = (termId: string, updatedData: Partial<AcademicTerm>) => {
-    const updatedTerms = terms.map(term => 
-      term.id === termId ? { ...term, ...updatedData } : term
-    );
-    saveTerms(updatedTerms);
-    setEditingTerm(null);
+  const handleUpdateTerm = async (termId: string, updatedData: Partial<AcademicTerm>) => {
+    try {
+      await apiService.put(`/settings/academic-terms/${termId}`, {
+        term_name: updatedData.term_name,
+        year: updatedData.year,
+        start_date: updatedData.start_date,
+        end_date: updatedData.end_date
+      });
 
-    toast({
-      title: "Term Updated",
-      description: "Academic term has been updated successfully",
-    });
+      toast({
+        title: "Term Updated",
+        description: "Academic term has been updated successfully",
+      });
+
+      setEditingTerm(null);
+      await loadTerms();
+      await refresh();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update term",
+        variant: "destructive"
+      });
+    }
   };
 
-  const activeTerm = terms.find(t => t.isActive);
+  const activeTerm = terms.find(t => t.is_active);
 
   return (
     <Card>
@@ -196,16 +337,17 @@ const AcademicTermManager = () => {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Current Active Term Display */}
         {activeTerm && (
           <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-semibold text-green-800">Current Active Term</h3>
-                <p className="text-green-700">{activeTerm.name} {activeTerm.year}</p>
-                <p className="text-sm text-green-600">
-                  {new Date(activeTerm.startDate).toLocaleDateString()} - {new Date(activeTerm.endDate).toLocaleDateString()}
-                </p>
+                <p className="text-green-700">{activeTerm.term_name} {activeTerm.year}</p>
+                {activeTerm.start_date && activeTerm.end_date && (
+                  <p className="text-sm text-green-600">
+                    {new Date(activeTerm.start_date).toLocaleDateString()} - {new Date(activeTerm.end_date).toLocaleDateString()}
+                  </p>
+                )}
               </div>
               <Badge className="bg-green-500">
                 <CheckCircle className="w-3 h-3 mr-1" />
@@ -215,7 +357,6 @@ const AcademicTermManager = () => {
           </div>
         )}
 
-        {/* Add New Term Form */}
         {isAddingTerm && (
           <div className="p-4 border border-gray-200 rounded-lg space-y-4">
             <h3 className="font-semibold">Add New Academic Term</h3>
@@ -264,7 +405,6 @@ const AcademicTermManager = () => {
           </div>
         )}
 
-        {/* Add Term Button */}
         {!isAddingTerm && (
           <Button onClick={() => setIsAddingTerm(true)} variant="outline" className="w-full">
             <Plus className="w-4 h-4 mr-2" />
@@ -272,60 +412,59 @@ const AcademicTermManager = () => {
           </Button>
         )}
 
-        {/* Terms List */}
         <div className="space-y-3">
           <h3 className="font-semibold">All Academic Terms</h3>
-          {terms.length === 0 ? (
-            <p className="text-gray-500 text-center py-4">No academic terms found</p>
+          {loading ? (
+            <p className="text-gray-500 text-center py-4">Loading...</p>
+          ) : terms.length === 0 ? (
+            <p className="text-gray-500 text-center py-4">No academic terms found. Add your first term above.</p>
           ) : (
             <div className="space-y-2">
               {terms.map((term) => (
-                <div key={term.id} className={`p-3 border rounded-lg ${term.isActive ? 'border-green-300 bg-green-50' : 'border-gray-200'}`}>
+                <div key={term.id} className={`p-3 border rounded-lg ${term.is_active ? 'border-green-300 bg-green-50' : 'border-gray-200'}`}>
                   {editingTerm === term.id ? (
                     <EditTermForm
                       term={term}
-                      onSave={(updatedData) => handleUpdateTerm(term.id, updatedData)}
+                      onSave={(data) => handleUpdateTerm(term.id, data)}
                       onCancel={() => setEditingTerm(null)}
                     />
                   ) : (
                     <div className="flex items-center justify-between">
                       <div>
                         <div className="flex items-center space-x-2">
-                          <h4 className="font-medium">{term.name} {term.year}</h4>
-                          {term.isActive && (
-                            <Badge variant="default" className="bg-green-500">
-                              Active
-                            </Badge>
+                          <h4 className="font-medium">{term.term_name} {term.year}</h4>
+                          {term.is_active && (
+                            <span className="px-2 py-0.5 text-xs font-medium bg-green-500 text-white rounded">Active</span>
                           )}
                         </div>
-                        <p className="text-sm text-gray-600">
-                          {new Date(term.startDate).toLocaleDateString()} - {new Date(term.endDate).toLocaleDateString()}
-                        </p>
+                        {(() => {
+                          const ledgerTerm = ledgerTerms.find(lt =>
+                            lt.name === term.term_name.replace(/\s+\d{4}$/, '').trim() &&
+                            lt.academic_year_name === term.year
+                          );
+                          return ledgerTerm ? (
+                            <p className="text-xs text-blue-600 font-mono mt-1">
+                              Ledger Term ID: {ledgerTerm.id} (Year ID: {ledgerTerm.academic_year_id})
+                            </p>
+                          ) : null;
+                        })()}
+                        {term.start_date && term.end_date && (
+                          <p className="text-sm text-gray-600">
+                            {new Date(term.start_date).toLocaleDateString()} - {new Date(term.end_date).toLocaleDateString()}
+                          </p>
+                        )}
                       </div>
                       <div className="flex space-x-2">
-                        {!term.isActive && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleSetActiveTerm(term.id)}
-                          >
+                        {!term.is_active && (
+                          <Button size="sm" variant="outline" onClick={() => handleSetActiveTerm(term.id)}>
                             Set Active
                           </Button>
                         )}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setEditingTerm(term.id)}
-                        >
+                        <Button size="sm" variant="outline" onClick={() => setEditingTerm(term.id)}>
                           <Edit2 className="w-3 h-3" />
                         </Button>
-                        {!term.isActive && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleDeleteTerm(term.id)}
-                            className="text-red-600 hover:text-red-700"
-                          >
+                        {!term.is_active && (
+                          <Button size="sm" variant="outline" onClick={() => handleDeleteTerm(term.id)} className="text-red-600 hover:text-red-700">
                             <Trash2 className="w-3 h-3" />
                           </Button>
                         )}
@@ -342,21 +481,24 @@ const AcademicTermManager = () => {
   );
 };
 
-// Component for editing a term
+const Badge = ({ children, className }: { children: React.ReactNode; className?: string }) => (
+  <span className={`inline-flex items-center px-2 py-1 rounded text-sm font-medium ${className || ''}`}>{children}</span>
+);
+
 const EditTermForm: React.FC<{
   term: AcademicTerm;
   onSave: (data: Partial<AcademicTerm>) => void;
   onCancel: () => void;
 }> = ({ term, onSave, onCancel }) => {
   const [editData, setEditData] = useState({
-    name: term.name,
+    term_name: term.term_name,
     year: term.year,
-    startDate: term.startDate,
-    endDate: term.endDate
+    start_date: term.start_date,
+    end_date: term.end_date
   });
 
   const handleSave = () => {
-    if (!editData.name || !editData.year || !editData.startDate || !editData.endDate) {
+    if (!editData.term_name || !editData.year || !editData.start_date || !editData.end_date) {
       toast({
         title: "Missing Information",
         description: "Please fill in all fields",
@@ -373,8 +515,8 @@ const EditTermForm: React.FC<{
         <div>
           <Label>Term Name</Label>
           <Input
-            value={editData.name}
-            onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+            value={editData.term_name}
+            onChange={(e) => setEditData({ ...editData, term_name: e.target.value })}
           />
         </div>
         <div>
@@ -388,16 +530,16 @@ const EditTermForm: React.FC<{
           <Label>Start Date</Label>
           <Input
             type="date"
-            value={editData.startDate}
-            onChange={(e) => setEditData({ ...editData, startDate: e.target.value })}
+            value={editData.start_date}
+            onChange={(e) => setEditData({ ...editData, start_date: e.target.value })}
           />
         </div>
         <div>
           <Label>End Date</Label>
           <Input
             type="date"
-            value={editData.endDate}
-            onChange={(e) => setEditData({ ...editData, endDate: e.target.value })}
+            value={editData.end_date}
+            onChange={(e) => setEditData({ ...editData, end_date: e.target.value })}
           />
         </div>
       </div>

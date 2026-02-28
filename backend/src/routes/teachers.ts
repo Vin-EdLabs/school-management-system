@@ -1,0 +1,281 @@
+import express from 'express';
+import bcrypt from 'bcryptjs';
+import { query } from '../db/connection.js';
+import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
+import { requireRole } from '../middleware/auth.js';
+import { setTenantContext } from '../middleware/tenant.js';
+
+function generatePin(): string {
+  return String(Math.floor(10000 + Math.random() * 90000));
+}
+
+const router = express.Router();
+
+router.use(authenticate);
+router.use(requireTenant);
+router.use(setTenantContext);
+
+// Get current teacher profile (teacher role) - must be before /:id
+router.get('/me', async (req: AuthRequest, res) => {
+  try {
+    const teacherId = req.user!.teacherId;
+    if (!teacherId || req.user!.role !== 'teacher') {
+      return res.status(403).json({ error: 'Not a teacher account' });
+    }
+    const tenantId = req.user!.tenantId!;
+    const result = await query(
+      `SELECT t.*, c.class_name, c.level, c.stream
+       FROM teachers t
+       LEFT JOIN classes c ON t.class_assigned_id = c.id
+       WHERE t.id = $1 AND t.tenant_id = $2`,
+      [teacherId, tenantId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Teacher not found' });
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Get me error:', error);
+    res.status(500).json({ error: 'Failed to fetch profile' });
+  }
+});
+
+// Get current teacher's classes (from class_teachers + main assignment)
+router.get('/me/classes', async (req: AuthRequest, res) => {
+  try {
+    const teacherId = req.user!.teacherId;
+    if (!teacherId || req.user!.role !== 'teacher') {
+      return res.status(403).json({ error: 'Not a teacher account' });
+    }
+    const tenantId = req.user!.tenantId!;
+    const result = await query(
+      `SELECT DISTINCT c.id, c.class_name, c.level, c.stream,
+         COALESCE(ct.is_main, (c.assigned_teacher_id = $1::int)) as is_main,
+         (SELECT COUNT(*) FROM students s WHERE s.class_assigned_id = c.id AND s.tenant_id = $2) as student_count
+       FROM classes c
+       LEFT JOIN class_teachers ct ON ct.class_id = c.id AND ct.teacher_id = $1::int AND ct.tenant_id = $2
+       WHERE c.tenant_id = $2
+         AND (c.assigned_teacher_id = $1::int OR ct.teacher_id IS NOT NULL)
+       ORDER BY c.level, c.stream`,
+      [teacherId, tenantId]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Get me classes error:', error);
+    res.status(500).json({ error: 'Failed to fetch classes' });
+  }
+});
+
+// Get all teachers
+router.get('/', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const { classId } = req.query;
+    
+    let queryText = `
+      SELECT t.*, c.class_name, c.level, c.stream
+      FROM teachers t
+      LEFT JOIN classes c ON t.class_assigned_id = c.id
+      WHERE t.tenant_id = $1
+    `;
+    const params: any[] = [tenantId];
+    
+    if (classId) {
+      queryText += ' AND t.class_assigned_id = $2';
+      params.push(classId);
+    }
+    
+    queryText += ' ORDER BY t.created_at DESC';
+    
+    const result = await query(queryText, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Get teachers error:', error);
+    res.status(500).json({ error: 'Failed to fetch teachers' });
+  }
+});
+
+// Get single teacher
+router.get('/:id', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const { id } = req.params;
+    
+    const result = await query(
+      `SELECT t.*, c.class_name, c.level, c.stream
+       FROM teachers t
+       LEFT JOIN classes c ON t.class_assigned_id = c.id
+       WHERE t.id = $1 AND t.tenant_id = $2`,
+      [id, tenantId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Teacher not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Get teacher error:', error);
+    res.status(500).json({ error: 'Failed to fetch teacher' });
+  }
+});
+
+// Create teacher
+router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const teacherData = req.body;
+    
+    // Generate staff ID
+    const existingStaffIds = await query(
+      'SELECT staff_id FROM teachers WHERE tenant_id = $1 AND staff_id LIKE $2',
+      [tenantId, 'TCH%']
+    );
+    
+    let staffId = 'TCH001';
+    if (existingStaffIds.rows.length > 0) {
+      const maxId = Math.max(
+        ...existingStaffIds.rows.map(r => {
+          const num = parseInt(r.staff_id.slice(3)) || 0;
+          return num;
+        })
+      );
+      staffId = `TCH${(maxId + 1).toString().padStart(3, '0')}`;
+    }
+    
+    const result = await query(
+      `INSERT INTO teachers (
+        tenant_id, full_name, gender, date_of_birth, staff_id, phone_number,
+        email, address, subjects_taught, class_assigned_id, employment_date,
+        monthly_salary, employment_status, notes
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
+      ) RETURNING *`,
+      [
+        tenantId,
+        teacherData.full_name,
+        teacherData.gender || null,
+        teacherData.date_of_birth || null,
+        staffId,
+        teacherData.phone_number || null,
+        teacherData.email || null,
+        teacherData.address || null,
+        teacherData.subjects_taught || [],
+        teacherData.class_assigned_id || null,
+        teacherData.employment_date || null,
+        teacherData.monthly_salary || null,
+        teacherData.employment_status || null,
+        teacherData.notes || null,
+      ]
+    );
+    
+    const teacherId = result.rows[0].id;
+    const loginPin = generatePin();
+    const passwordHash = await bcrypt.hash(loginPin, 10);
+    
+    await query(
+      `INSERT INTO users (tenant_id, username, password_hash, role, teacher_id) VALUES ($1, $2, $3, 'teacher', $4)`,
+      [tenantId, staffId, passwordHash, String(teacherId)]
+    );
+    
+    await query(
+      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
+      [tenantId, req.user!.id, 'CREATE', 'TEACHER', teacherId]
+    );
+    
+    res.status(201).json({
+      ...result.rows[0],
+      loginStaffId: staffId,
+      loginPin,
+      loginMessage: `Teacher can login with Staff ID: ${staffId} and PIN: ${loginPin}`,
+    });
+  } catch (error: any) {
+    console.error('Create teacher error:', error);
+    if (error.code === '23505') {
+      return res.status(409).json({ error: 'Staff ID already exists' });
+    }
+    res.status(500).json({ error: 'Failed to create teacher' });
+  }
+});
+
+// Update teacher
+router.put('/:id', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const { id } = req.params;
+    const updates = req.body;
+    
+    const updateFields: string[] = [];
+    const values: any[] = [];
+    let paramCount = 1;
+    
+    const allowedFields = [
+      'full_name', 'gender', 'date_of_birth', 'phone_number', 'email',
+      'address', 'subjects_taught', 'class_assigned_id', 'employment_date',
+      'monthly_salary', 'employment_status', 'notes'
+    ];
+    
+    for (const field of allowedFields) {
+      if (updates[field] !== undefined) {
+        updateFields.push(`${field} = $${paramCount}`);
+        values.push(updates[field]);
+        paramCount++;
+      }
+    }
+    
+    if (updateFields.length === 0) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
+    
+    updateFields.push(`updated_at = CURRENT_TIMESTAMP`);
+    values.push(tenantId, id);
+    
+    const result = await query(
+      `UPDATE teachers SET ${updateFields.join(', ')} WHERE tenant_id = $${paramCount} AND id = $${paramCount + 1} RETURNING *`,
+      values
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Teacher not found' });
+    }
+    
+    // Log update
+    await query(
+      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
+      [tenantId, req.user!.id, 'UPDATE', 'TEACHER', parseInt(id)]
+    );
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Update teacher error:', error);
+    res.status(500).json({ error: 'Failed to update teacher' });
+  }
+});
+
+// Delete teacher
+router.delete('/:id', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const { id } = req.params;
+    
+    const result = await query(
+      'DELETE FROM teachers WHERE id = $1 AND tenant_id = $2 RETURNING id',
+      [id, tenantId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Teacher not found' });
+    }
+    
+    // Log deletion
+    await query(
+      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
+      [tenantId, req.user!.id, 'DELETE', 'TEACHER', parseInt(id)]
+    );
+    
+    res.json({ message: 'Teacher deleted successfully' });
+  } catch (error) {
+    console.error('Delete teacher error:', error);
+    res.status(500).json({ error: 'Failed to delete teacher' });
+  }
+});
+
+export default router;

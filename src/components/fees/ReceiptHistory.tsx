@@ -15,16 +15,9 @@ const ReceiptHistory = () => {
   const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [showReceipt, setShowReceipt] = useState(false);
 
-  // Generate receipt numbers consistently (same logic as RecordPayment)
-  const generateReceiptNumber = (paymentId: string, date: string) => {
-    const timestamp = new Date(date).getTime().toString().slice(-6);
-    const idHash = paymentId.slice(-3);
-    return `RG${timestamp}${idHash}`;
-  };
-
   const filteredPayments = payments.filter(payment => {
     const student = students.find(s => s.id === payment.studentId);
-    const receiptNumber = generateReceiptNumber(payment.id, payment.date);
+    const receiptNumber = payment.receiptNumber || '';
     
     return searchTerm === '' || 
       receiptNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -47,7 +40,7 @@ const ReceiptHistory = () => {
       date: payment.date,
       paymentMethod: payment.paymentMethod,
       term: payment.term,
-      receiptNumber: generateReceiptNumber(payment.id, payment.date),
+      receiptNumber: payment.receiptNumber || `R${payment.id.toString().padStart(8, '0')}`,
       notes: payment.notes
     };
 
@@ -98,7 +91,7 @@ const ReceiptHistory = () => {
                   ) : (
                     filteredPayments.map((payment) => {
                       const student = students.find(s => s.id === payment.studentId);
-                      const receiptNumber = generateReceiptNumber(payment.id, payment.date);
+                      const receiptNumber = payment.receiptNumber || '-';
                       return (
                         <TableRow key={payment.id}>
                           <TableCell>

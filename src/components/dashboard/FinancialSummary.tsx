@@ -4,24 +4,29 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ChevronDown, ChevronUp, DollarSign, TrendingUp, Calculator } from 'lucide-react';
 import { useData } from '../../contexts/DataContext';
+import { getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
 
 const FinancialSummary = () => {
   const [isExpanded, setIsExpanded] = useState(false);
   const { payments, income, expenses } = useData();
 
-  const currentTerm = 'Term 1 2024';
+  const currentTerm = getActiveAcademicTerm();
+  const currentYear = getActiveAcademicYear();
 
-  // Calculate fees collected
+  // Calculate fees collected (from payments - fee payments are NOT in income table)
   const feesCollected = payments
-    .filter(payment => payment.term === currentTerm)
+    .filter(payment => {
+      const pt = payment.term || '';
+      return pt === currentTerm || pt.includes(currentTerm) || currentTerm.includes(pt);
+    })
     .reduce((sum, payment) => sum + payment.amount, 0);
 
-  // Calculate other income
+  // Calculate other income (exclude fee payments - they are in payments)
   const otherIncome = income
+    .filter(inc => inc.category !== 'Fee Payment')
     .filter(inc => {
       const incomeDate = new Date(inc.date);
-      const currentYear = new Date().getFullYear();
-      return incomeDate.getFullYear() === currentYear;
+      return incomeDate.getFullYear().toString() === currentYear;
     })
     .reduce((sum, inc) => sum + inc.amount, 0);
 

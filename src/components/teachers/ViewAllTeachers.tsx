@@ -8,10 +8,10 @@ import { Button } from '@/components/ui/button';
 import { useData } from '../../contexts/DataContext';
 import { useAudit } from '../../contexts/AuditContext';
 import { Search, Edit, Trash2, Users, Eye } from 'lucide-react';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { toast } from '@/hooks/use-toast';
 import TeacherDetailsDialog from './TeacherDetailsDialog';
 import EditTeacherDialog from './EditTeacherDialog';
-import PasswordAuthDialog from '../common/PasswordAuthDialog';
 
 const ViewAllTeachers = () => {
   const { teachers, classes, deleteTeacher } = useData();
@@ -22,8 +22,6 @@ const ViewAllTeachers = () => {
   const [selectedTeacher, setSelectedTeacher] = useState<any>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
-  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
-  const [pendingAction, setPendingAction] = useState<{type: 'edit' | 'delete', teacher: any} | null>(null);
 
   const filteredTeachers = teachers.filter(teacher => {
     const matchesSearch = searchTerm === '' || 
@@ -58,48 +56,30 @@ const ViewAllTeachers = () => {
   };
 
   const handleEditTeacher = (teacher: any) => {
-    setPendingAction({ type: 'edit', teacher });
-    setShowPasswordDialog(true);
+    addAuditLog({
+      actionType: 'Edit',
+      module: 'Teachers',
+      itemId: teacher.id,
+      itemName: teacher.fullName,
+    });
+    setSelectedTeacher(teacher);
+    setShowEditDialog(true);
   };
 
   const handleDeleteClick = (teacher: any) => {
-    setPendingAction({ type: 'delete', teacher });
-    setShowPasswordDialog(true);
-  };
-
-  const handlePasswordSuccess = (reason?: string) => {
-    if (!pendingAction) return;
-
-    if (pendingAction.type === 'edit') {
-      // Add audit log for edit attempt
-      addAuditLog({
-        actionType: 'Edit',
-        module: 'Teachers',
-        itemId: pendingAction.teacher.id,
-        itemName: pendingAction.teacher.fullName,
-        reason: reason
-      });
-
-      setSelectedTeacher(pendingAction.teacher);
-      setShowEditDialog(true);
-    } else if (pendingAction.type === 'delete') {
-      // Add audit log for delete
+    if (window.confirm(`Are you sure you want to delete ${teacher.fullName}?`)) {
       addAuditLog({
         actionType: 'Delete',
         module: 'Teachers',
-        itemId: pendingAction.teacher.id,
-        itemName: pendingAction.teacher.fullName,
-        reason: reason
+        itemId: teacher.id,
+        itemName: teacher.fullName,
       });
-
-      deleteTeacher(pendingAction.teacher.id);
+      deleteTeacher(teacher.id);
       toast({
         title: "Teacher Deleted",
-        description: `${pendingAction.teacher.fullName} has been removed from the system`,
+        description: `${teacher.fullName} has been removed from the system`,
       });
     }
-
-    setPendingAction(null);
   };
 
   return (
@@ -157,6 +137,7 @@ const ViewAllTeachers = () => {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-14">Photo</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Staff ID</TableHead>
                   <TableHead>Contact</TableHead>
@@ -170,13 +151,20 @@ const ViewAllTeachers = () => {
               <TableBody>
                 {filteredTeachers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={9} className="text-center py-8 text-gray-500">
                       No teachers found matching your criteria
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredTeachers.map((teacher) => (
                     <TableRow key={teacher.id}>
+                      <TableCell>
+                        <Avatar className="h-10 w-10 rounded-full border border-slate-200">
+                          <AvatarFallback className="bg-slate-200 text-slate-600 text-sm font-medium">
+                            {(teacher.fullName || 'U').split(/\s+/).map(n => n[0]).join('').slice(0, 2) || '?'}
+                          </AvatarFallback>
+                        </Avatar>
+                      </TableCell>
                       <TableCell>
                         <div>
                           <div className="font-medium">{teacher.fullName}</div>
@@ -283,18 +271,6 @@ const ViewAllTeachers = () => {
         }}
       />
 
-      {/* Password Authentication Dialog */}
-      <PasswordAuthDialog
-        open={showPasswordDialog}
-        onClose={() => {
-          setShowPasswordDialog(false);
-          setPendingAction(null);
-        }}
-        onSuccess={handlePasswordSuccess}
-        action={pendingAction?.type || 'edit'}
-        itemName={pendingAction?.teacher?.fullName || ''}
-        module="Teachers"
-      />
     </>
   );
 };

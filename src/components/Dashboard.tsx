@@ -11,15 +11,21 @@ import CalendarModule from './CalendarModule';
 import FeesModule from './fees/FeesModule';
 import IncomeModule from './income/IncomeModule';
 import ExpensesModule from './expenses/ExpensesModule';
+import PayrollModule from './payroll/PayrollModule';
 import ReportsModule from './reports/ReportsModule';
 import SettingsModule from './settings/SettingsModule';
+import UsersModule from './users/UsersModule';
 import AuditModule from './audit/AuditModule';
 import PrintFeeStatusModule from './fees/PrintFeeStatusModule';
 import TeacherDashboard from './teacher/TeacherDashboard';
 import TeacherClassesModule from './teacher/TeacherClassesModule';
 import AttendanceModule from './teacher/AttendanceModule';
 import GradesModule from './teacher/GradesModule';
+import TeacherProfileModule from './teacher/TeacherProfileModule';
+import TeacherPaymentHistoryModule from './teacher/TeacherPaymentHistoryModule';
 import AiChatModule from './ai/AiChatModule';
+import SupportChatModule from './support/SupportChatModule';
+import RecordsModule from './records/RecordsModule';
 import { useAuth } from '../contexts/AuthContext';
 
 const Dashboard = () => {
@@ -75,20 +81,32 @@ const Dashboard = () => {
         return <AttendanceModule />;
       case 'grades':
         return <GradesModule />;
+      case 'teacher-profile':
+        return <TeacherProfileModule />;
+      case 'teacher-payment-history':
+        return <TeacherPaymentHistoryModule />;
       case 'fees':
         return <FeesModule />;
       case 'income':
         return <IncomeModule />;
       case 'expenses':
         return <ExpensesModule />;
+      case 'payroll':
+        return <PayrollModule />;
       case 'reports':
         return <ReportsModule />;
       case 'print-fee-status':
         return <PrintFeeStatusModule />;
+      case 'users':
+        return <UsersModule />;
       case 'settings':
         return <SettingsModule />;
       case 'audit':
         return <AuditModule />;
+      case 'support-chat':
+        return <SupportChatModule />;
+      case 'records':
+        return <RecordsModule />;
       default:
         if (user?.role === 'teacher') {
           return <TeacherDashboard />;

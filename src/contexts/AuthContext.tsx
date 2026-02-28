@@ -1,21 +1,27 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { apiService } from '../services/api';
 
-export type UserRole = 'administrator' | 'finance' | 'super-admin' | 'teacher';
+export type UserRole = 'administrator' | 'finance' | 'super-admin' | 'teacher' | 'staff';
 
 interface User {
+  id: number;
   username: string;
   role: UserRole;
-  teacherId?: string; // For teachers to identify which classes they teach
+  tenantId: number | null;
+  teacherId?: string;
+  isPrimaryAdmin?: boolean;
 }
 
 interface AuthContextType {
   isAuthenticated: boolean;
   user: User | null;
-  login: (username: string, password: string, role: UserRole) => boolean;
+  login: (username: string, password: string, role: UserRole, tenantId?: number) => Promise<boolean>;
   logout: () => void;
-  changePassword: (newPassword: string) => void;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
+  verifyPassword: (password: string) => Promise<boolean>;
   hasAccess: (module: string) => boolean;
+  loading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -23,90 +29,141 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<User | null>(null);
-  
-  // Default passwords for each role
-  const [passwords, setPasswords] = useState({
-    'super-admin': 'superadmin123',
-    'finance': 'finance123', 
-    'administrator': 'admin123',
-    'teacher': 'teacher123'
-  });
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const authStatus = localStorage.getItem('rosaGardensAuth');
+    const token = localStorage.getItem('authToken');
     const savedUser = localStorage.getItem('rosaGardensUser');
-    const savedPasswords = localStorage.getItem('rosaGardensPasswords');
     
-    if (authStatus === 'true' && savedUser) {
-      setIsAuthenticated(true);
-      setUser(JSON.parse(savedUser));
-    }
-    
-    if (savedPasswords) {
-      setPasswords(JSON.parse(savedPasswords));
+    if (token && savedUser) {
+      // Verify token is still valid
+      apiService.get('/auth/me')
+        .then((response: any) => {
+          if (response.user) {
+            setIsAuthenticated(true);
+            setUser({ ...response.user, isPrimaryAdmin: response.user.isPrimaryAdmin });
+          } else {
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('rosaGardensUser');
+          }
+        })
+        .catch(() => {
+          localStorage.removeItem('authToken');
+          localStorage.removeItem('rosaGardensUser');
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+    } else {
+      setLoading(false);
     }
   }, []);
 
-  const login = (username: string, password: string, role: UserRole): boolean => {
-    // Check if username is 'admin' and password matches the role's password
-    if (username === 'admin' && password === passwords[role]) {
-      const newUser: User = { 
-        username, 
-        role,
-        // For demo purposes, assign teacherId for teacher role
-        ...(role === 'teacher' && { teacherId: 'teacher-1' })
+  const login = async (username: string, password: string, role: UserRole, tenantId?: number): Promise<boolean> => {
+    try {
+      const payload: { username: string; password: string; tenantId?: number } = {
+        username,
+        password,
       };
-      setIsAuthenticated(true);
-      setUser(newUser);
-      localStorage.setItem('rosaGardensAuth', 'true');
-      localStorage.setItem('rosaGardensUser', JSON.stringify(newUser));
+      if (tenantId !== undefined && tenantId !== null && !isNaN(tenantId)) {
+        payload.tenantId = Number(tenantId);
+      }
+      const response: any = await apiService.post('/auth/login', payload);
       
-      // Add audit log for login (will be handled by AuditContext after login)
-      setTimeout(() => {
-        const event = new CustomEvent('userLogin', { 
-          detail: { username, role, timestamp: new Date() } 
-        });
-        window.dispatchEvent(event);
-      }, 100);
-      
-      return true;
+      if (response.token && response.user) {
+        localStorage.setItem('authToken', response.token);
+        localStorage.setItem('rosaGardensUser', JSON.stringify(response.user));
+        setIsAuthenticated(true);
+        setUser({ ...response.user, isPrimaryAdmin: response.user.isPrimaryAdmin });
+        
+        // Add audit log for login (will be handled by backend)
+        setTimeout(() => {
+          const event = new CustomEvent('userLogin', { 
+            detail: { username, role, timestamp: new Date() } 
+          });
+          window.dispatchEvent(event);
+        }, 100);
+        
+        return true;
+      }
+      return false;
+    } catch (error: any) {
+      console.error('Login error:', error);
+      const msg = error?.message || error?.response?.data?.error || 'Connection failed';
+      throw new Error(typeof msg === 'string' ? msg : 'Login failed');
     }
-    return false;
   };
 
   const logout = () => {
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      apiService.post('/auth/logout').catch(() => {});
+    }
     setIsAuthenticated(false);
     setUser(null);
-    localStorage.removeItem('rosaGardensAuth');
+    localStorage.removeItem('authToken');
     localStorage.removeItem('rosaGardensUser');
   };
 
-  const changePassword = (newPassword: string) => {
-    if (!user) return;
-    
-    const updatedPasswords = {
-      ...passwords,
-      [user.role]: newPassword
-    };
-    setPasswords(updatedPasswords);
-    localStorage.setItem('rosaGardensPasswords', JSON.stringify(updatedPasswords));
+  const changePassword = async (currentPassword: string, newPassword: string): Promise<boolean> => {
+    if (!user) return false;
+    try {
+      await apiService.post('/auth/change-password', { currentPassword, newPassword });
+      return true;
+    } catch (error: any) {
+      console.error('Change password error:', error);
+      return false;
+    }
+  };
+
+  const verifyPassword = async (password: string): Promise<boolean> => {
+    if (!user) return false;
+    try {
+      await apiService.post('/auth/verify-password', { password });
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   const hasAccess = (module: string): boolean => {
     if (!user) return false;
-    
-    const rolePermissions = {
-      'administrator': ['students', 'teachers', 'classes', 'calendar', 'dashboard', 'settings-password-only', 'print-fee-status'],
-      'finance': ['students-view-only', 'teachers-view-only', 'fees', 'income', 'expenses', 'reports', 'financial-dashboard', 'dashboard', 'settings-password-only', 'print-fee-status', 'ai-assistant'],
-      'teacher': ['teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'calendar', 'settings-password-only'],
-      'super-admin': ['students', 'teachers', 'classes', 'calendar', 'fees', 'income', 'expenses', 'reports', 'dashboard', 'financial-dashboard', 'settings', 'audit', 'print-fee-status', 'teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'ai-assistant']
-    };
 
-    return rolePermissions[user.role].includes(module);
+    // Super-admin: full access including school creation
+    if (user.role === 'super-admin') {
+      return ['students', 'teachers', 'classes', 'calendar', 'fees', 'income', 'expenses', 'payroll', 'reports', 'dashboard', 'financial-dashboard', 'settings', 'settings-full', 'users', 'audit', 'print-fee-status', 'teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'ai-assistant', 'schools', 'records'].includes(module);
+    }
+
+    // Primary admin: full school control except school creation (sees everything)
+    if (user.role === 'administrator' && user.isPrimaryAdmin) {
+      return ['students', 'teachers', 'classes', 'calendar', 'fees', 'income', 'expenses', 'payroll', 'reports', 'dashboard', 'financial-dashboard', 'settings', 'settings-full', 'users', 'audit', 'print-fee-status', 'teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'ai-assistant', 'support-chat', 'records'].includes(module);
+    }
+
+    // Additional administrators: academic only
+    if (user.role === 'administrator') {
+      return ['students', 'teachers', 'classes', 'calendar', 'dashboard', 'settings', 'settings-password-only', 'print-fee-status', 'support-chat', 'records'].includes(module);
+    }
+
+    // Finance: financial sections only
+    if (user.role === 'finance') {
+      return ['students-view-only', 'teachers-view-only', 'fees', 'income', 'expenses', 'payroll', 'reports', 'financial-dashboard', 'dashboard', 'settings', 'settings-password-only', 'print-fee-status', 'ai-assistant', 'support-chat'].includes(module);
+    }
+
+    // Teacher: teacher section + profile + payment history
+    if (user.role === 'teacher') {
+      return ['teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'calendar', 'teacher-profile', 'teacher-payment-history', 'settings', 'settings-password-only'].includes(module);
+    }
+
+    // Staff (non-teaching): similar to teacher
+    if (user.role === 'staff') {
+      return ['teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'calendar', 'teacher-profile', 'teacher-payment-history', 'settings', 'settings-password-only'].includes(module);
+    }
+
+    return false;
   };
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, logout, changePassword, hasAccess }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, login, logout, changePassword, verifyPassword, hasAccess, loading }}>
       {children}
     </AuthContext.Provider>
   );

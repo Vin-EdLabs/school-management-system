@@ -6,27 +6,33 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
-import { Search, Filter } from 'lucide-react';
+import { useActiveTerm } from '../../contexts/ActiveTermContext';
+import { Search } from 'lucide-react';
 
 const ViewPayments = () => {
   const { payments, students, classes } = useData();
+  const { currentTerm } = useActiveTerm();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterClass, setFilterClass] = useState('all-classes');
   const [filterTerm, setFilterTerm] = useState('all-terms');
 
-  const filteredPayments = payments.filter(payment => {
-    const student = students.find(s => s.id === payment.studentId);
-    if (!student) return false;
-
-    const matchesSearch = searchTerm === '' || 
-      student.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      student.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      student.studentId.includes(searchTerm);
-    
-    const matchesClass = filterClass === 'all-classes' || student.classAssigned === filterClass;
-    const matchesTerm = filterTerm === 'all-terms' || payment.term === filterTerm;
-
-    return matchesSearch && matchesClass && matchesTerm;
+  const allPayments = Array.isArray(payments) ? payments : [];
+  const filteredPayments = allPayments.filter(payment => {
+    const student = (students || []).find((s: any) =>
+      String(s?.id) === String(payment?.studentId) ||
+      String(s?.id) === String(payment?.studentIdNum)
+    );
+    const matchesSearch = searchTerm === '' || (student && (
+      (student.firstName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (student.lastName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (student.studentId || '').includes(searchTerm)
+    ));
+    const matchesClass = filterClass === 'all-classes' || !student || student.classAssigned === filterClass;
+    const termsMatch = filterTerm === 'all-terms' ||
+      !payment?.term ||
+      payment.term === filterTerm ||
+      (payment.term && filterTerm && (String(payment.term).includes(filterTerm) || String(filterTerm).includes(payment.term)));
+    return matchesSearch && matchesClass && termsMatch;
   });
 
   const totalAmount = filteredPayments.reduce((sum, payment) => sum + payment.amount, 0);
@@ -73,6 +79,9 @@ const ViewPayments = () => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all-terms">All Terms</SelectItem>
+                {currentTerm && currentTerm !== 'Not Set' && (
+                  <SelectItem value={currentTerm}>{currentTerm} (Active)</SelectItem>
+                )}
                 <SelectItem value="Term 1 2024">Term 1 2024</SelectItem>
                 <SelectItem value="Term 2 2024">Term 2 2024</SelectItem>
                 <SelectItem value="Term 3 2024">Term 3 2024</SelectItem>
@@ -86,6 +95,7 @@ const ViewPayments = () => {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>Receipt #</TableHead>
                 <TableHead>Student</TableHead>
                 <TableHead>Class</TableHead>
                 <TableHead>Amount</TableHead>
@@ -98,27 +108,32 @@ const ViewPayments = () => {
             <TableBody>
               {filteredPayments.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                  <TableCell colSpan={8} className="text-center py-8 text-gray-500">
                     No payments found matching your criteria
                   </TableCell>
                 </TableRow>
               ) : (
                 filteredPayments.map((payment) => {
-                  const student = students.find(s => s.id === payment.studentId);
+                  const student = (students || []).find((s: any) =>
+                    String(s?.id) === String(payment?.studentId) || String(s?.id) === String(payment?.studentIdNum)
+                  );
                   return (
-                    <TableRow key={payment.id}>
+                    <TableRow key={payment.id || payment.studentId + payment.date}>
+                      <TableCell>
+                        <span className="font-mono text-sm">{payment.receiptNumber || '-'}</span>
+                      </TableCell>
                       <TableCell>
                         <div>
                           <div className="font-medium">
-                            {student?.firstName} {student?.lastName}
+                            {student ? `${student.firstName} ${student.lastName}` : `Student #${payment.studentId || '?'}`}
                           </div>
                           <div className="text-sm text-gray-500">
-                            ID: {student?.studentId}
+                            ID: {student?.studentId ?? payment.studentId ?? '-'}
                           </div>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline">{student?.classAssigned}</Badge>
+                        <Badge variant="outline">{student?.classAssigned ?? '-'}</Badge>
                       </TableCell>
                       <TableCell>
                         <span className="font-mono font-bold text-green-600">
@@ -142,11 +157,13 @@ const ViewPayments = () => {
         </div>
 
         {/* Summary */}
-        {filteredPayments.length > 0 && (
-          <div className="mt-4 text-sm text-gray-600">
-            Showing {filteredPayments.length} of {payments.length} payments
-          </div>
-        )}
+        <div className="mt-4 text-sm text-gray-600">
+          {filteredPayments.length > 0
+            ? `Showing ${filteredPayments.length} of ${allPayments.length} payments`
+            : allPayments.length === 0
+              ? 'No payments recorded yet. Record a payment in the Record Payment tab.'
+              : 'No payments match your current filters. Try "All Terms" and "All Classes".'}
+        </div>
       </CardContent>
     </Card>
   );

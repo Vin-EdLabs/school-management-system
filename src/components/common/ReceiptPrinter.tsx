@@ -1,9 +1,11 @@
-
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { useSchool } from '../../contexts/SchoolContext';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Printer } from 'lucide-react';
+import { apiService } from '../../services/api';
+import { resolveLogoUrl } from '../../services/tenantService';
 
 interface ReceiptData {
   studentName: string;
@@ -31,6 +33,29 @@ interface ReceiptPrinterProps {
 }
 
 const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({ receiptData, onPrint, show, onClose }) => {
+  const { school } = useSchool();
+  const [receiptSettings, setReceiptSettings] = useState<{
+    postal_address?: string;
+    contact_phone?: string;
+    receipt_footer?: string;
+    bank_details?: string;
+  } | null>(null);
+  const schoolName = school?.name ?? 'School';
+  const logoUrl = resolveLogoUrl(school?.logo_url ?? null);
+
+  useEffect(() => {
+    if (show) {
+      apiService.get<Record<string, unknown>>('/settings').then((s) => {
+        setReceiptSettings({
+          postal_address: s?.postal_address as string | undefined,
+          contact_phone: s?.contact_phone as string | undefined,
+          receipt_footer: s?.receipt_footer as string | undefined,
+          bank_details: s?.bank_details as string | undefined,
+        });
+      }).catch(() => setReceiptSettings(null));
+    }
+  }, [show]);
+
   if (!show) return null;
 
   const handlePrint = () => {
@@ -90,12 +115,17 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({ receiptData, onPrint, s
         <CardContent>
           <div id="receipt-content" className="receipt watermark">
             <div className="header">
-              <div className="logo">RG</div>
-              <div className="school-name">Rosa Gardens School</div>
+              {logoUrl ? (
+                <img src={logoUrl} alt="School Logo" className="logo-img" style={{ width: 60, height: 60, objectFit: 'contain', margin: '0 auto 10px', borderRadius: 4 }} />
+              ) : (
+                <div className="logo" style={{ width: 60, height: 60, margin: '0 auto 10px', background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold', fontSize: 18 }}>
+                  {schoolName.slice(0, 2).toUpperCase()}
+                </div>
+              )}
+              <div className="school-name">{schoolName}</div>
               <div className="school-address">
-                Excellence in Education<br/>
-                P.O. Box 123, Accra, Ghana<br/>
-                Tel: +233 30 123 4567
+                {receiptSettings?.postal_address && <>{receiptSettings.postal_address}<br/></>}
+                {receiptSettings?.contact_phone && <>Tel: {receiptSettings.contact_phone}</>}
               </div>
             </div>
             
@@ -202,11 +232,20 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({ receiptData, onPrint, s
             )}
 
             <div className="footer">
-              <p><strong>Thank you for your payment!</strong></p>
-              <p>Keep this receipt for your records.</p>
+              {receiptSettings?.receipt_footer ? (
+                <p>{receiptSettings.receipt_footer}</p>
+              ) : (
+                <>
+                  <p><strong>Thank you for your payment!</strong></p>
+                  <p>Keep this receipt for your records.</p>
+                </>
+              )}
+              {receiptSettings?.bank_details && (
+                <p style={{ marginTop: 8, fontSize: 11 }}>{receiptSettings.bank_details}</p>
+              )}
               <p style={{ marginTop: '10px', fontSize: '10px' }}>
-                This is an official receipt from Rosa Gardens School<br/>
-                Academic Year: {receiptData.year || '2024'} | {receiptData.term}
+                Official receipt from {schoolName}<br/>
+                Academic Year: {receiptData.year || new Date().getFullYear()} | {receiptData.term}
               </p>
             </div>
           </div>

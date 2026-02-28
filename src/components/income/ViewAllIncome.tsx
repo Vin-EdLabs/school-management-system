@@ -15,6 +15,7 @@ interface Income {
   receivedBy: string;
   date: string;
   notes?: string;
+  category?: string;
 }
 
 const ViewAllIncome: React.FC = () => {
@@ -22,7 +23,10 @@ const ViewAllIncome: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSource, setFilterSource] = useState('all');
 
-  const filteredIncome = income.filter((item: Income) => {
+  // Exclude fee payments - they are tracked in the Fees module, not the Income section
+  const incomeExcludingFees = income.filter((item: Income) => item.category !== 'Fee Payment');
+
+  const filteredIncome = incomeExcludingFees.filter((item: Income) => {
     const matchesSearch =
       searchTerm === '' ||
       item.source?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -36,7 +40,7 @@ const ViewAllIncome: React.FC = () => {
   const totalAmount = filteredIncome.reduce((sum: number, item: Income) => sum + item.amount, 0);
 
   const uniqueSources = [...new Set(
-    income.map((item: Income) => item.source).filter((s) => s && s.trim() !== '')
+    incomeExcludingFees.map((item: Income) => item.source).filter((s) => s && s.trim() !== '')
   )];
 
   return (
@@ -120,7 +124,7 @@ const ViewAllIncome: React.FC = () => {
 
         {filteredIncome.length > 0 && (
           <div className="mt-4 text-sm text-gray-600">
-            Showing {filteredIncome.length} of {income.length} income records
+            Showing {filteredIncome.length} of {incomeExcludingFees.length} income records (fee payments excluded)
           </div>
         )}
       </CardContent>

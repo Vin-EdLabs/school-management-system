@@ -9,7 +9,7 @@ import { Edit, Eye, Search, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useClasses } from '../../hooks/useClasses';
 import { useDeleteStudent, useStudents } from '../../hooks/useStudents';
-import PasswordAuthDialog from '../common/PasswordAuthDialog';
+import PasswordAuthDialog from '../../components/common/PasswordAuthDialog';
 import EditStudentDialog from './EditStudentDialog';
 import StudentDetailsDialog from './StudentDetailsDialog';
 

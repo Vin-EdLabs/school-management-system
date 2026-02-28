@@ -36,12 +36,8 @@ import {
   Wallet
 } from 'lucide-react';
 import React from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-
-interface AppSidebarProps {
-  activeModule: string;
-  setActiveModule: (module: string) => void;
-}
 
 // Clean menu configuration for easy backend integration
 const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
@@ -188,9 +184,10 @@ const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
 const MenuSection: React.FC<{
   items: any[];
   label: string;
-  activeModule: string;
-  setActiveModule: (module: string) => void;
-}> = ({ items, label, activeModule, setActiveModule }) => {
+  activePath: string;
+}> = ({ items, label, activePath }) => {
+  const navigate = useNavigate();
+
   if (items.length === 0) return null;
 
   return (
@@ -203,8 +200,8 @@ const MenuSection: React.FC<{
           {items.map((item) => (
             <SidebarMenuItem key={item.id}>
               <SidebarMenuButton
-                isActive={activeModule === item.id}
-                onClick={() => setActiveModule(item.id)}
+                isActive={activePath === `/${item.id}` || (activePath === '/dashboard' && item.id === 'dashboard')}
+                onClick={() => navigate(`/${item.id}`)}
                 className="w-full"
                 tooltip={item.label}
               >
@@ -224,9 +221,12 @@ const MenuSection: React.FC<{
   );
 };
 
-export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveModule }) => {
+export const AppSidebar: React.FC = () => {
   const { logout, hasAccess } = useAuth();
   const { state, toggleSidebar } = useSidebar();
+  const location = useLocation();
+
+  const activePath = location.pathname;
 
   const menuItems = getMenuItems(hasAccess);
 
@@ -252,32 +252,27 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
         <MenuSection
           items={menuItems.dashboard}
           label="Dashboard"
-          activeModule={activeModule}
-          setActiveModule={setActiveModule}
+          activePath={activePath}
         />
         <MenuSection
           items={menuItems.academic}
           label="Academic"
-          activeModule={activeModule}
-          setActiveModule={setActiveModule}
+          activePath={activePath}
         />
         <MenuSection
           items={menuItems.teaching}
           label="Teaching"
-          activeModule={activeModule}
-          setActiveModule={setActiveModule}
+          activePath={activePath}
         />
         <MenuSection
           items={menuItems.financial}
           label="Financial"
-          activeModule={activeModule}
-          setActiveModule={setActiveModule}
+          activePath={activePath}
         />
         <MenuSection
           items={menuItems.system}
           label="System"
-          activeModule={activeModule}
-          setActiveModule={setActiveModule}
+          activePath={activePath}
         />
 
         <SidebarSeparator className="my-2" />
@@ -285,8 +280,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
         <MenuSection
           items={menuItems.ai}
           label="AI Tools"
-          activeModule={activeModule}
-          setActiveModule={setActiveModule}
+          activePath={activePath}
         />
       </SidebarContent>
 

@@ -1,4 +1,4 @@
-
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import useExpenses from '@/hooks/useExpenses';
@@ -10,28 +10,28 @@ import useAcademicTerms from '@/hooks/useAcademicTerms';
 import useClasses from '@/hooks/useClasses';
 import {
   AlertCircle,
-  Calculator,
+  ArrowUpRight,
+  BarChart3,
   ChevronLeft,
   ChevronRight,
   CreditCard,
+  DollarSign,
   FileText,
-  Plus,
+  PiggyBank,
   Receipt,
   TrendingDown,
   TrendingUp,
-  Users
+  Users,
+  Wallet
 } from 'lucide-react';
-import { useState } from 'react';
-import { CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import React, { useState } from 'react';
+import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { calculateStudentFees, getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
 import OutstandingFees from '../fees/OutstandingFees';
 import FinancialSummary from './FinancialSummary';
 
-interface FinancialDashboardProps {
-  onNavigate?: (module: string) => void;
-}
-
-const FinancialDashboard = ({ onNavigate }: FinancialDashboardProps) => {
+const FinancialDashboard = () => {
+  const navigate = useNavigate();
   const { students } = useStudents();
   const { payments } = usePayments();
   const { income } = useIncome();
@@ -253,15 +253,16 @@ const FinancialDashboard = ({ onNavigate }: FinancialDashboardProps) => {
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={monthlyIncomeData}>
+                  <BarChart data={monthlyIncomeData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="month" />
                     <YAxis />
                     <Tooltip formatter={(value) => [`GHS ${value}`, 'Amount']} />
-                    <Line type="monotone" dataKey="fees" stroke="#3B82F6" name="Fees" strokeWidth={2} />
-                    <Line type="monotone" dataKey="otherIncome" stroke="#10B981" name="Other Income" strokeWidth={2} />
-                    <Line type="monotone" dataKey="total" stroke="#8B5CF6" name="Total" strokeWidth={3} />
-                  </LineChart>
+                    <Legend />
+                    <Bar dataKey="fees" fill="#3B82F6" name="Fees" />
+                    <Bar dataKey="otherIncome" fill="#10B981" name="Other Income" />
+                    <Bar dataKey="total" fill="#8B5CF6" name="Total" />
+                  </BarChart>
                 </ResponsiveContainer>
               </CardContent>
             </Card>
@@ -325,36 +326,48 @@ const FinancialDashboard = ({ onNavigate }: FinancialDashboardProps) => {
               <CardHeader>
                 <CardTitle>Quick Financial Actions</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Button
-                  onClick={() => onNavigate?.('fees')}
-                  className="w-full justify-start bg-green-50 text-green-700 hover:bg-green-100 border border-green-200"
+                  onClick={() => navigate('/fees')}
+                  variant="outline"
+                  className="w-full justify-start h-12 bg-green-50/50 text-green-700 border-green-200 hover:bg-green-100 hover:border-green-300 transition-all font-medium"
                 >
-                  <Receipt className="w-4 h-4 mr-2" />
-                  Record Fee Payment
+                  <Receipt className="w-5 h-5 mr-3" />
+                  Record Fees
                 </Button>
                 <Button
-                  onClick={() => onNavigate?.('income')}
-                  className="w-full justify-start bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200"
+                  onClick={() => navigate('/income')}
+                  variant="outline"
+                  className="w-full justify-start h-12 bg-blue-50/50 text-blue-700 border-blue-200 hover:bg-blue-100 hover:border-blue-300 transition-all font-medium"
                 >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Other Income
+                  <TrendingUp className="w-5 h-5 mr-3" />
+                  Other Income
                 </Button>
                 <Button
-                  onClick={() => onNavigate?.('expenses')}
-                  className="w-full justify-start bg-red-50 text-red-700 hover:bg-red-100 border border-red-200"
+                  onClick={() => navigate('/expenses')}
+                  variant="outline"
+                  className="w-full justify-start h-12 bg-red-50/50 text-red-700 border-red-200 hover:bg-red-100 hover:border-red-300 transition-all font-medium"
                 >
-                  <FileText className="w-4 h-4 mr-2" />
-                  Record Expense
+                  <TrendingDown className="w-5 h-5 mr-3" />
+                  Add Expense
                 </Button>
                 <Button
-                  onClick={() => onNavigate?.('reports')}
-                  className="w-full justify-start bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200"
+                  onClick={() => navigate('/staff-payroll')}
+                  variant="outline"
+                  className="w-full justify-start h-12 bg-purple-50/50 text-purple-700 border-purple-200 hover:bg-purple-100 hover:border-purple-300 transition-all font-medium"
                 >
-                  <Calculator className="w-4 h-4 mr-2" />
-                  Generate Financial Report
+                  <Wallet className="w-5 h-5 mr-3" />
+                  Process Payroll
                 </Button>
-              </CardContent>
+                <Button
+                  onClick={() => navigate('/reports')}
+                  variant="outline"
+                  className="w-full justify-start h-12 col-span-1 sm:col-span-2 bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 hover:border-slate-300 transition-all font-medium"
+                >
+                  <BarChart3 className="w-5 h-5 mr-3" />
+                  Financial Reports
+                </Button>
+              </div>
             </Card>
           </div>
         </div>

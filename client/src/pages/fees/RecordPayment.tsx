@@ -12,7 +12,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Link } from 'react-router-dom';
 import React, { useState } from 'react';
 import { calculateStudentFees } from '../../utils/feeCalculations';
-import ReceiptPrinter from '../common/ReceiptPrinter';
+import ReceiptPrinter from '../../components/common/ReceiptPrinter';
 import useClasses from '@/hooks/useClasses';
 import useFeeStructures from '@/hooks/useFeeStructures';
 import usePayments from '@/hooks/usePayments';

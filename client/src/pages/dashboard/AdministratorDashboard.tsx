@@ -1,22 +1,22 @@
-
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import useClasses from '@/hooks/useClasses';
 import useFeeStructures from '@/hooks/useFeeStructures';
 import usePayments from '@/hooks/usePayments';
 import useStudents from '@/hooks/useStudents';
 import useTeachers from '@/hooks/useTeachers';
 import useAcademicTerms from '@/hooks/useAcademicTerms';
-import { AlertCircle, BookOpen, DollarSign, Eye, GraduationCap, Users } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { AlertCircle, BarChart3, BookOpen, CreditCard, DollarSign, Eye, GraduationCap, LayoutDashboard, Settings, UserPlus, Users } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import { calculateStudentFeeStatus, getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
 
-interface AdministratorDashboardProps {
-  onNavigate?: (module: string) => void;
-}
 
-const AdministratorDashboard = ({ onNavigate }: AdministratorDashboardProps) => {
+const AdministratorDashboard = () => {
+  const navigate = useNavigate();
   const { students: rawStudents } = useStudents();
   const { teachers: rawTeachers } = useTeachers();
   const { classes: rawClasses } = useClasses();

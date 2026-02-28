@@ -95,10 +95,10 @@ const AcademicTermManager = () => {
   };
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between font-outfit">
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200">
+          <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
             <Calendar className="w-6 h-6 text-white" />
           </div>
           <div>
@@ -106,20 +106,20 @@ const AcademicTermManager = () => {
             <p className="text-muted-foreground">Manage school terms and academic years</p>
           </div>
         </div>
-        <Button onClick={() => handleOpenDialog()} className="bg-indigo-600 hover:bg-indigo-700 h-11 px-6 rounded-xl transition-all hover:scale-105 active:scale-95 shadow-lg shadow-indigo-100">
+        <Button onClick={() => handleOpenDialog()} className="bg-indigo-600 hover:bg-indigo-700 h-11 px-6 rounded-xl transition-all hover:scale-105 active:scale-95 shadow-lg shadow-indigo-500/20">
           <Plus className="w-4 h-4 mr-2" />
           Add New Term
         </Button>
       </div>
 
-      <Card className="border-none shadow-xl shadow-slate-200/50 bg-white/70 backdrop-blur-sm rounded-2xl overflow-hidden">
-        <CardHeader className="bg-muted/50/50 border-b border-slate-100">
+      <Card className="border-0 shadow-xl bg-white/70 dark:bg-slate-900/70 backdrop-blur-sm rounded-2xl overflow-hidden">
+        <CardHeader className="bg-muted/50 dark:bg-slate-800/50 border-b border-border dark:border-slate-800">
           <CardTitle className="text-xl font-semibold text-foreground">School Terms List</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
-            <TableHeader className="bg-muted/50/30">
-              <TableRow>
+            <TableHeader className="bg-muted/50 dark:bg-slate-800/50">
+              <TableRow className="border-border dark:border-slate-800">
                 <TableHead className="font-semibold text-muted-foreground h-14">Term Name</TableHead>
                 <TableHead className="font-semibold text-muted-foreground h-14">Year</TableHead>
                 <TableHead className="font-semibold text-muted-foreground h-14">Start Date</TableHead>
@@ -150,7 +150,7 @@ const AcademicTermManager = () => {
                 </TableRow>
               ) : (
                 terms.map((term: any) => (
-                  <TableRow key={term.id} className={`${term.is_active ? 'bg-indigo-50/40 hover:bg-indigo-50/60' : 'hover:bg-muted/50/50'} transition-colors border-slate-100`}>
+                  <TableRow key={term.id} className={`${term.is_active ? 'bg-indigo-50/40 dark:bg-indigo-900/10 hover:bg-indigo-50/60 dark:hover:bg-indigo-900/20' : 'hover:bg-muted/50 dark:hover:bg-slate-800/50'} transition-colors border-border dark:border-slate-800`}>
                     <TableCell className="font-medium text-foreground py-5">{term.name}</TableCell>
                     <TableCell className="text-muted-foreground">{term.year}</TableCell>
                     <TableCell className="text-muted-foreground">{term.start_date ? new Date(term.start_date).toLocaleDateString() : '-'}</TableCell>
@@ -162,10 +162,10 @@ const AcademicTermManager = () => {
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                           </span>
-                          <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-emerald-200">System Active</Badge>
+                          <Badge className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 border-emerald-200 dark:border-emerald-800/50">System Active</Badge>
                         </div>
                       ) : (
-                        <Badge variant="secondary" className="bg-muted text-muted-foreground border-border">Inactive</Badge>
+                        <Badge variant="secondary" className="bg-muted dark:bg-slate-800 text-muted-foreground border-border dark:border-slate-700">Inactive</Badge>
                       )}
                     </TableCell>
                     <TableCell className="text-right space-x-2 pr-6 py-5">
@@ -174,16 +174,16 @@ const AcademicTermManager = () => {
                           variant="outline"
                           size="sm"
                           onClick={() => handleToggleActive(term.id)}
-                          className="border-indigo-200 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-lg px-4 h-9 font-medium"
+                          className="border-indigo-200 dark:border-indigo-900/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-600 dark:hover:bg-indigo-900 hover:text-white rounded-lg px-4 h-9 font-medium"
                         >
                           Mark Active
                         </Button>
                       )}
-                      <Button variant="ghost" size="sm" onClick={() => handleOpenDialog(term)} className="text-muted-foreground hover:bg-muted rounded-lg">Edit</Button>
+                      <Button variant="ghost" size="sm" onClick={() => handleOpenDialog(term)} className="text-muted-foreground hover:bg-muted dark:hover:bg-slate-800 rounded-lg">Edit</Button>
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="text-rose-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
+                        className="text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg"
                         onClick={() => handleDeleteTerm(term.id)}
                       >
                         <Trash2 className="w-4 h-4" />
@@ -198,26 +198,33 @@ const AcademicTermManager = () => {
       </Card>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[425px] rounded-2xl border-none shadow-2xl p-0 overflow-hidden font-outfit">
+        <DialogContent className="sm:max-w-[500px] rounded-2xl border-none shadow-2xl p-0 overflow-hidden font-outfit bg-white dark:bg-slate-900">
           <form onSubmit={handleSubmit}>
-            <div className="bg-indigo-600 p-8 text-white">
-              <DialogTitle className="text-2xl font-bold">{editingTerm ? 'Edit Academic Term' : 'Add Academic Term'}</DialogTitle>
-              <DialogDescription className="text-indigo-100 mt-2">
-                Set the name and duration for the school term.
-              </DialogDescription>
+            <div className="bg-gradient-to-br from-indigo-600 to-violet-700 p-8 text-white relative overflow-hidden">
+              <div className="relative z-10">
+                <DialogTitle className="text-2xl font-bold">{editingTerm ? 'Edit Academic Term' : 'Add Academic Term'}</DialogTitle>
+                <DialogDescription className="text-indigo-100 mt-2">
+                  Set the name and duration for the school term.
+                </DialogDescription>
+              </div>
+              <div className="absolute top-0 right-0 p-4 opacity-10">
+                <Calendar className="w-24 h-24 rotate-12" />
+              </div>
             </div>
 
-            <div className="px-8 py-6 space-y-5 bg-card">
+            <div className="px-8 py-6 space-y-5 bg-transparent">
               <div className="space-y-2">
-                <Label htmlFor="name" className="text-muted-foreground font-medium">Term Name</Label>
+                <Label htmlFor="name" className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+                  Term Name <span className="text-red-500">*</span>
+                </Label>
                 <Select
                   value={formData.name}
                   onValueChange={(v) => setFormData({ ...formData, name: v })}
                 >
-                  <SelectTrigger className="h-11 rounded-xl border-border focus:ring-indigo-500 focus:border-indigo-500">
+                  <SelectTrigger className="h-12 rounded-xl border-2 border-border dark:border-slate-800 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-950">
                     <SelectValue placeholder="Select Term" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="dark:bg-slate-900 dark:border-slate-800">
                     <SelectItem value="Term 1">Term 1</SelectItem>
                     <SelectItem value="Term 2">Term 2</SelectItem>
                     <SelectItem value="Term 3">Term 3</SelectItem>
@@ -226,45 +233,47 @@ const AcademicTermManager = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="year" className="text-muted-foreground font-medium">Academic Year</Label>
+                <Label htmlFor="year" className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+                  Academic Year <span className="text-red-500">*</span>
+                </Label>
                 <Input
                   id="year"
                   type="number"
                   value={formData.year}
                   onChange={(e) => setFormData({ ...formData, year: e.target.value })}
                   placeholder="e.g. 2024"
-                  className="h-11 rounded-xl border-border focus:ring-indigo-500 focus:border-indigo-500"
+                  className="h-12 rounded-xl border-2 border-border dark:border-slate-800 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-950"
                   required
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="startDate" className="text-muted-foreground font-medium">Start Date</Label>
+                  <Label htmlFor="startDate" className="text-sm font-semibold text-muted-foreground">Start Date</Label>
                   <Input
                     id="startDate"
                     type="date"
                     value={formData.startDate}
                     onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                    className="h-11 rounded-xl border-border focus:ring-indigo-500 focus:border-indigo-500"
+                    className="h-12 rounded-xl border-2 border-border dark:border-slate-800 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-950"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="endDate" className="text-muted-foreground font-medium">End Date</Label>
+                  <Label htmlFor="endDate" className="text-sm font-semibold text-muted-foreground">End Date</Label>
                   <Input
                     id="endDate"
                     type="date"
                     value={formData.endDate}
                     onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
-                    className="h-11 rounded-xl border-border focus:ring-indigo-500 focus:border-indigo-500"
+                    className="h-12 rounded-xl border-2 border-border dark:border-slate-800 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-950"
                   />
                 </div>
               </div>
             </div>
 
-            <DialogFooter className="px-8 py-6 bg-muted/50/80 border-t border-slate-100 flex-row justify-end space-x-3">
-              <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)} className="rounded-xl h-11 px-6 font-medium text-muted-foreground">Cancel</Button>
-              <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700 rounded-xl h-11 px-6 font-medium shadow-lg shadow-indigo-100">
+            <DialogFooter className="px-8 py-6 bg-muted/30 dark:bg-slate-800/30 border-t border-border dark:border-slate-800 flex-row justify-end space-x-3">
+              <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)} className="rounded-xl h-11 px-6 font-medium text-muted-foreground hover:bg-muted dark:hover:bg-slate-800">Cancel</Button>
+              <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700 rounded-xl h-11 px-6 font-medium shadow-lg shadow-indigo-500/20 text-white">
                 <Save className="w-4 h-4 mr-2" />
                 {editingTerm ? 'Update Term' : 'Create Term'}
               </Button>

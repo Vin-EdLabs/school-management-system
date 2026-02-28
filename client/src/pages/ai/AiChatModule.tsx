@@ -15,7 +15,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useChatPersistence } from '../../hooks/useChatPersistence';
 import { AIProcessor } from '../../utils/aiProcessor';
-import ReceiptPrinter from '../common/ReceiptPrinter';
+import ReceiptPrinter from '../../components/common/ReceiptPrinter';
 import A4ReportPrinter from '../reports/A4ReportPrinter';
 
 interface ChatMessage {
@@ -345,14 +345,14 @@ const AiChatModule = () => {
               {messages.map((message) => (
                 <div key={message.id} className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[85%] ${message.type === 'user'
-                      ? 'bg-card shadow-lg border border-gray-100'
-                      : 'bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 shadow-sm'
+                    ? 'bg-card shadow-lg border border-gray-100'
+                    : 'bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 shadow-sm'
                     } rounded-2xl p-5`}>
 
                     <div className="flex items-start space-x-3">
                       <div className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${message.type === 'user'
-                          ? 'bg-muted border border-border'
-                          : 'bg-gradient-to-br from-blue-500 to-indigo-600'
+                        ? 'bg-muted border border-border'
+                        : 'bg-gradient-to-br from-blue-500 to-indigo-600'
                         }`}>
                         {message.type === 'ai' ? (
                           <Bot className="w-5 h-5 text-white" />
@@ -377,8 +377,8 @@ const AiChatModule = () => {
                             size="sm"
                             onClick={() => handleShowReceipt(message.data)}
                             className={`mt-4 ${message.type === 'user'
-                                ? 'text-blue-600 hover:text-blue-700 hover:bg-blue-50'
-                                : 'text-blue-600 hover:text-blue-700 hover:bg-blue-100'
+                              ? 'text-blue-600 hover:text-blue-700 hover:bg-blue-50'
+                              : 'text-blue-600 hover:text-blue-700 hover:bg-blue-100'
                               } rounded-xl`}
                           >
                             {message.action === 'report' ? (

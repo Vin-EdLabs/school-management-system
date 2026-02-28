@@ -11,7 +11,7 @@ import useClasses from '@/hooks/useClasses';
 import { useAcademicTerms } from '@/hooks/useAcademicTerms';
 import { Eye, Receipt, Search } from 'lucide-react';
 import { useState } from 'react';
-import ReceiptPrinter from '../common/ReceiptPrinter';
+import ReceiptPrinter from '../../components/common/ReceiptPrinter';
 
 const ReceiptHistory = () => {
   const { payments: rawPayments } = usePayments();

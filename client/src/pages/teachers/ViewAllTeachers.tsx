@@ -10,7 +10,7 @@ import { useState } from 'react';
 import { useAudit } from '../../contexts/AuditContext';
 import { useClasses } from '../../hooks/useClasses';
 import { useDeleteTeacher, useTeachers } from '../../hooks/useTeachers';
-import PasswordAuthDialog from '../common/PasswordAuthDialog';
+import PasswordAuthDialog from '../../components/common/PasswordAuthDialog';
 import EditTeacherDialog from './EditTeacherDialog';
 import TeacherDetailsDialog from './TeacherDetailsDialog';
 

@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import useExpenses from '@/hooks/useExpenses';
@@ -22,11 +23,8 @@ import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer,
 import { calculateStudentFees, getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
 import FinancialSummary from './FinancialSummary';
 
-interface DashboardHomeProps {
-  onNavigate?: (module: string) => void;
-}
-
-const DashboardHome = ({ onNavigate }: DashboardHomeProps) => {
+const DashboardHome = () => {
+  const navigate = useNavigate();
   const { students } = useStudents();
   const { teachers } = useTeachers();
   const { payments } = usePayments();
@@ -272,21 +270,21 @@ const DashboardHome = ({ onNavigate }: DashboardHomeProps) => {
           </CardHeader>
           <CardContent className="space-y-3">
             <Button
-              onClick={() => onNavigate?.('students')}
+              onClick={() => navigate('/students')}
               className="w-full justify-start bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200"
             >
               <Plus className="w-4 h-4 mr-2" />
               Add Student
             </Button>
             <Button
-              onClick={() => onNavigate?.('fees')}
+              onClick={() => navigate('/fees')}
               className="w-full justify-start bg-green-50 text-green-700 hover:bg-green-100 border border-green-200"
             >
               <Receipt className="w-4 h-4 mr-2" />
               Record Payment
             </Button>
             <Button
-              onClick={() => onNavigate?.('expenses')}
+              onClick={() => navigate('/expenses')}
               className="w-full justify-start bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200"
             >
               <FileText className="w-4 h-4 mr-2" />

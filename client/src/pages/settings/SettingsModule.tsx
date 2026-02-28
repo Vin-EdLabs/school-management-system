@@ -344,16 +344,18 @@ const SettingsModule = () => {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 bg-transparent">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-gray-500 to-gray-600 rounded-lg flex items-center justify-center">
-            <Settings className="w-6 h-6 text-white" />
+        <div className="flex items-center space-x-4">
+          <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
+            <Settings className="w-7 h-7 text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-foreground">System Settings</h1>
-            <p className="text-muted-foreground">Configure system settings and preferences</p>
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 dark:from-slate-100 dark:to-slate-300 bg-clip-text text-transparent">
+              System Settings
+            </h1>
+            <p className="text-muted-foreground text-lg">Configure system settings and preferences</p>
           </div>
         </div>
       </div>
@@ -363,14 +365,14 @@ const SettingsModule = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Password Change */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Key className="w-5 h-5" />
+        <Card className="border-0 shadow-xl bg-white/70 dark:bg-slate-900/70 backdrop-blur-sm rounded-2xl">
+          <CardHeader className="border-b border-border dark:border-slate-800">
+            <CardTitle className="flex items-center space-x-2 text-xl font-bold text-foreground">
+              <Key className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
               <span>Change Password</span>
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-6 mt-4">
             <form onSubmit={handlePasswordChange} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="currentPasswordMain">Current Password</Label>
@@ -407,7 +409,7 @@ const SettingsModule = () => {
                   minLength={6}
                 />
               </div>
-              <Button type="submit" className="w-full" disabled={!newPassword || !confirmPassword}>
+              <Button type="submit" className="w-full h-11 bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-lg shadow-indigo-500/20 text-white" disabled={!newPassword || !confirmPassword}>
                 Update Password
               </Button>
             </form>
@@ -415,14 +417,14 @@ const SettingsModule = () => {
         </Card>
 
         {/* School Information */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Building className="w-5 h-5" />
+        <Card className="border-0 shadow-xl bg-white/70 dark:bg-slate-900/70 backdrop-blur-sm rounded-2xl">
+          <CardHeader className="border-b border-border dark:border-slate-800">
+            <CardTitle className="flex items-center space-x-2 text-xl font-bold text-foreground">
+              <Building className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
               <span>School Information</span>
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-6 mt-4">
             <form onSubmit={handleSchoolInfoUpdate} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="schoolName">School Name</Label>
@@ -465,7 +467,7 @@ const SettingsModule = () => {
                   required
                 />
               </div>
-              <Button type="submit" className="w-full">
+              <Button type="submit" className="w-full h-11 bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-lg shadow-indigo-500/20 text-white">
                 Update School Information
               </Button>
             </form>
@@ -473,14 +475,14 @@ const SettingsModule = () => {
         </Card>
 
         {/* Data Management */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Download className="w-5 h-5" />
+        <Card className="border-0 shadow-xl bg-white/70 dark:bg-slate-900/70 backdrop-blur-sm rounded-2xl">
+          <CardHeader className="border-b border-border dark:border-slate-800">
+            <CardTitle className="flex items-center space-x-2 text-xl font-bold text-foreground">
+              <Download className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
               <span>Data Management</span>
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-6 mt-4">
             <div className="space-y-4">
               <div>
                 <h4 className="font-medium mb-2">Export/Backup Data</h4>
@@ -514,7 +516,7 @@ const SettingsModule = () => {
                 <Button
                   onClick={resetAllData}
                   variant="destructive"
-                  className="w-full"
+                  className="w-full h-11 rounded-xl shadow-lg shadow-red-500/10"
                 >
                   <RefreshCw className="w-4 h-4 mr-2" />
                   Reset All Data

@@ -1,19 +1,17 @@
-
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 import useClasses from '@/hooks/useClasses';
 import useSchedules from '@/hooks/useSchedules';
 import useStudents from '@/hooks/useStudents';
 import useTeachers from '@/hooks/useTeachers';
-import { BookOpen, Calendar, ClipboardCheck, Clock, School, Users } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { Award, BookOpen, Calendar, CheckSquare, Clock, GraduationCap, Users } from 'lucide-react';
+import React from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 
-interface TeacherDashboardProps {
-  onNavigate?: (module: string) => void;
-}
-
-const TeacherDashboard = ({ onNavigate }: TeacherDashboardProps) => {
+const TeacherDashboard = () => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { students: rawStudents } = useStudents();
   const { teachers: rawTeachers } = useTeachers();
@@ -137,6 +135,48 @@ const TeacherDashboard = ({ onNavigate }: TeacherDashboardProps) => {
         </div>
       </div>
 
+      {/* Quick Actions */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <button
+          onClick={() => navigate('/teacher-classes')}
+          className="flex items-center space-x-3 p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors text-left"
+        >
+          <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
+            <BookOpen className="w-4 h-4 text-blue-600" />
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-medium">My Classes</p>
+            <p className="text-xs text-muted-foreground">View all assigned classes</p>
+          </div>
+        </button>
+
+        <button
+          onClick={() => navigate('/attendance')}
+          className="flex items-center space-x-3 p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors text-left"
+        >
+          <div className="w-8 h-8 rounded bg-green-100 flex items-center justify-center">
+            <CheckSquare className="w-4 h-4 text-green-600" />
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-medium">Take Attendance</p>
+            <p className="text-xs text-muted-foreground">Mark student presence</p>
+          </div>
+        </button>
+
+        <button
+          onClick={() => navigate('/grades')}
+          className="flex items-center space-x-3 p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors text-left"
+        >
+          <div className="w-8 h-8 rounded bg-purple-100 flex items-center justify-center">
+            <Award className="w-4 h-4 text-purple-600" />
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-medium">Grades</p>
+            <p className="text-xs text-muted-foreground">Manage student grades</p>
+          </div>
+        </button>
+      </div>
+
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card>
@@ -170,7 +210,7 @@ const TeacherDashboard = ({ onNavigate }: TeacherDashboardProps) => {
                 <p className="text-sm font-medium text-muted-foreground">Subjects</p>
                 <p className="text-3xl font-bold text-foreground">{currentTeacher.subjectsTaught.length}</p>
               </div>
-              <ClipboardCheck className="w-8 h-8 text-purple-500" />
+              <GraduationCap className="w-8 h-8 text-purple-500" />
             </div>
           </CardContent>
         </Card>

@@ -248,7 +248,7 @@ const ReportsModule = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 p-6 transition-colors duration-500">
       <div className="max-w-7xl mx-auto space-y-8">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -257,7 +257,7 @@ const ReportsModule = () => {
               <BarChart3 className="w-7 h-7 text-white" />
             </div>
             <div>
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
+              <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 dark:from-slate-100 dark:to-slate-300 bg-clip-text text-transparent">
                 Financial Reports & Analytics
               </h1>
               <p className="text-muted-foreground text-lg">Real-time financial insights for {selectedTerm} {getActiveAcademicYear(terms)}</p>
@@ -336,11 +336,11 @@ const ReportsModule = () => {
         {/* Charts Section */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
           {/* Income vs Expenses Trend */}
-          <Card className="shadow-xl border-0 bg-white/70 backdrop-blur-sm">
+          <Card className="shadow-xl border-0 bg-white/70 dark:bg-slate-900/70 backdrop-blur-sm">
             <CardHeader className="pb-4">
               <CardTitle className="flex items-center space-x-2 text-xl">
-                <Calendar className="w-6 h-6 text-blue-600" />
-                <span>Monthly Income vs Expenses</span>
+                <Calendar className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                <span className="text-foreground">Monthly Income vs Expenses</span>
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -379,11 +379,11 @@ const ReportsModule = () => {
           </Card>
 
           {/* Income Sources */}
-          <Card className="shadow-xl border-0 bg-white/70 backdrop-blur-sm">
+          <Card className="shadow-xl border-0 bg-white/70 dark:bg-slate-900/70 backdrop-blur-sm">
             <CardHeader className="pb-4">
               <CardTitle className="flex items-center space-x-2 text-xl">
-                <TrendingUp className="w-6 h-6 text-green-600" />
-                <span>Income Sources</span>
+                <TrendingUp className="w-6 h-6 text-green-600 dark:text-green-400" />
+                <span className="text-foreground">Income Sources</span>
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -420,23 +420,23 @@ const ReportsModule = () => {
         {/* Detailed Breakdown */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
           {/* Income Details */}
-          <Card className="shadow-xl border-0 bg-white/70 backdrop-blur-sm">
+          <Card className="shadow-xl border-0 bg-white/70 dark:bg-slate-900/70 backdrop-blur-sm">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="flex items-center space-x-2 text-xl">
-                <DollarSign className="w-6 h-6 text-green-600" />
-                <span>Income Breakdown</span>
+                <DollarSign className="w-6 h-6 text-green-600 dark:text-green-400" />
+                <span className="text-foreground">Income Breakdown</span>
               </CardTitle>
-              <Button onClick={() => exportReport('income')} size="sm" variant="outline">
+              <Button onClick={() => exportReport('income')} size="sm" variant="outline" className="dark:border-slate-800">
                 <Download className="w-4 h-4 mr-2" />
                 Export
               </Button>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/50 rounded-lg p-4">
                   <div className="flex justify-between items-center">
-                    <span className="font-semibold text-green-800">Total Income</span>
-                    <span className="text-2xl font-bold text-green-600">GHS {incomeBreakdown.total.toLocaleString()}</span>
+                    <span className="font-semibold text-green-800 dark:text-green-300">Total Income</span>
+                    <span className="text-2xl font-bold text-green-600 dark:text-green-400">GHS {incomeBreakdown.total.toLocaleString()}</span>
                   </div>
                 </div>
 
@@ -460,23 +460,23 @@ const ReportsModule = () => {
           </Card>
 
           {/* Expense Details */}
-          <Card className="shadow-xl border-0 bg-white/70 backdrop-blur-sm">
+          <Card className="shadow-xl border-0 bg-white/70 dark:bg-slate-900/70 backdrop-blur-sm">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="flex items-center space-x-2 text-xl">
-                <TrendingDown className="w-6 h-6 text-red-600" />
-                <span>Expense Breakdown</span>
+                <TrendingDown className="w-6 h-6 text-red-600 dark:text-red-400" />
+                <span className="text-foreground">Expense Breakdown</span>
               </CardTitle>
-              <Button onClick={() => exportReport('expense')} size="sm" variant="outline">
+              <Button onClick={() => exportReport('expense')} size="sm" variant="outline" className="dark:border-slate-800">
                 <Download className="w-4 h-4 mr-2" />
                 Export
               </Button>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded-lg p-4">
                   <div className="flex justify-between items-center">
-                    <span className="font-semibold text-red-800">Total Expenses</span>
-                    <span className="text-2xl font-bold text-red-600">GHS {expenseBreakdown.total.toLocaleString()}</span>
+                    <span className="font-semibold text-red-800 dark:text-red-300">Total Expenses</span>
+                    <span className="text-2xl font-bold text-red-600 dark:text-red-400">GHS {expenseBreakdown.total.toLocaleString()}</span>
                   </div>
                 </div>
 
@@ -484,7 +484,7 @@ const ReportsModule = () => {
                   {Object.entries(expenseBreakdown.byCategory)
                     .sort(([, a], [, b]) => (b as any).amount - (a as any).amount)
                     .map(([category, data], index) => (
-                      <div key={index} className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
+                      <div key={index} className="flex justify-between items-center p-3 bg-muted/50 dark:bg-slate-950 rounded-lg border border-transparent dark:border-slate-800">
                         <div>
                           <span className="font-medium text-muted-foreground">{category}</span>
                           <div className="text-sm text-muted-foreground">{(data as any).count} transactions</div>
@@ -504,11 +504,11 @@ const ReportsModule = () => {
         </div>
 
         {/* Recent Transactions */}
-        <Card className="shadow-xl border-0 bg-white/70 backdrop-blur-sm">
+        <Card className="shadow-xl border-0 bg-white/70 dark:bg-slate-900/70 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="flex items-center space-x-2 text-xl">
-              <FileText className="w-6 h-6 text-blue-600" />
-              <span>Recent Financial Transactions</span>
+              <FileText className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              <span className="text-foreground">Recent Financial Transactions</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -565,11 +565,11 @@ const ReportsModule = () => {
         </Card>
 
         {/* Export Actions */}
-        <Card className="shadow-xl border-0 bg-white/70 backdrop-blur-sm">
+        <Card className="shadow-xl border-0 bg-white/70 dark:bg-slate-900/70 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="flex items-center space-x-2 text-xl">
-              <Download className="w-6 h-6 text-blue-600" />
-              <span>Export Financial Reports</span>
+              <Download className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              <span className="text-foreground">Export Financial Reports</span>
             </CardTitle>
           </CardHeader>
           <CardContent>

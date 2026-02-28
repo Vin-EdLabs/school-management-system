@@ -7,5 +7,8 @@ const router = express.Router();
 router.get('/logins', requireAuth, controller.listLogins);
 router.get('/activity', requireAuth, controller.listAll);
 router.get('/export', requireAuth, controller.listAll);
+router.post('/', requireAuth, controller.createActivity);
+router.delete('/:id', requireAuth, controller.deleteActivity);
+router.delete('/', requireAuth, controller.clearAllActivities);
 
 export default router;

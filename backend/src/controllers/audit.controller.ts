@@ -21,3 +21,33 @@ export async function listAll(req: Request, res: Response) {
     return res.status(500).json(failure(err.message));
   }
 }
+
+export async function createActivity(req: Request, res: Response) {
+  try {
+    const userId = (req as any).user?.id;
+    if (!userId) return res.status(401).json(failure('Unauthorized'));
+    await auditService.createActivityAudit(userId, req.body);
+    return res.json(success({ message: 'Audit recorded' }));
+  } catch (err: any) {
+    return res.status(500).json(failure(err.message));
+  }
+}
+
+export async function deleteActivity(req: Request, res: Response) {
+  try {
+    const id = Number(req.params.id);
+    await auditService.deleteAuditRecord(id);
+    return res.json(success({ message: 'Audit record deleted' }));
+  } catch (err: any) {
+    return res.status(500).json(failure(err.message));
+  }
+}
+
+export async function clearAllActivities(req: Request, res: Response) {
+  try {
+    await auditService.clearAllAuditRecords();
+    return res.json(success({ message: 'All audit records cleared' }));
+  } catch (err: any) {
+    return res.status(500).json(failure(err.message));
+  }
+}

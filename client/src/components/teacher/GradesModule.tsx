@@ -1,4 +1,5 @@
 import { useAuth } from '@/contexts/AuthContext';
+import { useAudit } from '@/contexts/AuditContext';
 import useClasses, { useClassStudents } from '@/hooks/useClasses';
 import {
   useCreateBoundary,
@@ -428,6 +429,7 @@ const GradesModule = () => {
   const deleteBoundaryMutation = useDeleteBoundary();
   const qc = useQueryClient();
   const [savingBoundaries, setSavingBoundaries] = useState(false);
+  const { addAuditLog } = useAudit();
 
   const { data: classStudentsResp } = useClassStudents(Number(selectedClass) || 0) as any;
   const classStudents = (classStudentsResp as any)?.data || [];
@@ -595,10 +597,24 @@ const GradesModule = () => {
           // remove local optimistic exam that matches by name
           setLocalExams(prev => prev.filter(x => x.id !== newExam.id));
           setSelectedAssignment(String(created.id));
+          addAuditLog({
+            actionType: 'Edit',
+            module: 'Grades',
+            itemId: String(created.id),
+            itemName: newExam.name,
+            reason: 'Created Exam'
+          });
           showToast('Exam created successfully!');
         } else {
           // fallback: keep optimistic exam selected
           setSelectedAssignment(newExam.id);
+          addAuditLog({
+            actionType: 'Edit',
+            module: 'Grades',
+            itemId: newExam.id,
+            itemName: newExam.name,
+            reason: 'Created Local Exam'
+          });
           showToast('Exam created locally (server did not return id)');
         }
       } catch (err) {
@@ -631,6 +647,13 @@ const GradesModule = () => {
             }]
           }, {
             onSuccess: () => {
+              addAuditLog({
+                actionType: 'Edit',
+                module: 'Grades',
+                itemId: String(grade.studentId),
+                itemName: `Grade Entry for Exam #${aid}`,
+                reason: `Updated student ${grade.studentId} with score ${grade.score}`
+              });
               showToast('Saved');
             },
             onError: (err: any) => {
@@ -1403,6 +1426,13 @@ const GradesModule = () => {
 
                     // ensure fresh data
                     await qc.invalidateQueries({ queryKey: ['gradeBoundaries'] });
+
+                    addAuditLog({
+                      actionType: 'Edit',
+                      module: 'Grades',
+                      itemName: 'Grade Boundaries Matrix',
+                      reason: 'Updated or defined grade boundaries'
+                    });
 
                     showToast('Grade boundaries saved');
                     setShowBoundariesDialog(false);

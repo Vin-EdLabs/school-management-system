@@ -106,6 +106,14 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick }) => {
     return 'Good Evening';
   };
 
+  const getFirstName = () => {
+    const displayName = (user as any)?.displayName;
+    if (displayName && displayName.trim().length > 0) {
+      return displayName.trim().split(' ')[0]; // Extract first name
+    }
+    return (user as any)?.staffId || user?.username; // Fallback to staff ID
+  };
+
   return (
     <div className="relative flex items-center justify-between w-full">
       {/* Mobile sidebar toggle (separate so it doesn't add spacing to the left group) */}
@@ -142,9 +150,9 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick }) => {
         <div className="min-w-0">
           <h1
             className="text-lg font-semibold text-gray-900 truncate"
-            title={`${getWelcomeMessage()}, ${(user as any)?.staffId ?? user?.username}`}
+            title={`${getWelcomeMessage()}, ${getFirstName()}`}
           >
-            {getWelcomeMessage()}, {(user as any)?.staffId ?? user?.username}!
+            {getWelcomeMessage()}, {getFirstName()}!
           </h1>
           <p
             className="text-sm text-gray-600 capitalize truncate"

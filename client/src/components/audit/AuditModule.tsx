@@ -7,10 +7,15 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Activity, Calendar, Search, Trash2, User } from 'lucide-react';
 import { useState } from 'react';
-import { useActivity } from '../../hooks/useAudit';
+import { useActivity, useDeleteAuditLog, useClearAuditLogs } from '../../hooks/useAudit';
 
 const AuditModule = () => {
   const { data: resp, isLoading } = useActivity();
+  const deleteMutation = useDeleteAuditLog();
+  const clearMutation = useClearAuditLogs();
+
+  const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
+
   const auditLogsRaw = resp?.data || resp || [];
 
   // Normalize backend logs to match UI expectations
@@ -28,13 +33,15 @@ const AuditModule = () => {
   }));
 
   const deleteAuditLog = (id: any) => {
-    // Backend delete not yet implemented in UI, but could be added as a mutation
-    console.log('Delete log requested for', id);
+    deleteMutation.mutate(id);
   };
 
   const clearAllLogs = () => {
-    // Backend clear not yet implemented
-    console.log('Clear all logs requested');
+    clearMutation.mutate(undefined, {
+      onSuccess: () => {
+        setIsClearDialogOpen(false);
+      }
+    });
   };
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -72,7 +79,7 @@ const AuditModule = () => {
           <h1 className="text-3xl font-bold text-gray-900">Audit Logs</h1>
           <p className="text-gray-600 mt-1">Track all system activities and changes (Live from Server)</p>
         </div>
-        <Dialog>
+        <Dialog open={isClearDialogOpen} onOpenChange={setIsClearDialogOpen}>
           <DialogTrigger asChild>
             <Button variant="destructive" className="flex items-center gap-2">
               <Trash2 className="w-4 h-4" />
@@ -89,9 +96,9 @@ const AuditModule = () => {
                 Are you sure you want to delete all audit logs? This action cannot be undone.
               </p>
               <div className="flex gap-2 justify-end">
-                <Button variant="outline">Cancel</Button>
-                <Button variant="destructive" onClick={clearAllLogs}>
-                  Clear All Logs
+                <Button variant="outline" onClick={() => setIsClearDialogOpen(false)}>Cancel</Button>
+                <Button variant="destructive" onClick={clearAllLogs} disabled={clearMutation.isPending}>
+                  {clearMutation.isPending ? 'Clearing...' : 'Clear All Logs'}
                 </Button>
               </div>
             </div>

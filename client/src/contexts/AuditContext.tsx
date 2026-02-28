@@ -40,12 +40,18 @@ export const AuditProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, []);
 
-  const addAuditLog = (log: Omit<AuditLog, 'id' | 'timestamp' | 'username' | 'role'>) => {
+  const addAuditLog = async (log: Omit<AuditLog, 'id' | 'timestamp' | 'username' | 'role'>) => {
     if (!user) return;
+
+    try {
+      await import('../services/auditService').then(s => s.createAuditLog(log));
+    } catch (e) {
+      console.error('Failed to save audit log to backend', e);
+    }
 
     const newLog: AuditLog = {
       ...log,
-      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+      id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
       timestamp: new Date(),
       username: (user as any).staffId ?? (user as any).username,
       role: user.role

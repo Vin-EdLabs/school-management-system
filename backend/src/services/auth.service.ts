@@ -15,13 +15,13 @@ export async function login(staffId: string, password: string) {
   if (!user) return { error: true, message: 'Invalid credentials' };
   const match = await bcrypt.compare(password, user.password_hash);
   if (!match) return { error: true, message: 'Invalid credentials' };
-  const token = jwt.sign({ id: user.id, staffId: user.staffId, role: user.role }, JWT_SECRET as Secret, { expiresIn: JWT_EXPIRES_IN } as SignOptions);
+  const token = jwt.sign({ id: user.id, staffId: user.staffId, role: user.role, displayName: user.displayName }, JWT_SECRET as Secret, { expiresIn: JWT_EXPIRES_IN } as SignOptions);
   try {
     await auditRepo.insertLoginAudit(user.id, { staffId: user.staffId });
   } catch (e) {
     console.warn('Failed to write audit login', e);
   }
-  return { token, user: { id: user.id, staffId: user.staffId, role: user.role, passwordChanged: user.password_changed } };
+  return { token, user: { id: user.id, staffId: user.staffId, role: user.role, passwordChanged: user.password_changed, displayName: user.displayName } };
 }
 
 export async function logout(token: string) {
@@ -37,7 +37,7 @@ export async function session(token: string) {
     const payload = jwt.verify(token, JWT_SECRET as Secret) as any;
     const blacklisted = await tokenRepo.isBlacklisted(token);
     if (blacklisted) throw new Error('Logged out');
-    return { user: { id: payload.id, staffId: payload.staffId, role: payload.role } };
+    return { user: { id: payload.id, staffId: payload.staffId, role: payload.role, displayName: payload.displayName } };
   } catch (err) {
     throw new Error('Invalid or expired token');
   }

@@ -20,7 +20,7 @@ export function useTeachers() {
         const res = await assignmentsService.listByTeacher(t.id);
         const classes = (res as any)?.data || [];
         const assignedLabels: string[] = [];
-        const assignedIds: Array<string|number> = [];
+        const assignedIds: Array<string | number> = [];
         for (const cls of classes) {
           if (!cls) continue;
           const classNameField = cls.className ?? cls.name ?? cls.class_name ?? cls.title ?? null;
@@ -61,12 +61,23 @@ export function useTeachers() {
     return () => { mounted = false; };
   }, [teachersResp]);
 
-  // expose a refresh function that UI components can call after assign/remove
+  // expose a refresh function — fetches fresh teachers from server then re-enriches immediately
   const refreshTeachers = async () => {
-    const latest = queryClient.getQueryData<any[]>(['teachers']) || rawTeachers || [];
-    const enriched = await enrichTeachers(latest);
-    setTeachers(enriched);
-    try { queryClient.setQueryData(['teachers', 'enriched'], enriched); } catch (e) { }
+    try {
+      // staleTime: 0 forces an immediate server fetch even if cache is fresh
+      const result = await queryClient.fetchQuery({
+        queryKey: ['teachers'],
+        queryFn: teachersService.listTeachers,
+        staleTime: 0,
+      });
+      const fresh = (result as any)?.data || [];
+      const enriched = await enrichTeachers(fresh);
+      setTeachers(enriched);
+      queryClient.setQueryData(['teachers', 'enriched'], enriched);
+    } catch (e) {
+      // fallback: at least mark stale so next render picks it up
+      queryClient.invalidateQueries({ queryKey: ['teachers'] });
+    }
   };
 
   const createTeacher = useMutation<any, Error, any>({

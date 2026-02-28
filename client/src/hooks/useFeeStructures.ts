@@ -14,6 +14,8 @@ export function useFeeStructures() {
       amount: Number(items.amount ?? f.amount ?? 0),
       description: items.description || f.description || '',
       dueDate: items.dueDate || f.dueDate || null,
+      term_id: f.term_id,
+      class_id: f.class_id,
       raw: f
     };
   });
@@ -21,7 +23,7 @@ export function useFeeStructures() {
   const deduped = (() => {
     const map = new Map<string, any>();
     for (const fs of feeStructures) {
-      const key = `${fs.className || ''}::${fs.term || ''}::${fs.amount || 0}::${fs.dueDate || ''}`;
+      const key = `${fs.className || ''}::${fs.term_id || ''}::${fs.amount || 0}::${fs.dueDate || ''}`;
       // If we already have a class-specific entry for same key, keep it; otherwise set first seen
       const existing = map.get(key);
       if (!existing) {
@@ -57,4 +59,20 @@ export function useCreateFeeStructure() {
 
 export function useFeeStructure(id: number) {
   return useQuery<any, Error, any>({ queryKey: ['feeStructure', id], queryFn: () => feeStructuresService.getFeeStructure(id) });
+}
+
+export function useUpdateFeeStructure() {
+  const qc = useQueryClient();
+  return useMutation<any, Error, { id: number; payload: any }>({
+    mutationFn: ({ id, payload }) => feeStructuresService.updateFeeStructure(id, payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['feeStructures'] })
+  });
+}
+
+export function useDeleteFeeStructure() {
+  const qc = useQueryClient();
+  return useMutation<any, Error, number>({
+    mutationFn: (id) => feeStructuresService.deleteFeeStructure(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['feeStructures'] })
+  });
 }

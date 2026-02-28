@@ -22,12 +22,17 @@ export function useClasses() {
           try {
             const res = await assignmentsService.listByClass(cls.id);
             const teachers = (res as any)?.data || [];
-            const teacher = teachers[0];
-            const assignedTeacherId = teacher ? teacher.id ?? teacher.ID ?? teacher.user_id ?? null : null;
-            const assignedTeacherName = teacher ? (teacher.fullName ?? teacher.full_name ?? teacher.username ?? null) : null;
-            return { ...cls, assignedTeacher: assignedTeacherId, assignedTeacherName };
+            // Collect ALL teachers assigned to this class
+            const assignedTeacherIds: (string | number)[] = teachers.map((t: any) => t.id).filter(Boolean);
+            const assignedTeacherNames: string[] = teachers
+              .map((t: any) => t.display_name ?? t.fullName ?? t.full_name ?? null)
+              .filter(Boolean);
+            const firstTeacher = teachers[0] ?? null;
+            const assignedTeacherId = firstTeacher?.id ?? null;
+            const assignedTeacherName = firstTeacher?.display_name ?? firstTeacher?.fullName ?? null;
+            return { ...cls, assignedTeacher: assignedTeacherId, assignedTeacherName, assignedTeacherIds, assignedTeacherNames };
           } catch (e) {
-            return { ...cls, assignedTeacher: null };
+            return { ...cls, assignedTeacher: null, assignedTeacherIds: [], assignedTeacherNames: [] };
           }
         }));
         if (mounted) {

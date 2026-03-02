@@ -334,6 +334,11 @@ router.post('/refresh-arrears', requireRole('super-admin', 'administrator'), asy
       return res.status(400).json({ error: 'Active term not set' });
     }
     const { current_term, current_year } = settingsResult.rows[0];
+    const currentYearNum = parseInt(current_year, 10);
+    const currentTermNum = parseInt(current_term.match(/Term\s*(\d)/i)?.[1] || '1', 10);
+
+    // Standardize current term strings for exclusion
+    const termOnly = current_term.replace(/\s+\d{4}$/, '').trim();
     const fullTerm = (current_year && !current_term.includes(current_year))
       ? `${current_term} ${current_year}`.trim()
       : current_term;
@@ -349,31 +354,53 @@ router.post('/refresh-arrears', requireRole('super-admin', 'administrator'), asy
       const studentId = studentRow.id;
 
       // A. Calculate Legacy Arrears (from fee_structures and payments)
-      // We look for any record NOT matching the current term string
-      const legacyFeesRes = await query(
-        `SELECT COALESCE(SUM(fs.amount), 0) as total
+      // Filter out current term (and variants) and any future terms.
+      const legacyResult = await query(
+        `SELECT term, COALESCE(amount, 0) as amount, 'fee' as type 
          FROM fee_structures fs
          JOIN students s ON s.id = $1
          WHERE fs.tenant_id = $2 AND fs.class_id = s.class_assigned_id
-           AND fs.term != $3 AND fs.term != $4`,
-        [studentId, tenantId, fullTerm, current_term]
+           AND fs.term NOT IN ($3, $4, $5)
+         UNION ALL
+         SELECT term, -COALESCE(amount, 0) as amount, 'payment' as type 
+         FROM payments
+         WHERE tenant_id = $2 AND student_id = $1
+           AND term NOT IN ($3, $4, $5)`,
+        [studentId, tenantId, fullTerm, current_term, termOnly]
       );
-      const legacyPaidRes = await query(
-        `SELECT COALESCE(SUM(amount), 0) as total FROM payments
-         WHERE tenant_id = $1 AND student_id = $2 AND term != $3 AND term != $4`,
-        [tenantId, studentId, fullTerm, current_term]
-      );
-      const legacyArrears = parseFloat(legacyFeesRes.rows[0].total) - parseFloat(legacyPaidRes.rows[0].total);
+
+      let legacyArrears = 0;
+      for (const row of legacyResult.rows) {
+        const termStr = row.term || '';
+        const match = termStr.match(/\b(20\d{2})\b/);
+        const year = match ? parseInt(match[1], 10) : currentYearNum;
+        const rowTermNum = parseInt(termStr.match(/Term\s*(\d)/i)?.[1] || '0', 10);
+
+        // Include only if Year is older, OR if same year but Term Number is older
+        if (year < currentYearNum || (year === currentYearNum && rowTermNum < currentTermNum)) {
+          legacyArrears += parseFloat(row.amount);
+        }
+      }
 
       // B. Calculate Ledger Arrears (if any)
-      // Arrears in ledger = (All debits - All credits) for all terms EXCEPT the current term
+      // Exclude the current term by name and then filter by hierarchy (past terms only)
       const ledgerArrearsRes = await query(
         `SELECT (COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0))::numeric AS balance
-         FROM student_ledger
-         WHERE tenant_id = $1 AND student_id = $2 AND term_id NOT IN (
-           SELECT id FROM terms WHERE tenant_id = $1 AND (name = $3 OR name = $4)
-         )`,
-        [tenantId, studentId, fullTerm, current_term]
+         FROM student_ledger sl
+         JOIN terms t ON sl.term_id = t.id
+         JOIN academic_years ay ON t.academic_year_id = ay.id
+         WHERE sl.tenant_id = $1 AND sl.student_id = $2
+           AND t.id NOT IN (
+             SELECT id FROM terms WHERE tenant_id = $1 AND (name = $3 OR name = $4 OR name = $5)
+           )
+           AND (
+             CAST(ay.name AS INTEGER) < $6
+             OR (CAST(ay.name AS INTEGER) = $6 AND (
+                -- Compare term name numerically if possible
+                CAST(substring(t.name from 'Term\s*(\d)') AS INTEGER) < $7
+             ))
+           )`,
+        [tenantId, studentId, fullTerm, current_term, termOnly, currentYearNum, currentTermNum]
       );
       const ledgerArrears = parseFloat(ledgerArrearsRes.rows[0].balance) || 0;
 

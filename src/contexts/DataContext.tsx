@@ -104,6 +104,13 @@ interface Expense {
   vendor?: string;
 }
 
+interface Subject {
+  id: string;
+  name: string;
+  code?: string;
+  level?: string;
+}
+
 interface DataContextType {
   students: Student[];
   teachers: Teacher[];
@@ -112,6 +119,7 @@ interface DataContextType {
   payments: Payment[];
   income: Income[];
   expenses: Expense[];
+  subjects: Subject[];
   arrearsBalances: Record<string, number>;
   loading: boolean;
   refresh: () => Promise<void>;
@@ -130,6 +138,9 @@ interface DataContextType {
   addPayment: (payment: Omit<Payment, 'id'> & { academicYear?: string }) => Promise<Payment>;
   addIncome: (income: Omit<Income, 'id'>) => Promise<void>;
   addExpense: (expense: Omit<Expense, 'id'>) => Promise<void>;
+  addSubject: (subject: Omit<Subject, 'id'>) => Promise<void>;
+  updateSubject: (id: string, subject: Partial<Subject>) => Promise<void>;
+  deleteSubject: (id: string) => Promise<void>;
   promoteStudent: (studentId: string, newClass: string, currentTerm?: string, academicYear?: string) => Promise<void>;
   promoteClass: (currentClass: string, newClass: string) => Promise<void>;
 }
@@ -249,6 +260,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [payments, setPayments] = useState<Payment[]>([]);
   const [income, setIncome] = useState<Income[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
   const [arrearsBalances, setArrearsBalances] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
 
@@ -259,7 +271,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setLoading(true);
     try {
-      const [studentsRes, teachersRes, classesRes, feesRes, paymentsRes, incomeRes, expensesRes, arrearsRes] = await Promise.all([
+      const [studentsRes, teachersRes, classesRes, feesRes, paymentsRes, incomeRes, expensesRes, arrearsRes, subjectsRes] = await Promise.all([
         apiService.get('/students').catch(() => []),
         apiService.get('/teachers').catch(() => []),
         apiService.get('/classes').catch(() => []),
@@ -268,6 +280,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         apiService.get('/income').catch(() => []),
         apiService.get('/expenses').catch(() => []),
         apiService.get('/fee-calculations/arrears-balances').catch(() => ({})),
+        apiService.get('/subjects').catch(() => []),
       ]);
 
       setStudents((Array.isArray(studentsRes) ? studentsRes : []).map(mapStudent));
@@ -324,6 +337,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         notes: e.notes || '',
         description: e.description,
         vendor: e.vendor,
+      })));
+      setSubjects((Array.isArray(subjectsRes) ? subjectsRes : []).map((s: any) => ({
+        id: s.id.toString(),
+        name: s.name,
+        code: s.code,
+        level: s.level,
       })));
     } catch (error) {
       console.error('Error loading data:', error);
@@ -494,6 +513,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await loadData();
   };
 
+  const addSubject = async (subjectData: Omit<Subject, 'id'>) => {
+    await apiService.post('/subjects', subjectData);
+    await loadData();
+  };
+
+  const updateSubject = async (id: string, subjectData: Partial<Subject>) => {
+    await apiService.put(`/subjects/${id}`, subjectData);
+    await loadData();
+  };
+
+  const deleteSubject = async (id: string) => {
+    await apiService.delete(`/subjects/${id}`);
+    await loadData();
+  };
+
   // Promotion functions
   const promoteStudent = async (studentId: string, newClass: string, currentTerm?: string, academicYear?: string) => {
     const newClassObj = classes.find(c => c.id === newClass || c.className === newClass);
@@ -527,6 +561,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       payments,
       income,
       expenses,
+      subjects,
       arrearsBalances,
       loading,
       refresh,
@@ -545,6 +580,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       addPayment,
       addIncome,
       addExpense,
+      addSubject,
+      updateSubject,
+      deleteSubject,
       promoteStudent,
       promoteClass
     }}>

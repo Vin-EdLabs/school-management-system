@@ -24,6 +24,7 @@ import recordsRoutes from './routes/records.js';
 import reportsRoutes from './routes/reports.js';
 import financeRoutes from './routes/finance.js';
 import parentRoutes from './routes/parent.js';
+import subjectsRoutes from './routes/subjects.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -76,6 +77,7 @@ app.use('/api/records', recordsRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/finance', financeRoutes);
 app.use('/api/parent', parentRoutes);
+app.use('/api/subjects', subjectsRoutes);
 
 // Error handling middleware
 app.use(errorHandler);

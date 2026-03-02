@@ -26,21 +26,19 @@ export interface FeeBalanceResult {
 }
 
 /**
- * Calculate fee balance from total_fees and total_paid.
+ * Calculate fee balance from total_fees, total_paid, and arrears.
  * Do NOT store results - compute dynamically on each request.
  */
-export function calculateFeeBalance(totalFees: number, totalPaid: number): FeeBalanceResult {
+export function calculateFeeBalance(totalFees: number, totalPaid: number, arrears: number = 0): FeeBalanceResult {
   const totalFeesNum = Number(totalFees) || 0;
   const totalPaidNum = Number(totalPaid) || 0;
-  const outstanding = totalFeesNum - totalPaidNum;
+  const arrearsNum = Number(arrears) || 0;
 
-  let arrears: number;
+  const totalAmountDue = totalFeesNum + arrearsNum;
+  const outstanding = totalAmountDue - totalPaidNum;
+
   let credit: number;
   let status: 'Owing' | 'Cleared' | 'Credit';
-
-  // Arrears = carryover from previous term only. Not the same as outstanding.
-  // For current-term view, arrears = 0 unless explicitly carried over (handled by term-change flow).
-  arrears = 0;
 
   if (outstanding > 0) {
     credit = 0;
@@ -49,7 +47,6 @@ export function calculateFeeBalance(totalFees: number, totalPaid: number): FeeBa
     credit = 0;
     status = 'Cleared';
   } else {
-    arrears = 0;
     credit = Math.abs(outstanding);
     status = 'Credit';
   }
@@ -58,7 +55,7 @@ export function calculateFeeBalance(totalFees: number, totalPaid: number): FeeBa
     totalFees: totalFeesNum,
     totalPaid: totalPaidNum,
     outstanding,
-    arrears,
+    arrears: arrearsNum,
     credit,
     status,
   };

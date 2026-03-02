@@ -26,6 +26,7 @@ import TeacherPaymentHistoryModule from './teacher/TeacherPaymentHistoryModule';
 import AiChatModule from './ai/AiChatModule';
 import SupportChatModule from './support/SupportChatModule';
 import RecordsModule from './records/RecordsModule';
+import SubjectsModule from './subjects/SubjectsModule';
 import { useAuth } from '../contexts/AuthContext';
 
 const Dashboard = () => {
@@ -107,6 +108,8 @@ const Dashboard = () => {
         return <SupportChatModule />;
       case 'records':
         return <RecordsModule />;
+      case 'subjects':
+        return <SubjectsModule />;
       default:
         if (user?.role === 'teacher') {
           return <TeacherDashboard />;

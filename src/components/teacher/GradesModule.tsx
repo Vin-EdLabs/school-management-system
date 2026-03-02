@@ -131,7 +131,7 @@ const relativeTime = (isoString: string | null): string => {
 
 const GradesModule = () => {
   const { schoolId } = useSchool();
-  const { students, classes } = useData();
+  const { students, classes, subjects: globalSubjects } = useData();
   const { user } = useAuth();
   const isAdminViewer = user?.role === 'administrator' || user?.role === 'super-admin';
   const printRef = useRef<HTMLDivElement>(null);
@@ -248,7 +248,7 @@ const GradesModule = () => {
     return map;
   }, [assignments]);
 
-  const subjects = useMemo(() => Object.keys(assignmentsBySubject).sort(), [assignmentsBySubject]);
+  const activeSubjects = useMemo(() => Object.keys(assignmentsBySubject).sort(), [assignmentsBySubject]);
 
   // Build grade rows including moved students
   const gradeRows = useMemo<GradeRow[]>(() => {
@@ -260,7 +260,7 @@ const GradesModule = () => {
       const found = students.find(s => s.id === String(g.student_id));
       const isStillInClass = found
         ? (found.classAssignedId && String(found.classAssignedId) === selectedClassId) ||
-          found.classAssigned === teacherClasses.find(c => String(c.id) === selectedClassId)?.class_name
+        found.classAssigned === teacherClasses.find(c => String(c.id) === selectedClassId)?.class_name
         : false;
       return {
         studentDbId: g.student_id,
@@ -480,6 +480,8 @@ const GradesModule = () => {
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
+  const subjectsToDisplay = activeSubjects;
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -541,9 +543,8 @@ const GradesModule = () => {
               <button
                 key={tab.key}
                 onClick={() => tab.key === 'report' ? handleLoadReport() : setActiveTab('grades')}
-                className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === tab.key ? 'border-purple-600 text-purple-700' : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
+                className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.key ? 'border-purple-600 text-purple-700' : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}
               >
                 <tab.icon className="w-4 h-4" />{tab.label}
               </button>
@@ -556,14 +557,14 @@ const GradesModule = () => {
               {/* Left: Subjects sidebar */}
               <div className="lg:col-span-1 space-y-3">
                 <h3 className="font-semibold text-gray-700 text-xs uppercase tracking-widest">Subjects & Assessments</h3>
-                {subjects.length === 0 ? (
+                {subjectsToDisplay.length === 0 ? (
                   <Card>
                     <CardContent className="p-6 text-center text-gray-500 text-sm">
                       No assessments yet.{!isAdminViewer && <><br />Click <strong>Add Assessment</strong> above.</>}
                     </CardContent>
                   </Card>
                 ) : (
-                  subjects.map(subj => (
+                  subjectsToDisplay.map(subj => (
                     <Card key={subj} className="overflow-hidden">
                       <button
                         className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors"
@@ -584,9 +585,8 @@ const GradesModule = () => {
                           {(assignmentsBySubject[subj] || []).map(a => (
                             <div
                               key={a.id}
-                              className={`flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-purple-50 transition-colors ${
-                                selectedAssignmentId === String(a.id) ? 'bg-purple-100 border-l-2 border-purple-500' : ''
-                              }`}
+                              className={`flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-purple-50 transition-colors ${selectedAssignmentId === String(a.id) ? 'bg-purple-100 border-l-2 border-purple-500' : ''
+                                }`}
                               onClick={() => setSelectedAssignmentId(String(a.id))}
                             >
                               <div className="min-w-0">
@@ -667,7 +667,7 @@ const GradesModule = () => {
                     </CardHeader>
 
                     <CardContent>
-                          {gradeRows.length === 0 ? (
+                      {gradeRows.length === 0 ? (
                         <div className="text-center py-8 text-gray-500">No students found for this class</div>
                       ) : (
                         <div className="space-y-2">
@@ -675,8 +675,8 @@ const GradesModule = () => {
                             const maxScore = selectedAssignment?.max_score ?? 100;
                             const score = isBulkEditing
                               ? (bulkScores[row.studentDbId] !== '' && bulkScores[row.studentDbId] !== undefined
-                                  ? parseFloat(bulkScores[row.studentDbId])
-                                  : null)
+                                ? parseFloat(bulkScores[row.studentDbId])
+                                : null)
                               : row.score;
                             const pct = score !== null && !isNaN(score) ? Math.round((score / maxScore) * 100) : null;
                             const grade = pct !== null ? getLetterGrade(pct) : null;
@@ -689,13 +689,12 @@ const GradesModule = () => {
                               <div key={row.studentDbId} className="border rounded-lg overflow-hidden">
                                 {/* ── Main row ── */}
                                 <div
-                                  className={`flex items-center gap-3 p-3 transition-colors ${
-                                    row.hasMoved
+                                  className={`flex items-center gap-3 p-3 transition-colors ${row.hasMoved
                                       ? 'bg-amber-50'
                                       : isBulkEditing
-                                      ? 'bg-slate-50'
-                                      : 'bg-white'
-                                  }`}
+                                        ? 'bg-slate-50'
+                                        : 'bg-white'
+                                    }`}
                                 >
                                   {/* Rank */}
                                   <span className="text-xs font-bold text-gray-400 w-5 shrink-0 text-right">{idx + 1}</span>
@@ -771,11 +770,10 @@ const GradesModule = () => {
                                     <button
                                       onClick={() => toggleHistory(row.studentDbId)}
                                       title="Show grade change history"
-                                      className={`shrink-0 flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
-                                        isHistOpen
+                                      className={`shrink-0 flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${isHistOpen
                                           ? 'bg-purple-100 text-purple-700'
                                           : 'text-gray-400 hover:text-purple-600 hover:bg-purple-50'
-                                      }`}
+                                        }`}
                                     >
                                       <History className="w-3.5 h-3.5" />
                                       {isHistOpen
@@ -970,9 +968,9 @@ const GradesModule = () => {
                               const grade = getLetterGrade(pct);
                               const rowBg =
                                 s.position === 1 ? 'bg-yellow-50' :
-                                s.position === 2 ? 'bg-slate-50' :
-                                s.position === 3 ? 'bg-orange-50' :
-                                idx % 2 === 0 ? 'bg-white' : 'bg-gray-50';
+                                  s.position === 2 ? 'bg-slate-50' :
+                                    s.position === 3 ? 'bg-orange-50' :
+                                      idx % 2 === 0 ? 'bg-white' : 'bg-gray-50';
 
                               return (
                                 <tr key={s.studentId} className={rowBg}>
@@ -981,7 +979,7 @@ const GradesModule = () => {
                                       {/* Passport photo */}
                                       <div className="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center shrink-0 text-white text-xs font-bold">
                                         {(s as any).passportPhotoUrl
-                                          ? <img src={`${import.meta.env.VITE_API_BASE_URL?.replace('/api','') || 'http://localhost:3001'}${(s as any).passportPhotoUrl}`} alt="" className="w-full h-full object-cover" />
+                                          ? <img src={`${import.meta.env.VITE_API_BASE_URL?.replace('/api', '') || 'http://localhost:3001'}${(s as any).passportPhotoUrl}`} alt="" className="w-full h-full object-cover" />
                                           : `${s.firstName[0]}${s.lastName[0]}`}
                                       </div>
                                       {s.position <= 3 && (
@@ -1072,17 +1070,19 @@ const GradesModule = () => {
               <Select value={newAssignment.subject} onValueChange={v => setNewAssignment(p => ({ ...p, subject: v }))}>
                 <SelectTrigger><SelectValue placeholder="Choose subject…" /></SelectTrigger>
                 <SelectContent>
-                  {subjects.length > 0 && (
+                  {globalSubjects.length > 0 ? (
                     <>
-                      <div className="px-2 py-1 text-xs text-gray-400 font-medium">Existing subjects</div>
-                      {subjects.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                      <div className="border-t my-1" />
+                      <div className="px-2 py-1 text-xs text-gray-400 font-medium">School Subjects</div>
+                      {globalSubjects.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}
+                    </>
+                  ) : (
+                    <>
+                      <div className="px-2 py-1 text-xs text-gray-400 font-medium">Common JHS subjects</div>
+                      {JHS_SUBJECTS.map(s => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
                     </>
                   )}
-                  <div className="px-2 py-1 text-xs text-gray-400 font-medium">Common JHS subjects</div>
-                  {JHS_SUBJECTS.filter(s => !subjects.includes(s)).map(s => (
-                    <SelectItem key={s} value={s}>{s}</SelectItem>
-                  ))}
                   <div className="border-t my-1" />
                   <SelectItem value="__custom__">+ Other (type below)</SelectItem>
                 </SelectContent>

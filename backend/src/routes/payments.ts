@@ -55,7 +55,15 @@ async function getStudentFeeBalance(
   );
   const totalPaid = parseFloat(paidRes.rows[0]?.total || '0');
 
-  return calculateFeeBalance(totalFees, totalPaid);
+  // Fetch arrears from term_arrears
+  const arrearsRes = await client.query(
+    `SELECT COALESCE(SUM(amount), 0) as total FROM term_arrears
+     WHERE tenant_id = $1 AND student_id = $2 AND (current_term = $3 OR current_term = $4)`,
+    [tenantId, studentId, termMatch, term]
+  );
+  const arrears = parseFloat(arrearsRes.rows[0]?.total || '0');
+
+  return calculateFeeBalance(totalFees, totalPaid, arrears);
 }
 
 /** Generate receipt number: R + 8 digits (e.g. R00012345), unique per school */

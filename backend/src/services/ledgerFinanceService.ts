@@ -221,30 +221,30 @@ export const postFeesForClass = async (tenantId: number, classId: number, academ
  * Records a payment for a student.
  */
 export const recordPayment = async (paymentData: z.infer<typeof PaymentSchema>) => {
-    const validatedData = PaymentSchema.parse(paymentData);
-    const { tenantId, studentId, academicYearId, termId, amount, description, paymentMethod, receiptNumber } = validatedData;
-    
-    const client = await getClient();
-    try {
-        await client.query('BEGIN');
+  const validatedData = PaymentSchema.parse(paymentData);
+  const { tenantId, studentId, academicYearId, termId, amount, description, paymentMethod, receiptNumber } = validatedData;
 
-        const paymentDescription = description || 'Payment';
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
 
-        const result = await client.query(
-            `INSERT INTO student_ledger (tenant_id, student_id, academic_year_id, term_id, description, debit, credit, entry_type, payment_method, receipt_number)
+    const paymentDescription = description || 'Payment';
+
+    const result = await client.query(
+      `INSERT INTO student_ledger (tenant_id, student_id, academic_year_id, term_id, description, debit, credit, entry_type, payment_method, receipt_number)
              VALUES ($1, $2, $3, $4, $5, 0, $6, 'payment', $7, $8) RETURNING *`,
-            [tenantId, studentId, academicYearId, termId, paymentDescription, amount, paymentMethod, receiptNumber]
-        );
+      [tenantId, studentId, academicYearId, termId, paymentDescription, amount, paymentMethod, receiptNumber]
+    );
 
-        await client.query('COMMIT');
-        return result.rows[0];
-    } catch (error) {
-        await client.query('ROLLBACK');
-        console.error('Error recording payment:', error);
-        throw new Error('Failed to record payment. Transaction rolled back.');
-    } finally {
-        client.release();
-    }
+    await client.query('COMMIT');
+    return result.rows[0];
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error recording payment:', error);
+    throw new Error('Failed to record payment. Transaction rolled back.');
+  } finally {
+    client.release();
+  }
 };
 
 /**
@@ -252,15 +252,15 @@ export const recordPayment = async (paymentData: z.infer<typeof PaymentSchema>) 
  * This is useful when switching the active term for the whole school.
  */
 export const postFeesForNewTerm = async (tenantId: number, newTermId: number) => {
-    const { tenantId: validatedTenantId, newTermId: validatedNewTermId } = SwitchTermSchema.parse({ tenantId, newTermId });
+  const { tenantId: validatedTenantId, newTermId: validatedNewTermId } = SwitchTermSchema.parse({ tenantId, newTermId });
 
-    console.log(`[postFeesForNewTerm] Starting fee posting for Tenant: ${validatedTenantId}, New Term: ${validatedNewTermId}`);
+  console.log(`[postFeesForNewTerm] Starting fee posting for Tenant: ${validatedTenantId}, New Term: ${validatedNewTermId}`);
 
-    const client = await getClient();
-    try {
-        await client.query('BEGIN');
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
 
-        const sql = `
+    const sql = `
             INSERT INTO student_ledger (tenant_id, student_id, academic_year_id, term_id, description, entry_type, debit, credit)
             SELECT
                 s.tenant_id,
@@ -287,24 +287,24 @@ export const postFeesForNewTerm = async (tenantId: number, newTermId: number) =>
             );
         `;
 
-        const result = await client.query(sql, [validatedTenantId, validatedNewTermId]);
+    const result = await client.query(sql, [validatedTenantId, validatedNewTermId]);
 
-        await client.query('COMMIT');
+    await client.query('COMMIT');
 
-        console.log(`[postFeesForNewTerm] Completed. Inserted ${result.rowCount} new term fee entries.`);
+    console.log(`[postFeesForNewTerm] Completed. Inserted ${result.rowCount} new term fee entries.`);
 
-        return {
-            message: `Successfully posted fees for new term.`,
-            insertedCount: result.rowCount,
-        };
+    return {
+      message: `Successfully posted fees for new term.`,
+      insertedCount: result.rowCount,
+    };
 
-    } catch (error) {
-        await client.query('ROLLBACK');
-        console.error('[postFeesForNewTerm] Error:', error);
-        throw new Error('Failed to post fees for the new term. Transaction rolled back.');
-    } finally {
-        client.release();
-    }
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('[postFeesForNewTerm] Error:', error);
+    throw new Error('Failed to post fees for the new term. Transaction rolled back.');
+  } finally {
+    client.release();
+  }
 };
 
 /**
@@ -352,18 +352,17 @@ export const postFeesForNewTermWithArrears = async (
 
     const newAyId = termMap[nextTermId].academic_year_id;
 
-    // ── STEP 1: Read the previous term's balance per student ──────────────────
-    // SUM(debit) - SUM(credit) for term_id = prevTermId.
-    // Includes term_fee + any arrears already in that term + payments.
-    // This is the balance the student owes at the END of the previous term.
+    // ── STEP 1: Read the global running balance per student ──────────────────
+    // SUM(debit) - SUM(credit) across ALL terms.
+    // This represents the true outstanding amount to carry forward.
     const prevBalances = await client.query(
       `SELECT student_id,
               (COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0))::numeric AS balance
        FROM student_ledger
-       WHERE tenant_id = $1 AND term_id = $2
+       WHERE tenant_id = $1
        GROUP BY student_id
        HAVING (COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0)) > 0`,
-      [tid, prevTermId]
+      [tid]
     );
 
     console.log(
@@ -381,12 +380,34 @@ export const postFeesForNewTermWithArrears = async (
 
     // ── STEP 3: Insert arrears rows ───────────────────────────────────────────
     let arrearsInserted = 0;
+    const prevTerm = termMap[prevTermId];
+    const nextTerm = termMap[nextTermId];
+
+    // Use full term name (e.g. "Term 3 2026") for consistency with school_settings/UI matching
+    const nextAyRes = await client.query('SELECT name FROM academic_years WHERE id = $1', [nextTerm.academic_year_id]);
+    const nextAyName = nextAyRes.rows[0]?.name || '';
+    const fullNextTermName = nextAyName ? `${nextTerm.name} ${nextAyName}`.trim() : nextTerm.name;
+
+    const prevAyRes = await client.query('SELECT name FROM academic_years WHERE id = $1', [prevTerm.academic_year_id]);
+    const prevAyName = prevAyRes.rows[0]?.name || '';
+    const fullPrevTermName = prevAyName ? `${prevTerm.name} ${prevAyName}`.trim() : prevTerm.name;
     for (const row of prevBalances.rows) {
       const balance = parseFloat(row.balance);
       const studentId = Number(row.student_id);
-      if (balance <= 0 || alreadyHasArrears.has(studentId)) continue;
+      if (balance <= 0) continue;
 
-      // Persist in term_outstanding_balances (source-of-truth snapshot)
+      // 3.1 Update term_arrears (simple view used by Student Balances / receipts)
+      // This ensures the "Arrears" label in UI is accurate
+      await client.query(
+        `INSERT INTO term_arrears (tenant_id, student_id, current_term, from_term, amount)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (tenant_id, student_id, current_term)
+         DO UPDATE SET amount = EXCLUDED.amount, from_term = EXCLUDED.from_term`,
+        [tid, studentId, fullNextTermName, fullPrevTermName, balance]
+      );
+      if (alreadyHasArrears.has(studentId)) continue;
+
+      // 3.2 Persist in term_outstanding_balances (snapshot)
       await client.query(
         `INSERT INTO term_outstanding_balances
            (tenant_id, term_id, student_id, outstanding_balance, calculated_at)
@@ -396,17 +417,17 @@ export const postFeesForNewTermWithArrears = async (
         [tid, prevTermId, studentId, balance]
       );
 
-      // Real ledger row — this is what the report reads
+      // 3.3 Real ledger row — MEMO ONLY (amount 0) to avoid double-counting in running balance
       await client.query(
         `INSERT INTO student_ledger
            (tenant_id, student_id, academic_year_id, term_id, description, entry_type, debit, credit)
-         VALUES ($1, $2, $3, $4, 'Arrears carried forward from previous term', 'arrears', $5, 0)`,
-        [tid, studentId, newAyId, nextTermId, balance]
+         VALUES ($1, $2, $3, $4, $5, 'arrears', 0, 0)`,
+        [tid, studentId, newAyId, nextTermId, `Arrears brought forward from ${fullPrevTermName}: GHS ${balance.toFixed(2)}`]
       );
 
       arrearsInserted++;
       alreadyHasArrears.add(studentId);
-      console.log(`[switchTerm] arrears student=${studentId} amount=${balance} -> term ${nextTermId}`);
+      console.log(`[switchTerm] arrears memo student=${studentId} amount=${balance} -> term ${nextTermId}`);
     }
 
     // ── STEP 4: Post new term fees (skip students already billed) ─────────────
@@ -447,7 +468,7 @@ export const postFeesForNewTermWithArrears = async (
       termFeesInserted: feeResult.rowCount,
     };
   } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
+    await client.query('ROLLBACK').catch(() => { });
     console.error('[switchTerm] ERROR:', err);
     throw err;
   } finally {
@@ -650,7 +671,7 @@ export const backfillArrearsForCurrentTerm = async (tenantId: number) => {
       creditRowsInserted: creditsInserted,
     };
   } catch (error) {
-    await client.query('ROLLBACK').catch(() => {});
+    await client.query('ROLLBACK').catch(() => { });
     console.error('[backfillArrearsForCurrentTerm] Error:', error);
     throw error;
   } finally {

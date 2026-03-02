@@ -38,10 +38,10 @@ export const initializeDatabase = async () => {
     // Test connection
     await query('SELECT NOW()');
     console.log('✅ Database connection established');
-    
+
     // Run migrations
     await runMigrations();
-    
+
     return true;
   } catch (error: any) {
     console.error('❌ Database initialization failed:', error.message);
@@ -51,12 +51,12 @@ export const initializeDatabase = async () => {
 
 const runMigrations = async () => {
   const client = await getClient();
-  
+
   try {
     await client.query('BEGIN');
-    
+
     // Note: Permissions should be granted by superuser before running migrations
-    
+
     // School registration requests (from landing page)
     await client.query(`
       CREATE TABLE IF NOT EXISTS school_registrations (
@@ -87,27 +87,27 @@ const runMigrations = async () => {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    
+
     // Add new columns if they don't exist (migration for existing DBs)
     await client.query(`
       ALTER TABLE tenants ADD COLUMN IF NOT EXISTS slug VARCHAR(100) UNIQUE
-    `).catch(() => {});
+    `).catch(() => { });
     await client.query(`
       ALTER TABLE tenants ADD COLUMN IF NOT EXISTS logo_url VARCHAR(500)
-    `).catch(() => {});
+    `).catch(() => { });
     await client.query(`
       ALTER TABLE tenants ADD COLUMN IF NOT EXISTS primary_color VARCHAR(20)
-    `).catch(() => {});
+    `).catch(() => { });
     await client.query(`
       ALTER TABLE tenants ADD COLUMN IF NOT EXISTS secondary_color VARCHAR(20)
-    `).catch(() => {});
+    `).catch(() => { });
     await client.query(`
       ALTER TABLE tenants ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(50) DEFAULT 'active'
-    `).catch(() => {});
+    `).catch(() => { });
     await client.query(`
       ALTER TABLE tenants ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true
-    `).catch(() => {});
-    
+    `).catch(() => { });
+
     // Create users table
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -125,7 +125,7 @@ const runMigrations = async () => {
         UNIQUE(tenant_id, username)
       )
     `);
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_primary_admin BOOLEAN DEFAULT false`).catch(() => {});
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_primary_admin BOOLEAN DEFAULT false`).catch(() => { });
     // Set first admin per tenant as primary (for existing data)
     await client.query(`
       UPDATE users SET is_primary_admin = true WHERE id IN (
@@ -133,8 +133,8 @@ const runMigrations = async () => {
         WHERE role = 'administrator' AND tenant_id IS NOT NULL 
         ORDER BY tenant_id, created_at ASC
       )
-    `).catch(() => {});
-    
+    `).catch(() => { });
+
     // Create school_settings table
     await client.query(`
       CREATE TABLE IF NOT EXISTS school_settings (
@@ -151,7 +151,7 @@ const runMigrations = async () => {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    
+
     // Create academic_terms table
     await client.query(`
       CREATE TABLE IF NOT EXISTS academic_terms (
@@ -166,7 +166,7 @@ const runMigrations = async () => {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    
+
     // Create classes table
     await client.query(`
       CREATE TABLE IF NOT EXISTS classes (
@@ -181,7 +181,7 @@ const runMigrations = async () => {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    
+
     // Create students table
     await client.query(`
       CREATE TABLE IF NOT EXISTS students (
@@ -210,7 +210,7 @@ const runMigrations = async () => {
         UNIQUE(tenant_id, admission_number)
       )
     `);
-    
+
     // Create teachers table
     await client.query(`
       CREATE TABLE IF NOT EXISTS teachers (
@@ -246,7 +246,21 @@ const runMigrations = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(class_id, teacher_id)
       )
-    `).catch(() => {});
+    `).catch(() => { });
+
+    // Create subjects table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS subjects (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
+        name VARCHAR(150) NOT NULL,
+        code VARCHAR(50),
+        level VARCHAR(50),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(tenant_id, name)
+      )
+    `);
 
     // Create fee_structures table
     await client.query(`
@@ -262,7 +276,7 @@ const runMigrations = async () => {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    
+
     // Create payments table
     await client.query(`
       CREATE TABLE IF NOT EXISTS payments (
@@ -294,7 +308,7 @@ const runMigrations = async () => {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    
+
     // Create income table
     await client.query(`
       CREATE TABLE IF NOT EXISTS income (
@@ -312,7 +326,7 @@ const runMigrations = async () => {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    
+
     // Create expenses table
     await client.query(`
       CREATE TABLE IF NOT EXISTS expenses (
@@ -332,7 +346,7 @@ const runMigrations = async () => {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    
+
     // Create student_arrears table for tracking outstanding fees (legacy, kept for migration)
     await client.query(`
       CREATE TABLE IF NOT EXISTS student_arrears (
@@ -360,7 +374,7 @@ const runMigrations = async () => {
         UNIQUE(tenant_id, student_id)
       )
     `);
-    
+
     // Payroll: other staff (non-teachers)
     await client.query(`
       CREATE TABLE IF NOT EXISTS payroll_other_staff (
@@ -407,7 +421,7 @@ const runMigrations = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(tenant_id, class_id, student_id, attendance_date)
       )
-    `).catch(() => {});
+    `).catch(() => { });
 
     // Grade assignments (quizzes, exams, etc.)
     await client.query(`
@@ -422,12 +436,12 @@ const runMigrations = async () => {
         due_date DATE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
-    `).catch(() => {});
+    `).catch(() => { });
 
     // Migration: add subject column to existing grade_assignments tables
     await client.query(`
       ALTER TABLE grade_assignments ADD COLUMN IF NOT EXISTS subject VARCHAR(150) NOT NULL DEFAULT 'General'
-    `).catch(() => {});
+    `).catch(() => { });
 
     // Student grades
     await client.query(`
@@ -442,12 +456,12 @@ const runMigrations = async () => {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(tenant_id, student_id, assignment_id)
       )
-    `).catch(() => {});
+    `).catch(() => { });
 
     // Migration: add updated_at to existing student_grades tables
     await client.query(`
       ALTER TABLE student_grades ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    `).catch(() => {});
+    `).catch(() => { });
 
     // Term report releases — teacher marks a class's term report as "released" for parent viewing
     await client.query(`
@@ -461,11 +475,11 @@ const runMigrations = async () => {
         is_released BOOLEAN NOT NULL DEFAULT true,
         UNIQUE(tenant_id, class_id, term)
       )
-    `).catch(() => {});
+    `).catch(() => { });
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_term_report_releases_tenant
       ON term_report_releases (tenant_id, class_id, term)
-    `).catch(() => {});
+    `).catch(() => { });
 
     // Parent portal accounts — one per student, password defaults to their admission number
     await client.query(`
@@ -479,11 +493,11 @@ const runMigrations = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(tenant_id, student_id)
       )
-    `).catch(() => {});
+    `).catch(() => { });
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_parent_portal_tenant_student
       ON parent_portal_accounts (tenant_id, student_id)
-    `).catch(() => {});
+    `).catch(() => { });
 
     // Auto-create parent accounts for any student who doesn't have one yet
     // Default password = their student_id (admission number)
@@ -503,12 +517,12 @@ const runMigrations = async () => {
         changed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
         changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
-    `).catch(() => {});
+    `).catch(() => { });
 
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_grade_audit_student_assignment
       ON grade_audit_log (tenant_id, student_id, assignment_id)
-    `).catch(() => {});
+    `).catch(() => { });
 
     // Create student_credits table for tracking overpayments
     await client.query(`
@@ -522,7 +536,7 @@ const runMigrations = async () => {
         UNIQUE(tenant_id, student_id)
       )
     `);
-    
+
     // Create audit_logs table
     await client.query(`
       CREATE TABLE IF NOT EXISTS audit_logs (
@@ -538,7 +552,7 @@ const runMigrations = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    
+
     // Create indexes for better performance
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);
@@ -564,43 +578,43 @@ const runMigrations = async () => {
     `);
 
     // school_registrations: internal_note for super admin
-    await client.query(`ALTER TABLE school_registrations ADD COLUMN IF NOT EXISTS internal_note TEXT`).catch(() => {});
+    await client.query(`ALTER TABLE school_registrations ADD COLUMN IF NOT EXISTS internal_note TEXT`).catch(() => { });
 
     // users: full_name and phone for super admins
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name VARCHAR(255)`).catch(() => {});
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(100)`).catch(() => {});
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name VARCHAR(255)`).catch(() => { });
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(100)`).catch(() => { });
 
     // Receipt settings in school_settings
-    await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS receipt_prefix VARCHAR(10) DEFAULT 'R'`).catch(() => {});
-    await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS postal_address TEXT`).catch(() => {});
-    await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS contact_phone VARCHAR(100)`).catch(() => {});
-    await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS receipt_footer TEXT`).catch(() => {});
-    await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS bank_details TEXT`).catch(() => {});
+    await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS receipt_prefix VARCHAR(10) DEFAULT 'R'`).catch(() => { });
+    await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS postal_address TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS contact_phone VARCHAR(100)`).catch(() => { });
+    await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS receipt_footer TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS bank_details TEXT`).catch(() => { });
 
     // Term/academic_year for income and expenses (term-scoped reporting)
-    await client.query(`ALTER TABLE income ADD COLUMN IF NOT EXISTS term VARCHAR(100)`).catch(() => {});
-    await client.query(`ALTER TABLE income ADD COLUMN IF NOT EXISTS academic_year VARCHAR(50)`).catch(() => {});
-    await client.query(`ALTER TABLE income ADD COLUMN IF NOT EXISTS payment_id INTEGER REFERENCES payments(id) ON DELETE SET NULL`).catch(() => {});
-    await client.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS term VARCHAR(100)`).catch(() => {});
-    await client.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS academic_year VARCHAR(50)`).catch(() => {});
+    await client.query(`ALTER TABLE income ADD COLUMN IF NOT EXISTS term VARCHAR(100)`).catch(() => { });
+    await client.query(`ALTER TABLE income ADD COLUMN IF NOT EXISTS academic_year VARCHAR(50)`).catch(() => { });
+    await client.query(`ALTER TABLE income ADD COLUMN IF NOT EXISTS payment_id INTEGER REFERENCES payments(id) ON DELETE SET NULL`).catch(() => { });
+    await client.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS term VARCHAR(100)`).catch(() => { });
+    await client.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS academic_year VARCHAR(50)`).catch(() => { });
 
     // Student passport photo
-    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS passport_photo_url VARCHAR(500)`).catch(() => {});
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS passport_photo_url VARCHAR(500)`).catch(() => { });
 
     // payroll_other_staff: staff_id for login (like TCH001 for teachers)
-    await client.query(`ALTER TABLE payroll_other_staff ADD COLUMN IF NOT EXISTS staff_id VARCHAR(100)`).catch(() => {});
+    await client.query(`ALTER TABLE payroll_other_staff ADD COLUMN IF NOT EXISTS staff_id VARCHAR(100)`).catch(() => { });
     // users: other_staff_id for payroll staff login
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS other_staff_id INTEGER`).catch(() => {});
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS other_staff_id INTEGER`).catch(() => { });
     // Relax users role check to include 'staff'
-    await client.query(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`).catch(() => {});
-    await client.query(`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('super-admin', 'administrator', 'finance', 'teacher', 'staff'))`).catch(() => {});
+    await client.query(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`).catch(() => { });
+    await client.query(`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('super-admin', 'administrator', 'finance', 'teacher', 'staff'))`).catch(() => { });
 
     // Migrate legacy student_arrears into student_arrears_balance (student-scoped, no term)
     await client.query(`
       INSERT INTO student_arrears_balance (tenant_id, student_id, amount)
       SELECT tenant_id, student_id, SUM(amount) FROM student_arrears GROUP BY tenant_id, student_id
       ON CONFLICT (tenant_id, student_id) DO NOTHING
-    `).catch(() => {});
+    `).catch(() => { });
 
     // Support chat messages (admin/finance from tenants ↔ super-admin)
     await client.query(`
@@ -643,11 +657,11 @@ const runMigrations = async () => {
         UNIQUE(tenant_id, student_id, current_term)
       )
     `);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_term_arrears_tenant_term ON term_arrears(tenant_id, current_term)`).catch(() => {});
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_term_arrears_student ON term_arrears(student_id)`).catch(() => {});
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_term_arrears_tenant_term ON term_arrears(tenant_id, current_term)`).catch(() => { });
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_term_arrears_student ON term_arrears(student_id)`).catch(() => { });
 
     // ----- LEDGER-BASED FINANCE (kept for reference, not used by UI) -----
-    await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS carry_forward_balance BOOLEAN DEFAULT true`).catch(() => {});
+    await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS carry_forward_balance BOOLEAN DEFAULT true`).catch(() => { });
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS academic_years (
@@ -659,7 +673,7 @@ const runMigrations = async () => {
         UNIQUE(tenant_id, name)
       )
     `);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_academic_years_tenant ON academic_years(tenant_id)`).catch(() => {});
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_academic_years_tenant ON academic_years(tenant_id)`).catch(() => { });
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS terms (
@@ -672,8 +686,8 @@ const runMigrations = async () => {
         UNIQUE(tenant_id, academic_year_id, name)
       )
     `);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_terms_tenant ON terms(tenant_id)`).catch(() => {});
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_terms_academic_year ON terms(academic_year_id)`).catch(() => {});
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_terms_tenant ON terms(tenant_id)`).catch(() => { });
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_terms_academic_year ON terms(academic_year_id)`).catch(() => { });
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS ledger_fee_structures (
@@ -704,9 +718,9 @@ const runMigrations = async () => {
         UNIQUE(tenant_id, term_id, student_id)
       )
     `);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_term_outstanding_tenant_term ON term_outstanding_balances(tenant_id, term_id)`).catch(() => {});
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_term_outstanding_student ON term_outstanding_balances(student_id)`).catch(() => {});
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_ledger_fee_structures_tenant ON ledger_fee_structures(tenant_id)`).catch(() => {});
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_term_outstanding_tenant_term ON term_outstanding_balances(tenant_id, term_id)`).catch(() => { });
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_term_outstanding_student ON term_outstanding_balances(student_id)`).catch(() => { });
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_ledger_fee_structures_tenant ON ledger_fee_structures(tenant_id)`).catch(() => { });
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS student_ledger (
@@ -724,20 +738,20 @@ const runMigrations = async () => {
         payment_method VARCHAR(100)
       )
     `);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_student_ledger_tenant ON student_ledger(tenant_id)`).catch(() => {});
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_student_ledger_student ON student_ledger(student_id)`).catch(() => {});
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_student_ledger_tenant ON student_ledger(tenant_id)`).catch(() => { });
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_student_ledger_student ON student_ledger(student_id)`).catch(() => { });
     await client.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_student_ledger_term_fee_once
       ON student_ledger (tenant_id, student_id, academic_year_id, term_id)
       WHERE entry_type = 'term_fee'
-    `).catch(() => {});
+    `).catch(() => { });
 
     // Create default super-admin if it doesn't exist
     const superAdminCheck = await client.query(
       'SELECT id FROM users WHERE username = $1 AND role = $2',
       ['superadmin', 'super-admin']
     );
-    
+
     if (superAdminCheck.rows.length === 0) {
       const defaultPassword = await bcrypt.hash('superadmin123', 10);
       await client.query(
@@ -790,7 +804,7 @@ const runMigrations = async () => {
         await client.query(
           'INSERT INTO terms (tenant_id, academic_year_id, name, is_current) VALUES ($1, $2, $3, true)',
           [tid, ay.rows[0].id, 'Term 1']
-        ).catch(() => {});
+        ).catch(() => { });
       }
     }
 

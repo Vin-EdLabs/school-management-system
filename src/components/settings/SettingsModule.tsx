@@ -142,7 +142,7 @@ const SettingsModule = () => {
   const handleSchoolInfoUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!hasSettingsFull) return;
-    
+
     try {
       await apiService.put('/settings', {
         school_name: schoolInfo.name,
@@ -152,7 +152,7 @@ const SettingsModule = () => {
         primary_color: schoolInfo.primaryColor,
         secondary_color: schoolInfo.secondaryColor,
       });
-      
+
       toast({
         title: "School Information Updated",
         description: "School details have been saved successfully",
@@ -174,7 +174,7 @@ const SettingsModule = () => {
   if (!hasSettingsFull) {
     // Regular user settings view
     return (
-        <div className="p-6 space-y-6">
+      <div className="p-6 space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 bg-gradient-to-br from-gray-500 to-gray-600 rounded-lg flex items-center justify-center">
@@ -255,7 +255,7 @@ const SettingsModule = () => {
           </div>
         </div>
       </div>
-      
+
       {/* School Management - Super-Admin only */}
       {isSuperAdmin && <SchoolManager />}
 
@@ -314,151 +314,151 @@ const SettingsModule = () => {
         </Card>
 
         {hasSettingsFull && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Building className="w-5 h-5" />
-              <span>School Information</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSchoolInfoUpdate} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="schoolName">School Name</Label>
-                <Input 
-                  id="schoolName"
-                  value={schoolInfo.name}
-                  onChange={(e) => setSchoolInfo({...schoolInfo, name: e.target.value})}
-                  placeholder="Enter school name"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="schoolAddress">Address</Label>
-                <Input 
-                  id="schoolAddress"
-                  value={schoolInfo.address}
-                  onChange={(e) => setSchoolInfo({...schoolInfo, address: e.target.value})}
-                  placeholder="Enter school address"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="schoolContact">Contact Number</Label>
-                <Input 
-                  id="schoolContact"
-                  value={schoolInfo.contact}
-                  onChange={(e) => setSchoolInfo({...schoolInfo, contact: e.target.value})}
-                  placeholder="Enter contact number"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="schoolEmail">Email Address</Label>
-                <Input 
-                  id="schoolEmail"
-                  type="email"
-                  value={schoolInfo.email}
-                  onChange={(e) => setSchoolInfo({...schoolInfo, email: e.target.value})}
-                  placeholder="Enter email address"
-                  required
-                />
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Building className="w-5 h-5" />
+                <span>School Information</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSchoolInfoUpdate} className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Primary Color (Login & Branding)</Label>
-                  <div className="flex gap-2">
-                    <Input type="color" value={schoolInfo.primaryColor} onChange={(e) => setSchoolInfo({...schoolInfo, primaryColor: e.target.value})} className="w-14 h-10 p-1 cursor-pointer" />
-                    <Input value={schoolInfo.primaryColor} onChange={(e) => setSchoolInfo({...schoolInfo, primaryColor: e.target.value})} className="flex-1" />
-                  </div>
+                  <Label htmlFor="schoolName">School Name</Label>
+                  <Input
+                    id="schoolName"
+                    value={schoolInfo.name}
+                    onChange={(e) => setSchoolInfo({ ...schoolInfo, name: e.target.value })}
+                    placeholder="Enter school name"
+                    required
+                  />
                 </div>
                 <div className="space-y-2">
-                  <Label>Secondary Color</Label>
-                  <div className="flex gap-2">
-                    <Input type="color" value={schoolInfo.secondaryColor} onChange={(e) => setSchoolInfo({...schoolInfo, secondaryColor: e.target.value})} className="w-14 h-10 p-1 cursor-pointer" />
-                    <Input value={schoolInfo.secondaryColor} onChange={(e) => setSchoolInfo({...schoolInfo, secondaryColor: e.target.value})} className="flex-1" />
+                  <Label htmlFor="schoolAddress">Address</Label>
+                  <Input
+                    id="schoolAddress"
+                    value={schoolInfo.address}
+                    onChange={(e) => setSchoolInfo({ ...schoolInfo, address: e.target.value })}
+                    placeholder="Enter school address"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="schoolContact">Contact Number</Label>
+                  <Input
+                    id="schoolContact"
+                    value={schoolInfo.contact}
+                    onChange={(e) => setSchoolInfo({ ...schoolInfo, contact: e.target.value })}
+                    placeholder="Enter contact number"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="schoolEmail">Email Address</Label>
+                  <Input
+                    id="schoolEmail"
+                    type="email"
+                    value={schoolInfo.email}
+                    onChange={(e) => setSchoolInfo({ ...schoolInfo, email: e.target.value })}
+                    placeholder="Enter email address"
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Primary Color (Login & Branding)</Label>
+                    <div className="flex gap-2">
+                      <Input type="color" value={schoolInfo.primaryColor} onChange={(e) => setSchoolInfo({ ...schoolInfo, primaryColor: e.target.value })} className="w-14 h-10 p-1 cursor-pointer" />
+                      <Input value={schoolInfo.primaryColor} onChange={(e) => setSchoolInfo({ ...schoolInfo, primaryColor: e.target.value })} className="flex-1" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Secondary Color</Label>
+                    <div className="flex gap-2">
+                      <Input type="color" value={schoolInfo.secondaryColor} onChange={(e) => setSchoolInfo({ ...schoolInfo, secondaryColor: e.target.value })} className="w-14 h-10 p-1 cursor-pointer" />
+                      <Input value={schoolInfo.secondaryColor} onChange={(e) => setSchoolInfo({ ...schoolInfo, secondaryColor: e.target.value })} className="flex-1" />
+                    </div>
                   </div>
                 </div>
-              </div>
-              <Button type="submit" className="w-full">
-                Update School Information
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+                <Button type="submit" className="w-full">
+                  Update School Information
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
         )}
 
         {hasSettingsFull && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Receipt className="w-5 h-5" />
-              <span>Receipt Customization</span>
-            </CardTitle>
-            <p className="text-sm text-gray-500">Customize how receipts appear when printing</p>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={async (e) => {
-              e.preventDefault();
-              try {
-                await apiService.put('/settings', {
-                  receipt_prefix: receiptSettings.receipt_prefix,
-                  postal_address: receiptSettings.postal_address,
-                  contact_phone: receiptSettings.contact_phone,
-                  receipt_footer: receiptSettings.receipt_footer,
-                  bank_details: receiptSettings.bank_details,
-                });
-                toast({ title: 'Receipt settings saved' });
-              } catch (err: any) {
-                toast({ title: 'Error', description: err?.message, variant: 'destructive' });
-              }
-            }} className="space-y-4">
-              <div className="space-y-2">
-                <Label>Receipt Number Prefix</Label>
-                <Input
-                  value={receiptSettings.receipt_prefix}
-                  onChange={(e) => setReceiptSettings({ ...receiptSettings, receipt_prefix: e.target.value })}
-                  placeholder="R (default)"
-                  maxLength={5}
-                />
-                <p className="text-xs text-gray-500">e.g. R for R00012345</p>
-              </div>
-              <div className="space-y-2">
-                <Label>Postal Address (for receipt header)</Label>
-                <Input
-                  value={receiptSettings.postal_address}
-                  onChange={(e) => setReceiptSettings({ ...receiptSettings, postal_address: e.target.value })}
-                  placeholder="P.O. Box 123, Accra"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Contact Number</Label>
-                <Input
-                  value={receiptSettings.contact_phone}
-                  onChange={(e) => setReceiptSettings({ ...receiptSettings, contact_phone: e.target.value })}
-                  placeholder="+233 XX XXX XXXX"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Footer Message</Label>
-                <Input
-                  value={receiptSettings.receipt_footer}
-                  onChange={(e) => setReceiptSettings({ ...receiptSettings, receipt_footer: e.target.value })}
-                  placeholder="Thank you for your payment!"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Bank Details (optional)</Label>
-                <Input
-                  value={receiptSettings.bank_details}
-                  onChange={(e) => setReceiptSettings({ ...receiptSettings, bank_details: e.target.value })}
-                  placeholder="Bank: XYZ, Account: 1234567890"
-                />
-              </div>
-              <Button type="submit" className="w-full">Save Receipt Settings</Button>
-            </form>
-          </CardContent>
-        </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Receipt className="w-5 h-5" />
+                <span>Receipt Customization</span>
+              </CardTitle>
+              <p className="text-sm text-gray-500">Customize how receipts appear when printing</p>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                try {
+                  await apiService.put('/settings', {
+                    receipt_prefix: receiptSettings.receipt_prefix,
+                    postal_address: receiptSettings.postal_address,
+                    contact_phone: receiptSettings.contact_phone,
+                    receipt_footer: receiptSettings.receipt_footer,
+                    bank_details: receiptSettings.bank_details,
+                  });
+                  toast({ title: 'Receipt settings saved' });
+                } catch (err: any) {
+                  toast({ title: 'Error', description: err?.message, variant: 'destructive' });
+                }
+              }} className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Receipt Number Prefix</Label>
+                  <Input
+                    value={receiptSettings.receipt_prefix}
+                    onChange={(e) => setReceiptSettings({ ...receiptSettings, receipt_prefix: e.target.value })}
+                    placeholder="R (default)"
+                    maxLength={5}
+                  />
+                  <p className="text-xs text-gray-500">e.g. R for R00012345</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Postal Address (for receipt header)</Label>
+                  <Input
+                    value={receiptSettings.postal_address}
+                    onChange={(e) => setReceiptSettings({ ...receiptSettings, postal_address: e.target.value })}
+                    placeholder="P.O. Box 123, Accra"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Contact Number</Label>
+                  <Input
+                    value={receiptSettings.contact_phone}
+                    onChange={(e) => setReceiptSettings({ ...receiptSettings, contact_phone: e.target.value })}
+                    placeholder="+233 XX XXX XXXX"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Footer Message</Label>
+                  <Input
+                    value={receiptSettings.receipt_footer}
+                    onChange={(e) => setReceiptSettings({ ...receiptSettings, receipt_footer: e.target.value })}
+                    placeholder="Thank you for your payment!"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Bank Details (optional)</Label>
+                  <Input
+                    value={receiptSettings.bank_details}
+                    onChange={(e) => setReceiptSettings({ ...receiptSettings, bank_details: e.target.value })}
+                    placeholder="Bank: XYZ, Account: 1234567890"
+                  />
+                </div>
+                <Button type="submit" className="w-full">Save Receipt Settings</Button>
+              </form>
+            </CardContent>
+          </Card>
         )}
 
         {/* Parent Portal Link */}
@@ -472,7 +472,7 @@ const SettingsModule = () => {
             </CardHeader>
             <CardContent className="space-y-3">
               <p className="text-sm text-gray-600">
-                Share this link with parents so they can view their child's grades, attendance and fee balance. 
+                Share this link with parents so they can view their child's grades, attendance and fee balance.
                 Parents log in using their child's <strong>Student ID</strong> as both username and initial password.
               </p>
               <div className="flex items-center gap-2 bg-white border border-purple-200 rounded-lg p-2.5">
@@ -525,7 +525,7 @@ const SettingsModule = () => {
                   Export Data
                 </Button>
               </div>
-              
+
               <div>
                 <h4 className="font-medium mb-2">Import Data</h4>
                 <p className="text-sm text-gray-600 mb-3">
@@ -543,8 +543,8 @@ const SettingsModule = () => {
                 <p className="text-sm text-gray-600 mb-3">
                   ⚠️ Permanently delete all data and start fresh
                 </p>
-                <Button 
-                  variant="destructive" 
+                <Button
+                  variant="destructive"
                   className="w-full"
                 >
                   <RefreshCw className="w-4 h-4 mr-2" />

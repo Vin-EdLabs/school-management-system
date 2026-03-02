@@ -7,12 +7,14 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
-import { Search, AlertTriangle, Download, DollarSign, Clock, TrendingUp } from 'lucide-react';
+import { Search, AlertTriangle, Download, DollarSign, Clock, TrendingUp, RefreshCw } from 'lucide-react';
+import { apiService } from '../../services/api';
 import { calculateStudentFeesSync, getActiveAcademicTerm } from '../../utils/feeCalculations';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
 
 const OutstandingFees = () => {
-  const { students, classes, feeStructures, payments, arrearsBalances } = useData();
+  const { students, classes, feeStructures, payments, arrearsBalances, refresh } = useData();
+  const [isSyncing, setIsSyncing] = useState(false);
   const { currentTerm } = useActiveTerm();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClass, setSelectedClass] = useState('All');
@@ -22,7 +24,7 @@ const OutstandingFees = () => {
   const outstandingData = useMemo(() => {
     const studentsArray = Array.isArray(students) ? students : [];
     const paymentsArray = Array.isArray(payments) ? payments : [];
-    
+
     return studentsArray.map(student => {
       const feeCalculation = calculateStudentFeesSync(
         student.id,
@@ -125,6 +127,27 @@ const OutstandingFees = () => {
     });
   };
 
+  const handleSyncArrears = async () => {
+    setIsSyncing(true);
+    try {
+      await apiService.post('/fee-calculations/refresh-arrears', {});
+      await refresh();
+      toast({
+        title: "Arrears Synced",
+        description: "Student arrears have been recalculated from the ledger history",
+      });
+    } catch (error) {
+      console.error('Arrears sync failed:', error);
+      toast({
+        title: "Sync Failed",
+        description: "Could not recalculate arrears. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header with summary stats */}
@@ -188,6 +211,15 @@ const OutstandingFees = () => {
           <div className="flex items-center justify-between">
             <CardTitle>Outstanding Fees Overview - {selectedTerm}</CardTitle>
             <div className="flex items-center space-x-2">
+              <Button
+                onClick={handleSyncArrears}
+                variant="outline"
+                size="sm"
+                disabled={isSyncing}
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
+                {isSyncing ? 'Syncing...' : 'Sync Arrears'}
+              </Button>
               <Button onClick={exportOutstandingReport} size="sm">
                 <Download className="w-4 h-4 mr-2" />
                 Export
@@ -289,7 +321,7 @@ const OutstandingFees = () => {
               <AlertTriangle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">No Outstanding Fees</h3>
               <p className="text-gray-600">
-                {searchTerm || selectedClass !== 'All' 
+                {searchTerm || selectedClass !== 'All'
                   ? 'No students match your current filters.'
                   : 'All students have paid their fees for this term.'}
               </p>

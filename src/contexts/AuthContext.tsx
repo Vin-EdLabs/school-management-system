@@ -34,7 +34,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const token = localStorage.getItem('authToken');
     const savedUser = localStorage.getItem('rosaGardensUser');
-    
+
     if (token && savedUser) {
       // Verify token is still valid
       apiService.get('/auth/me')
@@ -69,21 +69,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         payload.tenantId = Number(tenantId);
       }
       const response: any = await apiService.post('/auth/login', payload);
-      
+
       if (response.token && response.user) {
         localStorage.setItem('authToken', response.token);
         localStorage.setItem('rosaGardensUser', JSON.stringify(response.user));
         setIsAuthenticated(true);
         setUser({ ...response.user, isPrimaryAdmin: response.user.isPrimaryAdmin });
-        
+
         // Add audit log for login (will be handled by backend)
         setTimeout(() => {
-          const event = new CustomEvent('userLogin', { 
-            detail: { username, role, timestamp: new Date() } 
+          const event = new CustomEvent('userLogin', {
+            detail: { username, role, timestamp: new Date() }
           });
           window.dispatchEvent(event);
         }, 100);
-        
+
         return true;
       }
       return false;
@@ -97,7 +97,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = () => {
     const token = localStorage.getItem('authToken');
     if (token) {
-      apiService.post('/auth/logout').catch(() => {});
+      apiService.post('/auth/logout', {}).catch(() => { });
     }
     setIsAuthenticated(false);
     setUser(null);
@@ -131,12 +131,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Super-admin: full access including school creation
     if (user.role === 'super-admin') {
-      return ['students', 'teachers', 'classes', 'calendar', 'fees', 'income', 'expenses', 'payroll', 'reports', 'dashboard', 'financial-dashboard', 'settings', 'settings-full', 'users', 'audit', 'print-fee-status', 'teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'ai-assistant', 'schools', 'records'].includes(module);
+      return ['students', 'teachers', 'classes', 'calendar', 'fees', 'income', 'expenses', 'payroll', 'reports', 'dashboard', 'financial-dashboard', 'settings', 'settings-full', 'users', 'audit', 'print-fee-status', 'teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'ai-assistant', 'schools', 'records', 'subjects'].includes(module);
     }
 
     // Primary admin: full school control except school creation (sees everything)
     if (user.role === 'administrator' && user.isPrimaryAdmin) {
-      return ['students', 'teachers', 'classes', 'calendar', 'fees', 'income', 'expenses', 'payroll', 'reports', 'dashboard', 'financial-dashboard', 'settings', 'settings-full', 'users', 'audit', 'print-fee-status', 'teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'ai-assistant', 'support-chat', 'records'].includes(module);
+      return ['students', 'teachers', 'classes', 'calendar', 'fees', 'income', 'expenses', 'payroll', 'reports', 'dashboard', 'financial-dashboard', 'settings', 'settings-full', 'users', 'audit', 'print-fee-status', 'teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'ai-assistant', 'support-chat', 'records', 'subjects'].includes(module);
     }
 
     // Additional administrators: academic only

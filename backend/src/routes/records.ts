@@ -123,22 +123,32 @@ async function buildStudentProfile(tenantId: number, student: any) {
 
   const feeSummaryByTerm: any[] = [];
   const termsSeen = new Set<string>();
-  feeStructRes.rows.forEach((row: any) => {
+  for (const row of feeStructRes.rows) {
     const term = (row.term || '').trim();
-    if (!term || termsSeen.has(term)) return;
+    if (!term || termsSeen.has(term)) continue;
     termsSeen.add(term);
     const totalFees = parseFloat(row.total_fees || 0);
     const totalPaid = getPaidForTerm(term);
-      const balance = calculateFeeBalance(totalFees, totalPaid);
+
+    // Fetch arrears for this specific term
+    const arrearsRes = await query(
+      `SELECT COALESCE(SUM(amount), 0) as total FROM term_arrears
+       WHERE tenant_id = $1 AND student_id = $2 AND current_term = $3`,
+      [tenantId, studentId, term]
+    );
+    const arrears = parseFloat(arrearsRes.rows[0]?.total || '0');
+
+    const balance = calculateFeeBalance(totalFees, totalPaid, arrears);
     feeSummaryByTerm.push({
       academicYear: term.split(' ').pop() || '',
       term: term,
       totalFees,
       totalPaid,
       outstanding: balance.outstanding,
+      arrears: balance.arrears,
       status: balance.status,
     });
-  });
+  }
 
   const allPayments = paymentsRes.rows.map((p: any) => ({
     date: p.payment_date,
@@ -149,7 +159,16 @@ async function buildStudentProfile(tenantId: number, student: any) {
 
   const totalFeesAll = feeStructRes.rows.reduce((s: number, r: any) => s + parseFloat(r.total_fees || 0), 0);
   const totalPaidAll = paymentsRes.rows.reduce((s: number, p: any) => s + parseFloat(p.amount || 0), 0);
-  const overviewBalance = calculateFeeBalance(totalFeesAll, totalPaidAll);
+
+  // For overview, we sum all arrears found for this student
+  const allArrearsRes = await query(
+    `SELECT COALESCE(SUM(amount), 0) as total FROM term_arrears
+     WHERE tenant_id = $1 AND student_id = $2`,
+    [tenantId, studentId]
+  );
+  const totalArrears = parseFloat(allArrearsRes.rows[0]?.total || '0');
+
+  const overviewBalance = calculateFeeBalance(totalFeesAll, totalPaidAll, totalArrears);
 
   const attendanceRes = await query(
     `SELECT attendance_date, present FROM attendance WHERE tenant_id = $1 AND student_id = $2 ORDER BY attendance_date DESC LIMIT 200`,

@@ -1,4 +1,5 @@
 import express from 'express';
+import { createServer } from 'http';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { initializeDatabase } from './db/connection.js';
@@ -26,6 +27,8 @@ import financeRoutes from './routes/finance.js';
 import parentRoutes from './routes/parent.js';
 import subjectsRoutes from './routes/subjects.js';
 import eventsRoutes from './routes/events.js';
+import globalChatRoutes from './routes/globalChat.js';
+import { initSocket } from './socket.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -36,7 +39,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+const httpServer = createServer(app);
 const PORT = process.env.PORT || 3001;
+
+// Initialize Socket.IO
+initSocket(httpServer);
 
 // Middleware
 app.use(cors());
@@ -80,6 +87,7 @@ app.use('/api/finance', financeRoutes);
 app.use('/api/parent', parentRoutes);
 app.use('/api/subjects', subjectsRoutes);
 app.use('/api/events', eventsRoutes);
+app.use('/api/global-chat', globalChatRoutes);
 
 // Error handling middleware
 app.use(errorHandler);
@@ -87,9 +95,10 @@ app.use(errorHandler);
 // Initialize database and start server
 initializeDatabase()
   .then(() => {
-    app.listen(PORT, () => {
+    httpServer.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📊 Database connected`);
+      console.log(`💬 Socket.IO initialized`);
     });
   })
   .catch((error) => {

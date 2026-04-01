@@ -654,6 +654,55 @@ const runMigrations = async () => {
       )
     `);
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS global_chat_messages (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
+        tenant_name VARCHAR(255),
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        username VARCHAR(100) NOT NULL,
+        full_name VARCHAR(255),
+        role VARCHAR(50) NOT NULL,
+        content TEXT NOT NULL,
+        channel VARCHAR(50) DEFAULT 'general',
+        reply_to_id INTEGER REFERENCES global_chat_messages(id) ON DELETE SET NULL,
+        forwarded_from_id INTEGER REFERENCES global_chat_messages(id) ON DELETE SET NULL,
+        is_deleted BOOLEAN DEFAULT false,
+        metadata JSONB DEFAULT '{}',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Private Messaging Infrastructure
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS private_conversations (
+        id SERIAL PRIMARY KEY,
+        participant_a INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        participant_b INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        last_message_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(participant_a, participant_b)
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS private_messages (
+        id SERIAL PRIMARY KEY,
+        conversation_id INTEGER REFERENCES private_conversations(id) ON DELETE CASCADE,
+        sender_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        content TEXT NOT NULL,
+        is_read BOOLEAN DEFAULT false,
+        reply_to_id INTEGER REFERENCES private_messages(id) ON DELETE SET NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await client.query(`ALTER TABLE global_chat_messages ADD COLUMN IF NOT EXISTS reply_to_id INTEGER`).catch(() => { });
+    await client.query(`ALTER TABLE global_chat_messages ADD COLUMN IF NOT EXISTS forwarded_from_id INTEGER`).catch(() => { });
+    await client.query(`ALTER TABLE global_chat_messages ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT false`).catch(() => { });
+    await client.query(`ALTER TABLE global_chat_messages ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'`).catch(() => { });
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_global_chat_channel ON global_chat_messages(channel)`).catch(() => { });
+
     // Receipt number sequence per tenant (R + 8 digits)
     await client.query(`
       CREATE TABLE IF NOT EXISTS receipt_number_seq (

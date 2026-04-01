@@ -8,6 +8,7 @@ export interface AuthRequest extends Request {
     tenantId: number | null;
     username: string;
     role: string;
+    fullName: string | null;
     isPrimaryAdmin?: boolean;
     teacherId?: string | null;
     otherStaffId?: number | null;
@@ -30,7 +31,12 @@ export const authenticate = async (
     
     // Verify user still exists and is active
     const result = await query(
-      'SELECT id, tenant_id, username, role, is_primary_admin, teacher_id, other_staff_id FROM users WHERE id = $1 AND is_active = true',
+      `SELECT u.id, u.tenant_id, u.username, u.role, u.is_primary_admin, u.teacher_id, u.other_staff_id,
+              COALESCE(t.full_name, s.full_name, u.username) as full_name
+       FROM users u
+       LEFT JOIN teachers t ON u.teacher_id::text = t.id::text AND t.tenant_id = u.tenant_id
+       LEFT JOIN payroll_other_staff s ON u.other_staff_id = s.id AND s.tenant_id = u.tenant_id
+       WHERE u.id = $1 AND u.is_active = true`,
       [decoded.userId]
     );
     
@@ -43,6 +49,7 @@ export const authenticate = async (
       id: row.id,
       tenantId: row.tenant_id,
       username: row.username,
+      fullName: row.full_name,
       role: row.role,
       isPrimaryAdmin: row.is_primary_admin === true,
       teacherId: row.teacher_id ? String(row.teacher_id) : null,

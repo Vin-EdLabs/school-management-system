@@ -31,14 +31,21 @@ router.post('/login', async (req, res) => {
       }
     }
     
-    let userQuery = 'SELECT id, tenant_id, username, password_hash, role, teacher_id, is_primary_admin FROM users WHERE username = $1 AND is_active = true';
+    let userQuery = `
+      SELECT u.id, u.tenant_id, u.username, u.password_hash, u.role, u.teacher_id, u.is_primary_admin,
+             COALESCE(t.full_name, s.full_name, u.username) as full_name
+      FROM users u
+      LEFT JOIN teachers t ON u.teacher_id::text = t.id::text AND t.tenant_id = u.tenant_id
+      LEFT JOIN payroll_other_staff s ON u.other_staff_id = s.id AND s.tenant_id = u.tenant_id
+      WHERE u.username = $1 AND u.is_active = true
+    `;
     const params: any[] = [username];
     
     if (hasTenantId) {
-      userQuery += ' AND tenant_id = $2';
+      userQuery += ' AND u.tenant_id = $2';
       params.push(tenantId);
     } else {
-      userQuery += ' AND tenant_id IS NULL';
+      userQuery += ' AND u.tenant_id IS NULL';
     }
     
     const result = await query(userQuery, params);
@@ -81,6 +88,7 @@ router.post('/login', async (req, res) => {
       user: {
         id: user.id,
         username: user.username,
+        fullName: user.full_name,
         role: user.role,
         tenantId: user.tenant_id,
         teacherId: user.teacher_id,
@@ -186,7 +194,12 @@ router.post('/logout', authenticate, async (req: AuthRequest, res) => {
 router.get('/me', authenticate, async (req: AuthRequest, res) => {
   try {
     const result = await query(
-      'SELECT id, username, role, tenant_id, teacher_id, is_primary_admin FROM users WHERE id = $1',
+      `SELECT u.id, u.username, u.role, u.tenant_id, u.teacher_id, u.is_primary_admin,
+              COALESCE(t.full_name, s.full_name, u.username) as full_name
+       FROM users u
+       LEFT JOIN teachers t ON u.teacher_id::text = t.id::text AND t.tenant_id = u.tenant_id
+       LEFT JOIN payroll_other_staff s ON u.other_staff_id = s.id AND s.tenant_id = u.tenant_id
+       WHERE u.id = $1`,
       [req.user!.id]
     );
     
@@ -209,6 +222,7 @@ router.get('/me', authenticate, async (req: AuthRequest, res) => {
       user: {
         id: user.id,
         username: user.username,
+        fullName: user.full_name,
         role: user.role,
         tenantId: user.tenant_id,
         teacherId: user.teacher_id,

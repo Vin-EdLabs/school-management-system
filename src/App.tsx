@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
+import { SocketProvider } from "./contexts/SocketContext";
 import { AuditProvider } from "./contexts/AuditContext";
 import { DataProvider } from "./contexts/DataContext";
 import { SchoolProvider } from "./contexts/SchoolContext";
@@ -69,23 +70,25 @@ const IndexWithSchool = () => {
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/register-school" element={<RegisterSchool />} />
-            <Route path="/super-admin" element={<SuperAdminDashboard />} />
-            <Route path="/school/:schoolId/*" element={<IndexWithSchool />} />
-            <Route path="/s/:slug/*" element={<IndexWithSchool />} />
-            <Route path="/portal/:tenantId" element={<ParentPortalRoute />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
-    </AuthProvider>
+<AuthProvider>
+  <SocketProvider>
+    <TooltipProvider>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/register-school" element={<RegisterSchool />} />
+          <Route path="/super-admin" element={<SuperAdminDashboard />} />
+          <Route path="/school/:schoolId/*" element={<IndexWithSchool />} />
+          <Route path="/s/:slug/*" element={<IndexWithSchool />} />
+          <Route path="/portal/:tenantId" element={<ParentPortalRoute />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </TooltipProvider>
+  </SocketProvider>
+</AuthProvider>
   </QueryClientProvider>
 );
 

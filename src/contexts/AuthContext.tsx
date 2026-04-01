@@ -7,6 +7,7 @@ export type UserRole = 'administrator' | 'finance' | 'super-admin' | 'teacher' |
 interface User {
   id: number;
   username: string;
+  fullName: string | null;
   role: UserRole;
   tenantId: number | null;
   teacherId?: string;
@@ -16,6 +17,7 @@ interface User {
 interface AuthContextType {
   isAuthenticated: boolean;
   user: User | null;
+  token: string | null;
   login: (username: string, password: string, role: UserRole, tenantId?: number) => Promise<boolean>;
   logout: () => void;
   changePassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
@@ -29,6 +31,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -41,6 +44,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .then((response: any) => {
           if (response.user) {
             setIsAuthenticated(true);
+            setToken(token);
             setUser({ ...response.user, isPrimaryAdmin: response.user.isPrimaryAdmin });
           } else {
             localStorage.removeItem('authToken');
@@ -74,6 +78,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.setItem('authToken', response.token);
         localStorage.setItem('rosaGardensUser', JSON.stringify(response.user));
         setIsAuthenticated(true);
+        setToken(response.token);
         setUser({ ...response.user, isPrimaryAdmin: response.user.isPrimaryAdmin });
 
         // Add audit log for login (will be handled by backend)
@@ -101,6 +106,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setIsAuthenticated(false);
     setUser(null);
+    setToken(null);
     localStorage.removeItem('authToken');
     localStorage.removeItem('rosaGardensUser');
   };
@@ -163,7 +169,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, logout, changePassword, verifyPassword, hasAccess, loading }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, token, login, logout, changePassword, verifyPassword, hasAccess, loading }}>
       {children}
     </AuthContext.Provider>
   );

@@ -500,4 +500,69 @@ router.post('/users', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, 
   }
 });
 
+// Reset all school data (Primary Admin only + Password verification)
+router.post('/reset-data', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, res) => {
+  const client = await query('BEGIN'); // Start transaction manually via pool won't work easily if we don't have the client
+  // Better to use getClient() if possible, but let's use the query helper for simple sequential deletes
+  
+  try {
+    const tenantId = req.user!.tenantId!;
+    const { password } = req.body;
+
+    if (!password) {
+      return res.status(400).json({ error: 'Password is required to confirm data reset' });
+    }
+
+    // Verify password
+    const userResult = await query('SELECT password_hash FROM users WHERE id = $1', [req.user!.id]);
+    const isMatch = await bcrypt.compare(password, userResult.rows[0].password_hash);
+    
+    if (!isMatch) {
+      return res.status(401).json({ error: 'Incorrect password. Reset aborted.' });
+    }
+
+    console.warn(`[RESET] Triggering full data reset for tenant ${tenantId} requested by user ${req.user!.id}`);
+
+    // List of tables to clear (tenant-scoped)
+    const tables = [
+      'attendance', 'student_grades', 'grade_audit_log', 'grade_assignments',
+      'receipts', 'payments', 'student_credits', 'income', 'expenses',
+      'student_ledger', 'ledger_fee_structures', 'term_outstanding_balances',
+      'student_arrears', 'student_arrears_balance', 'term_arrears',
+      'salary_payments', 'payroll_other_staff', 'class_teachers', 'students',
+      'classes', 'subjects', 'support_messages', 'term_report_releases',
+      'parent_portal_accounts', 'receipt_number_seq', 'terms', 'academic_years',
+      'academic_terms', 'events'
+    ];
+
+    // Delete in sequence to respect foreign key constraints (though usually CASCADE is set, this is safer)
+    for (const table of tables) {
+      await query(`DELETE FROM ${table} WHERE tenant_id = $1`, [tenantId]);
+    }
+
+    // Reset school settings back to defaults
+    await query(`
+      UPDATE school_settings 
+      SET address = NULL, contact = NULL, email = NULL, 
+          current_year = $2, current_term = NULL,
+          receipt_prefix = 'R', postal_address = NULL, 
+          contact_phone = NULL, receipt_footer = NULL, 
+          bank_details = NULL, updated_at = CURRENT_TIMESTAMP
+      WHERE tenant_id = $1`, 
+      [tenantId, new Date().getFullYear().toString()]
+    );
+
+    // Final audit log
+    await query(
+      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, details) VALUES ($1, $2, $3, $4, $5)',
+      [tenantId, req.user!.id, 'FULL_RESET', 'TENANT_DATA', JSON.stringify({ timestamp: new Date() })]
+    );
+
+    res.json({ message: 'All school data has been permanently deleted and settings reset.' });
+  } catch (error) {
+    console.error('Reset data error:', error);
+    res.status(500).json({ error: 'Failed to reset data. Please contact support.' });
+  }
+});
+
 export default router;

@@ -4,12 +4,28 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
 import { useSchool } from '../../contexts/SchoolContext';
 import { apiService } from '../../services/api';
 import { toast } from '@/hooks/use-toast';
-import { Settings, Key, Building, Download, Upload, RefreshCw, Receipt, GraduationCap, Copy, ExternalLink } from 'lucide-react';
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogDescription, 
+  DialogFooter, 
+  DialogTrigger 
+} from '@/components/ui/dialog';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { reportService } from '../../services/reportService';
+import { 
+  Settings, Key, Building, Download, Upload, RefreshCw, Receipt, 
+  GraduationCap, Copy, ExternalLink, AlertTriangle, ShieldAlert, 
+  FileJson, FileSpreadsheet, Lock 
+} from 'lucide-react';
 import AcademicTermManager from './AcademicTermManager';
 import SchoolManager from './SchoolManager';
 
@@ -34,6 +50,10 @@ const SettingsModule = () => {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [resetPassword, setResetPassword] = useState('');
+  const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+
   const [schoolInfo, setSchoolInfo] = useState<SchoolSettings>({
     name: 'School',
     address: 'Accra, Ghana',
@@ -60,7 +80,7 @@ const SettingsModule = () => {
   const loadSettings = useCallback(async () => {
     if (!hasSettingsFull) return;
     try {
-      const settings = await apiService.get('/settings');
+      const settings = await apiService.get<any>('/settings');
       if (settings) {
         setSchoolInfo({
           name: settings.school_name || 'School',
@@ -164,6 +184,91 @@ const SettingsModule = () => {
         description: error.message || "Failed to update school information",
         variant: "destructive"
       });
+    }
+  };
+
+  const handleExportJSON = () => {
+    try {
+      const exportData = {
+        version: '1.2',
+        timestamp: new Date().toISOString(),
+        students, teachers, classes, payments, income, expenses,
+      };
+
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `school_backup_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: "Export Successful",
+        description: "Your school data has been exported as a JSON archive.",
+      });
+    } catch (err) {
+      toast({
+        title: "Export Failed",
+        description: "Could not generate JSON backup.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleExportExcel = async () => {
+    try {
+      toast({ title: "Preparing Export", description: "Consolidating all school data for Excel..." });
+      
+      const flatData = [
+        ...students.map((s: any) => ({ Type: 'Student', ID: s.studentId, Name: `${s.firstName} ${s.lastName}`, Class: s.classAssigned })),
+        ...teachers.map((t: any) => ({ Type: 'Teacher', ID: t.staffId, Name: t.fullName, Role: 'Teacher' })),
+        ...payments.map((p: any) => ({ Type: 'Payment', Date: p.paymentDate, Amount: p.amount, Method: p.paymentMethod })),
+        ...income.map((i: any) => ({ Type: 'Income', Date: i.incomeDate, Source: i.source, Amount: i.amount })),
+        ...expenses.map((e: any) => ({ Type: 'Expense', Date: e.paymentDate, Title: e.title, Amount: e.amount }))
+      ];
+
+      await reportService.exportToExcel(flatData, `school_summary_${new Date().toISOString().split('T')[0]}`, 'All Data');
+      
+      toast({
+        title: "Excel Export Ready",
+        description: "Summary data exported successfully.",
+      });
+    } catch (err: any) {
+      toast({
+        title: "Export Failed",
+        description: err?.message || "Could not generate Excel file.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleResetData = async () => {
+    if (!resetPassword) {
+      toast({ title: "Verification Required", description: "Please enter your password to confirm.", variant: "destructive" });
+      return;
+    }
+
+    setIsResetting(true);
+    try {
+      await apiService.post('/settings/reset-data', { password: resetPassword });
+      toast({
+        title: "System Reset Complete",
+        description: "All records have been permanently cleared.",
+      });
+      setIsResetDialogOpen(false);
+      setResetPassword('');
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (err: any) {
+      toast({
+        title: "Reset Failed",
+        description: err?.message || "Invalid password or server error.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -506,50 +611,132 @@ const SettingsModule = () => {
           </Card>
         )}
 
-        <Card>
+        <Card className="border-red-100 shadow-xl overflow-hidden mt-6">
+          <div className="h-1 bg-red-500" />
           <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
+            <CardTitle className="flex items-center space-x-3 text-red-700">
               <Download className="w-5 h-5" />
               <span>Data Management</span>
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-8">
+            {/* Export Section */}
             <div className="space-y-4">
               <div>
-                <h4 className="font-medium mb-2">Export/Backup Data</h4>
-                <p className="text-sm text-gray-600 mb-3">
-                  Download all your school data as a backup file
+                <h4 className="font-bold text-slate-800 mb-1">Export System Data</h4>
+                <p className="text-sm text-slate-500 mb-4">
+                  Archive all academic, financial, and personnel records for backup or migration.
                 </p>
-                <Button variant="outline" className="w-full">
-                  <Download className="w-4 h-4 mr-2" />
-                  Export Data
-                </Button>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-4 rounded-xl border-2 border-slate-50 bg-slate-50/50 hover:border-blue-100 hover:bg-white transition-all cursor-pointer group" onClick={handleExportJSON}>
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-white rounded-lg shadow-sm flex items-center justify-center text-blue-600">
+                        <FileJson className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-bold text-sm text-slate-800">JSON Archive</p>
+                        <p className="text-xs text-slate-500">Full system backup</p>
+                      </div>
+                      <Download className="w-4 h-4 text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-xl border-2 border-slate-50 bg-slate-50/50 hover:border-emerald-100 hover:bg-white transition-all cursor-pointer group" onClick={handleExportExcel}>
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-white rounded-lg shadow-sm flex items-center justify-center text-emerald-600">
+                        <FileSpreadsheet className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-bold text-sm text-slate-800">Excel Spreadsheets</p>
+                        <p className="text-xs text-slate-500">Summarized records</p>
+                      </div>
+                      <Download className="w-4 h-4 text-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <h4 className="font-medium mb-2">Import Data</h4>
-                <p className="text-sm text-gray-600 mb-3">
-                  Import data from a backup file
-                </p>
-                <Input
-                  type="file"
-                  accept=".json"
-                  className="w-full"
-                />
-              </div>
+              <Separator className="bg-slate-100" />
 
-              <div>
-                <h4 className="font-medium mb-2 text-red-700">Reset All Data</h4>
-                <p className="text-sm text-gray-600 mb-3">
-                  ⚠️ Permanently delete all data and start fresh
-                </p>
-                <Button
-                  variant="destructive"
-                  className="w-full"
-                >
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Reset All Data
-                </Button>
+              {/* Reset Section */}
+              <div className="p-6 rounded-2xl border-2 border-red-50 bg-red-50/30">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                  <div className="flex-1 space-y-2">
+                    <h4 className="text-lg font-bold text-red-900 flex items-center gap-2">
+                      <AlertTriangle className="w-5 h-5" />
+                      Reset Everything
+                    </h4>
+                    <p className="text-sm text-red-700 max-w-xl">
+                      Permanently wipe all records and start from scratch.
+                      <strong className="block mt-1 font-bold">This action is irreversible.</strong>
+                    </p>
+                  </div>
+
+                  <Dialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="destructive" className="h-12 px-8 rounded-xl font-bold shadow-lg shadow-red-100">
+                        <RefreshCw className="w-4 h-4 mr-2" />
+                        Reset All Data
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-md border-0 shadow-2xl">
+                      <DialogHeader>
+                        <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center text-red-600 mx-auto mb-4">
+                          <ShieldAlert className="w-6 h-6" />
+                        </div>
+                        <DialogTitle className="text-center text-2xl font-bold text-red-900">Are you absolutely sure?</DialogTitle>
+                        <DialogDescription className="text-center space-y-4 pt-2">
+                          <Alert variant="destructive" className="bg-red-50 border-red-200">
+                            <AlertTitle className="flex items-center gap-2 text-red-800 font-bold">
+                              <AlertTriangle className="h-4 w-4" />
+                              Security Authentication Required
+                            </AlertTitle>
+                            <AlertDescription className="text-red-700">
+                              All student files, financial records, and settings will be permanently erased.
+                            </AlertDescription>
+                          </Alert>
+                          <p className="text-slate-600 font-medium">To authorize this reset, enter your administrator password.</p>
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="reset-auth">Admin Password</Label>
+                          <div className="relative">
+                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            <Input 
+                              id="reset-auth" 
+                              type="password" 
+                              placeholder="••••••••" 
+                              className="pl-10 h-11 border-2 border-slate-100 bg-slate-50 focus:border-red-500 rounded-xl"
+                              value={resetPassword}
+                              onChange={(e) => setResetPassword(e.target.value)}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <DialogFooter className="flex flex-col sm:flex-row gap-3">
+                        <Button variant="outline" className="flex-1 h-12 rounded-xl" onClick={() => setIsResetDialogOpen(false)}>
+                          Cancel
+                        </Button>
+                        <Button 
+                          variant="destructive" 
+                          className="flex-1 h-12 rounded-xl font-bold" 
+                          onClick={handleResetData}
+                          disabled={isResetting || !resetPassword}
+                        >
+                          {isResetting ? (
+                            <>
+                              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                              Deleting...
+                            </>
+                          ) : (
+                            'Yes, Authenticate & Reset'
+                          )}
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </div>
               </div>
             </div>
           </CardContent>

@@ -1,0 +1,273 @@
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Activity, Calendar, Search, Trash2, User } from 'lucide-react';
+import { useState } from 'react';
+import { useActivity, useDeleteAuditLog, useClearAuditLogs } from '../../hooks/useAudit';
+
+const AuditModule = () => {
+  const { data: resp, isLoading } = useActivity();
+  const deleteMutation = useDeleteAuditLog();
+  const clearMutation = useClearAuditLogs();
+
+  const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
+
+  const auditLogsRaw = resp?.data || resp || [];
+
+  // Normalize backend logs to match UI expectations
+  const auditLogs = auditLogsRaw.map((log: any) => ({
+    id: log.id,
+    actionType: log.action === 'login' ? 'Login' :
+      (log.action === 'update' || log.action === 'edit') ? 'Edit' :
+        (log.action === 'delete') ? 'Delete' : 'Activity',
+    module: log.module || 'System',
+    itemName: log.item_name || log.message,
+    username: log.username || 'System',
+    role: log.role || 'user',
+    timestamp: new Date(log.created_at || log.timestamp),
+    reason: log.reason || ''
+  }));
+
+  const deleteAuditLog = (id: any) => {
+    deleteMutation.mutate(id);
+  };
+
+  const clearAllLogs = () => {
+    clearMutation.mutate(undefined, {
+      onSuccess: () => {
+        setIsClearDialogOpen(false);
+      }
+    });
+  };
+
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterType, setFilterType] = useState<string>('all');
+  const [filterModule, setFilterModule] = useState<string>('all');
+
+  const filteredLogs = auditLogs.filter(log => {
+    const matchesSearch =
+      log.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      log.module.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      log.itemName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      log.reason?.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchesType = filterType === 'all' || log.actionType === filterType;
+    const matchesModule = filterModule === 'all' || log.module === filterModule;
+
+    return matchesSearch && matchesType && matchesModule;
+  });
+
+  const getActionBadgeColor = (actionType: string) => {
+    switch (actionType) {
+      case 'Login': return 'bg-blue-100 text-blue-800';
+      case 'Edit': return 'bg-yellow-100 text-yellow-800';
+      case 'Delete': return 'bg-red-100 text-red-800';
+      default: return 'bg-muted text-foreground';
+    }
+  };
+
+  const uniqueModules = [...new Set(auditLogs.map(log => log.module))];
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-foreground">Audit Logs</h1>
+          <p className="text-muted-foreground mt-1">Track all system activities and changes (Live from Server)</p>
+        </div>
+        <Dialog open={isClearDialogOpen} onOpenChange={setIsClearDialogOpen}>
+          <DialogTrigger asChild>
+            <Button variant="destructive" className="flex items-center gap-2">
+              <Trash2 className="w-4 h-4" />
+              Clear All Logs
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Clear All Audit Logs</DialogTitle>
+              <DialogDescription>This will permanently delete all audit logs. This action cannot be undone.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <p className="text-muted-foreground">
+                Are you sure you want to delete all audit logs? This action cannot be undone.
+              </p>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => setIsClearDialogOpen(false)}>Cancel</Button>
+                <Button variant="destructive" onClick={clearAllLogs} disabled={clearMutation.isPending}>
+                  {clearMutation.isPending ? 'Clearing...' : 'Clear All Logs'}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {/* Statistics Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <Activity className="w-5 h-5 text-blue-500" />
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Total Activities</p>
+                <p className="text-2xl font-bold text-foreground">{auditLogs.length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <User className="w-5 h-5 text-blue-500" />
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Logins Today</p>
+                <p className="text-2xl font-bold text-foreground">
+                  {auditLogs.filter(log =>
+                    log.actionType === 'Login' &&
+                    new Date(log.timestamp).toDateString() === new Date().toDateString()
+                  ).length}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <Calendar className="w-5 h-5 text-yellow-500" />
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Edits Today</p>
+                <p className="text-2xl font-bold text-foreground">
+                  {auditLogs.filter(log =>
+                    log.actionType === 'Edit' &&
+                    new Date(log.timestamp).toDateString() === new Date().toDateString()
+                  ).length}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <Trash2 className="w-5 h-5 text-red-500" />
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Deletions Today</p>
+                <p className="text-2xl font-bold text-foreground">
+                  {auditLogs.filter(log =>
+                    log.actionType === 'Delete' &&
+                    new Date(log.timestamp).toDateString() === new Date().toDateString()
+                  ).length}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Filters */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by staff ID/username, module, item, or reason..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </div>
+            <Select value={filterType} onValueChange={setFilterType}>
+              <SelectTrigger className="w-full md:w-40">
+                <SelectValue placeholder="Action Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Actions</SelectItem>
+                <SelectItem value="Login">Login</SelectItem>
+                <SelectItem value="Edit">Edit</SelectItem>
+                <SelectItem value="Delete">Delete</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={filterModule} onValueChange={setFilterModule}>
+              <SelectTrigger className="w-full md:w-40">
+                <SelectValue placeholder="Module" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Modules</SelectItem>
+                {uniqueModules.map(module => (
+                  <SelectItem key={module} value={module}>{module}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Audit Logs Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Activity Log ({filteredLogs.length} entries)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+              <p className="mt-4 text-muted-foreground">Loading logs from server...</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <div className="space-y-3">
+                {filteredLogs.map((log) => (
+                  <div key={log.id} className="border rounded-lg p-4 hover:bg-muted/50">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <Badge className={getActionBadgeColor(log.actionType)}>
+                          {log.actionType}
+                        </Badge>
+                        <div>
+                          <div className="font-medium text-foreground">
+                            {log.itemName ? `${log.module}: ${log.itemName}` : log.module}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            by {log.username} ({log.role}) • {log.timestamp.toLocaleString()}
+                          </div>
+                          {log.reason && (
+                            <div className="text-sm text-muted-foreground mt-1">
+                              <span className="font-medium">Reason:</span> {log.reason}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => deleteAuditLog(log.id)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                {filteredLogs.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No audit logs found matching your criteria.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+export default AuditModule;

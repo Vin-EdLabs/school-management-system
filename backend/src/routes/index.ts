@@ -1,0 +1,52 @@
+import { Router } from 'express';
+import aggregationsRoutes from './aggregations.routes.js';
+import assignmentsRoutes from './assignments.routes.js';
+import attendanceRoutes from './attendance.routes.js';
+import auditRoutes from './audit.routes.js';
+import authRoutes from './auth.routes.js';
+import balancesRoutes from './balances.routes.js'; // Added import for balances routes
+import classesRoutes from './classes.routes.js';
+import eventsRoutes from './events.routes.js';
+import expensesRoutes from './expenses.routes.js';
+import feeRoutes from './fee-structures.routes.js';
+import gradesRoutes from './grades.routes.js';
+import incomeRoutes from './income.routes.js';
+import notificationsRoutes from './notifications.routes.js';
+import paymentsRoutes from './payments.routes.js';
+import payrollRoutes from './payroll.routes.js';
+import permissionsRoutes from './permissions.routes.js';
+import reportsRoutes from './reports.routes.js';
+import schedulesRoutes from './schedules.routes.js';
+import settingsRoutes from './settings.routes.js';
+import staffRoutes from './staff.routes.js';
+import studentsRoutes from './students.routes.js';
+import subjectsRoutes from './subjects.routes.js';
+import teachersRoutes from './teachers.routes.js';
+
+const router = Router();
+
+router.use('/auth', authRoutes);
+router.use('/students', studentsRoutes);
+router.use('/staff', staffRoutes);
+router.use('/teachers', teachersRoutes);
+router.use('/classes', classesRoutes);
+router.use('/assignments', assignmentsRoutes);
+router.use('/schedules', schedulesRoutes);
+router.use('/attendance', attendanceRoutes);
+router.use('/payments', paymentsRoutes);
+router.use('/payroll', payrollRoutes);
+router.use('/income', incomeRoutes);
+router.use('/expenses', expensesRoutes);
+router.use('/fee-structures', feeRoutes);
+router.use('/audit', auditRoutes);
+router.use('/reports', reportsRoutes);
+router.use('/events', eventsRoutes);
+router.use('/aggregations', aggregationsRoutes);
+router.use('/settings', settingsRoutes);
+router.use('/notifications', notificationsRoutes);
+router.use('/permissions', permissionsRoutes);
+router.use('/grades', gradesRoutes);
+router.use('/subjects', subjectsRoutes);
+router.use('/balances', balancesRoutes); // Registered balances routes
+
+export default router;

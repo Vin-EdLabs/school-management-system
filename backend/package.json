@@ -1,6 +1,7 @@
 {
   "name": "backend",
   "version": "1.0.0",
+<<<<<<< HEAD
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
@@ -9,16 +10,40 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "migrate": "node --loader ts-node/esm src/db/migrate.ts"
+=======
+  "description": "",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "nodemon --ext ts,js,json --exec tsx src/index.ts",
+    "migrate": "npx prisma migrate dev",
+    "migrate:deploy": "npx prisma migrate deploy",
+    "db:pull": "npx prisma db pull",
+    "db:push": "npx prisma db push",
+    "db:studio": "npx prisma studio",
+    "check-db": "tsx src/scripts/check-db.ts",
+    "seed-admin": "tsx src/scripts/seed-admin.ts",
+    "lint": "eslint 'src/**/*.ts'"
+>>>>>>> 2e5ad4213fffb0947f010ccd8b64dce950e9b5c9
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
+  "type": "module",
   "dependencies": {
+<<<<<<< HEAD
     "bcryptjs": "^2.4.3",
+=======
+    "@prisma/client": "^7.4.2",
+    "bcrypt": "^5.1.1",
+    "body-parser": "^2.2.1",
+>>>>>>> 2e5ad4213fffb0947f010ccd8b64dce950e9b5c9
     "cors": "^2.8.5",
-    "dotenv": "^17.2.0",
+    "dotenv": "^17.2.3",
+    "exceljs": "^4.3.0",
     "express": "^5.1.0",
+<<<<<<< HEAD
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
     "pg": "^8.16.3",
@@ -36,5 +61,28 @@
     "ts-node": "^10.9.2",
     "tsx": "^4.19.1",
     "typescript": "^5.8.3"
+=======
+    "jsonwebtoken": "^9.0.0",
+    "pdfkit": "^0.13.0",
+    "pg": "^8.11.0"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
+    "@types/cors": "^2.8.12",
+    "@types/express": "^5.0.5",
+    "@types/jsonwebtoken": "^9.0.1",
+    "@types/morgan": "^1.9.4",
+    "@types/node": "^24.10.1",
+    "@types/pg": "^8.6.7",
+    "eslint": "^9.39.1",
+    "express-rate-limit": "^7.0.0",
+    "helmet": "^7.0.0",
+    "morgan": "^1.10.0",
+    "nodemon": "^3.1.11",
+    "prettier": "^3.7.1",
+    "prisma": "^7.4.2",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+>>>>>>> 2e5ad4213fffb0947f010ccd8b64dce950e9b5c9
   }
 }

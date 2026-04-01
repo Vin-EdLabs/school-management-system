@@ -120,8 +120,9 @@ const UsersModule = () => {
       toast({ title: 'Error', description: 'Username and password required', variant: 'destructive' });
       return;
     }
-    if (newUser.password.length < 6) {
-      toast({ title: 'Error', description: 'Password must be at least 6 characters', variant: 'destructive' });
+    const minLength = newUser.role === 'teacher' || newUser.role === 'staff' ? 5 : 6;
+    if (newUser.password.length < minLength) {
+      toast({ title: 'Error', description: `Password must be at least ${minLength} characters`, variant: 'destructive' });
       return;
     }
     try {
@@ -148,8 +149,11 @@ const UsersModule = () => {
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedUser || !resetPassword || resetPassword.length < 6) {
-      toast({ title: 'Error', description: 'Password must be at least 6 characters', variant: 'destructive' });
+    if (!selectedUser || !resetPassword) return;
+    
+    const minLength = selectedUser.role === 'teacher' || selectedUser.role === 'staff' ? 5 : 6;
+    if (resetPassword.length < minLength) {
+      toast({ title: 'Error', description: `Password must be at least ${minLength} characters`, variant: 'destructive' });
       return;
     }
     try {
@@ -315,7 +319,7 @@ const UsersModule = () => {
               />
             </div>
             <div>
-              <Label>Password * (min 6 characters)</Label>
+              <Label>Password * (min {newUser.role === 'teacher' || newUser.role === 'staff' ? 5 : 6} characters)</Label>
               <Input
                 type="password"
                 value={newUser.password}
@@ -323,7 +327,7 @@ const UsersModule = () => {
                 placeholder="••••••••"
                 className="mt-1"
                 required
-                minLength={6}
+                minLength={newUser.role === 'teacher' || newUser.role === 'staff' ? 5 : 6}
               />
             </div>
             <div>
@@ -374,7 +378,7 @@ const UsersModule = () => {
                 Set a new password for <strong>{selectedUser.username}</strong> ({roleLabels[selectedUser.role] || selectedUser.role}). They will use this to log in.
               </p>
               <div>
-                <Label>New Password * (min 6 characters)</Label>
+                <Label>New Password * (min {selectedUser.role === 'teacher' || selectedUser.role === 'staff' ? 5 : 6} characters)</Label>
                 <Input
                   type="password"
                   value={resetPassword}
@@ -382,7 +386,7 @@ const UsersModule = () => {
                   placeholder="••••••••"
                   className="mt-1"
                   required
-                  minLength={6}
+                  minLength={selectedUser.role === 'teacher' || selectedUser.role === 'staff' ? 5 : 6}
                 />
               </div>
               <DialogFooter>

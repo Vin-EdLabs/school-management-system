@@ -136,8 +136,9 @@ const SettingsModule = () => {
       toast({ title: "Password Mismatch", description: "Passwords do not match", variant: "destructive" });
       return;
     }
-    if (newPassword.length < 6) {
-      toast({ title: "Password Too Short", description: "Password must be at least 6 characters long", variant: "destructive" });
+    const minLength = user?.role === 'teacher' || user?.role === 'staff' ? 5 : 6;
+    if (newPassword.length < minLength) {
+      toast({ title: "Password Too Short", description: `Password must be at least ${minLength} characters long`, variant: "destructive" });
       return;
     }
     if (!currentPassword) {
@@ -319,9 +320,9 @@ const SettingsModule = () => {
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Enter new password (min 6 characters)"
+                  placeholder={`Enter new password (min ${user?.role === 'teacher' || user?.role === 'staff' ? 5 : 6} characters)`}
                   required
-                  minLength={6}
+                  minLength={user?.role === 'teacher' || user?.role === 'staff' ? 5 : 6}
                 />
               </div>
               <div className="space-y-2">
@@ -333,7 +334,7 @@ const SettingsModule = () => {
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Confirm new password"
                   required
-                  minLength={6}
+                  minLength={user?.role === 'teacher' || user?.role === 'staff' ? 5 : 6}
                 />
               </div>
               <Button type="submit" className="w-full" disabled={!currentPassword || !newPassword || !confirmPassword}>
@@ -394,9 +395,9 @@ const SettingsModule = () => {
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Enter new password (min 6 characters)"
+                  placeholder={`Enter new password (min ${user?.role === 'teacher' || user?.role === 'staff' ? 5 : 6} characters)`}
                   required
-                  minLength={6}
+                  minLength={user?.role === 'teacher' || user?.role === 'staff' ? 5 : 6}
                 />
               </div>
               <div className="space-y-2">
@@ -408,7 +409,7 @@ const SettingsModule = () => {
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Confirm new password"
                   required
-                  minLength={6}
+                  minLength={user?.role === 'teacher' || user?.role === 'staff' ? 5 : 6}
                 />
               </div>
               <Button type="submit" className="w-full" disabled={!currentPassword || !newPassword || !confirmPassword}>

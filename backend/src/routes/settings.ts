@@ -438,16 +438,24 @@ router.post('/users/:id/reset-password', requirePrimaryAdminOrSuperAdmin, async 
     const tenantId = req.user!.tenantId!;
     const { id } = req.params;
     const { newPassword } = req.body;
-    if (!newPassword || newPassword.length < 6) {
-      return res.status(400).json({ error: 'New password must be at least 6 characters' });
-    }
+    
+    // Get target user role to decide minLength
     const userCheck = await query(
-      'SELECT id FROM users WHERE id = $1 AND tenant_id = $2',
+      'SELECT id, role FROM users WHERE id = $1 AND tenant_id = $2',
       [id, tenantId]
     );
+    
     if (userCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({ error: 'User teacher not found' });
     }
+    
+    const targetRole = userCheck.rows[0].role;
+    const minLength = targetRole === 'teacher' || targetRole === 'staff' ? 5 : 6;
+
+    if (!newPassword || newPassword.length < minLength) {
+      return res.status(400).json({ error: `New password must be at least ${minLength} characters` });
+    }
+
     const hashed = await bcrypt.hash(newPassword, 10);
     await query(
       'UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
@@ -477,8 +485,9 @@ router.post('/users', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, 
     if (!['administrator', 'finance', 'teacher', 'staff'].includes(role)) {
       return res.status(400).json({ error: 'Role must be administrator, finance, teacher, or staff' });
     }
-    if (password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    const minLength = role === 'teacher' || role === 'staff' ? 5 : 6;
+    if (password.length < minLength) {
+      return res.status(400).json({ error: `Password must be at least ${minLength} characters` });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);

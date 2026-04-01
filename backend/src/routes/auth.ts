@@ -117,8 +117,9 @@ router.post('/change-password', authenticate, async (req: AuthRequest, res) => {
       return res.status(400).json({ error: 'Current and new password required' });
     }
     
-    if (newPassword.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    const minLength = req.user!.role === 'teacher' || req.user!.role === 'staff' ? 5 : 6;
+    if (newPassword.length < minLength) {
+      return res.status(400).json({ error: `Password must be at least ${minLength} characters` });
     }
     
     const userResult = await query(

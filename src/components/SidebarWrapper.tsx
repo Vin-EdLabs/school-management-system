@@ -34,10 +34,10 @@ const SidebarWrapper: React.FC<SidebarWrapperProps> = ({
         <AppSidebar activeModule={activeModule} setActiveModule={setActiveModule} />
 
         <SidebarInset className="flex-1 flex flex-col min-h-screen">
-          <header className="sticky top-0 z-40 h-14 shrink-0 border-b border-slate-200/80 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
-            <div className="flex h-full items-center gap-4 px-4 md:px-6">
-              <SidebarTrigger className="h-8 w-8 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600" />
-              <div className="h-5 w-px bg-slate-200" />
+          <header className="sticky top-0 z-40 h-16 shrink-0 border-b border-gray-200/80 bg-white/95 backdrop-blur-sm supports-[backdrop-filter]:bg-white/80 shadow-sm transition-all duration-300">
+            <div className="flex h-full items-center gap-4 px-4 md:px-8">
+              <SidebarTrigger className="h-9 w-9 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-600 transition-all hover:scale-105 active:scale-95 shadow-sm" />
+              <div className="h-6 w-px bg-gray-200" />
               <MainHeader onAiAssistantClick={handleAiAssistantClick} />
             </div>
           </header>

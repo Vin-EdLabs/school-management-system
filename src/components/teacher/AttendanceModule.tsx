@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from '@/hooks/use-toast';
 import {
   ClipboardCheck, Calendar, Users, Save, Eye,
-  History, CheckCircle, XCircle, Search, UserCheck,
+  History, CheckCircle, XCircle, Search, UserCheck, School
 } from 'lucide-react';
 import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -33,6 +33,14 @@ interface TeacherClass {
   id: number;
   class_name: string;
   student_count: string;
+  level?: string | null;
+  stream?: string | null;
+}
+
+interface AttendanceResponse {
+  student_db_id: number;
+  present: number | boolean;
+  date: string;
 }
 
 // undefined = not yet marked, true = present, false = absent
@@ -111,9 +119,9 @@ const AttendanceModule = () => {
     const fetchAttendance = async () => {
       setAttendanceLoading(true);
       try {
-        const list = await apiService.get<any[]>(`/attendance?classId=${selectedClassId}&date=${selectedDate}`);
+        const list = await apiService.get<AttendanceResponse[]>(`/attendance?classId=${selectedClassId}&date=${selectedDate}`);
         const map: AttendanceStatus = {};
-        (list || []).forEach((a: any) => {
+        (list || []).forEach((a) => {
           map[String(a.student_db_id)] = Boolean(a.present);
         });
         setAttendance(map);
@@ -246,44 +254,51 @@ const AttendanceModule = () => {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg flex items-center justify-center">
-            <ClipboardCheck className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-800">Attendance</h1>
-            <p className="text-gray-600">
-              {isAdminViewer ? 'View attendance records across all classes (read-only)' : 'Take and manage student attendance'}
-            </p>
-          </div>
+    <div className="min-h-screen bg-slate-50/50 p-6 space-y-8 max-w-7xl mx-auto">
+      {/* Header Section */}
+      <div className="text-center space-y-4">
+        <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl mb-4 shadow-lg shadow-emerald-100">
+          <ClipboardCheck className="h-8 w-8 text-white" />
+        </div>
+        <div>
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
+            Student Attendance
+          </h1>
+          <p className="text-lg text-muted-foreground mt-2 max-w-2xl mx-auto">
+            {isAdminViewer ? 'View and track attendance history across all classes' : 'Effortlessly mark and manage student attendance with real-time tracking'}
+          </p>
         </div>
         {isAdminViewer && (
-          <Badge variant="secondary" className="flex items-center gap-1 text-blue-700 bg-blue-50 border border-blue-200">
-            <Eye className="w-3 h-3" /> Read Only
-          </Badge>
+          <div className="flex justify-center">
+            <Badge variant="secondary" className="px-4 py-1.5 text-blue-700 bg-blue-50 border border-blue-200 rounded-full font-semibold flex items-center gap-2">
+              <Eye className="w-4 h-4" /> Administrative View (Read-Only)
+            </Badge>
+          </div>
         )}
       </div>
 
-      {/* Class selector */}
-      <Card>
-        <CardContent className="pt-4">
-          <div className="space-y-2">
-            <Label>Class</Label>
-            <Select value={selectedClassId} onValueChange={v => { setSelectedClassId(v); setTrackerStudentId(''); setTrackerRecords([]); }}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a class" />
-              </SelectTrigger>
-              <SelectContent>
-                {teacherClasses.map((cls) => (
-                  <SelectItem key={cls.id} value={String(cls.id)}>
-                    {cls.class_name} ({cls.student_count} students)
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+      {/* Class Selector Card */}
+      <Card className="border-0 shadow-2xl bg-white/90 backdrop-blur-md rounded-3xl overflow-hidden hover:shadow-emerald-100/50 transition-all duration-500">
+        <CardContent className="p-8">
+          <div className="flex flex-col md:flex-row items-center gap-6">
+            <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center shrink-0">
+               <School className="w-6 h-6 text-emerald-600" />
+            </div>
+            <div className="flex-1 space-y-2 w-full text-center md:text-left">
+              <Label className="text-sm font-bold text-slate-500 uppercase tracking-widest">Select Target Class</Label>
+              <Select value={selectedClassId} onValueChange={v => { setSelectedClassId(v); setTrackerStudentId(''); setTrackerRecords([]); }}>
+                <SelectTrigger className="h-14 rounded-2xl border-2 border-slate-100 bg-white hover:border-emerald-200 focus:ring-4 focus:ring-emerald-50 transition-all text-lg font-semibold">
+                  <SelectValue placeholder="Which class are you marking?" />
+                </SelectTrigger>
+                <SelectContent className="rounded-2xl border-2 border-slate-50 shadow-2xl">
+                  {teacherClasses.map((cls) => (
+                    <SelectItem key={cls.id} value={String(cls.id)} className="h-12 rounded-xl mx-2 my-1">
+                      {cls.class_name} ({cls.student_count} registered students)
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </CardContent>
       </Card>

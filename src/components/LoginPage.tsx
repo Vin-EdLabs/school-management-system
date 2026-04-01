@@ -75,105 +75,132 @@ const LoginPage = () => {
   const isStaffOrTeacher = role === 'teacher' || role === 'staff';
 
   return (
-    <div className="h-screen flex bg-white overflow-hidden">
-      {/* Left: Background image - scaled down (zoomed out), shadow overlay */}
-      <div className="hidden lg:flex lg:w-1/2 relative h-screen overflow-hidden">
-        {logoUrl ? (
-          <>
-            <img
-              src={logoUrl}
-              alt=""
-              className="absolute inset-0 w-full h-full object-cover scale-75"
-            />
-            <div className="absolute inset-0 bg-slate-900/50 shadow-[inset_0_0_80px_rgba(0,0,0,0.4)]" />
-          </>
-        ) : (
-          <div
-            className="absolute inset-0 w-full h-full"
-            style={{
-              background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
-            }}
-          />
-        )}
-        <div className="relative z-10 flex flex-col justify-center items-center p-8 w-full text-center">
-          <h1 className="text-2xl font-bold text-white mb-1 drop-shadow-lg">{schoolName}</h1>
-          <p className="text-white/95 text-base drop-shadow-md">Management System</p>
-          <p className="text-white/80 text-xs mt-4 drop-shadow">Powered by TECHNERVE</p>
+    <div className="h-screen grid grid-cols-1 md:grid-cols-2 bg-white overflow-hidden font-sans">
+      {/* Left Panel: Branding & Information */}
+      <div className="hidden md:flex relative flex-col justify-between p-12 bg-gradient-to-br from-blue-600 to-purple-700 text-white overflow-hidden">
+        {/* Animated Background Orbs */}
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-white/10 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute bottom-[-5%] right-[-5%] w-[50%] h-[50%] bg-blue-400/20 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
+
+        <div className="relative z-10">
+          <div className="flex items-center gap-3 mb-12">
+            <div className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center border border-white/30 shadow-xl">
+              <GraduationCap className="w-7 h-7 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">{schoolName}</h1>
+              <p className="text-blue-100/80 text-sm font-medium uppercase tracking-widest">Portal</p>
+            </div>
+          </div>
+
+          <div className="space-y-8 max-w-md">
+            <div>
+              <h2 className="text-4xl font-extrabold mb-4 leading-tight">
+                Streamline Your School <span className="text-blue-200">Management</span>
+              </h2>
+              <p className="text-lg text-blue-50/80 leading-relaxed">
+                A comprehensive solution for academics, finance, and administration, powered by state-of-the-art AI.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-4 bg-white/10 backdrop-blur-sm rounded-2xl border border-white/10 hover:bg-white/15 transition-colors group">
+                <div className="text-blue-200 font-bold text-2xl mb-1 group-hover:scale-110 transition-transform">100%</div>
+                <div className="text-xs text-blue-100 font-medium uppercase tracking-wide">Automated Payroll</div>
+              </div>
+              <div className="p-4 bg-white/10 backdrop-blur-sm rounded-2xl border border-white/10 hover:bg-white/15 transition-colors group">
+                <div className="text-blue-200 font-bold text-2xl mb-1 group-hover:scale-110 transition-transform">Real-time</div>
+                <div className="text-xs text-blue-100 font-medium uppercase tracking-wide">AI Assistance</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="relative z-10 flex flex-col gap-6">
+          <div className="p-6 bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 shadow-2xl">
+            <h3 className="text-sm font-bold uppercase tracking-widest text-blue-200 mb-3 flex items-center gap-2">
+              <UserCheck className="w-4 h-4" />
+              {role.replace('-', ' ')} Access
+            </h3>
+            <p className="text-blue-50 font-medium">{roleCredentials[role]}</p>
+          </div>
+          <p className="text-sm text-blue-200/60 font-medium text-center">
+            &copy; 2026 TECHNERVE SOLUTIONS. ALL RIGHTS RESERVED.
+          </p>
         </div>
       </div>
 
-      {/* Right: Login Form - compact, no scroll */}
-      <div className="w-full lg:w-1/2 flex flex-col justify-center p-6 lg:p-10 bg-slate-50/50 overflow-hidden">
-        <div className="max-w-sm mx-auto w-full">
-          {/* Round logo */}
-          <div className="flex justify-center mb-6">
-            {logoUrl ? (
-              <div className="w-24 h-24 rounded-full overflow-hidden flex items-center justify-center p-1">
-                <img src={logoUrl} alt="" className="w-full h-full object-contain" />
-              </div>
-            ) : (
-              <div className="w-24 h-24 rounded-full flex items-center justify-center bg-slate-100/80">
-                <GraduationCap className="w-14 h-14 text-slate-400" />
-              </div>
-            )}
+      {/* Right Panel: Login Form */}
+      <div className="flex flex-col justify-center items-center p-8 md:p-16 lg:p-24 bg-slate-50 relative overflow-hidden">
+         {/* Mobile Header (Hidden on Desktop) */}
+         <div className="md:hidden absolute top-8 left-8 flex items-center gap-3">
+             {logoUrl ? (
+                <img src={logoUrl} alt="" className="w-10 h-10 object-contain" />
+              ) : (
+                <GraduationCap className="w-10 h-10 text-blue-600" />
+              )}
+              <h1 className="font-bold text-xl text-slate-800">{schoolName}</h1>
+         </div>
+
+        <div className="w-full max-w-md space-y-10 relative z-10">
+          <div className="space-y-3">
+            <h2 className="text-4xl font-extrabold text-slate-900 tracking-tight">Welcome back</h2>
+            <p className="text-slate-500 text-lg">Please enter your details to sign in.</p>
           </div>
 
-          <h2 className="text-xl font-semibold text-slate-900 mb-0.5">Sign in</h2>
-          <p className="text-slate-500 text-sm mb-5">Enter your credentials</p>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <Label htmlFor="role" className="text-sm font-medium text-slate-700">Role</Label>
-              <div className="relative mt-1">
-                <UserCheck className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 z-10" />
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="space-y-1.5">
+              <Label htmlFor="role" className="text-sm font-bold text-slate-700 ml-1">Login Role</Label>
+              <div className="relative group">
+                <UserCheck className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-blue-500 transition-colors z-10" />
                 <Select value={role} onValueChange={(value: UserRole) => setRole(value)}>
-                  <SelectTrigger className="pl-9 h-10 rounded-lg border-slate-200 bg-white">
+                  <SelectTrigger className="pl-12 h-14 rounded-2xl border-2 border-slate-200 bg-white shadow-sm hover:border-slate-300 focus:ring-4 focus:ring-blue-100 transition-all text-lg font-medium">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="administrator">Administrator</SelectItem>
-                    <SelectItem value="finance">Finance Manager</SelectItem>
-                    <SelectItem value="teacher">Teacher</SelectItem>
-                    <SelectItem value="staff">Staff (non-teaching)</SelectItem>
-                    <SelectItem value="super-admin">Super Admin</SelectItem>
+                  <SelectContent className="rounded-xl border-2 border-slate-100 shadow-2xl">
+                    <SelectItem value="administrator" className="h-12 text-base rounded-lg mx-1 my-0.5">Administrator</SelectItem>
+                    <SelectItem value="finance" className="h-12 text-base rounded-lg mx-1 my-0.5">Finance Manager</SelectItem>
+                    <SelectItem value="teacher" className="h-12 text-base rounded-lg mx-1 my-0.5">Teacher</SelectItem>
+                    <SelectItem value="staff" className="h-12 text-base rounded-lg mx-1 my-0.5">Staff (non-teaching)</SelectItem>
+                    <SelectItem value="super-admin" className="h-12 text-base rounded-lg mx-1 my-0.5 font-bold text-blue-600">Super Admin</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
-            <div>
-              <Label htmlFor="username" className="text-sm font-medium text-slate-700">
-                {isStaffOrTeacher ? 'Staff ID (e.g. TCH001, STAFF001)' : 'Username'}
+            <div className="space-y-1.5">
+              <Label htmlFor="username" className="text-sm font-bold text-slate-700 ml-1">
+                {isStaffOrTeacher ? 'Staff Identification' : 'Account Identifier'}
               </Label>
-              <div className="relative mt-1">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <div className="relative group">
+                <User className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
                 <Input
                   id="username"
                   type="text"
-                  placeholder={isStaffOrTeacher ? 'Enter Staff ID' : 'Enter your username'}
+                  placeholder={isStaffOrTeacher ? 'e.g. TCH001' : 'Your username'}
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="pl-9 h-10 rounded-lg border-slate-200 bg-white"
+                  className="pl-12 h-14 rounded-2xl border-2 border-slate-200 bg-white shadow-sm hover:border-slate-300 focus:ring-4 focus:ring-blue-100 transition-all text-lg"
                   required
                 />
               </div>
             </div>
 
-            <div>
-              <Label htmlFor="password" className="text-sm font-medium text-slate-700">
-                {isStaffOrTeacher ? 'PIN (5-digit password)' : 'Password'}
+            <div className="space-y-1.5">
+              <Label htmlFor="password" className="text-sm font-bold text-slate-700 ml-1">
+                {isStaffOrTeacher ? 'Security PIN' : 'Access Password'}
               </Label>
-              <div className="relative mt-1">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <div className="relative group">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
                 <Input
                   id="password"
                   type={isStaffOrTeacher ? 'text' : 'password'}
                   inputMode={isStaffOrTeacher ? 'numeric' : undefined}
                   maxLength={isStaffOrTeacher ? 5 : undefined}
-                  placeholder={isStaffOrTeacher ? 'Enter 5-digit PIN' : 'Enter your password'}
+                  placeholder={isStaffOrTeacher ? 'Enter 5-digit PIN' : '••••••••'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="pl-9 h-10 rounded-lg border-slate-200 bg-white"
+                  className="pl-12 h-14 rounded-2xl border-2 border-slate-200 bg-white shadow-sm hover:border-slate-300 focus:ring-4 focus:ring-blue-100 transition-all text-lg"
                   required
                 />
               </div>
@@ -181,19 +208,18 @@ const LoginPage = () => {
 
             <Button
               type="submit"
-              className="w-full h-10 rounded-lg text-white font-semibold text-sm shadow-md"
-              style={{ backgroundColor: primaryColor }}
+              className="w-full h-14 rounded-2xl text-white font-bold text-lg shadow-xl shadow-blue-200 hover:shadow-blue-300 transition-all hover:scale-[1.01] active:scale-[0.99] mt-4"
+              style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)` }}
             >
-              Sign In
+              Authenticate
             </Button>
           </form>
 
-          <div className="mt-5 pt-4 border-t border-slate-200">
-            <p className="text-xs text-slate-500 mb-2">{roleCredentials[role]}</p>
-            <Link to="/select-school">
-              <Button variant="ghost" size="sm" className="text-slate-600 hover:text-slate-900 -ml-2">
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back to School Select
+          <div className="pt-8 border-t border-slate-200 flex flex-col items-center gap-6">
+            <Link to="/select-school" className="w-full">
+              <Button variant="outline" className="w-full h-12 rounded-xl border-2 border-slate-200 text-slate-600 hover:bg-slate-50 transition-all flex items-center justify-center gap-2 font-semibold">
+                <ArrowLeft className="w-4 h-4" />
+                Change School
               </Button>
             </Link>
           </div>

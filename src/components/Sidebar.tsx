@@ -109,9 +109,10 @@ const MenuSection: React.FC<{
               <SidebarMenuButton
                 isActive={activeModule === item.id}
                 onClick={() => setActiveModule(item.id)}
-                className="rounded-lg mx-2 text-slate-200 data-[active=true]:bg-slate-700 data-[active=true]:text-white data-[active=true]:shadow-sm hover:bg-slate-700/70 hover:text-white transition-colors"
+                tooltip={item.label}
+                className="rounded-lg mx-2 text-slate-200 data-[active=true]:bg-slate-700 data-[active=true]:text-white data-[active=true]:shadow-sm hover:bg-slate-700/70 hover:text-white transition-all duration-200"
               >
-                <item.icon className="h-4 w-4 shrink-0 opacity-90" />
+                <item.icon className="h-4 w-4 shrink-0 opacity-90 transition-transform group-hover/menu-item:scale-110" />
                 <span className="font-medium">{item.label}</span>
                 {item.badge && (
                   <Badge variant="secondary" className="ml-auto text-[10px] px-1.5 py-0 bg-amber-500/20 text-amber-600 border-0">
@@ -130,8 +131,6 @@ const MenuSection: React.FC<{
 export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveModule }) => {
   const { logout, hasAccess } = useAuth();
   const { school, schoolId } = useSchool();
-  const schoolName = school?.name ?? (schoolId ? 'School' : 'Select School');
-  const schoolLogo = resolveLogoUrl(school?.logo_url ?? null);
   const primaryColor = school?.primary_color ?? '#0f172a';
 
   const menuItems = getMenuItems(hasAccess);
@@ -142,25 +141,8 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
       collapsible="icon"
       className="border-r border-slate-700/60 bg-slate-900 text-slate-200"
     >
-      <SidebarHeader className="border-b border-slate-700/80 px-4 py-5">
-        <div className="flex items-center gap-3 min-w-0 flex-1">
-          <div
-            className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 overflow-hidden ring-1 ring-slate-600/50 bg-slate-800"
-            style={{ backgroundColor: primaryColor }}
-          >
-            {schoolLogo ? (
-              <img src={schoolLogo} alt="" className="w-full h-full object-contain p-1" />
-            ) : (
-              <GraduationCap className="w-6 h-6 text-white" />
-            )}
-          </div>
-          <div className="min-w-0 flex-1 overflow-hidden">
-            <h1 className="font-semibold text-white truncate text-base tracking-tight" title={schoolName}>
-              {schoolName}
-            </h1>
-            <p className="text-xs text-slate-400 truncate">TECHNERVE</p>
-          </div>
-        </div>
+      <SidebarHeader className="h-10 border-b border-slate-700/80 px-4 flex items-center justify-center">
+        {/* Simplified Header */}
       </SidebarHeader>
 
       <SidebarContent className="px-2 py-4 gap-6 flex flex-col overflow-y-auto scrollbar-hide">
@@ -180,6 +162,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
             <SidebarMenuButton
               onClick={logout}
               className="rounded-lg mx-2 text-slate-300 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+              tooltip="Logout"
             >
               <LogOut className="h-4 w-4" />
               <span>Logout</span>
@@ -187,7 +170,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
           </SidebarMenuItem>
         </SidebarMenu>
         <div className="px-4 py-3 border-t border-slate-700/60">
-          <p className="text-[11px] text-slate-400 text-center">Powered by <span className="font-semibold text-slate-300">TECHNERVE</span></p>
+          <p className="text-[11px] text-slate-400 text-center">Powered by <span className="font-semibold text-slate-300 uppercase">Technerve</span></p>
         </div>
       </SidebarFooter>
     </Sidebar>

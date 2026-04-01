@@ -577,6 +577,27 @@ const runMigrations = async () => {
       CREATE INDEX IF NOT EXISTS idx_salary_payments_tenant ON salary_payments(tenant_id);
     `);
 
+    // Calendar Events table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS events (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        event_date DATE NOT NULL,
+        event_time TIME,
+        location VARCHAR(255),
+        category VARCHAR(100),
+        color VARCHAR(100),
+        reminder BOOLEAN DEFAULT false,
+        reminder_time VARCHAR(50),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_events_tenant ON events(tenant_id)`).catch(() => { });
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_events_date ON events(event_date)`).catch(() => { });
+
     // school_registrations: internal_note for super admin
     await client.query(`ALTER TABLE school_registrations ADD COLUMN IF NOT EXISTS internal_note TEXT`).catch(() => { });
 

@@ -302,24 +302,25 @@ const AiChatModule = () => {
         <div className="flex-shrink-0 p-6 bg-white border-b border-gray-200 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl text-white shadow-lg">
+              <div className="p-3 bg-gradient-to-br from-indigo-500 via-blue-600 to-blue-700 rounded-2xl text-white shadow-lg shadow-blue-200/50">
                 <Bot className="w-7 h-7" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">AI Assistant</h1>
-                <p className="text-sm text-gray-600">School Management by TECHNERVE</p>
+                <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">AI Assistant</h1>
+                <p className="text-sm text-gray-500 font-medium">Empowered by TECHNERVE</p>
               </div>
             </div>
             <div className="flex items-center space-x-3">
-              <Badge variant="secondary" className="text-xs bg-blue-50 text-blue-700 border-blue-200 px-3 py-1">
-                <MessageCircle className="w-3 h-3 mr-1" />
+              <Badge variant="secondary" className="text-xs bg-indigo-50 text-indigo-700 border-indigo-100 px-3 py-1.5 font-semibold">
+                <MessageCircle className="w-3.5 h-3.5 mr-1.5" />
                 {messages.length - 1} messages
               </Badge>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={handleClearChat}
-                className="text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-xl"
+                className="text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors duration-200"
+                title="Clear Chat History"
               >
                 <Trash2 className="w-4 h-4" />
               </Button>
@@ -328,67 +329,67 @@ const AiChatModule = () => {
         </div>
 
         {/* Scrollable Chat Area */}
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden bg-slate-50/30">
           <ScrollArea className="h-full p-6" ref={scrollAreaRef}>
-            <div className="space-y-6 pb-6">
+            <div className="max-w-4xl mx-auto space-y-6 pb-6">
               {messages.map((message) => (
                 <div key={message.id} className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[85%] ${
                     message.type === 'user' 
-                      ? 'bg-white shadow-lg border border-gray-100' 
-                      : 'bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 shadow-sm'
-                  } rounded-2xl p-5`}>
+                      ? 'bg-white shadow-sm border border-gray-100' 
+                      : 'bg-white border border-indigo-100 shadow-md shadow-indigo-100/20'
+                  } rounded-2xl p-5 transition-all duration-300 hover:shadow-lg`}>
                     
-                    <div className="flex items-start space-x-3">
-                      <div className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${
+                    <div className="flex items-start space-x-4">
+                      <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center shadow-sm ${
                         message.type === 'user' 
-                          ? 'bg-gray-100 border border-gray-200' 
-                          : 'bg-gradient-to-br from-blue-500 to-indigo-600'
+                          ? 'bg-gradient-to-br from-indigo-50 to-blue-50 border border-blue-100' 
+                          : 'bg-gradient-to-br from-indigo-500 to-blue-600'
                       }`}>
                         {message.type === 'ai' ? (
                           <Bot className="w-5 h-5 text-white" />
                         ) : (
-                          <User className="w-5 h-5 text-gray-600" />
+                          <User className="w-5 h-5 text-indigo-600" />
                         )}
                       </div>
                       
                       <div className="flex-1 min-w-0">
                         <div 
-                          className="text-sm leading-relaxed prose prose-sm max-w-none text-gray-800"
+                          className="text-[15px] leading-relaxed prose prose-sm max-w-none text-gray-800"
                           dangerouslySetInnerHTML={{ 
                             __html: message.content
-                              .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-900">$1</strong>')
+                              .replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-gray-900">$1</strong>')
                               .replace(/\n/g, '<br />') 
                           }}
                         />
                         
                         {(message.action === 'receipt' || message.action === 'payment' || message.action === 'report') && message.data && (
                           <Button
-                            variant="ghost"
+                            variant="outline"
                             size="sm"
                             onClick={() => handleShowReceipt(message.data)}
                             className={`mt-4 ${
                               message.type === 'user' 
-                                ? 'text-blue-600 hover:text-blue-700 hover:bg-blue-50' 
-                                : 'text-blue-600 hover:text-blue-700 hover:bg-blue-100'
-                            } rounded-xl`}
+                                ? 'border-indigo-100 text-indigo-600 hover:bg-indigo-50' 
+                                : 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
+                            } rounded-xl px-4 font-semibold transition-all duration-200`}
                           >
                             {message.action === 'report' ? (
                               <>
                                 <FileText className="w-4 h-4 mr-2" />
-                                View Report
+                                View Analysis Report
                               </>
                             ) : (
                               <>
                                 <Receipt className="w-4 h-4 mr-2" />
-                                View Receipt
+                                View Digital Receipt
                               </>
                             )}
                           </Button>
                         )}
                         
-                        <div className={`text-xs mt-3 ${
-                          message.type === 'user' ? 'text-gray-500' : 'text-blue-600/60'
+                        <div className={`text-[11px] font-medium mt-3 ${
+                          message.type === 'user' ? 'text-gray-400' : 'text-indigo-400'
                         }`}>
                           {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </div>
@@ -404,25 +405,27 @@ const AiChatModule = () => {
         </div>
 
         {/* Fixed Input Area */}
-        <div className="flex-shrink-0 border-t border-gray-200 bg-white">
+        <div className="flex-shrink-0 border-t border-gray-100 bg-white shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.05)]">
           {/* Quick Commands */}
           {showCommands && (
-            <div className="p-4 border-b border-gray-100">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
-                <Zap className="w-4 h-4 mr-2 text-blue-500" />
-                Quick Commands
+            <div className="px-6 py-4 overflow-x-auto scrollbar-hide bg-gray-50/50 border-b border-gray-100">
+              <h3 className="text-xs font-bold text-gray-400 mb-3 flex items-center uppercase tracking-wider">
+                <Zap className="w-3.5 h-3.5 mr-2 text-amber-500 fill-amber-500" />
+                Smart Recommendations
               </h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
+              <div className="flex gap-3 min-w-max pb-1">
                 {quickCommands.map((command) => (
                   <Button
                     key={command.id}
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
                     onClick={() => handleQuickCommand(command.template)}
-                    className="h-auto p-3 flex flex-col items-center text-center hover:bg-blue-50 hover:border-blue-300 transition-all duration-200 hover:shadow-sm rounded-xl"
+                    className="h-auto py-2.5 px-4 bg-white border border-gray-200 flex items-center gap-2.5 hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-700 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 rounded-xl group"
                   >
-                    <div className="text-lg mb-1">{command.icon}</div>
-                    <div className="text-xs font-medium">{command.title}</div>
+                    <span className="text-lg group-hover:scale-110 transition-transform">{command.icon}</span>
+                    <div className="text-left">
+                      <div className="text-xs font-bold leading-tight">{command.title}</div>
+                    </div>
                   </Button>
                 ))}
               </div>

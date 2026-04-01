@@ -15,6 +15,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Plus, Edit, Trash2, ChevronLeft, ChevronRight, Bell, Clock, Eye, Calendar as CalendarIcon, MapPin, Tag } from 'lucide-react';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, isToday, isPast, isBefore, addHours, subHours } from 'date-fns';
 import { toast } from '@/hooks/use-toast';
+import { apiService } from '../services/api';
+import { useSchool } from '../contexts/SchoolContext';
+import { Loader2 } from 'lucide-react';
 
 interface CalendarEvent {
   id: string;
@@ -48,33 +51,10 @@ const eventCategories = [
 ];
 
 export default function CalendarModule() {
+  const { schoolId } = useSchool();
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [events, setEvents] = useState<CalendarEvent[]>([
-    {
-      id: '1',
-      title: 'Parent-Teacher Conference',
-      date: new Date(),
-      time: '10:00',
-      description: 'Quarterly parent-teacher meetings',
-      color: 'bg-blue-500',
-      category: 'Academic',
-      reminder: true,
-      reminderTime: '30',
-      location: 'Main Hall'
-    },
-    {
-      id: '2',
-      title: 'School Sports Day',
-      date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      time: '09:00',
-      description: 'Annual athletics competition',
-      color: 'bg-emerald-500',
-      category: 'Sports',
-      reminder: true,
-      reminderTime: '60',
-      location: 'Sports Ground'
-    }
-  ]);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
@@ -97,69 +77,155 @@ export default function CalendarModule() {
     addMonths(currentDate, 1)
   ];
 
+  useEffect(() => {
+    if (schoolId) {
+      apiService.setTenantContext(schoolId);
+      fetchEvents();
+    }
+  }, [schoolId]);
+
+  const fetchEvents = async () => {
+    setLoading(true);
+    try {
+      const data = await apiService.get<any[]>('/events');
+      const mappedEvents: CalendarEvent[] = data.map(e => ({
+        id: String(e.id),
+        title: e.title,
+        date: new Date(e.event_date),
+        time: e.event_time,
+        description: e.description,
+        color: e.color || 'bg-blue-500',
+        category: e.category || 'Other',
+        reminder: e.reminder,
+        reminderTime: e.reminder_time,
+        location: e.location
+      }));
+      setEvents(mappedEvents);
+    } catch (error) {
+      console.error('Fetch events error:', error);
+      toast({ title: 'Error', description: 'Failed to load calendar events', variant: 'destructive' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const getEventsForDate = (date: Date) => {
     return events.filter(event => isSameDay(event.date, date));
   };
 
-  const handleAddEvent = () => {
+  const handleAddEvent = async () => {
     if (!selectedDate || !eventForm.title.trim()) return;
 
-    const newEvent: CalendarEvent = {
-      id: Date.now().toString(),
-      title: eventForm.title,
-      description: eventForm.description,
-      time: eventForm.time,
-      location: eventForm.location,
-      date: selectedDate,
-      color: eventForm.color,
-      category: eventForm.category,
-      reminder: eventForm.reminder,
-      reminderTime: eventForm.reminderTime
-    };
+    try {
+      const payload = {
+        title: eventForm.title,
+        description: eventForm.description,
+        event_time: eventForm.time,
+        location: eventForm.location,
+        event_date: format(selectedDate, 'yyyy-MM-dd'),
+        color: eventForm.color,
+        category: eventForm.category,
+        reminder: eventForm.reminder,
+        reminder_time: eventForm.reminderTime
+      };
 
-    setEvents([...events, newEvent]);
-    resetForm();
-    
-    toast({
-      title: "Event Created",
-      description: `${eventForm.title} has been added to your calendar.`,
-    });
+      const newEvent = await apiService.post<any>('/events', payload);
+      
+      setEvents([...events, {
+        id: String(newEvent.id),
+        title: newEvent.title,
+        date: new Date(newEvent.event_date),
+        time: newEvent.event_time,
+        description: newEvent.description,
+        color: newEvent.color,
+        category: newEvent.category,
+        reminder: newEvent.reminder,
+        reminderTime: newEvent.reminder_time,
+        location: newEvent.location
+      }]);
+
+      resetForm();
+      
+      toast({
+        title: "Event Created",
+        description: `${eventForm.title} has been added to your calendar.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to create event",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleEditEvent = () => {
+  const handleEditEvent = async () => {
     if (!editingEvent || !eventForm.title.trim()) return;
 
-    setEvents(events.map(event => 
-      event.id === editingEvent.id 
-        ? { 
-            ...event, 
-            title: eventForm.title, 
-            description: eventForm.description,
-            time: eventForm.time,
-            location: eventForm.location,
-            color: eventForm.color,
-            category: eventForm.category,
-            reminder: eventForm.reminder,
-            reminderTime: eventForm.reminderTime
-          }
-        : event
-    ));
-    resetForm();
-    
-    toast({
-      title: "Event Updated",
-      description: `${eventForm.title} has been updated successfully.`,
-    });
+    try {
+      const payload = {
+        title: eventForm.title,
+        description: eventForm.description,
+        event_time: eventForm.time,
+        location: eventForm.location,
+        event_date: selectedDate ? format(selectedDate, 'yyyy-MM-dd') : format(editingEvent.date, 'yyyy-MM-dd'),
+        color: eventForm.color,
+        category: eventForm.category,
+        reminder: eventForm.reminder,
+        reminder_time: eventForm.reminderTime
+      };
+
+      const updatedEvent = await apiService.put<any>(`/events/${editingEvent.id}`, payload);
+
+      setEvents(events.map(event => 
+        event.id === editingEvent.id 
+          ? { 
+              ...event, 
+              title: updatedEvent.title, 
+              description: updatedEvent.description,
+              time: updatedEvent.event_time,
+              location: updatedEvent.location,
+              date: new Date(updatedEvent.event_date),
+              color: updatedEvent.color,
+              category: updatedEvent.category,
+              reminder: updatedEvent.reminder,
+              reminderTime: updatedEvent.reminder_time
+            }
+          : event
+      ));
+      
+      resetForm();
+      
+      toast({
+        title: "Event Updated",
+        description: `${eventForm.title} has been updated successfully.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to update event",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleDeleteEvent = (eventId: string) => {
-    const event = events.find(e => e.id === eventId);
-    setEvents(events.filter(event => event.id !== eventId));
-    
-    toast({
-      title: "Event Deleted",
-      description: `${event?.title} has been removed from your calendar.`,
-    });
+  const handleDeleteEvent = async (eventId: string) => {
+    try {
+      await apiService.delete(`/events/${eventId}`);
+      
+      setEvents(events.filter(event => event.id !== eventId));
+      
+      toast({
+        title: "Event Deleted",
+        description: "Event has been removed from your calendar.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to delete event",
+        variant: "destructive",
+      });
+    }
   };
 
   const resetForm = () => {
@@ -278,82 +344,92 @@ export default function CalendarModule() {
         </Card>
 
         {/* Three Month Calendar View */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-          {months.map((month, index) => (
-            <Card key={index} className="border-0 shadow-xl bg-white/90 backdrop-blur-sm hover:shadow-2xl transition-all duration-300 overflow-hidden">
-              <CardHeader className="bg-gradient-to-r from-slate-100 to-slate-50 border-b border-slate-200">
-                <CardTitle className="text-center text-xl font-bold text-slate-800">
-                  {format(month, 'MMMM yyyy')}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6">
-                <Calendar
-                  mode="single"
-                  selected={selectedDate}
-                  onSelect={(date) => {
-                    if (date) {
-                      setSelectedDate(date);
-                      openAddDialog(date);
-                    }
-                  }}
-                  month={month}
-                  className="rounded-lg border-none p-0 w-full"
-                  classNames={{
-                    head_cell: "text-muted-foreground rounded-md w-10 h-10 font-medium text-sm flex items-center justify-center",
-                    cell: "relative h-12 w-10 text-center text-sm p-0 focus-within:relative focus-within:z-20",
-                    day: "h-12 w-10 p-0 font-medium hover:bg-blue-50 hover:text-blue-600 cursor-pointer rounded-lg transition-all duration-200 flex items-center justify-center relative",
-                    day_today: "bg-blue-500 text-white font-bold hover:bg-blue-600 shadow-md",
-                    day_selected: "bg-purple-500 text-white hover:bg-purple-600 shadow-md",
-                    day_outside: "text-muted-foreground opacity-40",
-                  }}
-                  components={{
-                    Day: ({ date, ...props }) => {
-                      const dayEvents = getEventsForDate(date);
-                      const isToday = isSameDay(date, new Date());
-                      const isCurrentMonth = isSameMonth(date, month);
-                      
-                      return (
-                        <div className="relative w-full h-full">
-                          <button
-                            {...props}
-                            className={`
-                              w-full h-full p-0 font-medium rounded-lg transition-all duration-200 relative
-                              ${isToday ? 'bg-blue-500 text-white font-bold hover:bg-blue-600 shadow-md' : ''}
-                              ${!isCurrentMonth ? 'text-muted-foreground opacity-40' : 'hover:bg-blue-50 hover:text-blue-600'}
-                              flex items-center justify-center
-                            `}
-                            onClick={() => {
-                              setSelectedDate(date);
-                              openAddDialog(date);
-                            }}
-                          >
-                            <span className="relative z-10">{format(date, 'd')}</span>
-                          </button>
-                          {dayEvents.length > 0 && (
-                            <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 flex gap-1">
-                              {dayEvents.slice(0, 3).map((event, i) => {
-                                const colorConfig = getColorConfig(event.color);
-                                return (
-                                  <div
-                                    key={i}
-                                    className={`w-2 h-2 rounded-full ${colorConfig.dot} shadow-sm`}
-                                  />
-                                );
-                              })}
-                              {dayEvents.length > 3 && (
-                                <div className="w-2 h-2 rounded-full bg-gray-400 shadow-sm" />
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    }
-                  }}
-                />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20 space-y-4">
+            <Loader2 className="h-12 w-12 text-blue-500 animate-spin" />
+            <p className="text-slate-500 font-medium animate-pulse">Syncing your calendar...</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+            {months.map((month, index) => (
+              <Card key={index} className="border-0 shadow-2xl bg-white/95 backdrop-blur-md hover:shadow-indigo-100/50 transition-all duration-500 overflow-hidden rounded-3xl group">
+                <CardHeader className="bg-gradient-to-r from-slate-50 to-white border-b border-slate-100 py-6">
+                  <CardTitle className="text-center text-xl font-bold bg-gradient-to-r from-slate-800 to-slate-500 bg-clip-text text-transparent">
+                    {format(month, 'MMMM yyyy')}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-8">
+                  <Calendar
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={(date) => {
+                      if (date) {
+                        setSelectedDate(date);
+                        openAddDialog(date);
+                      }
+                    }}
+                    month={month}
+                    showOutsideDays={true}
+                    className="rounded-lg border-none p-0 w-full"
+                    classNames={{
+                      head_cell: "text-slate-400 rounded-md w-10 h-10 font-bold text-xs uppercase tracking-widest flex items-center justify-center",
+                      cell: "relative h-14 w-10 text-center text-sm p-0 focus-within:relative focus-within:z-20",
+                      day: "h-14 w-10 p-0 font-semibold hover:bg-indigo-50 hover:text-indigo-600 cursor-pointer rounded-2xl transition-all duration-300 flex items-center justify-center relative group/day",
+                      day_today: "bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 lg:scale-110 z-10",
+                      day_selected: "bg-gradient-to-br from-purple-500 to-indigo-600 text-white hover:opacity-90 shadow-xl lg:scale-110 z-10",
+                      day_outside: "text-slate-300 opacity-30",
+                    }}
+                    components={{
+                      Day: ({ date, ...props }) => {
+                        const dayEvents = getEventsForDate(date);
+                        const isTodayDate = isSameDay(date, new Date());
+                        const isSelected = selectedDate && isSameDay(date, selectedDate);
+                        const isCurrentMonth = isSameMonth(date, month);
+
+                        return (
+                          <div className="relative w-full h-full flex items-center justify-center">
+                            <button
+                              {...props}
+                              className={`
+                                w-12 h-12 p-0 font-bold rounded-2xl transition-all duration-300 relative
+                                ${isTodayDate ? 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-lg shadow-blue-200' : ''}
+                                ${isSelected ? 'bg-gradient-to-br from-purple-500 to-pink-500 text-white shadow-lg shadow-purple-200 scale-110 z-10' : ''}
+                                ${!isCurrentMonth ? 'text-slate-300 opacity-40' : 'text-slate-700 hover:bg-indigo-50 hover:text-indigo-600'}
+                                flex items-center justify-center
+                              `}
+                              onClick={() => {
+                                setSelectedDate(date);
+                                openAddDialog(date);
+                              }}
+                            >
+                              <span className="relative z-10">{format(date, 'd')}</span>
+
+                              <div className="absolute inset-0 rounded-2xl border-2 border-transparent group-hover/day:border-indigo-100 transition-all duration-300" />
+                            </button>
+
+                            {dayEvents.length > 0 && (
+                              <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 flex gap-1 z-20">
+                                {dayEvents.slice(0, 3).map((event, i) => {
+                                  const colorConfig = getColorConfig(event.color);
+                                  return (
+                                    <div
+                                      key={i}
+                                      className={`w-1.5 h-1.5 rounded-full ${colorConfig.dot} ring-1 ring-white shadow-sm`}
+                                    />
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+                    }}
+                  />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
 
         {/* Events List */}
         <Card className="border-0 shadow-xl bg-white/90 backdrop-blur-sm">

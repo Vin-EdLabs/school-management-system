@@ -52,7 +52,7 @@ const IndexWithSchool = () => {
   }, [schoolId, slug]);
 
   if (resolving) return <div className="min-h-screen flex items-center justify-center bg-slate-50">Loading school...</div>;
-  if (!resolvedId) return <Navigate to="/select-school" replace />;
+  if (!resolvedId) return <Navigate to="/" replace />;
 
   return (
     <SchoolProvider schoolIdFromUrl={resolvedId}>
@@ -77,7 +77,6 @@ const App = () => (
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/register-school" element={<RegisterSchool />} />
-            <Route path="/select-school" element={<SchoolSelector />} />
             <Route path="/super-admin" element={<SuperAdminDashboard />} />
             <Route path="/school/:schoolId/*" element={<IndexWithSchool />} />
             <Route path="/s/:slug/*" element={<IndexWithSchool />} />

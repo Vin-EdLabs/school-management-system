@@ -20,13 +20,8 @@ const LandingPage = () => {
             <span className="font-bold text-xl tracking-tight text-slate-800">TECHNERVE</span>
           </Link>
           <nav className="flex items-center gap-2">
-            <Link to="/select-school">
-              <Button variant="ghost" className="text-slate-600 hover:text-slate-900 hover:bg-slate-100">
-                Login
-              </Button>
-            </Link>
             <Link to="/register-school">
-              <Button className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-500/30 border-0">
+              <Button className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-500/30 border-0 font-semibold px-6">
                 Register School
               </Button>
             </Link>
@@ -35,7 +30,6 @@ const LandingPage = () => {
       </header>
 
       <main className="relative pt-20">
-        {/* Hero with image */}
         <section className="container mx-auto px-4 pt-12 pb-20 max-w-6xl">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div>
@@ -54,11 +48,6 @@ const LandingPage = () => {
                   <Button size="lg" className="w-full sm:w-auto bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-8 py-6 text-lg h-auto rounded-xl shadow-xl shadow-emerald-500/30 border-0 group">
                     Get Started
                     <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
-                  </Button>
-                </Link>
-                <Link to="/select-school">
-                  <Button size="lg" variant="outline" className="w-full sm:w-auto border-slate-300 text-slate-700 hover:bg-slate-100 px-8 py-6 text-lg h-auto rounded-xl">
-                    Login to Your School
                   </Button>
                 </Link>
               </div>

@@ -215,14 +215,6 @@ const LoginPage = () => {
             </Button>
           </form>
 
-          <div className="pt-8 border-t border-slate-200 flex flex-col items-center gap-6">
-            <Link to="/select-school" className="w-full">
-              <Button variant="outline" className="w-full h-12 rounded-xl border-2 border-slate-200 text-slate-600 hover:bg-slate-50 transition-all flex items-center justify-center gap-2 font-semibold">
-                <ArrowLeft className="w-4 h-4" />
-                Change School
-              </Button>
-            </Link>
-          </div>
         </div>
       </div>
     </div>

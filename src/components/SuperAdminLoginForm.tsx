@@ -119,18 +119,6 @@ const SuperAdminLoginForm = () => {
             </Button>
           </form>
 
-          <div className="mt-8 pt-6 border-t border-slate-700">
-            <Link to="/select-school">
-              <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white hover:bg-slate-800 w-full justify-center">
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back to School Login
-              </Button>
-            </Link>
-          </div>
-
-          <p className="text-xs text-slate-500 text-center mt-4">
-            Authorized access only. Default: superadmin / superadmin123
-          </p>
         </div>
       </div>
     </div>

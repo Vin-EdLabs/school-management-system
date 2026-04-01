@@ -30,7 +30,7 @@ const SidebarWrapper: React.FC<SidebarWrapperProps> = ({
         } as React.CSSProperties
       }
     >
-      <div className="flex min-h-screen w-full bg-slate-50/80">
+      <div className="flex h-screen w-full bg-slate-50/80 overflow-hidden">
         <AppSidebar activeModule={activeModule} setActiveModule={setActiveModule} />
 
         <SidebarInset className="flex-1 flex flex-col min-h-screen">

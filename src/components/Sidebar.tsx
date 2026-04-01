@@ -99,23 +99,23 @@ const MenuSection: React.FC<{
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest px-3">
+      <SidebarGroupLabel className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] px-3 mb-2 opacity-60 group-data-[collapsible=icon]:hidden">
         {label}
       </SidebarGroupLabel>
       <SidebarGroupContent>
-        <SidebarMenu className="space-y-0.5">
+        <SidebarMenu className="space-y-1">
           {items.map((item) => (
-            <SidebarMenuItem key={item.id}>
+            <SidebarMenuItem key={item.id} className="flex justify-center">
               <SidebarMenuButton
                 isActive={activeModule === item.id}
                 onClick={() => setActiveModule(item.id)}
                 tooltip={item.label}
-                className="rounded-lg mx-2 text-slate-200 data-[active=true]:bg-slate-700 data-[active=true]:text-white data-[active=true]:shadow-sm hover:bg-slate-700/70 hover:text-white transition-all duration-200"
+                className="rounded-xl mx-auto w-[calc(100%-12px)] h-9 text-slate-300 data-[active=true]:bg-gradient-to-br data-[active=true]:from-indigo-600 data-[active=true]:to-blue-600 data-[active=true]:text-white data-[active=true]:shadow-lg data-[active=true]:shadow-indigo-500/20 hover:bg-slate-800 hover:text-white transition-all duration-300 group-data-[collapsible=icon]:w-9 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:mx-0"
               >
-                <item.icon className="h-4 w-4 shrink-0 opacity-90 transition-transform group-hover/menu-item:scale-110" />
-                <span className="font-medium">{item.label}</span>
-                {item.badge && (
-                  <Badge variant="secondary" className="ml-auto text-[10px] px-1.5 py-0 bg-amber-500/20 text-amber-600 border-0">
+                <item.icon className="h-[1.1rem] w-[1.1rem] shrink-0 opacity-80 group-data-[active=true]:opacity-100 transition-all duration-300 group-hover/menu-item:scale-110" />
+                <span className="font-semibold text-sm group-data-[collapsible=icon]:hidden ml-3">{item.label}</span>
+                {item.badge && ! (activeModule === item.id) && (
+                  <Badge variant="secondary" className="ml-auto text-[9px] px-1.5 py-0 bg-blue-500/20 text-blue-400 border-0 group-data-[collapsible=icon]:hidden">
                     {item.badge}
                   </Badge>
                 )}
@@ -130,8 +130,7 @@ const MenuSection: React.FC<{
 
 export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveModule }) => {
   const { logout, hasAccess } = useAuth();
-  const { school, schoolId } = useSchool();
-  const primaryColor = school?.primary_color ?? '#0f172a';
+  const { school } = useSchool();
 
   const menuItems = getMenuItems(hasAccess);
 
@@ -139,38 +138,50 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
     <Sidebar
       variant="sidebar"
       collapsible="icon"
-      className="border-r border-slate-700/60 bg-slate-900 text-slate-200"
+      className="border-r border-slate-800/50 bg-[#0f172a] text-slate-200 shadow-2xl h-screen sticky top-0"
     >
-      <SidebarHeader className="h-10 border-b border-slate-700/80 px-4 flex items-center justify-center">
-        {/* Simplified Header */}
+      <SidebarHeader className="h-20 flex items-center justify-center border-b border-slate-800/50 mb-4 px-2 overflow-hidden">
+         <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-xl shadow-indigo-500/20 shrink-0">
+             <GraduationCap className="w-6 h-6 text-white" />
+         </div>
+         <div className="ml-3 overflow-hidden transition-all duration-300 group-data-[collapsible=icon]:hidden group-data-[collapsible=icon]:w-0 group-data-[collapsible=icon]:opacity-0">
+             <h2 className="text-sm font-black text-white uppercase tracking-tighter truncate">{school?.name || 'EDUNERVE'}</h2>
+             <p className="text-[9px] text-slate-500 font-bold tracking-widest uppercase truncate opacity-70">Management System</p>
+         </div>
       </SidebarHeader>
 
-      <SidebarContent className="px-2 py-4 gap-6 flex flex-col overflow-y-auto scrollbar-hide">
+      <SidebarContent className="flex-1 min-h-0 overflow-y-auto scrollbar-hide overscroll-contain px-1 py-4 gap-4 bg-transparent outline-none border-none">
         <MenuSection items={menuItems.dashboard} label="Overview" activeModule={activeModule} setActiveModule={setActiveModule} />
-        <MenuSection items={menuItems.academic} label="Academic" activeModule={activeModule} setActiveModule={setActiveModule} />
-        <MenuSection items={menuItems.teaching} label="Teaching" activeModule={activeModule} setActiveModule={setActiveModule} />
-        <MenuSection items={menuItems.financial} label="Finance" activeModule={activeModule} setActiveModule={setActiveModule} />
-        <MenuSection items={menuItems.records} label="Records" activeModule={activeModule} setActiveModule={setActiveModule} />
-        <MenuSection items={menuItems.system} label="System" activeModule={activeModule} setActiveModule={setActiveModule} />
-        <SidebarSeparator className="bg-slate-700/60 mx-2" />
-        <MenuSection items={menuItems.ai} label="Tools" activeModule={activeModule} setActiveModule={setActiveModule} />
+        <MenuSection items={menuItems.academic} label="Academic Central" activeModule={activeModule} setActiveModule={setActiveModule} />
+        <MenuSection items={menuItems.teaching} label="Teaching Room" activeModule={activeModule} setActiveModule={setActiveModule} />
+        <MenuSection items={menuItems.financial} label="Financial Ops" activeModule={activeModule} setActiveModule={setActiveModule} />
+        <MenuSection items={menuItems.records} label="Data Center" activeModule={activeModule} setActiveModule={setActiveModule} />
+        <MenuSection items={menuItems.system} label="System Engine" activeModule={activeModule} setActiveModule={setActiveModule} />
+        <SidebarSeparator className="bg-slate-800/50 mx-4 my-2" />
+        <MenuSection items={menuItems.ai} label="Innovation" activeModule={activeModule} setActiveModule={setActiveModule} />
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-slate-700/80 p-2">
+      <SidebarFooter className="border-t border-slate-800/50 p-3 space-y-4 bg-slate-900/50">
         <SidebarMenu>
-          <SidebarMenuItem>
+          <SidebarMenuItem className="flex justify-center">
             <SidebarMenuButton
               onClick={logout}
-              className="rounded-lg mx-2 text-slate-300 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-              tooltip="Logout"
+              className="rounded-xl w-full h-10 text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-all group-data-[collapsible=icon]:w-10 group-data-[collapsible=icon]:justify-center"
+              tooltip="Terminate Session"
             >
-              <LogOut className="h-4 w-4" />
-              <span>Logout</span>
+              <LogOut className="h-4.5 w-4.5 shrink-0" />
+              <span className="font-bold text-xs uppercase tracking-tight ml-3 group-data-[collapsible=icon]:hidden">Sign Out</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-        <div className="px-4 py-3 border-t border-slate-700/60">
-          <p className="text-[11px] text-slate-400 text-center">Powered by <span className="font-semibold text-slate-300 uppercase">Technerve</span></p>
+        
+        <div className="px-2 group-data-[collapsible=icon]:hidden">
+          <div className="p-3 bg-slate-800/40 rounded-2xl border border-slate-700/30">
+            <p className="text-[10px] text-slate-500 text-center font-medium leading-tight">
+              Crafted with Excellence by <br />
+              <span className="font-black text-slate-300 uppercase tracking-widest text-[9px]">Technerve</span>
+            </p>
+          </div>
         </div>
       </SidebarFooter>
     </Sidebar>

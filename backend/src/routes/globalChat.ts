@@ -3,6 +3,24 @@ import { query } from '../db/connection.js';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { getIO } from '../socket.js';
 
+import multer from 'multer';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, path.join(__dirname, '../../uploads/chat'));
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({ storage });
 const router = express.Router();
 
 // Get recent messages for a specific channel (with reply context)
@@ -29,14 +47,23 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
               COALESCE(t.name, m.tenant_name) as tenant_name,
               m.full_name,
               p.content as parent_content,
-              p.full_name as parent_name
+              p.full_name as parent_name,
+              (
+                SELECT json_agg(r) FROM (
+                  SELECT emoji, COUNT(*) as count, 
+                  EXISTS(SELECT 1 FROM global_chat_reactions WHERE message_id = m.id AND user_id = $2 AND emoji = r.emoji) as me_reacted
+                  FROM global_chat_reactions r
+                  WHERE message_id = m.id
+                  GROUP BY emoji
+                ) r
+              ) as reactions
        FROM global_chat_messages m
        LEFT JOIN tenants t ON m.tenant_id = t.id
        LEFT JOIN global_chat_messages p ON m.reply_to_id = p.id
        WHERE m.channel = $1 AND m.is_deleted = false
        ORDER BY m.created_at DESC
        LIMIT 100`,
-      [channel]
+      [channel, req.user!.id]
     );
 
     res.json(result.rows.reverse());
@@ -46,14 +73,14 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
-// Post a new message to a specific channel (Supports Replies)
+// Post a new message to a specific channel (Supports Replies & Media)
 router.post('/', authenticate, async (req: AuthRequest, res) => {
   try {
     const user = req.user!;
-    const { content, channel = 'general', reply_to_id = null } = req.body;
+    const { content, channel = 'general', reply_to_id = null, media_url = null } = req.body;
 
-    if (!content || content.trim() === '') {
-      return res.status(400).json({ error: 'Message content is required' });
+    if ((!content || content.trim() === '') && !media_url) {
+      return res.status(400).json({ error: 'Message content or media is required' });
     }
 
     // Role-based access control for posting
@@ -74,30 +101,104 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
       tenantName = t.rows[0]?.name || 'Unknown School';
     }
 
-    const result = await query(
+    const insertResult = await query(
       `INSERT INTO global_chat_messages 
-       (tenant_id, tenant_name, user_id, username, full_name, role, content, channel, reply_to_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       RETURNING *`,
-      [user.tenantId, tenantName, user.id, user.username, user.fullName || user.username, user.role, content, channel, reply_to_id]
+       (tenant_id, tenant_name, user_id, username, full_name, role, content, channel, reply_to_id, media_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING id`,
+      [user.tenantId, tenantName, user.id, user.username, user.fullName || user.username, user.role, content || '', channel, reply_to_id, media_url]
     );
 
-    const newMessage = result.rows[0];
+    const newId = insertResult.rows[0].id;
+    
+    // Fetch enriched message
+    const fullMessageResult = await query(
+      `SELECT m.*, 
+              COALESCE(t.name, m.tenant_name) as tenant_name,
+              m.full_name,
+              p.content as parent_content,
+              p.full_name as parent_name
+       FROM global_chat_messages m
+       LEFT JOIN tenants t ON m.tenant_id = t.id
+       LEFT JOIN global_chat_messages p ON m.reply_to_id = p.id
+       WHERE m.id = $1`,
+      [newId]
+    );
 
-    // Emit via Socket.io with channel differentiation
+    const newMessage = fullMessageResult.rows[0];
+
+    // Emit via socket
     try {
       const io = getIO();
       io.to(`global:${channel}`).emit('new-global-message', newMessage);
       io.emit('new-global-message', newMessage); 
-    } catch (socketErr) {
-      console.warn('Socket emission failed:', socketErr);
-    }
+    } catch (socketErr) {}
 
     res.status(201).json(newMessage);
   } catch (error) {
     console.error('Post global chat error:', error);
-    res.status(500).json({ error: 'Failed to send message' });
+    res.status(500).json({ error: 'Failed' });
   }
+});
+
+// Single media upload for chat
+router.post('/upload', authenticate, upload.single('media'), async (req: AuthRequest, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file provided' });
+    const media_url = `/uploads/chat/${req.file.filename}`;
+    res.json({ media_url });
+  } catch (e) {
+    res.status(500).json({ error: 'Upload failed' });
+  }
+});
+
+// Toggle reaction on a message (Medical-grade emoji support)
+router.post('/:id/react', authenticate, async (req: AuthRequest, res) => {
+   try {
+      const userId = req.user!.id;
+      const msgId = req.params.id;
+      const { emoji } = req.body;
+
+      if (!emoji) return res.status(400).json({ error: 'Emoji required' });
+
+      // Check if user already reacted with this emoji
+      const existing = await query(
+         'SELECT id FROM global_chat_reactions WHERE message_id = $1 AND user_id = $2 AND emoji = $3',
+         [msgId, userId, emoji]
+      );
+
+      if (existing.rows.length > 0) {
+         // Un-react
+         await query('DELETE FROM global_chat_reactions WHERE id = $1', [existing.rows[0].id]);
+      } else {
+         // React
+         await query(
+            'INSERT INTO global_chat_reactions (message_id, user_id, emoji) VALUES ($1, $2, $3)',
+            [msgId, userId, emoji]
+         );
+      }
+
+      // Fetch all reactions for this message to broadcast
+      const allReactions = await query(
+         `SELECT emoji, COUNT(*) as count, 
+                 EXISTS(SELECT 1 FROM global_chat_reactions WHERE message_id = $1 AND user_id = $2 AND emoji = r.emoji) as me_reacted
+          FROM global_chat_reactions r
+          WHERE message_id = $1
+          GROUP BY emoji`,
+         [msgId, userId]
+      );
+
+      // Broadcast update via Socket.io
+      try {
+         const io = getIO();
+         io.emit('message-reacted', { id: msgId, reactions: allReactions.rows });
+      } catch (e) {}
+
+      res.json(allReactions.rows);
+   } catch (error) {
+      console.error('Reaction toggle error:', error);
+      res.status(500).json({ error: 'Failed to toggle reaction' });
+   }
 });
 
 // Delete a message (Delete for Everyone)

@@ -60,7 +60,16 @@ export const initSocket = (server: HttpServer) => {
   });
 
   io.on('connection', (socket: AuthenticatedSocket) => {
-    console.log(`User connected: ${socket.id} (${socket.user?.username})`);
+    if (socket.user) {
+      const { id } = socket.user;
+      socket.join(`user:${id}`);
+      socket.join('global:general');
+      console.log(`User connected and joined rooms: ${socket.id} (${socket.user.username})`);
+    }
+
+    socket.on('join-channel', (channel: string) => {
+      socket.join(`global:${channel}`);
+    });
 
     socket.on('disconnect', () => {
       console.log(`User disconnected: ${socket.id}`);

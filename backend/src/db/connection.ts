@@ -607,6 +607,8 @@ const runMigrations = async () => {
 
     // school_registrations: internal_note for super admin
     await client.query(`ALTER TABLE school_registrations ADD COLUMN IF NOT EXISTS internal_note TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE school_registrations ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id) ON DELETE SET NULL`).catch(() => { });
+    await client.query(`ALTER TABLE school_registrations ADD COLUMN IF NOT EXISTS generated_password VARCHAR(255)`).catch(() => { });
 
     // users: full_name and phone for super admins
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name VARCHAR(255)`).catch(() => { });

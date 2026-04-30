@@ -30,7 +30,7 @@ router.post('/', async (req, res) => {
 router.get('/', authenticate, requireRole('super-admin'), async (req: AuthRequest, res) => {
   try {
     const result = await query(
-      `SELECT id, school_name, admin_name, email, phone, message, status, internal_note, created_at
+      `SELECT id, school_name, admin_name, email, phone, message, status, internal_note, tenant_id, generated_password, created_at
        FROM school_registrations ORDER BY created_at DESC`
     );
     res.json(result.rows);
@@ -42,6 +42,7 @@ router.get('/', authenticate, requireRole('super-admin'), async (req: AuthReques
 
 // Super-admin: Update registration status
 router.patch('/:id/status', authenticate, requireRole('super-admin'), async (req: AuthRequest, res) => {
+  const client = await (await import('../db/connection.js')).getClient();
   try {
     const { id } = req.params;
     const { status } = req.body;
@@ -50,19 +51,73 @@ router.patch('/:id/status', authenticate, requireRole('super-admin'), async (req
       return res.status(400).json({ error: 'Invalid status' });
     }
 
-    const result = await query(
+    await client.query('BEGIN');
+
+    // Fetch the registration details
+    const regCheck = await client.query('SELECT * FROM school_registrations WHERE id = $1', [id]);
+    if (regCheck.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Registration not found' });
+    }
+
+    const registration = regCheck.rows[0];
+
+    // If approving and not already approved/created
+    if (status === 'approved' && !registration.tenant_id) {
+      const { school_name, admin_name, email } = registration;
+      
+      // Default credentials
+      const adminUsername = 'admin';
+      const defaultPassword = 'password123'; // Simple default, can be changed later
+      const slug = school_name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+      
+      const bcrypt = await import('bcryptjs');
+      const hashedPassword = await bcrypt.default.hash(defaultPassword, 10);
+
+      // 1. Create tenant
+      const tenantResult = await client.query(
+        `INSERT INTO tenants (name, slug, subdomain, subscription_status, is_active)
+         VALUES ($1, $2, $3, 'active', true) RETURNING id`,
+        [school_name, slug, slug]
+      );
+      const tenantId = tenantResult.rows[0].id;
+
+      // 2. Create primary admin user
+      await client.query(
+        'INSERT INTO users (tenant_id, username, email, full_name, password_hash, role, is_primary_admin) VALUES ($1, $2, $3, $4, $5, $6, true)',
+        [tenantId, adminUsername, email, admin_name, hashedPassword, 'administrator']
+      );
+
+      // 3. Create default settings
+      await client.query(
+        'INSERT INTO school_settings (tenant_id, school_name, email) VALUES ($1, $2, $3)',
+        [tenantId, school_name, email]
+      );
+
+      // 4. Update registration with created tenant and password
+      const result = await client.query(
+        `UPDATE school_registrations SET status = $1, tenant_id = $2, generated_password = $3 WHERE id = $4 RETURNING *`,
+        [status, tenantId, defaultPassword, id]
+      );
+
+      await client.query('COMMIT');
+      return res.json(result.rows[0]);
+    }
+
+    // Standard status update if not approving or already created
+    const result = await client.query(
       `UPDATE school_registrations SET status = $1 WHERE id = $2 RETURNING *`,
       [status, id]
     );
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Registration not found' });
-    }
-
+    await client.query('COMMIT');
     res.json(result.rows[0]);
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('Update registration status error:', error);
     res.status(500).json({ error: 'Failed to update status' });
+  } finally {
+    client.release();
   }
 });
 

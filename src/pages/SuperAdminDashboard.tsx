@@ -63,6 +63,7 @@ import {
   FileText,
   Sun,
   Moon,
+  CheckCircle,
 } from 'lucide-react';
 import SuperAdminLoginForm from '../components/SuperAdminLoginForm';
 import { resolveLogoUrl } from '../services/tenantService';
@@ -89,6 +90,8 @@ interface Registration {
   message?: string;
   status: string;
   internal_note?: string;
+  tenant_id?: number;
+  generated_password?: string;
   created_at: string;
 }
 
@@ -806,6 +809,32 @@ const SuperAdminDashboard = () => {
                           <div className="mt-3 p-3 bg-amber-50 rounded-lg border border-amber-200/60">
                             <p className="text-xs font-medium text-amber-800 uppercase tracking-wide mb-1">Internal Note</p>
                             <p className="text-slate-700 text-sm">{r.internal_note}</p>
+                          </div>
+                        )}
+                        {r.status === 'approved' && r.generated_password && (
+                          <div className="mt-3 p-4 bg-emerald-50 rounded-xl border border-emerald-200/60">
+                            <div className="flex items-center gap-2 mb-2">
+                              <CheckCircle className="w-4 h-4 text-emerald-600" />
+                              <p className="text-sm font-bold text-emerald-900">School Created Successfully</p>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div>
+                                <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider mb-0.5">Admin Username</p>
+                                <code className="bg-white px-2 py-0.5 rounded border border-emerald-100 text-emerald-800 text-xs font-mono">admin</code>
+                              </div>
+                              <div>
+                                <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider mb-0.5">Admin Password</p>
+                                <code className="bg-white px-2 py-0.5 rounded border border-emerald-100 text-emerald-800 text-xs font-mono">{r.generated_password}</code>
+                              </div>
+                            </div>
+                            <Button 
+                              size="sm" 
+                              className="w-full mt-3 bg-emerald-600 hover:bg-emerald-700 text-white border-0 shadow-sm"
+                              onClick={() => openSchool(r.tenant_id!)}
+                            >
+                              <ExternalLink className="w-3.5 h-3.5 mr-2" />
+                              Open School Dashboard
+                            </Button>
                           </div>
                         )}
                       </CardContent>

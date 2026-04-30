@@ -24,7 +24,6 @@ import GradesModule from './teacher/GradesModule';
 import TeacherProfileModule from './teacher/TeacherProfileModule';
 import TeacherPaymentHistoryModule from './teacher/TeacherPaymentHistoryModule';
 import AiChatModule from './ai/AiChatModule';
-import SupportChatModule from './support/SupportChatModule';
 import RecordsModule from './records/RecordsModule';
 import SubjectsModule from './subjects/SubjectsModule';
 import { useAuth } from '../contexts/AuthContext';
@@ -104,8 +103,6 @@ const Dashboard = () => {
         return <SettingsModule />;
       case 'audit':
         return <AuditModule />;
-      case 'support-chat':
-        return <SupportChatModule />;
       case 'records':
         return <RecordsModule />;
       case 'subjects':

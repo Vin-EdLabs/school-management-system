@@ -65,7 +65,6 @@ import {
   Moon,
 } from 'lucide-react';
 import SuperAdminLoginForm from '../components/SuperAdminLoginForm';
-import SuperAdminSupportChat from '../components/support/SuperAdminSupportChat';
 import { resolveLogoUrl } from '../services/tenantService';
 
 interface School {
@@ -105,7 +104,7 @@ interface AuditLog {
   created_at: string;
 }
 
-type Section = 'schools' | 'registrations' | 'audit' | 'support' | 'super-admins';
+type Section = 'schools' | 'registrations' | 'audit' | 'super-admins';
 
 const SuperAdminDashboard = () => {
   const navigate = useNavigate();
@@ -383,7 +382,6 @@ const SuperAdminDashboard = () => {
   const systemItems = [
     { id: 'super-admins' as Section, label: 'Super Admins', icon: UserPlus },
     { id: 'audit' as Section, label: 'Audit Logs', icon: Shield },
-    { id: 'support' as Section, label: 'Support Chat', icon: MessageCircle },
   ];
 
   return (
@@ -490,7 +488,6 @@ const SuperAdminDashboard = () => {
             {section === 'registrations' && 'Registration Requests'}
             {section === 'super-admins' && 'Super Admins'}
             {section === 'audit' && 'Audit Logs'}
-            {section === 'support' && 'Support Chat'}
           </h2>
           <div className="flex-1" />
           <Button
@@ -942,11 +939,6 @@ const SuperAdminDashboard = () => {
             </>
           )}
 
-          {section === 'support' && (
-            <div className="-m-2 flex flex-col" style={{ minHeight: 'calc(100vh - 8rem)' }}>
-              <SuperAdminSupportChat />
-            </div>
-          )}
 
           {section === 'audit' && (
             <>

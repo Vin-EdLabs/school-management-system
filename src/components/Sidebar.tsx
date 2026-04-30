@@ -79,7 +79,6 @@ const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
     ...(hasAccess('records') ? [{ id: 'records', label: 'Records', icon: Search }] : []),
   ],
   system: [
-    ...(hasAccess('support-chat') ? [{ id: 'support-chat', label: 'Support', icon: MessageCircle }] : []),
     ...(hasAccess('users') ? [{ id: 'users', label: 'Users', icon: UserCog }] : []),
     ...(hasAccess('settings') || hasAccess('settings-password-only') ? [{ id: 'settings', label: 'Settings', icon: Settings }] : []),
     ...(hasAccess('audit') ? [{ id: 'audit', label: 'Audit Logs', icon: Shield }] : []),

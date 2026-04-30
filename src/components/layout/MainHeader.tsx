@@ -10,14 +10,8 @@ interface MainHeaderProps {
 
 const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick }) => {
   const { user } = useAuth();
-  const { schoolId, slug } = useParams();
   const navigate = useNavigate();
   const [currentTime, setCurrentTime] = useState(new Date());
-
-  const handleGlobalChatClick = () => {
-    if (schoolId) navigate(`/school/${schoolId}/global-chat`);
-    else if (slug) navigate(`/s/${slug}/global-chat`);
-  };
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -85,15 +79,6 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick }) => {
           </div>
         </div>
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleGlobalChatClick}
-          className="shrink-0 bg-white hover:bg-slate-50 border-slate-200 text-slate-700 h-10 px-4 font-bold shadow-sm transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] uppercase text-[10px] tracking-widest gap-2"
-        >
-          <Globe className="w-4 h-4 text-blue-600" />
-          Messenger
-        </Button>
 
         {(user?.role === 'finance' || user?.role === 'super-admin') && onAiAssistantClick && (
           <Button

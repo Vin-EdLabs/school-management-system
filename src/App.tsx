@@ -17,7 +17,6 @@ import SchoolSelector from "./pages/SchoolSelector";
 import LandingPage from "./pages/LandingPage";
 import RegisterSchool from "./pages/RegisterSchool";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
-import GlobalChatPage from "./pages/GlobalChatPage";
 import { ParentPortalRoute } from "./pages/ParentPortal";
 
 const queryClient = new QueryClient();
@@ -81,9 +80,7 @@ const App = () => (
           <Route path="/" element={<LandingPage />} />
           <Route path="/register-school" element={<RegisterSchool />} />
           <Route path="/super-admin" element={<SuperAdminDashboard />} />
-          <Route path="/school/:schoolId/global-chat" element={<GlobalChatPage />} />
           <Route path="/school/:schoolId/*" element={<IndexWithSchool />} />
-          <Route path="/s/:slug/global-chat" element={<GlobalChatPage />} />
           <Route path="/s/:slug/*" element={<IndexWithSchool />} />
           <Route path="/portal/:tenantId" element={<ParentPortalRoute />} />
           <Route path="*" element={<Navigate to="/" replace />} />

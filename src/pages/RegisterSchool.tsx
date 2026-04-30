@@ -73,9 +73,6 @@ const RegisterSchool = () => {
             <span className="font-bold text-xl tracking-tight text-slate-800">TECHNERVE</span>
           </Link>
           <nav className="flex items-center gap-2">
-            <Link to="/select-school">
-              <Button variant="ghost" className="text-slate-600 hover:text-slate-900 hover:bg-slate-100">Login</Button>
-            </Link>
             <Link to="/">
               <Button variant="outline" className="border-slate-300 text-slate-700 hover:bg-slate-100">Back to Home</Button>
             </Link>
@@ -103,201 +100,201 @@ const RegisterSchool = () => {
             </div>
           </div>
         ) : (
-        <div className="grid lg:grid-cols-2 gap-12 items-start">
-          <div>
-            <Link to="/" className="inline-flex items-center gap-2 text-slate-600 hover:text-emerald-600 mb-8 transition-colors">
-              <ArrowLeft className="w-4 h-4" />
-              Back to Home
-            </Link>
-            <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-4 text-slate-900">
-              Register Your School
-              <span className="block text-emerald-600">Join TECHNERVE</span>
-            </h1>
-            <p className="text-lg text-slate-600 mb-4 leading-relaxed">
-              Complete the form below to request access. Our team will review your application and set up your school within 24 hours.
-            </p>
-            <div className="mb-6 p-4 rounded-xl bg-slate-100/80 border border-slate-200/60">
-              <p className="text-sm font-semibold text-slate-800 mb-2">TECHNERVE School Management System</p>
-              <p className="text-slate-600 text-sm leading-relaxed">
-                A complete platform for schools to manage students, teachers, classes, fees, and finances in one place. 
-                Includes enrollment, attendance, fee collection, receipts, payroll, reports, and custom branding. 
-                Your school gets a secure, isolated environment with real-time dashboards and dedicated support.
+          <div className="grid lg:grid-cols-2 gap-12 items-start">
+            <div>
+              <Link to="/" className="inline-flex items-center gap-2 text-slate-600 hover:text-emerald-600 mb-8 transition-colors">
+                <ArrowLeft className="w-4 h-4" />
+                Back to Home
+              </Link>
+              <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-4 text-slate-900">
+                Register Your School
+                <span className="block text-emerald-600">Join TECHNERVE</span>
+              </h1>
+              <p className="text-lg text-slate-600 mb-4 leading-relaxed">
+                Complete the form below to request access. Our team will review your application and set up your school within 24 hours.
               </p>
+              <div className="mb-6 p-4 rounded-xl bg-slate-100/80 border border-slate-200/60">
+                <p className="text-sm font-semibold text-slate-800 mb-2">TECHNERVE School Management System</p>
+                <p className="text-slate-600 text-sm leading-relaxed">
+                  A complete platform for schools to manage students, teachers, classes, fees, and finances in one place.
+                  Includes enrollment, attendance, fee collection, receipts, payroll, reports, and custom branding.
+                  Your school gets a secure, isolated environment with real-time dashboards and dedicated support.
+                </p>
+              </div>
+              <ul className="space-y-3 text-slate-600">
+                <li className="flex items-start gap-2">
+                  <span className="text-emerald-500 mt-0.5">✓</span>
+                  <span>Quick setup — we handle everything</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-emerald-500 mt-0.5">✓</span>
+                  <span>Dedicated support during onboarding</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-emerald-500 mt-0.5">✓</span>
+                  <span>Secure, isolated data for your school</span>
+                </li>
+              </ul>
+              <div className="mt-10 rounded-2xl overflow-hidden shadow-xl shadow-slate-200/80 ring-1 ring-slate-200/50 hidden lg:block">
+                <img
+                  src="https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=600&q=80"
+                  alt="School"
+                  className="w-full h-64 object-cover"
+                />
+              </div>
             </div>
-            <ul className="space-y-3 text-slate-600">
-              <li className="flex items-start gap-2">
-                <span className="text-emerald-500 mt-0.5">✓</span>
-                <span>Quick setup — we handle everything</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-emerald-500 mt-0.5">✓</span>
-                <span>Dedicated support during onboarding</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-emerald-500 mt-0.5">✓</span>
-                <span>Secure, isolated data for your school</span>
-              </li>
-            </ul>
-            <div className="mt-10 rounded-2xl overflow-hidden shadow-xl shadow-slate-200/80 ring-1 ring-slate-200/50 hidden lg:block">
-              <img
-                src="https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=600&q=80"
-                alt="School"
-                className="w-full h-64 object-cover"
-              />
-            </div>
-          </div>
 
-          <div className="rounded-2xl border border-slate-200/80 bg-white shadow-xl shadow-slate-200/30 p-8 md:p-10">
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <div>
-                <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-emerald-600" />
-                  School Information
-                </h3>
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="schoolName" className="text-slate-700">School Name *</Label>
-                    <Input
-                      id="schoolName"
-                      value={formData.schoolName}
-                      onChange={(e) => setFormData({ ...formData, schoolName: e.target.value })}
-                      className="mt-1.5 bg-slate-50 border-slate-200 text-slate-900"
-                      placeholder="e.g. St. Mary's Academy"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="schoolAddress" className="text-slate-700 flex items-center gap-2">
-                      <MapPin className="w-3.5 h-3.5" /> School Address
-                    </Label>
-                    <Input
-                      id="schoolAddress"
-                      value={formData.schoolAddress}
-                      onChange={(e) => setFormData({ ...formData, schoolAddress: e.target.value })}
-                      className="mt-1.5 bg-slate-50 border-slate-200 text-slate-900"
-                      placeholder="Street, city, region"
-                    />
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="rounded-2xl border border-slate-200/80 bg-white shadow-xl shadow-slate-200/30 p-8 md:p-10">
+              <form onSubmit={handleSubmit} className="space-y-5">
+                <div>
+                  <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-emerald-600" />
+                    School Information
+                  </h3>
+                  <div className="space-y-4">
                     <div>
-                      <Label htmlFor="location" className="text-slate-700">Location / Region</Label>
+                      <Label htmlFor="schoolName" className="text-slate-700">School Name *</Label>
                       <Input
-                        id="location"
-                        value={formData.location}
-                        onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                        id="schoolName"
+                        value={formData.schoolName}
+                        onChange={(e) => setFormData({ ...formData, schoolName: e.target.value })}
                         className="mt-1.5 bg-slate-50 border-slate-200 text-slate-900"
-                        placeholder="e.g. Accra"
+                        placeholder="e.g. St. Mary's Academy"
+                        required
                       />
                     </div>
                     <div>
-                      <Label htmlFor="studentCount" className="text-slate-700 flex items-center gap-2">
-                        <Users className="w-3.5 h-3.5" /> Approx. Students
+                      <Label htmlFor="schoolAddress" className="text-slate-700 flex items-center gap-2">
+                        <MapPin className="w-3.5 h-3.5" /> School Address
                       </Label>
                       <Input
-                        id="studentCount"
-                        type="number"
-                        min="1"
-                        value={formData.studentCount}
-                        onChange={(e) => setFormData({ ...formData, studentCount: e.target.value })}
+                        id="schoolAddress"
+                        value={formData.schoolAddress}
+                        onChange={(e) => setFormData({ ...formData, schoolAddress: e.target.value })}
                         className="mt-1.5 bg-slate-50 border-slate-200 text-slate-900"
-                        placeholder="e.g. 250"
+                        placeholder="Street, city, region"
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="location" className="text-slate-700">Location / Region</Label>
+                        <Input
+                          id="location"
+                          value={formData.location}
+                          onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                          className="mt-1.5 bg-slate-50 border-slate-200 text-slate-900"
+                          placeholder="e.g. Accra"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="studentCount" className="text-slate-700 flex items-center gap-2">
+                          <Users className="w-3.5 h-3.5" /> Approx. Students
+                        </Label>
+                        <Input
+                          id="studentCount"
+                          type="number"
+                          min="1"
+                          value={formData.studentCount}
+                          onChange={(e) => setFormData({ ...formData, studentCount: e.target.value })}
+                          className="mt-1.5 bg-slate-50 border-slate-200 text-slate-900"
+                          placeholder="e.g. 250"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label htmlFor="preferredStart" className="text-slate-700 flex items-center gap-2">
+                        <Calendar className="w-3.5 h-3.5" /> Preferred Start Date
+                      </Label>
+                      <Input
+                        id="preferredStart"
+                        type="text"
+                        value={formData.preferredStart}
+                        onChange={(e) => setFormData({ ...formData, preferredStart: e.target.value })}
+                        className="mt-1.5 bg-slate-50 border-slate-200 text-slate-900"
+                        placeholder="e.g. Next term / ASAP"
                       />
                     </div>
                   </div>
-                  <div>
-                    <Label htmlFor="preferredStart" className="text-slate-700 flex items-center gap-2">
-                      <Calendar className="w-3.5 h-3.5" /> Preferred Start Date
-                    </Label>
-                    <Input
-                      id="preferredStart"
-                      type="text"
-                      value={formData.preferredStart}
-                      onChange={(e) => setFormData({ ...formData, preferredStart: e.target.value })}
-                      className="mt-1.5 bg-slate-50 border-slate-200 text-slate-900"
-                      placeholder="e.g. Next term / ASAP"
-                    />
+                </div>
+
+                <div>
+                  <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                    <User className="w-4 h-4 text-emerald-600" />
+                    Primary Contact (Administrator)
+                  </h3>
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="adminName" className="text-slate-700">Full Name *</Label>
+                      <Input
+                        id="adminName"
+                        value={formData.adminName}
+                        onChange={(e) => setFormData({ ...formData, adminName: e.target.value })}
+                        className="mt-1.5 bg-slate-50 border-slate-200 text-slate-900"
+                        placeholder="John Doe"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="email" className="text-slate-700 flex items-center gap-2">
+                        <Mail className="w-3.5 h-3.5" /> Email *</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={formData.email}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        className="mt-1.5 bg-slate-50 border-slate-200 text-slate-900"
+                        placeholder="admin@school.com"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="phone" className="text-slate-700 flex items-center gap-2">
+                        <Phone className="w-3.5 h-3.5" /> Phone
+                      </Label>
+                      <Input
+                        id="phone"
+                        value={formData.phone}
+                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                        className="mt-1.5 bg-slate-50 border-slate-200 text-slate-900"
+                        placeholder="+233 ..."
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="message" className="text-slate-700">Additional Information</Label>
+                      <textarea
+                        id="message"
+                        value={formData.message}
+                        onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+                        className="mt-1.5 w-full min-h-[80px] rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                        placeholder="Any other details, questions, or special requirements..."
+                        rows={3}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div>
-                <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
-                  <User className="w-4 h-4 text-emerald-600" />
-                  Primary Contact (Administrator)
-                </h3>
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="adminName" className="text-slate-700">Full Name *</Label>
-                    <Input
-                      id="adminName"
-                      value={formData.adminName}
-                      onChange={(e) => setFormData({ ...formData, adminName: e.target.value })}
-                      className="mt-1.5 bg-slate-50 border-slate-200 text-slate-900"
-                      placeholder="John Doe"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="email" className="text-slate-700 flex items-center gap-2">
-                      <Mail className="w-3.5 h-3.5" /> Email *</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      className="mt-1.5 bg-slate-50 border-slate-200 text-slate-900"
-                      placeholder="admin@school.com"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="phone" className="text-slate-700 flex items-center gap-2">
-                      <Phone className="w-3.5 h-3.5" /> Phone
-                    </Label>
-                    <Input
-                      id="phone"
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      className="mt-1.5 bg-slate-50 border-slate-200 text-slate-900"
-                      placeholder="+233 ..."
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="message" className="text-slate-700">Additional Information</Label>
-                    <textarea
-                      id="message"
-                      value={formData.message}
-                      onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                      className="mt-1.5 w-full min-h-[80px] rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-                      placeholder="Any other details, questions, or special requirements..."
-                      rows={3}
-                    />
-                  </div>
+                <div className="flex flex-col sm:flex-row gap-3 pt-4">
+                  <Button
+                    type="submit"
+                    className="flex-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-500/30 border-0"
+                    disabled={submitting}
+                  >
+                    {submitting ? (
+                      <>
+                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                        Submitting...
+                      </>
+                    ) : (
+                      'Submit Registration Request'
+                    )}
+                  </Button>
+                  <Button type="button" variant="outline" onClick={() => navigate('/')} className="border-slate-300">
+                    Cancel
+                  </Button>
                 </div>
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-3 pt-4">
-                <Button
-                  type="submit"
-                  className="flex-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-500/30 border-0"
-                  disabled={submitting}
-                >
-                  {submitting ? (
-                    <>
-                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                      Submitting...
-                    </>
-                  ) : (
-                    'Submit Registration Request'
-                  )}
-                </Button>
-                <Button type="button" variant="outline" onClick={() => navigate('/')} className="border-slate-300">
-                  Cancel
-                </Button>
-              </div>
-            </form>
+              </form>
+            </div>
           </div>
-        </div>
         )}
       </main>
 

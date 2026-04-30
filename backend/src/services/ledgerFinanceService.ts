@@ -1,4 +1,4 @@
-import { query, getClient } from '../db/connection';
+import { query, getClient } from '../db/connection.js';
 import { z } from 'zod';
 
 // Consistent SQL query for calculating a student's cumulative balance.

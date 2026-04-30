@@ -310,10 +310,10 @@ const SuperAdminDashboard = () => {
   const toggleActive = async (school: School) => {
     try {
       if (school.is_active) {
-        await apiService.post(`/schools/${school.id}/deactivate`);
+        await apiService.post(`/schools/${school.id}/deactivate`, {});
         toast({ title: 'School deactivated' });
       } else {
-        await apiService.post(`/schools/${school.id}/activate`);
+        await apiService.post(`/schools/${school.id}/activate`, {});
         toast({ title: 'School activated' });
       }
       loadSchools();

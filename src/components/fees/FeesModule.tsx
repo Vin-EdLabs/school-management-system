@@ -92,7 +92,7 @@ const FeesModule = () => {
   const handleClearAllPayments = async () => {
     setClearing(true);
     try {
-      await apiService.post('/finance/clear-all-payments');
+      await apiService.post('/finance/clear-all-payments', {});
       toast({
         title: 'Cleared',
         description: 'All payments and receipts for this school have been cleared. Receipt numbers will start from 1 again.',

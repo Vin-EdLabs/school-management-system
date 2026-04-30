@@ -30,8 +30,10 @@ router.post('/', async (req, res) => {
 router.get('/', authenticate, requireRole('super-admin'), async (req: AuthRequest, res) => {
   try {
     const result = await query(
-      `SELECT id, school_name, admin_name, email, phone, message, status, internal_note, tenant_id, generated_password, created_at
-       FROM school_registrations ORDER BY created_at DESC`
+      `SELECT r.*, t.slug as school_slug 
+       FROM school_registrations r
+       LEFT JOIN tenants t ON r.tenant_id = t.id
+       ORDER BY r.created_at DESC`
     );
     res.json(result.rows);
   } catch (error) {
@@ -140,6 +142,23 @@ router.patch('/:id/note', authenticate, requireRole('super-admin'), async (req: 
   } catch (error) {
     console.error('Update registration note error:', error);
     res.status(500).json({ error: 'Failed to update note' });
+  }
+});
+
+// Super-admin: Delete registration request
+router.delete('/:id', authenticate, requireRole('super-admin'), async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const result = await query('DELETE FROM school_registrations WHERE id = $1 RETURNING id', [id]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Registration not found' });
+    }
+    
+    res.json({ message: 'Registration deleted successfully' });
+  } catch (error) {
+    console.error('Delete registration error:', error);
+    res.status(500).json({ error: 'Failed to delete registration' });
   }
 });
 

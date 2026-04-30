@@ -64,6 +64,7 @@ import {
   Sun,
   Moon,
   CheckCircle,
+  Trash2,
 } from 'lucide-react';
 import SuperAdminLoginForm from '../components/SuperAdminLoginForm';
 import { resolveLogoUrl } from '../services/tenantService';
@@ -92,6 +93,7 @@ interface Registration {
   internal_note?: string;
   tenant_id?: number;
   generated_password?: string;
+  school_slug?: string;
   created_at: string;
 }
 
@@ -118,7 +120,7 @@ const SuperAdminDashboard = () => {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
-  const [createdSchool, setCreatedSchool] = useState<{ id: number; name: string; username: string; password: string } | null>(null);
+  const [createdSchool, setCreatedSchool] = useState<{ id: number; name: string; slug: string; username: string; password: string } | null>(null);
   const [editSchool, setEditSchool] = useState<School | null>(null);
   const [resetSchool, setResetSchool] = useState<School | null>(null);
   const [newPassword, setNewPassword] = useState('');
@@ -226,6 +228,7 @@ const SuperAdminDashboard = () => {
       setCreatedSchool({
         id: res.id,
         name: newSchool.name,
+        slug: res.slug,
         username: newSchool.adminUsername,
         password: newSchool.adminPassword,
       });
@@ -293,6 +296,17 @@ const SuperAdminDashboard = () => {
       loadData();
     } catch (err: any) {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    }
+  };
+
+  const handleDeleteRegistration = async (id: number) => {
+    if (!window.confirm('Are you sure you want to delete this registration request?')) return;
+    try {
+      await apiService.delete(`/school-registrations/${id}`);
+      toast({ title: 'Registration deleted' });
+      loadData();
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message || 'Failed to delete registration', variant: 'destructive' });
     }
   };
 
@@ -364,13 +378,17 @@ const SuperAdminDashboard = () => {
     }
   };
 
-  const openSchool = (id: number) => {
-    apiService.setTenantContext(id);
-    localStorage.setItem('currentSchoolId', id.toString());
-    navigate(`/school/${id}`);
+  const openSchool = (school: School | { id: number; slug: string }) => {
+    apiService.setTenantContext(school.id);
+    localStorage.setItem('currentSchoolId', school.id.toString());
+    const path = school.slug ? `/s/${school.slug}` : `/school/${school.id}`;
+    navigate(path);
   };
 
-  const loginUrl = (id: number) => `${window.location.origin}/school/${id}`;
+  const loginUrl = (school: School | { id: number; slug: string }) => {
+    const path = school.slug ? `/s/${school.slug}` : `/school/${school.id}`;
+    return `${window.location.origin}${path}`;
+  };
 
   const formatDate = (d: string) => new Date(d).toLocaleString();
 
@@ -523,12 +541,12 @@ const SuperAdminDashboard = () => {
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div className="grid gap-2 p-4 bg-white dark:bg-slate-900 rounded-lg border border-emerald-200 dark:border-emerald-800 text-sm">
-                        <p><span className="font-medium text-slate-700 dark:text-slate-300">Login URL:</span> <code className="bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-slate-800 dark:text-slate-200">{loginUrl(createdSchool.id)}</code></p>
+                        <p><span className="font-medium text-slate-700 dark:text-slate-300">Login URL:</span> <code className="bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-slate-800 dark:text-slate-200">{loginUrl(createdSchool)}</code></p>
                         <p><span className="font-medium text-slate-700 dark:text-slate-300">Username:</span> <code className="bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-slate-800 dark:text-slate-200">{createdSchool.username}</code></p>
                         <p><span className="font-medium text-slate-700 dark:text-slate-300">Password:</span> <code className="bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-slate-800 dark:text-slate-200">(the password you set)</code></p>
                       </div>
                       <div className="flex gap-2">
-                        <Button onClick={() => openSchool(createdSchool.id)} className="bg-indigo-600 hover:bg-indigo-700">
+                        <Button onClick={() => openSchool(createdSchool)} className="bg-indigo-600 hover:bg-indigo-700">
                           <ExternalLink className="w-4 h-4 mr-2" />
                           Open School
                         </Button>
@@ -704,7 +722,7 @@ const SuperAdminDashboard = () => {
                               <Button size="sm" variant="outline" onClick={() => toggleActive(school)}>
                                 {school.is_active ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />}
                               </Button>
-                              <Button size="sm" onClick={() => openSchool(school.id)} className="bg-indigo-600 hover:bg-indigo-700">
+                              <Button size="sm" onClick={() => openSchool(school)} className="bg-indigo-600 hover:bg-indigo-700">
                                 <ArrowRight className="w-4 h-4 mr-1" />
                                 Open
                               </Button>
@@ -790,6 +808,15 @@ const SuperAdminDashboard = () => {
                                 <FileText className="w-4 h-4 mr-1" />
                                 {r.internal_note ? 'Edit Note' : 'Add Note'}
                               </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-red-600 border-red-200 hover:bg-red-50"
+                                onClick={() => handleDeleteRegistration(r.id)}
+                              >
+                                <Trash2 className="w-4 h-4 mr-1" />
+                                Delete
+                              </Button>
                               {r.status === 'pending' && (
                                 <>
                                   <Button size="sm" variant="outline" onClick={() => updateRegistrationStatus(r.id, 'contacted')}>Contacted</Button>
@@ -830,7 +857,7 @@ const SuperAdminDashboard = () => {
                               <Button
                                 size="sm"
                                 className="w-full mt-3 bg-emerald-600 hover:bg-emerald-700 text-white border-0 shadow-sm"
-                                onClick={() => openSchool(r.tenant_id!)}
+                                onClick={() => openSchool({ id: r.tenant_id!, slug: r.school_slug! })}
                               >
                                 <ExternalLink className="w-3.5 h-3.5 mr-2" />
                                 Open School Dashboard

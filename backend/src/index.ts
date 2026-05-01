@@ -91,8 +91,20 @@ app.use('/api/events', eventsRoutes);
 app.use('/api/global-chat', globalChatRoutes);
 app.use('/api/conversations', conversationRoutes);
 
+// Serve static files from the frontend build
+const distPath = path.join(__dirname, '../../dist');
+app.use(express.static(distPath));
+
 // Error handling middleware
 app.use(errorHandler);
+
+// SPA Catch-all: serve index.html for any non-API routes
+app.get('*', (req, res) => {
+  if (req.path.startsWith('/api')) {
+    return res.status(404).json({ error: 'API endpoint not found' });
+  }
+  res.sendFile(path.join(distPath, 'index.html'));
+});
 
 // Initialize database and start server
 initializeDatabase()

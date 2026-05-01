@@ -42,16 +42,17 @@ const LoginPage = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const success = await login(username, password, role, isSuperAdmin ? undefined : tenantId);
+      // Role is now determined by the backend based on credentials
+      const success = await login(username, password, 'administrator', tenantId);
       if (success) {
         toast({
           title: "Login Successful",
-          description: `Welcome to ${schoolName} Management System as ${role.replace('-', ' ')}`,
+          description: `Welcome to ${schoolName} Management System`,
         });
       } else {
         toast({
           title: "Login Failed",
-          description: "Invalid username or password for the selected role",
+          description: "Invalid username or password",
           variant: "destructive",
         });
       }
@@ -63,16 +64,6 @@ const LoginPage = () => {
       });
     }
   };
-
-  const roleCredentials: Record<string, string> = {
-    'administrator': 'Students, Teachers, Classes',
-    'finance': 'Financial Dashboard, Fees, Income, Expenses',
-    'teacher': 'Classes, Attendance, Grades',
-    'staff': 'Classes, Attendance, Grades (non-teaching staff)',
-    'super-admin': 'Full system access',
-  };
-
-  const isStaffOrTeacher = role === 'teacher' || role === 'staff';
 
   return (
     <div className="h-screen grid grid-cols-1 md:grid-cols-2 bg-white overflow-hidden font-sans">
@@ -120,9 +111,9 @@ const LoginPage = () => {
           <div className="p-6 bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 shadow-2xl">
             <h3 className="text-sm font-bold uppercase tracking-widest text-blue-200 mb-3 flex items-center gap-2">
               <UserCheck className="w-4 h-4" />
-              {role.replace('-', ' ')} Access
+              Secure Access
             </h3>
-            <p className="text-blue-50 font-medium">{roleCredentials[role]}</p>
+            <p className="text-blue-50 font-medium">Log in to access your dashboard, management tools, and reports.</p>
           </div>
           <p className="text-sm text-blue-200/60 font-medium text-center">
             &copy; 2026 TECHNERVE SOLUTIONS. ALL RIGHTS RESERVED.
@@ -150,34 +141,15 @@ const LoginPage = () => {
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-1.5">
-              <Label htmlFor="role" className="text-sm font-bold text-slate-700 ml-1">Login Role</Label>
-              <div className="relative group">
-                <UserCheck className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-blue-500 transition-colors z-10" />
-                <Select value={role} onValueChange={(value: UserRole) => setRole(value)}>
-                  <SelectTrigger className="pl-12 h-14 rounded-2xl border-2 border-slate-200 bg-white shadow-sm hover:border-slate-300 focus:ring-4 focus:ring-blue-100 transition-all text-lg font-medium">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-xl border-2 border-slate-100 shadow-2xl">
-                    <SelectItem value="administrator" className="h-12 text-base rounded-lg mx-1 my-0.5">Administrator</SelectItem>
-                    <SelectItem value="finance" className="h-12 text-base rounded-lg mx-1 my-0.5">Finance Manager</SelectItem>
-                    <SelectItem value="teacher" className="h-12 text-base rounded-lg mx-1 my-0.5">Teacher</SelectItem>
-                    <SelectItem value="staff" className="h-12 text-base rounded-lg mx-1 my-0.5">Staff (non-teaching)</SelectItem>
-                    <SelectItem value="super-admin" className="h-12 text-base rounded-lg mx-1 my-0.5 font-bold text-blue-600">Super Admin</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
               <Label htmlFor="username" className="text-sm font-bold text-slate-700 ml-1">
-                {isStaffOrTeacher ? 'Staff Identification' : 'Account Identifier'}
+                Account Identifier
               </Label>
               <div className="relative group">
                 <User className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
                 <Input
                   id="username"
                   type="text"
-                  placeholder={isStaffOrTeacher ? 'e.g. TCH001' : 'Your username'}
+                  placeholder="Your username or email"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="pl-12 h-14 rounded-2xl border-2 border-slate-200 bg-white shadow-sm hover:border-slate-300 focus:ring-4 focus:ring-blue-100 transition-all text-lg"
@@ -188,16 +160,14 @@ const LoginPage = () => {
 
             <div className="space-y-1.5">
               <Label htmlFor="password" className="text-sm font-bold text-slate-700 ml-1">
-                {isStaffOrTeacher ? 'Security PIN' : 'Access Password'}
+                Access Password
               </Label>
               <div className="relative group">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
                 <Input
                   id="password"
-                  type={isStaffOrTeacher ? 'text' : 'password'}
-                  inputMode={isStaffOrTeacher ? 'numeric' : undefined}
-                  maxLength={isStaffOrTeacher ? 5 : undefined}
-                  placeholder={isStaffOrTeacher ? 'Enter 5-digit PIN' : '••••••••'}
+                  type="password"
+                  placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="pl-12 h-14 rounded-2xl border-2 border-slate-200 bg-white shadow-sm hover:border-slate-300 focus:ring-4 focus:ring-blue-100 transition-all text-lg"

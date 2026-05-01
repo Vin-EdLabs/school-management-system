@@ -37,12 +37,12 @@ router.post('/login', async (req, res) => {
       FROM users u
       LEFT JOIN teachers t ON u.teacher_id::text = t.id::text AND t.tenant_id = u.tenant_id
       LEFT JOIN payroll_other_staff s ON u.other_staff_id = s.id AND s.tenant_id = u.tenant_id
-      WHERE u.username = $1 AND u.is_active = true
+      WHERE (u.username = $1 OR u.email = $1) AND u.is_active = true
     `;
     const params: any[] = [username];
     
     if (hasTenantId) {
-      userQuery += ' AND u.tenant_id = $2';
+      userQuery += ' AND (u.tenant_id = $2 OR u.tenant_id IS NULL)';
       params.push(tenantId);
     } else {
       userQuery += ' AND u.tenant_id IS NULL';

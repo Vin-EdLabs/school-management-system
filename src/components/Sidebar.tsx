@@ -98,7 +98,7 @@ const MenuSection: React.FC<{
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] px-3 mb-2 opacity-60 group-data-[collapsible=icon]:hidden">
+      <SidebarGroupLabel className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] px-3 mb-2 opacity-80 group-data-[collapsible=icon]:hidden">
         {label}
       </SidebarGroupLabel>
       <SidebarGroupContent>
@@ -109,10 +109,10 @@ const MenuSection: React.FC<{
                 isActive={activeModule === item.id}
                 onClick={() => setActiveModule(item.id)}
                 tooltip={item.label}
-                className="rounded-xl mx-auto w-[calc(100%-12px)] h-9 text-slate-300 data-[active=true]:bg-gradient-to-br data-[active=true]:from-indigo-600 data-[active=true]:to-blue-600 data-[active=true]:text-white data-[active=true]:shadow-lg data-[active=true]:shadow-indigo-500/20 hover:bg-slate-800 hover:text-white transition-all duration-300 group-data-[collapsible=icon]:w-9 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:mx-0"
+                className="rounded-xl mx-auto w-[calc(100%-12px)] h-9 text-slate-400 data-[active=true]:bg-gradient-to-br data-[active=true]:from-indigo-600 data-[active=true]:to-blue-600 data-[active=true]:text-white data-[active=true]:shadow-lg data-[active=true]:shadow-indigo-500/20 hover:bg-slate-800 hover:text-white transition-all duration-300 group-data-[collapsible=icon]:w-9 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:mx-0"
               >
                 <item.icon className="h-[1.1rem] w-[1.1rem] shrink-0 opacity-80 group-data-[active=true]:opacity-100 transition-all duration-300 group-hover/menu-item:scale-110" />
-                <span className="font-semibold text-sm group-data-[collapsible=icon]:hidden ml-3">{item.label}</span>
+                <span className="font-bold text-sm group-data-[collapsible=icon]:hidden ml-3">{item.label}</span>
                 {item.badge && ! (activeModule === item.id) && (
                   <Badge variant="secondary" className="ml-auto text-[9px] px-1.5 py-0 bg-blue-500/20 text-blue-400 border-0 group-data-[collapsible=icon]:hidden">
                     {item.badge}

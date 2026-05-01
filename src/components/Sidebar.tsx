@@ -86,6 +86,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
   ],
   ai: [
     ...(hasAccess('ai-assistant') ? [{ id: 'ai-assistant', label: 'AI Assistant', icon: Bot, badge: 'New' }] : []),
+    { id: 'support-chat', label: 'Support Chat', icon: MessageCircle },
   ],
 });
 
@@ -149,7 +150,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-xl shadow-indigo-500/20 shrink-0 overflow-hidden">
            {school?.logo_url ? (
              <img 
-               src={`${import.meta.env.VITE_API_BASE_URL?.replace('/api', '')}${school.logo_url}`} 
+               src={resolveLogoUrl(school.logo_url) || ''} 
                alt={school.name} 
                className="w-full h-full object-cover"
                onError={(e) => {

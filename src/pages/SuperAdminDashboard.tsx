@@ -67,7 +67,9 @@ import {
   Trash2,
 } from 'lucide-react';
 import SuperAdminLoginForm from '../components/SuperAdminLoginForm';
+import SupportModule from '../components/support/SupportModule';
 import { resolveLogoUrl } from '../services/tenantService';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface School {
   id: number;
@@ -109,11 +111,13 @@ interface AuditLog {
   created_at: string;
 }
 
-type Section = 'schools' | 'registrations' | 'audit' | 'super-admins';
+type Section = 'schools' | 'registrations' | 'audit' | 'super-admins' | 'support-chat';
 
 const SuperAdminDashboard = () => {
   const navigate = useNavigate();
   const { user, logout, loading: authLoading } = useAuth();
+  const { theme, toggleTheme } = useTheme();
+  const darkMode = theme === 'dark';
   const [section, setSection] = useState<Section>('schools');
   const [schools, setSchools] = useState<School[]>([]);
   const [registrations, setRegistrations] = useState<Registration[]>([]);
@@ -144,11 +148,6 @@ const SuperAdminDashboard = () => {
   const [superAdminNewPass, setSuperAdminNewPass] = useState('');
   const [noteReg, setNoteReg] = useState<Registration | null>(null);
   const [internalNote, setInternalNote] = useState('');
-  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('superadmin-theme') === 'dark');
-
-  useEffect(() => {
-    localStorage.setItem('superadmin-theme', darkMode ? 'dark' : 'light');
-  }, [darkMode]);
 
   useEffect(() => {
     if (user && user.role !== 'super-admin') {
@@ -399,6 +398,7 @@ const SuperAdminDashboard = () => {
   const mainItems = [
     { id: 'schools' as Section, label: 'Schools', icon: Building2 },
     { id: 'registrations' as Section, label: 'Registration Requests', icon: ClipboardList },
+    { id: 'support-chat' as Section, label: 'Support Chat', icon: MessageCircle },
   ];
   const systemItems = [
     { id: 'super-admins' as Section, label: 'Super Admins', icon: UserPlus },
@@ -509,13 +509,14 @@ const SuperAdminDashboard = () => {
               {section === 'registrations' && 'Registration Requests'}
               {section === 'super-admins' && 'Super Admins'}
               {section === 'audit' && 'Audit Logs'}
+              {section === 'support-chat' && 'Support Chat'}
             </h2>
             <div className="flex-1" />
             <Button
               variant="ghost"
               size="icon"
               className="h-9 w-9 rounded-xl text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800"
-              onClick={() => setDarkMode(!darkMode)}
+              onClick={toggleTheme}
             >
               {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </Button>
@@ -1075,6 +1076,8 @@ const SuperAdminDashboard = () => {
                 )}
               </>
             )}
+
+            {section === 'support-chat' && <SupportModule />}
           </div>
         </main>
       </SidebarProvider>

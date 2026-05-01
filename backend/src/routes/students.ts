@@ -12,16 +12,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const uploadsDir = path.join(__dirname, '../../uploads');
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-    cb(null, uploadsDir);
-  },
-  filename: (req, file, cb) => {
-    cb(null, 'student-' + Date.now() + '-' + Math.round(Math.random() * 1E9) + path.extname(file.originalname));
-  },
-});
-const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
+// Configure multer for memory storage (Base64)
+const storage = multer.memoryStorage();
+const upload = multer({ storage, limits: { fileSize: 2 * 1024 * 1024 } }); // 2MB limit for Base64
 
 const router = express.Router();
 
@@ -173,10 +166,13 @@ router.post('/:id/photo', requireRole('super-admin', 'administrator'), upload.si
     const tenantId = req.user!.tenantId!;
     const { id } = req.params;
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-    const photoUrl = `/uploads/${req.file.filename}`;
+    
+    // Convert to Base64
+    const base64Image = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+    
     const result = await query(
       'UPDATE students SET passport_photo_url = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND tenant_id = $3 RETURNING *',
-      [photoUrl, id, tenantId]
+      [base64Image, id, tenantId]
     );
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Student not found' });

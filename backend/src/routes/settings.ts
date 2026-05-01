@@ -22,19 +22,11 @@ if (!fs.existsSync(uploadsDir)) {
 }
 
 // Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'logo-' + uniqueSuffix + path.extname(file.originalname));
-  },
-});
+const storage = multer.memoryStorage();
 
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB limit for Base64
   fileFilter: (req, file, cb) => {
     const allowedTypes = /jpeg|jpg|png|gif|svg/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
@@ -224,29 +216,17 @@ router.post('/logo', requirePrimaryAdminOrSuperAdmin, upload.single('logo'), asy
     }
     
     const tenantId = req.user!.tenantId!;
-    const logoUrl = `/uploads/${req.file.filename}`;
-    
-    // Get current logo to delete old one
-    const currentResult = await query(
-      'SELECT logo_url FROM school_settings WHERE tenant_id = $1',
-      [tenantId]
-    );
-    
-    if (currentResult.rows.length > 0 && currentResult.rows[0].logo_url) {
-      const oldLogoPath = path.join(__dirname, '../../', currentResult.rows[0].logo_url);
-      if (fs.existsSync(oldLogoPath)) {
-        fs.unlinkSync(oldLogoPath);
-      }
-    }
+    // Convert to Base64
+    const base64Image = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
     
     // Update logo URL in school_settings and tenants for consistent branding
     await query(
       'UPDATE school_settings SET logo_url = $1, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = $2',
-      [logoUrl, tenantId]
+      [base64Image, tenantId]
     );
     await query(
       'UPDATE tenants SET logo_url = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-      [logoUrl, tenantId]
+      [base64Image, tenantId]
     );
     
     // Log update
@@ -255,7 +235,7 @@ router.post('/logo', requirePrimaryAdminOrSuperAdmin, upload.single('logo'), asy
       [tenantId, req.user!.id, 'UPDATE', 'SETTINGS']
     );
     
-    res.json({ logoUrl });
+    res.json({ logoUrl: base64Image });
   } catch (error) {
     console.error('Upload logo error:', error);
     res.status(500).json({ error: 'Failed to upload logo' });

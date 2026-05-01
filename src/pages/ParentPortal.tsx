@@ -23,6 +23,12 @@ async function parentFetch(path: string, opts: RequestInit = {}, token?: string)
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+function resolveMediaUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (url.startsWith('http') || url.startsWith('data:')) return url;
+  return `${API_ROOT}${url.startsWith('/') ? '' : '/'}${url}`;
+}
+
 const GH = (n: number) => `GHS ${n.toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const getLetterGrade = (pct: number) => {
@@ -214,16 +220,10 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   };
 
   // Resolved school logo — from student record (richer) or prop fallback
-  const resolvedLogo = student?.school_logo_url
-    ? `${API_ROOT}${student.school_logo_url}`
-    : schoolLogoUrl
-    ? `${API_ROOT}${schoolLogoUrl}`
-    : null;
+  const resolvedLogo = resolveMediaUrl(student?.school_logo_url || schoolLogoUrl);
 
   // Resolved student photo
-  const studentPhotoUrl = student?.passport_photo_url
-    ? `${API_ROOT}${student.passport_photo_url}`
-    : null;
+  const studentPhotoUrl = resolveMediaUrl(student?.passport_photo_url);
 
   // ── SCREENS ──
 
@@ -238,7 +238,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               <div className="flex flex-col items-center gap-3">
                 <div className="w-20 h-20 rounded-2xl overflow-hidden bg-white/10 border border-white/20 flex items-center justify-center shadow-xl shadow-purple-900/40">
                   <img
-                    src={`${API_ROOT}${schoolLogoUrl}`}
+                    src={resolveMediaUrl(schoolLogoUrl) || ''}
                     alt={schoolName}
                     className="w-full h-full object-contain p-1"
                     onError={e => {
@@ -703,7 +703,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                         {/* Passport photo */}
                         <div className="w-16 h-20 rounded-lg overflow-hidden bg-white/20 shrink-0 flex items-center justify-center text-white font-bold text-lg border-2 border-white/30">
                           {myRecord.passportPhotoUrl
-                            ? <img src={`${API_ROOT}${myRecord.passportPhotoUrl}`} alt="" className="w-full h-full object-cover" />
+                            ? <img src={resolveMediaUrl(myRecord.passportPhotoUrl) || ''} alt="" className="w-full h-full object-cover" />
                             : `${myRecord.firstName[0]}${myRecord.lastName[0]}`}
                         </div>
                         <div className="flex-1">

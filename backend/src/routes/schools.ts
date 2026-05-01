@@ -13,16 +13,9 @@ const uploadsDir = path.join(__dirname, '../../uploads');
 
 const router = express.Router();
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-    cb(null, uploadsDir);
-  },
-  filename: (req, file, cb) => {
-    cb(null, 'logo-' + Date.now() + '-' + Math.round(Math.random() * 1E9) + path.extname(file.originalname));
-  },
-});
-const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
+// Configure multer for memory storage (Base64)
+const storage = multer.memoryStorage();
+const upload = multer({ storage, limits: { fileSize: 2 * 1024 * 1024 } }); // 2MB limit for Base64
 
 // All routes require authentication
 router.use(authenticate);
@@ -215,12 +208,15 @@ router.post('/:id/logo', requireRole('super-admin'), upload.single('logo'), asyn
   try {
     const { id } = req.params;
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-    const logoUrl = `/uploads/${req.file.filename}`;
+    
+    // Convert to Base64
+    const base64Image = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+    
     await query(
       `UPDATE tenants SET logo_url = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
-      [logoUrl, id]
+      [base64Image, id]
     );
-    res.json({ logoUrl });
+    res.json({ logoUrl: base64Image });
   } catch (error) {
     console.error('Upload school logo error:', error);
     res.status(500).json({ error: 'Failed to upload logo' });

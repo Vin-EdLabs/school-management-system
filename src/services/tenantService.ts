@@ -16,7 +16,7 @@ export interface TenantBranding {
 
 export function resolveLogoUrl(logoUrl: string | null): string | null {
   if (!logoUrl) return null;
-  if (logoUrl.startsWith('http')) return logoUrl;
+  if (logoUrl.startsWith('http') || logoUrl.startsWith('data:')) return logoUrl;
   return `${API_ORIGIN}${logoUrl.startsWith('/') ? '' : '/'}${logoUrl}`;
 }
 

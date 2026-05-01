@@ -61,10 +61,13 @@ export const initSocket = (server: HttpServer) => {
 
   io.on('connection', (socket: AuthenticatedSocket) => {
     if (socket.user) {
-      const { id } = socket.user;
+      const { id, tenantId } = socket.user;
       socket.join(`user:${id}`);
+      if (tenantId) {
+        socket.join(`tenant:${tenantId}`);
+      }
       socket.join('global:general');
-      console.log(`User connected and joined rooms: ${socket.id} (${socket.user.username})`);
+      console.log(`User connected and joined rooms: ${socket.id} (User:${id}, Tenant:${tenantId})`);
     }
 
     socket.on('join-channel', (channel: string) => {

@@ -10,17 +10,9 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, path.join(__dirname, '../../uploads/chat'));
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
-});
-
-const upload = multer({ storage });
+// Configure multer for memory storage (Base64)
+const storage = multer.memoryStorage();
+const upload = multer({ storage, limits: { fileSize: 2 * 1024 * 1024 } }); // 2MB limit for Base64
 const router = express.Router();
 
 // Get recent messages for a specific channel (with reply context)
@@ -145,8 +137,11 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
 router.post('/upload', authenticate, upload.single('media'), async (req: AuthRequest, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file provided' });
-    const media_url = `/uploads/chat/${req.file.filename}`;
-    res.json({ media_url });
+    
+    // Convert to Base64
+    const base64Image = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+    
+    res.json({ media_url: base64Image });
   } catch (e) {
     res.status(500).json({ error: 'Upload failed' });
   }

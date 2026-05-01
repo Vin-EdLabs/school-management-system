@@ -100,7 +100,7 @@ const runMigrations = async () => {
       ALTER TABLE tenants ADD COLUMN IF NOT EXISTS slug VARCHAR(100) UNIQUE
     `).catch(() => { });
     await client.query(`
-      ALTER TABLE tenants ADD COLUMN IF NOT EXISTS logo_url VARCHAR(500)
+      ALTER TABLE tenants ALTER COLUMN logo_url TYPE TEXT
     `).catch(() => { });
     await client.query(`
       ALTER TABLE tenants ADD COLUMN IF NOT EXISTS primary_color VARCHAR(20)
@@ -151,13 +151,14 @@ const runMigrations = async () => {
         address TEXT,
         contact VARCHAR(100),
         email VARCHAR(255),
-        logo_url VARCHAR(500),
+        logo_url TEXT,
         current_year VARCHAR(50),
         current_term VARCHAR(100),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    await client.query(`ALTER TABLE school_settings ALTER COLUMN logo_url TYPE TEXT`).catch(() => { });
 
     // Create academic_terms table
     await client.query(`
@@ -210,13 +211,14 @@ const runMigrations = async () => {
         previous_school TEXT,
         date_of_admission DATE,
         notes TEXT,
-        passport_photo_url VARCHAR(500),
+        passport_photo_url TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(tenant_id, student_id),
         UNIQUE(tenant_id, admission_number)
       )
     `);
+    await client.query(`ALTER TABLE students ALTER COLUMN passport_photo_url TYPE TEXT`).catch(() => { });
 
     // Create teachers table
     await client.query(`
@@ -656,12 +658,15 @@ const runMigrations = async () => {
         sender_username VARCHAR(100) NOT NULL,
         tenant_name VARCHAR(255),
         message TEXT,
-        image_url VARCHAR(500),
+        image_url TEXT,
         is_from_superadmin BOOLEAN DEFAULT false,
         read_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    await client.query(`ALTER TABLE support_messages ALTER COLUMN image_url TYPE TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE global_chat_messages ADD COLUMN IF NOT EXISTS media_url TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE global_chat_messages ALTER COLUMN media_url TYPE TEXT`).catch(() => { });
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS global_chat_messages (

@@ -14,14 +14,9 @@ const router = express.Router();
 const uploadsDir = path.join(__dirname, '../../uploads/support');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, uploadsDir),
-  filename: (_req, file, cb) => {
-    const ext = file.originalname.split('.').pop() || 'jpg';
-    cb(null, `support-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`);
-  },
-});
-const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
+// Configure multer for memory storage (Base64)
+const storage = multer.memoryStorage();
+const upload = multer({ storage, limits: { fileSize: 2 * 1024 * 1024 } }); // 2MB limit for Base64
 
 // Get conversations list (super-admin only) - all schools with last message and unread count
 router.get('/conversations', authenticate, async (req: AuthRequest, res) => {
@@ -127,12 +122,30 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
       }
     }
 
-    await query(
+    const insertResult = await query(
       `INSERT INTO support_messages (tenant_id, user_id, sender_role, sender_username, tenant_name, message, is_from_superadmin, read_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING *`,
       [tenantId, user.id, user.role, user.username, tenantName, message || '', isSuperAdmin, isSuperAdmin ? new Date() : null]
     );
-    res.json({ success: true });
+
+    const newMessage = insertResult.rows[0];
+
+    // Emit via socket
+    try {
+      const { getIO } = await import('../socket.js');
+      const io = getIO();
+      // To tenant
+      if (tenantId) {
+        io.to(`tenant:${tenantId}`).emit('new-support-message', newMessage);
+      }
+      // To all super-admins (they should join a specific room or listen globally)
+      io.emit('new-support-message', newMessage); 
+    } catch (socketErr) {
+      console.error('Socket emit error:', socketErr);
+    }
+
+    res.json(newMessage);
   } catch (error) {
     console.error('Support chat post error:', error);
     res.status(500).json({ error: 'Failed to send message' });
@@ -163,13 +176,31 @@ router.post('/upload-image', authenticate, upload.single('image'), async (req: A
       }
     }
 
-    const imageUrl = `/uploads/support/${req.file.filename}`;
-    await query(
+    // Convert to Base64
+    const base64Image = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+    
+    const insertResult = await query(
       `INSERT INTO support_messages (tenant_id, user_id, sender_role, sender_username, tenant_name, message, image_url, is_from_superadmin, read_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [tenantId, user.id, user.role, user.username, tenantName, '', imageUrl, isSuperAdmin, isSuperAdmin ? new Date() : null]
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING *`,
+      [tenantId, user.id, user.role, user.username, tenantName, '', base64Image, isSuperAdmin, isSuperAdmin ? new Date() : null]
     );
-    res.json({ success: true, imageUrl });
+
+    const newMessage = insertResult.rows[0];
+
+    // Emit via socket
+    try {
+      const { getIO } = await import('../socket.js');
+      const io = getIO();
+      if (tenantId) {
+        io.to(`tenant:${tenantId}`).emit('new-support-message', newMessage);
+      }
+      io.emit('new-support-message', newMessage); 
+    } catch (socketErr) {
+      console.error('Socket emit error:', socketErr);
+    }
+
+    res.json(newMessage);
   } catch (error) {
     console.error('Support chat image upload error:', error);
     res.status(500).json({ error: 'Failed to upload image' });

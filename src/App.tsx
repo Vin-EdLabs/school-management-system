@@ -19,6 +19,8 @@ import RegisterSchool from "./pages/RegisterSchool";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import { ParentPortalRoute } from "./pages/ParentPortal";
 
+import { ThemeProvider } from "./contexts/ThemeContext";
+
 const queryClient = new QueryClient();
 
 const IndexWithSchool = () => {
@@ -52,7 +54,7 @@ const IndexWithSchool = () => {
     }
   }, [schoolId, slug]);
 
-  if (resolving) return <div className="min-h-screen flex items-center justify-center bg-slate-50">Loading school...</div>;
+  if (resolving) return <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">Loading school...</div>;
   if (!resolvedId) return <Navigate to="/" replace />;
 
   return (
@@ -70,25 +72,27 @@ const IndexWithSchool = () => {
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-<AuthProvider>
-  <SocketProvider>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/register-school" element={<RegisterSchool />} />
-          <Route path="/super-admin" element={<SuperAdminDashboard />} />
-          <Route path="/school/:schoolId/*" element={<IndexWithSchool />} />
-          <Route path="/s/:slug/*" element={<IndexWithSchool />} />
-          <Route path="/portal/:tenantId" element={<ParentPortalRoute />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
-    </TooltipProvider>
-  </SocketProvider>
-</AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <SocketProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <Routes>
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/register-school" element={<RegisterSchool />} />
+                <Route path="/super-admin" element={<SuperAdminDashboard />} />
+                <Route path="/school/:schoolId/*" element={<IndexWithSchool />} />
+                <Route path="/s/:slug/*" element={<IndexWithSchool />} />
+                <Route path="/portal/:tenantId" element={<ParentPortalRoute />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </BrowserRouter>
+          </TooltipProvider>
+        </SocketProvider>
+      </AuthProvider>
+    </ThemeProvider>
   </QueryClientProvider>
 );
 

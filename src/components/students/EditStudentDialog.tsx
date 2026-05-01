@@ -42,6 +42,12 @@ interface EditStudentDialogProps {
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api').replace('/api', '');
 
+function resolveMediaUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (url.startsWith('http') || url.startsWith('data:')) return url;
+  return `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
+}
+
 const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, onClose, onSuccess }) => {
   const { classes, updateStudent } = useData();
   const { addAuditLog } = useAudit();
@@ -165,7 +171,7 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
                   <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
                 ) : formData?.passportPhotoUrl ? (
                   <img
-                    src={`${API_BASE}${formData.passportPhotoUrl}`}
+                    src={resolveMediaUrl(formData.passportPhotoUrl) || ''}
                     alt="Current"
                     className="w-full h-full object-cover"
                     onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}

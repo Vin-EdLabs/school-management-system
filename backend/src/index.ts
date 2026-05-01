@@ -93,6 +93,7 @@ app.use('/api/conversations', conversationRoutes);
 
 // Serve static files from the frontend build
 const distPath = path.join(__dirname, '../../dist');
+console.log(`📂 Serving static files from: ${distPath}`);
 app.use(express.static(distPath));
 
 // Error handling middleware
@@ -100,10 +101,14 @@ app.use(errorHandler);
 
 // SPA Catch-all: serve index.html for any non-API routes
 app.get('*', (req, res) => {
+  // If it's an API request that reached here, it's a 404
   if (req.path.startsWith('/api')) {
     return res.status(404).json({ error: 'API endpoint not found' });
   }
-  res.sendFile(path.join(distPath, 'index.html'));
+  
+  // For all other routes, serve index.html
+  const indexPath = path.join(distPath, 'index.html');
+  res.sendFile(indexPath);
 });
 
 // Initialize database and start server

@@ -65,127 +65,43 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="h-screen flex bg-[#020617] overflow-hidden font-sans selection:bg-indigo-500/30 selection:text-white">
-      {/* Left Panel: Cinematic Branding (60% width on Desktop) */}
-      <div className="hidden lg:flex relative w-[60%] flex-col justify-between p-12 overflow-hidden">
-        {/* Deep Multi-layered Gradient Background */}
-        <div className="absolute inset-0 bg-[#020617]" />
+    <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-[#020617] overflow-hidden font-sans selection:bg-indigo-500/30 selection:text-white">
+      {/* Dynamic Background Elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div 
-          className="absolute inset-0 opacity-30 transition-colors duration-1000"
-          style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)` }}
+          className="absolute inset-0 opacity-20 transition-colors duration-1000"
+          style={{ background: `radial-gradient(circle at 50% 50%, ${primaryColor}40 0%, transparent 70%)` }}
         />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.05),transparent_50%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_100%,rgba(0,0,0,0.4),transparent_70%)]" />
-        
-        {/* Dynamic Animated Orbs */}
-        <div className="absolute top-[-10%] left-[-5%] w-[50%] h-[50%] bg-indigo-500/10 rounded-full blur-[120px] animate-pulse" style={{ animationDuration: '12s' }} />
-        <div className="absolute bottom-[-5%] right-[-5%] w-[40%] h-[40%] bg-blue-500/10 rounded-full blur-[100px] animate-pulse" style={{ animationDuration: '10s', animationDelay: '3s' }} />
-
-        {/* Top Section: Navigation & Logo */}
-        <div className="relative z-10 flex items-center justify-between">
-          <div className="flex items-center gap-5">
-            <div 
-              className="w-12 h-12 backdrop-blur-2xl rounded-xl flex items-center justify-center border border-white/10 shadow-[0_0_40px_rgba(0,0,0,0.5)] overflow-hidden group transition-all"
-              style={{ backgroundColor: `${primaryColor}15` }}
-            >
-              {tenant?.logo_url ? (
-                <img src={logoUrl} alt={schoolName} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
-              ) : (
-                <GraduationCap className="w-6 h-6 text-white/90" />
-              )}
-            </div>
-            <div>
-              <h1 className="text-xl font-extrabold tracking-tight text-white font-outfit uppercase">{schoolName}</h1>
-              <div className="flex items-center gap-2 mt-0.5">
-                <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                <p className="text-[9px] font-bold text-white/40 uppercase tracking-[0.25em]">Institutional Hub</p>
-              </div>
-            </div>
-          </div>
-          
-          <button 
-            onClick={() => navigate('/')}
-            className="flex items-center gap-2 text-white/40 hover:text-white transition-all text-xs font-semibold group bg-white/5 px-4 py-2 rounded-full border border-white/5 hover:border-white/10"
-          >
-            <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-1 transition-transform" />
-            Back to Website
-          </button>
-        </div>
-
-        {/* Center Content: Value Proposition */}
-        <div className="relative z-10 max-w-xl mt-12 animate-in fade-in slide-in-from-left duration-1000">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 mb-8">
-            <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-            <span className="text-[10px] font-bold text-white/60 uppercase tracking-widest">Enterprise Platform</span>
-          </div>
-          
-          <h2 className="text-5xl font-black text-white leading-[1.05] tracking-tight mb-8 font-outfit">
-            Mastery over your <br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-white via-white to-white/30">Academic Universe.</span>
-          </h2>
-          
-          <p className="text-lg text-slate-400 leading-relaxed font-medium mb-12 max-w-md">
-            Seamlessly coordinate every aspect of your institution with precision-engineered administrative tools.
-          </p>
-
-          <div className="grid grid-cols-2 gap-5">
-            <div className="group p-6 bg-white/[0.03] backdrop-blur-xl rounded-2xl border border-white/10 hover:bg-white/[0.06] transition-all duration-500">
-              <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center text-white/80 mb-4 group-hover:scale-110 transition-transform group-hover:text-white">
-                <Shield className="w-5 h-5" />
-              </div>
-              <h3 className="text-white font-bold text-base mb-1 font-outfit">Secure Access</h3>
-              <p className="text-slate-500 text-xs font-medium leading-relaxed">End-to-end encrypted protocols for sensitive data protection.</p>
-            </div>
-            <div className="group p-6 bg-white/[0.03] backdrop-blur-xl rounded-2xl border border-white/10 hover:bg-white/[0.06] transition-all duration-500">
-              <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center text-white/80 mb-4 group-hover:scale-110 transition-transform group-hover:text-white">
-                <Zap className="w-5 h-5" />
-              </div>
-              <h3 className="text-white font-bold text-base mb-1 font-outfit">Real-time Insights</h3>
-              <p className="text-slate-500 text-xs font-medium leading-relaxed">Instant analytics and reporting for informed decision making.</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Bottom Section: Footer Info */}
-        <div className="relative z-10 flex items-center justify-between border-t border-white/5 pt-8 mt-auto animate-in fade-in slide-in-from-bottom duration-1000">
-          <p className="text-[9px] font-bold text-white/30 uppercase tracking-[0.3em]">Powered by <span className="text-white/50">SCHOLARNERVE</span></p>
-          <div className="flex items-center gap-4">
-            <span className="text-[8px] text-white/20 font-bold uppercase tracking-widest">© 2026 Core Infrastructure</span>
-            <div className="flex gap-2">
-              <div className="w-1 h-1 bg-white/20 rounded-full" />
-              <div className="w-1 h-1 bg-white/20 rounded-full" />
-              <div className="w-1 h-1 bg-white/20 rounded-full" />
-            </div>
-          </div>
-        </div>
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-500/10 rounded-full blur-[120px] animate-pulse" style={{ animationDuration: '15s' }} />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-500/10 rounded-full blur-[100px] animate-pulse" style={{ animationDuration: '12s', animationDelay: '2s' }} />
       </div>
 
-      {/* Right Panel: Dark, Focused Form (40% width on Desktop) */}
-      <div className="w-full lg:w-[40%] flex flex-col justify-center items-center p-6 md:p-16 relative bg-[#0f172a] border-l border-white/5">
-        {/* Subtle background texture */}
-        <div className="absolute inset-0 opacity-[0.02] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#ffffff 0.5px, transparent 0.5px)', backgroundSize: '32px 32px' }} />
-        
-        {/* Mobile Header (Hidden on Desktop) */}
-        <div className="lg:hidden absolute top-8 left-8 right-8 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-slate-800 rounded-lg border border-white/10 flex items-center justify-center overflow-hidden">
-              {tenant?.logo_url ? (
-                <img src={logoUrl} alt={schoolName} className="w-full h-full object-cover" />
-              ) : (
-                <GraduationCap className="w-5 h-5 text-white" />
-              )}
-            </div>
-            <h1 className="font-bold text-lg text-white font-outfit uppercase tracking-tight">{schoolName}</h1>
+      {/* Main Content Container */}
+      <div className="relative z-10 w-full max-w-md px-6 animate-in fade-in zoom-in duration-700">
+        {/* Logo & School Name */}
+        <div className="flex flex-col items-center mb-10 text-center">
+          <div 
+            className="w-16 h-16 mb-6 backdrop-blur-2xl rounded-2xl flex items-center justify-center border border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.3)] overflow-hidden group transition-all"
+            style={{ backgroundColor: `${primaryColor}15` }}
+          >
+            {tenant?.logo_url ? (
+              <img src={logoUrl} alt={schoolName} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+            ) : (
+              <GraduationCap className="w-8 h-8 text-white/90" />
+            )}
           </div>
-          <button onClick={() => navigate('/')} className="text-white/40 hover:text-white transition-colors">
-            <ArrowLeft className="w-5 h-5" />
-          </button>
+          <h1 className="text-2xl font-black tracking-tight text-white font-outfit uppercase mb-1">{schoolName}</h1>
+          <div className="flex items-center gap-2">
+            <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+            <p className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em]">Authorized Management Portal</p>
+          </div>
         </div>
 
-        <div className="w-full max-w-sm space-y-10 relative z-10 animate-in fade-in zoom-in duration-700">
-          <div className="space-y-3">
-            <h2 className="text-4xl font-black text-white tracking-tight text-center lg:text-left font-outfit">Sign In</h2>
-            <p className="text-slate-500 font-medium text-base text-center lg:text-left">Welcome back. Enter your credentials to continue.</p>
+        {/* Minimal Login Card */}
+        <div className="bg-white/[0.03] backdrop-blur-3xl border border-white/10 rounded-[2.5rem] p-8 md:p-10 shadow-2xl">
+          <div className="mb-8">
+            <h2 className="text-3xl font-black text-white tracking-tight font-outfit mb-2">Sign In</h2>
+            <p className="text-slate-500 font-medium text-sm">Enter your administrative credentials to access the workspace.</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -203,7 +119,7 @@ const LoginPage = () => {
                   placeholder="Username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="pl-12 h-14 rounded-xl border-white/10 bg-slate-800/40 text-white placeholder:text-slate-600 focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/10 transition-all text-base font-medium"
+                  className="pl-12 h-14 rounded-2xl border-white/10 bg-slate-800/40 text-white placeholder:text-slate-600 focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/10 transition-all text-base font-medium"
                   required
                 />
               </div>
@@ -225,7 +141,7 @@ const LoginPage = () => {
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="pl-12 h-14 rounded-xl border-white/10 bg-slate-800/40 text-white placeholder:text-slate-600 focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/10 transition-all text-base font-medium"
+                  className="pl-12 h-14 rounded-2xl border-white/10 bg-slate-800/40 text-white placeholder:text-slate-600 focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/10 transition-all text-base font-medium"
                   required
                 />
               </div>
@@ -234,11 +150,11 @@ const LoginPage = () => {
             <div className="pt-2">
               <Button
                 type="submit"
-                className="w-full h-14 rounded-xl text-white font-bold text-base shadow-xl transition-all hover:scale-[1.01] active:scale-[0.99] relative overflow-hidden group border-0"
+                className="w-full h-14 rounded-2xl text-white font-bold text-base shadow-xl transition-all hover:scale-[1.01] active:scale-[0.99] relative overflow-hidden group border-0"
                 style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)` }}
               >
                 <span className="relative z-10 flex items-center justify-center gap-2">
-                  Verify Credentials
+                  Verify & Access
                   <ArrowLeft className="w-4 h-4 rotate-180" />
                 </span>
                 <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
@@ -246,24 +162,33 @@ const LoginPage = () => {
             </div>
           </form>
 
-          <div className="space-y-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t border-white/5" />
-              </div>
-              <div className="relative flex justify-center text-[9px] uppercase">
-                <span className="bg-[#0f172a] px-3 text-slate-600 font-bold tracking-[0.2em]">End-to-End Encrypted</span>
-              </div>
-            </div>
-
-            <div className="text-center">
-              <p className="text-xs text-slate-500 font-medium leading-loose">
-                Forgot your access details? <br />
-                <button className="text-white/80 hover:text-white hover:underline transition-all mt-1 font-bold">Contact System Administrator</button>
-              </p>
-            </div>
+          <div className="mt-8 pt-6 border-t border-white/5">
+            <button className="w-full text-xs text-slate-500 hover:text-white transition-colors font-medium">
+              Forgot access? Contact System Administrator
+            </button>
           </div>
         </div>
+
+        {/* Action Link */}
+        <div className="mt-8 text-center">
+          <button 
+            onClick={() => navigate('/')}
+            className="inline-flex items-center gap-2 text-white/30 hover:text-white transition-all text-xs font-semibold group bg-white/5 px-6 py-2.5 rounded-full border border-white/5 hover:border-white/10"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-1 transition-transform" />
+            Back to Public Website
+          </button>
+        </div>
+      </div>
+
+      {/* Footer - Fixed at Bottom */}
+      <div className="absolute bottom-8 left-0 right-0 z-20 flex flex-col items-center gap-3 animate-in fade-in duration-1000 delay-500">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-[1px] bg-white/10" />
+          <p className="text-[10px] font-bold text-white/20 uppercase tracking-[0.4em]">Powered by SCHOLARNERVE</p>
+          <div className="w-8 h-[1px] bg-white/10" />
+        </div>
+        <p className="text-[8px] text-white/10 font-bold uppercase tracking-widest">© 2026 Core Infrastructure. All Rights Reserved.</p>
       </div>
     </div>
   );

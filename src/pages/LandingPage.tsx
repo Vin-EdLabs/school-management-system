@@ -17,7 +17,7 @@ const LandingPage = () => {
             <div className="w-11 h-11 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/30">
               <GraduationCap className="w-6 h-6 text-white" />
             </div>
-            <span className="font-bold text-xl tracking-tight text-slate-800">TECHNERVE</span>
+            <span className="font-bold text-xl tracking-tight text-slate-800">SCHOLARNERVE</span>
           </Link>
           <nav className="flex items-center gap-2">
             <Link to="/register-school">
@@ -63,7 +63,7 @@ const LandingPage = () => {
               </div>
               <div className="absolute -bottom-4 -left-4 bg-white rounded-xl shadow-xl p-4 border border-slate-100">
                 <p className="text-sm font-semibold text-slate-800">500+ Schools</p>
-                <p className="text-xs text-slate-500">Trust TECHNERVE daily</p>
+                <p className="text-xs text-slate-500">Trust SCHOLARNERVE daily</p>
               </div>
             </div>
           </div>

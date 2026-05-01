@@ -10,6 +10,7 @@ import { useAuth, UserRole } from '../contexts/AuthContext';
 import { GraduationCap, Lock, User, UserCheck, ArrowLeft, ShieldCheck, Zap, Sparkles } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { cn } from "@/lib/utils";
+import { useTheme } from '../contexts/ThemeContext';
 
 const LoginPage = () => {
   const { schoolId } = useParams<{ schoolId?: string }>();
@@ -19,6 +20,7 @@ const LoginPage = () => {
   const [password, setPassword] = useState('');
   const [tenant, setTenant] = useState<{ name: string; logo_url: string | null; primary_color: string | null; secondary_color: string | null } | null>(null);
   const { login } = useAuth();
+  const { theme } = useTheme();
 
   const tenantId = contextSchoolId ?? (schoolId ? parseInt(schoolId, 10) : undefined);
 
@@ -145,31 +147,31 @@ const LoginPage = () => {
       </div>
 
       {/* Right Panel: Clean, Focused Form (40% width on Desktop) */}
-      <div className="w-full lg:w-[40%] flex flex-col justify-center items-center p-8 md:p-16 relative bg-slate-50">
+      <div className="w-full lg:w-[40%] flex flex-col justify-center items-center p-8 md:p-16 relative bg-slate-50 dark:bg-slate-950 transition-colors duration-500">
         {/* Subtle background texture */}
-        <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#2563eb 0.5px, transparent 0.5px)', backgroundSize: '24px 24px' }} />
+        <div className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#2563eb 0.5px, transparent 0.5px)', backgroundSize: '24px 24px' }} />
         
         {/* Mobile Header (Hidden on Desktop) */}
         <div className="lg:hidden absolute top-8 left-8 flex items-center gap-3">
-          <div className="w-12 h-12 bg-white rounded-xl shadow-lg border border-slate-200 flex items-center justify-center overflow-hidden">
+          <div className="w-12 h-12 bg-white dark:bg-slate-900 rounded-xl shadow-lg border border-slate-200 dark:border-slate-800 flex items-center justify-center overflow-hidden">
             {tenant?.logo_url ? (
               <img src={logoUrl} alt={schoolName} className="w-full h-full object-cover" />
             ) : (
-              <GraduationCap className="w-6 h-6 text-indigo-600" />
+              <GraduationCap className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
             )}
           </div>
-          <h1 className="font-bold text-xl text-slate-900">{schoolName}</h1>
+          <h1 className="font-bold text-xl text-slate-900 dark:text-slate-100">{schoolName}</h1>
         </div>
 
         <div className="w-full max-w-sm space-y-12 relative z-10 animate-in fade-in zoom-in duration-700">
           <div className="space-y-4">
-            <h2 className="text-5xl font-black text-slate-900 tracking-tight leading-none">Sign in</h2>
-            <p className="text-slate-500 font-medium text-lg">Enter your access credentials below.</p>
+            <h2 className="text-5xl font-black text-slate-900 dark:text-slate-100 tracking-tight leading-none">Sign in</h2>
+            <p className="text-slate-500 dark:text-slate-400 font-medium text-lg">Enter your access credentials below.</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-8">
             <div className="space-y-3">
-              <Label htmlFor="username" className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">
+              <Label htmlFor="username" className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
                 Account ID / Email
               </Label>
               <div className="relative group">
@@ -182,7 +184,7 @@ const LoginPage = () => {
                   placeholder="superadmin"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="pl-12 h-16 rounded-[24px] border-2 border-slate-200 bg-white shadow-sm hover:border-slate-300 focus:border-indigo-600 focus:ring-8 focus:ring-indigo-600/5 transition-all text-lg font-medium"
+                  className="pl-12 h-16 rounded-[24px] border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 dark:text-slate-100 shadow-sm hover:border-slate-300 dark:hover:border-slate-700 focus:border-indigo-600 dark:focus:border-indigo-500 focus:ring-8 focus:ring-indigo-600/5 transition-all text-lg font-medium"
                   required
                 />
               </div>
@@ -190,10 +192,10 @@ const LoginPage = () => {
 
             <div className="space-y-3">
               <div className="flex items-center justify-between px-1">
-                <Label htmlFor="password" className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
+                <Label htmlFor="password" className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
                   Access Password
                 </Label>
-                <button type="button" className="text-[11px] font-black text-indigo-600 uppercase tracking-widest hover:text-indigo-700 transition-colors">
+                <button type="button" className="text-[11px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors">
                   Forgot?
                 </button>
               </div>
@@ -207,7 +209,7 @@ const LoginPage = () => {
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="pl-12 h-16 rounded-[24px] border-2 border-slate-200 bg-white shadow-sm hover:border-slate-300 focus:border-indigo-600 focus:ring-8 focus:ring-indigo-600/5 transition-all text-lg font-medium"
+                  className="pl-12 h-16 rounded-[24px] border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 dark:text-slate-100 shadow-sm hover:border-slate-300 dark:hover:border-slate-700 focus:border-indigo-600 dark:focus:border-indigo-500 focus:ring-8 focus:ring-indigo-600/5 transition-all text-lg font-medium"
                   required
                 />
               </div>
@@ -228,18 +230,18 @@ const LoginPage = () => {
               
               <div className="relative py-4">
                 <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t border-slate-200" />
+                  <span className="w-full border-t border-slate-200 dark:border-slate-800" />
                 </div>
                 <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-slate-50 px-4 text-slate-400 font-bold tracking-widest">Security Verified</span>
+                  <span className="bg-slate-50 dark:bg-slate-950 px-4 text-slate-400 dark:text-slate-600 font-bold tracking-widest transition-colors duration-500">Security Verified</span>
                 </div>
               </div>
             </div>
           </form>
 
-          <p className="text-center text-sm text-slate-500 font-medium pt-4">
+          <p className="text-center text-sm text-slate-500 dark:text-slate-400 font-medium pt-4">
             Don't have an account? <br />
-            <button className="text-indigo-600 font-bold hover:underline mt-1">Contact your administrator</button>
+            <button className="text-indigo-600 dark:text-indigo-400 font-bold hover:underline mt-1">Contact your administrator</button>
           </p>
         </div>
       </div>

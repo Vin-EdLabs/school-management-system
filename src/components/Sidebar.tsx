@@ -86,7 +86,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
   ],
   ai: [
     ...(hasAccess('ai-assistant') ? [{ id: 'ai-assistant', label: 'AI Assistant', icon: Bot, badge: 'New' }] : []),
-    { id: 'support-chat', label: 'Support Chat', icon: MessageCircle },
+    ...(hasAccess('support-chat') ? [{ id: 'support-chat', label: 'Support Chat', icon: MessageCircle }] : []),
   ],
 });
 

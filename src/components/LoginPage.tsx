@@ -65,130 +65,135 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-[#020617] overflow-hidden font-sans selection:bg-indigo-500/30 selection:text-white">
-      {/* Dynamic Background Elements */}
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#020617] overflow-hidden font-sans selection:bg-indigo-500/30 selection:text-white">
+      {/* Background Orbs */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div 
-          className="absolute inset-0 opacity-20 transition-colors duration-1000"
-          style={{ background: `radial-gradient(circle at 50% 50%, ${primaryColor}40 0%, transparent 70%)` }}
-        />
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-500/10 rounded-full blur-[120px] animate-pulse" style={{ animationDuration: '15s' }} />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-500/10 rounded-full blur-[100px] animate-pulse" style={{ animationDuration: '12s', animationDelay: '2s' }} />
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-500/10 rounded-full blur-[120px] animate-pulse" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-500/10 rounded-full blur-[100px] animate-pulse" />
       </div>
 
-      {/* Main Content Container */}
-      <div className="relative z-10 w-full max-w-md px-6 animate-in fade-in zoom-in duration-700">
-        {/* Logo & School Name */}
-        <div className="flex flex-col items-center mb-10 text-center">
-          <div 
-            className="w-16 h-16 mb-6 backdrop-blur-2xl rounded-2xl flex items-center justify-center border border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.3)] overflow-hidden group transition-all"
-            style={{ backgroundColor: `${primaryColor}15` }}
-          >
-            {tenant?.logo_url ? (
-              <img src={logoUrl} alt={schoolName} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
-            ) : (
-              <GraduationCap className="w-8 h-8 text-white/90" />
-            )}
-          </div>
-          <h1 className="text-2xl font-black tracking-tight text-white font-outfit uppercase mb-1">{schoolName}</h1>
-          <div className="flex items-center gap-2">
-            <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-            <p className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em]">Authorized Management Portal</p>
-          </div>
-        </div>
-
-        {/* Minimal Login Card */}
-        <div className="bg-white/[0.03] backdrop-blur-3xl border border-white/10 rounded-[2.5rem] p-8 md:p-10 shadow-2xl">
-          <div className="mb-8">
-            <h2 className="text-3xl font-black text-white tracking-tight font-outfit mb-2">Sign In</h2>
-            <p className="text-slate-500 font-medium text-sm">Enter your administrative credentials to access the workspace.</p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-2">
-              <Label htmlFor="username" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">
-                Authorized Identity
-              </Label>
-              <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <User className="h-4.5 w-4.5 text-slate-600 group-focus-within:text-indigo-400 transition-colors" />
-                </div>
-                <Input
-                  id="username"
-                  type="text"
-                  placeholder="Username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="pl-12 h-14 rounded-2xl border-white/10 bg-slate-800/40 text-white placeholder:text-slate-600 focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/10 transition-all text-base font-medium"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between px-1">
-                <Label htmlFor="password" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                  Secure Password
-                </Label>
-              </div>
-              <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <Lock className="h-4.5 w-4.5 text-slate-600 group-focus-within:text-indigo-400 transition-colors" />
-                </div>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="pl-12 h-14 rounded-2xl border-white/10 bg-slate-800/40 text-white placeholder:text-slate-600 focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/10 transition-all text-base font-medium"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="pt-2">
-              <Button
-                type="submit"
-                className="w-full h-14 rounded-2xl text-white font-bold text-base shadow-xl transition-all hover:scale-[1.01] active:scale-[0.99] relative overflow-hidden group border-0"
-                style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)` }}
+      <div className="relative z-10 w-full max-w-4xl px-6 animate-in fade-in zoom-in duration-700">
+        <div className="bg-white/[0.03] backdrop-blur-3xl border border-white/10 rounded-[2.5rem] overflow-hidden shadow-2xl flex flex-col md:flex-row">
+          
+          {/* Left Side: Branding */}
+          <div className="w-full md:w-[40%] p-8 md:p-12 flex flex-col justify-between items-center md:items-start relative overflow-hidden border-b md:border-b-0 md:border-r border-white/10">
+            {/* Subtle Gradient Backdrop for branding side */}
+            <div 
+              className="absolute inset-0 opacity-10 pointer-events-none"
+              style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)` }}
+            />
+            
+            <div className="relative z-10 flex flex-col items-center md:items-start text-center md:text-left">
+              <div 
+                className="w-16 h-16 mb-8 backdrop-blur-2xl rounded-2xl flex items-center justify-center border border-white/10 shadow-xl overflow-hidden group transition-all"
+                style={{ backgroundColor: `${primaryColor}15` }}
               >
-                <span className="relative z-10 flex items-center justify-center gap-2">
-                  Verify & Access
-                  <ArrowLeft className="w-4 h-4 rotate-180" />
-                </span>
-                <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
-              </Button>
+                {tenant?.logo_url ? (
+                  <img src={logoUrl} alt={schoolName} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                ) : (
+                  <GraduationCap className="w-8 h-8 text-white/90" />
+                )}
+              </div>
+              
+              <h1 className="text-3xl font-black tracking-tight text-white font-outfit uppercase leading-tight mb-2">
+                {schoolName}
+              </h1>
+              <div className="flex items-center gap-2">
+                <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                <p className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em]">Authorized Portal</p>
+              </div>
             </div>
-          </form>
 
-          <div className="mt-8 pt-6 border-t border-white/5">
-            <button className="w-full text-xs text-slate-500 hover:text-white transition-colors font-medium">
-              Forgot access? Contact System Administrator
-            </button>
+            <div className="relative z-10 mt-12 md:mt-auto">
+              <p className="text-slate-500 text-xs font-medium leading-relaxed max-w-[200px] text-center md:text-left">
+                Precision tools for modern educational administration.
+              </p>
+            </div>
+          </div>
+
+          {/* Right Side: Form */}
+          <div className="flex-1 p-8 md:p-12">
+            <div className="mb-10">
+              <h2 className="text-3xl font-black text-white tracking-tight font-outfit mb-2">Sign In</h2>
+              <p className="text-slate-500 font-medium text-sm">Enter your credentials to access the workspace.</p>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="space-y-2">
+                <Label htmlFor="username" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">
+                  Identity
+                </Label>
+                <div className="relative group">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <User className="h-4.5 w-4.5 text-slate-600 group-focus-within:text-indigo-400 transition-colors" />
+                  </div>
+                  <Input
+                    id="username"
+                    type="text"
+                    placeholder="Username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    className="pl-12 h-14 rounded-2xl border-white/10 bg-slate-800/40 text-white placeholder:text-slate-600 focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/10 transition-all text-base font-medium"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="password" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">
+                  Password
+                </Label>
+                <div className="relative group">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <Lock className="h-4.5 w-4.5 text-slate-600 group-focus-within:text-indigo-400 transition-colors" />
+                  </div>
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="pl-12 h-14 rounded-2xl border-white/10 bg-slate-800/40 text-white placeholder:text-slate-600 focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/10 transition-all text-base font-medium"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <Button
+                  type="submit"
+                  className="w-full h-14 rounded-2xl text-white font-bold text-base shadow-xl transition-all hover:scale-[1.01] active:scale-[0.99] relative overflow-hidden group border-0"
+                  style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)` }}
+                >
+                  <span className="relative z-10 flex items-center justify-center gap-2">
+                    Verify & Access
+                    <ArrowLeft className="w-4 h-4 rotate-180" />
+                  </span>
+                  <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+                </Button>
+              </div>
+            </form>
+
+            <div className="mt-8 pt-6 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4">
+              <button className="text-[10px] text-slate-500 hover:text-white transition-colors font-bold uppercase tracking-widest">
+                Support
+              </button>
+              <button 
+                onClick={() => navigate('/')}
+                className="text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors font-bold uppercase tracking-widest flex items-center gap-2"
+              >
+                <ArrowLeft className="w-3 h-3" />
+                Public Site
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Action Link */}
-        <div className="mt-8 text-center">
-          <button 
-            onClick={() => navigate('/')}
-            className="inline-flex items-center gap-2 text-white/30 hover:text-white transition-all text-xs font-semibold group bg-white/5 px-6 py-2.5 rounded-full border border-white/5 hover:border-white/10"
-          >
-            <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-1 transition-transform" />
-            Back to Public Website
-          </button>
+        {/* Footer Info */}
+        <div className="mt-8 flex flex-col items-center gap-3 animate-in fade-in duration-1000 delay-500">
+          <p className="text-[9px] font-bold text-white/20 uppercase tracking-[0.4em]">Powered by SCHOLARNERVE</p>
+          <p className="text-[8px] text-white/10 font-bold uppercase tracking-widest">© 2026 Core Infrastructure</p>
         </div>
-      </div>
-
-      {/* Footer - Fixed at Bottom */}
-      <div className="absolute bottom-8 left-0 right-0 z-20 flex flex-col items-center gap-3 animate-in fade-in duration-1000 delay-500">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-[1px] bg-white/10" />
-          <p className="text-[10px] font-bold text-white/20 uppercase tracking-[0.4em]">Powered by SCHOLARNERVE</p>
-          <div className="w-8 h-[1px] bg-white/10" />
-        </div>
-        <p className="text-[8px] text-white/10 font-bold uppercase tracking-widest">© 2026 Core Infrastructure. All Rights Reserved.</p>
       </div>
     </div>
   );

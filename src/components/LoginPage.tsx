@@ -1,23 +1,22 @@
 
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { fetchTenantById, resolveLogoUrl } from '../services/tenantService';
 import { useSchool } from '../contexts/SchoolContext';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth, UserRole } from '../contexts/AuthContext';
-import { GraduationCap, Lock, User, UserCheck, ArrowLeft } from 'lucide-react';
+import { GraduationCap, Lock, User, UserCheck, ArrowLeft, ShieldCheck, Zap, Sparkles } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { cn } from "@/lib/utils";
 
 const LoginPage = () => {
   const { schoolId } = useParams<{ schoolId?: string }>();
   const { schoolId: contextSchoolId } = useSchool();
+  const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<UserRole>('administrator');
   const [tenant, setTenant] = useState<{ name: string; logo_url: string | null; primary_color: string | null; secondary_color: string | null } | null>(null);
   const { login } = useAuth();
 
@@ -34,7 +33,6 @@ const LoginPage = () => {
     }
   }, [tenantId]);
 
-  const isSuperAdmin = role === 'super-admin';
   const primaryColor = tenant?.primary_color || '#2563eb';
   const secondaryColor = tenant?.secondary_color || '#7c3aed';
   const schoolName = tenant?.name || 'School';
@@ -43,7 +41,6 @@ const LoginPage = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      // Role is now determined by the backend based on credentials
       const success = await login(username, password, 'administrator', tenantId);
       if (success) {
         toast({
@@ -67,133 +64,183 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="h-screen grid grid-cols-1 md:grid-cols-2 bg-white overflow-hidden font-sans">
-      {/* Left Panel: Branding & Information */}
-      <div className="hidden md:flex relative flex-col justify-between p-12 bg-gradient-to-br from-blue-600 to-purple-700 text-white overflow-hidden">
-        {/* Animated Background Orbs */}
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-white/10 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute bottom-[-5%] right-[-5%] w-[50%] h-[50%] bg-blue-400/20 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
+    <div className="h-screen flex bg-white overflow-hidden font-sans selection:bg-indigo-100 selection:text-indigo-900">
+      {/* Left Panel: Cinematic Branding (60% width on Desktop) */}
+      <div className="hidden lg:flex relative w-[60%] flex-col justify-between p-16 overflow-hidden">
+        {/* Deep Multi-layered Gradient Background */}
+        <div 
+          className="absolute inset-0 bg-gradient-to-br transition-colors duration-1000"
+          style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)` }}
+        />
+        
+        {/* Dynamic Animated Orbs */}
+        <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-white/20 rounded-full blur-[120px] animate-pulse duration-[10000ms]" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-blue-400/30 rounded-full blur-[100px] animate-pulse duration-[8000ms]" style={{ animationDelay: '2s' }} />
+        <div className="absolute top-[30%] right-[10%] w-[30%] h-[30%] bg-purple-400/20 rounded-full blur-[80px] animate-pulse duration-[12000ms]" style={{ animationDelay: '4s' }} />
 
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-12">
-              <div className="w-16 h-16 bg-gradient-to-br from-indigo-600 to-blue-700 rounded-2xl flex items-center justify-center shadow-xl shadow-indigo-200 ring-4 ring-white overflow-hidden">
-                {tenant?.logo_url ? (
-                  <img 
-                    src={logoUrl} 
-                    alt={schoolName} 
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <GraduationCap className="w-10 h-10 text-white" />
-                )}
-              </div>
+        {/* Top Section: Navigation & Logo */}
+        <div className="relative z-10 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center border border-white/20 shadow-2xl overflow-hidden group">
+              {tenant?.logo_url ? (
+                <img src={logoUrl} alt={schoolName} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+              ) : (
+                <GraduationCap className="w-8 h-8 text-white" />
+              )}
+            </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">{schoolName}</h1>
-              <p className="text-blue-100/80 text-sm font-medium uppercase tracking-widest">Portal</p>
+              <h1 className="text-2xl font-black tracking-tight text-white uppercase">{schoolName}</h1>
+              <div className="flex items-center gap-2">
+                <span className="h-1 w-1 bg-blue-200 rounded-full animate-ping" />
+                <p className="text-blue-100/70 text-[10px] font-bold uppercase tracking-[0.3em]">Institutional Portal</p>
+              </div>
             </div>
           </div>
+          
+          <button 
+            onClick={() => navigate('/')}
+            className="flex items-center gap-2 text-white/70 hover:text-white transition-all text-sm font-bold group"
+          >
+            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+            Back to Website
+          </button>
+        </div>
 
-          <div className="space-y-8 max-w-md">
-            <div>
-              <h2 className="text-4xl font-extrabold mb-4 leading-tight">
-                Streamline Your School <span className="text-blue-200">Management</span>
-              </h2>
-              <p className="text-lg text-blue-50/80 leading-relaxed">
-                A comprehensive solution for academics, finance, and administration, powered by state-of-the-art AI.
-              </p>
+        {/* Center Content: Value Proposition */}
+        <div className="relative z-10 max-w-2xl mt-12 animate-in fade-in slide-in-from-left duration-1000">
+          <h2 className="text-6xl font-black text-white leading-[1.1] tracking-tight mb-8">
+            The Future of <br />
+            <span className="text-white/60">School Intelligence</span>
+          </h2>
+          <p className="text-xl text-blue-50/80 leading-relaxed font-medium mb-12 max-w-lg">
+            Empower your institution with real-time analytics, automated workflows, and premium AI assistance.
+          </p>
+
+          <div className="grid grid-cols-2 gap-6">
+            <div className="group p-6 bg-white/5 backdrop-blur-md rounded-3xl border border-white/10 hover:bg-white/10 transition-all duration-500 cursor-default">
+              <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center text-blue-200 mb-4 group-hover:scale-110 transition-transform">
+                <ShieldCheck className="w-6 h-6" />
+              </div>
+              <h3 className="text-white font-bold text-lg mb-1 uppercase tracking-tight">Secure</h3>
+              <p className="text-blue-100/60 text-xs font-medium">Enterprise-grade security for your academic data.</p>
             </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 bg-white/10 backdrop-blur-sm rounded-2xl border border-white/10 hover:bg-white/15 transition-colors group">
-                <div className="text-blue-200 font-bold text-2xl mb-1 group-hover:scale-110 transition-transform">100%</div>
-                <div className="text-xs text-blue-100 font-medium uppercase tracking-wide">Automated Payroll</div>
+            <div className="group p-6 bg-white/5 backdrop-blur-md rounded-3xl border border-white/10 hover:bg-white/10 transition-all duration-500 cursor-default">
+              <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center text-emerald-200 mb-4 group-hover:scale-110 transition-transform">
+                <Zap className="w-6 h-6" />
               </div>
-              <div className="p-4 bg-white/10 backdrop-blur-sm rounded-2xl border border-white/10 hover:bg-white/15 transition-colors group">
-                <div className="text-blue-200 font-bold text-2xl mb-1 group-hover:scale-110 transition-transform">Real-time</div>
-                <div className="text-xs text-blue-100 font-medium uppercase tracking-wide">AI Assistance</div>
-              </div>
+              <h3 className="text-white font-bold text-lg mb-1 uppercase tracking-tight">Automated</h3>
+              <p className="text-blue-100/60 text-xs font-medium">Streamline payroll and grading in seconds.</p>
             </div>
           </div>
         </div>
 
-        <div className="relative z-10 flex flex-col gap-6">
-          <div className="p-6 bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 shadow-2xl">
-            <h3 className="text-sm font-bold uppercase tracking-widest text-blue-200 mb-3 flex items-center gap-2">
-              <UserCheck className="w-4 h-4" />
-              Secure Access
-            </h3>
-            <p className="text-blue-50 font-medium">Log in to access your dashboard, management tools, and reports.</p>
+        {/* Bottom Section: Footer Info */}
+        <div className="relative z-10 flex items-center justify-between border-t border-white/10 pt-8 mt-auto animate-in fade-in slide-in-from-bottom duration-1000">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-blue-200 animate-bounce" />
+            <p className="text-sm font-bold text-white/80">Powered by SCHOLARNERVE AI</p>
           </div>
-          <p className="text-sm text-blue-200/60 font-medium text-center">
-            &copy; 2026 TECHNERVE SOLUTIONS. ALL RIGHTS RESERVED.
-          </p>
+          <p className="text-xs text-white/40 font-medium tracking-widest uppercase">&copy; 2026 All Rights Reserved</p>
         </div>
       </div>
 
-      {/* Right Panel: Login Form */}
-      <div className="flex flex-col justify-center items-center p-8 md:p-16 lg:p-24 bg-slate-50 relative overflow-hidden">
-         {/* Mobile Header (Hidden on Desktop) */}
-         <div className="md:hidden absolute top-8 left-8 flex items-center gap-3">
-              {tenant?.logo_url ? (
-                <img src={logoUrl} alt={schoolName} className="w-12 h-12 object-contain" />
-              ) : (
-                <GraduationCap className="w-10 h-10 text-blue-600" />
-              )}
-              <h1 className="font-bold text-xl text-slate-800">{schoolName}</h1>
-         </div>
+      {/* Right Panel: Clean, Focused Form (40% width on Desktop) */}
+      <div className="w-full lg:w-[40%] flex flex-col justify-center items-center p-8 md:p-16 relative bg-slate-50">
+        {/* Subtle background texture */}
+        <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#2563eb 0.5px, transparent 0.5px)', backgroundSize: '24px 24px' }} />
+        
+        {/* Mobile Header (Hidden on Desktop) */}
+        <div className="lg:hidden absolute top-8 left-8 flex items-center gap-3">
+          <div className="w-12 h-12 bg-white rounded-xl shadow-lg border border-slate-200 flex items-center justify-center overflow-hidden">
+            {tenant?.logo_url ? (
+              <img src={logoUrl} alt={schoolName} className="w-full h-full object-cover" />
+            ) : (
+              <GraduationCap className="w-6 h-6 text-indigo-600" />
+            )}
+          </div>
+          <h1 className="font-bold text-xl text-slate-900">{schoolName}</h1>
+        </div>
 
-        <div className="w-full max-w-md space-y-10 relative z-10">
-          <div className="space-y-3">
-            <h2 className="text-4xl font-extrabold text-slate-900 tracking-tight">Welcome back</h2>
-            <p className="text-slate-500 text-lg">Please enter your details to sign in.</p>
+        <div className="w-full max-w-sm space-y-12 relative z-10 animate-in fade-in zoom-in duration-700">
+          <div className="space-y-4">
+            <h2 className="text-5xl font-black text-slate-900 tracking-tight leading-none">Sign in</h2>
+            <p className="text-slate-500 font-medium text-lg">Enter your access credentials below.</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-1.5">
-              <Label htmlFor="username" className="text-sm font-bold text-slate-700 ml-1">
-                Account Identifier
+          <form onSubmit={handleSubmit} className="space-y-8">
+            <div className="space-y-3">
+              <Label htmlFor="username" className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                Account ID / Email
               </Label>
               <div className="relative group">
-                <User className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <User className="h-5 w-5 text-slate-400 group-focus-within:text-indigo-600 transition-colors" />
+                </div>
                 <Input
                   id="username"
                   type="text"
-                  placeholder="Your username or email"
+                  placeholder="superadmin"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="pl-12 h-14 rounded-2xl border-2 border-slate-200 bg-white shadow-sm hover:border-slate-300 focus:ring-4 focus:ring-blue-100 transition-all text-lg"
+                  className="pl-12 h-16 rounded-[24px] border-2 border-slate-200 bg-white shadow-sm hover:border-slate-300 focus:border-indigo-600 focus:ring-8 focus:ring-indigo-600/5 transition-all text-lg font-medium"
                   required
                 />
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="password" className="text-sm font-bold text-slate-700 ml-1">
-                Access Password
-              </Label>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between px-1">
+                <Label htmlFor="password" className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
+                  Access Password
+                </Label>
+                <button type="button" className="text-[11px] font-black text-indigo-600 uppercase tracking-widest hover:text-indigo-700 transition-colors">
+                  Forgot?
+                </button>
+              </div>
               <div className="relative group">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <Lock className="h-5 w-5 text-slate-400 group-focus-within:text-indigo-600 transition-colors" />
+                </div>
                 <Input
                   id="password"
                   type="password"
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="pl-12 h-14 rounded-2xl border-2 border-slate-200 bg-white shadow-sm hover:border-slate-300 focus:ring-4 focus:ring-blue-100 transition-all text-lg"
+                  className="pl-12 h-16 rounded-[24px] border-2 border-slate-200 bg-white shadow-sm hover:border-slate-300 focus:border-indigo-600 focus:ring-8 focus:ring-indigo-600/5 transition-all text-lg font-medium"
                   required
                 />
               </div>
             </div>
 
-            <Button
-              type="submit"
-              className="w-full h-14 rounded-2xl text-white font-bold text-lg shadow-xl shadow-blue-200 hover:shadow-blue-300 transition-all hover:scale-[1.01] active:scale-[0.99] mt-4"
-              style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)` }}
-            >
-              Authenticate
-            </Button>
+            <div className="space-y-4">
+              <Button
+                type="submit"
+                className="w-full h-16 rounded-[24px] text-white font-black text-lg shadow-2xl transition-all hover:scale-[1.02] active:scale-[0.98] relative overflow-hidden group"
+                style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)` }}
+              >
+                <span className="relative z-10 flex items-center justify-center gap-2">
+                  Authenticate
+                  <ArrowLeft className="w-5 h-5 rotate-180" />
+                </span>
+                <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+              </Button>
+              
+              <div className="relative py-4">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t border-slate-200" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-slate-50 px-4 text-slate-400 font-bold tracking-widest">Security Verified</span>
+                </div>
+              </div>
+            </div>
           </form>
 
+          <p className="text-center text-sm text-slate-500 font-medium pt-4">
+            Don't have an account? <br />
+            <button className="text-indigo-600 font-bold hover:underline mt-1">Contact your administrator</button>
+          </p>
         </div>
       </div>
     </div>

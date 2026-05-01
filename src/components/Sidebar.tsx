@@ -2,6 +2,7 @@ import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '../contexts/AuthContext';
 import { useSchool } from '../contexts/SchoolContext';
+import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
   Users,
@@ -98,7 +99,7 @@ const MenuSection: React.FC<{
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] px-3 mb-2 opacity-80 group-data-[collapsible=icon]:hidden">
+      <SidebarGroupLabel className="text-[10px] font-bold text-sidebar-foreground/50 uppercase tracking-[0.2em] px-3 mb-2 opacity-80 group-data-[collapsible=icon]:hidden">
         {label}
       </SidebarGroupLabel>
       <SidebarGroupContent>
@@ -109,12 +110,17 @@ const MenuSection: React.FC<{
                 isActive={activeModule === item.id}
                 onClick={() => setActiveModule(item.id)}
                 tooltip={item.label}
-                className="rounded-xl mx-auto w-[calc(100%-12px)] h-9 text-slate-400 data-[active=true]:bg-gradient-to-br data-[active=true]:from-indigo-600 data-[active=true]:to-blue-600 data-[active=true]:text-white data-[active=true]:shadow-lg data-[active=true]:shadow-indigo-500/20 hover:bg-slate-800 hover:text-white transition-all duration-300 group-data-[collapsible=icon]:w-9 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:mx-0"
+                className={cn(
+                  "rounded-xl mx-auto w-[calc(100%-12px)] h-9 text-sidebar-foreground/70 transition-all duration-300 group-data-[collapsible=icon]:w-9 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:mx-0",
+                  activeModule === item.id 
+                    ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-lg shadow-sidebar-primary/20" 
+                    : "hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                )}
               >
                 <item.icon className="h-[1.1rem] w-[1.1rem] shrink-0 opacity-80 group-data-[active=true]:opacity-100 transition-all duration-300 group-hover/menu-item:scale-110" />
                 <span className="font-bold text-sm group-data-[collapsible=icon]:hidden ml-3">{item.label}</span>
                 {item.badge && ! (activeModule === item.id) && (
-                  <Badge variant="secondary" className="ml-auto text-[9px] px-1.5 py-0 bg-blue-500/20 text-blue-400 border-0 group-data-[collapsible=icon]:hidden">
+                  <Badge variant="secondary" className="ml-auto text-[9px] px-1.5 py-0 bg-sidebar-primary/20 text-sidebar-primary border-0 group-data-[collapsible=icon]:hidden">
                     {item.badge}
                   </Badge>
                 )}
@@ -137,15 +143,26 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
     <Sidebar
       variant="sidebar"
       collapsible="icon"
-      className="border-r border-slate-800/50 bg-[#0f172a] text-slate-200 shadow-2xl h-screen sticky top-0"
+      className="border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl h-screen sticky top-0"
     >
-      <SidebarHeader className="h-20 flex items-center justify-center border-b border-slate-800/50 mb-4 px-2 overflow-hidden">
-         <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-xl shadow-indigo-500/20 shrink-0">
-             <GraduationCap className="w-6 h-6 text-white" />
+      <SidebarHeader className="h-20 flex items-center justify-center border-b border-sidebar-border mb-4 px-2 overflow-hidden">
+         <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-xl shadow-indigo-500/20 shrink-0 overflow-hidden">
+           {school?.logo_url ? (
+             <img 
+               src={`${import.meta.env.VITE_API_BASE_URL?.replace('/api', '')}${school.logo_url}`} 
+               alt={school.name} 
+               className="w-full h-full object-cover"
+               onError={(e) => {
+                 (e.target as HTMLImageElement).style.display = 'none';
+                 (e.target as HTMLImageElement).parentElement?.querySelector('.fallback-icon')?.classList.remove('hidden');
+               }}
+             />
+           ) : null}
+           <GraduationCap className={cn("w-6 h-6 text-white fallback-icon", school?.logo_url ? "hidden" : "")} />
          </div>
          <div className="ml-3 overflow-hidden transition-all duration-300 group-data-[collapsible=icon]:hidden group-data-[collapsible=icon]:w-0 group-data-[collapsible=icon]:opacity-0">
-             <h2 className="text-sm font-black text-white uppercase tracking-tighter truncate">{school?.name || 'EDUNERVE'}</h2>
-             <p className="text-[9px] text-slate-500 font-bold tracking-widest uppercase truncate opacity-70">Management System</p>
+             <h2 className="text-sm font-black text-sidebar-foreground uppercase tracking-tighter truncate">{school?.name || 'EDUNERVE'}</h2>
+             <p className="text-[9px] text-sidebar-foreground/50 font-bold tracking-widest uppercase truncate opacity-70">Management System</p>
          </div>
       </SidebarHeader>
 
@@ -160,7 +177,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
         <MenuSection items={menuItems.ai} label="Innovation" activeModule={activeModule} setActiveModule={setActiveModule} />
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-slate-800/50 p-3 space-y-4 bg-slate-900/50">
+      <SidebarFooter className="border-t border-sidebar-border p-3 space-y-4 bg-sidebar-accent/50">
         <SidebarMenu>
           <SidebarMenuItem className="flex justify-center">
             <SidebarMenuButton

@@ -408,22 +408,22 @@ const SuperAdminDashboard = () => {
   return (
     <div className={darkMode ? 'dark' : ''}>
       <SidebarProvider>
-        <Sidebar variant="sidebar" collapsible="icon" className="border-r border-slate-200/60 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300">
+        <Sidebar variant="sidebar" collapsible="icon" className="border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl">
           <SidebarHeader className="border-b border-slate-200/80 dark:border-slate-800 px-4 py-5">
             <div className="flex items-center gap-3 min-w-0 flex-1">
               <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 overflow-hidden bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/25">
                 <GraduationCap className="w-6 h-6 text-white" />
               </div>
               <div className="min-w-0 flex-1 overflow-hidden">
-                <h1 className="font-bold text-slate-900 dark:text-white truncate text-base tracking-tight">TECHNERVE</h1>
-                <p className="text-xs text-slate-500 dark:text-slate-400 truncate">Super Admin</p>
+                <h1 className="font-bold text-sidebar-foreground truncate text-base tracking-tight">SCHOLARNERVE</h1>
+                <p className="text-xs text-sidebar-foreground/60 truncate">Super Admin Portal</p>
               </div>
             </div>
           </SidebarHeader>
 
           <SidebarContent className="px-2 py-4 gap-6 flex flex-col overflow-y-auto scrollbar-hide">
             <SidebarGroup>
-              <SidebarGroupLabel className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest px-3">Overview</SidebarGroupLabel>
+              <SidebarGroupLabel className="text-[11px] font-semibold text-sidebar-foreground/50 uppercase tracking-widest px-3">Overview</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu className="space-y-0.5">
                   {mainItems.map(({ id, label, icon: Icon }) => (
@@ -431,7 +431,7 @@ const SuperAdminDashboard = () => {
                       <SidebarMenuButton
                         isActive={section === id}
                         onClick={() => setSection(id)}
-                        className="rounded-xl mx-2 text-slate-600 dark:text-slate-300 data-[active=true]:bg-emerald-500/15 dark:data-[active=true]:bg-emerald-500/20 data-[active=true]:text-emerald-700 dark:data-[active=true]:text-emerald-400 data-[active=true]:font-semibold hover:bg-slate-200/80 dark:hover:bg-slate-800/80 transition-all duration-200"
+                        className="rounded-xl mx-2 text-sidebar-foreground/70 data-[active=true]:bg-sidebar-primary/20 data-[active=true]:text-sidebar-primary data-[active=true]:font-bold hover:bg-sidebar-accent hover:text-sidebar-foreground transition-all duration-200"
                       >
                         <Icon className="h-4 w-4 shrink-0 opacity-90" />
                         <span className="font-medium">{label}</span>
@@ -448,7 +448,7 @@ const SuperAdminDashboard = () => {
             </SidebarGroup>
 
             <SidebarGroup>
-              <SidebarGroupLabel className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest px-3">System</SidebarGroupLabel>
+              <SidebarGroupLabel className="text-[11px] font-semibold text-sidebar-foreground/50 uppercase tracking-widest px-3">System</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu className="space-y-0.5">
                   {systemItems.map(({ id, label, icon: Icon }) => (
@@ -456,7 +456,7 @@ const SuperAdminDashboard = () => {
                       <SidebarMenuButton
                         isActive={section === id}
                         onClick={() => setSection(id)}
-                        className="rounded-xl mx-2 text-slate-600 dark:text-slate-300 data-[active=true]:bg-emerald-500/15 dark:data-[active=true]:bg-emerald-500/20 data-[active=true]:text-emerald-700 dark:data-[active=true]:text-emerald-400 data-[active=true]:font-semibold hover:bg-slate-200/80 dark:hover:bg-slate-800/80 transition-all duration-200"
+                        className="rounded-xl mx-2 text-sidebar-foreground/70 data-[active=true]:bg-sidebar-primary/20 data-[active=true]:text-sidebar-primary data-[active=true]:font-bold hover:bg-sidebar-accent hover:text-sidebar-foreground transition-all duration-200"
                       >
                         <Icon className="h-4 w-4 shrink-0 opacity-90" />
                         <span className="font-medium">{label}</span>
@@ -475,27 +475,27 @@ const SuperAdminDashboard = () => {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   onClick={() => window.open('/', '_blank')}
-                  className="rounded-xl mx-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-slate-800/80 transition-colors"
+                  className="rounded-xl mx-2 text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
                 >
                   <Globe className="h-4 w-4" />
                   <span>Visit Site</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
-                <SidebarMenuButton onClick={() => navigate('/select-school')} className="rounded-xl mx-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-slate-800/80 transition-colors">
+                <SidebarMenuButton onClick={() => navigate('/select-school')} className="rounded-xl mx-2 text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors">
                   <ArrowRight className="h-4 w-4" />
                   <span>Switch to School</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
-                <SidebarMenuButton onClick={logout} className="rounded-xl mx-2 text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 transition-colors">
+                <SidebarMenuButton onClick={logout} className="rounded-xl mx-2 text-sidebar-foreground/60 hover:text-red-500 hover:bg-red-500/10 transition-colors">
                   <LogOut className="h-4 w-4" />
                   <span>Logout</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
-            <div className="px-4 py-3 border-t border-slate-200 dark:border-slate-800">
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 text-center">Powered by <span className="font-semibold text-slate-700 dark:text-slate-300">TECHNERVE</span></p>
+            <div className="px-4 py-3 border-t border-sidebar-border">
+              <p className="text-[11px] text-sidebar-foreground/40 text-center uppercase tracking-widest font-bold">Powered by SCHOLARNERVE</p>
             </div>
           </SidebarFooter>
         </Sidebar>

@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useAuth, UserRole } from '../contexts/AuthContext';
 import { GraduationCap, Lock, User, UserCheck, ArrowLeft } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { cn } from "@/lib/utils";
 
 const LoginPage = () => {
   const { schoolId } = useParams<{ schoolId?: string }>();
@@ -75,9 +76,17 @@ const LoginPage = () => {
 
         <div className="relative z-10">
           <div className="flex items-center gap-3 mb-12">
-            <div className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center border border-white/30 shadow-xl">
-              <GraduationCap className="w-7 h-7 text-white" />
-            </div>
+              <div className="w-16 h-16 bg-gradient-to-br from-indigo-600 to-blue-700 rounded-2xl flex items-center justify-center shadow-xl shadow-indigo-200 ring-4 ring-white overflow-hidden">
+                {tenant?.logo_url ? (
+                  <img 
+                    src={logoUrl} 
+                    alt={schoolName} 
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <GraduationCap className="w-10 h-10 text-white" />
+                )}
+              </div>
             <div>
               <h1 className="text-2xl font-bold tracking-tight">{schoolName}</h1>
               <p className="text-blue-100/80 text-sm font-medium uppercase tracking-widest">Portal</p>
@@ -125,8 +134,8 @@ const LoginPage = () => {
       <div className="flex flex-col justify-center items-center p-8 md:p-16 lg:p-24 bg-slate-50 relative overflow-hidden">
          {/* Mobile Header (Hidden on Desktop) */}
          <div className="md:hidden absolute top-8 left-8 flex items-center gap-3">
-             {logoUrl ? (
-                <img src={logoUrl} alt="" className="w-10 h-10 object-contain" />
+              {tenant?.logo_url ? (
+                <img src={logoUrl} alt={schoolName} className="w-12 h-12 object-contain" />
               ) : (
                 <GraduationCap className="w-10 h-10 text-blue-600" />
               )}

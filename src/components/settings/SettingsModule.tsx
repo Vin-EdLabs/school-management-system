@@ -10,21 +10,21 @@ import { useData } from '../../contexts/DataContext';
 import { useSchool } from '../../contexts/SchoolContext';
 import { apiService } from '../../services/api';
 import { toast } from '@/hooks/use-toast';
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogDescription, 
-  DialogFooter, 
-  DialogTrigger 
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogTrigger
 } from '@/components/ui/dialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { reportService } from '../../services/reportService';
-import { 
-  Settings, Key, Building, Download, Upload, RefreshCw, Receipt, 
-  GraduationCap, Copy, ExternalLink, AlertTriangle, ShieldAlert, 
-  FileJson, FileSpreadsheet, Lock 
+import {
+  Settings, Key, Building, Download, Upload, RefreshCw, Receipt,
+  GraduationCap, Copy, ExternalLink, AlertTriangle, ShieldAlert,
+  FileJson, FileSpreadsheet, Lock, UserPlus
 } from 'lucide-react';
 import AcademicTermManager from './AcademicTermManager';
 import SchoolManager from './SchoolManager';
@@ -222,7 +222,7 @@ const SettingsModule = () => {
   const handleExportExcel = async () => {
     try {
       toast({ title: "Preparing Export", description: "Consolidating all school data for Excel..." });
-      
+
       const flatData = [
         ...students.map((s: any) => ({ Type: 'Student', ID: s.studentId, Name: `${s.firstName} ${s.lastName}`, Class: s.classAssigned })),
         ...teachers.map((t: any) => ({ Type: 'Teacher', ID: t.staffId, Name: t.fullName, Role: 'Teacher' })),
@@ -232,7 +232,7 @@ const SettingsModule = () => {
       ];
 
       await reportService.exportToExcel(flatData, `school_summary_${new Date().toISOString().split('T')[0]}`, 'All Data');
-      
+
       toast({
         title: "Excel Export Ready",
         description: "Summary data exported successfully.",
@@ -659,6 +659,43 @@ const SettingsModule = () => {
 
               <Separator className="bg-slate-100" />
 
+              {/* Import Section */}
+              <div>
+                <h4 className="font-bold text-slate-800 mb-1">Import System Data</h4>
+                <p className="text-sm text-slate-500 mb-4">
+                  Quickly upload large volumes of student and teacher data using Excel or CSV templates.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-4 rounded-xl border-2 border-slate-50 bg-slate-50/50 hover:border-blue-100 hover:bg-white transition-all cursor-pointer group relative overflow-hidden">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-white rounded-lg shadow-sm flex items-center justify-center text-blue-600">
+                        <Upload className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-bold text-sm text-slate-800">Import Students</p>
+                        <p className="text-xs text-slate-500">Excel / CSV Support</p>
+                      </div>
+                    </div>
+                    <Input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept=".csv,.xlsx,.xls" onChange={() => toast({ title: "Importing...", description: "Processing student data file..." })} />
+                  </div>
+
+                  <div className="p-4 rounded-xl border-2 border-slate-50 bg-slate-50/50 hover:border-emerald-100 hover:bg-white transition-all cursor-pointer group relative overflow-hidden">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-white rounded-lg shadow-sm flex items-center justify-center text-emerald-600">
+                        <UserPlus className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-bold text-sm text-slate-800">Import Teachers</p>
+                        <p className="text-xs text-slate-500">Bulk staff onboarding</p>
+                      </div>
+                    </div>
+                    <Input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept=".csv,.xlsx,.xls" onChange={() => toast({ title: "Importing...", description: "Processing staff data file..." })} />
+                  </div>
+                </div>
+              </div>
+
+              <Separator className="bg-slate-100" />
+
               {/* Reset Section */}
               <div className="p-6 rounded-2xl border-2 border-red-50 bg-red-50/30">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -704,10 +741,10 @@ const SettingsModule = () => {
                           <Label htmlFor="reset-auth">Admin Password</Label>
                           <div className="relative">
                             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                            <Input 
-                              id="reset-auth" 
-                              type="password" 
-                              placeholder="••••••••" 
+                            <Input
+                              id="reset-auth"
+                              type="password"
+                              placeholder="••••••••"
                               className="pl-10 h-11 border-2 border-slate-100 bg-slate-50 focus:border-red-500 rounded-xl"
                               value={resetPassword}
                               onChange={(e) => setResetPassword(e.target.value)}
@@ -719,9 +756,9 @@ const SettingsModule = () => {
                         <Button variant="outline" className="flex-1 h-12 rounded-xl" onClick={() => setIsResetDialogOpen(false)}>
                           Cancel
                         </Button>
-                        <Button 
-                          variant="destructive" 
-                          className="flex-1 h-12 rounded-xl font-bold" 
+                        <Button
+                          variant="destructive"
+                          className="flex-1 h-12 rounded-xl font-bold"
                           onClick={handleResetData}
                           disabled={isResetting || !resetPassword}
                         >

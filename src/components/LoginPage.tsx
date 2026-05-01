@@ -189,11 +189,10 @@ const LoginPage = () => {
           </div>
         </div>
 
-        {/* Footer Info */}
-        <div className="mt-8 flex flex-col items-center gap-3 animate-in fade-in duration-1000 delay-500">
-          <p className="text-[9px] font-bold text-white/20 uppercase tracking-[0.4em]">Powered by SCHOLARNERVE</p>
-          <p className="text-[8px] text-white/10 font-bold uppercase tracking-widest">© 2026 Core Infrastructure</p>
-        </div>
+        <div className="absolute bottom-8 left-0 right-0 z-20 flex flex-col items-center gap-2 animate-in fade-in duration-1000 delay-500">
+        <p className="text-[10px] font-bold text-white/20 uppercase tracking-[0.4em]">Powered by TECHNERVE</p>
+        <p className="text-[8px] text-white/10 font-bold uppercase tracking-widest">© 2026 Platform Infrastructure</p>
+      </div>
       </div>
     </div>
   );

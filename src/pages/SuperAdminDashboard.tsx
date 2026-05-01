@@ -65,7 +65,11 @@ import {
   Moon,
   CheckCircle,
   Trash2,
+  Zap,
+  Sparkles,
+  ShieldCheck,
 } from 'lucide-react';
+import { cn } from "@/lib/utils";
 import SuperAdminLoginForm from '../components/SuperAdminLoginForm';
 import SupportModule from '../components/support/SupportModule';
 import { resolveLogoUrl } from '../services/tenantService';
@@ -148,6 +152,7 @@ const SuperAdminDashboard = () => {
   const [superAdminNewPass, setSuperAdminNewPass] = useState('');
   const [noteReg, setNoteReg] = useState<Registration | null>(null);
   const [internalNote, setInternalNote] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     if (user && user.role !== 'super-admin') {
@@ -409,14 +414,14 @@ const SuperAdminDashboard = () => {
     <div className={darkMode ? 'dark' : ''}>
       <SidebarProvider>
         <Sidebar variant="sidebar" collapsible="icon" className="border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl">
-          <SidebarHeader className="border-b border-slate-200/80 dark:border-slate-800 px-4 py-5">
+          <SidebarHeader className="border-b border-slate-200/80 dark:border-slate-800 px-6 py-6">
             <div className="flex items-center gap-3 min-w-0 flex-1">
-              <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 overflow-hidden bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/25">
+              <div className="w-12 h-12 rounded-[1.25rem] flex items-center justify-center shrink-0 overflow-hidden bg-gradient-to-br from-indigo-600 to-blue-700 shadow-lg shadow-indigo-500/20 border border-white/10">
                 <GraduationCap className="w-6 h-6 text-white" />
               </div>
               <div className="min-w-0 flex-1 overflow-hidden">
-                <h1 className="font-bold text-sidebar-foreground truncate text-base tracking-tight">SCHOLARNERVE</h1>
-                <p className="text-xs text-sidebar-foreground/60 truncate">Super Admin Portal</p>
+                <h1 className="font-black text-slate-900 dark:text-white truncate text-lg tracking-tight font-outfit">TECHNERVE</h1>
+                <p className="text-[10px] font-bold text-slate-500/60 truncate uppercase tracking-widest">Super Admin Core</p>
               </div>
             </div>
           </SidebarHeader>
@@ -495,7 +500,7 @@ const SuperAdminDashboard = () => {
               </SidebarMenuItem>
             </SidebarMenu>
             <div className="px-4 py-3 border-t border-sidebar-border">
-              <p className="text-[11px] text-sidebar-foreground/40 text-center uppercase tracking-widest font-bold">Powered by SCHOLARNERVE</p>
+              <p className="text-[11px] text-sidebar-foreground/40 text-center uppercase tracking-widest font-bold">Powered by TECHNERVE</p>
             </div>
           </SidebarFooter>
         </Sidebar>
@@ -530,341 +535,421 @@ const SuperAdminDashboard = () => {
 
           <div className="flex-1 p-6 overflow-auto">
             {section === 'schools' && (
-              <>
-                {createdSchool && (
-                  <Card className="mb-6 border-emerald-200 dark:border-emerald-800 bg-emerald-50/80 dark:bg-emerald-950/50 shadow-sm">
-                    <CardHeader>
-                      <CardTitle className="text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
-                        <Building2 className="w-5 h-5" />
-                        School Created Successfully!
-                      </CardTitle>
-                      <p className="text-emerald-700 dark:text-emerald-400 text-sm">Share these details with the school admin.</p>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="grid gap-2 p-4 bg-white dark:bg-slate-900 rounded-lg border border-emerald-200 dark:border-emerald-800 text-sm">
-                        <p><span className="font-medium text-slate-700 dark:text-slate-300">Login URL:</span> <code className="bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-slate-800 dark:text-slate-200">{loginUrl(createdSchool)}</code></p>
-                        <p><span className="font-medium text-slate-700 dark:text-slate-300">Username:</span> <code className="bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-slate-800 dark:text-slate-200">{createdSchool.username}</code></p>
-                        <p><span className="font-medium text-slate-700 dark:text-slate-300">Password:</span> <code className="bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-slate-800 dark:text-slate-200">(the password you set)</code></p>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button onClick={() => openSchool(createdSchool)} className="bg-indigo-600 hover:bg-indigo-700">
-                          <ExternalLink className="w-4 h-4 mr-2" />
-                          Open School
-                        </Button>
-                        <Button variant="outline" onClick={() => setCreatedSchool(null)}>Dismiss</Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-                <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Manage Schools</h3>
-                  <Button onClick={() => setShowCreate(!showCreate)} className="bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Create School
-                  </Button>
+              <div className="space-y-8 animate-in fade-in duration-700">
+                {/* Dashboard Stats Overview */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {[
+                    { label: 'Total Institutions', value: schools.length, icon: Building2, color: 'text-blue-500', bg: 'bg-blue-500/10' },
+                    { label: 'Active Schools', value: schools.filter(s => s.is_active).length, icon: CheckCircle, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+                    { label: 'Pending Requests', value: registrations.filter(r => r.status === 'pending').length, icon: ClipboardList, color: 'text-amber-500', bg: 'bg-amber-500/10' },
+                    { label: 'Growth', value: '+12%', icon: Zap, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
+                  ].map((stat, i) => (
+                    <Card key={i} className="border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm shadow-sm overflow-hidden group hover:border-indigo-500/30 transition-all">
+                      <CardContent className="p-5 flex items-center justify-between">
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">{stat.label}</p>
+                          <h4 className="text-2xl font-black text-slate-900 dark:text-white font-outfit">{stat.value}</h4>
+                        </div>
+                        <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110", stat.bg)}>
+                          <stat.icon className={cn("w-6 h-6", stat.color)} />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
 
-                {showCreate && (
-                  <Card className="mb-6 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm">
-                    <CardHeader>
-                      <CardTitle className="text-slate-900 dark:text-white">Create New School</CardTitle>
-                      <p className="text-slate-600 dark:text-slate-400 text-sm">Admin account will be created automatically.</p>
+                {createdSchool && (
+                  <Card className="border-emerald-200 dark:border-emerald-800 bg-emerald-50/80 dark:bg-emerald-950/50 shadow-sm overflow-hidden animate-in zoom-in duration-300">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-emerald-800 dark:text-emerald-300 flex items-center gap-2 font-outfit">
+                        <Sparkles className="w-5 h-5" />
+                        Infrastructure Initialized
+                      </CardTitle>
+                      <p className="text-emerald-700 dark:text-emerald-400 text-xs">A new academic workspace has been successfully provisioned.</p>
                     </CardHeader>
-                    <CardContent>
-                      <form onSubmit={handleCreateSchool} className="space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <Label className="text-slate-700">School Name *</Label>
-                            <Input value={newSchool.name} onChange={(e) => setNewSchool({ ...newSchool, name: e.target.value })} className="mt-1" placeholder="e.g. St. Mary's Academy" required />
-                          </div>
-                          <div>
-                            <Label className="text-slate-700">Slug</Label>
-                            <Input value={newSchool.slug} onChange={(e) => setNewSchool({ ...newSchool, slug: e.target.value })} className="mt-1" placeholder="st-marys" />
-                          </div>
-                          <div>
-                            <Label className="text-slate-700">Admin Username *</Label>
-                            <Input value={newSchool.adminUsername} onChange={(e) => setNewSchool({ ...newSchool, adminUsername: e.target.value })} className="mt-1" placeholder="admin" required />
-                          </div>
-                          <div>
-                            <Label className="text-slate-700">Admin Password *</Label>
-                            <Input type="password" value={newSchool.adminPassword} onChange={(e) => setNewSchool({ ...newSchool, adminPassword: e.target.value })} className="mt-1" placeholder="••••••••" required minLength={6} />
-                          </div>
-                          <div>
-                            <Label className="text-slate-700">Admin Email</Label>
-                            <Input type="email" value={newSchool.adminEmail} onChange={(e) => setNewSchool({ ...newSchool, adminEmail: e.target.value })} className="mt-1" placeholder="admin@school.com" />
-                          </div>
-                          <div>
-                            <Label className="text-slate-700">School Logo</Label>
-                            <Input type="file" accept="image/*" onChange={(e) => setLogoFile(e.target.files?.[0] || null)} className="mt-1" />
-                          </div>
-                          <div>
-                            <Label className="text-slate-700">Primary Color</Label>
-                            <div className="flex gap-2 mt-1">
-                              <Input type="color" value={newSchool.primaryColor} onChange={(e) => setNewSchool({ ...newSchool, primaryColor: e.target.value })} className="w-14 h-10 p-1 cursor-pointer" />
-                              <Input value={newSchool.primaryColor} onChange={(e) => setNewSchool({ ...newSchool, primaryColor: e.target.value })} className="flex-1" />
-                            </div>
-                          </div>
-                          <div>
-                            <Label className="text-slate-700">Secondary Color</Label>
-                            <div className="flex gap-2 mt-1">
-                              <Input type="color" value={newSchool.secondaryColor} onChange={(e) => setNewSchool({ ...newSchool, secondaryColor: e.target.value })} className="w-14 h-10 p-1 cursor-pointer" />
-                              <Input value={newSchool.secondaryColor} onChange={(e) => setNewSchool({ ...newSchool, secondaryColor: e.target.value })} className="flex-1" />
-                            </div>
-                          </div>
+                    <CardContent className="space-y-4">
+                      <div className="grid gap-2 p-4 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm rounded-xl border border-emerald-200 dark:border-emerald-800/50 text-xs font-medium">
+                        <div className="flex justify-between py-1 border-b border-emerald-100 dark:border-emerald-900/50">
+                          <span className="text-slate-500">Access Point:</span>
+                          <code className="text-indigo-600 dark:text-indigo-400">{loginUrl(createdSchool)}</code>
                         </div>
-                        <div className="flex gap-2 pt-2">
-                          <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700">Create School</Button>
-                          <Button type="button" variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
+                        <div className="flex justify-between py-1 border-b border-emerald-100 dark:border-emerald-900/50">
+                          <span className="text-slate-500">Root Identity:</span>
+                          <code className="text-slate-900 dark:text-slate-100">{createdSchool.username}</code>
                         </div>
-                      </form>
+                      </div>
+                      <div className="flex gap-3">
+                        <Button onClick={() => openSchool(createdSchool)} className="bg-emerald-600 hover:bg-emerald-700 h-10 px-6 rounded-xl font-bold text-xs uppercase tracking-wider">
+                          <ExternalLink className="w-3.5 h-3.5 mr-2" />
+                          Launch Workspace
+                        </Button>
+                        <Button variant="ghost" onClick={() => setCreatedSchool(null)} className="h-10 text-xs font-bold uppercase tracking-wider">Dismiss</Button>
+                      </div>
                     </CardContent>
                   </Card>
                 )}
 
-                {loading ? (
-                  <p className="text-slate-500">Loading...</p>
-                ) : (
-                  <div className="grid gap-4">
-                    {schools.map((school) => (
-                      <Card key={school.id} className="border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
-                        <CardContent className="p-0">
-                          <div className="flex items-center gap-4 p-4">
-                            <div className="w-14 h-14 rounded-xl flex items-center justify-center overflow-hidden shrink-0 bg-slate-100" style={{ backgroundColor: school.primary_color ? `${school.primary_color}20` : undefined }}>
-                              {school.logo_url ? (
-                                <img src={resolveLogoUrl(school.logo_url)!} alt="" className="w-full h-full object-contain p-1" />
-                              ) : (
-                                <Building2 className="w-7 h-7 text-slate-500" />
-                              )}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-semibold text-slate-900 dark:text-white">{school.name}</span>
-                                <Badge variant={school.is_active ? 'default' : 'destructive'} className={school.is_active ? 'bg-emerald-600' : ''}>
-                                  {school.is_active ? 'Active' : 'Inactive'}
-                                </Badge>
-                              </div>
-                              <p className="text-sm text-slate-500 mt-0.5 truncate">
-                                ID: {school.id} {school.slug && `• /s/${school.slug}`}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <Dialog open={!!editSchool && editSchool.id === school.id} onOpenChange={(o) => !o && setEditSchool(null)}>
-                                <Button variant="outline" size="sm" onClick={() => setEditSchool({ ...school })}>
-                                  <Pencil className="w-4 h-4 mr-1" />
-                                  Edit
-                                </Button>
-                                <DialogContent className="max-w-lg">
-                                  <DialogHeader>
-                                    <DialogTitle>Edit School</DialogTitle>
-                                    <DialogDescription>Update school details and logo.</DialogDescription>
-                                  </DialogHeader>
-                                  <form onSubmit={handleUpdateSchool} className="space-y-4">
-                                    {editSchool && (
-                                      <>
-                                        <div className="grid gap-4">
-                                          <div>
-                                            <Label>School Name</Label>
-                                            <Input value={editSchool.name} onChange={(e) => setEditSchool({ ...editSchool, name: e.target.value })} className="mt-1" />
-                                          </div>
-                                          <div>
-                                            <Label>Logo</Label>
-                                            <Input type="file" accept="image/*" onChange={(e) => setEditLogoFile(e.target.files?.[0] || null)} className="mt-1" />
-                                            {editSchool.logo_url && (
-                                              <img src={resolveLogoUrl(editSchool.logo_url)!} alt="" className="mt-2 h-16 object-contain" />
-                                            )}
-                                          </div>
-                                          <div className="grid grid-cols-2 gap-4">
-                                            <div>
-                                              <Label>Primary Color</Label>
-                                              <Input type="color" value={editSchool.primary_color || '#2563eb'} onChange={(e) => setEditSchool({ ...editSchool, primary_color: e.target.value })} className="mt-1 h-10" />
-                                            </div>
-                                            <div>
-                                              <Label>Secondary Color</Label>
-                                              <Input type="color" value={editSchool.secondary_color || '#7c3aed'} onChange={(e) => setEditSchool({ ...editSchool, secondary_color: e.target.value })} className="mt-1 h-10" />
-                                            </div>
-                                          </div>
-                                        </div>
-                                        <DialogFooter>
-                                          <Button type="button" variant="outline" onClick={() => setEditSchool(null)}>Cancel</Button>
-                                          <Button type="submit" className="bg-indigo-600">Save Changes</Button>
-                                        </DialogFooter>
-                                      </>
-                                    )}
-                                  </form>
-                                </DialogContent>
-                              </Dialog>
+                <div className="space-y-4">
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
+                    <div>
+                      <h3 className="text-2xl font-black text-slate-900 dark:text-white font-outfit tracking-tight">Institutional Hub</h3>
+                      <p className="text-sm text-slate-500 font-medium">Coordinate and manage registered educational entities.</p>
+                    </div>
+                    <div className="flex items-center gap-3 w-full md:w-auto">
+                      <div className="relative flex-1 md:w-64">
+                        <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <Input 
+                          placeholder="Search institutions..." 
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="pl-10 h-11 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl text-sm font-medium"
+                        />
+                      </div>
+                      <Button onClick={() => setShowCreate(!showCreate)} className="bg-slate-900 dark:bg-indigo-600 hover:bg-slate-800 dark:hover:bg-indigo-700 h-11 px-6 rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-indigo-500/20">
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add School
+                      </Button>
+                    </div>
+                  </div>
 
-                              <Dialog open={!!resetSchool && resetSchool.id === school.id} onOpenChange={(o) => { if (!o) { setResetSchool(null); setNewPassword(''); } }}>
-                                <Button variant="outline" size="sm" onClick={() => setResetSchool(school)}>
-                                  <KeyRound className="w-4 h-4 mr-1" />
-                                  Reset Password
-                                </Button>
-                                <DialogContent>
-                                  <DialogHeader>
-                                    <DialogTitle>Reset Primary Admin Password</DialogTitle>
-                                    <DialogDescription>
-                                      Set a new password for {school.name}'s primary administrator.
-                                    </DialogDescription>
-                                  </DialogHeader>
-                                  <form onSubmit={handleResetPassword} className="space-y-4">
-                                    <div>
-                                      <Label>New Password (min 6 characters)</Label>
-                                      <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="mt-1" placeholder="••••••••" required minLength={6} />
-                                    </div>
-                                    <DialogFooter>
-                                      <Button type="button" variant="outline" onClick={() => setResetSchool(null)}>Cancel</Button>
-                                      <Button type="submit" className="bg-indigo-600">Reset Password</Button>
-                                    </DialogFooter>
-                                  </form>
-                                </DialogContent>
-                              </Dialog>
-
-                              <Button size="sm" variant="outline" onClick={() => toggleActive(school)}>
-                                {school.is_active ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />}
-                              </Button>
-                              <Button size="sm" onClick={() => openSchool(school)} className="bg-indigo-600 hover:bg-indigo-700">
-                                <ArrowRight className="w-4 h-4 mr-1" />
-                                Open
-                              </Button>
+                  {showCreate && (
+                    <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl overflow-hidden animate-in slide-in-from-top-4 duration-500">
+                      <CardHeader className="bg-slate-50 dark:bg-slate-800/50">
+                        <CardTitle className="text-lg font-black font-outfit">Provision New School</CardTitle>
+                        <p className="text-slate-500 text-xs font-medium uppercase tracking-wider">Automated Admin Onboarding Enabled</p>
+                      </CardHeader>
+                      <CardContent className="p-6">
+                        <form onSubmit={handleCreateSchool} className="space-y-6">
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            <div className="space-y-2">
+                              <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Entity Branding</Label>
+                              <Input value={newSchool.name} onChange={(e) => setNewSchool({ ...newSchool, name: e.target.value })} className="h-12 rounded-xl" placeholder="Full Institutional Name" required />
+                            </div>
+                            <div className="space-y-2">
+                              <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Network Slug</Label>
+                              <Input value={newSchool.slug} onChange={(e) => setNewSchool({ ...newSchool, slug: e.target.value })} className="h-12 rounded-xl" placeholder="e.g. st-marys" />
+                            </div>
+                            <div className="space-y-2">
+                              <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Admin Username</Label>
+                              <Input value={newSchool.adminUsername} onChange={(e) => setNewSchool({ ...newSchool, adminUsername: e.target.value })} className="h-12 rounded-xl" placeholder="root_admin" required />
+                            </div>
+                            <div className="space-y-2">
+                              <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Secure Password</Label>
+                              <Input type="password" value={newSchool.adminPassword} onChange={(e) => setNewSchool({ ...newSchool, adminPassword: e.target.value })} className="h-12 rounded-xl" placeholder="••••••••" required minLength={6} />
+                            </div>
+                            <div className="space-y-2">
+                              <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Primary Email</Label>
+                              <Input type="email" value={newSchool.adminEmail} onChange={(e) => setNewSchool({ ...newSchool, adminEmail: e.target.value })} className="h-12 rounded-xl" placeholder="admin@example.com" />
+                            </div>
+                            <div className="space-y-2">
+                              <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Asset: Logo</Label>
+                              <Input type="file" accept="image/*" onChange={(e) => setLogoFile(e.target.files?.[0] || null)} className="h-12 rounded-xl bg-slate-50 dark:bg-slate-800/50 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-[10px] file:font-bold file:bg-indigo-500 file:text-white" />
                             </div>
                           </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                    {schools.length === 0 && (
-                      <Card className="border-slate-200 dark:border-slate-700 p-12 text-center">
-                        <Building2 className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
-                        <p className="text-slate-500 mb-4">No schools yet. Create your first school.</p>
-                        <Button onClick={() => setShowCreate(true)} className="bg-indigo-600 hover:bg-indigo-700">
-                          Create School
-                        </Button>
-                      </Card>
-                    )}
-                  </div>
-                )}
-              </>
+                          <div className="flex gap-3 justify-end pt-4">
+                            <Button type="button" variant="ghost" onClick={() => setShowCreate(false)} className="h-12 px-8 rounded-xl font-bold text-xs uppercase tracking-widest">Cancel</Button>
+                            <Button type="submit" className="h-12 px-8 bg-indigo-600 hover:bg-indigo-700 rounded-xl font-bold text-xs uppercase tracking-widest text-white shadow-lg shadow-indigo-500/20">Provision Workspace</Button>
+                          </div>
+                        </form>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {loading ? (
+                    <div className="flex flex-col items-center justify-center py-20 gap-4">
+                      <div className="w-10 h-10 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" />
+                      <p className="text-sm font-bold text-slate-500 uppercase tracking-widest animate-pulse">Synchronizing Core...</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                      {schools
+                        .filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.id.toString().includes(searchQuery))
+                        .map((school) => (
+                        <Card key={school.id} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 hover:border-indigo-500/50 transition-all group overflow-hidden shadow-sm hover:shadow-xl">
+                          <CardContent className="p-0">
+                            <div className="flex flex-col sm:flex-row items-center gap-6 p-6">
+                              {/* Logo & ID Badge */}
+                              <div className="relative shrink-0">
+                                <div 
+                                  className="w-20 h-20 rounded-[1.5rem] flex items-center justify-center overflow-hidden border border-slate-200/80 dark:border-slate-700/80 bg-slate-50 dark:bg-slate-800 shadow-inner group-hover:scale-105 transition-transform duration-500"
+                                >
+                                  {school.logo_url ? (
+                                    <img src={resolveLogoUrl(school.logo_url)!} alt="" className="w-full h-full object-contain p-2" />
+                                  ) : (
+                                    <Building2 className="w-10 h-10 text-slate-300 dark:text-slate-600" />
+                                  )}
+                                </div>
+                                <div className="absolute -bottom-2 -right-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[10px] font-black px-2 py-1 rounded-lg border-2 border-white dark:border-slate-900 shadow-lg">
+                                  #{school.id}
+                                </div>
+                              </div>
+
+                              {/* Info Content */}
+                              <div className="flex-1 min-w-0 text-center sm:text-left space-y-2">
+                                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                                  <h4 className="font-black text-xl text-slate-900 dark:text-white font-outfit tracking-tight truncate">
+                                    {school.name}
+                                  </h4>
+                                  <Badge 
+                                    className={cn(
+                                      "w-fit mx-auto sm:mx-0 font-black text-[10px] uppercase tracking-wider px-2 py-0.5",
+                                      school.is_active ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 shadow-none' : 'bg-red-500/10 text-red-600 border border-red-500/20 shadow-none'
+                                    )}
+                                  >
+                                    {school.is_active ? 'Active' : 'Offline'}
+                                  </Badge>
+                                </div>
+                                <div className="flex flex-wrap justify-center sm:justify-start items-center gap-3 text-slate-500">
+                                  <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider">
+                                    <Globe className="w-3 h-3 text-indigo-500" />
+                                    {school.slug || 'no-slug'}
+                                  </div>
+                                  <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider">
+                                    <ShieldCheck className="w-3 h-3 text-emerald-500" />
+                                    Enterprise
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Action Group */}
+                              <div className="grid grid-cols-2 gap-2 w-full sm:w-auto">
+                                <Dialog open={!!editSchool && editSchool.id === school.id} onOpenChange={(o) => !o && setEditSchool(null)}>
+                                  <Button variant="outline" size="sm" onClick={() => setEditSchool({ ...school })} className="h-10 rounded-xl border-slate-200 dark:border-slate-800 font-bold text-[10px] uppercase tracking-widest hover:bg-slate-50 dark:hover:bg-slate-800">
+                                    <Pencil className="w-3.5 h-3.5 mr-2" />
+                                    Settings
+                                  </Button>
+                                  <DialogContent className="max-w-lg bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden">
+                                    <DialogHeader>
+                                      <DialogTitle className="text-2xl font-black font-outfit">Institutional Parameters</DialogTitle>
+                                      <DialogDescription className="text-xs font-medium">Modify core identity and aesthetic configurations for {school.name}.</DialogDescription>
+                                    </DialogHeader>
+                                    <form onSubmit={handleUpdateSchool} className="space-y-6 pt-4">
+                                      {editSchool && (
+                                        <>
+                                          <div className="grid gap-6">
+                                            <div className="space-y-2">
+                                              <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Formal Identity</Label>
+                                              <Input value={editSchool.name} onChange={(e) => setEditSchool({ ...editSchool, name: e.target.value })} className="h-12 rounded-xl" />
+                                            </div>
+                                            <div className="space-y-2">
+                                              <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Brand Mark (Logo)</Label>
+                                              <Input type="file" accept="image/*" onChange={(e) => setEditLogoFile(e.target.files?.[0] || null)} className="h-12 rounded-xl bg-slate-50 dark:bg-slate-800/50 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-[10px] file:font-bold file:bg-indigo-500 file:text-white" />
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-4">
+                                              <div className="space-y-2">
+                                                <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Primary Color</Label>
+                                                <Input type="color" value={editSchool.primary_color || '#2563eb'} onChange={(e) => setEditSchool({ ...editSchool, primary_color: e.target.value })} className="h-12 rounded-xl p-1 cursor-pointer" />
+                                              </div>
+                                              <div className="space-y-2">
+                                                <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Secondary Color</Label>
+                                                <Input type="color" value={editSchool.secondary_color || '#7c3aed'} onChange={(e) => setEditSchool({ ...editSchool, secondary_color: e.target.value })} className="h-12 rounded-xl p-1 cursor-pointer" />
+                                              </div>
+                                            </div>
+                                          </div>
+                                          <DialogFooter className="gap-2">
+                                            <Button type="button" variant="ghost" onClick={() => setEditSchool(null)} className="rounded-xl font-bold text-[10px] uppercase tracking-widest">Cancel</Button>
+                                            <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700 rounded-xl font-bold text-[10px] uppercase tracking-widest text-white h-12 px-8">Save Configuration</Button>
+                                          </DialogFooter>
+                                        </>
+                                      )}
+                                    </form>
+                                  </DialogContent>
+                                </Dialog>
+
+                                <Dialog open={!!resetSchool && resetSchool.id === school.id} onOpenChange={(o) => { if (!o) { setResetSchool(null); setNewPassword(''); } }}>
+                                  <Button variant="outline" size="sm" onClick={() => setResetSchool(school)} className="h-10 rounded-xl border-slate-200 dark:border-slate-800 font-bold text-[10px] uppercase tracking-widest hover:bg-slate-50 dark:hover:bg-slate-800">
+                                    <KeyRound className="w-3.5 h-3.5 mr-2" />
+                                    Access
+                                  </Button>
+                                  <DialogContent className="rounded-3xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                                    <DialogHeader>
+                                      <DialogTitle className="text-2xl font-black font-outfit">Credential Override</DialogTitle>
+                                      <DialogDescription className="text-xs font-medium">Initialize a master password reset for {school.name}'s administrative console.</DialogDescription>
+                                    </DialogHeader>
+                                    <form onSubmit={handleResetPassword} className="space-y-6 pt-4">
+                                      <div className="space-y-2">
+                                        <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Emergency Password (6+ Chars)</Label>
+                                        <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="h-12 rounded-xl" placeholder="••••••••" required minLength={6} />
+                                      </div>
+                                      <DialogFooter>
+                                        <Button type="button" variant="ghost" onClick={() => setResetSchool(null)} className="rounded-xl font-bold text-[10px] uppercase tracking-widest">Cancel</Button>
+                                        <Button type="submit" className="bg-red-600 hover:bg-red-700 rounded-xl font-bold text-[10px] uppercase tracking-widest text-white h-12 px-8">Confirm Override</Button>
+                                      </DialogFooter>
+                                    </form>
+                                  </DialogContent>
+                                </Dialog>
+
+                                <Button size="sm" variant="ghost" onClick={() => toggleActive(school)} className={cn("h-10 rounded-xl font-bold text-[10px] uppercase tracking-widest", school.is_active ? 'text-red-500 hover:bg-red-500/10' : 'text-emerald-500 hover:bg-emerald-500/10')}>
+                                  {school.is_active ? <PowerOff className="w-3.5 h-3.5 mr-2" /> : <Power className="w-3.5 h-3.5 mr-2" />}
+                                  {school.is_active ? 'Off' : 'On'}
+                                </Button>
+                                
+                                <Button size="sm" onClick={() => openSchool(school)} className="h-10 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black text-[10px] uppercase tracking-widest hover:opacity-90 shadow-lg shadow-slate-900/10 transition-all">
+                                  <ArrowRight className="w-3.5 h-3.5 mr-2" />
+                                  Launch
+                                </Button>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                      
+                      {schools.length === 0 && (
+                        <Card className="col-span-full border-dashed border-2 border-slate-200 dark:border-slate-800 p-20 text-center bg-slate-50/50 dark:bg-slate-900/20">
+                          <Building2 className="w-16 h-16 text-slate-200 dark:text-slate-700 mx-auto mb-6" />
+                          <h3 className="text-xl font-black text-slate-400 dark:text-slate-600 font-outfit uppercase tracking-tight">Zero Entities Detected</h3>
+                          <p className="text-slate-500 text-sm mb-8 max-w-xs mx-auto">Establish your first institutional anchor to begin system management.</p>
+                          <Button onClick={() => setShowCreate(true)} className="bg-indigo-600 hover:bg-indigo-700 h-12 px-10 rounded-xl font-bold text-[10px] uppercase tracking-widest text-white shadow-xl shadow-indigo-500/20 transition-all hover:scale-105">
+                            Initialize First School
+                          </Button>
+                        </Card>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
 
             {section === 'registrations' && (
-              <>
-                <div className="mb-6">
-                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-1">Registration Requests</h3>
-                  <p className="text-sm text-slate-500">Schools that have registered via the landing page. Add internal notes for your team.</p>
+              <div className="space-y-6 animate-in fade-in duration-700">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
+                  <div>
+                    <h3 className="text-2xl font-black text-slate-900 dark:text-white font-outfit tracking-tight">Onboarding Requests</h3>
+                    <p className="text-sm text-slate-500 font-medium">Verify and approve new institutional registrations.</p>
+                  </div>
                 </div>
+
                 {loading ? (
-                  <p className="text-slate-500">Loading...</p>
+                  <div className="flex flex-col items-center justify-center py-20 gap-4">
+                    <div className="w-10 h-10 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" />
+                    <p className="text-sm font-bold text-slate-500 uppercase tracking-widest animate-pulse">Syncing Requests...</p>
+                  </div>
                 ) : registrations.length === 0 ? (
-                  <Card className="border-slate-200 p-12 text-center">
-                    <ClipboardList className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                    <p className="text-slate-500">No registration requests yet.</p>
+                  <Card className="border-slate-200 dark:border-slate-800 p-20 text-center bg-white dark:bg-slate-900/50">
+                    <ClipboardList className="w-16 h-16 text-slate-200 dark:text-slate-700 mx-auto mb-6" />
+                    <h3 className="text-xl font-black text-slate-400 dark:text-slate-600 font-outfit uppercase tracking-tight">Queue Empty</h3>
+                    <p className="text-slate-500 text-sm max-w-xs mx-auto">All institutional registration requests have been processed.</p>
                   </Card>
                 ) : (
                   <div className="grid gap-4">
                     {registrations.map((r) => (
-                      <Card key={r.id} className="border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
-                        <CardContent className="p-6">
-                          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-                            <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                      <Card key={r.id} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 overflow-hidden hover:border-indigo-500/30 transition-all shadow-sm">
+                        <CardContent className="p-0">
+                          <div className="flex flex-col lg:flex-row items-stretch">
+                            {/* Entity Identifier */}
+                            <div className="p-6 lg:w-72 bg-slate-50/50 dark:bg-slate-800/30 border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-800 flex flex-col justify-between">
                               <div>
-                                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">School</p>
-                                <p className="font-semibold text-slate-900 dark:text-white">{r.school_name}</p>
-                              </div>
-                              <div>
-                                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Admin</p>
-                                <div className="flex items-center gap-2">
-                                  <User className="w-4 h-4 text-slate-400 shrink-0" />
-                                  <span className="text-slate-900 dark:text-white">{r.admin_name}</span>
-                                </div>
-                              </div>
-                              <div>
-                                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Contact</p>
-                                <div className="space-y-1">
-                                  <a href={`mailto:${r.email}`} className="flex items-center gap-2 text-indigo-600 hover:underline">
-                                    <Mail className="w-4 h-4 shrink-0" />
-                                    {r.email}
-                                  </a>
-                                  {r.phone && (
-                                    <p className="flex items-center gap-2 text-sm text-slate-600">
-                                      <Phone className="w-4 h-4 shrink-0" />
-                                      {r.phone}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                              <div>
-                                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Date</p>
-                                <p className="text-slate-600 text-sm">{formatDate(r.created_at)}</p>
-                                <Badge variant={r.status === 'pending' ? 'secondary' : r.status === 'approved' ? 'default' : r.status === 'contacted' ? 'outline' : 'destructive'} className="mt-1.5">
+                                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Institutional Entity</p>
+                                <h4 className="font-black text-lg text-slate-900 dark:text-white font-outfit tracking-tight leading-tight mb-2">{r.school_name}</h4>
+                                <Badge variant={r.status === 'pending' ? 'secondary' : r.status === 'approved' ? 'default' : r.status === 'contacted' ? 'outline' : 'destructive'} className="font-black text-[9px] uppercase tracking-wider px-2 py-0.5">
                                   {r.status}
                                 </Badge>
                               </div>
+                              <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-800">
+                                <p className="text-[10px] font-bold text-slate-500/60 uppercase tracking-widest">Request Date</p>
+                                <p className="text-xs font-bold text-slate-900 dark:text-slate-100">{formatDate(r.created_at)}</p>
+                              </div>
                             </div>
-                            <div className="flex flex-wrap items-center gap-2 shrink-0">
+
+                            {/* Core Info */}
+                            <div className="flex-1 p-6 space-y-6">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Lead Administrator</p>
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center">
+                                      <User className="w-4 h-4 text-indigo-500" />
+                                    </div>
+                                    <span className="font-bold text-slate-900 dark:text-white">{r.admin_name}</span>
+                                  </div>
+                                </div>
+                                <div>
+                                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Contact Details</p>
+                                  <div className="space-y-2">
+                                    <a href={`mailto:${r.email}`} className="flex items-center gap-2 text-xs font-bold text-indigo-600 hover:text-indigo-500 transition-colors">
+                                      <Mail className="w-3.5 h-3.5" />
+                                      {r.email}
+                                    </a>
+                                    {r.phone && (
+                                      <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
+                                        <Phone className="w-3.5 h-3.5" />
+                                        {r.phone}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {r.message && (
+                                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800">
+                                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Entity Message</p>
+                                  <p className="text-xs text-slate-600 dark:text-slate-400 font-medium leading-relaxed italic">"{r.message}"</p>
+                                </div>
+                              )}
+
+                              {r.internal_note && (
+                                <div className="p-4 rounded-xl bg-amber-500/5 border border-amber-500/20">
+                                  <p className="text-[10px] font-bold text-amber-600 dark:text-amber-500 uppercase tracking-widest mb-1">Internal Protocol Note</p>
+                                  <p className="text-xs text-slate-700 dark:text-slate-300 font-medium">{r.internal_note}</p>
+                                </div>
+                              )}
+
+                              {r.status === 'approved' && r.generated_password && (
+                                <div className="p-5 rounded-2xl bg-emerald-500/5 border border-emerald-500/20 space-y-4">
+                                  <div className="flex items-center gap-2">
+                                    <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                                    <p className="text-xs font-black text-emerald-900 dark:text-emerald-400 uppercase tracking-widest">Provisioning Credentials</p>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                      <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Root ID</p>
+                                      <code className="block bg-white dark:bg-slate-900 px-3 py-2 rounded-lg border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-black text-xs">admin</code>
+                                    </div>
+                                    <div className="space-y-1">
+                                      <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Security Token</p>
+                                      <code className="block bg-white dark:bg-slate-900 px-3 py-2 rounded-lg border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-black text-xs">{r.generated_password}</code>
+                                    </div>
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => openSchool({ id: r.tenant_id!, slug: r.school_slug! })}
+                                    className="w-full bg-emerald-600 hover:bg-emerald-700 h-11 rounded-xl font-black text-[10px] uppercase tracking-widest text-white shadow-lg shadow-emerald-500/10"
+                                  >
+                                    <ExternalLink className="w-3.5 h-3.5 mr-2" />
+                                    Access Command Center
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Actions Vertical Bar */}
+                            <div className="p-6 lg:w-48 border-t lg:border-t-0 lg:border-l border-slate-200 dark:border-slate-800 flex flex-row lg:flex-col gap-2 justify-center lg:justify-start">
                               <Button
-                                size="sm"
                                 variant="outline"
+                                className="flex-1 h-10 rounded-xl font-bold text-[10px] uppercase tracking-widest"
                                 onClick={() => { setNoteReg(r); setInternalNote(r.internal_note || ''); }}
                               >
-                                <FileText className="w-4 h-4 mr-1" />
-                                {r.internal_note ? 'Edit Note' : 'Add Note'}
+                                <FileText className="w-3.5 h-3.5 mr-2" />
+                                Protocols
                               </Button>
                               <Button
-                                size="sm"
-                                variant="outline"
-                                className="text-red-600 border-red-200 hover:bg-red-50"
+                                variant="ghost"
+                                className="flex-1 h-10 rounded-xl font-bold text-[10px] uppercase tracking-widest text-red-500 hover:bg-red-500/10"
                                 onClick={() => handleDeleteRegistration(r.id)}
                               >
-                                <Trash2 className="w-4 h-4 mr-1" />
-                                Delete
+                                <Trash2 className="w-3.5 h-3.5 mr-2" />
+                                Expunge
                               </Button>
+                              
                               {r.status === 'pending' && (
-                                <>
-                                  <Button size="sm" variant="outline" onClick={() => updateRegistrationStatus(r.id, 'contacted')}>Contacted</Button>
-                                  <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => updateRegistrationStatus(r.id, 'approved')}>Approve</Button>
-                                  <Button size="sm" variant="outline" className="text-red-600 hover:bg-red-50" onClick={() => updateRegistrationStatus(r.id, 'rejected')}>Reject</Button>
-                                </>
+                                <div className="hidden lg:flex flex-col gap-2 mt-auto w-full">
+                                  <Button onClick={() => updateRegistrationStatus(r.id, 'contacted')} className="w-full h-10 rounded-xl border border-indigo-500/20 text-indigo-600 dark:text-indigo-400 font-bold text-[10px] uppercase tracking-widest bg-indigo-500/5 hover:bg-indigo-500/10">Contact</Button>
+                                  <Button onClick={() => updateRegistrationStatus(r.id, 'approved')} className="w-full h-10 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black text-[10px] uppercase tracking-widest">Authorize</Button>
+                                  <Button onClick={() => updateRegistrationStatus(r.id, 'rejected')} className="w-full h-10 rounded-xl text-red-500 hover:bg-red-500/10 font-bold text-[10px] uppercase tracking-widest border border-red-500/10">Reject</Button>
+                                </div>
                               )}
                             </div>
                           </div>
-                          {r.message && (
-                            <div className="mt-4 pt-4 border-t border-slate-100">
-                              <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Additional Info</p>
-                              <p className="text-slate-600 text-sm whitespace-pre-wrap">{r.message}</p>
-                            </div>
-                          )}
-                          {r.internal_note && (
-                            <div className="mt-3 p-3 bg-amber-50 rounded-lg border border-amber-200/60">
-                              <p className="text-xs font-medium text-amber-800 uppercase tracking-wide mb-1">Internal Note</p>
-                              <p className="text-slate-700 text-sm">{r.internal_note}</p>
-                            </div>
-                          )}
-                          {r.status === 'approved' && r.generated_password && (
-                            <div className="mt-3 p-4 bg-emerald-50 rounded-xl border border-emerald-200/60">
-                              <div className="flex items-center gap-2 mb-2">
-                                <CheckCircle className="w-4 h-4 text-emerald-600" />
-                                <p className="text-sm font-bold text-emerald-900">School Created Successfully</p>
-                              </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div>
-                                  <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider mb-0.5">Admin Username</p>
-                                  <code className="bg-white px-2 py-0.5 rounded border border-emerald-100 text-emerald-800 text-xs font-mono">admin</code>
-                                </div>
-                                <div>
-                                  <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider mb-0.5">Admin Password</p>
-                                  <code className="bg-white px-2 py-0.5 rounded border border-emerald-100 text-emerald-800 text-xs font-mono">{r.generated_password}</code>
-                                </div>
-                              </div>
-                              <Button
-                                size="sm"
-                                className="w-full mt-3 bg-emerald-600 hover:bg-emerald-700 text-white border-0 shadow-sm"
-                                onClick={() => openSchool({ id: r.tenant_id!, slug: r.school_slug! })}
-                              >
-                                <ExternalLink className="w-3.5 h-3.5 mr-2" />
-                                Open School Dashboard
-                              </Button>
-                            </div>
-                          )}
                         </CardContent>
                       </Card>
                     ))}
@@ -872,114 +957,113 @@ const SuperAdminDashboard = () => {
                 )}
 
                 <Dialog open={!!noteReg} onOpenChange={(o) => { if (!o) { setNoteReg(null); setInternalNote(''); } }}>
-                  <DialogContent>
+                  <DialogContent className="rounded-3xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 max-w-md">
                     <DialogHeader>
-                      <DialogTitle>Internal Note</DialogTitle>
-                      <DialogDescription>
-                        Add a note for {noteReg?.school_name}. Only visible to super admins.
-                      </DialogDescription>
+                      <DialogTitle className="text-xl font-black font-outfit">Internal Protocol Note</DialogTitle>
+                      <DialogDescription className="text-xs font-medium">Append administrative context for {noteReg?.school_name}.</DialogDescription>
                     </DialogHeader>
-                    <form onSubmit={saveInternalNote} className="space-y-4">
+                    <form onSubmit={saveInternalNote} className="space-y-4 pt-4">
                       <textarea
                         value={internalNote}
                         onChange={(e) => setInternalNote(e.target.value)}
-                        className="w-full min-h-[100px] rounded-md border border-slate-200 px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-                        placeholder="e.g. Follow up next week, VIP school, etc."
+                        className="w-full min-h-[120px] rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 px-4 py-3 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                        placeholder="Detail the current status or required actions..."
                         rows={4}
                       />
                       <DialogFooter>
-                        <Button type="button" variant="outline" onClick={() => { setNoteReg(null); setInternalNote(''); }}>Cancel</Button>
-                        <Button type="submit" className="bg-indigo-600">Save Note</Button>
+                        <Button type="button" variant="ghost" onClick={() => { setNoteReg(null); setInternalNote(''); }} className="rounded-xl font-bold text-[10px] uppercase tracking-widest">Cancel</Button>
+                        <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700 rounded-xl font-bold text-[10px] uppercase tracking-widest text-white h-11 px-8 shadow-lg shadow-indigo-500/10">Commit Note</Button>
                       </DialogFooter>
                     </form>
                   </DialogContent>
                 </Dialog>
-              </>
+              </div>
             )}
 
             {section === 'super-admins' && (
-              <>
-                <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Manage Super Admins</h3>
-                  <Button onClick={() => setShowCreateSuperAdmin(!showCreateSuperAdmin)} className="bg-indigo-600 hover:bg-indigo-700">
+              <div className="space-y-6 animate-in fade-in duration-700">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
+                  <div>
+                    <h3 className="text-2xl font-black text-slate-900 dark:text-white font-outfit tracking-tight">Access Control</h3>
+                    <p className="text-sm text-slate-500 font-medium">Manage root-level administrative privileges.</p>
+                  </div>
+                  <Button onClick={() => setShowCreateSuperAdmin(!showCreateSuperAdmin)} className="bg-slate-900 dark:bg-indigo-600 hover:bg-slate-800 dark:hover:bg-indigo-700 h-11 px-6 rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-indigo-500/20">
                     <UserPlus className="w-4 h-4 mr-2" />
-                    Create Super Admin
+                    New Super Admin
                   </Button>
                 </div>
+
                 {showCreateSuperAdmin && (
-                  <Card className="mb-6 border-slate-200 shadow-sm">
-                    <CardHeader>
-                      <CardTitle className="text-slate-900">Create New Super Admin</CardTitle>
-                      <p className="text-slate-600 text-sm">Same powers as super admin. Username and password required.</p>
+                  <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl overflow-hidden animate-in slide-in-from-top-4 duration-500">
+                    <CardHeader className="bg-slate-50 dark:bg-slate-800/50">
+                      <CardTitle className="text-lg font-black font-outfit">Initialize Privilege Account</CardTitle>
+                      <p className="text-slate-500 text-xs font-medium uppercase tracking-wider">Root System Access Enabled</p>
                     </CardHeader>
-                    <CardContent>
-                      <form onSubmit={handleCreateSuperAdmin} className="space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <Label className="text-slate-700">Username *</Label>
-                            <Input value={newSuperAdmin.username} onChange={(e) => setNewSuperAdmin({ ...newSuperAdmin, username: e.target.value })} className="mt-1" placeholder="e.g. admin2" required />
+                    <CardContent className="p-6">
+                      <form onSubmit={handleCreateSuperAdmin} className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                          <div className="space-y-2">
+                            <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Account Identity</Label>
+                            <Input value={newSuperAdmin.username} onChange={(e) => setNewSuperAdmin({ ...newSuperAdmin, username: e.target.value })} className="h-12 rounded-xl" placeholder="Username" required />
                           </div>
-                          <div>
-                            <Label className="text-slate-700">Password *</Label>
-                            <Input type="password" value={newSuperAdmin.password} onChange={(e) => setNewSuperAdmin({ ...newSuperAdmin, password: e.target.value })} className="mt-1" placeholder="••••••••" required minLength={6} />
+                          <div className="space-y-2">
+                            <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Access Token (Password)</Label>
+                            <Input type="password" value={newSuperAdmin.password} onChange={(e) => setNewSuperAdmin({ ...newSuperAdmin, password: e.target.value })} className="h-12 rounded-xl" placeholder="••••••••" required minLength={6} />
                           </div>
-                          <div>
-                            <Label className="text-slate-700">Full Name</Label>
-                            <Input value={newSuperAdmin.fullName} onChange={(e) => setNewSuperAdmin({ ...newSuperAdmin, fullName: e.target.value })} className="mt-1" placeholder="John Doe" />
-                          </div>
-                          <div>
-                            <Label className="text-slate-700">Email</Label>
-                            <Input type="email" value={newSuperAdmin.email} onChange={(e) => setNewSuperAdmin({ ...newSuperAdmin, email: e.target.value })} className="mt-1" placeholder="admin@example.com" />
-                          </div>
-                          <div>
-                            <Label className="text-slate-700">Phone</Label>
-                            <Input value={newSuperAdmin.phone} onChange={(e) => setNewSuperAdmin({ ...newSuperAdmin, phone: e.target.value })} className="mt-1" placeholder="+233..." />
+                          <div className="space-y-2">
+                            <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Formal Name</Label>
+                            <Input value={newSuperAdmin.fullName} onChange={(e) => setNewSuperAdmin({ ...newSuperAdmin, fullName: e.target.value })} className="h-12 rounded-xl" placeholder="Full Name" />
                           </div>
                         </div>
-                        <div className="flex gap-2 pt-2">
-                          <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700">Create</Button>
-                          <Button type="button" variant="outline" onClick={() => setShowCreateSuperAdmin(false)}>Cancel</Button>
+                        <div className="flex gap-3 justify-end pt-4">
+                          <Button type="button" variant="ghost" onClick={() => setShowCreateSuperAdmin(false)} className="h-12 px-8 rounded-xl font-bold text-xs uppercase tracking-widest">Cancel</Button>
+                          <Button type="submit" className="h-12 px-8 bg-indigo-600 hover:bg-indigo-700 rounded-xl font-bold text-xs uppercase tracking-widest text-white">Create Account</Button>
                         </div>
                       </form>
                     </CardContent>
                   </Card>
                 )}
-                <Card className="border-slate-200 shadow-sm overflow-hidden">
+
+                <Card className="border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden bg-white dark:bg-slate-900/50 backdrop-blur-sm">
                   <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Username</TableHead>
-                        <TableHead>Full Name</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead>Phone</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
+                    <TableHeader className="bg-slate-50 dark:bg-slate-800/50">
+                      <TableRow className="border-slate-200 dark:border-slate-800">
+                        <TableHead className="text-[10px] font-black uppercase tracking-widest text-slate-500 py-4">Identity</TableHead>
+                        <TableHead className="text-[10px] font-black uppercase tracking-widest text-slate-500 py-4">Legal Name</TableHead>
+                        <TableHead className="text-[10px] font-black uppercase tracking-widest text-slate-500 py-4">Channels</TableHead>
+                        <TableHead className="text-right text-[10px] font-black uppercase tracking-widest text-slate-500 py-4">Protocol</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {superAdmins.map((sa) => (
-                        <TableRow key={sa.id}>
-                          <TableCell className="font-medium">{sa.username}</TableCell>
-                          <TableCell>{sa.full_name || '—'}</TableCell>
-                          <TableCell>{sa.email || '—'}</TableCell>
-                          <TableCell>{sa.phone || '—'}</TableCell>
-                          <TableCell className="text-right">
+                        <TableRow key={sa.id} className="border-slate-200 dark:border-slate-800 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+                          <TableCell className="font-bold text-slate-900 dark:text-white py-4">{sa.username}</TableCell>
+                          <TableCell className="text-slate-600 dark:text-slate-400 font-medium">{sa.full_name || '—'}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-xs font-bold text-slate-900 dark:text-slate-200">{sa.email || '—'}</span>
+                              <span className="text-[10px] font-medium text-slate-500">{sa.phone || '—'}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right py-4">
                             <Dialog open={!!resetSuperAdmin && resetSuperAdmin.id === sa.id} onOpenChange={(o) => { if (!o) { setResetSuperAdmin(null); setSuperAdminNewPass(''); } }}>
-                              <Button variant="outline" size="sm" onClick={() => setResetSuperAdmin({ id: sa.id, username: sa.username })}>
-                                <KeyRound className="w-4 h-4 mr-1" />
-                                Reset Password
+                              <Button variant="outline" size="sm" onClick={() => setResetSuperAdmin({ id: sa.id, username: sa.username })} className="h-9 rounded-lg border-slate-200 dark:border-slate-800 font-bold text-[10px] uppercase tracking-widest">
+                                <KeyRound className="w-3.5 h-3.5 mr-2" />
+                                Reset
                               </Button>
-                              <DialogContent>
+                              <DialogContent className="rounded-3xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
                                 <DialogHeader>
-                                  <DialogTitle>Reset Password for {resetSuperAdmin?.username}</DialogTitle>
+                                  <DialogTitle className="text-2xl font-black font-outfit">Credential Override</DialogTitle>
+                                  <DialogDescription className="text-xs font-medium">Update the access token for {resetSuperAdmin?.username}.</DialogDescription>
                                 </DialogHeader>
-                                <form onSubmit={handleResetSuperAdminPassword} className="space-y-4">
-                                  <div>
-                                    <Label>New Password</Label>
-                                    <Input type="password" value={superAdminNewPass} onChange={(e) => setSuperAdminNewPass(e.target.value)} className="mt-1" minLength={6} required />
+                                <form onSubmit={handleResetSuperAdminPassword} className="space-y-6 pt-4">
+                                  <div className="space-y-2">
+                                    <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">New Access Token</Label>
+                                    <Input type="password" value={superAdminNewPass} onChange={(e) => setSuperAdminNewPass(e.target.value)} className="h-12 rounded-xl" placeholder="••••••••" required minLength={6} />
                                   </div>
                                   <DialogFooter>
-                                    <Button type="button" variant="outline" onClick={() => { setResetSuperAdmin(null); setSuperAdminNewPass(''); }}>Cancel</Button>
-                                    <Button type="submit" className="bg-indigo-600">Reset</Button>
+                                    <Button type="button" variant="ghost" onClick={() => { setResetSuperAdmin(null); setSuperAdminNewPass(''); }} className="rounded-xl font-bold text-[10px] uppercase tracking-widest">Cancel</Button>
+                                    <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700 rounded-xl font-bold text-[10px] uppercase tracking-widest text-white h-11 px-8">Confirm Update</Button>
                                   </DialogFooter>
                                 </form>
                               </DialogContent>
@@ -990,94 +1074,108 @@ const SuperAdminDashboard = () => {
                     </TableBody>
                   </Table>
                   {superAdmins.length === 0 && (
-                    <div className="p-12 text-center text-slate-500">No super admins. Create one above.</div>
+                    <div className="p-20 text-center flex flex-col items-center justify-center">
+                      <User className="w-12 h-12 text-slate-200 dark:text-slate-800 mb-4" />
+                      <p className="text-slate-500 font-bold text-xs uppercase tracking-widest">No Privileged Accounts Found</p>
+                    </div>
                   )}
                 </Card>
-              </>
+              </div>
             )}
 
-
             {section === 'audit' && (
-              <>
-                <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="space-y-6 animate-in fade-in duration-700">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
                   <div>
-                    <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-1">Audit Logs</h3>
-                    <p className="text-sm text-slate-500">System-wide activity across all schools. Tracks logins, logouts, creates, updates, deletes.</p>
+                    <h3 className="text-2xl font-black text-slate-900 dark:text-white font-outfit tracking-tight">Security Audit</h3>
+                    <p className="text-sm text-slate-500 font-medium">Complete forensic record of system-wide operations.</p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-3">
                     <select
                       value={auditFilters.action}
                       onChange={(e) => setAuditFilters((f) => ({ ...f, action: e.target.value }))}
-                      className="h-9 rounded-md border border-slate-200 dark:border-slate-600 px-3 text-sm bg-white dark:bg-slate-800 dark:text-slate-200"
+                      className="h-10 rounded-xl border border-slate-200 dark:border-slate-800 px-4 text-[10px] font-black uppercase tracking-widest bg-white dark:bg-slate-900 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500/20"
                     >
-                      <option value="">All actions</option>
-                      <option value="LOGIN">Login</option>
-                      <option value="LOGOUT">Logout</option>
-                      <option value="CREATE">Create</option>
-                      <option value="UPDATE">Update</option>
-                      <option value="DELETE">Delete</option>
+                      <option value="">Protocol: ALL</option>
+                      <option value="LOGIN">LOGIN</option>
+                      <option value="LOGOUT">LOGOUT</option>
+                      <option value="CREATE">CREATE</option>
+                      <option value="UPDATE">UPDATE</option>
+                      <option value="DELETE">DELETE</option>
                     </select>
                     <select
                       value={auditFilters.tenantId}
                       onChange={(e) => setAuditFilters((f) => ({ ...f, tenantId: e.target.value }))}
-                      className="h-9 rounded-md border border-slate-200 dark:border-slate-600 px-3 text-sm bg-white dark:bg-slate-800 dark:text-slate-200 min-w-[140px]"
+                      className="h-10 rounded-xl border border-slate-200 dark:border-slate-800 px-4 text-[10px] font-black uppercase tracking-widest bg-white dark:bg-slate-900 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500/20 min-w-[160px]"
                     >
-                      <option value="">All schools</option>
+                      <option value="">Entity: ALL</option>
                       {schools.map((s) => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
+                        <option key={s.id} value={s.id}>{s.name.toUpperCase()}</option>
                       ))}
                     </select>
-                    <select
-                      value={auditFilters.limit}
-                      onChange={(e) => setAuditFilters((f) => ({ ...f, limit: e.target.value }))}
-                      className="h-9 rounded-md border border-slate-200 dark:border-slate-600 px-3 text-sm bg-white dark:bg-slate-800 dark:text-slate-200"
-                    >
-                      <option value="200">200 logs</option>
-                      <option value="500">500 logs</option>
-                      <option value="1000">1000 logs</option>
-                    </select>
-                    <Button variant="outline" size="sm" onClick={() => loadAuditLogs()}>
-                      Refresh
+                    <Button variant="outline" size="sm" onClick={() => loadAuditLogs()} className="h-10 rounded-xl border-slate-200 dark:border-slate-800 font-bold text-[10px] uppercase tracking-widest px-6">
+                      Sync Logs
                     </Button>
                   </div>
                 </div>
+
                 {loading ? (
-                  <p className="text-slate-500">Loading...</p>
+                  <div className="flex flex-col items-center justify-center py-20 gap-4">
+                    <div className="w-10 h-10 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" />
+                    <p className="text-sm font-bold text-slate-500 uppercase tracking-widest animate-pulse">Parsing Forensics...</p>
+                  </div>
                 ) : auditLogs.length === 0 ? (
-                  <Card className="border-slate-200 dark:border-slate-700 p-12 text-center">
-                    <Shield className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
-                    <p className="text-slate-500 dark:text-slate-400">No audit logs.</p>
+                  <Card className="border-slate-200 dark:border-slate-800 p-20 text-center bg-white dark:bg-slate-900/50">
+                    <Shield className="w-16 h-16 text-slate-200 dark:text-slate-700 mx-auto mb-6" />
+                    <h3 className="text-xl font-black text-slate-400 dark:text-slate-600 font-outfit uppercase tracking-tight">Clean Record</h3>
+                    <p className="text-slate-500 text-sm max-w-xs mx-auto">No auditable activity has been logged for the current filter set.</p>
                   </Card>
                 ) : (
-                  <Card className="border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+                  <Card className="border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden bg-white dark:bg-slate-900/50 backdrop-blur-sm">
                     <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Time</TableHead>
-                          <TableHead>School</TableHead>
-                          <TableHead>User</TableHead>
-                          <TableHead>Action</TableHead>
-                          <TableHead>Entity</TableHead>
+                      <TableHeader className="bg-slate-50 dark:bg-slate-800/50">
+                        <TableRow className="border-slate-200 dark:border-slate-800">
+                          <TableHead className="text-[10px] font-black uppercase tracking-widest text-slate-500 py-4">Timestamp</TableHead>
+                          <TableHead className="text-[10px] font-black uppercase tracking-widest text-slate-500 py-4">Entity Context</TableHead>
+                          <TableHead className="text-[10px] font-black uppercase tracking-widest text-slate-500 py-4">Principal</TableHead>
+                          <TableHead className="text-[10px] font-black uppercase tracking-widest text-slate-500 py-4">Operation</TableHead>
+                          <TableHead className="text-[10px] font-black uppercase tracking-widest text-slate-500 py-4">Resource Target</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {auditLogs.map((log) => (
-                          <TableRow key={log.id}>
-                            <TableCell className="text-slate-500 text-sm whitespace-nowrap">{formatDate(log.created_at)}</TableCell>
-                            <TableCell>{log.tenant_name || (log.tenant_id == null ? 'System' : '—')}</TableCell>
-                            <TableCell>{log.username || '—'}</TableCell>
-                            <TableCell><Badge variant="outline">{log.action}</Badge></TableCell>
-                            <TableCell className="text-slate-500">{log.entity_type} {log.entity_id && `#${log.entity_id}`}</TableCell>
+                          <TableRow key={log.id} className="border-slate-200 dark:border-slate-800 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+                            <TableCell className="text-slate-500 text-[10px] font-bold whitespace-nowrap py-4">{formatDate(log.created_at)}</TableCell>
+                            <TableCell className="font-bold text-slate-900 dark:text-slate-100">{log.tenant_name || (log.tenant_id == null ? 'SYSTEM_ROOT' : '—')}</TableCell>
+                            <TableCell className="font-medium text-slate-600 dark:text-slate-400">{log.username || 'ANONYMOUS'}</TableCell>
+                            <TableCell>
+                              <Badge className={cn(
+                                "font-black text-[9px] uppercase tracking-widest px-2 py-0.5 shadow-none",
+                                log.action === 'DELETE' ? 'bg-red-500/10 text-red-600 border border-red-500/20' :
+                                log.action === 'CREATE' ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' :
+                                'bg-indigo-500/10 text-indigo-600 border border-indigo-500/20'
+                              )}>
+                                {log.action}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">
+                              {log.entity_type} {log.entity_id && <span className="text-indigo-500">#{log.entity_id}</span>}
+                            </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
                     </Table>
                   </Card>
                 )}
-              </>
+              </div>
             )}
 
-            {section === 'support-chat' && <SupportModule />}
+
+            {section === 'support-chat' && (
+              <div className="animate-in fade-in duration-700 h-full">
+                <SupportModule />
+              </div>
+            )}
           </div>
         </main>
       </SidebarProvider>

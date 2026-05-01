@@ -9,7 +9,8 @@ import { useData } from '../../contexts/DataContext';
 import { useAudit } from '../../contexts/AuditContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
-import { Camera, Trash2 } from 'lucide-react';
+import { Camera, Trash2, GraduationCap as ScholarshipIcon } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { apiService } from '../../services/api';
 
 interface Student {
@@ -31,6 +32,11 @@ interface Student {
   dateOfAdmission: string;
   notes: string;
   passportPhotoUrl?: string;
+  isBeneficiary?: boolean;
+  beneficiaryType?: string;
+  discountType?: 'percentage' | 'fixed';
+  discountValue?: number;
+  beneficiaryNotes?: string;
 }
 
 interface EditStudentDialogProps {
@@ -90,6 +96,15 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
       setFormData({
         ...formData,
         [field]: value
+      });
+    }
+  };
+
+  const handleBeneficiaryToggle = (checked: boolean) => {
+    if (formData) {
+      setFormData({
+        ...formData,
+        isBeneficiary: checked
       });
     }
   };
@@ -390,6 +405,92 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
                 rows={3}
               />
             </div>
+          </div>
+
+          {/* Beneficiary Information */}
+          <div className="pt-6 border-t border-slate-100 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <ScholarshipIcon className="w-5 h-5 text-indigo-600" />
+                  <h3 className="font-semibold text-lg">Beneficiary & Scholarship</h3>
+                </div>
+                <p className="text-sm text-slate-500">Enable if student receives any form of fee discount or scholarship</p>
+              </div>
+              <Switch
+                checked={formData.isBeneficiary}
+                onCheckedChange={handleBeneficiaryToggle}
+              />
+            </div>
+
+            {formData.isBeneficiary && (
+              <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="beneficiaryType">Beneficiary Type</Label>
+                    <Select 
+                      value={formData.beneficiaryType} 
+                      onValueChange={(value) => handleInputChange('beneficiaryType', value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Full Scholarship">Full Scholarship</SelectItem>
+                        <SelectItem value="Partial Scholarship">Partial Scholarship</SelectItem>
+                        <SelectItem value="Staff Child Discount">Staff Child Discount</SelectItem>
+                        <SelectItem value="Bursary">Bursary</SelectItem>
+                        <SelectItem value="Sibling Discount">Sibling Discount</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="discountType">Discount Method</Label>
+                    <Select 
+                      value={formData.discountType} 
+                      onValueChange={(value: 'percentage' | 'fixed') => handleInputChange('discountType', value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select method" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="percentage">Percentage (%)</SelectItem>
+                        <SelectItem value="fixed">Fixed Amount</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="discountValue">
+                      {formData.discountType === 'percentage' ? 'Discount Percentage (%)' : 'Discount Amount'}
+                    </Label>
+                    <Input
+                      id="discountValue"
+                      type="number"
+                      min="0"
+                      max={formData.discountType === 'percentage' ? 100 : undefined}
+                      value={formData.discountValue}
+                      onChange={(e) => handleInputChange('discountValue', parseFloat(e.target.value) || 0)}
+                      className="font-bold text-indigo-600"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="beneficiaryNotes">Scholarship Notes</Label>
+                  <Textarea
+                    id="beneficiaryNotes"
+                    value={formData.beneficiaryNotes}
+                    onChange={(e) => handleInputChange('beneficiaryNotes', e.target.value)}
+                    placeholder="Reason for scholarship, awarding body, etc."
+                    rows={2}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </form>
 

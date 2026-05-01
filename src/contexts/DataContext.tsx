@@ -24,6 +24,11 @@ interface Student {
   dateOfAdmission: string;
   notes: string;
   passportPhotoUrl?: string;
+  isBeneficiary?: boolean;
+  beneficiaryType?: string;
+  discountType?: 'percentage' | 'fixed';
+  discountValue?: number;
+  beneficiaryNotes?: string;
 }
 
 interface Teacher {
@@ -123,7 +128,7 @@ interface DataContextType {
   arrearsBalances: Record<string, number>;
   loading: boolean;
   refresh: () => Promise<void>;
-  addStudent: (student: Omit<Student, 'id' | 'studentId' | 'admissionNumber'>) => Promise<{ id: string } | void>;
+  addStudent: (student: Omit<Student, 'id' | 'studentId' | 'admissionNumber'>) => Promise<{ id: string; studentId: string; admissionNumber: string } | void>;
   updateStudent: (id: string, updates: Partial<Student>) => Promise<void>;
   deleteStudent: (id: string) => Promise<void>;
   addTeacher: (teacher: Omit<Teacher, 'id' | 'staffId'>) => Promise<{ loginStaffId?: string; loginPin?: string; loginMessage?: string } | void>;
@@ -168,6 +173,11 @@ const mapStudent = (backendStudent: any): Student => ({
   dateOfAdmission: backendStudent.date_of_admission || '',
   notes: backendStudent.notes || '',
   passportPhotoUrl: backendStudent.passport_photo_url || undefined,
+  isBeneficiary: backendStudent.is_beneficiary || false,
+  beneficiaryType: backendStudent.beneficiary_type || '',
+  discountType: backendStudent.discount_type || 'percentage',
+  discountValue: backendStudent.discount_value ? parseFloat(backendStudent.discount_value) : 0,
+  beneficiaryNotes: backendStudent.beneficiary_notes || '',
 });
 
 // Helper function to map frontend student to backend format
@@ -187,6 +197,11 @@ const mapStudentToBackend = (student: Partial<Student>): any => ({
   date_of_admission: student.dateOfAdmission,
   notes: student.notes,
   passport_photo_url: student.passportPhotoUrl,
+  is_beneficiary: student.isBeneficiary,
+  beneficiary_type: student.beneficiaryType,
+  discount_type: student.discountType,
+  discount_value: student.discountValue,
+  beneficiary_notes: student.beneficiaryNotes,
 });
 
 // Helper function to map backend teacher to frontend format
@@ -467,18 +482,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       notes: paymentData.notes,
       academic_year: paymentData.academicYear,
     });
-    const created = res.payment || res;
+    const created = (res.payment || res) as any;
     await loadData();
     return {
       id: created.id.toString(),
-      studentId: (created.student_id ?? created.studentId)?.toString() || '',
-      studentIdNum: created.student_id ?? created.studentId,
+      studentId: (created.student_id || created.studentId)?.toString() || '',
+      studentIdNum: created.student_id || created.studentId,
       amount: parseFloat(created.amount ?? 0),
-      date: created.payment_date ?? created.date ?? '',
-      paymentMethod: created.payment_method ?? created.paymentMethod ?? '',
+      date: created.payment_date || created.date || '',
+      paymentMethod: created.payment_method || created.paymentMethod || '',
       term: created.term ?? '',
       notes: created.notes ?? '',
-      receiptNumber: created.receipt_number ?? created.receiptNumber,
+      receiptNumber: created.receipt_number || created.receiptNumber,
     };
   };
 

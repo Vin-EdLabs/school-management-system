@@ -118,9 +118,11 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
         tenant_id, first_name, last_name, gender, date_of_birth, nationality,
         student_id, admission_number, class_assigned_id, guardian_name,
         guardian_contact, home_address, number_of_siblings, names_of_siblings,
-        previous_school, date_of_admission, notes, passport_photo_url
+        previous_school, date_of_admission, notes, passport_photo_url,
+        is_beneficiary, beneficiary_type, discount_type, discount_value, beneficiary_notes
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
+        $19, $20, $21, $22, $23
       ) RETURNING *`,
       [
         tenantId,
@@ -141,6 +143,11 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
         studentData.date_of_admission || null,
         studentData.notes || null,
         studentData.passport_photo_url || null,
+        studentData.is_beneficiary || false,
+        studentData.beneficiary_type || null,
+        studentData.discount_type || null,
+        studentData.discount_value || 0,
+        studentData.beneficiary_notes || null,
       ]
     );
     
@@ -199,7 +206,8 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
       'first_name', 'last_name', 'gender', 'date_of_birth', 'nationality',
       'class_assigned_id', 'guardian_name', 'guardian_contact', 'home_address',
       'number_of_siblings', 'names_of_siblings', 'previous_school',
-      'date_of_admission', 'notes', 'passport_photo_url'
+      'date_of_admission', 'notes', 'passport_photo_url',
+      'is_beneficiary', 'beneficiary_type', 'discount_type', 'discount_value', 'beneficiary_notes'
     ];
     
     for (const field of allowedFields) {

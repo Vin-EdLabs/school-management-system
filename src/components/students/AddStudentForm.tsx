@@ -8,7 +8,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { useData } from '../../contexts/DataContext';
 import { apiService } from '../../services/api';
 import { toast } from '@/hooks/use-toast';
-import { Save, UserPlus, Camera, X } from 'lucide-react';
+import { Save, UserPlus, Camera, X, GraduationCap as ScholarshipIcon } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 
 interface AddStudentFormProps {
   onSuccess?: () => void;
@@ -32,7 +33,12 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
     namesOfSiblings: '',
     previousSchool: '',
     dateOfAdmission: new Date().toISOString().split('T')[0],
-    notes: ''
+    notes: '',
+    isBeneficiary: false,
+    beneficiaryType: '',
+    discountType: 'percentage' as 'percentage' | 'fixed',
+    discountValue: 0,
+    beneficiaryNotes: ''
   });
 
   const handleInputChange = (field: string, value: unknown) => {
@@ -86,13 +92,13 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
         classAssignedId,
       });
 
-      if (passportPhoto && created?.id) {
+      if (created && passportPhoto) {
         await apiService.uploadStudentPhoto(created.id, passportPhoto);
       }
 
       toast({
         title: "Student Added Successfully",
-        description: created?.studentId && created?.admissionNumber
+        description: created 
           ? `${formData.firstName} ${formData.lastName} — Student ID: ${created.studentId}, Admission: ${created.admissionNumber}`
           : `${formData.firstName} ${formData.lastName} has been added to the system`,
       });
@@ -111,7 +117,12 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
         namesOfSiblings: '',
         previousSchool: '',
         dateOfAdmission: new Date().toISOString().split('T')[0],
-        notes: ''
+        notes: '',
+        isBeneficiary: false,
+        beneficiaryType: '',
+        discountType: 'percentage',
+        discountValue: 0,
+        beneficiaryNotes: ''
       });
       clearPhoto();
 
@@ -351,6 +362,93 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
               rows={3}
               className="bg-slate-50/50 border-slate-200"
             />
+          </div>
+
+          {/* Beneficiary Information */}
+          <div className="pt-6 border-t border-slate-100">
+            <div className="flex items-center justify-between mb-6">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <ScholarshipIcon className="w-5 h-5 text-indigo-600" />
+                  <Label className="text-base font-bold text-slate-800">Beneficiary & Scholarship</Label>
+                </div>
+                <p className="text-sm text-slate-500">Enable if student receives any form of fee discount or scholarship</p>
+              </div>
+              <Switch
+                checked={formData.isBeneficiary}
+                onCheckedChange={(checked) => handleInputChange('isBeneficiary', checked)}
+              />
+            </div>
+
+            {formData.isBeneficiary && (
+              <div className="space-y-6 animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="beneficiaryType">Beneficiary Type</Label>
+                    <Select 
+                      value={formData.beneficiaryType} 
+                      onValueChange={(value) => handleInputChange('beneficiaryType', value)}
+                    >
+                      <SelectTrigger className="bg-slate-50/50 border-slate-200">
+                        <SelectValue placeholder="Select type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Full Scholarship">Full Scholarship</SelectItem>
+                        <SelectItem value="Partial Scholarship">Partial Scholarship</SelectItem>
+                        <SelectItem value="Staff Child Discount">Staff Child Discount</SelectItem>
+                        <SelectItem value="Bursary">Bursary</SelectItem>
+                        <SelectItem value="Sibling Discount">Sibling Discount</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="discountType">Discount Method</Label>
+                    <Select 
+                      value={formData.discountType} 
+                      onValueChange={(value: 'percentage' | 'fixed') => handleInputChange('discountType', value)}
+                    >
+                      <SelectTrigger className="bg-slate-50/50 border-slate-200">
+                        <SelectValue placeholder="Select method" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="percentage">Percentage (%)</SelectItem>
+                        <SelectItem value="fixed">Fixed Amount</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="discountValue">
+                      {formData.discountType === 'percentage' ? 'Discount Percentage (%)' : 'Discount Amount'}
+                    </Label>
+                    <Input
+                      id="discountValue"
+                      type="number"
+                      min="0"
+                      max={formData.discountType === 'percentage' ? 100 : undefined}
+                      value={formData.discountValue}
+                      onChange={(e) => handleInputChange('discountValue', parseFloat(e.target.value) || 0)}
+                      className="bg-slate-50/50 border-slate-200 font-bold text-indigo-600"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="beneficiaryNotes">Scholarship Notes</Label>
+                  <Textarea
+                    id="beneficiaryNotes"
+                    value={formData.beneficiaryNotes}
+                    onChange={(e) => handleInputChange('beneficiaryNotes', e.target.value)}
+                    placeholder="Reason for scholarship, awarding body, etc."
+                    rows={2}
+                    className="bg-slate-50/50 border-slate-200"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end pt-2">

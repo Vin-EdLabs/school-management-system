@@ -219,6 +219,11 @@ const runMigrations = async () => {
       )
     `);
     await client.query(`ALTER TABLE students ALTER COLUMN passport_photo_url TYPE TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS is_beneficiary BOOLEAN DEFAULT false`).catch(() => { });
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS beneficiary_type VARCHAR(100)`).catch(() => { });
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS discount_type VARCHAR(50) CHECK (discount_type IN ('percentage', 'fixed'))`).catch(() => { });
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS discount_value DECIMAL(10, 2) DEFAULT 0`).catch(() => { });
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS beneficiary_notes TEXT`).catch(() => { });
 
     // Create teachers table
     await client.query(`

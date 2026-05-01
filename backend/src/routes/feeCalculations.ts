@@ -85,16 +85,42 @@ async function computeStudentBalance(
 ) {
   const termMatch = resolveTermForMatch(term, academicYear) || term;
   if (!termMatch || !classId) {
-    return calculateFeeBalance(0, 0);
+    return { ...calculateFeeBalance(0, 0), standardFees: 0, discountAmount: 0 };
   }
 
+  // 1. Fetch Student Beneficiary Details
+  const studentRes = await query(
+    `SELECT is_beneficiary, discount_type, discount_value FROM students 
+     WHERE id = $1 AND tenant_id = $2`,
+    [studentId, tenantId]
+  );
+  const student = studentRes.rows[0];
+
+  // 2. Fetch Base Fees
   const feeRes = await query(
     `SELECT COALESCE(SUM(amount), 0) as total FROM fee_structures
      WHERE tenant_id = $1 AND class_id = $2 AND (term = $3 OR term LIKE $4)`,
     [tenantId, classId, termMatch, `${termMatch}%`]
   );
-  const totalFees = parseFloat(feeRes.rows[0]?.total || '0');
+  const standardFees = parseFloat(feeRes.rows[0]?.total || '0');
+  let totalFees = standardFees;
+  let discountAmount = 0;
 
+  // 3. Apply Beneficiary Discount
+  if (student?.is_beneficiary) {
+    const discountType = student.discount_type;
+    const discountValue = parseFloat(student.discount_value || '0');
+
+    if (discountType === 'percentage') {
+      discountAmount = (standardFees * discountValue) / 100;
+      totalFees = standardFees - discountAmount;
+    } else if (discountType === 'fixed') {
+      discountAmount = Math.min(standardFees, discountValue);
+      totalFees = Math.max(0, standardFees - discountValue);
+    }
+  }
+
+  // 4. Fetch Payments
   const paidRes = await query(
     `SELECT COALESCE(SUM(amount), 0) as total FROM payments
      WHERE tenant_id = $1 AND student_id = $2 AND (term = $3 OR term LIKE $4)`,
@@ -102,7 +128,7 @@ async function computeStudentBalance(
   );
   const totalPaid = parseFloat(paidRes.rows[0]?.total || '0');
 
-  // Fetch arrears from term_arrears (previously calculated by switchTerm service)
+  // 5. Fetch Arrears
   const arrearsRes = await query(
     `SELECT COALESCE(SUM(amount), 0) as total FROM term_arrears
      WHERE tenant_id = $1 AND student_id = $2 AND (current_term = $3 OR current_term = $4)`,
@@ -110,7 +136,12 @@ async function computeStudentBalance(
   );
   const arrears = parseFloat(arrearsRes.rows[0]?.total || '0');
 
-  return calculateFeeBalance(totalFees, totalPaid, arrears);
+  const balance = calculateFeeBalance(totalFees, totalPaid, arrears);
+  return {
+    ...balance,
+    standardFees,
+    discountAmount
+  };
 }
 
 // Calculate student fees - all dynamic, no stored balances
@@ -163,11 +194,15 @@ router.get('/student/:studentId', async (req: AuthRequest, res) => {
       },
       feeCalculation: {
         totalFees: balance.totalFees,
+        standardFees: (balance as any).standardFees,
+        discountAmount: (balance as any).discountAmount,
         totalPaid: balance.totalPaid,
         outstanding: balance.outstanding,
         arrears: balance.arrears,
         credit: balance.credit,
         status: balance.status,
+        isBeneficiary: student.is_beneficiary,
+        beneficiaryType: student.beneficiary_type,
         term,
         academicYear,
       },

@@ -173,19 +173,27 @@ router.delete('/:id', requireRole('super-admin', 'administrator', 'finance'), as
     }
     const { class_id, term } = feeResult.rows[0];
 
-    // Check if any payments exist for students in this class for this term
-    const paymentsCheck = await query(
-      `SELECT COUNT(*) as count FROM payments p
-       JOIN students s ON p.student_id = s.id
-       WHERE p.tenant_id = $1 AND s.class_assigned_id = $2
-       AND (p.term = $3 OR p.term LIKE $4)`,
-      [tenantId, class_id, term, `${term}%`]
+    // Check if any other fee structures exist for this class/term
+    const otherStructures = await query(
+      'SELECT id FROM fee_structures WHERE tenant_id = $1 AND class_id = $2 AND term = $3 AND id != $4',
+      [tenantId, class_id, term, id]
     );
-    const paymentCount = parseInt(paymentsCheck.rows[0]?.count || '0');
-    if (paymentCount > 0) {
-      return res.status(400).json({
-        error: `${paymentCount} payment(s) already recorded for this class/term. Delete or adjust payments first.`,
-      });
+
+    // ONLY block if this is the LAST fee structure for this class/term and payments exist
+    if (otherStructures.rows.length === 0) {
+      const paymentsCheck = await query(
+        `SELECT COUNT(*) as count FROM payments p
+         JOIN students s ON p.student_id = s.id
+         WHERE p.tenant_id = $1 AND s.class_assigned_id = $2
+         AND (p.term = $3 OR p.term LIKE $4)`,
+        [tenantId, class_id, term, `${term}%`]
+      );
+      const paymentCount = parseInt(paymentsCheck.rows[0]?.count || '0');
+      if (paymentCount > 0) {
+        return res.status(400).json({
+          error: `Cannot delete the ONLY fee structure for this class/term because ${paymentCount} payment(s) are already recorded. Delete or adjust payments first if you must remove it.`,
+        });
+      }
     }
     
     const result = await query(

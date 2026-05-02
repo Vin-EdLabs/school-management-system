@@ -182,7 +182,9 @@ const RecordPayment = () => {
             {formData.studentId && (
               <div className="rounded-lg border border-blue-200 overflow-hidden">
                 <div className="bg-blue-600 px-4 py-2">
-                  <h3 className="font-semibold text-white text-sm">Fee Breakdown — {currentTerm} {currentYear}</h3>
+                  <h3 className="font-semibold text-white text-sm">
+                    Fee Breakdown — {currentTerm.replace(new RegExp(`\\s+${currentYear}$`), '')} {currentYear}
+                  </h3>
                 </div>
                 {!selectedStudentFeeDetails ? (
                   <div className="p-4 bg-blue-50 text-sm text-gray-500">No fee structure set for this student's class and term.</div>

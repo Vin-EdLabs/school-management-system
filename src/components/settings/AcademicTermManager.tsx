@@ -120,34 +120,42 @@ const AcademicTermManager = () => {
     try {
       const previousActive = terms.find(t => t.is_active);
       
-      // Find ledger terms by matching name and year (try exact match first, then cleaned name)
+      // Find ledger terms by matching name and year
       const cleanTermName = (name: string) => name.replace(/\s+\d{4}$/, '').trim();
+      const findLedgerTerm = (academicTerm: AcademicTerm, list: LedgerTerm[]) => {
+        const cleanName = cleanTermName(academicTerm.term_name);
+        return list.find(lt => {
+          const matchName = lt.name === academicTerm.term_name || 
+                          lt.name === cleanName || 
+                          `${lt.name} ${lt.academic_year_name}` === academicTerm.term_name;
+          return matchName && lt.academic_year_name === academicTerm.year;
+        });
+      };
       
-      // First, ensure ledger terms exist - if not, create them
-      let prevLedgerTerm = previousActive
-        ? ledgerTerms.find(lt => {
-            const cleanPrev = cleanTermName(previousActive.term_name);
-            return (lt.name === previousActive.term_name || lt.name === cleanPrev) &&
-                   lt.academic_year_name === previousActive.year;
-          })
-        : null;
+      let prevLedgerTerm = previousActive ? findLedgerTerm(previousActive, ledgerTerms) : null;
+      let newLedgerTerm = findLedgerTerm(termToActivate, ledgerTerms);
       
-      let newLedgerTerm = ledgerTerms.find(lt => {
-        const cleanNew = cleanTermName(termToActivate.term_name);
-        return (lt.name === termToActivate.term_name || lt.name === cleanNew) &&
-               lt.academic_year_name === termToActivate.year;
+      console.log('[TermSwitch] Initial lookup:', { 
+        prev: previousActive?.term_name, 
+        prevFound: !!prevLedgerTerm,
+        new: termToActivate.term_name,
+        newFound: !!newLedgerTerm 
       });
-      
-      // If ledger terms don't exist, create them by updating settings (which triggers resolveLedgerTermFromSettings)
+
+      // If new ledger term doesn't exist, try to create it
       if (!newLedgerTerm) {
         try {
-          // Force create ledger term by updating settings first
+          console.log('[TermSwitch] New ledger term not found, attempting to create...');
+          const fullTermName = termToActivate.term_name.includes(termToActivate.year) 
+            ? termToActivate.term_name 
+            : `${termToActivate.term_name} ${termToActivate.year}`;
+
           await apiService.put('/settings', {
-            current_term: `${termToActivate.term_name} ${termToActivate.year}`,
+            current_term: fullTermName,
             current_year: termToActivate.year,
             skip_auto_post: true,
           });
-          // Reload ledger terms to get the newly created one
+          
           const updatedLedgerData = await apiService.get<LedgerTerm[]>('/finance/terms');
           const updatedLedgerList = Array.isArray(updatedLedgerData) ? updatedLedgerData : [];
           setLedgerTerms(updatedLedgerList.map((t: any) => ({
@@ -157,54 +165,52 @@ const AcademicTermManager = () => {
             academic_year_id: parseInt(String(t.academic_year_id), 10),
             academic_year_name: t.academic_year_name || ''
           })));
-          // Find it again
-          newLedgerTerm = updatedLedgerList.find((lt: any) => {
-            const cleanNew = cleanTermName(termToActivate.term_name);
-            return (lt.name === termToActivate.term_name || lt.name === cleanNew) &&
-                   lt.academic_year_name === termToActivate.year;
-          });
+          
+          newLedgerTerm = findLedgerTerm(termToActivate, updatedLedgerList.map((t: any) => ({
+            id: parseInt(String(t.id), 10),
+            name: t.name || '',
+            is_current: t.is_current || false,
+            academic_year_id: parseInt(String(t.academic_year_id), 10),
+            academic_year_name: t.academic_year_name || ''
+          })));
+          console.log('[TermSwitch] After creation attempt:', { newFound: !!newLedgerTerm });
         } catch (err: any) {
-          throw new Error(
-            `CRITICAL: Failed to create ledger term for ${termToActivate.term_name} ${termToActivate.year}. ` +
-            `Error: ${err?.message || 'Unknown error'}. Term switching requires ledger terms.`
-          );
+          throw new Error(`CRITICAL: Failed to create ledger term for ${termToActivate.term_name}. ${err?.message}`);
         }
       }
       
       // If previous term exists but ledger term not found, try to create it
       if (previousActive && !prevLedgerTerm) {
         try {
+          console.log('[TermSwitch] Prev ledger term not found, attempting to create...');
+          const fullTermName = previousActive.term_name.includes(previousActive.year) 
+            ? previousActive.term_name 
+            : `${previousActive.term_name} ${previousActive.year}`;
+
           await apiService.put('/settings', {
-            current_term: `${previousActive.term_name} ${previousActive.year}`,
+            current_term: fullTermName,
             current_year: previousActive.year,
             skip_auto_post: true,
           });
           const updatedLedgerData = await apiService.get<LedgerTerm[]>('/finance/terms');
           const updatedLedgerList = Array.isArray(updatedLedgerData) ? updatedLedgerData : [];
-          setLedgerTerms(updatedLedgerList.map((t: any) => ({
+          prevLedgerTerm = findLedgerTerm(previousActive, updatedLedgerList.map((t: any) => ({
             id: parseInt(String(t.id), 10),
             name: t.name || '',
             is_current: t.is_current || false,
             academic_year_id: parseInt(String(t.academic_year_id), 10),
             academic_year_name: t.academic_year_name || ''
           })));
-          prevLedgerTerm = updatedLedgerList.find((lt: any) => {
-            const cleanPrev = cleanTermName(previousActive.term_name);
-            return (lt.name === previousActive.term_name || lt.name === cleanPrev) &&
-                   lt.academic_year_name === previousActive.year;
-          });
+          console.log('[TermSwitch] Prev creation attempt:', { prevFound: !!prevLedgerTerm });
         } catch (err: any) {
-          // If we can't create previous term's ledger term, we can still proceed if it's the first term
-          console.warn(`Could not create ledger term for previous term ${previousActive.term_name} ${previousActive.year}:`, err);
+          console.warn('[TermSwitch] Could not create previous ledger term:', err);
         }
       }
 
-      // MANDATORY: newLedgerTerm MUST exist. prevLedgerTerm can be null for first term.
       if (!newLedgerTerm) {
         throw new Error(
-          `CRITICAL: Cannot switch terms - ledger term for new term not found and could not be created. ` +
-          `New term: ${termToActivate.term_name} ${termToActivate.year}. ` +
-          `This is a system error - term switching requires valid ledger terms.`
+          `CRITICAL: Ledger term for "${termToActivate.term_name} ${termToActivate.year}" could not be resolved. ` +
+          `Please ensure a corresponding term exists in the Finance section.`
         );
       }
       
@@ -243,8 +249,12 @@ const AcademicTermManager = () => {
 
       // Update settings for display ONLY, and explicitly skip any automatic
       // fee/arrears posting here. All finance logic is handled by /finance/switch-term.
+      const finalTermName = termToActivate.term_name.includes(termToActivate.year) 
+        ? termToActivate.term_name 
+        : `${termToActivate.term_name} ${termToActivate.year}`;
+
       await apiService.put('/settings', {
-        current_term: `${termToActivate.term_name} ${termToActivate.year}`,
+        current_term: finalTermName,
         current_year: termToActivate.year,
         skip_auto_post: true,
       });

@@ -152,13 +152,28 @@ interface DataContextType {
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
+// Helper to format dates to YYYY-MM-DD for HTML date inputs
+const formatDateForInput = (date: any): string => {
+  if (!date) return '';
+  if (typeof date === 'string') {
+    return date.split('T')[0];
+  }
+  try {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return '';
+    return d.toISOString().split('T')[0];
+  } catch {
+    return '';
+  }
+};
+
 // Helper function to map backend student to frontend format
 const mapStudent = (backendStudent: any): Student => ({
   id: backendStudent.id.toString(),
   firstName: backendStudent.first_name,
   lastName: backendStudent.last_name,
   gender: backendStudent.gender || '',
-  dateOfBirth: backendStudent.date_of_birth || '',
+  dateOfBirth: formatDateForInput(backendStudent.date_of_birth),
   nationality: backendStudent.nationality || '',
   studentId: backendStudent.student_id,
   admissionNumber: backendStudent.admission_number,
@@ -170,7 +185,7 @@ const mapStudent = (backendStudent: any): Student => ({
   numberOfSiblings: backendStudent.number_of_siblings || 0,
   namesOfSiblings: backendStudent.names_of_siblings || '',
   previousSchool: backendStudent.previous_school || '',
-  dateOfAdmission: backendStudent.date_of_admission || '',
+  dateOfAdmission: formatDateForInput(backendStudent.date_of_admission),
   notes: backendStudent.notes || '',
   passportPhotoUrl: backendStudent.passport_photo_url || undefined,
   isBeneficiary: backendStudent.is_beneficiary || false,
@@ -209,7 +224,7 @@ const mapTeacher = (backendTeacher: any): Teacher => ({
   id: backendTeacher.id.toString(),
   fullName: backendTeacher.full_name,
   gender: backendTeacher.gender || '',
-  dateOfBirth: backendTeacher.date_of_birth || '',
+  dateOfBirth: formatDateForInput(backendTeacher.date_of_birth),
   staffId: backendTeacher.staff_id,
   phoneNumber: backendTeacher.phone_number || '',
   email: backendTeacher.email || '',
@@ -217,7 +232,7 @@ const mapTeacher = (backendTeacher: any): Teacher => ({
   subjectsTaught: backendTeacher.subjects_taught || [],
   classAssigned: backendTeacher.class_name || '',
   classAssignedId: backendTeacher.class_assigned_id,
-  employmentDate: backendTeacher.employment_date || '',
+  employmentDate: formatDateForInput(backendTeacher.employment_date),
   monthlySalary: backendTeacher.monthly_salary || 0,
   employmentStatus: backendTeacher.employment_status || '',
   notes: backendTeacher.notes || '',
@@ -309,7 +324,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         class_name: f.class_name || '',
         term: f.term,
         amount: parseFloat(f.amount),
-        dueDate: f.due_date || '',
+        dueDate: formatDateForInput(f.due_date),
         description: f.description || '',
       })));
       const rawPayments = Array.isArray(paymentsRes)
@@ -322,7 +337,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         studentId: (p.student_id ?? p.studentId)?.toString() || '',
         studentIdNum: p.student_id ?? p.studentId,
         amount: parseFloat(p.amount ?? 0),
-        date: p.payment_date ?? p.date,
+        date: formatDateForInput(p.payment_date ?? p.date),
         paymentMethod: p.payment_method ?? p.paymentMethod ?? '',
         term: p.term ?? '',
         notes: p.notes ?? '',
@@ -332,7 +347,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         id: i.id.toString(),
         source: i.source,
         amount: parseFloat(i.amount),
-        date: i.income_date,
+        date: formatDateForInput(i.income_date),
         paymentMethod: i.payment_method || '',
         receivedBy: i.received_by || '',
         notes: i.notes || '',
@@ -346,7 +361,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         category: e.category || '',
         amount: parseFloat(e.amount),
         payeeName: e.payee_name || '',
-        paymentDate: e.payment_date,
+        paymentDate: formatDateForInput(e.payment_date),
         paymentMethod: e.payment_method || '',
         purpose: e.purpose || '',
         notes: e.notes || '',

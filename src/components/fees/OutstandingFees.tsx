@@ -33,7 +33,12 @@ const OutstandingFees = () => {
         feeStructures || [],
         paymentsArray,
         student.classAssignedId,
-        arrearsBalances
+        arrearsBalances,
+        {
+          isBeneficiary: !!student.isBeneficiary,
+          discountType: student.discountType,
+          discountValue: student.discountValue
+        }
       );
 
       const outstanding = Math.max(0, (feeCalculation.totalAmountDue ?? feeCalculation.currentTermFee) - feeCalculation.totalPaid);

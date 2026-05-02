@@ -23,6 +23,7 @@ interface Student {
   studentId: string;
   admissionNumber: string;
   classAssigned: string;
+  classAssignedId?: number;
   guardianName: string;
   guardianContact: string;
   homeAddress: string;
@@ -93,9 +94,19 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
 
   const handleInputChange = (field: keyof Student, value: string | number) => {
     if (formData) {
+      const updates: any = { [field]: value };
+      
+      // If class changed, find and update classAssignedId
+      if (field === 'classAssigned') {
+        const classObj = classes.find(c => c.className === value);
+        if (classObj) {
+          updates.classAssignedId = parseInt(classObj.id, 10);
+        }
+      }
+
       setFormData({
         ...formData,
-        [field]: value
+        ...updates
       });
     }
   };
@@ -142,6 +153,28 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData) return;
+
+    // Validation
+    if (
+      !formData.firstName || 
+      !formData.lastName || 
+      !formData.gender || 
+      !formData.dateOfBirth || 
+      !formData.nationality ||
+      !formData.classAssigned ||
+      !formData.dateOfAdmission ||
+      !formData.guardianName ||
+      !formData.guardianContact ||
+      !formData.homeAddress
+    ) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in all required fields marked with *",
+        variant: "destructive"
+      });
+      return;
+    }
+
     if (user?.role === 'super-admin') {
       performUpdate();
     } else {
@@ -175,7 +208,6 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
         </DialogHeader>
         
         <form onSubmit={handleSubmit} className="space-y-6">
-
           {/* Passport Photo */}
           <div className="space-y-3">
             <h3 className="font-semibold text-lg">Passport Photo</h3>
@@ -425,59 +457,83 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
 
             {formData.isBeneficiary && (
               <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="beneficiaryType">Beneficiary Type</Label>
-                    <Select 
-                      value={formData.beneficiaryType} 
-                      onValueChange={(value) => handleInputChange('beneficiaryType', value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Full Scholarship">Full Scholarship</SelectItem>
-                        <SelectItem value="Partial Scholarship">Partial Scholarship</SelectItem>
-                        <SelectItem value="Staff Child Discount">Staff Child Discount</SelectItem>
-                        <SelectItem value="Bursary">Bursary</SelectItem>
-                        <SelectItem value="Sibling Discount">Sibling Discount</SelectItem>
-                        <SelectItem value="Other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="discountType">Discount Method</Label>
-                    <Select 
-                      value={formData.discountType} 
-                      onValueChange={(value: 'percentage' | 'fixed') => handleInputChange('discountType', value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select method" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="percentage">Percentage (%)</SelectItem>
-                        <SelectItem value="fixed">Fixed Amount</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div className="flex items-center gap-2 px-3 py-2 bg-indigo-50 rounded-lg border border-indigo-100 mb-2">
+                  <Switch
+                    id="isFullScholarship"
+                    checked={formData.discountType === 'percentage' && formData.discountValue === 100}
+                    onCheckedChange={(checked) => {
+                      if (checked) {
+                        setFormData({
+                          ...formData,
+                          discountType: 'percentage',
+                          discountValue: 100,
+                          beneficiaryType: formData.beneficiaryType || 'Full Scholarship'
+                        });
+                      } else {
+                        setFormData({
+                          ...formData,
+                          discountValue: 0
+                        });
+                      }
+                    }}
+                  />
+                  <Label htmlFor="isFullScholarship" className="text-indigo-900 font-bold cursor-pointer">
+                    Full Scholarship (100% Free)
+                  </Label>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="discountValue">
-                      {formData.discountType === 'percentage' ? 'Discount Percentage (%)' : 'Discount Amount'}
-                    </Label>
-                    <Input
-                      id="discountValue"
-                      type="number"
-                      min="0"
-                      max={formData.discountType === 'percentage' ? 100 : undefined}
-                      value={formData.discountValue}
-                      onChange={(e) => handleInputChange('discountValue', parseFloat(e.target.value) || 0)}
-                      className="font-bold text-indigo-600"
-                    />
+                {!(formData.discountType === 'percentage' && formData.discountValue === 100) && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in duration-300">
+                    <div className="space-y-2">
+                      <Label htmlFor="beneficiaryType">Beneficiary Type</Label>
+                      <Select 
+                        value={formData.beneficiaryType} 
+                        onValueChange={(value) => handleInputChange('beneficiaryType', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Full Scholarship">Full Scholarship</SelectItem>
+                          <SelectItem value="Partial Scholarship">Partial Scholarship</SelectItem>
+                          <SelectItem value="Staff Child Discount">Staff Child Discount</SelectItem>
+                          <SelectItem value="Bursary">Bursary</SelectItem>
+                          <SelectItem value="Sibling Discount">Sibling Discount</SelectItem>
+                          <SelectItem value="Other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="discountType">Discount Method</Label>
+                      <Select 
+                        value={formData.discountType} 
+                        onValueChange={(value: 'percentage' | 'fixed') => handleInputChange('discountType', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select method" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="percentage">Percentage (%)</SelectItem>
+                          <SelectItem value="fixed">Fixed Amount</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label htmlFor="discountValue">
+                        {formData.discountType === 'percentage' ? 'Discount Percentage (%)' : 'Discount Amount'}
+                      </Label>
+                      <Input
+                        id="discountValue"
+                        type="number"
+                        min="0"
+                        max={formData.discountType === 'percentage' ? 100 : undefined}
+                        value={formData.discountValue}
+                        onChange={(e) => handleInputChange('discountValue', parseFloat(e.target.value) || 0)}
+                        className="font-bold text-indigo-600"
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="space-y-2">
                   <Label htmlFor="beneficiaryNotes">Scholarship Notes</Label>
@@ -492,27 +548,27 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
               </div>
             )}
           </div>
+
+          {showPassword && (
+            <div className="border-t pt-4 space-y-4">
+              <Label>Enter your password to confirm this update</Label>
+              <div className="flex gap-2">
+                <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Your password" required className="flex-1" />
+                <Button type="button" variant="outline" onClick={() => { setShowPassword(false); setPassword(''); }}>Cancel</Button>
+                <Button type="button" onClick={handlePasswordConfirmAndUpdate}>Confirm</Button>
+              </div>
+            </div>
+          )}
+
+          {!showPassword && (
+            <DialogFooter className="pt-6 border-t border-slate-100">
+              <Button type="button" variant="outline" onClick={onClose} disabled={photoUploading}>Cancel</Button>
+              <Button type="submit" disabled={photoUploading}>
+                {photoUploading ? 'Saving…' : 'Update Student'}
+              </Button>
+            </DialogFooter>
+          )}
         </form>
-
-        {showPassword && (
-          <div className="border-t pt-4 space-y-4">
-            <Label>Enter your password to confirm this update</Label>
-            <form onSubmit={handlePasswordConfirmAndUpdate} className="flex gap-2">
-              <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Your password" required className="flex-1" />
-              <Button type="button" variant="outline" onClick={() => { setShowPassword(false); setPassword(''); }}>Cancel</Button>
-              <Button type="submit">Confirm</Button>
-            </form>
-          </div>
-        )}
-
-        {!showPassword && (
-          <DialogFooter>
-            <Button variant="outline" onClick={onClose} disabled={photoUploading}>Cancel</Button>
-            <Button type="submit" disabled={photoUploading}>
-              {photoUploading ? 'Saving…' : 'Update Student'}
-            </Button>
-          </DialogFooter>
-        )}
       </DialogContent>
     </Dialog>
   );

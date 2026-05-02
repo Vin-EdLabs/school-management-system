@@ -28,7 +28,12 @@ const StudentBalances = () => {
       feeStructures || [],
       payments || [],
       student.classAssignedId,
-      arrearsBalances
+      arrearsBalances,
+      {
+        isBeneficiary: !!student.isBeneficiary,
+        discountType: student.discountType,
+        discountValue: student.discountValue
+      }
     );
     const feeStatus = calculateStudentFeeStatusSync(feeCalculation);
     const balance = Math.max(0, feeCalculation.totalAmountDue - feeCalculation.totalPaid);
@@ -241,8 +246,13 @@ const StudentBalances = () => {
                   <TableRow key={student.id}>
                     <TableCell>
                       <div>
-                        <div className="font-medium">
+                        <div className="font-medium flex items-center gap-2">
                           {student.firstName} {student.lastName}
+                          {student.isBeneficiary && (
+                            <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] h-5 px-1.5 font-bold">
+                              Beneficiary
+                            </Badge>
+                          )}
                         </div>
                         <div className="text-sm text-gray-500">
                           ID: {student.studentId}

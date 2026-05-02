@@ -63,7 +63,12 @@ const DashboardHome = () => {
       feeStructures || [],
       payments || [],
       student.classAssignedId,
-      arrearsBalances
+      arrearsBalances,
+      {
+        isBeneficiary: !!student.isBeneficiary,
+        discountType: student.discountType,
+        discountValue: student.discountValue
+      }
     );
     const outstanding = Math.max(0, (feeCalc.totalAmountDue ?? feeCalc.currentTermFee) - feeCalc.totalPaid);
     return totalOwed + outstanding;

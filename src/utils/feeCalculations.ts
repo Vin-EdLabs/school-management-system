@@ -8,6 +8,8 @@ export interface FeeCalculation {
   totalAmountDue: number;
   totalPaid: number;
   currentTermFee: number;
+  baseFee?: number;
+  discountAmount?: number;
 }
 
 export interface StudentPaymentRecord {
@@ -132,7 +134,8 @@ export const calculateStudentFeesSync = (
   feeStructures: any[],
   payments: any[],
   studentClassId?: number | string | null,
-  arrearsBalances?: Record<string, number> | null
+  arrearsBalances?: Record<string, number> | null,
+  studentBeneficiaryInfo?: { isBeneficiary: boolean; discountType?: string; discountValue?: number }
 ): FeeCalculation => {
   if (!currentTerm || currentTerm === 'Not Set') {
     return { totalFee: 0, arrears: 0, creditBalance: 0, totalAmountDue: 0, totalPaid: 0, currentTermFee: 0 };
@@ -146,7 +149,19 @@ export const calculateStudentFeesSync = (
   };
   const termMatch = (t: string | undefined) => termsMatch(currentTerm, t);
   const matchingFees = (feeStructures || []).filter((fee: any) => classMatch(fee) && termMatch(fee.term));
-  const currentTermFee = matchingFees.reduce((sum: number, f: any) => sum + (parseFloat(f.amount) || 0), 0);
+  const baseTermFee = matchingFees.reduce((sum: number, f: any) => sum + (parseFloat(f.amount) || 0), 0);
+  
+  // Apply beneficiary discount
+  let currentTermFee = baseTermFee;
+  if (studentBeneficiaryInfo?.isBeneficiary) {
+    const { discountType, discountValue = 0 } = studentBeneficiaryInfo;
+    if (discountType === 'percentage') {
+      currentTermFee = baseTermFee - (baseTermFee * (discountValue / 100));
+    } else if (discountType === 'fixed') {
+      currentTermFee = Math.max(0, baseTermFee - discountValue);
+    }
+  }
+
   const previousArrears = (arrearsBalances && arrearsBalances[studentId]) ? arrearsBalances[studentId] : 0;
   const totalPaid = (payments || [])
     .filter((p: any) => {
@@ -165,6 +180,8 @@ export const calculateStudentFeesSync = (
     totalAmountDue,
     totalPaid,
     currentTermFee,
+    baseFee: baseTermFee,
+    discountAmount: baseTermFee - currentTermFee
   };
 };
 

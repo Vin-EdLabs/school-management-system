@@ -47,7 +47,12 @@ const RecordPayment = () => {
       feeStructures || [],
       payments || [],
       student.classAssignedId,
-      arrearsBalances
+      arrearsBalances,
+      {
+        isBeneficiary: !!student.isBeneficiary,
+        discountType: student.discountType,
+        discountValue: student.discountValue
+      }
     );
   }, [formData.studentId, currentTerm, students, feeStructures, payments, arrearsBalances]);
 
@@ -184,10 +189,27 @@ const RecordPayment = () => {
                 ) : (
                   <>
                     <div className="bg-blue-50 px-4 py-3 grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Term Fee:</span>
-                        <span className="font-medium">GHS {selectedStudentFeeDetails.currentTermFee.toFixed(2)}</span>
-                      </div>
+                      {selectedStudentFeeDetails.discountAmount && selectedStudentFeeDetails.discountAmount > 0 ? (
+                        <>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Base Fee:</span>
+                            <span className="font-medium line-through decoration-slate-400">GHS {selectedStudentFeeDetails.baseFee?.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-indigo-600 font-medium italic">Beneficiary Discount:</span>
+                            <span className="font-semibold text-indigo-600">− GHS {selectedStudentFeeDetails.discountAmount.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between border-t border-blue-100 pt-1">
+                            <span className="text-gray-600 font-semibold">Net Term Fee:</span>
+                            <span className="font-bold">GHS {selectedStudentFeeDetails.currentTermFee.toFixed(2)}</span>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Term Fee:</span>
+                          <span className="font-medium">GHS {selectedStudentFeeDetails.currentTermFee.toFixed(2)}</span>
+                        </div>
+                      )}
                       {selectedStudentFeeDetails.arrears > 0 && (
                         <div className="flex justify-between">
                           <span className="text-amber-700">Arrears (prev term):</span>

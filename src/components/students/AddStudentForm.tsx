@@ -74,10 +74,21 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.firstName || !formData.lastName || !formData.gender || !formData.dateOfBirth || !formData.classAssigned) {
+    if (
+      !formData.firstName || 
+      !formData.lastName || 
+      !formData.gender || 
+      !formData.dateOfBirth || 
+      !formData.nationality ||
+      !formData.classAssigned ||
+      !formData.dateOfAdmission ||
+      !formData.guardianName ||
+      !formData.guardianContact ||
+      !formData.homeAddress
+    ) {
       toast({
         title: "Validation Error",
-        description: "Please fill in all required fields",
+        description: "Please fill in all required fields marked with *",
         variant: "destructive"
       });
       return;
@@ -244,12 +255,13 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
                 />
               </div>
               <div className="space-y-2.5">
-                <Label htmlFor="nationality" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Nationality</Label>
+                <Label htmlFor="nationality" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Nationality <span className="text-red-500">*</span></Label>
                 <Input
                   id="nationality"
                   value={formData.nationality}
                   onChange={(e) => handleInputChange('nationality', e.target.value)}
                   placeholder="Enter nationality"
+                  required
                   className="h-12 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl"
                 />
               </div>
@@ -295,35 +307,38 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
             {/* Guardian Information */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2.5">
-                <Label htmlFor="guardianName" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Guardian Identity</Label>
+                <Label htmlFor="guardianName" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Guardian Identity <span className="text-red-500">*</span></Label>
                 <Input
                   id="guardianName"
                   value={formData.guardianName}
                   onChange={(e) => handleInputChange('guardianName', e.target.value)}
                   placeholder="Enter primary guardian"
+                  required
                   className="h-12 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl"
                 />
               </div>
               <div className="space-y-2.5">
-                <Label htmlFor="guardianContact" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Communication Channel</Label>
+                <Label htmlFor="guardianContact" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Communication Channel <span className="text-red-500">*</span></Label>
                 <Input
                   id="guardianContact"
                   value={formData.guardianContact}
                   onChange={(e) => handleInputChange('guardianContact', e.target.value)}
                   placeholder="Phone or Email"
+                  required
                   className="h-12 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl"
                 />
               </div>
             </div>
 
             <div className="space-y-2.5">
-              <Label htmlFor="homeAddress" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Geographical Baseline</Label>
+              <Label htmlFor="homeAddress" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Geographical Baseline <span className="text-red-500">*</span></Label>
               <Textarea
                 id="homeAddress"
                 value={formData.homeAddress}
                 onChange={(e) => handleInputChange('homeAddress', e.target.value)}
                 placeholder="Full residential coordinates..."
                 rows={3}
+                required
                 className="bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20"
               />
             </div>
@@ -371,12 +386,13 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
                 />
               </div>
               <div className="space-y-2.5">
-                <Label htmlFor="dateOfAdmission" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Onboarding Date</Label>
+                <Label htmlFor="dateOfAdmission" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Onboarding Date <span className="text-red-500">*</span></Label>
                 <Input
                   id="dateOfAdmission"
                   type="date"
                   value={formData.dateOfAdmission}
                   onChange={(e) => handleInputChange('dateOfAdmission', e.target.value)}
+                  required
                   className="h-12 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl"
                 />
               </div>
@@ -415,59 +431,88 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
 
               {formData.isBeneficiary && (
                 <div className="space-y-8 animate-in fade-in slide-in-from-top-4 duration-500">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2.5">
-                      <Label htmlFor="beneficiaryType" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Support Archetype</Label>
-                      <Select 
-                        value={formData.beneficiaryType} 
-                        onValueChange={(value) => handleInputChange('beneficiaryType', value)}
-                      >
-                        <SelectTrigger className="h-12 bg-white dark:bg-slate-900 border-indigo-500/30 rounded-xl">
-                          <SelectValue placeholder="Select type" />
-                        </SelectTrigger>
-                        <SelectContent className="rounded-xl border-indigo-500/20 shadow-2xl">
-                          <SelectItem value="Full Scholarship" className="rounded-lg">Full Scholarship</SelectItem>
-                          <SelectItem value="Partial Scholarship" className="rounded-lg">Partial Scholarship</SelectItem>
-                          <SelectItem value="Staff Child Discount" className="rounded-lg">Staff Child Discount</SelectItem>
-                          <SelectItem value="Bursary" className="rounded-lg">Bursary</SelectItem>
-                          <SelectItem value="Sibling Discount" className="rounded-lg">Sibling Discount</SelectItem>
-                          <SelectItem value="Other" className="rounded-lg">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2.5">
-                      <Label htmlFor="discountType" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Calculation Metric</Label>
-                      <Select 
-                        value={formData.discountType} 
-                        onValueChange={(value: 'percentage' | 'fixed') => handleInputChange('discountType', value)}
-                      >
-                        <SelectTrigger className="h-12 bg-white dark:bg-slate-900 border-indigo-500/30 rounded-xl">
-                          <SelectValue placeholder="Select method" />
-                        </SelectTrigger>
-                        <SelectContent className="rounded-xl border-indigo-500/20 shadow-2xl">
-                          <SelectItem value="percentage" className="rounded-lg">Percentage (%)</SelectItem>
-                          <SelectItem value="fixed" className="rounded-lg">Fixed Sum</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  <div className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-950 rounded-2xl border border-indigo-500/20 shadow-inner">
+                    <Switch
+                      id="isFullScholarship"
+                      checked={formData.discountType === 'percentage' && formData.discountValue === 100}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setFormData(prev => ({
+                            ...prev,
+                            discountType: 'percentage',
+                            discountValue: 100,
+                            beneficiaryType: prev.beneficiaryType || 'Full Scholarship'
+                          }));
+                        } else {
+                          setFormData(prev => ({
+                            ...prev,
+                            discountValue: 0
+                          }));
+                        }
+                      }}
+                    />
+                    <Label htmlFor="isFullScholarship" className="text-sm font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest cursor-pointer">
+                      Full Scholarship (100% Free)
+                    </Label>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2.5">
-                      <Label htmlFor="discountValue" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">
-                        {formData.discountType === 'percentage' ? 'Quantum (%)' : 'Scalar Amount'}
-                      </Label>
-                      <Input
-                        id="discountValue"
-                        type="number"
-                        min="0"
-                        max={formData.discountType === 'percentage' ? 100 : undefined}
-                        value={formData.discountValue}
-                        onChange={(e) => handleInputChange('discountValue', parseFloat(e.target.value) || 0)}
-                        className="h-12 bg-white dark:bg-slate-950 border-indigo-500/30 rounded-xl font-black text-indigo-600 dark:text-indigo-400 text-lg shadow-inner"
-                      />
+                  {!(formData.discountType === 'percentage' && formData.discountValue === 100) && (
+                    <div className="space-y-8 animate-in fade-in duration-300">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-2.5">
+                          <Label htmlFor="beneficiaryType" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Support Archetype</Label>
+                          <Select 
+                            value={formData.beneficiaryType} 
+                            onValueChange={(value) => handleInputChange('beneficiaryType', value)}
+                          >
+                            <SelectTrigger className="h-12 bg-white dark:bg-slate-900 border-indigo-500/30 rounded-xl">
+                              <SelectValue placeholder="Select type" />
+                            </SelectTrigger>
+                            <SelectContent className="rounded-xl border-indigo-500/20 shadow-2xl">
+                              <SelectItem value="Full Scholarship" className="rounded-lg">Full Scholarship</SelectItem>
+                              <SelectItem value="Partial Scholarship" className="rounded-lg">Partial Scholarship</SelectItem>
+                              <SelectItem value="Staff Child Discount" className="rounded-lg">Staff Child Discount</SelectItem>
+                              <SelectItem value="Bursary" className="rounded-lg">Bursary</SelectItem>
+                              <SelectItem value="Sibling Discount" className="rounded-lg">Sibling Discount</SelectItem>
+                              <SelectItem value="Other" className="rounded-lg">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2.5">
+                          <Label htmlFor="discountType" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Calculation Metric</Label>
+                          <Select 
+                            value={formData.discountType} 
+                            onValueChange={(value: 'percentage' | 'fixed') => handleInputChange('discountType', value)}
+                          >
+                            <SelectTrigger className="h-12 bg-white dark:bg-slate-900 border-indigo-500/30 rounded-xl">
+                              <SelectValue placeholder="Select method" />
+                            </SelectTrigger>
+                            <SelectContent className="rounded-xl border-indigo-500/20 shadow-2xl">
+                              <SelectItem value="percentage" className="rounded-lg">Percentage (%)</SelectItem>
+                              <SelectItem value="fixed" className="rounded-lg">Fixed Sum</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-2.5">
+                          <Label htmlFor="discountValue" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">
+                            {formData.discountType === 'percentage' ? 'Quantum (%)' : 'Scalar Amount'}
+                          </Label>
+                          <Input
+                            id="discountValue"
+                            type="number"
+                            min="0"
+                            max={formData.discountType === 'percentage' ? 100 : undefined}
+                            value={formData.discountValue}
+                            onChange={(e) => handleInputChange('discountValue', parseFloat(e.target.value) || 0)}
+                            className="h-12 bg-white dark:bg-slate-950 border-indigo-500/30 rounded-xl font-black text-indigo-600 dark:text-indigo-400 text-lg shadow-inner"
+                          />
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   <div className="space-y-2.5">
                     <Label htmlFor="beneficiaryNotes" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Beneficiary Reasoning</Label>

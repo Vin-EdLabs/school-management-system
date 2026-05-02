@@ -234,7 +234,14 @@ const PromoteStudents = () => {
       currentTerm,
       student.classAssigned,
       feeStructures,
-      payments
+      payments,
+      student.classAssignedId,
+      null,
+      {
+        isBeneficiary: !!student.isBeneficiary,
+        discountType: student.discountType,
+        discountValue: student.discountValue
+      }
     );
 
     const outstandingBalance = Math.max(0, feeCalc.totalAmountDue - feeCalc.totalPaid);

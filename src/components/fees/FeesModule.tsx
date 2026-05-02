@@ -34,7 +34,7 @@ const FeesModule = () => {
   const [carryingArrears, setCarryingArrears] = useState(false);
 
   // Current term full string e.g. "Term 2 2027"
-  const currentTermFull = currentTerm && currentYear
+  const currentTermFull = (currentTerm && currentYear && !currentTerm.includes(currentYear))
     ? `${currentTerm} ${currentYear}`.trim()
     : currentTerm || '';
 
@@ -178,60 +178,7 @@ const FeesModule = () => {
         </TabsContent>
       </Tabs>
 
-      {/* Carry Arrears card */}
-      <Card className="mt-6 border-blue-200 bg-blue-50/50">
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2 text-blue-800">
-            <ArrowRightCircle className="w-4 h-4" />
-            Carry arrears to current term
-          </CardTitle>
-          <CardContent className="pt-1">
-            <p className="text-sm text-blue-800/90 mb-4">
-              Pick the <strong>previous term</strong> whose unpaid balances should become arrears in
-              {currentTermFull ? <strong> {currentTermFull}</strong> : ' the current term'}.
-              Safe to run multiple times — existing arrears are updated, not duplicated.
-            </p>
-            {previousTermOptions.length === 0 ? (
-              <p className="text-sm text-blue-600 italic">
-                {termOptions.length === 0
-                  ? 'No academic terms found. Create terms in Settings first.'
-                  : 'Only one term exists — nothing to carry forward yet.'}
-              </p>
-            ) : (
-              <div className="flex items-center gap-3 flex-wrap">
-                <Select value={selectedPrevTerm} onValueChange={setSelectedPrevTerm}>
-                  <SelectTrigger className="w-64 bg-white border-blue-300 text-blue-900">
-                    <SelectValue placeholder="Select previous term" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {previousTermOptions.map(t => (
-                      <SelectItem key={t.termLabel} value={t.termLabel}>
-                        {t.termLabel}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  size="sm"
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
-                  onClick={handleCarryArrears}
-                  disabled={carryingArrears || !selectedPrevTerm || !currentTermFull}
-                >
-                  {carryingArrears ? (
-                    <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />Carrying…</>
-                  ) : (
-                    <><ArrowRightCircle className="w-4 h-4 mr-2" />Carry Arrears Now</>
-                  )}
-                </Button>
-              </div>
-            )}
-            {!currentTermFull && (
-              <p className="text-xs text-red-500 mt-2">No active term detected. Set a current term in Settings first.</p>
-            )}
-          </CardContent>
-        </CardHeader>
-      </Card>
-
+      {/* Finance Cleanup Tool (Hidden/Settings only usually, but kept here for now if needed) */}
       <Card className="mt-4 border-amber-200 bg-amber-50/50">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2 text-amber-800">

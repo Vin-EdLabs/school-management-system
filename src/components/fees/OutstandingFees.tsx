@@ -7,14 +7,13 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
-import { Search, AlertTriangle, Download, DollarSign, Clock, TrendingUp, RefreshCw } from 'lucide-react';
+import { Search, AlertTriangle, Download, DollarSign, Clock, TrendingUp } from 'lucide-react';
 import { apiService } from '../../services/api';
 import { calculateStudentFeesSync, getActiveAcademicTerm } from '../../utils/feeCalculations';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
 
 const OutstandingFees = () => {
-  const { students, classes, feeStructures, payments, arrearsBalances, refresh } = useData();
-  const [isSyncing, setIsSyncing] = useState(false);
+  const { students, classes, feeStructures, payments, arrearsBalances } = useData();
   const { currentTerm } = useActiveTerm();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClass, setSelectedClass] = useState('All');
@@ -132,26 +131,7 @@ const OutstandingFees = () => {
     });
   };
 
-  const handleSyncArrears = async () => {
-    setIsSyncing(true);
-    try {
-      await apiService.post('/fee-calculations/refresh-arrears', {});
-      await refresh();
-      toast({
-        title: "Arrears Synced",
-        description: "Student arrears have been recalculated from the ledger history",
-      });
-    } catch (error) {
-      console.error('Arrears sync failed:', error);
-      toast({
-        title: "Sync Failed",
-        description: "Could not recalculate arrears. Please try again.",
-        variant: "destructive"
-      });
-    } finally {
-      setIsSyncing(false);
-    }
-  };
+
 
   return (
     <div className="space-y-6">
@@ -216,15 +196,6 @@ const OutstandingFees = () => {
           <div className="flex items-center justify-between">
             <CardTitle>Outstanding Fees Overview - {selectedTerm}</CardTitle>
             <div className="flex items-center space-x-2">
-              <Button
-                onClick={handleSyncArrears}
-                variant="outline"
-                size="sm"
-                disabled={isSyncing}
-              >
-                <RefreshCw className={`w-4 h-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
-                {isSyncing ? 'Syncing...' : 'Sync Arrears'}
-              </Button>
               <Button onClick={exportOutstandingReport} size="sm">
                 <Download className="w-4 h-4 mr-2" />
                 Export

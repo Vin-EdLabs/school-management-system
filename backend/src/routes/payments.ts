@@ -192,7 +192,11 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
 
     const receiptNumber = await generateReceiptNumber(tenantId, receiptPrefix);
 
-    const termToStore = academic_year ? `${term || ''} ${academic_year}`.trim() : (term || null);
+    const termStr = term || '';
+    const yearStr = academic_year || '';
+    const termToStore = (yearStr && !termStr.includes(yearStr)) 
+      ? `${termStr} ${yearStr}`.trim() 
+      : termStr;
 
     const insertResult = await query(
       `INSERT INTO payments (tenant_id, student_id, amount, payment_date, payment_method, term, notes, receipt_number)
@@ -233,6 +237,17 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
       payment,
       balance: balance || undefined,
     });
+
+    // ASYNC: Refresh arrears in background so the current term balance stays correct
+    // (If payment was for a previous term, current term arrears should drop)
+    (async () => {
+      try {
+        const { refreshArrearsForTenant } = await import('../services/arrearsService.js');
+        await refreshArrearsForTenant(tenantId);
+      } catch (err) {
+        console.error('[payments] Background arrears refresh failed:', err);
+      }
+    })();
   } catch (error) {
     console.error('Create payment error:', error);
     res.status(500).json({ error: 'Failed to create payment' });

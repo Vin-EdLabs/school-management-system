@@ -159,7 +159,9 @@ const FinancialDashboard = () => {
               </Button>
               <div className="text-right">
                 <p className="text-sm text-gray-500">Current Term</p>
-                <p className="text-lg font-semibold text-gray-800">{currentTerm} {currentYear}</p>
+                <p className="text-lg font-semibold text-gray-800">
+                  {currentTerm.includes(currentYear) ? currentTerm : `${currentTerm} ${currentYear}`}
+                </p>
               </div>
             </div>
           </div>

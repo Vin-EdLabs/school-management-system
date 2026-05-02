@@ -147,6 +147,27 @@ router.post('/switch-term', async (req: AuthRequest, res: Response) => {
       validatedBody.newTermId
     );
     
+    // AUTOMATICALLY REFRESH term_arrears TABLE
+    try {
+      // Get the name/year of the new term to force the sync for it
+      const { query } = await import('../db/connection.js');
+      const newTermRes = await query(
+        `SELECT t.name, ay.name as year 
+         FROM terms t 
+         JOIN academic_years ay ON t.academic_year_id = ay.id 
+         WHERE t.id = $1`, 
+        [validatedBody.newTermId]
+      );
+      const newTermData = newTermRes.rows[0];
+
+      const { refreshArrearsForTenant } = await import('../services/arrearsService.js');
+      await refreshArrearsForTenant(tenantId, newTermData?.name, newTermData?.year);
+      console.log(`[switch-term] Successfully auto-refreshed term_arrears for NEW term ${newTermData?.name} ${newTermData?.year}`);
+    } catch (refreshErr) {
+      console.error('[switch-term] Warning: Arrears refresh failed after switch:', refreshErr);
+      // We don't fail the whole request since the ledger work succeeded
+    }
+    
     console.log(`[switch-term] SUCCESS: Switched from term ${validatedBody.currentTermId} to ${validatedBody.newTermId}. Arrears rows: ${result.arrearsRowsInserted}`);
     return res.json(result);
   } catch (error: any) {

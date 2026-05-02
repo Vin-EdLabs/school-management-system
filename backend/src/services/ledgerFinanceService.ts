@@ -180,13 +180,30 @@ export const postFeesForClass = async (tenantId: number, classId: number, academ
     let postedCount = 0;
     let skippedCount = 0;
 
-    // 3. For each student, insert a new debit entry into the ledger.
+    // 3. For each student, insert a new debit entry into the ledger with discount applied.
     for (const student of studentsResult.rows) {
       try {
+        const studentDetailsRes = await client.query(
+          'SELECT is_beneficiary, discount_type, discount_value FROM students WHERE id = $1',
+          [student.id]
+        );
+        const s = studentDetailsRes.rows[0];
+        let finalFee = feeAmount;
+
+        if (s?.is_beneficiary) {
+          const dType = s.discount_type;
+          const dVal = parseFloat(s.discount_value || '0');
+          if (dType === 'percentage') {
+            finalFee = feeAmount - (feeAmount * dVal / 100);
+          } else if (dType === 'fixed') {
+            finalFee = Math.max(0, feeAmount - dVal);
+          }
+        }
+
         await client.query(
           `INSERT INTO student_ledger (tenant_id, student_id, academic_year_id, term_id, description, debit, credit, entry_type)
            VALUES ($1, $2, $3, $4, $5, $6, 0, 'term_fee')`,
-          [validatedTenantId, student.id, validatedAcademicYearId, validatedTermId, description, feeAmount]
+          [validatedTenantId, student.id, validatedAcademicYearId, validatedTermId, description, finalFee]
         );
         postedCount++;
       } catch (error: any) {
@@ -269,7 +286,11 @@ export const postFeesForNewTerm = async (tenantId: number, newTermId: number) =>
                 t.id as term_id,
                 'Term Fee - ' || t.name as description,
                 'term_fee' as entry_type,
-                fs.total as debit,
+                CASE 
+                  WHEN s.is_beneficiary = true AND s.discount_type = 'percentage' THEN fs.total - (fs.total * COALESCE(s.discount_value, 0) / 100)
+                  WHEN s.is_beneficiary = true AND s.discount_type = 'fixed' THEN GREATEST(0, fs.total - COALESCE(s.discount_value, 0))
+                  ELSE fs.total
+                END as debit,
                 0 as credit
             FROM students s
             INNER JOIN classes c ON s.class_assigned_id = c.id
@@ -386,11 +407,15 @@ export const postFeesForNewTermWithArrears = async (
     // Use full term name (e.g. "Term 3 2026") for consistency with school_settings/UI matching
     const nextAyRes = await client.query('SELECT name FROM academic_years WHERE id = $1', [nextTerm.academic_year_id]);
     const nextAyName = nextAyRes.rows[0]?.name || '';
-    const fullNextTermName = nextAyName ? `${nextTerm.name} ${nextAyName}`.trim() : nextTerm.name;
+    const fullNextTermName = (nextAyName && !nextTerm.name.includes(nextAyName)) 
+      ? `${nextTerm.name} ${nextAyName}`.trim() 
+      : nextTerm.name;
 
     const prevAyRes = await client.query('SELECT name FROM academic_years WHERE id = $1', [prevTerm.academic_year_id]);
     const prevAyName = prevAyRes.rows[0]?.name || '';
-    const fullPrevTermName = prevAyName ? `${prevTerm.name} ${prevAyName}`.trim() : prevTerm.name;
+    const fullPrevTermName = (prevAyName && !prevTerm.name.includes(prevAyName)) 
+      ? `${prevTerm.name} ${prevAyName}`.trim() 
+      : prevTerm.name;
     for (const row of prevBalances.rows) {
       const balance = parseFloat(row.balance);
       const studentId = Number(row.student_id);
@@ -436,7 +461,12 @@ export const postFeesForNewTermWithArrears = async (
          (tenant_id, student_id, academic_year_id, term_id, description, entry_type, debit, credit)
        SELECT
          s.tenant_id, s.id, t.academic_year_id, t.id,
-         'Term Fee - ' || t.name, 'term_fee', fs.total, 0
+         'Term Fee - ' || t.name, 'term_fee', 
+         CASE 
+           WHEN s.is_beneficiary = true AND s.discount_type = 'percentage' THEN fs.total - (fs.total * COALESCE(s.discount_value, 0) / 100)
+           WHEN s.is_beneficiary = true AND s.discount_type = 'fixed' THEN GREATEST(0, fs.total - COALESCE(s.discount_value, 0))
+           ELSE fs.total
+         END, 0
        FROM students s
        INNER JOIN classes c ON s.class_assigned_id = c.id
        INNER JOIN terms t ON t.id = $2 AND t.tenant_id = $1

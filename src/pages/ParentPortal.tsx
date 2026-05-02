@@ -696,7 +696,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                       {/* Report metadata */}
                       {report.schoolName && (
                         <p className="text-white/60 text-[10px] uppercase tracking-wider mb-3 font-medium">
-                          {report.schoolName} · {report.currentTerm} {report.currentYear}
+                          {report.schoolName} · {report.currentTerm.includes(report.currentYear) ? report.currentTerm : `${report.currentTerm} ${report.currentYear}`}
                         </p>
                       )}
                       <div className="flex items-center gap-4">
@@ -796,7 +796,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-white/70 text-xs mb-1">
-                        {finance.currentTerm} · {finance.currentYear}
+                        {finance.currentTerm.includes(finance.currentYear) ? finance.currentTerm : `${finance.currentTerm} ${finance.currentYear}`}
                       </p>
                       <p className="text-3xl font-black mt-1">{GH(Math.max(0, finance.balance))}</p>
                       <p className="text-white/80 text-sm mt-1">Outstanding Balance</p>

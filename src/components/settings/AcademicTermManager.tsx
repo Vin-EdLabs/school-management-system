@@ -86,9 +86,11 @@ const AcademicTermManager = () => {
       return;
     }
 
+    const cleanName = newTerm.name.replace(new RegExp(`\\s+${newTerm.year}$`), '').trim();
+
     try {
       await apiService.post('/settings/academic-terms', {
-        term_name: newTerm.name,
+        term_name: cleanName,
         year: newTerm.year,
         start_date: newTerm.startDate,
         end_date: newTerm.endDate,
@@ -312,8 +314,10 @@ const AcademicTermManager = () => {
 
   const handleUpdateTerm = async (termId: string, updatedData: Partial<AcademicTerm>) => {
     try {
+      const cleanName = updatedData.term_name?.replace(new RegExp(`\\s+${updatedData.year}$`), '').trim();
+
       await apiService.put(`/settings/academic-terms/${termId}`, {
-        term_name: updatedData.term_name,
+        term_name: cleanName || updatedData.term_name,
         year: updatedData.year,
         start_date: updatedData.start_date,
         end_date: updatedData.end_date

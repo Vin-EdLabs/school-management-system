@@ -19,17 +19,7 @@ const SidebarWrapper: React.FC<SidebarWrapperProps> = ({
   };
 
   return (
-    <SidebarProvider
-      style={
-        {
-          '--sidebar-background': '222 47% 11%',
-          '--sidebar-foreground': '210 40% 80%',
-          '--sidebar-accent': '222 47% 18%',
-          '--sidebar-accent-foreground': '0 0% 100%',
-          '--sidebar-border': '222 47% 18%',
-        } as React.CSSProperties
-      }
-    >
+    <SidebarProvider>
       <div className="flex h-screen w-full bg-slate-50/80 dark:bg-slate-950/80 overflow-hidden">
         <AppSidebar activeModule={activeModule} setActiveModule={setActiveModule} />
 

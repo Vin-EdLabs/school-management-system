@@ -174,7 +174,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
         <MenuSection items={menuItems.financial} label="Financial Ops" activeModule={activeModule} setActiveModule={setActiveModule} />
         <MenuSection items={menuItems.records} label="Data Center" activeModule={activeModule} setActiveModule={setActiveModule} />
         <MenuSection items={menuItems.system} label="System Engine" activeModule={activeModule} setActiveModule={setActiveModule} />
-        <SidebarSeparator className="bg-slate-800/50 mx-4 my-2" />
+        <SidebarSeparator className="bg-sidebar-border mx-4 my-2" />
         <MenuSection items={menuItems.ai} label="Innovation" activeModule={activeModule} setActiveModule={setActiveModule} />
       </SidebarContent>
 
@@ -183,7 +183,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
           <SidebarMenuItem className="flex justify-center">
             <SidebarMenuButton
               onClick={logout}
-              className="rounded-xl w-full h-10 text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-all group-data-[collapsible=icon]:w-10 group-data-[collapsible=icon]:justify-center"
+              className="rounded-xl w-full h-10 text-sidebar-foreground/60 hover:text-red-500 hover:bg-red-500/10 transition-all group-data-[collapsible=icon]:w-10 group-data-[collapsible=icon]:justify-center"
               tooltip="Terminate Session"
             >
               <LogOut className="h-4.5 w-4.5 shrink-0" />
@@ -193,10 +193,10 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
         </SidebarMenu>
         
         <div className="px-2 group-data-[collapsible=icon]:hidden">
-          <div className="p-3 bg-slate-800/40 rounded-2xl border border-slate-700/30">
-            <p className="text-[10px] text-slate-500 text-center font-medium leading-tight">
+          <div className="p-3 bg-sidebar-accent/30 rounded-2xl border border-sidebar-border">
+            <p className="text-[10px] text-sidebar-foreground/50 text-center font-medium leading-tight">
               Crafted with Excellence by <br />
-              <span className="font-black text-slate-300 uppercase tracking-widest text-[9px]">Technerve</span>
+              <span className="font-black text-sidebar-foreground uppercase tracking-widest text-[9px]">Technerve</span>
             </p>
           </div>
         </div>

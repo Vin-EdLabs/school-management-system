@@ -204,85 +204,85 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({ receiptData, onPrint, s
         <CardContent className="p-6 bg-slate-100/50">
           <div 
             id="receipt-content" 
-            className="bg-white p-6 shadow-sm mx-auto border border-slate-200"
+            className="bg-white p-6 shadow-sm mx-auto border border-slate-200 text-black"
             style={{ width: '80mm', minHeight: '120mm' }}
           >
             {/* Minimalist Web Preview */}
-            <div className="text-center mb-6 border-b border-dashed pb-6">
+            <div className="text-center mb-6 border-b border-dashed border-slate-300 pb-6">
               {logoUrl ? (
-                <img src={logoUrl} className="w-20 h-20 mx-auto mb-3 object-contain rounded-lg shadow-sm" alt="Logo" />
+                <img src={logoUrl} className="w-20 h-20 mx-auto mb-3 object-contain rounded-lg" alt="Logo" />
               ) : (
                 <div className="w-16 h-16 bg-slate-900 rounded-2xl mx-auto mb-3 flex items-center justify-center text-white text-2xl font-black shadow-lg shadow-slate-200">
                   {schoolName.slice(0, 1)}
                 </div>
               )}
               <h2 className="text-lg font-black uppercase leading-tight tracking-tight text-slate-900">{schoolName}</h2>
-              <p className="text-[10px] text-slate-500 mt-2 font-medium tracking-wide uppercase">{receiptSettings?.postal_address}</p>
-              <p className="text-[10px] text-slate-400 font-bold">{receiptSettings?.contact_phone && `Tel: ${receiptSettings.contact_phone}`}</p>
+              <p className="text-[10px] text-slate-700 mt-2 font-medium tracking-wide uppercase">{receiptSettings?.postal_address}</p>
+              <p className="text-[10px] text-slate-600 font-bold">{receiptSettings?.contact_phone && `Tel: ${receiptSettings.contact_phone}`}</p>
             </div>
 
             <div className="text-center mb-4">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Payment Receipt</p>
-              <p className="text-lg font-black leading-none mt-1">#{receiptData.receiptNumber}</p>
-              <p className="text-[8px] text-slate-400 mt-1 uppercase font-bold">Date: {new Date(receiptData.date).toLocaleDateString('en-GB')}</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-800">Payment Receipt</p>
+              <p className="text-lg font-black leading-none mt-1 text-slate-950">#{receiptData.receiptNumber}</p>
+              <p className="text-[8px] text-slate-600 mt-1 uppercase font-bold">Date: {new Date(receiptData.date).toLocaleDateString('en-GB')}</p>
             </div>
 
-            <div className="space-y-1 mb-4 text-[10px] border-b pb-4">
+            <div className="space-y-1 mb-4 text-[10px] border-b border-slate-200 pb-4">
               <div className="flex justify-between">
-                <span className="text-slate-400 font-medium">Student:</span>
-                <span className="font-bold">{receiptData.studentName}</span>
+                <span className="text-slate-600 font-bold">Student:</span>
+                <span className="font-black text-slate-950">{receiptData.studentName}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400 font-medium">Class:</span>
-                <span className="font-bold">{receiptData.className}</span>
+                <span className="text-slate-600 font-bold">Class:</span>
+                <span className="font-black text-slate-950">{receiptData.className}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400 font-medium">Term:</span>
-                <span className="font-bold">{receiptData.term}</span>
+                <span className="text-slate-600 font-bold">Term:</span>
+                <span className="font-black text-slate-950">{receiptData.term}</span>
               </div>
             </div>
 
-            <div className="bg-slate-50 border border-slate-900 p-3 text-center mb-4">
-              <p className="text-[8px] font-bold uppercase text-slate-500 tracking-tighter">Amount Paid</p>
-              <p className="text-xl font-black">GHS {(receiptData.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            <div className="bg-slate-100 border border-slate-900 p-3 text-center mb-4">
+              <p className="text-[8px] font-bold uppercase text-slate-700 tracking-tighter">Amount Paid</p>
+              <p className="text-xl font-black text-slate-950">GHS {(receiptData.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
             </div>
 
             <div className="space-y-1 text-[10px] mb-4">
-               <div className="flex justify-between border-b border-slate-100 pb-1 mb-1 font-bold text-slate-400 text-[8px] uppercase">
+               <div className="flex justify-between border-b border-slate-200 pb-1 mb-1 font-black text-slate-800 text-[8px] uppercase">
                  <span>Breakdown</span>
                  <span>Amount</span>
                </div>
                {receiptData.currentTermFee !== undefined && (
-                 <div className="flex justify-between">
-                   <span>Current Fee:</span>
-                   <span>{receiptData.currentTermFee.toFixed(2)}</span>
+                 <div className="flex justify-between text-slate-700">
+                   <span className="font-medium">Current Fee:</span>
+                   <span className="font-bold">{receiptData.currentTermFee.toFixed(2)}</span>
                  </div>
                )}
                {receiptData.arrears !== undefined && receiptData.arrears > 0 && (
-                 <div className="flex justify-between">
-                   <span>Old Arrears:</span>
-                   <span>{receiptData.arrears.toFixed(2)}</span>
+                 <div className="flex justify-between text-slate-700">
+                   <span className="font-medium">Old Arrears:</span>
+                   <span className="font-bold">{receiptData.arrears.toFixed(2)}</span>
                  </div>
                )}
-               <div className="flex justify-between pt-2 border-t font-black text-sm">
+               <div className="flex justify-between pt-2 border-t border-slate-300 font-black text-sm text-slate-950">
                  <span>Total Due:</span>
                  <span>{(receiptData.totalAmountDue || (receiptData.amount || 0)).toFixed(2)}</span>
                </div>
-               <div className="flex justify-between font-bold pt-1">
+               <div className="flex justify-between font-bold pt-1 text-slate-800">
                  <span>Balance:</span>
                  <span>{(receiptData.remainingBalance || 0).toFixed(2)}</span>
                </div>
             </div>
 
             {receiptData.notes && (
-              <div className="text-[8px] italic text-slate-500 border-t border-dashed pt-2 mb-4">
+              <div className="text-[8px] font-medium italic text-slate-700 border-t border-dashed border-slate-300 pt-2 mb-4">
                  Note: {receiptData.notes}
               </div>
             )}
 
-            <div className="text-center pt-4 border-t border-dashed">
-               <p className="text-[9px] font-black uppercase">{receiptSettings?.receipt_footer || 'Thank You!'}</p>
-               <p className="text-[7px] text-slate-400 mt-1 italic">Generated via Technerve SMS</p>
+            <div className="text-center pt-4 border-t border-dashed border-slate-300">
+               <p className="text-[9px] font-black uppercase text-slate-900">{receiptSettings?.receipt_footer || 'Thank You!'}</p>
+               <p className="text-[7px] text-slate-500 mt-1 italic font-bold">Generated via Technerve SMS</p>
             </div>
           </div>
 

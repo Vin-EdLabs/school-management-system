@@ -216,7 +216,7 @@ router.get('/me', authenticateParent, async (req: ParentRequest, res) => {
          s.id, s.first_name, s.last_name, s.student_id AS admission_number,
          s.gender, s.date_of_birth, s.class_assigned_id,
          s.passport_photo_url,
-         COALESCE(c.class_name, c.name, TRIM(CONCAT(COALESCE(c.level, ''), ' ', COALESCE(c.stream, '')))) AS class_name,
+         COALESCE(c.class_name, TRIM(CONCAT(COALESCE(c.level, ''), ' ', COALESCE(c.stream, '')))) AS class_name,
          c.level,
          t.name AS tenant_name,
          COALESCE(ss.logo_url, t.logo_url) AS school_logo_url,

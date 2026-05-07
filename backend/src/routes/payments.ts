@@ -155,7 +155,7 @@ router.get('/', async (req: AuthRequest, res) => {
                p.notes, p.receipt_number, p.created_at, p.updated_at,
                ''::text as term,
                ''::text as payment_method,
-               s.first_name, s.last_name, s.student_id as admission_no, s.admission_number, COALESCE(c.class_name, c.name) as class_name
+               s.first_name, s.last_name, s.student_id as admission_no, s.admission_number, c.class_name
         FROM payments p
         LEFT JOIN students s ON p.student_id = s.id
         LEFT JOIN classes c ON s.class_assigned_id = c.id
@@ -181,7 +181,7 @@ router.get('/', async (req: AuthRequest, res) => {
                  ''::text as notes,
                  ''::text as term,
                  ''::text as payment_method,
-                 s.first_name, s.last_name, s.student_id as admission_no, s.admission_number, COALESCE(c.class_name, c.name) as class_name
+                 s.first_name, s.last_name, s.student_id as admission_no, s.admission_number, c.class_name
           FROM payments p
           LEFT JOIN students s ON p.student_id = s.id
           LEFT JOIN classes c ON s.class_assigned_id = c.id
@@ -218,7 +218,7 @@ router.get('/:id', async (req: AuthRequest, res) => {
       result = await query(
         `SELECT p.id, p.tenant_id, p.student_id, p.amount, p.payment_date, p.payment_method,
                 p.term, p.notes, p.receipt_number, p.created_at, p.updated_at,
-                s.first_name, s.last_name, s.student_id as admission_no, s.admission_number, COALESCE(c.class_name, c.name) as class_name
+                s.first_name, s.last_name, s.student_id as admission_no, s.admission_number, c.class_name
          FROM payments p
          LEFT JOIN students s ON p.student_id = s.id
          LEFT JOIN classes c ON s.class_assigned_id = c.id
@@ -232,7 +232,7 @@ router.get('/:id', async (req: AuthRequest, res) => {
                   p.notes, p.receipt_number, p.created_at, p.updated_at,
                   ''::text as payment_method,
                   ''::text as term,
-                  s.first_name, s.last_name, s.student_id as admission_no, s.admission_number, COALESCE(c.class_name, c.name) as class_name
+                  s.first_name, s.last_name, s.student_id as admission_no, s.admission_number, c.class_name
            FROM payments p
            LEFT JOIN students s ON p.student_id = s.id
            LEFT JOIN classes c ON s.class_assigned_id = c.id
@@ -246,7 +246,7 @@ router.get('/:id', async (req: AuthRequest, res) => {
                   ''::text as notes,
                   ''::text as payment_method,
                   ''::text as term,
-                  s.first_name, s.last_name, s.student_id as admission_no, s.admission_number, COALESCE(c.class_name, c.name) as class_name
+                  s.first_name, s.last_name, s.student_id as admission_no, s.admission_number, c.class_name
            FROM payments p
            LEFT JOIN students s ON p.student_id = s.id
            LEFT JOIN classes c ON s.class_assigned_id = c.id

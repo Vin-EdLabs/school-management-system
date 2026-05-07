@@ -27,7 +27,7 @@ router.get('/', async (req: AuthRequest, res) => {
     
     const result = await query(
       `SELECT c.*, 
-              COALESCE(c.class_name, c.name) as class_name,
+              c.class_name,
               t.full_name as teacher_name, t.staff_id as teacher_staff_id,
               COUNT(s.id) as student_count
        FROM classes c
@@ -35,7 +35,7 @@ router.get('/', async (req: AuthRequest, res) => {
        LEFT JOIN students s ON s.class_assigned_id = c.id
        WHERE c.tenant_id = $1
        GROUP BY c.id, t.full_name, t.staff_id
-       ORDER BY COALESCE(c.level, ''), COALESCE(c.stream, ''), COALESCE(c.class_name, c.name, '')`,
+       ORDER BY COALESCE(c.level, ''), COALESCE(c.stream, ''), COALESCE(c.class_name, '')`,
       [tenantId]
     );
     
@@ -72,7 +72,7 @@ router.get('/:id', async (req: AuthRequest, res) => {
     const { id } = req.params;
     
     const classResult = await query(
-      `SELECT c.*, COALESCE(c.class_name, c.name) as class_name, t.full_name as teacher_name, t.staff_id as teacher_staff_id
+      `SELECT c.*, c.class_name, t.full_name as teacher_name, t.staff_id as teacher_staff_id
        FROM classes c
        LEFT JOIN teachers t ON c.assigned_teacher_id = t.id
        WHERE c.id = $1 AND c.tenant_id = $2`,

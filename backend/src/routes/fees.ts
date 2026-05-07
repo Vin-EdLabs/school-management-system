@@ -36,7 +36,7 @@ router.get('/', async (req: AuthRequest, res) => {
     const { classId, term } = req.query;
     
     let queryText = `
-      SELECT fs.*, COALESCE(c.class_name, c.name) as class_name, c.level, c.stream
+      SELECT fs.*, c.class_name, c.level, c.stream
       FROM fee_structures fs
       LEFT JOIN classes c ON fs.class_id = c.id
       WHERE fs.tenant_id = $1
@@ -63,7 +63,7 @@ router.get('/', async (req: AuthRequest, res) => {
     } catch {
       // Legacy schema fallback: fee_structures may not have tenant_id.
       let legacyQuery = `
-        SELECT fs.*, COALESCE(c.class_name, c.name) as class_name, c.level, c.stream
+        SELECT fs.*, c.class_name, c.level, c.stream
         FROM fee_structures fs
         LEFT JOIN classes c ON fs.class_id = c.id
         WHERE c.tenant_id = $1
@@ -96,7 +96,7 @@ router.get('/:id', async (req: AuthRequest, res) => {
     let result;
     try {
       result = await query(
-        `SELECT fs.*, COALESCE(c.class_name, c.name) as class_name, c.level, c.stream
+        `SELECT fs.*, c.class_name, c.level, c.stream
          FROM fee_structures fs
          LEFT JOIN classes c ON fs.class_id = c.id
          WHERE fs.id = $1 AND fs.tenant_id = $2`,
@@ -104,7 +104,7 @@ router.get('/:id', async (req: AuthRequest, res) => {
       );
     } catch {
       result = await query(
-        `SELECT fs.*, COALESCE(c.class_name, c.name) as class_name, c.level, c.stream
+        `SELECT fs.*, c.class_name, c.level, c.stream
          FROM fee_structures fs
          LEFT JOIN classes c ON fs.class_id = c.id
          WHERE fs.id = $1 AND c.tenant_id = $2`,

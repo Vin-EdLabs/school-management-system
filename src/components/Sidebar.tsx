@@ -26,6 +26,7 @@ import {
   User,
   History,
   MessageCircle,
+  BellRing,
 } from 'lucide-react';
 import { resolveLogoUrl } from '../services/tenantService';
 import {
@@ -87,6 +88,9 @@ const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
   ai: [
     ...(hasAccess('ai-assistant') ? [{ id: 'ai-assistant', label: 'AI Assistant', icon: Bot, badge: 'New' }] : []),
     ...(hasAccess('support-chat') ? [{ id: 'support-chat', label: 'Support Chat', icon: MessageCircle }] : []),
+  ],
+  notifications: [
+    ...(hasAccess('push-notifications') ? [{ id: 'push-notifications', label: 'Push Notifications', icon: BellRing }] : []),
   ],
 });
 
@@ -176,6 +180,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
         <MenuSection items={menuItems.system} label="System Engine" activeModule={activeModule} setActiveModule={setActiveModule} />
         <SidebarSeparator className="bg-sidebar-border mx-4 my-2" />
         <MenuSection items={menuItems.ai} label="Innovation" activeModule={activeModule} setActiveModule={setActiveModule} />
+        <MenuSection items={menuItems.notifications} label="Notifications" activeModule={activeModule} setActiveModule={setActiveModule} />
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border p-3 space-y-4 bg-sidebar-accent/50">

@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { useAuth } from '../contexts/AuthContext';
 import { GraduationCap, Lock, User, ArrowLeft, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import PwaInstallButton from './common/PwaInstallButton';
 
 const LoginPage = () => {
   const { schoolId } = useParams<{ schoolId?: string }>();
@@ -69,6 +70,13 @@ const LoginPage = () => {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-auto bg-slate-100 p-3 md:p-4">
+      <div className="absolute right-4 top-4 z-[110]">
+        <PwaInstallButton
+          variant="outline"
+          size="icon"
+          className="h-10 w-10 rounded-xl border-slate-200 bg-white/95 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50"
+        />
+      </div>
       <div className="w-full max-w-5xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl md:rounded-3xl">
         <div className="grid min-h-[560px] grid-cols-1 md:min-h-[620px] md:grid-cols-2">
           {/* Left: School branding / logo */}

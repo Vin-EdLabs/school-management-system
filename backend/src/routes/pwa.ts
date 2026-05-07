@@ -11,25 +11,41 @@ router.get('/manifest', async (req: TenantRequest, res) => {
     const appName = tenant?.name || 'ScholarNerve Parent Portal';
     const shortName = (tenant?.name || 'ScholarNerve').slice(0, 12);
     const primary = tenant?.primary_color || '#0f766e';
+    const secondary = tenant?.secondary_color || primary;
     const subdomain = tenant?.subdomain || tenant?.slug || 'default';
     const logo = tenant?.logo_url || '';
+    const tenantId = Number(tenant?.id || 0);
 
     const origin = `${req.protocol}://${req.get('host')}`;
     const icon192 = logo ? `${origin}${logo}` : `/school-assets/${subdomain}/logo-192.png`;
     const icon512 = logo ? `${origin}${logo}` : `/school-assets/${subdomain}/logo-512.png`;
+    const startUrl = tenantId > 0 ? `/portal/${tenantId}` : '/';
 
     return res
       .type('application/manifest+json')
       .json({
+        id: startUrl,
         name: appName,
         short_name: shortName,
-        start_url: '/',
+        description: `${appName} Parent Portal`,
+        start_url: startUrl,
+        scope: '/',
         display: 'standalone',
+        display_override: ['standalone', 'minimal-ui'],
+        orientation: 'portrait',
         background_color: primary,
-        theme_color: primary,
+        theme_color: secondary,
+        categories: ['education', 'productivity'],
         icons: [
-          { src: icon192, sizes: '192x192', type: 'image/png' },
-          { src: icon512, sizes: '512x512', type: 'image/png' }
+          { src: icon192, sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+          { src: icon512, sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
+        ],
+        shortcuts: [
+          {
+            name: 'Open Parent Portal',
+            short_name: 'Portal',
+            url: startUrl,
+          }
         ]
       });
   } catch (error) {

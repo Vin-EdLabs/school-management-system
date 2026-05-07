@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Bot, User, Clock, Calendar, Moon, Sun } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTheme } from '../../contexts/ThemeContext';
+import PwaInstallButton from '../common/PwaInstallButton';
 
 interface MainHeaderProps {
   onAiAssistantClick?: () => void;
@@ -82,6 +83,11 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick }) => {
         </div>
 
         <div className="flex items-center gap-2">
+          <PwaInstallButton
+            variant="ghost"
+            size="icon"
+            className="h-10 w-10 rounded-xl text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-indigo-950/50"
+          />
           <Button
             variant="ghost"
             size="icon"

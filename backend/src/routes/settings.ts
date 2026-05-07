@@ -10,6 +10,7 @@ import { requireRole, requirePrimaryAdminOrSuperAdmin } from '../middleware/auth
 import { setTenantContext } from '../middleware/tenant.js';
 import { resolveLedgerTermFromSettings, postFeesForNewTerm, postFeesForNewTermWithArrears } from '../services/ledgerFinanceService.js';
 import { getIO } from '../socket.js';
+import { sendPushToTenantParents } from '../services/webPushService.js';
 
 const router = express.Router();
 
@@ -499,6 +500,84 @@ router.post('/users', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, 
     console.error('Create school user error:', error);
     if (error.code === '23505') return res.status(409).json({ error: 'Username already exists' });
     res.status(500).json({ error: 'Failed to create user' });
+  }
+});
+
+// Push diagnostics (primary admin or super-admin)
+router.get('/push/stats', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    if (!tenantId) return res.status(400).json({ error: 'Tenant context required' });
+
+    const parentsRes = await query(
+      'SELECT COUNT(*)::int AS total FROM parent_portal_accounts WHERE tenant_id = $1',
+      [tenantId]
+    );
+    const subscribedRes = await query(
+      'SELECT COUNT(DISTINCT parent_account_id)::int AS total FROM parent_push_subscriptions WHERE tenant_id = $1',
+      [tenantId]
+    );
+    const endpointsRes = await query(
+      'SELECT COUNT(*)::int AS total FROM parent_push_subscriptions WHERE tenant_id = $1',
+      [tenantId]
+    );
+
+    return res.json({
+      parentAccounts: Number(parentsRes.rows[0]?.total || 0),
+      subscribedAccounts: Number(subscribedRes.rows[0]?.total || 0),
+      totalEndpoints: Number(endpointsRes.rows[0]?.total || 0),
+    });
+  } catch (error) {
+    console.error('Get push stats error:', error);
+    return res.status(500).json({ error: 'Failed to fetch push stats' });
+  }
+});
+
+// Send test push notification to parent portal devices (primary admin or super-admin)
+router.post('/push/test', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    if (!tenantId) return res.status(400).json({ error: 'Tenant context required' });
+
+    const title = String(req.body?.title || 'Parent Portal Test Notification').slice(0, 120);
+    const body = String(
+      req.body?.message || 'This is a test push from school admin. If you can see this, push works while app is closed.'
+    ).slice(0, 300);
+
+    const stats = await sendPushToTenantParents(tenantId, {
+      title,
+      body,
+      url: `/portal/${tenantId}`,
+    });
+
+    // Also emit realtime in-app test notification for currently open parent sessions.
+    try {
+      const io = getIO();
+      io.to(`tenant:${tenantId}`).emit('tenant-data-changed', {
+        tenantId,
+        entity: 'admin-test-push',
+        action: 'created',
+        title,
+        body,
+        at: Date.now(),
+      });
+    } catch {
+      // ignore realtime emit failures; web push path is primary
+    }
+
+    await query(
+      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, details) VALUES ($1, $2, $3, $4, $5)',
+      [tenantId, req.user!.id, 'PUSH_TEST', 'SETTINGS', JSON.stringify({ title, ...stats })]
+    ).catch(() => {});
+
+    return res.json({
+      success: true,
+      message: 'Test push sent',
+      ...stats,
+    });
+  } catch (error) {
+    console.error('Send test push error:', error);
+    return res.status(500).json({ error: 'Failed to send test push' });
   }
 });
 

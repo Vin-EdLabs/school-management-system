@@ -3,7 +3,7 @@ import {
   GraduationCap, LogOut, BookOpen, Trophy, CreditCard,
   CalendarCheck, Eye, EyeOff, Lock, ChevronRight, Medal,
   TrendingUp, CheckCircle2, XCircle, Clock, AlertTriangle,
-  BadgeCheck, Home, RefreshCw, Activity, Bell,
+  BadgeCheck, Home, RefreshCw, Activity, Bell, Download,
 } from 'lucide-react';
 import ReceiptPrinter from '@/components/common/ReceiptPrinter';
 import { io, Socket } from 'socket.io-client';
@@ -65,6 +65,34 @@ function urlBase64ToUint8Array(base64String: string) {
   return outputArray;
 }
 
+async function ensurePushSubscription(token: string) {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return;
+
+  const perm = Notification.permission === 'default'
+    ? await Notification.requestPermission().catch(() => 'default' as NotificationPermission)
+    : Notification.permission;
+  if (perm !== 'granted') return;
+
+  const swReg = await navigator.serviceWorker.ready;
+  let subscription = await swReg.pushManager.getSubscription();
+  if (!subscription) {
+    const keyRes = await parentFetch('/parent/push/public-key', {}, token).catch(() => null);
+    const publicKey = keyRes?.publicKey;
+    if (!publicKey) return;
+    subscription = await swReg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(publicKey),
+    });
+  }
+
+  // Always sync subscription to backend even if it already exists in browser.
+  await parentFetch(
+    '/parent/push/subscribe',
+    { method: 'POST', body: JSON.stringify(subscription) },
+    token
+  ).catch(() => undefined);
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface StudentInfo {
@@ -83,6 +111,11 @@ interface StudentInfo {
 
 type Tab = 'overview' | 'grades' | 'position' | 'finance' | 'attendance';
 type ParentAppNotification = { id: string; title: string; message: string; at: number; read: boolean };
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+}
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
@@ -131,8 +164,20 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   const [dataLoading, setDataLoading] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<any>(null);
   const [showReceipt, setShowReceipt] = useState(false);
-  const [appNotifications, setAppNotifications] = useState<ParentAppNotification[]>([]);
+  const [appNotifications, setAppNotifications] = useState<ParentAppNotification[]>(() => {
+    const saved = localStorage.getItem(`parent_notifications_${tenantId}`);
+    if (!saved) return [];
+    try {
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
   const [showNotifPanel, setShowNotifPanel] = useState(false);
+  const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
+  const [showInstallPrompt, setShowInstallPrompt] = useState(false);
+  const [showInstallHelp, setShowInstallHelp] = useState(false);
 
   // Photo lightbox
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
@@ -215,6 +260,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     setAttendance(null);
     setActiveTab('overview');
     setAppNotifications([]);
+    localStorage.removeItem(`parent_notifications_${tenantId}`);
   };
 
   const pushNotification = useCallback((title: string, message: string) => {
@@ -273,33 +319,13 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
   useEffect(() => {
     if (!token || typeof window === 'undefined') return;
-    const setupWebPush = async () => {
-      if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return;
-      const perm = Notification.permission === 'default'
-        ? await Notification.requestPermission().catch(() => 'default' as NotificationPermission)
-        : Notification.permission;
-      if (perm !== 'granted') return;
+    ensurePushSubscription(token).catch(() => undefined);
 
-      const swReg = await navigator.serviceWorker.ready;
-      const existing = await swReg.pushManager.getSubscription();
-      if (existing) return;
-
-      const keyRes = await parentFetch('/parent/push/public-key', {}, token).catch(() => null);
-      const publicKey = keyRes?.publicKey;
-      if (!publicKey) return;
-
-      const subscription = await swReg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicKey),
-      });
-
-      await parentFetch(
-        '/parent/push/subscribe',
-        { method: 'POST', body: JSON.stringify(subscription) },
-        token
-      ).catch(() => undefined);
-    };
-    setupWebPush().catch(() => undefined);
+    // Keep backend subscription in sync on long-lived sessions/devices.
+    const syncInterval = window.setInterval(() => {
+      ensurePushSubscription(token).catch(() => undefined);
+    }, 60000);
+    return () => window.clearInterval(syncInterval);
   }, [token]);
 
   useEffect(() => {
@@ -322,6 +348,8 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         const d = await parentFetch('/parent/term-report', {}, token).catch(() => null);
         if (d) setTermReport(d);
         pushNotification('Results Released', 'New term results are now available in your portal.');
+      } else if (entity === 'admin-test-push') {
+        pushNotification(evt?.title || 'Test Notification', evt?.body || 'School sent a push notification test.');
       }
     });
 
@@ -371,8 +399,70 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   const resolvedLogo = resolveMediaUrl(student?.school_logo_url || schoolLogoUrl);
   const unreadNotifCount = appNotifications.filter(n => !n.read).length;
 
+  useEffect(() => {
+    localStorage.setItem(`parent_notifications_${tenantId}`, JSON.stringify(appNotifications));
+  }, [appNotifications, tenantId]);
+
   // Resolved student photo
   const studentPhotoUrl = resolveMediaUrl(student?.passport_photo_url);
+
+  useEffect(() => {
+    const onBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setInstallPromptEvent(e as BeforeInstallPromptEvent);
+      setShowInstallPrompt(true);
+    };
+    const onInstalled = () => {
+      setInstallPromptEvent(null);
+      setShowInstallPrompt(false);
+    };
+
+    window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt);
+    window.addEventListener('appinstalled', onInstalled);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', onInstalled);
+    };
+  }, []);
+
+  useEffect(() => {
+    const nav = navigator as Navigator & {
+      setAppBadge?: (count?: number) => Promise<void>;
+      clearAppBadge?: () => Promise<void>;
+    };
+    if (typeof nav.setAppBadge !== 'function') return;
+    if (unreadNotifCount > 0) {
+      nav.setAppBadge(unreadNotifCount).catch(() => undefined);
+    } else if (typeof nav.clearAppBadge === 'function') {
+      nav.clearAppBadge().catch(() => undefined);
+    } else {
+      nav.setAppBadge(0).catch(() => undefined);
+    }
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready
+        .then((reg) => {
+          reg.active?.postMessage({ type: 'SET_BADGE_COUNT', count: unreadNotifCount });
+        })
+        .catch(() => undefined);
+    }
+  }, [unreadNotifCount]);
+
+  const handleInstallApp = async () => {
+    if (!installPromptEvent) {
+      setShowInstallHelp(true);
+      return;
+    }
+    try {
+      await installPromptEvent.prompt();
+      await installPromptEvent.userChoice;
+    } catch {
+      // ignored
+    } finally {
+      setShowInstallPrompt(false);
+      setInstallPromptEvent(null);
+    }
+  };
 
   // ── SCREENS ──
 
@@ -596,9 +686,15 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
           </div>
           <div className="flex items-center gap-2">
             <button
+              onClick={handleInstallApp}
+              className="relative flex items-center justify-center text-slate-300 hover:text-white text-xs px-2.5 py-1.5 rounded-lg hover:bg-white/10 transition-colors border border-white/20"
+              title="Install app"
+            >
+              <Download className="w-4 h-4" />
+            </button>
+            <button
               onClick={() => {
                 setShowNotifPanel((v) => !v);
-                setAppNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
               }}
               className="relative flex items-center justify-center text-slate-300 hover:text-white text-xs px-2.5 py-1.5 rounded-lg hover:bg-white/10 transition-colors"
               title="Notifications"
@@ -630,14 +726,34 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         {showNotifPanel && (
           <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-3">
             <div className="bg-white rounded-xl border border-slate-200 shadow p-3 max-h-60 overflow-y-auto">
-              <p className="text-xs font-semibold text-slate-600 mb-2">Notifications</p>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-slate-600">Notifications</p>
+                {appNotifications.length > 0 && (
+                  <button
+                    onClick={() => setAppNotifications((prev) => prev.map((n) => ({ ...n, read: true })))}
+                    className="text-[11px] font-semibold text-purple-600 hover:text-purple-700"
+                  >
+                    Mark all as read
+                  </button>
+                )}
+              </div>
               {appNotifications.length === 0 ? (
                 <p className="text-xs text-slate-400">No notifications yet.</p>
               ) : (
                 <div className="space-y-2">
                   {appNotifications.map((n) => (
-                    <div key={n.id} className="rounded-lg border border-slate-100 p-2">
-                      <p className="text-sm font-semibold text-slate-800">{n.title}</p>
+                    <div key={n.id} className={`rounded-lg border p-2 ${n.read ? 'border-slate-100 bg-white' : 'border-purple-100 bg-purple-50/50'}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-semibold text-slate-800">{n.title}</p>
+                        {!n.read && (
+                          <button
+                            onClick={() => setAppNotifications((prev) => prev.map((item) => item.id === n.id ? { ...item, read: true } : item))}
+                            className="text-[10px] font-semibold text-purple-600 hover:text-purple-700 shrink-0"
+                          >
+                            Mark read
+                          </button>
+                        )}
+                      </div>
                       <p className="text-xs text-slate-500">{n.message}</p>
                       <p className="text-[10px] text-slate-400 mt-1">{new Date(n.at).toLocaleString()}</p>
                     </div>
@@ -1234,6 +1350,58 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
           ))}
         </div>
       </nav>
+
+      {showInstallPrompt && installPromptEvent && (
+        <div className="fixed bottom-20 right-4 z-50 max-w-xs rounded-2xl border border-purple-200 bg-white shadow-2xl p-3">
+          <p className="text-sm font-semibold text-slate-800">Install Parent App</p>
+          <p className="text-xs text-slate-500 mt-1">
+            Add this portal to your home screen for faster access and better notifications.
+          </p>
+          <div className="mt-3 flex gap-2">
+            <button
+              onClick={() => setShowInstallPrompt(false)}
+              className="flex-1 text-xs font-medium rounded-lg border border-slate-200 px-2 py-2 text-slate-600 hover:bg-slate-50"
+            >
+              Later
+            </button>
+            <button
+              onClick={handleInstallApp}
+              className="flex-1 text-xs font-semibold rounded-lg px-2 py-2 text-white"
+              style={{ backgroundColor: brandPrimary }}
+            >
+              Install
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showInstallHelp && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-purple-100 bg-white shadow-2xl overflow-hidden">
+            <div className="px-4 py-3 bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white">
+              <p className="text-sm font-semibold">Install Parent App</p>
+              <p className="text-xs text-violet-100 mt-0.5">Get faster access and better notifications</p>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="rounded-xl bg-slate-50 border border-slate-200 p-3">
+                <p className="text-sm font-medium text-slate-700">How to install</p>
+                <ol className="mt-2 space-y-1 text-xs text-slate-500 list-decimal pl-4">
+                  <li>Tap your browser menu (three dots).</li>
+                  <li>Choose <strong>Install app</strong> or <strong>Add to Home screen</strong>.</li>
+                  <li>Confirm install to place the app icon on your home screen.</li>
+                </ol>
+              </div>
+              <button
+                onClick={() => setShowInstallHelp(false)}
+                className="w-full rounded-lg py-2 text-sm font-semibold text-white"
+                style={{ background: `linear-gradient(90deg, ${brandPrimary}, ${brandSecondary})` }}
+              >
+                OK, got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Photo lightbox */}
       {lightboxUrl && (

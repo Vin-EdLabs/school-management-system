@@ -1,7 +1,7 @@
 import webpush from 'web-push';
 import { query } from '../db/connection.js';
 
-type PushPayload = {
+export type PushPayload = {
   title: string;
   body: string;
   icon?: string | null;
@@ -87,4 +87,30 @@ export async function sendPushToStudentParents(
   for (const parent of parentRows.rows) {
     await sendPushToParentAccount(parent.id, payload);
   }
+}
+
+export async function sendPushToTenantParents(
+  tenantId: number,
+  payload: PushPayload
+): Promise<{ parentAccounts: number; subscribedAccounts: number }> {
+  const parentRows = await query(
+    `SELECT id FROM parent_portal_accounts WHERE tenant_id = $1`,
+    [tenantId]
+  );
+
+  const subscribed = await query(
+    `SELECT COUNT(DISTINCT parent_account_id)::int AS total
+     FROM parent_push_subscriptions
+     WHERE tenant_id = $1`,
+    [tenantId]
+  ).catch(() => ({ rows: [{ total: 0 }] as any[] }));
+
+  for (const parent of parentRows.rows) {
+    await sendPushToParentAccount(parent.id, payload);
+  }
+
+  return {
+    parentAccounts: parentRows.rows.length,
+    subscribedAccounts: Number(subscribed.rows[0]?.total || 0),
+  };
 }

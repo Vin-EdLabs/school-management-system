@@ -5,6 +5,7 @@ import './index.css'
 import { detectTenantSlugFromHost } from './utils/tenantHost'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+let manifestBlobUrl: string | null = null;
 
 function detectTenantIdFromPath(pathname: string = window.location.pathname): number | null {
   const portalMatch = pathname.match(/^\/portal\/(\d+)(\/|$)/i);
@@ -23,6 +24,14 @@ function setCssBrandingVars(tenant: any) {
   if (tenant?.logo_url) {
     root.style.setProperty('--school-logo', `url(${tenant.logo_url})`);
   }
+
+  let themeMeta = document.querySelector("meta[name='theme-color']") as HTMLMetaElement | null;
+  if (!themeMeta) {
+    themeMeta = document.createElement('meta');
+    themeMeta.name = 'theme-color';
+    document.head.appendChild(themeMeta);
+  }
+  themeMeta.content = primary;
 }
 
 async function bootstrapTenantBrandingAndManifest() {
@@ -64,6 +73,8 @@ async function bootstrapTenantBrandingAndManifest() {
       const manifest = await mRes.json();
       const blob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
       const blobUrl = URL.createObjectURL(blob);
+      if (manifestBlobUrl) URL.revokeObjectURL(manifestBlobUrl);
+      manifestBlobUrl = blobUrl;
       let link = document.querySelector("link[rel='manifest']") as HTMLLinkElement | null;
       if (!link) {
         link = document.createElement('link');
@@ -80,7 +91,8 @@ async function bootstrapTenantBrandingAndManifest() {
 async function registerServiceWorker() {
   if ('serviceWorker' in navigator) {
     try {
-      await navigator.serviceWorker.register('/sw.js');
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      registration.update().catch(() => undefined);
     } catch {
       // No-op in unsupported/local edge cases.
     }

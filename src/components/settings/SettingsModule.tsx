@@ -273,6 +273,7 @@ const SettingsModule = () => {
     }
   };
 
+
   if (!hasSettingsFull && !hasAccess('settings-password-only')) {
     return null;
   }

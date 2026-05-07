@@ -5,6 +5,7 @@ import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js'
 import { setTenantContext } from '../middleware/tenant.js';
 import { z } from 'zod';
 import { getIO } from '../socket.js';
+import { sendPushToStudentParents } from '../services/webPushService.js';
 
 const router = express.Router();
 
@@ -86,7 +87,23 @@ router.post('/payment', async (req: AuthRequest, res: Response) => {
       tenantId: getTenantId(req),
     };
     const payment = await recordPayment(paymentData);
-    emitTenantDataChanged(getTenantId(req), 'finance-payment', 'created');
+    const tenantId = getTenantId(req);
+    emitTenantDataChanged(tenantId, 'finance-payment', 'created');
+
+    // Push for finance-ledger payment path (this is commonly used in production).
+    const studentRow = await (await import('../db/connection.js')).query(
+      'SELECT first_name, last_name FROM students WHERE tenant_id = $1 AND id = $2',
+      [tenantId, validatedBody.studentId]
+    ).catch(() => ({ rows: [] as any[] }));
+    const studentName = studentRow.rows[0]
+      ? `${studentRow.rows[0].first_name} ${studentRow.rows[0].last_name}`.trim()
+      : 'Your ward';
+    await sendPushToStudentParents(tenantId, validatedBody.studentId, {
+      title: 'Fee Payment Received',
+      body: `${studentName}: GHS ${Number(validatedBody.amount).toFixed(2)} payment has been recorded.`,
+      url: `/portal/${tenantId}`,
+    }).catch(() => {});
+
     return res.status(201).json(payment);
   } catch (error: any) {
     if (error instanceof z.ZodError) {

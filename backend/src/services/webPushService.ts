@@ -43,12 +43,21 @@ export async function sendPushToParentAccount(parentAccountId: number, payload: 
 
   if (subs.rows.length === 0) return;
 
+  const unreadRes = await query(
+    `SELECT COUNT(*)::int AS total
+     FROM parent_notifications
+     WHERE parent_account_id = $1 AND is_read = false`,
+    [parentAccountId]
+  ).catch(() => ({ rows: [{ total: 0 }] as any[] }));
+  const unreadCount = Number(unreadRes.rows[0]?.total || 0);
+
   const data = JSON.stringify({
     title: payload.title,
     body: payload.body,
     icon: payload.icon || undefined,
     badge: payload.badge || payload.icon || undefined,
     url: payload.url || '/parent',
+    unreadCount,
     at: Date.now(),
   });
 
@@ -85,6 +94,11 @@ export async function sendPushToStudentParents(
     [tenantId, studentId]
   );
   for (const parent of parentRows.rows) {
+    await query(
+      `INSERT INTO parent_notifications (tenant_id, parent_account_id, title, message, url, icon)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [tenantId, parent.id, payload.title, payload.body, payload.url || '/parent', payload.icon || null]
+    ).catch(() => {});
     await sendPushToParentAccount(parent.id, payload);
   }
 }
@@ -106,6 +120,11 @@ export async function sendPushToTenantParents(
   ).catch(() => ({ rows: [{ total: 0 }] as any[] }));
 
   for (const parent of parentRows.rows) {
+    await query(
+      `INSERT INTO parent_notifications (tenant_id, parent_account_id, title, message, url, icon)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [tenantId, parent.id, payload.title, payload.body, payload.url || '/parent', payload.icon || null]
+    ).catch(() => {});
     await sendPushToParentAccount(parent.id, payload);
   }
 

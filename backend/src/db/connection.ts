@@ -604,6 +604,24 @@ const runMigrations = async () => {
       CREATE INDEX IF NOT EXISTS idx_parent_push_subscriptions_parent
       ON parent_push_subscriptions (parent_account_id)
     `).catch(() => { });
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS parent_notifications (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        parent_account_id INTEGER NOT NULL REFERENCES parent_portal_accounts(id) ON DELETE CASCADE,
+        title VARCHAR(255) NOT NULL,
+        message TEXT NOT NULL,
+        url TEXT,
+        icon TEXT,
+        is_read BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        read_at TIMESTAMP
+      )
+    `).catch(() => { });
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_parent_notifications_parent
+      ON parent_notifications (parent_account_id, created_at DESC)
+    `).catch(() => { });
 
     // Auto-create parent accounts for any student who doesn't have one yet
     // Default password = their student_id (admission number)

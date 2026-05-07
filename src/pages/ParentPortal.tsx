@@ -110,7 +110,14 @@ interface StudentInfo {
 }
 
 type Tab = 'overview' | 'grades' | 'position' | 'finance' | 'attendance';
-type ParentAppNotification = { id: string; title: string; message: string; at: number; read: boolean };
+type ParentAppNotification = {
+  id: string;
+  serverId?: number;
+  title: string;
+  message: string;
+  at: number;
+  read: boolean;
+};
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -164,16 +171,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   const [dataLoading, setDataLoading] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<any>(null);
   const [showReceipt, setShowReceipt] = useState(false);
-  const [appNotifications, setAppNotifications] = useState<ParentAppNotification[]>(() => {
-    const saved = localStorage.getItem(`parent_notifications_${tenantId}`);
-    if (!saved) return [];
-    try {
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  });
+  const [appNotifications, setAppNotifications] = useState<ParentAppNotification[]>([]);
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
@@ -260,7 +258,6 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     setAttendance(null);
     setActiveTab('overview');
     setAppNotifications([]);
-    localStorage.removeItem(`parent_notifications_${tenantId}`);
   };
 
   const pushNotification = useCallback((title: string, message: string) => {
@@ -282,6 +279,21 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       }
     }
   }, [student?.school_logo_url, schoolLogoUrl]);
+
+  const loadServerNotifications = useCallback(async (authToken: string) => {
+    const data = await parentFetch('/parent/notifications', {}, authToken).catch(() => ({ notifications: [] }));
+    const mapped = Array.isArray(data?.notifications)
+      ? data.notifications.map((n: any) => ({
+          id: `srv-${n.id}`,
+          serverId: Number(n.id),
+          title: n.title,
+          message: n.message,
+          at: new Date(n.created_at).getTime(),
+          read: Boolean(n.is_read),
+        }))
+      : [];
+    setAppNotifications(mapped);
+  }, []);
 
   const fetchTabData = useCallback(async (tab: Tab) => {
     if (!token) return;
@@ -320,13 +332,14 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   useEffect(() => {
     if (!token || typeof window === 'undefined') return;
     ensurePushSubscription(token).catch(() => undefined);
+    loadServerNotifications(token).catch(() => undefined);
 
     // Keep backend subscription in sync on long-lived sessions/devices.
     const syncInterval = window.setInterval(() => {
       ensurePushSubscription(token).catch(() => undefined);
     }, 60000);
     return () => window.clearInterval(syncInterval);
-  }, [token]);
+  }, [token, loadServerNotifications]);
 
   useEffect(() => {
     if (!token) return;
@@ -344,19 +357,22 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         const d = await parentFetch('/parent/finance', {}, token).catch(() => null);
         if (d) setFinance(d);
         pushNotification('Fee Payment Received', 'A new payment receipt has been recorded for your ward.');
+        await loadServerNotifications(token).catch(() => undefined);
       } else if (entity === 'term-report-release') {
         const d = await parentFetch('/parent/term-report', {}, token).catch(() => null);
         if (d) setTermReport(d);
         pushNotification('Results Released', 'New term results are now available in your portal.');
+        await loadServerNotifications(token).catch(() => undefined);
       } else if (entity === 'admin-test-push') {
         pushNotification(evt?.title || 'Test Notification', evt?.body || 'School sent a push notification test.');
+        await loadServerNotifications(token).catch(() => undefined);
       }
     });
 
     return () => {
       socket.disconnect();
     };
-  }, [token, tenantId, pushNotification]);
+  }, [token, tenantId, pushNotification, loadServerNotifications]);
 
   const handleTabChange = (tab: Tab) => {
     setActiveTab(tab);
@@ -398,10 +414,6 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   // Resolved school logo — from student record (richer) or prop fallback
   const resolvedLogo = resolveMediaUrl(student?.school_logo_url || schoolLogoUrl);
   const unreadNotifCount = appNotifications.filter(n => !n.read).length;
-
-  useEffect(() => {
-    localStorage.setItem(`parent_notifications_${tenantId}`, JSON.stringify(appNotifications));
-  }, [appNotifications, tenantId]);
 
   // Resolved student photo
   const studentPhotoUrl = resolveMediaUrl(student?.passport_photo_url);
@@ -730,7 +742,12 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                 <p className="text-xs font-semibold text-slate-600">Notifications</p>
                 {appNotifications.length > 0 && (
                   <button
-                    onClick={() => setAppNotifications((prev) => prev.map((n) => ({ ...n, read: true })))}
+                    onClick={async () => {
+                      if (token) {
+                        await parentFetch('/parent/notifications/read-all', { method: 'POST', body: JSON.stringify({}) }, token).catch(() => undefined);
+                      }
+                      setAppNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+                    }}
                     className="text-[11px] font-semibold text-purple-600 hover:text-purple-700"
                   >
                     Mark all as read
@@ -747,7 +764,12 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                         <p className="text-sm font-semibold text-slate-800">{n.title}</p>
                         {!n.read && (
                           <button
-                            onClick={() => setAppNotifications((prev) => prev.map((item) => item.id === n.id ? { ...item, read: true } : item))}
+                            onClick={async () => {
+                              if (token && n.serverId) {
+                                await parentFetch(`/parent/notifications/${n.serverId}/read`, { method: 'POST', body: JSON.stringify({}) }, token).catch(() => undefined);
+                              }
+                              setAppNotifications((prev) => prev.map((item) => item.id === n.id ? { ...item, read: true } : item));
+                            }}
                             className="text-[10px] font-semibold text-purple-600 hover:text-purple-700 shrink-0"
                           >
                             Mark read

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import ReceiptPrinter from '@/components/common/ReceiptPrinter';
 import { io, Socket } from 'socket.io-client';
+import { detectTenantSlugFromHost } from '@/utils/tenantHost';
 
 const API_ROOT = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api').replace('/api', '');
 
@@ -17,6 +18,8 @@ const API = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 async function parentFetch(path: string, opts: RequestInit = {}, token?: string) {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
+  const slug = detectTenantSlugFromHost();
+  if (slug) headers['X-Tenant-Slug'] = slug;
   const res = await fetch(`${API}${path}`, { ...opts, headers });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Request failed');

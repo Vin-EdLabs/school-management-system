@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { query } from '../db/connection.js';
 import { getVapidPublicKey } from '../services/webPushService.js';
+import { resolveTenant, TenantRequest } from '../middleware/tenantResolver.js';
 
 const router = express.Router();
 
@@ -45,12 +46,13 @@ const authenticateParent = async (
 // Uses the student's admission number as both the username and default password.
 // If no account exists yet it is created on first login with default pass = admission number.
 
-router.post('/login', async (req, res) => {
+router.post('/login', resolveTenant, async (req: ParentRequest & TenantRequest, res) => {
   try {
     const { tenantId: rawTenantId, studentId: admissionNumber, password } = req.body;
-    const tenantId = parseInt(String(rawTenantId), 10);
-    if (!tenantId || isNaN(tenantId) || !admissionNumber || !password) {
-      return res.status(400).json({ error: 'tenantId, studentId and password are required' });
+    const bodyTenantId = parseInt(String(rawTenantId), 10);
+    const tenantId = !isNaN(bodyTenantId) && bodyTenantId > 0 ? bodyTenantId : (req.tenantId || null);
+    if (!tenantId || !admissionNumber || !password) {
+      return res.status(400).json({ error: 'tenantId (or tenant slug), studentId and password are required' });
     }
 
     // Verify tenant is active

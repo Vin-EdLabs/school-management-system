@@ -1,5 +1,7 @@
 
 // API service for backend integration
+import { detectTenantSlugFromHost } from '../utils/tenantHost';
+
 export class ApiService {
   private baseURL: string;
   private tenantId: number | null = null;
@@ -42,6 +44,9 @@ export class ApiService {
     }
     if (this.tenantId !== null) {
       headers['X-Tenant-Id'] = this.tenantId.toString();
+    } else {
+      const slug = detectTenantSlugFromHost();
+      if (slug) headers['X-Tenant-Slug'] = slug;
     }
     return headers;
   }

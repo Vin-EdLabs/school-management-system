@@ -7,6 +7,7 @@ import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
+import { getIO } from '../socket.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,6 +18,15 @@ const storage = multer.memoryStorage();
 const upload = multer({ storage, limits: { fileSize: 2 * 1024 * 1024 } }); // 2MB limit for Base64
 
 const router = express.Router();
+
+const emitTenantDataChanged = (tenantId: number, entity: string, action: 'created' | 'updated' | 'deleted') => {
+  try {
+    const io = getIO();
+    io.to(`tenant:${tenantId}`).emit('tenant-data-changed', { tenantId, entity, action, at: Date.now() });
+  } catch {
+    // Socket server may be unavailable in some non-realtime contexts.
+  }
+};
 
 router.use(authenticate);
 router.use(requireTenant);
@@ -156,6 +166,7 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
       [tenantId, req.user!.id, 'CREATE', 'STUDENT', result.rows[0].id]
     );
+    emitTenantDataChanged(tenantId, 'student', 'created');
     
     res.status(201).json(result.rows[0]);
   } catch (error: any) {
@@ -239,6 +250,7 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
       [tenantId, req.user!.id, 'UPDATE', 'STUDENT', parseInt(id)]
     );
+    emitTenantDataChanged(tenantId, 'student', 'updated');
     
     res.json(result.rows[0]);
   } catch (error) {
@@ -267,6 +279,7 @@ router.delete('/:id', requireRole('super-admin', 'administrator'), async (req: A
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
       [tenantId, req.user!.id, 'DELETE', 'STUDENT', parseInt(id)]
     );
+    emitTenantDataChanged(tenantId, 'student', 'deleted');
     
     res.json({ message: 'Student deleted successfully' });
   } catch (error) {

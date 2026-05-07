@@ -6,12 +6,25 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { query } from '../db/connection.js';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth.js';
+import { getIO } from '../socket.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const uploadsDir = path.join(__dirname, '../../uploads');
 
 const router = express.Router();
+
+const emitSystemDataChanged = (entity: string, action: 'created' | 'updated' | 'deleted', tenantId?: number) => {
+  try {
+    const io = getIO();
+    io.to('global:general').emit('tenant-data-changed', { tenantId: tenantId ?? null, entity, action, at: Date.now() });
+    if (tenantId) {
+      io.to(`tenant:${tenantId}`).emit('tenant-data-changed', { tenantId, entity, action, at: Date.now() });
+    }
+  } catch {
+    // Socket server may be unavailable in some non-realtime contexts.
+  }
+};
 
 // Configure multer for memory storage (Base64)
 const storage = multer.memoryStorage();
@@ -72,6 +85,7 @@ router.post('/super-admins', requireRole('super-admin'), async (req: AuthRequest
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id, details) VALUES (NULL, $1, $2, $3, $4, $5)',
       [req.user!.id, 'CREATE', 'SUPER_ADMIN', result.rows[0].id, JSON.stringify({ username, created_by: req.user!.username })]
     );
+    emitSystemDataChanged('super-admin', 'created');
     res.status(201).json(result.rows[0]);
   } catch (error: any) {
     console.error('Create super admin error:', error);
@@ -96,6 +110,7 @@ router.post('/super-admins/:userId/reset-password', requireRole('super-admin'), 
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id, details) VALUES (NULL, $1, $2, $3, $4, $5)',
       [req.user!.id, 'RESET_PASSWORD', 'SUPER_ADMIN', parseInt(userId), JSON.stringify({ target: userCheck.rows[0].username })]
     );
+    emitSystemDataChanged('super-admin', 'updated');
     res.json({ message: 'Password reset successfully' });
   } catch (error) {
     console.error('Reset super admin password error:', error);
@@ -180,6 +195,7 @@ router.post('/', requireRole('super-admin'), async (req: AuthRequest, res) => {
         'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES (NULL, $1, $2, $3, $4)',
         [req.user!.id, 'CREATE', 'TENANT', tenantId]
       );
+      emitSystemDataChanged('school', 'created', tenantId);
       
       res.status(201).json({
         id: tenantId,
@@ -250,6 +266,7 @@ router.put('/:id', requireRole('super-admin'), async (req: AuthRequest, res) => 
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES (NULL, $1, $2, $3, $4)',
       [req.user!.id, 'UPDATE', 'TENANT', parseInt(id)]
     );
+    emitSystemDataChanged('school', 'updated', parseInt(id));
     
     res.json(result.rows[0]);
   } catch (error: any) {
@@ -266,6 +283,7 @@ router.post('/:id/activate', requireRole('super-admin'), async (req: AuthRequest
   try {
     const { id } = req.params;
     await query('UPDATE tenants SET is_active = true, updated_at = CURRENT_TIMESTAMP WHERE id = $1', [id]);
+    emitSystemDataChanged('school', 'updated', parseInt(id));
     res.json({ message: 'School activated' });
   } catch (error) {
     console.error('Activate school error:', error);
@@ -278,6 +296,7 @@ router.post('/:id/deactivate', requireRole('super-admin'), async (req: AuthReque
   try {
     const { id } = req.params;
     await query('UPDATE tenants SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id = $1', [id]);
+    emitSystemDataChanged('school', 'updated', parseInt(id));
     res.json({ message: 'School deactivated' });
   } catch (error) {
     console.error('Deactivate school error:', error);
@@ -301,6 +320,7 @@ router.delete('/:id', requireRole('super-admin'), async (req: AuthRequest, res) 
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES (NULL, $1, $2, $3, $4)',
       [req.user!.id, 'DELETE', 'TENANT', parseInt(id)]
     );
+    emitSystemDataChanged('school', 'deleted', parseInt(id));
     
     res.json({ message: 'School deleted successfully' });
   } catch (error) {
@@ -344,6 +364,7 @@ router.post('/:id/reset-password', requireRole('super-admin'), async (req: AuthR
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES (NULL, $1, $2, $3, $4)',
       [req.user!.id, 'RESET_PASSWORD', 'USER', userResult.rows[0].id]
     );
+    emitSystemDataChanged('user', 'updated', parseInt(id));
 
     res.json({ message: 'Password reset successfully' });
   } catch (error) {
@@ -393,6 +414,7 @@ router.post('/:id/users', requireRole('super-admin'), async (req: AuthRequest, r
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
       [parseInt(id), req.user!.id, 'CREATE', 'USER', result.rows[0].id]
     );
+    emitSystemDataChanged('user', 'created', parseInt(id));
     
     res.status(201).json(result.rows[0]);
   } catch (error: any) {

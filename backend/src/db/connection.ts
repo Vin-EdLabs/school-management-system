@@ -60,7 +60,9 @@ const runMigrations = async () => {
   const client = await getClient();
 
   try {
-    await client.query('BEGIN');
+    // Do not wrap all compatibility migrations in one transaction.
+    // This file intentionally tolerates many ALTER failures with .catch(() => {}),
+    // and PostgreSQL would mark the whole transaction as aborted after the first error.
 
     // Note: Permissions should be granted by superuser before running migrations
 
@@ -132,7 +134,16 @@ const runMigrations = async () => {
         UNIQUE(tenant_id, username)
       )
     `);
+    // Legacy schema compatibility for users table
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS tenant_id INTEGER`).catch(() => { });
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(255)`).catch(() => { });
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name VARCHAR(255)`).catch(() => { });
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS teacher_id VARCHAR(100)`).catch(() => { });
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS other_staff_id INTEGER`).catch(() => { });
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true`).catch(() => { });
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_primary_admin BOOLEAN DEFAULT false`).catch(() => { });
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`).catch(() => { });
+    await client.query(`UPDATE users SET is_active = true WHERE is_active IS NULL`).catch(() => { });
     // Set first admin per tenant as primary (for existing data)
     await client.query(`
       UPDATE users SET is_primary_admin = true WHERE id IN (
@@ -189,6 +200,15 @@ const runMigrations = async () => {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    // Legacy schema compatibility for classes table
+    await client.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS tenant_id INTEGER`).catch(() => { });
+    await client.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS class_name VARCHAR(255)`).catch(() => { });
+    await client.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS level VARCHAR(100)`).catch(() => { });
+    await client.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS stream VARCHAR(100)`).catch(() => { });
+    await client.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS assigned_teacher_id INTEGER`).catch(() => { });
+    await client.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS max_class_size INTEGER DEFAULT 30`).catch(() => { });
+    await client.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`).catch(() => { });
+    await client.query(`UPDATE classes SET class_name = name WHERE class_name IS NULL AND name IS NOT NULL`).catch(() => { });
 
     // Create students table
     await client.query(`
@@ -218,6 +238,30 @@ const runMigrations = async () => {
         UNIQUE(tenant_id, admission_number)
       )
     `);
+    // Legacy schema compatibility for students table
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS tenant_id INTEGER`).catch(() => { });
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS class_assigned_id INTEGER`).catch(() => { });
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS student_id VARCHAR(100)`).catch(() => { });
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS admission_number VARCHAR(100)`).catch(() => { });
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS gender VARCHAR(50)`).catch(() => { });
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS date_of_birth DATE`).catch(() => { });
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS nationality VARCHAR(100)`).catch(() => { });
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS guardian_name VARCHAR(255)`).catch(() => { });
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS guardian_contact VARCHAR(100)`).catch(() => { });
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS home_address TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS number_of_siblings INTEGER DEFAULT 0`).catch(() => { });
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS names_of_siblings TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS previous_school TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS date_of_admission DATE`).catch(() => { });
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS notes TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS passport_photo_url TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS is_beneficiary BOOLEAN DEFAULT false`).catch(() => { });
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS beneficiary_type VARCHAR(100)`).catch(() => { });
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS discount_type VARCHAR(50)`).catch(() => { });
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS discount_value DECIMAL(10, 2) DEFAULT 0`).catch(() => { });
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS beneficiary_notes TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`).catch(() => { });
+    await client.query(`UPDATE students SET class_assigned_id = class_id WHERE class_assigned_id IS NULL AND class_id IS NOT NULL`).catch(() => { });
     await client.query(`ALTER TABLE students ALTER COLUMN passport_photo_url TYPE TEXT`).catch(() => { });
     await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS is_beneficiary BOOLEAN DEFAULT false`).catch(() => { });
     await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS beneficiary_type VARCHAR(100)`).catch(() => { });
@@ -248,6 +292,12 @@ const runMigrations = async () => {
         UNIQUE(tenant_id, staff_id)
       )
     `);
+    // Legacy schema compatibility for teachers table
+    await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS class_assigned_id INTEGER`).catch(() => { });
+    await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS monthly_salary DECIMAL(10, 2) DEFAULT 0`).catch(() => { });
+    await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS employment_status VARCHAR(50) DEFAULT 'active'`).catch(() => { });
+    await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS staff_id VARCHAR(100)`).catch(() => { });
+    await client.query(`UPDATE teachers SET class_assigned_id = class_id WHERE class_assigned_id IS NULL AND class_id IS NOT NULL`).catch(() => { });
 
     // Class-teachers junction: multiple teachers per class, one main
     await client.query(`
@@ -290,6 +340,15 @@ const runMigrations = async () => {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    // Legacy schema compatibility for fee_structures table
+    await client.query(`ALTER TABLE fee_structures ADD COLUMN IF NOT EXISTS tenant_id INTEGER`).catch(() => { });
+    await client.query(`ALTER TABLE fee_structures ADD COLUMN IF NOT EXISTS class_id INTEGER`).catch(() => { });
+    await client.query(`ALTER TABLE fee_structures ADD COLUMN IF NOT EXISTS term VARCHAR(100)`).catch(() => { });
+    await client.query(`ALTER TABLE fee_structures ADD COLUMN IF NOT EXISTS amount DECIMAL(10, 2)`).catch(() => { });
+    await client.query(`ALTER TABLE fee_structures ADD COLUMN IF NOT EXISTS due_date DATE`).catch(() => { });
+    await client.query(`ALTER TABLE fee_structures ADD COLUMN IF NOT EXISTS description TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE fee_structures ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`).catch(() => { });
+    await client.query(`ALTER TABLE fee_structures ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`).catch(() => { });
 
     // Create payments table
     await client.query(`
@@ -307,6 +366,17 @@ const runMigrations = async () => {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    // Legacy schema compatibility for payments table
+    await client.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS tenant_id INTEGER`).catch(() => { });
+    await client.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_method VARCHAR(100)`).catch(() => { });
+    await client.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS term VARCHAR(100)`).catch(() => { });
+    await client.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS notes TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS receipt_number VARCHAR(100)`).catch(() => { });
+    await client.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`).catch(() => { });
+    await client.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS amount_paid DECIMAL(10, 2)`).catch(() => { });
+    await client.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_date TIMESTAMP`).catch(() => { });
+    await client.query(`UPDATE payments SET amount_paid = amount WHERE amount_paid IS NULL AND amount IS NOT NULL`).catch(() => { });
+    await client.query(`UPDATE payments SET payment_date = created_at WHERE payment_date IS NULL AND created_at IS NOT NULL`).catch(() => { });
 
     // Create receipts table
     await client.query(`
@@ -340,6 +410,9 @@ const runMigrations = async () => {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    await client.query(`ALTER TABLE income ADD COLUMN IF NOT EXISTS tenant_id INTEGER`).catch(() => { });
+    await client.query(`ALTER TABLE income ADD COLUMN IF NOT EXISTS income_date TIMESTAMP`).catch(() => { });
+    await client.query(`UPDATE income SET income_date = created_at WHERE income_date IS NULL AND created_at IS NOT NULL`).catch(() => { });
 
     // Create expenses table
     await client.query(`
@@ -360,6 +433,9 @@ const runMigrations = async () => {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    await client.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS tenant_id INTEGER`).catch(() => { });
+    await client.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS payment_date TIMESTAMP`).catch(() => { });
+    await client.query(`UPDATE expenses SET payment_date = created_at WHERE payment_date IS NULL AND created_at IS NOT NULL`).catch(() => { });
 
     // Create student_arrears table for tracking outstanding fees (legacy, kept for migration)
     await client.query(`
@@ -512,6 +588,22 @@ const runMigrations = async () => {
       CREATE INDEX IF NOT EXISTS idx_parent_portal_tenant_student
       ON parent_portal_accounts (tenant_id, student_id)
     `).catch(() => { });
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS parent_push_subscriptions (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        parent_account_id INTEGER NOT NULL REFERENCES parent_portal_accounts(id) ON DELETE CASCADE,
+        endpoint TEXT NOT NULL,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(parent_account_id, endpoint)
+      )
+    `).catch(() => { });
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_parent_push_subscriptions_parent
+      ON parent_push_subscriptions (parent_account_id)
+    `).catch(() => { });
 
     // Auto-create parent accounts for any student who doesn't have one yet
     // Default password = their student_id (admission number)
@@ -589,7 +681,7 @@ const runMigrations = async () => {
       CREATE INDEX IF NOT EXISTS idx_student_credits_student ON student_credits(student_id);
       CREATE INDEX IF NOT EXISTS idx_payroll_other_staff_tenant ON payroll_other_staff(tenant_id);
       CREATE INDEX IF NOT EXISTS idx_salary_payments_tenant ON salary_payments(tenant_id);
-    `);
+    `).catch(() => { });
 
     // Calendar Events table
     await client.query(`
@@ -609,6 +701,12 @@ const runMigrations = async () => {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    // Legacy schema compatibility for events table
+    await client.query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS tenant_id INTEGER`).catch(() => { });
+    await client.query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS event_date DATE`).catch(() => { });
+    await client.query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS event_time TIME`).catch(() => { });
+    await client.query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`).catch(() => { });
+    await client.query(`UPDATE events SET event_date = date::date WHERE event_date IS NULL AND date IS NOT NULL`).catch(() => { });
     await client.query(`CREATE INDEX IF NOT EXISTS idx_events_tenant ON events(tenant_id)`).catch(() => { });
     await client.query(`CREATE INDEX IF NOT EXISTS idx_events_date ON events(event_date)`).catch(() => { });
 
@@ -835,6 +933,12 @@ const runMigrations = async () => {
       WHERE entry_type = 'term_fee'
     `).catch(() => { });
 
+    // Detect legacy schemas that do not have users.tenant_id
+    const usersTenantCol = await client.query(
+      "SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'tenant_id' LIMIT 1"
+    ).catch(() => ({ rows: [] as any[] }));
+    const hasUsersTenantId = usersTenantCol.rows.length > 0;
+
     // Create default super-admin if it doesn't exist
     const superAdminCheck = await client.query(
       'SELECT id FROM users WHERE username = $1 AND role = $2',
@@ -843,15 +947,22 @@ const runMigrations = async () => {
 
     if (superAdminCheck.rows.length === 0) {
       const defaultPassword = await bcrypt.hash('superadmin123', 10);
-      await client.query(
-        'INSERT INTO users (username, password_hash, role, tenant_id) VALUES ($1, $2, $3, NULL)',
-        ['superadmin', defaultPassword, 'super-admin']
-      );
+      if (hasUsersTenantId) {
+        await client.query(
+          'INSERT INTO users (username, password_hash, role, tenant_id) VALUES ($1, $2, $3, NULL)',
+          ['superadmin', defaultPassword, 'super-admin']
+        );
+      } else {
+        await client.query(
+          'INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3)',
+          ['superadmin', defaultPassword, 'super-admin']
+        );
+      }
       console.log('✅ Default super-admin created (username: superadmin, password: superadmin123)');
     }
 
     // Create default Rosa tenant if none exist
-    const tenantCheck = await client.query('SELECT id FROM tenants LIMIT 1');
+    const tenantCheck = await client.query('SELECT id FROM tenants LIMIT 1').catch(() => ({ rows: [] as any[] }));
     if (tenantCheck.rows.length === 0) {
       const rosaResult = await client.query(
         `INSERT INTO tenants (name, slug, subdomain, is_active, subscription_status)
@@ -863,10 +974,14 @@ const runMigrations = async () => {
         [rosaId, 'Rosa Gardens']
       );
       const rosaAdminPassword = await bcrypt.hash('admin123', 10);
-      await client.query(
-        'INSERT INTO users (tenant_id, username, password_hash, role, is_primary_admin) VALUES ($1, $2, $3, $4, true)',
-        [rosaId, 'admin', rosaAdminPassword, 'administrator']
-      );
+      if (hasUsersTenantId) {
+        await client.query(
+          'INSERT INTO users (tenant_id, username, password_hash, role, is_primary_admin) VALUES ($1, $2, $3, $4, true)',
+          [rosaId, 'admin', rosaAdminPassword, 'administrator']
+        );
+      } else {
+        console.log('ℹ️ Skipping tenant-bound default admin creation on legacy users schema');
+      }
       console.log('✅ Default tenant (Rosa Gardens) created - login: admin / admin123');
       // Seed ledger: one academic year and one term for the new tenant
       const ay = await client.query(
@@ -881,7 +996,7 @@ const runMigrations = async () => {
     }
 
     // Ensure existing tenants have at least one academic year and term for ledger (if tables exist)
-    const tenants = await client.query('SELECT id FROM tenants');
+    const tenants = await client.query('SELECT id FROM tenants').catch(() => ({ rows: [] as any[] }));
     for (const t of tenants.rows) {
       const tid = t.id;
       const hasYear = await client.query('SELECT 1 FROM academic_years WHERE tenant_id = $1 LIMIT 1', [tid]);
@@ -897,10 +1012,8 @@ const runMigrations = async () => {
       }
     }
 
-    await client.query('COMMIT');
     console.log('✅ Database migrations completed');
   } catch (error) {
-    await client.query('ROLLBACK');
     console.error('❌ Migration error:', error);
     throw error;
   } finally {

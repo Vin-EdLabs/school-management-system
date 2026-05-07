@@ -9,8 +9,18 @@ import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js'
 import { requireRole, requirePrimaryAdminOrSuperAdmin } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { resolveLedgerTermFromSettings, postFeesForNewTerm, postFeesForNewTermWithArrears } from '../services/ledgerFinanceService.js';
+import { getIO } from '../socket.js';
 
 const router = express.Router();
+
+const emitTenantDataChanged = (tenantId: number, entity: string, action: 'created' | 'updated' | 'deleted') => {
+  try {
+    const io = getIO();
+    io.to(`tenant:${tenantId}`).emit('tenant-data-changed', { tenantId, entity, action, at: Date.now() });
+  } catch {
+    // Socket server may be unavailable in some non-realtime contexts.
+  }
+};
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -144,6 +154,7 @@ router.put('/', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, res) =
           console.error('[Settings] Auto-post new term fees failed:', err);
         }
       }
+      emitTenantDataChanged(tenantId, 'settings', 'updated');
       return res.json(saved);
     }
     
@@ -201,6 +212,7 @@ router.put('/', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, res) =
       }
     }
 
+    emitTenantDataChanged(tenantId, 'settings', 'updated');
     res.json(saved ?? result.rows[0]);
   } catch (error) {
     console.error('Update settings error:', error);
@@ -234,7 +246,7 @@ router.post('/logo', requirePrimaryAdminOrSuperAdmin, upload.single('logo'), asy
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type) VALUES ($1, $2, $3, $4)',
       [tenantId, req.user!.id, 'UPDATE', 'SETTINGS']
     );
-    
+    emitTenantDataChanged(tenantId, 'settings', 'updated');
     res.json({ logoUrl: base64Image });
   } catch (error) {
     console.error('Upload logo error:', error);
@@ -305,7 +317,7 @@ router.post('/academic-terms', requirePrimaryAdminOrSuperAdmin, async (req: Auth
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
       [tenantId, req.user!.id, 'CREATE', 'ACADEMIC_TERM', result.rows[0].id]
     );
-    
+    emitTenantDataChanged(tenantId, 'academic-term', 'created');
     res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error('Create academic term error:', error);
@@ -350,7 +362,7 @@ router.put('/academic-terms/:id', requirePrimaryAdminOrSuperAdmin, async (req: A
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
       [tenantId, req.user!.id, 'UPDATE', 'ACADEMIC_TERM', parseInt(id)]
     );
-    
+    emitTenantDataChanged(tenantId, 'academic-term', 'updated');
     res.json(result.rows[0]);
   } catch (error) {
     console.error('Update academic term error:', error);
@@ -378,7 +390,7 @@ router.delete('/academic-terms/:id', requirePrimaryAdminOrSuperAdmin, async (req
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
       [tenantId, req.user!.id, 'DELETE', 'ACADEMIC_TERM', parseInt(id)]
     );
-    
+    emitTenantDataChanged(tenantId, 'academic-term', 'deleted');
     res.json({ message: 'Academic term deleted successfully' });
   } catch (error) {
     console.error('Delete academic term error:', error);
@@ -445,6 +457,7 @@ router.post('/users/:id/reset-password', requirePrimaryAdminOrSuperAdmin, async 
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
       [tenantId, req.user!.id, 'RESET_PASSWORD', 'USER', parseInt(id)]
     );
+    emitTenantDataChanged(tenantId, 'user', 'updated');
     res.json({ message: 'Password reset successfully' });
   } catch (error) {
     console.error('Reset password error:', error);
@@ -480,7 +493,7 @@ router.post('/users', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, 
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
       [tenantId, req.user!.id, 'CREATE', 'USER', result.rows[0].id]
     );
-
+    emitTenantDataChanged(tenantId, 'user', 'created');
     res.status(201).json(result.rows[0]);
   } catch (error: any) {
     console.error('Create school user error:', error);
@@ -546,7 +559,7 @@ router.post('/reset-data', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequ
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, details) VALUES ($1, $2, $3, $4, $5)',
       [tenantId, req.user!.id, 'FULL_RESET', 'TENANT_DATA', JSON.stringify({ timestamp: new Date() })]
     );
-
+    emitTenantDataChanged(tenantId, 'tenant-data', 'deleted');
     res.json({ message: 'All school data has been permanently deleted and settings reset.' });
   } catch (error) {
     console.error('Reset data error:', error);

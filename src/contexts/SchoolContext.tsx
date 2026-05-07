@@ -99,3 +99,6 @@ export const useSchool = () => {
   }
   return context;
 };
+
+// Safe variant for screens that may not be wrapped in SchoolProvider (e.g. Parent Portal).
+export const useOptionalSchool = () => useContext(SchoolContext);

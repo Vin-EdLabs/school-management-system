@@ -155,10 +155,6 @@ const SuperAdminDashboard = () => {
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    if (user && user.role !== 'super-admin') {
-      navigate('/select-school');
-      return;
-    }
     if (user?.role === 'super-admin') loadData();
   }, [user]);
 
@@ -397,8 +393,7 @@ const SuperAdminDashboard = () => {
   const formatDate = (d: string) => new Date(d).toLocaleString();
 
   if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">Loading...</div>;
-  if (!user) return <SuperAdminLoginForm />;
-  if (user.role !== 'super-admin') return null;
+  if (!user || user.role !== 'super-admin') return <SuperAdminLoginForm />;
 
   const mainItems = [
     { id: 'schools' as Section, label: 'Schools', icon: Building2 },

@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { apiService } from '../services/api';
 import { useAuth } from './AuthContext';
 import { useSchool } from './SchoolContext';
+import { useSocket } from './SocketContext';
 
 interface Student {
   id: string;
@@ -259,7 +260,7 @@ const mapTeacherToBackend = (teacher: Partial<Teacher>): any => {
 // Helper function to map backend class to frontend format
 const mapClass = (backendClass: any): Class => ({
   id: backendClass.id.toString(),
-  className: backendClass.class_name,
+  className: backendClass.class_name || backendClass.name || '',
   level: backendClass.level || '',
   stream: backendClass.stream || '',
   assignedTeacher: backendClass.teacher_name || '',
@@ -283,6 +284,7 @@ const mapClassToBackend = (classData: Partial<Class>): any => {
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuth();
   const { schoolId } = useSchool();
+  const { socket } = useSocket();
   const [students, setStudents] = useState<Student[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
@@ -384,6 +386,48 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    // Keep UI fresh when user returns to tab/focus.
+    const onFocus = () => {
+      loadData().catch(() => undefined);
+    };
+
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+
+    // Light polling as fallback in case other modules mutate data directly.
+    const interval = window.setInterval(() => {
+      loadData().catch(() => undefined);
+    }, 15000);
+
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+      window.clearInterval(interval);
+    };
+  }, [isAuthenticated, loadData]);
+
+  useEffect(() => {
+    if (!socket || !isAuthenticated) return;
+
+    let lastRefresh = 0;
+    const minRefreshGapMs = 500;
+
+    const refreshNow = () => {
+      const now = Date.now();
+      if (now - lastRefresh < minRefreshGapMs) return;
+      lastRefresh = now;
+      loadData().catch(() => undefined);
+    };
+
+    socket.on('tenant-data-changed', refreshNow);
+    return () => {
+      socket.off('tenant-data-changed', refreshNow);
+    };
+  }, [socket, isAuthenticated, loadData]);
 
   const refresh = useCallback(async () => {
     await loadData();

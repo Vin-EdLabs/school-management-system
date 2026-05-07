@@ -4,8 +4,19 @@ import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js'
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { calculateFeeBalance } from '../services/financeCalculationService.js';
+import { getIO } from '../socket.js';
+import { sendPushToStudentParents } from '../services/webPushService.js';
 
 const router = express.Router();
+
+const emitTenantDataChanged = (tenantId: number, entity: string, action: 'created' | 'updated' | 'deleted') => {
+  try {
+    const io = getIO();
+    io.to(`tenant:${tenantId}`).emit('tenant-data-changed', { tenantId, entity, action, at: Date.now() });
+  } catch {
+    // Socket server may be unavailable in some non-realtime contexts.
+  }
+};
 
 router.use(authenticate);
 router.use(requireTenant);
@@ -48,11 +59,21 @@ async function getStudentFeeBalance(
   );
   const totalFees = parseFloat(feeRes.rows[0]?.total || '0');
 
-  const paidRes = await client.query(
-    `SELECT COALESCE(SUM(amount), 0) as total FROM payments
-     WHERE tenant_id = $1 AND student_id = $2 AND (term = $3 OR term LIKE $4)`,
-    [tenantId, studentId, termMatch, `${termMatch}%`]
-  );
+  let paidRes;
+  try {
+    paidRes = await client.query(
+      `SELECT COALESCE(SUM(amount), 0) as total FROM payments
+       WHERE tenant_id = $1 AND student_id = $2 AND (term = $3 OR term LIKE $4)`,
+      [tenantId, studentId, termMatch, `${termMatch}%`]
+    );
+  } catch {
+    // Legacy schema fallback: payments.term may not exist.
+    paidRes = await client.query(
+      `SELECT COALESCE(SUM(amount), 0) as total FROM payments
+       WHERE tenant_id = $1 AND student_id = $2`,
+      [tenantId, studentId]
+    );
+  }
   const totalPaid = parseFloat(paidRes.rows[0]?.total || '0');
 
   // Fetch arrears from term_arrears
@@ -124,7 +145,61 @@ router.get('/', async (req: AuthRequest, res) => {
 
     queryText += ' ORDER BY p.payment_date DESC, p.created_at DESC';
 
-    const result = await query(queryText, params);
+    let result;
+    try {
+      result = await query(queryText, params);
+    } catch {
+      // Legacy schema fallback: payment_method column may be missing.
+      let fallbackQuery = `
+        SELECT p.id, p.tenant_id, p.student_id, p.amount, p.payment_date,
+               p.notes, p.receipt_number, p.created_at, p.updated_at,
+               ''::text as term,
+               ''::text as payment_method,
+               s.first_name, s.last_name, s.student_id as admission_no, s.admission_number, COALESCE(c.class_name, c.name) as class_name
+        FROM payments p
+        LEFT JOIN students s ON p.student_id = s.id
+        LEFT JOIN classes c ON s.class_assigned_id = c.id
+        WHERE p.tenant_id = $1
+      `;
+      const fallbackParams: any[] = [tenantId];
+      if (studentId) {
+        fallbackQuery += ` AND p.student_id = $${fallbackParams.length + 1}`;
+        fallbackParams.push(studentId);
+      }
+      if (startDate && endDate) {
+        fallbackQuery += ` AND p.payment_date BETWEEN $${fallbackParams.length + 1} AND $${fallbackParams.length + 2}`;
+        fallbackParams.push(startDate, endDate);
+      }
+      fallbackQuery += ' ORDER BY p.payment_date DESC, p.created_at DESC';
+      try {
+        result = await query(fallbackQuery, fallbackParams);
+      } catch {
+        // Older schema fallback: notes column may also be missing.
+        let fallbackQueryNoNotes = `
+          SELECT p.id, p.tenant_id, p.student_id, p.amount, p.payment_date,
+                 p.receipt_number, p.created_at, p.updated_at,
+                 ''::text as notes,
+                 ''::text as term,
+                 ''::text as payment_method,
+                 s.first_name, s.last_name, s.student_id as admission_no, s.admission_number, COALESCE(c.class_name, c.name) as class_name
+          FROM payments p
+          LEFT JOIN students s ON p.student_id = s.id
+          LEFT JOIN classes c ON s.class_assigned_id = c.id
+          WHERE p.tenant_id = $1
+        `;
+        const fallbackParamsNoNotes: any[] = [tenantId];
+        if (studentId) {
+          fallbackQueryNoNotes += ` AND p.student_id = $${fallbackParamsNoNotes.length + 1}`;
+          fallbackParamsNoNotes.push(studentId);
+        }
+        if (startDate && endDate) {
+          fallbackQueryNoNotes += ` AND p.payment_date BETWEEN $${fallbackParamsNoNotes.length + 1} AND $${fallbackParamsNoNotes.length + 2}`;
+          fallbackParamsNoNotes.push(startDate, endDate);
+        }
+        fallbackQueryNoNotes += ' ORDER BY p.payment_date DESC, p.created_at DESC';
+        result = await query(fallbackQueryNoNotes, fallbackParamsNoNotes);
+      }
+    }
     res.json(result.rows);
   } catch (error) {
     console.error('Get payments error:', error);
@@ -138,16 +213,48 @@ router.get('/:id', async (req: AuthRequest, res) => {
     const tenantId = req.user!.tenantId!;
     const { id } = req.params;
 
-    const result = await query(
-      `SELECT p.id, p.tenant_id, p.student_id, p.amount, p.payment_date, p.payment_method,
-              p.term, p.notes, p.receipt_number, p.created_at, p.updated_at,
-              s.first_name, s.last_name, s.student_id as admission_no, s.admission_number, c.class_name
-       FROM payments p
-       LEFT JOIN students s ON p.student_id = s.id
-       LEFT JOIN classes c ON s.class_assigned_id = c.id
-       WHERE p.id = $1 AND p.tenant_id = $2`,
-      [id, tenantId]
-    );
+    let result;
+    try {
+      result = await query(
+        `SELECT p.id, p.tenant_id, p.student_id, p.amount, p.payment_date, p.payment_method,
+                p.term, p.notes, p.receipt_number, p.created_at, p.updated_at,
+                s.first_name, s.last_name, s.student_id as admission_no, s.admission_number, COALESCE(c.class_name, c.name) as class_name
+         FROM payments p
+         LEFT JOIN students s ON p.student_id = s.id
+         LEFT JOIN classes c ON s.class_assigned_id = c.id
+         WHERE p.id = $1 AND p.tenant_id = $2`,
+        [id, tenantId]
+      );
+    } catch {
+      try {
+        result = await query(
+          `SELECT p.id, p.tenant_id, p.student_id, p.amount, p.payment_date,
+                  p.notes, p.receipt_number, p.created_at, p.updated_at,
+                  ''::text as payment_method,
+                  ''::text as term,
+                  s.first_name, s.last_name, s.student_id as admission_no, s.admission_number, COALESCE(c.class_name, c.name) as class_name
+           FROM payments p
+           LEFT JOIN students s ON p.student_id = s.id
+           LEFT JOIN classes c ON s.class_assigned_id = c.id
+           WHERE p.id = $1 AND p.tenant_id = $2`,
+          [id, tenantId]
+        );
+      } catch {
+        result = await query(
+          `SELECT p.id, p.tenant_id, p.student_id, p.amount, p.payment_date,
+                  p.receipt_number, p.created_at, p.updated_at,
+                  ''::text as notes,
+                  ''::text as payment_method,
+                  ''::text as term,
+                  s.first_name, s.last_name, s.student_id as admission_no, s.admission_number, COALESCE(c.class_name, c.name) as class_name
+           FROM payments p
+           LEFT JOIN students s ON p.student_id = s.id
+           LEFT JOIN classes c ON s.class_assigned_id = c.id
+           WHERE p.id = $1 AND p.tenant_id = $2`,
+          [id, tenantId]
+        );
+      }
+    }
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Payment not found' });
@@ -198,20 +305,63 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
       ? `${termStr} ${yearStr}`.trim() 
       : termStr;
 
-    const insertResult = await query(
-      `INSERT INTO payments (tenant_id, student_id, amount, payment_date, payment_method, term, notes, receipt_number)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-      [
-        tenantId,
-        student_id,
-        paymentAmount,
-        payment_date,
-        payment_method || null,
-        termToStore || term || null,
-        notes || null,
-        receiptNumber,
-      ]
-    );
+    let insertResult;
+    try {
+      insertResult = await query(
+        `INSERT INTO payments (tenant_id, student_id, amount, payment_date, payment_method, term, notes, receipt_number)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+        [
+          tenantId,
+          student_id,
+          paymentAmount,
+          payment_date,
+          payment_method || null,
+          termToStore || term || null,
+          notes || null,
+          receiptNumber,
+        ]
+      );
+    } catch {
+      try {
+        // Legacy schema fallback: payment_method may not exist.
+        insertResult = await query(
+          `INSERT INTO payments (tenant_id, student_id, amount, payment_date, term, notes, receipt_number)
+           VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+          [
+            tenantId,
+            student_id,
+            paymentAmount,
+            payment_date,
+            termToStore || term || null,
+            notes || null,
+            receiptNumber,
+          ]
+        );
+      } catch {
+        try {
+          // Legacy schema fallback: both payment_method and term may be missing.
+          insertResult = await query(
+            `INSERT INTO payments (tenant_id, student_id, amount, payment_date, notes, receipt_number)
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+            [
+              tenantId,
+              student_id,
+              paymentAmount,
+              payment_date,
+              notes || null,
+              receiptNumber,
+            ]
+          );
+        } catch {
+          // Oldest schema fallback: notes may be missing as well.
+          insertResult = await query(
+            `INSERT INTO payments (tenant_id, student_id, amount, payment_date, receipt_number)
+             VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+            [tenantId, student_id, paymentAmount, payment_date, receiptNumber]
+          );
+        }
+      }
+    }
     const payment = insertResult.rows[0];
 
     const client = await getClient();
@@ -232,6 +382,19 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
       [tenantId, req.user!.id, 'CREATE', 'PAYMENT', payment.id]
     );
+    emitTenantDataChanged(tenantId, 'payment', 'created');
+    const studentNameRes = await query(
+      'SELECT first_name, last_name FROM students WHERE tenant_id = $1 AND id = $2',
+      [tenantId, student_id]
+    ).catch(() => ({ rows: [] as any[] }));
+    const studentName = studentNameRes.rows[0]
+      ? `${studentNameRes.rows[0].first_name} ${studentNameRes.rows[0].last_name}`.trim()
+      : 'Your ward';
+    await sendPushToStudentParents(tenantId, Number(student_id), {
+      title: 'Fee Payment Received',
+      body: `${studentName}: GHS ${paymentAmount.toFixed(2)} was received. Receipt #${receiptNumber}.`,
+      url: `/parent/${tenantId}`,
+    }).catch(() => {});
 
     res.status(201).json({
       payment,

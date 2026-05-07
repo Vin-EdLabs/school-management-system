@@ -5,11 +5,9 @@ import { useSchool } from '../contexts/SchoolContext';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { useAuth, UserRole } from '../contexts/AuthContext';
-import { GraduationCap, Lock, User, UserCheck, ArrowLeft, ShieldCheck, Zap, Sparkles, Shield } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { GraduationCap, Lock, User, ArrowLeft, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-import { cn } from "@/lib/utils";
-import { useTheme } from '../contexts/ThemeContext';
 
 const LoginPage = () => {
   const { schoolId } = useParams<{ schoolId?: string }>();
@@ -17,9 +15,10 @@ const LoginPage = () => {
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [tenant, setTenant] = useState<{ name: string; logo_url: string | null; primary_color: string | null; secondary_color: string | null } | null>(null);
   const { login } = useAuth();
-  const { theme } = useTheme();
 
   const tenantId = contextSchoolId ?? (schoolId ? parseInt(schoolId, 10) : undefined);
 
@@ -41,7 +40,9 @@ const LoginPage = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
     try {
+      await new Promise((resolve) => setTimeout(resolve, 1100));
       const success = await login(username, password, 'administrator', tenantId);
       if (success) {
         toast({
@@ -61,140 +62,122 @@ const LoginPage = () => {
         description: error?.message || "An error occurred during login. Please try again.",
         variant: "destructive",
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#020617] overflow-hidden font-sans selection:bg-indigo-500/30 selection:text-white">
-      {/* Background Orbs */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-500/10 rounded-full blur-[120px] animate-pulse" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-500/10 rounded-full blur-[100px] animate-pulse" />
-      </div>
-
-      <div className="relative z-10 w-full max-w-4xl px-6 animate-in fade-in zoom-in duration-700">
-        <div className="bg-white/[0.03] backdrop-blur-3xl border border-white/10 rounded-[2.5rem] overflow-hidden shadow-2xl flex flex-col md:flex-row">
-          
-          {/* Left Side: Branding */}
-          <div className="w-full md:w-[40%] p-8 md:p-12 flex flex-col justify-between items-center md:items-start relative overflow-hidden border-b md:border-b-0 md:border-r border-white/10">
-            {/* Subtle Gradient Backdrop for branding side */}
-            <div 
-              className="absolute inset-0 opacity-10 pointer-events-none"
-              style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)` }}
-            />
-            
-            <div className="relative z-10 flex flex-col items-center md:items-start text-center md:text-left">
-              <div 
-                className="w-16 h-16 mb-8 backdrop-blur-2xl rounded-2xl flex items-center justify-center border border-white/10 shadow-xl overflow-hidden group transition-all"
-                style={{ backgroundColor: `${primaryColor}15` }}
-              >
-                {tenant?.logo_url ? (
-                  <img src={logoUrl} alt={schoolName} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
-                ) : (
-                  <GraduationCap className="w-8 h-8 text-white/90" />
-                )}
-              </div>
-              
-              <h1 className="text-3xl font-black tracking-tight text-white font-outfit uppercase leading-tight mb-2">
-                {schoolName}
-              </h1>
-              <div className="flex items-center gap-2">
-                <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                <p className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em]">Authorized Portal</p>
-              </div>
-            </div>
-
-            <div className="relative z-10 mt-12 md:mt-auto">
-              <p className="text-slate-500 text-xs font-medium leading-relaxed max-w-[200px] text-center md:text-left">
-                Precision tools for modern educational administration.
-              </p>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-auto bg-slate-100 p-3 md:p-4">
+      <div className="w-full max-w-5xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl md:rounded-3xl">
+        <div className="grid min-h-[560px] grid-cols-1 md:min-h-[620px] md:grid-cols-2">
+          {/* Left: School branding / logo */}
+          <div
+            className="order-1 relative flex items-center justify-center p-4 md:order-1 md:p-12"
+            style={{ background: `linear-gradient(145deg, #eef3ff 0%, #f8faff 45%, #edf6ff 100%)` }}
+          >
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_10%,rgba(99,102,241,0.12),transparent_42%)]" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_90%,rgba(236,72,153,0.10),transparent_45%)]" />
+            <div className="relative z-10 flex w-full max-w-md flex-col items-center justify-center text-center">
+              {tenant?.logo_url ? (
+                <img
+                  src={logoUrl}
+                  alt={schoolName}
+                  className="h-14 w-14 rounded-full object-contain border border-white/70 bg-white/80 p-1 shadow md:h-64 md:w-64 md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none"
+                />
+              ) : (
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/80 border border-white/70 shadow md:h-64 md:w-64 md:border-0 md:bg-white/70 md:shadow-none">
+                  <GraduationCap className="h-6 w-6 text-slate-500 md:h-16 md:w-16" />
+                </div>
+              )}
+              <h2 className="mt-3 text-xl font-black uppercase tracking-tight text-slate-900 md:mt-6 md:text-2xl">{schoolName}</h2>
+              <p className="mt-1 text-xs font-medium text-slate-500 md:mt-2 md:text-sm">School Management System</p>
             </div>
           </div>
 
-          {/* Right Side: Form */}
-          <div className="flex-1 p-8 md:p-12">
-            <div className="mb-10">
-              <h2 className="text-3xl font-black text-white tracking-tight font-outfit mb-2">Sign In</h2>
-              <p className="text-slate-500 font-medium text-sm">Enter your credentials to access the workspace.</p>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="space-y-2">
-                <Label htmlFor="username" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">
-                  Identity
-                </Label>
-                <div className="relative group">
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                    <User className="h-4.5 w-4.5 text-slate-600 group-focus-within:text-indigo-400 transition-colors" />
-                  </div>
-                  <Input
-                    id="username"
-                    type="text"
-                    placeholder="Username"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    className="pl-12 h-14 rounded-2xl border-white/10 bg-slate-800/40 text-white placeholder:text-slate-600 focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/10 transition-all text-base font-medium"
-                    required
-                  />
-                </div>
+          {/* Right: Login form */}
+          <div className="order-2 flex items-center justify-center bg-white p-6 md:order-2 md:p-12">
+            <div className="w-full max-w-sm">
+              <div className="mb-6 md:mb-8">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400 md:text-sm md:tracking-[0.2em]">Tenant Portal</p>
+                <h1 className="mt-1 text-[38px] leading-tight font-black text-slate-900 md:mt-2 md:text-3xl">Login to your account</h1>
+                <p className="mt-2 text-sm text-slate-500">Enter your admin credentials to access the main system.</p>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="password" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">
-                  Password
-                </Label>
-                <div className="relative group">
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                    <Lock className="h-4.5 w-4.5 text-slate-600 group-focus-within:text-indigo-400 transition-colors" />
+              <form onSubmit={handleSubmit} className="space-y-4 md:space-y-5">
+                <div className="space-y-2">
+                  <Label htmlFor="username" className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    Username
+                  </Label>
+                  <div className="relative">
+                    <User className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <Input
+                      id="username"
+                      type="text"
+                      placeholder="Enter username"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      className="h-12 rounded-xl border-slate-200 pl-11 text-slate-900 placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-indigo-200"
+                      required
+                    />
                   </div>
-                  <Input
-                    id="password"
-                    type="password"
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="pl-12 h-14 rounded-2xl border-white/10 bg-slate-800/40 text-white placeholder:text-slate-600 focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/10 transition-all text-base font-medium"
-                    required
-                  />
                 </div>
-              </div>
 
-              <div className="pt-2">
+                <div className="space-y-2">
+                  <Label htmlFor="password" className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    Password
+                  </Label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <Input
+                      id="password"
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="Enter password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="h-12 rounded-xl border-slate-200 pl-11 pr-11 text-slate-900 placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-indigo-200"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
                 <Button
                   type="submit"
-                  className="w-full h-14 rounded-2xl text-white font-bold text-base shadow-xl transition-all hover:scale-[1.01] active:scale-[0.99] relative overflow-hidden group border-0"
-                  style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)` }}
+                  disabled={isSubmitting}
+                  className="h-12 w-full rounded-xl text-base font-semibold text-white shadow-lg"
+                  style={{ background: `linear-gradient(120deg, ${primaryColor} 0%, ${secondaryColor} 100%)` }}
                 >
-                  <span className="relative z-10 flex items-center justify-center gap-2">
-                    Verify & Access
-                    <ArrowLeft className="w-4 h-4 rotate-180" />
-                  </span>
-                  <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+                  {isSubmitting ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Signing you in...
+                    </span>
+                  ) : 'Login'}
                 </Button>
-              </div>
-            </form>
+              </form>
 
-            <div className="mt-8 pt-6 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4">
-              <button className="text-[10px] text-slate-500 hover:text-white transition-colors font-bold uppercase tracking-widest">
-                Support
-              </button>
-              <button 
+              <button
                 onClick={() => navigate('/')}
-                className="text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors font-bold uppercase tracking-widest flex items-center gap-2"
+                className="mt-4 inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 transition-colors hover:text-slate-800 md:mt-6 md:text-xs"
               >
-                <ArrowLeft className="w-3 h-3" />
-                Public Site
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Back to site
               </button>
             </div>
           </div>
         </div>
-
       </div>
 
-      {/* Footer - Fixed at Bottom */}
-      <div className="absolute bottom-8 left-0 right-0 z-20 flex flex-col items-center gap-2 animate-in fade-in duration-1000 delay-500">
-        <p className="text-[10px] font-bold text-white/20 uppercase tracking-[0.4em]">Powered by TECHNERVE</p>
-        <p className="text-[8px] text-white/10 font-bold uppercase tracking-widest">© 2026 Platform Infrastructure</p>
+      <div className="pointer-events-none absolute bottom-1 left-0 right-0 text-center md:bottom-5">
+        <p className="text-[9px] font-bold uppercase tracking-[0.28em] text-slate-300 md:text-[10px] md:tracking-[0.35em]">Powered by Technerve</p>
       </div>
     </div>
   );

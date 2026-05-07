@@ -1,8 +1,21 @@
 import express from 'express';
 import { query } from '../db/connection.js';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth.js';
+import { getIO } from '../socket.js';
 
 const router = express.Router();
+
+const emitSystemDataChanged = (entity: string, action: 'created' | 'updated' | 'deleted', tenantId?: number) => {
+  try {
+    const io = getIO();
+    io.to('global:general').emit('tenant-data-changed', { tenantId: tenantId ?? null, entity, action, at: Date.now() });
+    if (tenantId) {
+      io.to(`tenant:${tenantId}`).emit('tenant-data-changed', { tenantId, entity, action, at: Date.now() });
+    }
+  } catch {
+    // Socket server may be unavailable in some non-realtime contexts.
+  }
+};
 
 // Public: Submit registration request (no auth)
 router.post('/', async (req, res) => {
@@ -19,6 +32,7 @@ router.post('/', async (req, res) => {
       [schoolName, adminName, email, phone || null, message || null]
     );
 
+    emitSystemDataChanged('school-registration', 'created');
     res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error('Submit registration error:', error);
@@ -84,11 +98,38 @@ router.patch('/:id/status', authenticate, requireRole('super-admin'), async (req
       );
       const tenantId = tenantResult.rows[0].id;
 
-      // 2. Create primary admin user
-      await client.query(
-        'INSERT INTO users (tenant_id, username, email, full_name, password_hash, role, is_primary_admin) VALUES ($1, $2, $3, $4, $5, $6, true)',
-        [tenantId, adminUsername, email, admin_name, hashedPassword, 'administrator']
-      );
+      // 2. Create primary admin user (support both modern and legacy users schemas)
+      let createdUser = false;
+      const userInsertAttempts: Array<{ sql: string; params: any[] }> = [
+        {
+          sql: 'INSERT INTO users (tenant_id, username, email, full_name, password_hash, role, is_primary_admin) VALUES ($1, $2, $3, $4, $5, $6, true)',
+          params: [tenantId, adminUsername, email, admin_name, hashedPassword, 'administrator'],
+        },
+        {
+          sql: 'INSERT INTO users (tenant_id, username, email, password_hash, role, is_primary_admin) VALUES ($1, $2, $3, $4, $5, true)',
+          params: [tenantId, adminUsername, email, hashedPassword, 'administrator'],
+        },
+        {
+          sql: 'INSERT INTO users (tenant_id, username, password_hash, role) VALUES ($1, $2, $3, $4)',
+          params: [tenantId, adminUsername, hashedPassword, 'administrator'],
+        },
+        {
+          sql: 'INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3)',
+          params: [adminUsername, hashedPassword, 'administrator'],
+        },
+      ];
+      for (const attempt of userInsertAttempts) {
+        try {
+          await client.query(attempt.sql, attempt.params);
+          createdUser = true;
+          break;
+        } catch {
+          continue;
+        }
+      }
+      if (!createdUser) {
+        throw new Error('Failed to create school admin user with available schema');
+      }
 
       // 3. Create default settings
       await client.query(
@@ -103,6 +144,7 @@ router.patch('/:id/status', authenticate, requireRole('super-admin'), async (req
       );
 
       await client.query('COMMIT');
+      emitSystemDataChanged('school-registration', 'updated', tenantId);
       return res.json(result.rows[0]);
     }
 
@@ -113,6 +155,7 @@ router.patch('/:id/status', authenticate, requireRole('super-admin'), async (req
     );
 
     await client.query('COMMIT');
+    emitSystemDataChanged('school-registration', 'updated', registration.tenant_id || undefined);
     res.json(result.rows[0]);
   } catch (error) {
     await client.query('ROLLBACK');
@@ -138,6 +181,7 @@ router.patch('/:id/note', authenticate, requireRole('super-admin'), async (req: 
       return res.status(404).json({ error: 'Registration not found' });
     }
 
+    emitSystemDataChanged('school-registration', 'updated');
     res.json(result.rows[0]);
   } catch (error) {
     console.error('Update registration note error:', error);
@@ -155,6 +199,7 @@ router.delete('/:id', authenticate, requireRole('super-admin'), async (req: Auth
       return res.status(404).json({ error: 'Registration not found' });
     }
     
+    emitSystemDataChanged('school-registration', 'deleted');
     res.json({ message: 'Registration deleted successfully' });
   } catch (error) {
     console.error('Delete registration error:', error);

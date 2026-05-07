@@ -147,7 +147,9 @@ export const calculateStudentFeesSync = (
     const sc = (studentClass || '').trim();
     return cn === sc || cn.includes(sc) || sc.includes(cn);
   };
-  const termMatch = (t: string | undefined) => termsMatch(currentTerm, t);
+  // Legacy DB rows may have missing term; treat them as current term
+  // so newly set fees still bill students without manual migration.
+  const termMatch = (t: string | undefined) => !t || termsMatch(currentTerm, t);
   const matchingFees = (feeStructures || []).filter((fee: any) => classMatch(fee) && termMatch(fee.term));
   const baseTermFee = matchingFees.reduce((sum: number, f: any) => sum + (parseFloat(f.amount) || 0), 0);
   

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { useSchool } from '../../contexts/SchoolContext';
+import { useOptionalSchool } from '../../contexts/SchoolContext';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Printer } from 'lucide-react';
+import { Download, Printer } from 'lucide-react';
 import { apiService } from '../../services/api';
 import { resolveLogoUrl } from '../../services/tenantService';
 
@@ -29,18 +29,28 @@ interface ReceiptPrinterProps {
   onPrint: () => void;
   show: boolean;
   onClose: () => void;
+  schoolNameOverride?: string;
+  logoUrlOverride?: string | null;
 }
 
-const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({ receiptData, onPrint, show, onClose }) => {
-  const { school } = useSchool();
+const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
+  receiptData,
+  onPrint,
+  show,
+  onClose,
+  schoolNameOverride,
+  logoUrlOverride,
+}) => {
+  const schoolCtx = useOptionalSchool();
+  const school = schoolCtx?.school ?? null;
   const [receiptSettings, setReceiptSettings] = useState<{
     postal_address?: string;
     contact_phone?: string;
     receipt_footer?: string;
     bank_details?: string;
   } | null>(null);
-  const schoolName = school?.name ?? 'School';
-  const logoUrl = resolveLogoUrl(school?.logo_url ?? null);
+  const schoolName = schoolNameOverride || school?.name || 'School';
+  const logoUrl = resolveLogoUrl(logoUrlOverride ?? school?.logo_url ?? null);
 
   useEffect(() => {
     if (show) {
@@ -57,129 +67,100 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({ receiptData, onPrint, s
 
   if (!show) return null;
 
+  const buildReceiptHtml = () => `
+      <html>
+        <head>
+          <title>Receipt - ${receiptData.receiptNumber}</title>
+          <style>
+            @page { size: 80mm auto; margin: 0; }
+            body {
+              font-family: Arial, Helvetica, sans-serif;
+              margin: 0;
+              padding: 5mm;
+              background: white;
+              color: #000;
+              width: 80mm;
+              -webkit-print-color-adjust: exact;
+            }
+            .receipt-container { width: 70mm; margin: 0 auto; }
+            .header { text-align: center; margin-bottom: 10pt; border-bottom: 1pt dashed #000; padding-bottom: 8pt; }
+            .school-logo { width: 50pt; height: 50pt; object-fit: contain; margin-bottom: 5pt; filter: grayscale(100%); }
+            .school-name { margin: 0; font-size: 14pt; font-weight: bold; text-transform: uppercase; line-height: 1.1; letter-spacing: -0.5pt; }
+            .school-info p { margin: 1pt 0; font-size: 8pt; color: #000; }
+            .receipt-meta { text-align: center; margin: 8pt 0; }
+            .receipt-meta h2 { margin: 0; font-size: 10pt; font-weight: bold; text-transform: uppercase; }
+            .receipt-meta p { margin: 2pt 0; font-size: 14pt; font-weight: bold; }
+            .date { font-size: 8pt; color: #000; }
+            .section { margin-bottom: 10pt; font-size: 9pt; }
+            .section-title { font-size: 8pt; font-weight: bold; text-transform: uppercase; border-bottom: 0.5pt solid #ccc; margin-bottom: 4pt; padding-bottom: 2pt; }
+            .row { display: flex; justify-content: space-between; margin-bottom: 3pt; line-height: 1.1; }
+            .label { font-weight: normal; }
+            .value { font-weight: bold; text-align: right; }
+            .amount-box { border: 1pt solid #000; padding: 8pt; text-align: center; margin: 10pt 0; }
+            .amount-label { font-size: 8pt; font-weight: bold; text-transform: uppercase; }
+            .amount-total { font-size: 18pt; font-weight: bold; margin-top: 2pt; }
+            .charges-table { width: 100%; border-collapse: collapse; margin-top: 4pt; font-size: 8pt; }
+            .charges-table td { padding: 3pt 0; border-bottom: 0.5pt solid #eee; }
+            .total-line { font-weight: bold; border-top: 1pt solid #000; margin-top: 4pt; padding-top: 4pt; font-size: 10pt; }
+            .notes { margin-top: 8pt; font-size: 8pt; font-style: italic; border-top: 0.5pt dashed #ccc; padding-top: 4pt; }
+            .footer { text-align: center; margin-top: 12pt; border-top: 1pt dashed #000; padding-top: 8pt; font-size: 8pt; }
+            .footer p { margin: 2pt 0; }
+            .thanks { font-weight: bold; font-size: 9pt; margin-bottom: 4pt; }
+          </style>
+        </head>
+        <body>
+          <div class="receipt-container">
+            <div class="header">
+              ${logoUrl ? `<img src="${logoUrl}" class="school-logo" />` : ''}
+              <h1 class="school-name">${schoolName}</h1>
+              <div class="school-info">
+                <p>${receiptSettings?.postal_address || ''}</p>
+                <p>${receiptSettings?.contact_phone ? `Tel: ${receiptSettings.contact_phone}` : ''}</p>
+              </div>
+            </div>
+            <div class="receipt-meta">
+              <h2>Payment Receipt</h2>
+              <p>#${receiptData.receiptNumber}</p>
+              <div class="date">Date: ${new Date(receiptData.date).toLocaleDateString('en-GB')}</div>
+            </div>
+            <div class="section">
+              <div class="section-title">Student & Academic</div>
+              <div class="row"><span class="label">Name:</span><span class="value">${receiptData.studentName}</span></div>
+              <div class="row"><span class="label">ID:</span><span class="value">${receiptData.studentId}</span></div>
+              <div class="row"><span class="label">Class:</span><span class="value">${receiptData.className}</span></div>
+              <div class="row"><span class="label">Term:</span><span class="value">${receiptData.term}</span></div>
+              <div class="row"><span class="label">Method:</span><span class="value">${receiptData.paymentMethod}</span></div>
+            </div>
+            <div class="amount-box">
+              <div class="amount-label">Amount Paid</div>
+              <div class="amount-total">GHS ${(receiptData.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            </div>
+            <div class="section">
+              <div class="section-title">Breakdown</div>
+              <table class="charges-table">
+                ${receiptData.currentTermFee !== undefined ? `<tr><td>Current Fee</td><td style="text-align:right">${receiptData.currentTermFee.toFixed(2)}</td></tr>` : ''}
+                ${receiptData.arrears !== undefined && receiptData.arrears > 0 ? `<tr><td>Old Arrears</td><td style="text-align:right">${receiptData.arrears.toFixed(2)}</td></tr>` : ''}
+              </table>
+              <div class="row total-line"><span>Total Due:</span><span>GHS ${(receiptData.totalAmountDue || (receiptData.amount || 0)).toFixed(2)}</span></div>
+              <div class="row" style="margin-top:5px; font-weight:700;"><span>Balance:</span><span style="color:#000">GHS ${(receiptData.remainingBalance || 0).toFixed(2)}</span></div>
+            </div>
+            ${receiptData.notes ? `<div class="notes">Note: ${receiptData.notes}</div>` : ''}
+            <div class="footer">
+              <p class="thanks">${receiptSettings?.receipt_footer || 'THANK YOU!'}</p>
+              <p>Computer Generated Receipt</p>
+              <p>Date: ${new Date().toLocaleString()}</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
   const handlePrint = () => {
     const printContent = document.getElementById('receipt-content');
     if (printContent) {
       const printWindow = window.open('', '_blank');
       if (printWindow) {
-        printWindow.document.write(`
-          <html>
-            <head>
-              <title>Receipt - ${receiptData.receiptNumber}</title>
-              <style>
-                @page { 
-                  size: 80mm auto; 
-                  margin: 0; 
-                }
-                body { 
-                  font-family: Arial, Helvetica, sans-serif; /* Best for low-res thermal print */
-                  margin: 0; 
-                  padding: 5mm; 
-                  background: white; 
-                  color: #000;
-                  width: 80mm; 
-                  -webkit-print-color-adjust: exact;
-                }
-                .receipt-container { width: 70mm; margin: 0 auto; }
-                
-                .header { text-align: center; margin-bottom: 10pt; border-bottom: 1pt dashed #000; padding-bottom: 8pt; }
-                .school-logo { width: 50pt; height: 50pt; object-fit: contain; margin-bottom: 5pt; filter: grayscale(100%); }
-                .school-name { margin: 0; font-size: 14pt; font-weight: bold; text-transform: uppercase; line-height: 1.1; letter-spacing: -0.5pt; }
-                .school-info p { margin: 1pt 0; font-size: 8pt; color: #000; }
-                
-                .receipt-meta { text-align: center; margin: 8pt 0; }
-                .receipt-meta h2 { margin: 0; font-size: 10pt; font-weight: bold; text-transform: uppercase; }
-                .receipt-meta p { margin: 2pt 0; font-size: 14pt; font-weight: bold; }
-                .date { font-size: 8pt; color: #000; }
-                
-                .section { margin-bottom: 10pt; font-size: 9pt; }
-                .section-title { font-size: 8pt; font-weight: bold; text-transform: uppercase; border-bottom: 0.5pt solid #ccc; margin-bottom: 4pt; padding-bottom: 2pt; }
-                .row { display: flex; justify-content: space-between; margin-bottom: 3pt; line-height: 1.1; }
-                .label { font-weight: normal; }
-                .value { font-weight: bold; text-align: right; }
-
-                .amount-box { 
-                  border: 1pt solid #000; 
-                  padding: 8pt; 
-                  text-align: center; 
-                  margin: 10pt 0;
-                }
-                .amount-label { font-size: 8pt; font-weight: bold; text-transform: uppercase; }
-                .amount-total { font-size: 18pt; font-weight: bold; margin-top: 2pt; }
-                
-                .charges-table { width: 100%; border-collapse: collapse; margin-top: 4pt; font-size: 8pt; }
-                .charges-table td { padding: 3pt 0; border-bottom: 0.5pt solid #eee; }
-                .total-line { font-weight: bold; border-top: 1pt solid #000; margin-top: 4pt; padding-top: 4pt; font-size: 10pt; }
-
-                .notes { margin-top: 8pt; font-size: 8pt; font-style: italic; border-top: 0.5pt dashed #ccc; padding-top: 4pt; }
-                
-                .footer { text-align: center; margin-top: 12pt; border-top: 1pt dashed #000; padding-top: 8pt; font-size: 8pt; }
-                .footer p { margin: 2pt 0; }
-                .thanks { font-weight: bold; font-size: 9pt; margin-bottom: 4pt; }
-              </style>
-            </head>
-            <body>
-              <div class="receipt-container">
-                <div class="header">
-                  ${logoUrl ? `<img src="${logoUrl}" class="school-logo" />` : ''}
-                  <h1 class="school-name">${schoolName}</h1>
-                  <div class="school-info">
-                    <p>${receiptSettings?.postal_address || ''}</p>
-                    <p>${receiptSettings?.contact_phone ? `Tel: ${receiptSettings.contact_phone}` : ''}</p>
-                  </div>
-                </div>
-
-                <div class="receipt-meta">
-                  <h2>Payment Receipt</h2>
-                  <p>#${receiptData.receiptNumber}</p>
-                  <div class="date">Date: ${new Date(receiptData.date).toLocaleDateString('en-GB')}</div>
-                </div>
-
-                <div class="section">
-                  <div class="section-title">Student & Academic</div>
-                  <div class="row"><span class="label">Name:</span><span class="value">${receiptData.studentName}</span></div>
-                  <div class="row"><span class="label">ID:</span><span class="value">${receiptData.studentId}</span></div>
-                  <div class="row"><span class="label">Class:</span><span class="value">${receiptData.className}</span></div>
-                  <div class="row"><span class="label">Term:</span><span class="value">${receiptData.term}</span></div>
-                  <div class="row"><span class="label">Method:</span><span class="value">${receiptData.paymentMethod}</span></div>
-                </div>
-
-                <div class="amount-box">
-                  <div class="amount-label">Amount Paid</div>
-                  <div class="amount-total">GHS ${(receiptData.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                </div>
-
-                <div class="section">
-                  <div class="section-title">Breakdown</div>
-                  <table class="charges-table">
-                    ${receiptData.currentTermFee !== undefined ? `
-                      <tr><td>Current Fee</td><td style="text-align:right">${receiptData.currentTermFee.toFixed(2)}</td></tr>
-                    ` : ''}
-                    ${receiptData.arrears !== undefined && receiptData.arrears > 0 ? `
-                      <tr><td>Old Arrears</td><td style="text-align:right">${receiptData.arrears.toFixed(2)}</td></tr>
-                    ` : ''}
-                  </table>
-                  <div class="row total-line">
-                    <span>Total Due:</span>
-                    <span>GHS ${(receiptData.totalAmountDue || (receiptData.amount || 0)).toFixed(2)}</span>
-                  </div>
-                  <div class="row" style="margin-top:5px; font-weight:700;">
-                    <span>Balance:</span>
-                    <span style="color:#000">GHS ${(receiptData.remainingBalance || 0).toFixed(2)}</span>
-                  </div>
-                </div>
-
-                ${receiptData.notes ? `<div class="notes">Note: ${receiptData.notes}</div>` : ''}
-
-                <div class="footer">
-                  <p class="thanks">${receiptSettings?.receipt_footer || 'THANK YOU!'}</p>
-                  <p>Computer Generated Receipt</p>
-                  <p>Date: ${new Date().toLocaleString()}</p>
-                </div>
-              </div>
-            </body>
-          </html>
-        `);
+        printWindow.document.write(buildReceiptHtml());
         printWindow.document.close();
         printWindow.focus();
         setTimeout(() => {
@@ -190,6 +171,19 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({ receiptData, onPrint, s
     }
     onPrint();
     onClose();
+  };
+
+  const handleDownload = () => {
+    const html = buildReceiptHtml();
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `receipt-${receiptData.receiptNumber}.html`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -231,6 +225,10 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({ receiptData, onPrint, s
               <div className="flex justify-between">
                 <span className="text-slate-600 font-bold">Student:</span>
                 <span className="font-black text-slate-950">{receiptData.studentName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-600 font-bold">Student ID:</span>
+                <span className="font-black text-slate-950">{receiptData.studentId}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-600 font-bold">Class:</span>
@@ -287,6 +285,14 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({ receiptData, onPrint, s
           </div>
 
           <div className="flex flex-col space-y-2 mt-6">
+            <Button
+              onClick={handleDownload}
+              variant="outline"
+              className="w-full py-6 rounded-xl font-bold flex items-center justify-center space-x-2"
+            >
+              <Download className="w-4 h-4" />
+              <span>Download Receipt</span>
+            </Button>
             <Button 
               onClick={handlePrint} 
               className="w-full py-6 rounded-xl bg-slate-900 hover:bg-black text-white font-bold flex items-center justify-center space-x-2 shadow-lg shadow-slate-200 transition-all active:scale-95"

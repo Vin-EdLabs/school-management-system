@@ -15,6 +15,13 @@ export interface AuthRequest extends Request {
   };
 }
 
+const normalizeRole = (role: string | null | undefined): string => {
+  const r = String(role || '').toLowerCase().trim();
+  if (r === 'superadmin') return 'super-admin';
+  if (r === 'admin') return 'administrator';
+  return r;
+};
+
 export const authenticate = async (
   req: AuthRequest,
   res: Response,
@@ -29,16 +36,43 @@ export const authenticate = async (
     
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as any;
     
-    // Verify user still exists and is active
-    const result = await query(
-      `SELECT u.id, u.tenant_id, u.username, u.role, u.is_primary_admin, u.teacher_id, u.other_staff_id,
-              COALESCE(t.full_name, s.full_name, u.username) as full_name
-       FROM users u
-       LEFT JOIN teachers t ON u.teacher_id::text = t.id::text AND t.tenant_id = u.tenant_id
-       LEFT JOIN payroll_other_staff s ON u.other_staff_id = s.id AND s.tenant_id = u.tenant_id
-       WHERE u.id = $1 AND u.is_active = true`,
-      [decoded.userId]
-    );
+    // Verify user still exists (support both modern and legacy schemas)
+    const attempts: Array<{ sql: string; params: any[] }> = [
+      {
+        sql: `SELECT u.id, u.tenant_id, u.username, u.role, u.is_primary_admin, u.teacher_id, u.other_staff_id,
+                     COALESCE(t.full_name, s.full_name, u.username) as full_name
+              FROM users u
+              LEFT JOIN teachers t ON u.teacher_id::text = t.id::text AND t.tenant_id = u.tenant_id
+              LEFT JOIN payroll_other_staff s ON u.other_staff_id = s.id AND s.tenant_id = u.tenant_id
+              WHERE u.id = $1 AND u.is_active = true`,
+        params: [decoded.userId]
+      },
+      {
+        sql: `SELECT u.id, u.tenant_id, u.username, u.role, u.is_primary_admin, u.teacher_id,
+                     NULL::integer as other_staff_id, u.username as full_name
+              FROM users u
+              WHERE u.id = $1`,
+        params: [decoded.userId]
+      },
+      {
+        sql: `SELECT u.id, NULL::integer as tenant_id, u.username, u.role,
+                     false as is_primary_admin, NULL::text as teacher_id,
+                     NULL::integer as other_staff_id, u.username as full_name
+              FROM users u
+              WHERE u.id = $1`,
+        params: [decoded.userId]
+      }
+    ];
+
+    let result: any = { rows: [] };
+    for (const attempt of attempts) {
+      try {
+        result = await query(attempt.sql, attempt.params);
+        if (result.rows.length > 0) break;
+      } catch {
+        continue;
+      }
+    }
     
     if (result.rows.length === 0) {
       return res.status(401).json({ error: 'Invalid token' });
@@ -50,7 +84,7 @@ export const authenticate = async (
       tenantId: row.tenant_id,
       username: row.username,
       fullName: row.full_name,
-      role: row.role,
+      role: normalizeRole(row.role),
       isPrimaryAdmin: row.is_primary_admin === true,
       teacherId: row.teacher_id ? String(row.teacher_id) : null,
       otherStaffId: row.other_staff_id || null,
@@ -68,7 +102,9 @@ export const requireRole = (...roles: string[]) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
     
-    if (!roles.includes(req.user.role)) {
+    const allowed = roles.map(normalizeRole);
+    const current = normalizeRole(req.user.role);
+    if (!allowed.includes(current)) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     
@@ -78,8 +114,9 @@ export const requireRole = (...roles: string[]) => {
 
 export const requirePrimaryAdminOrSuperAdmin = (req: AuthRequest, res: Response, next: NextFunction) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-  if (req.user.role === 'super-admin') return next();
-  if (req.user.role === 'administrator' && req.user.isPrimaryAdmin) return next();
+  const role = normalizeRole(req.user.role);
+  if (role === 'super-admin') return next();
+  if (role === 'administrator' && req.user.isPrimaryAdmin) return next();
   return res.status(403).json({ error: 'Primary admin or super admin required' });
 };
 
@@ -88,7 +125,7 @@ export const requireTenant = (req: AuthRequest, res: Response, next: NextFunctio
     return res.status(401).json({ error: 'Unauthorized' });
   }
   
-  if (req.user.role === 'super-admin') {
+  if (normalizeRole(req.user.role) === 'super-admin') {
     return next();
   }
   
@@ -101,7 +138,7 @@ export const requireTenant = (req: AuthRequest, res: Response, next: NextFunctio
 
 export const validateTenantAccess = (req: AuthRequest, res: Response, next: NextFunction) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-  if (req.user.role === 'super-admin') return next();
+  if (normalizeRole(req.user.role) === 'super-admin') return next();
   const requestedTenantId = parseInt(req.query.tenantId as string) || req.user.tenantId;
   if (req.user.tenantId !== requestedTenantId) {
     return res.status(403).json({ error: 'Cross-tenant access denied' });

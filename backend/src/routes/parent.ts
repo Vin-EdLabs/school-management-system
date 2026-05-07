@@ -2,6 +2,7 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { query } from '../db/connection.js';
+import { getVapidPublicKey } from '../services/webPushService.js';
 
 const router = express.Router();
 
@@ -156,6 +157,52 @@ router.post('/change-password', authenticateParent, async (req: ParentRequest, r
   }
 });
 
+router.get('/push/public-key', authenticateParent, async (_req: ParentRequest, res) => {
+  const publicKey = getVapidPublicKey();
+  if (!publicKey) {
+    return res.status(503).json({ error: 'Push notifications are not configured yet' });
+  }
+  return res.json({ publicKey });
+});
+
+router.post('/push/subscribe', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    const { endpoint, keys } = req.body || {};
+    const p256dh = keys?.p256dh;
+    const auth = keys?.auth;
+    if (!endpoint || !p256dh || !auth) {
+      return res.status(400).json({ error: 'Invalid push subscription payload' });
+    }
+
+    await query(
+      `INSERT INTO parent_push_subscriptions (tenant_id, parent_account_id, endpoint, p256dh, auth)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (parent_account_id, endpoint)
+       DO UPDATE SET p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth`,
+      [req.parent!.tenantId, req.parent!.accountId, endpoint, p256dh, auth]
+    );
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Parent push subscribe error:', error);
+    return res.status(500).json({ error: 'Failed to save push subscription' });
+  }
+});
+
+router.post('/push/unsubscribe', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    const endpoint = req.body?.endpoint;
+    if (!endpoint) return res.status(400).json({ error: 'endpoint is required' });
+    await query(
+      'DELETE FROM parent_push_subscriptions WHERE parent_account_id = $1 AND endpoint = $2',
+      [req.parent!.accountId, endpoint]
+    );
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Parent push unsubscribe error:', error);
+    return res.status(500).json({ error: 'Failed to remove push subscription' });
+  }
+});
+
 // ── GET /api/parent/me ────────────────────────────────────────────────────────
 
 router.get('/me', authenticateParent, async (req: ParentRequest, res) => {
@@ -167,15 +214,31 @@ router.get('/me', authenticateParent, async (req: ParentRequest, res) => {
          s.id, s.first_name, s.last_name, s.student_id AS admission_number,
          s.gender, s.date_of_birth, s.class_assigned_id,
          s.passport_photo_url,
-         c.class_name, c.level,
+         COALESCE(c.class_name, c.name, TRIM(CONCAT(COALESCE(c.level, ''), ' ', COALESCE(c.stream, '')))) AS class_name,
+         c.level,
          t.name AS tenant_name,
-         t.logo_url AS school_logo_url,
-         ss.school_name, ss.current_term, ss.current_year,
+         COALESCE(ss.logo_url, t.logo_url) AS school_logo_url,
+         COALESCE(ss.school_name, t.name) AS school_name,
+         COALESCE(
+           NULLIF(ss.current_term, ''),
+           NULLIF(at.term_name, '')
+         ) AS current_term,
+         COALESCE(
+           NULLIF(ss.current_year, ''),
+           NULLIF(at.year::text, '')
+         ) AS current_year,
          pa.must_change_password, pa.last_login
        FROM students s
        LEFT JOIN classes c ON s.class_assigned_id = c.id
        LEFT JOIN tenants t ON s.tenant_id = t.id
        LEFT JOIN school_settings ss ON ss.tenant_id = s.tenant_id
+       LEFT JOIN LATERAL (
+         SELECT term_name, year
+         FROM academic_terms
+         WHERE tenant_id = s.tenant_id AND is_active = true
+         ORDER BY updated_at DESC NULLS LAST, id DESC
+         LIMIT 1
+       ) at ON true
        LEFT JOIN parent_portal_accounts pa ON pa.student_id = s.id AND pa.tenant_id = s.tenant_id
        WHERE s.id = $1 AND s.tenant_id = $2`,
       [studentId, tenantId]
@@ -406,14 +469,36 @@ router.get('/finance', authenticateParent, async (req: ParentRequest, res) => {
     );
     const student = studentRow.rows[0];
 
-    // Get fee structure for student's class + current term
-    const feeRow = await query(
-      `SELECT total_amount, tuition_fee, pta_fee, sports_fee, library_fee, other_fee, term
-       FROM fee_structures
-       WHERE tenant_id = $1 AND class_id = $2 AND term = $3
-       ORDER BY created_at DESC LIMIT 1`,
-      [tenantId, student?.class_id, currentTerm]
-    );
+    // Get fee structure for student's class + current term (legacy-safe)
+    let feeRow;
+    try {
+      feeRow = await query(
+        `SELECT total_amount, tuition_fee, pta_fee, sports_fee, library_fee, other_fee, term
+         FROM fee_structures
+         WHERE tenant_id = $1
+           AND class_id = $2
+           AND (term = $3 OR term LIKE $4 OR term IS NULL OR term = '')
+         ORDER BY created_at DESC LIMIT 1`,
+        [tenantId, student?.class_id, currentTerm, `${currentTerm}%`]
+      );
+    } catch {
+      feeRow = await query(
+        `SELECT
+           amount AS total_amount,
+           amount AS tuition_fee,
+           0::numeric AS pta_fee,
+           0::numeric AS sports_fee,
+           0::numeric AS library_fee,
+           0::numeric AS other_fee,
+           term
+         FROM fee_structures
+         WHERE (tenant_id = $1 OR tenant_id IS NULL)
+           AND class_id = $2
+           AND (term = $3 OR term LIKE $4 OR term IS NULL OR term = '')
+         ORDER BY created_at DESC LIMIT 1`,
+        [tenantId, student?.class_id, currentTerm, `${currentTerm}%`]
+      );
+    }
     const feeStructure = feeRow.rows[0] || null;
 
     // Get arrears for current term
@@ -424,21 +509,71 @@ router.get('/finance', authenticateParent, async (req: ParentRequest, res) => {
     );
     const arrears = parseFloat(arrearsRow.rows[0]?.amount || '0');
 
-    // Get payments for this student
-    const paymentsRow = await query(
-      `SELECT
-         p.amount_paid, p.payment_date, p.payment_method,
-         p.receipt_number, p.reference_number, p.notes,
-         p.term
-       FROM payments p
-       WHERE p.tenant_id = $1 AND p.student_id = $2
-       ORDER BY p.payment_date DESC`,
-      [tenantId, studentId]
-    );
+    // Get payments for this student (legacy-safe)
+    let paymentsRow;
+    try {
+      paymentsRow = await query(
+        `SELECT
+           COALESCE(p.amount_paid, p.amount) AS amount_paid,
+           p.payment_date,
+           p.payment_method,
+           p.receipt_number,
+           p.reference_number,
+           p.notes,
+           p.term
+         FROM payments p
+         WHERE p.tenant_id = $1 AND p.student_id = $2
+         ORDER BY p.payment_date DESC`,
+        [tenantId, studentId]
+      );
+    } catch {
+      try {
+        paymentsRow = await query(
+          `SELECT
+             COALESCE(p.amount_paid, p.amount) AS amount_paid,
+             p.payment_date,
+             ''::text AS payment_method,
+             p.receipt_number,
+             ''::text AS reference_number,
+             p.notes,
+             ''::text AS term
+           FROM payments p
+           WHERE p.tenant_id = $1 AND p.student_id = $2
+           ORDER BY p.payment_date DESC`,
+          [tenantId, studentId]
+        );
+      } catch {
+        paymentsRow = await query(
+          `SELECT
+             COALESCE(p.amount_paid, p.amount) AS amount_paid,
+             p.payment_date,
+             ''::text AS payment_method,
+             p.receipt_number,
+             ''::text AS reference_number,
+             ''::text AS notes,
+             ''::text AS term
+           FROM payments p
+           WHERE p.tenant_id = $1 AND p.student_id = $2
+           ORDER BY p.payment_date DESC`,
+          [tenantId, studentId]
+        );
+      }
+    }
     const allPayments = paymentsRow.rows;
 
-    // Payments for current term
-    const termPayments = allPayments.filter((p: any) => p.term === currentTerm);
+    // Payments for current term (legacy-safe):
+    // if payment term is missing on old schema, treat it as current-term payment.
+    const normalizedCurrentTerm = String(currentTerm || '').trim().toLowerCase();
+    const termPayments = allPayments.filter((p: any) => {
+      const paymentTerm = String(p?.term || '').trim().toLowerCase();
+      if (!paymentTerm) return true;
+      if (!normalizedCurrentTerm) return true;
+      return (
+        paymentTerm === normalizedCurrentTerm ||
+        paymentTerm.includes(normalizedCurrentTerm) ||
+        normalizedCurrentTerm.includes(paymentTerm)
+      );
+    });
     const totalPaidThisTerm = termPayments.reduce((s: number, p: any) => s + parseFloat(p.amount_paid), 0);
     const termFee = parseFloat(feeStructure?.total_amount || '0');
     const totalDue = termFee + arrears;

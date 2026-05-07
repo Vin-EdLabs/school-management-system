@@ -4,12 +4,22 @@ import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
+import { getIO } from '../socket.js';
 
 function generatePin(): string {
   return String(Math.floor(10000 + Math.random() * 90000));
 }
 
 const router = express.Router();
+
+const emitTenantDataChanged = (tenantId: number, entity: string, action: 'created' | 'updated' | 'deleted') => {
+  try {
+    const io = getIO();
+    io.to(`tenant:${tenantId}`).emit('tenant-data-changed', { tenantId, entity, action, at: Date.now() });
+  } catch {
+    // Socket server may be unavailable in some non-realtime contexts.
+  }
+};
 
 router.use(authenticate);
 router.use(requireTenant);
@@ -201,6 +211,7 @@ router.post('/other-staff', requireRole('super-admin', 'administrator', 'finance
       loginPin,
       loginMessage: `Staff can login with Staff ID: ${staffId} and PIN: ${loginPin}`,
     });
+    emitTenantDataChanged(tenantId, 'payroll-staff', 'created');
   } catch (error) {
     console.error('Add other staff error:', error);
     res.status(500).json({ error: 'Failed to add staff' });
@@ -229,6 +240,7 @@ router.put('/other-staff/:id', requireRole('super-admin', 'administrator', 'fina
       values
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Staff not found' });
+    emitTenantDataChanged(tenantId, 'payroll-staff', 'updated');
     res.json(result.rows[0]);
   } catch (error) {
     console.error('Update other staff error:', error);
@@ -252,6 +264,7 @@ router.post('/pay', requireRole('super-admin', 'administrator', 'finance'), asyn
        RETURNING *`,
       [tenantId, payee_type, payee_id, parseInt(month), parseInt(year), parseFloat(amount), paid_date || null, payment_method || null, notes || null]
     );
+    emitTenantDataChanged(tenantId, 'salary-payment', 'created');
     res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error('Record salary payment error:', error);

@@ -1,0 +1,90 @@
+import webpush from 'web-push';
+import { query } from '../db/connection.js';
+
+type PushPayload = {
+  title: string;
+  body: string;
+  icon?: string | null;
+  badge?: string | null;
+  url?: string;
+};
+
+let configured = false;
+
+function ensureConfigured() {
+  if (configured) return;
+  const publicKey = process.env.VAPID_PUBLIC_KEY || '';
+  const privateKey = process.env.VAPID_PRIVATE_KEY || '';
+  const subject = process.env.VAPID_SUBJECT || 'mailto:support@scholarnerve.com';
+
+  if (!publicKey || !privateKey) {
+    console.warn('[web-push] VAPID keys missing. Push notifications are disabled.');
+    return;
+  }
+
+  webpush.setVapidDetails(subject, publicKey, privateKey);
+  configured = true;
+}
+
+export function getVapidPublicKey(): string {
+  return process.env.VAPID_PUBLIC_KEY || '';
+}
+
+export async function sendPushToParentAccount(parentAccountId: number, payload: PushPayload) {
+  ensureConfigured();
+  if (!configured) return;
+
+  const subs = await query(
+    `SELECT endpoint, p256dh, auth
+     FROM parent_push_subscriptions
+     WHERE parent_account_id = $1`,
+    [parentAccountId]
+  );
+
+  if (subs.rows.length === 0) return;
+
+  const data = JSON.stringify({
+    title: payload.title,
+    body: payload.body,
+    icon: payload.icon || undefined,
+    badge: payload.badge || payload.icon || undefined,
+    url: payload.url || '/parent',
+    at: Date.now(),
+  });
+
+  for (const sub of subs.rows) {
+    const subscription = {
+      endpoint: sub.endpoint,
+      keys: { p256dh: sub.p256dh, auth: sub.auth },
+    };
+    try {
+      await webpush.sendNotification(subscription as any, data);
+    } catch (error: any) {
+      const statusCode = error?.statusCode;
+      if (statusCode === 404 || statusCode === 410) {
+        await query(
+          'DELETE FROM parent_push_subscriptions WHERE parent_account_id = $1 AND endpoint = $2',
+          [parentAccountId, sub.endpoint]
+        ).catch(() => {});
+      } else {
+        console.error('[web-push] send failed:', error?.message || error);
+      }
+    }
+  }
+}
+
+export async function sendPushToStudentParents(
+  tenantId: number,
+  studentId: number,
+  payload: PushPayload
+) {
+  const parentRows = await query(
+    `SELECT id
+     FROM parent_portal_accounts
+     WHERE tenant_id = $1 AND student_id = $2`,
+    [tenantId, studentId]
+  );
+  for (const parent of parentRows.rows) {
+    await sendPushToParentAccount(parent.id, payload);
+  }
+}

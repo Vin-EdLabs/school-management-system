@@ -3,8 +3,18 @@ import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
+import { getIO } from '../socket.js';
 
 const router = express.Router();
+
+const emitTenantDataChanged = (tenantId: number, entity: string, action: 'created' | 'updated' | 'deleted') => {
+  try {
+    const io = getIO();
+    io.to(`tenant:${tenantId}`).emit('tenant-data-changed', { tenantId, entity, action, at: Date.now() });
+  } catch {
+    // Socket server may be unavailable in some non-realtime contexts.
+  }
+};
 
 router.use(authenticate);
 router.use(requireTenant);
@@ -104,6 +114,7 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
       [tenantId, req.user!.id, 'CREATE', 'INCOME', result.rows[0].id]
     );
+    emitTenantDataChanged(tenantId, 'income', 'created');
     
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -154,6 +165,7 @@ router.put('/:id', requireRole('super-admin', 'administrator', 'finance'), async
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
       [tenantId, req.user!.id, 'UPDATE', 'INCOME', parseInt(id)]
     );
+    emitTenantDataChanged(tenantId, 'income', 'updated');
     
     res.json(result.rows[0]);
   } catch (error) {
@@ -182,6 +194,7 @@ router.delete('/:id', requireRole('super-admin', 'administrator', 'finance'), as
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
       [tenantId, req.user!.id, 'DELETE', 'INCOME', parseInt(id)]
     );
+    emitTenantDataChanged(tenantId, 'income', 'deleted');
     
     res.json({ message: 'Income record deleted successfully' });
   } catch (error) {

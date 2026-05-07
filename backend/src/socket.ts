@@ -31,26 +31,42 @@ export const initSocket = (server: HttpServer) => {
       if (!token) return next(new Error('Authentication error: No token'));
 
       const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as any;
-      
-      const result = await query(
-        `SELECT u.id, u.tenant_id, u.username, u.role, 
-                COALESCE(t.full_name, u.username) as full_name
-         FROM users u
-         LEFT JOIN teachers t ON u.teacher_id::text = t.id::text AND t.tenant_id = u.tenant_id
-         WHERE u.id = $1 AND u.is_active = true`,
-        [decoded.userId]
-      );
-
-      if (result.rows.length === 0) return next(new Error('Invalid user'));
-
-      const row = result.rows[0];
-      socket.user = {
-        id: row.id,
-        tenantId: row.tenant_id,
-        username: row.username,
-        role: row.role,
-        fullName: row.full_name,
-      };
+      if (decoded.role === 'parent' && decoded.parentAccountId) {
+        const parentResult = await query(
+          `SELECT p.id, p.tenant_id, p.student_id, s.first_name, s.last_name
+           FROM parent_portal_accounts p
+           LEFT JOIN students s ON s.id = p.student_id AND s.tenant_id = p.tenant_id
+           WHERE p.id = $1`,
+          [decoded.parentAccountId]
+        );
+        if (parentResult.rows.length === 0) return next(new Error('Invalid parent'));
+        const row = parentResult.rows[0];
+        socket.user = {
+          id: row.id,
+          tenantId: row.tenant_id,
+          username: `parent-${row.id}`,
+          role: 'parent',
+          fullName: [row.first_name, row.last_name].filter(Boolean).join(' ') || `Parent ${row.id}`,
+        };
+      } else {
+        const result = await query(
+          `SELECT u.id, u.tenant_id, u.username, u.role, 
+                  COALESCE(t.full_name, u.username) as full_name
+           FROM users u
+           LEFT JOIN teachers t ON u.teacher_id::text = t.id::text AND t.tenant_id = u.tenant_id
+           WHERE u.id = $1 AND u.is_active = true`,
+          [decoded.userId]
+        );
+        if (result.rows.length === 0) return next(new Error('Invalid user'));
+        const row = result.rows[0];
+        socket.user = {
+          id: row.id,
+          tenantId: row.tenant_id,
+          username: row.username,
+          role: row.role,
+          fullName: row.full_name,
+        };
+      }
       
       next();
     } catch (err) {

@@ -4,8 +4,18 @@ import { getStudentSummary, postFeesForClass, recordPayment, postFeesForNewTerm,
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { z } from 'zod';
+import { getIO } from '../socket.js';
 
 const router = express.Router();
+
+const emitTenantDataChanged = (tenantId: number, entity: string, action: 'created' | 'updated' | 'deleted') => {
+  try {
+    const io = getIO();
+    io.to(`tenant:${tenantId}`).emit('tenant-data-changed', { tenantId, entity, action, at: Date.now() });
+  } catch {
+    // Socket server may be unavailable in some non-realtime contexts.
+  }
+};
 
 router.use(authenticate);
 router.use(requireTenant);
@@ -47,6 +57,7 @@ router.post('/post-fees', async (req: AuthRequest, res: Response) => {
       validatedBody.academicYearId,
       validatedBody.termId
     );
+    emitTenantDataChanged(getTenantId(req), 'finance-fees', 'updated');
     return res.json(result);
   } catch (error: any) {
     if (error instanceof z.ZodError) {
@@ -75,6 +86,7 @@ router.post('/payment', async (req: AuthRequest, res: Response) => {
       tenantId: getTenantId(req),
     };
     const payment = await recordPayment(paymentData);
+    emitTenantDataChanged(getTenantId(req), 'finance-payment', 'created');
     return res.status(201).json(payment);
   } catch (error: any) {
     if (error instanceof z.ZodError) {
@@ -109,6 +121,7 @@ router.get('/terms', async (req: AuthRequest, res: Response) => {
 router.post('/backfill-arrears', async (req: AuthRequest, res: Response) => {
   try {
     const result = await backfillArrearsForCurrentTerm(getTenantId(req));
+    emitTenantDataChanged(getTenantId(req), 'finance-arrears', 'updated');
     return res.json(result);
   } catch (error: any) {
     console.error('Error backfilling arrears:', error);
@@ -131,6 +144,7 @@ router.post('/switch-term', async (req: AuthRequest, res: Response) => {
     if (!validatedBody.currentTermId) {
       console.log(`[switch-term] First term detected (no currentTermId). Posting fees only for term ${validatedBody.newTermId}`);
       const result = await postFeesForNewTerm(tenantId, validatedBody.newTermId);
+      emitTenantDataChanged(tenantId, 'finance-term-switch', 'updated');
       return res.json({ ...result, message: 'First term - fees posted. No arrears to carry forward.' });
     }
     
@@ -169,6 +183,7 @@ router.post('/switch-term', async (req: AuthRequest, res: Response) => {
     }
     
     console.log(`[switch-term] SUCCESS: Switched from term ${validatedBody.currentTermId} to ${validatedBody.newTermId}. Arrears rows: ${result.arrearsRowsInserted}`);
+    emitTenantDataChanged(tenantId, 'finance-term-switch', 'updated');
     return res.json(result);
   } catch (error: any) {
     if (error instanceof z.ZodError) {
@@ -283,6 +298,7 @@ router.post('/carry-arrears', async (req: AuthRequest, res: Response) => {
     await client.query('COMMIT');
 
     console.log(`[carry-arrears] DONE inserted=${arrearsInserted} updated=${arrearsUpdated} skipped=${skipped}`);
+    emitTenantDataChanged(tenantId, 'finance-arrears', 'updated');
     return res.json({
       message: `Arrears from "${previousTerm}" carried to "${currentTermFull}". ${arrearsInserted} new, ${arrearsUpdated} updated.`,
       arrearsRowsInserted: arrearsInserted + arrearsUpdated,
@@ -339,6 +355,7 @@ router.post('/clear-all-payments', async (req: AuthRequest, res: Response) => {
     );
 
     await client.query('COMMIT');
+    emitTenantDataChanged(tenantId, 'finance', 'deleted');
     return res.json({
       message: 'All finance data cleared: fee structures, payments, receipts, and arrears have been reset.',
     });

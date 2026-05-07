@@ -3,8 +3,27 @@ import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
+import { getIO } from '../socket.js';
+import { postFeesForClass } from '../services/ledgerFinanceService.js';
 
 const router = express.Router();
+
+const emitTenantDataChanged = (tenantId: number, entity: string, action: 'created' | 'updated' | 'deleted') => {
+  try {
+    const io = getIO();
+    io.to(`tenant:${tenantId}`).emit('tenant-data-changed', { tenantId, entity, action, at: Date.now() });
+  } catch {
+    // Socket server may be unavailable in some non-realtime contexts.
+  }
+};
+
+const splitTermAndYear = (termRaw: string, fallbackYear?: string): { termName: string; yearName: string | null } => {
+  const raw = String(termRaw || '').trim();
+  const yearMatch = raw.match(/(19|20)\d{2}$/);
+  const yearName = yearMatch?.[0] || (fallbackYear ? String(fallbackYear) : null);
+  const termName = yearMatch ? raw.replace(/\s+(19|20)\d{2}$/, '').trim() : raw;
+  return { termName, yearName };
+};
 
 router.use(authenticate);
 router.use(requireTenant);
@@ -17,7 +36,7 @@ router.get('/', async (req: AuthRequest, res) => {
     const { classId, term } = req.query;
     
     let queryText = `
-      SELECT fs.*, c.class_name, c.level, c.stream
+      SELECT fs.*, COALESCE(c.class_name, c.name) as class_name, c.level, c.stream
       FROM fee_structures fs
       LEFT JOIN classes c ON fs.class_id = c.id
       WHERE fs.tenant_id = $1
@@ -38,7 +57,29 @@ router.get('/', async (req: AuthRequest, res) => {
     
     queryText += ' ORDER BY fs.created_at DESC';
     
-    const result = await query(queryText, params);
+    let result;
+    try {
+      result = await query(queryText, params);
+    } catch {
+      // Legacy schema fallback: fee_structures may not have tenant_id.
+      let legacyQuery = `
+        SELECT fs.*, COALESCE(c.class_name, c.name) as class_name, c.level, c.stream
+        FROM fee_structures fs
+        LEFT JOIN classes c ON fs.class_id = c.id
+        WHERE c.tenant_id = $1
+      `;
+      const legacyParams: any[] = [tenantId];
+      if (classId) {
+        legacyQuery += ` AND fs.class_id = $${legacyParams.length + 1}`;
+        legacyParams.push(classId);
+      }
+      if (term) {
+        legacyQuery += ` AND fs.term = $${legacyParams.length + 1}`;
+        legacyParams.push(term);
+      }
+      legacyQuery += ' ORDER BY fs.created_at DESC';
+      result = await query(legacyQuery, legacyParams);
+    }
     res.json(result.rows);
   } catch (error) {
     console.error('Get fee structures error:', error);
@@ -52,13 +93,24 @@ router.get('/:id', async (req: AuthRequest, res) => {
     const tenantId = req.user!.tenantId!;
     const { id } = req.params;
     
-    const result = await query(
-      `SELECT fs.*, c.class_name, c.level, c.stream
-       FROM fee_structures fs
-       LEFT JOIN classes c ON fs.class_id = c.id
-       WHERE fs.id = $1 AND fs.tenant_id = $2`,
-      [id, tenantId]
-    );
+    let result;
+    try {
+      result = await query(
+        `SELECT fs.*, COALESCE(c.class_name, c.name) as class_name, c.level, c.stream
+         FROM fee_structures fs
+         LEFT JOIN classes c ON fs.class_id = c.id
+         WHERE fs.id = $1 AND fs.tenant_id = $2`,
+        [id, tenantId]
+      );
+    } catch {
+      result = await query(
+        `SELECT fs.*, COALESCE(c.class_name, c.name) as class_name, c.level, c.stream
+         FROM fee_structures fs
+         LEFT JOIN classes c ON fs.class_id = c.id
+         WHERE fs.id = $1 AND c.tenant_id = $2`,
+        [id, tenantId]
+      );
+    }
     
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Fee structure not found' });
@@ -81,24 +133,107 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
       return res.status(400).json({ error: 'Class ID, term, and amount are required' });
     }
     
-    const result = await query(
-      `INSERT INTO fee_structures (tenant_id, class_id, term, amount, due_date, description)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [
-        tenantId,
-        class_id,
-        term,
-        amount,
-        due_date || null,
-        description || null,
-      ]
-    );
+    let result;
+    const nameValue = (description && String(description).trim()) || String(term);
+    const attempts: Array<{ sql: string; params: any[] }> = [
+      {
+        sql: `INSERT INTO fee_structures (tenant_id, class_id, term, amount, due_date, description)
+              VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        params: [tenantId, class_id, term, amount, due_date || null, description || null],
+      },
+      {
+        sql: `INSERT INTO fee_structures (class_id, term, amount, due_date, description)
+              VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+        params: [class_id, term, amount, due_date || null, description || null],
+      },
+      {
+        sql: `INSERT INTO fee_structures (tenant_id, class_id, name, amount, due_date, description)
+              VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        params: [tenantId, class_id, nameValue, amount, due_date || null, description || null],
+      },
+      // Prefer writing term when table supports it so newly created rows
+      // immediately appear in active-term views.
+      {
+        sql: `INSERT INTO fee_structures (tenant_id, class_id, name, term, amount, due_date, description)
+              VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+        params: [tenantId, class_id, nameValue, term, amount, due_date || null, description || null],
+      },
+      {
+        sql: `INSERT INTO fee_structures (class_id, name, amount, due_date, description)
+              VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+        params: [class_id, nameValue, amount, due_date || null, description || null],
+      },
+    ];
+    let lastError: unknown = null;
+    for (const attempt of attempts) {
+      try {
+        result = await query(attempt.sql, attempt.params);
+        lastError = null;
+        break;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    if (!result) {
+      throw lastError || new Error('Failed to create fee structure on legacy schema');
+    }
     
     // Log creation
     await query(
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
       [tenantId, req.user!.id, 'CREATE', 'FEE_STRUCTURE', result.rows[0].id]
     );
+
+    // Keep ledger finance in sync so students are billed immediately after fee setup.
+    try {
+      const classIdNum = Number(class_id);
+      const amountNum = Number(amount);
+      if (!Number.isNaN(classIdNum) && !Number.isNaN(amountNum)) {
+        const settingsRes = await query(
+          'SELECT current_year FROM school_settings WHERE tenant_id = $1 LIMIT 1',
+          [tenantId]
+        );
+        const fallbackYear = settingsRes.rows[0]?.current_year ? String(settingsRes.rows[0].current_year) : undefined;
+        const { termName, yearName } = splitTermAndYear(String(term), fallbackYear);
+
+        if (termName && yearName) {
+          const yearRes = await query(
+            `INSERT INTO academic_years (tenant_id, name, is_current)
+             VALUES ($1, $2, false)
+             ON CONFLICT (tenant_id, name) DO UPDATE SET name = EXCLUDED.name
+             RETURNING id`,
+            [tenantId, yearName]
+          );
+          const academicYearId = yearRes.rows[0]?.id;
+
+          if (academicYearId) {
+            const termRes = await query(
+              `INSERT INTO terms (tenant_id, academic_year_id, name, is_current)
+               VALUES ($1, $2, $3, false)
+               ON CONFLICT (tenant_id, academic_year_id, name) DO UPDATE SET name = EXCLUDED.name
+               RETURNING id`,
+              [tenantId, academicYearId, termName]
+            );
+            const termId = termRes.rows[0]?.id;
+
+            if (termId) {
+              await query(
+                `INSERT INTO ledger_fee_structures (tenant_id, class_id, academic_year_id, term_id, tuition_fee, pta_fee, exam_fee, total)
+                 VALUES ($1, $2, $3, $4, $5, 0, 0, $5)
+                 ON CONFLICT (tenant_id, class_id, academic_year_id, term_id)
+                 DO UPDATE SET tuition_fee = EXCLUDED.tuition_fee, total = EXCLUDED.total`,
+                [tenantId, classIdNum, academicYearId, termId, amountNum]
+              );
+              await postFeesForClass(tenantId, classIdNum, academicYearId, termId);
+            }
+          }
+        }
+      }
+    } catch (syncError) {
+      console.error('[fees] Ledger sync/auto-bill warning:', syncError);
+    }
+
+    emitTenantDataChanged(tenantId, 'fee', 'created');
     
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -149,6 +284,7 @@ router.put('/:id', requireRole('super-admin', 'administrator', 'finance'), async
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
       [tenantId, req.user!.id, 'UPDATE', 'FEE_STRUCTURE', parseInt(id)]
     );
+    emitTenantDataChanged(tenantId, 'fee', 'updated');
     
     res.json(result.rows[0]);
   } catch (error) {
@@ -206,6 +342,7 @@ router.delete('/:id', requireRole('super-admin', 'administrator', 'finance'), as
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
       [tenantId, req.user!.id, 'DELETE', 'FEE_STRUCTURE', parseInt(id)]
     );
+    emitTenantDataChanged(tenantId, 'fee', 'deleted');
     
     res.json({ message: 'Fee structure deleted successfully' });
   } catch (error) {

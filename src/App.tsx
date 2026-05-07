@@ -18,10 +18,17 @@ import LandingPage from "./pages/LandingPage";
 import RegisterSchool from "./pages/RegisterSchool";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import { ParentPortalRoute } from "./pages/ParentPortal";
+import { detectTenantSlugFromHost } from "./utils/tenantHost";
 
 import { ThemeProvider } from "./contexts/ThemeContext";
 
 const queryClient = new QueryClient();
+
+const HostAwareLanding = () => {
+  const slug = detectTenantSlugFromHost();
+  if (slug) return <Navigate to={`/s/${slug}`} replace />;
+  return <LandingPage />;
+};
 
 const IndexWithSchool = () => {
   const { schoolId, slug } = useParams<{ schoolId?: string; slug?: string }>();
@@ -80,7 +87,7 @@ const App = () => (
             <Sonner />
             <BrowserRouter>
               <Routes>
-                <Route path="/" element={<LandingPage />} />
+                <Route path="/" element={<HostAwareLanding />} />
                 <Route path="/register-school" element={<RegisterSchool />} />
                 <Route path="/super-admin" element={<SuperAdminDashboard />} />
                 <Route path="/school/:schoolId/*" element={<IndexWithSchool />} />

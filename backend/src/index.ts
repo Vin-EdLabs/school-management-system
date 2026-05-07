@@ -19,6 +19,7 @@ import payrollRoutes from './routes/payroll.js';
 import attendanceRoutes from './routes/attendance.js';
 import gradesRoutes from './routes/grades.js';
 import tenantRoutes from './routes/tenant.js';
+import pwaRoutes from './routes/pwa.js';
 import schoolRegistrationsRoutes from './routes/schoolRegistrations.js';
 import supportChatRoutes from './routes/supportChat.js';
 import recordsRoutes from './routes/records.js';
@@ -61,6 +62,7 @@ app.get('/api/health', (req, res) => {
 
 // Public tenant resolution (no auth)
 app.use('/api/tenant', tenantRoutes);
+app.use('/api/pwa', pwaRoutes);
 
 // School registrations (POST public, GET requires super-admin)
 app.use('/api/school-registrations', schoolRegistrationsRoutes);

@@ -6,6 +6,13 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 
 const router = express.Router();
 
+const normalizeRole = (role: string | null | undefined): string => {
+  const r = String(role || '').toLowerCase().trim();
+  if (r === 'superadmin') return 'super-admin';
+  if (r === 'admin') return 'administrator';
+  return r;
+};
+
 // Login - tenant-aware, blocks inactive schools
 router.post('/login', async (req, res) => {
   try {
@@ -31,24 +38,50 @@ router.post('/login', async (req, res) => {
       }
     }
     
-    let userQuery = `
-      SELECT u.id, u.tenant_id, u.username, u.password_hash, u.role, u.teacher_id, u.is_primary_admin,
-             COALESCE(t.full_name, s.full_name, u.username) as full_name
-      FROM users u
-      LEFT JOIN teachers t ON u.teacher_id::text = t.id::text AND t.tenant_id = u.tenant_id
-      LEFT JOIN payroll_other_staff s ON u.other_staff_id = s.id AND s.tenant_id = u.tenant_id
-      WHERE (u.username = $1 OR u.email = $1) AND u.is_active = true
-    `;
-    const params: any[] = [username];
-    
-    if (hasTenantId) {
-      userQuery += ' AND (u.tenant_id = $2 OR u.tenant_id IS NULL)';
-      params.push(tenantId);
-    } else {
-      userQuery += ' AND u.tenant_id IS NULL';
+    // Try modern schema first, then progressively simpler legacy-compatible queries.
+    const attempts: Array<{ sql: string; params: any[] }> = [
+      {
+        sql: `
+          SELECT u.id, u.tenant_id, u.username, u.password_hash, u.role, u.teacher_id, u.is_primary_admin,
+                 COALESCE(t.full_name, s.full_name, u.username) as full_name
+          FROM users u
+          LEFT JOIN teachers t ON u.teacher_id::text = t.id::text AND t.tenant_id = u.tenant_id
+          LEFT JOIN payroll_other_staff s ON u.other_staff_id = s.id AND s.tenant_id = u.tenant_id
+          WHERE (u.username = $1 OR u.email = $1) AND u.is_active = true
+          ${hasTenantId ? 'AND (u.tenant_id = $2 OR u.tenant_id IS NULL)' : 'AND u.tenant_id IS NULL'}
+        `,
+        params: hasTenantId ? [username, tenantId] : [username]
+      },
+      {
+        sql: `
+          SELECT u.id, u.tenant_id, u.username, u.password_hash, u.role, u.teacher_id, u.is_primary_admin,
+                 u.username as full_name
+          FROM users u
+          WHERE u.username = $1
+          ${hasTenantId ? 'AND (u.tenant_id = $2 OR u.tenant_id IS NULL)' : ''}
+        `,
+        params: hasTenantId ? [username, tenantId] : [username]
+      },
+      {
+        sql: `
+          SELECT u.id, NULL::integer as tenant_id, u.username, u.password_hash, u.role,
+                 NULL::text as teacher_id, false as is_primary_admin, u.username as full_name
+          FROM users u
+          WHERE u.username = $1
+        `,
+        params: [username]
+      }
+    ];
+
+    let result: any = { rows: [] };
+    for (const attempt of attempts) {
+      try {
+        result = await query(attempt.sql, attempt.params);
+        if (result.rows.length > 0) break;
+      } catch {
+        continue;
+      }
     }
-    
-    const result = await query(userQuery, params);
     
     if (result.rows.length === 0) {
       return res.status(401).json({ error: 'Invalid credentials' });
@@ -62,7 +95,7 @@ router.post('/login', async (req, res) => {
     }
     
     const token = jwt.sign(
-      { userId: user.id, tenantId: user.tenant_id, role: user.role },
+      { userId: user.id, tenantId: user.tenant_id, role: normalizeRole(user.role) },
       process.env.JWT_SECRET || 'secret',
       { expiresIn: '7d' }
     );
@@ -77,9 +110,9 @@ router.post('/login', async (req, res) => {
         'USER',
         req.ip || null,
         req.get('user-agent') || null,
-        JSON.stringify({ username: user.username, role: user.role }),
+        JSON.stringify({ username: user.username, role: normalizeRole(user.role) }),
       ]
-    );
+    ).catch(() => { });
     
     const userRow = result.rows[0];
     const isPrimaryAdmin = userRow.is_primary_admin === true;
@@ -89,7 +122,7 @@ router.post('/login', async (req, res) => {
         id: user.id,
         username: user.username,
         fullName: user.full_name,
-        role: user.role,
+        role: normalizeRole(user.role),
         tenantId: user.tenant_id,
         teacherId: user.teacher_id,
         isPrimaryAdmin,
@@ -223,7 +256,7 @@ router.get('/me', authenticate, async (req: AuthRequest, res) => {
         id: user.id,
         username: user.username,
         fullName: user.full_name,
-        role: user.role,
+        role: normalizeRole(user.role),
         tenantId: user.tenant_id,
         teacherId: user.teacher_id,
         isPrimaryAdmin: user.is_primary_admin === true,

@@ -121,8 +121,10 @@ const SetFeeStructure = () => {
     }
   };
 
-  const currentTermFees = feeStructures.filter(f => 
-    f.term === currentTerm || (typeof f.term === 'string' && f.term.includes(currentTerm))
+  const currentTermFees = feeStructures.filter(f =>
+    !f.term ||
+    f.term === currentTerm ||
+    (typeof f.term === 'string' && f.term.includes(currentTerm))
   );
 
   return (
@@ -214,7 +216,7 @@ const SetFeeStructure = () => {
               <div key={fee.id} className="flex items-center justify-between p-3 border rounded-lg">
                 <div>
                   <p className="font-medium">{fee.className}</p>
-                  <p className="text-sm text-gray-500">{fee.term}</p>
+                  <p className="text-sm text-gray-500">{fee.term || `${currentTerm} (legacy)`}</p>
                   {fee.description && <p className="text-sm text-gray-600">{fee.description}</p>}
                 </div>
                 <div className="flex items-center gap-3">

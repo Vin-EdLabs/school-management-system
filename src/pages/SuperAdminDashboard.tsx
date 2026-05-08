@@ -74,6 +74,7 @@ import SuperAdminLoginForm from '../components/SuperAdminLoginForm';
 import SupportModule from '../components/support/SupportModule';
 import { resolveLogoUrl } from '../services/tenantService';
 import { useTheme } from '../contexts/ThemeContext';
+import PwaInstallButton from '../components/common/PwaInstallButton';
 
 interface School {
   id: number;
@@ -512,6 +513,11 @@ const SuperAdminDashboard = () => {
               {section === 'support-chat' && 'Support Chat'}
             </h2>
             <div className="flex-1" />
+            <PwaInstallButton
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 rounded-xl text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800"
+            />
             <Button
               variant="ghost"
               size="icon"

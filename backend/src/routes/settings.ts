@@ -10,6 +10,8 @@ import { requireRole, requirePrimaryAdminOrSuperAdmin } from '../middleware/auth
 import { setTenantContext } from '../middleware/tenant.js';
 import { resolveLedgerTermFromSettings, postFeesForNewTerm, postFeesForNewTermWithArrears } from '../services/ledgerFinanceService.js';
 import { getIO } from '../socket.js';
+import { sendPushToTenantParents } from '../services/webPushService.js';
+import { isFcmConfigured } from '../services/fcmService.js';
 
 const router = express.Router();
 
@@ -91,7 +93,8 @@ router.put('/', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, res) =
   try {
     const tenantId = req.user!.tenantId!;
     const { school_name, address, contact, email, current_year, current_term, primary_color, secondary_color,
-      receipt_prefix, postal_address, contact_phone, receipt_footer, bank_details } = req.body;
+      receipt_prefix, postal_address, contact_phone, receipt_footer, bank_details,
+      phone_number, whatsapp_number, office_hours, physical_address } = req.body;
     const skipAutoPost = (req.body as any).skip_auto_post === true;
 
     const isTermChange = current_year !== undefined || current_term !== undefined;
@@ -119,10 +122,19 @@ router.put('/', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, res) =
            contact_phone = COALESCE($9, contact_phone),
            receipt_footer = COALESCE($10, receipt_footer),
            bank_details = COALESCE($11, bank_details),
+           phone_number = COALESCE($12, phone_number),
+           whatsapp_number = COALESCE($13, whatsapp_number),
+           office_hours = COALESCE($14, office_hours),
+           physical_address = COALESCE($15, physical_address),
            updated_at = CURRENT_TIMESTAMP
-       WHERE tenant_id = $12
+       WHERE tenant_id = $16
        RETURNING *`,
-      [school_name, address, contact, email, current_year, current_term, receipt_prefix, postal_address, contact_phone, receipt_footer, bank_details, tenantId]
+      [
+        school_name, address, contact, email, current_year, current_term,
+        receipt_prefix, postal_address, contact_phone, receipt_footer, bank_details,
+        phone_number, whatsapp_number, office_hours, physical_address,
+        tenantId
+      ]
     );
     
     await query(
@@ -138,8 +150,18 @@ router.put('/', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, res) =
     if (result.rows.length === 0) {
       // Create if doesn't exist
       const insertResult = await query(
-        'INSERT INTO school_settings (tenant_id, school_name, address, contact, email, current_year, current_term) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-        [tenantId, school_name || 'School', address, contact, email, current_year, current_term]
+        `INSERT INTO school_settings (
+          tenant_id, school_name, address, contact, email, current_year, current_term,
+          phone_number, whatsapp_number, office_hours, physical_address
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        RETURNING *`,
+        [
+          tenantId, school_name || 'School', address, contact, email, current_year, current_term,
+          phone_number || contact_phone || contact || null,
+          whatsapp_number || null,
+          office_hours || null,
+          physical_address || address || postal_address || null
+        ]
       );
       const saved = insertResult.rows[0];
       const year = saved?.current_year ?? current_year;
@@ -502,6 +524,90 @@ router.post('/users', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, 
   }
 });
 
+// Push diagnostics (primary admin or super-admin)
+router.get('/push/stats', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    if (!tenantId) return res.status(400).json({ error: 'Tenant context required' });
+
+    const parentsRes = await query(
+      'SELECT COUNT(*)::int AS total FROM parent_portal_accounts WHERE tenant_id = $1',
+      [tenantId]
+    );
+    const subscribedRes = await query(
+      'SELECT COUNT(DISTINCT parent_account_id)::int AS total FROM parent_push_subscriptions WHERE tenant_id = $1',
+      [tenantId]
+    );
+    const endpointsRes = await query(
+      'SELECT COUNT(*)::int AS total FROM parent_push_subscriptions WHERE tenant_id = $1',
+      [tenantId]
+    );
+    const fcmTokensRes = await query(
+      'SELECT COUNT(*)::int AS total FROM parent_fcm_tokens WHERE tenant_id = $1',
+      [tenantId]
+    ).catch(() => ({ rows: [{ total: 0 }] as any[] }));
+
+    return res.json({
+      parentAccounts: Number(parentsRes.rows[0]?.total || 0),
+      subscribedAccounts: Number(subscribedRes.rows[0]?.total || 0),
+      totalEndpoints: Number(endpointsRes.rows[0]?.total || 0),
+      fcmTokens: Number(fcmTokensRes.rows[0]?.total || 0),
+      fcmConfigured: isFcmConfigured(),
+    });
+  } catch (error) {
+    console.error('Get push stats error:', error);
+    return res.status(500).json({ error: 'Failed to fetch push stats' });
+  }
+});
+
+// Send test push notification to parent portal devices (primary admin or super-admin)
+router.post('/push/test', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    if (!tenantId) return res.status(400).json({ error: 'Tenant context required' });
+
+    const title = String(req.body?.title || 'Parent Portal Test Notification').slice(0, 120);
+    const body = String(
+      req.body?.message || 'This is a test push from school admin. If you can see this, push works while app is closed.'
+    ).slice(0, 300);
+
+    const stats = await sendPushToTenantParents(tenantId, {
+      title,
+      body,
+      url: `/portal/${tenantId}`,
+    });
+
+    // Also emit realtime in-app test notification for currently open parent sessions.
+    try {
+      const io = getIO();
+      io.to(`tenant:${tenantId}`).emit('tenant-data-changed', {
+        tenantId,
+        entity: 'admin-test-push',
+        action: 'created',
+        title,
+        body,
+        at: Date.now(),
+      });
+    } catch {
+      // ignore realtime emit failures; web push path is primary
+    }
+
+    await query(
+      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, details) VALUES ($1, $2, $3, $4, $5)',
+      [tenantId, req.user!.id, 'PUSH_TEST', 'SETTINGS', JSON.stringify({ title, ...stats })]
+    ).catch(() => {});
+
+    return res.json({
+      success: true,
+      message: 'Test push sent',
+      ...stats,
+    });
+  } catch (error) {
+    console.error('Send test push error:', error);
+    return res.status(500).json({ error: 'Failed to send test push' });
+  }
+});
+
 // Reset all school data (Primary Admin only + Password verification)
 router.post('/reset-data', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, res) => {
   const client = await query('BEGIN'); // Start transaction manually via pool won't work easily if we don't have the client
@@ -549,7 +655,8 @@ router.post('/reset-data', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequ
           current_year = $2, current_term = NULL,
           receipt_prefix = 'R', postal_address = NULL, 
           contact_phone = NULL, receipt_footer = NULL, 
-          bank_details = NULL, updated_at = CURRENT_TIMESTAMP
+          bank_details = NULL, phone_number = NULL, whatsapp_number = NULL,
+          office_hours = NULL, physical_address = NULL, updated_at = CURRENT_TIMESTAMP
       WHERE tenant_id = $1`, 
       [tenantId, new Date().getFullYear().toString()]
     );

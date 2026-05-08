@@ -27,6 +27,8 @@ import AiChatModule from './ai/AiChatModule';
 import RecordsModule from './records/RecordsModule';
 import SubjectsModule from './subjects/SubjectsModule';
 import SupportModule from './support/SupportModule';
+import PushNotificationsModule from './notifications/PushNotificationsModule';
+import ParentDeskAdminModule from './notifications/ParentDeskAdminModule';
 import { useAuth } from '../contexts/AuthContext';
 
 const Dashboard = () => {
@@ -110,6 +112,10 @@ const Dashboard = () => {
         return <SubjectsModule />;
       case 'support-chat':
         return <SupportModule />;
+      case 'push-notifications':
+        return <PushNotificationsModule />;
+      case 'parent-desk':
+        return <ParentDeskAdminModule />;
       default:
         if (user?.role === 'teacher') {
           return <TeacherDashboard />;

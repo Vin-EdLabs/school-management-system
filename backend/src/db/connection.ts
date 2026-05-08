@@ -604,6 +604,77 @@ const runMigrations = async () => {
       CREATE INDEX IF NOT EXISTS idx_parent_push_subscriptions_parent
       ON parent_push_subscriptions (parent_account_id)
     `).catch(() => { });
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS parent_fcm_tokens (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        parent_account_id INTEGER NOT NULL REFERENCES parent_portal_accounts(id) ON DELETE CASCADE,
+        token TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(parent_account_id, token)
+      )
+    `).catch(() => { });
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_parent_fcm_tokens_parent
+      ON parent_fcm_tokens (parent_account_id)
+    `).catch(() => { });
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS parent_notifications (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        parent_account_id INTEGER NOT NULL REFERENCES parent_portal_accounts(id) ON DELETE CASCADE,
+        title VARCHAR(255) NOT NULL,
+        message TEXT NOT NULL,
+        url TEXT,
+        icon TEXT,
+        is_read BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        read_at TIMESTAMP
+      )
+    `).catch(() => { });
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_parent_notifications_parent
+      ON parent_notifications (parent_account_id, created_at DESC)
+    `).catch(() => { });
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS parent_messages (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        parent_account_id INTEGER NOT NULL REFERENCES parent_portal_accounts(id) ON DELETE CASCADE,
+        student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+        type VARCHAR(50) NOT NULL CHECK (type IN ('absence', 'fee', 'academic', 'teacher', 'late', 'general')),
+        subject VARCHAR(255) NOT NULL,
+        message TEXT NOT NULL,
+        attachment_url TEXT,
+        status VARCHAR(50) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'in_review', 'resolved', 'urgent')),
+        is_read_by_school BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `).catch(() => { });
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS message_replies (
+        id SERIAL PRIMARY KEY,
+        message_id INTEGER NOT NULL REFERENCES parent_messages(id) ON DELETE CASCADE,
+        sender_type VARCHAR(20) NOT NULL CHECK (sender_type IN ('parent', 'school')),
+        reply_text TEXT NOT NULL,
+        attachment_url TEXT,
+        is_read BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `).catch(() => { });
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_parent_messages_parent
+      ON parent_messages (parent_account_id, created_at DESC)
+    `).catch(() => { });
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_message_replies_message
+      ON message_replies (message_id, created_at ASC)
+    `).catch(() => { });
+    await client.query(`
+      ALTER TABLE parent_portal_accounts
+      ADD COLUMN IF NOT EXISTS unread_replies_count INTEGER DEFAULT 0
+    `).catch(() => { });
 
     // Auto-create parent accounts for any student who doesn't have one yet
     // Default password = their student_id (admission number)
@@ -725,6 +796,10 @@ const runMigrations = async () => {
     await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS contact_phone VARCHAR(100)`).catch(() => { });
     await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS receipt_footer TEXT`).catch(() => { });
     await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS bank_details TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS phone_number VARCHAR(100)`).catch(() => { });
+    await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_number VARCHAR(100)`).catch(() => { });
+    await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS office_hours VARCHAR(150)`).catch(() => { });
+    await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS physical_address TEXT`).catch(() => { });
 
     // Term/academic_year for income and expenses (term-scoped reporting)
     await client.query(`ALTER TABLE income ADD COLUMN IF NOT EXISTS term VARCHAR(100)`).catch(() => { });

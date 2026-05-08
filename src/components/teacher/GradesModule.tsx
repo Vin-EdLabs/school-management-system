@@ -159,6 +159,7 @@ const GradesModule = () => {
   const [termReport, setTermReport] = useState<TermReport | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
   const [releaseLoading, setReleaseLoading] = useState(false);
+  const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
 
   // Grade history dropdown — key is `${studentId}-${assignmentId}`
   const [expandedHistory, setExpandedHistory] = useState<Set<string>>(new Set());
@@ -434,11 +435,12 @@ const GradesModule = () => {
 
   const handleToggleRelease = async () => {
     if (!selectedClassId || !termReport) return;
+    setShowReleaseConfirm(true);
+  };
+
+  const confirmToggleRelease = async () => {
+    if (!selectedClassId || !termReport) return;
     const newState = !termReport.isReleased;
-    const msg = newState
-      ? 'Release this report so parents can view it?'
-      : 'Hide this report from parents?';
-    if (!confirm(msg)) return;
     setReleaseLoading(true);
     try {
       await apiService.post('/grades/release-report', { classId: Number(selectedClassId), release: newState });
@@ -453,6 +455,7 @@ const GradesModule = () => {
       toast({ title: 'Error', description: e?.message, variant: 'destructive' });
     } finally {
       setReleaseLoading(false);
+      setShowReleaseConfirm(false);
     }
   };
 
@@ -1128,6 +1131,52 @@ const GradesModule = () => {
             </div>
 
             <Button onClick={handleAddAssignment} className="w-full">Add Assessment</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showReleaseConfirm} onOpenChange={setShowReleaseConfirm}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {termReport?.isReleased ? <EyeOff className="w-5 h-5 text-orange-600" /> : <Send className="w-5 h-5 text-green-600" />}
+              {termReport?.isReleased ? 'Hide Results from Parents?' : 'Release Results to Parents?'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 pt-1">
+            <div className={`rounded-xl border p-3 text-sm ${
+              termReport?.isReleased
+                ? 'border-orange-200 bg-orange-50 text-orange-700'
+                : 'border-green-200 bg-green-50 text-green-700'
+            }`}>
+              {termReport?.isReleased
+                ? 'Parents will no longer see this report in their portal until you release it again.'
+                : 'Parents will be able to view this report immediately in their portal.'}
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowReleaseConfirm(false)}
+                disabled={releaseLoading}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={confirmToggleRelease}
+                disabled={releaseLoading}
+                className={termReport?.isReleased
+                  ? 'bg-orange-600 hover:bg-orange-700 text-white'
+                  : 'bg-green-600 hover:bg-green-700 text-white'}
+              >
+                {releaseLoading
+                  ? 'Please wait...'
+                  : termReport?.isReleased
+                    ? 'Yes, Hide Results'
+                    : 'Yes, Release Results'}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

@@ -33,7 +33,10 @@ interface SchoolSettings {
   name: string;
   address: string;
   contact: string;
+  whatsappNumber: string;
   email: string;
+  officeHours: string;
+  physicalAddress: string;
   primaryColor: string;
   secondaryColor: string;
 }
@@ -58,7 +61,10 @@ const SettingsModule = () => {
     name: 'School',
     address: 'Accra, Ghana',
     contact: '+233 XX XXX XXXX',
+    whatsappNumber: '',
     email: 'info@rosagardens.edu.gh',
+    officeHours: 'Mon-Fri • 7:00am - 4:00pm',
+    physicalAddress: '',
     primaryColor: '#2563eb',
     secondaryColor: '#7c3aed',
   });
@@ -86,7 +92,10 @@ const SettingsModule = () => {
           name: settings.school_name || 'School',
           address: settings.address || '',
           contact: settings.contact || '',
+          whatsappNumber: settings.whatsapp_number || '',
           email: settings.email || '',
+          officeHours: settings.office_hours || 'Mon-Fri • 7:00am - 4:00pm',
+          physicalAddress: settings.physical_address || settings.address || '',
           primaryColor: school?.primary_color || '#2563eb',
           secondaryColor: school?.secondary_color || '#7c3aed',
         });
@@ -170,6 +179,10 @@ const SettingsModule = () => {
         address: schoolInfo.address,
         contact: schoolInfo.contact,
         email: schoolInfo.email,
+        phone_number: schoolInfo.contact,
+        whatsapp_number: schoolInfo.whatsappNumber,
+        office_hours: schoolInfo.officeHours,
+        physical_address: schoolInfo.physicalAddress,
         primary_color: schoolInfo.primaryColor,
         secondary_color: schoolInfo.secondaryColor,
       });
@@ -272,6 +285,7 @@ const SettingsModule = () => {
       setIsResetting(false);
     }
   };
+
 
   if (!hasSettingsFull && !hasAccess('settings-password-only')) {
     return null;
@@ -460,6 +474,15 @@ const SettingsModule = () => {
                   />
                 </div>
                 <div className="space-y-2">
+                  <Label htmlFor="schoolWhatsapp">WhatsApp Number</Label>
+                  <Input
+                    id="schoolWhatsapp"
+                    value={schoolInfo.whatsappNumber}
+                    onChange={(e) => setSchoolInfo({ ...schoolInfo, whatsappNumber: e.target.value })}
+                    placeholder="Enter WhatsApp number"
+                  />
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="schoolEmail">Email Address</Label>
                   <Input
                     id="schoolEmail"
@@ -468,6 +491,24 @@ const SettingsModule = () => {
                     onChange={(e) => setSchoolInfo({ ...schoolInfo, email: e.target.value })}
                     placeholder="Enter email address"
                     required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="officeHours">Office Hours</Label>
+                  <Input
+                    id="officeHours"
+                    value={schoolInfo.officeHours}
+                    onChange={(e) => setSchoolInfo({ ...schoolInfo, officeHours: e.target.value })}
+                    placeholder="Mon-Fri • 7:00am - 4:00pm"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="physicalAddress">Physical Address (Parent Desk)</Label>
+                  <Input
+                    id="physicalAddress"
+                    value={schoolInfo.physicalAddress}
+                    onChange={(e) => setSchoolInfo({ ...schoolInfo, physicalAddress: e.target.value })}
+                    placeholder="School location for Parent Desk"
                   />
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

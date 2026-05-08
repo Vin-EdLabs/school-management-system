@@ -11,7 +11,7 @@ import ReceiptPrinter from '../common/ReceiptPrinter';
 import { calculateStudentFeesSync } from '../../utils/feeCalculations';
 
 const ReceiptHistory = () => {
-  const { payments, students } = useData();
+  const { payments, students, feeStructures, arrearsBalances } = useData();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [showReceipt, setShowReceipt] = useState(false);

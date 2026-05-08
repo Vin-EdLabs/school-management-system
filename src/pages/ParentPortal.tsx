@@ -142,6 +142,11 @@ interface StudentInfo {
   must_change_password: boolean;
   passport_photo_url?: string | null;
   school_logo_url?: string | null;
+  is_beneficiary?: boolean;
+  beneficiary_type?: string | null;
+  discount_type?: string | null;
+  discount_value?: number;
+  beneficiary_notes?: string | null;
 }
 
 type Tab = 'overview' | 'grades' | 'position' | 'finance' | 'attendance' | 'desk';
@@ -1003,6 +1008,11 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                   <div className="flex flex-wrap gap-2 mt-2">
                     <span className="bg-white/20 text-xs px-2.5 py-1 rounded-full font-medium">{student.class_name || 'No class assigned'}</span>
                     {student.gender && <span className="bg-white/20 text-xs px-2.5 py-1 rounded-full font-medium capitalize">{student.gender}</span>}
+                    {student.is_beneficiary && (
+                      <span className="bg-amber-400 text-amber-900 text-[10px] px-2.5 py-1 rounded-full font-bold flex items-center gap-1 shadow-sm border border-amber-300">
+                        <Medal className="w-3 h-3" /> {student.beneficiary_type || 'Beneficiary'}
+                      </span>
+                    )}
                   </div>
                   {!studentPhotoUrl && (
                     <p className="text-purple-300 text-xs mt-2 italic">No photo uploaded yet</p>
@@ -1261,6 +1271,28 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               <EmptyCard icon={<CreditCard className="w-10 h-10 text-gray-300" />} message="No finance data available." />
             ) : (
               <div className="space-y-4">
+                {student.is_beneficiary && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3 shadow-sm">
+                    <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600 shrink-0">
+                      <Medal className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-bold text-amber-900">{student.beneficiary_type || 'Scholarship/Beneficiary'}</p>
+                        <span className="text-[10px] font-bold bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full uppercase tracking-wider">Active</span>
+                      </div>
+                      <p className="text-xs text-amber-800 mt-1">
+                        A discount of <strong className="font-black">{student.discount_type === 'percentage' ? `${student.discount_value}%` : GH(student.discount_value || 0)}</strong> has been applied to the tuition fees for your ward.
+                      </p>
+                      {student.beneficiary_notes && (
+                        <p className="text-[10px] text-amber-700 mt-2 bg-white/50 p-2 rounded-lg italic">
+                          <span className="font-bold not-italic">Note:</span> {student.beneficiary_notes}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Balance card */}
                 <div className={`rounded-2xl p-5 text-white shadow-lg ${
                   finance.status === 'paid' ? 'bg-gradient-to-br from-green-500 to-emerald-700'
@@ -1323,6 +1355,14 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                           <span className="text-sm font-semibold text-gray-800">{GH(parseFloat(r.val))}</span>
                         </div>
                       ))}
+                      {finance.discountAmount > 0 && (
+                        <div className="flex items-center justify-between px-4 py-2.5 bg-amber-50">
+                          <span className="text-sm text-amber-700 flex items-center gap-1.5">
+                            <Medal className="w-3.5 h-3.5" /> Scholarship / Discount
+                          </span>
+                          <span className="text-sm font-bold text-amber-700">-{GH(finance.discountAmount)}</span>
+                        </div>
+                      )}
                       {finance.arrears > 0 && (
                         <div className="flex items-center justify-between px-4 py-2.5 bg-red-50">
                           <span className="text-sm text-red-600 flex items-center gap-1.5">

@@ -315,7 +315,8 @@ router.get('/me', authenticateParent, async (req: ParentRequest, res) => {
            NULLIF(ss.current_year, ''),
            NULLIF(at.year::text, '')
          ) AS current_year,
-         pa.must_change_password, pa.last_login
+         pa.must_change_password, pa.last_login,
+         s.is_beneficiary, s.beneficiary_type, s.discount_type, s.discount_value, s.beneficiary_notes
        FROM students s
        LEFT JOIN classes c ON s.class_assigned_id = c.id
        LEFT JOIN tenants t ON s.tenant_id = t.id
@@ -549,6 +550,7 @@ router.get('/finance', authenticateParent, async (req: ParentRequest, res) => {
     // Get student + class info
     const studentRow = await query(
       `SELECT s.first_name, s.last_name, s.student_id AS admission_number,
+              s.is_beneficiary, s.beneficiary_type, s.discount_type, s.discount_value,
               c.class_name, c.id AS class_id
        FROM students s
        LEFT JOIN classes c ON s.class_assigned_id = c.id
@@ -663,7 +665,19 @@ router.get('/finance', authenticateParent, async (req: ParentRequest, res) => {
       );
     });
     const totalPaidThisTerm = termPayments.reduce((s: number, p: any) => s + parseFloat(p.amount_paid), 0);
-    const termFee = parseFloat(feeStructure?.total_amount || '0');
+    const baseTermFee = parseFloat(feeStructure?.total_amount || '0');
+    
+    // Calculate discount
+    let discountAmount = 0;
+    if (student?.is_beneficiary) {
+      if (student.discount_type === 'percentage') {
+        discountAmount = (baseTermFee * parseFloat(student.discount_value || '0')) / 100;
+      } else {
+        discountAmount = parseFloat(student.discount_value || '0');
+      }
+    }
+    
+    const termFee = Math.max(0, baseTermFee - discountAmount);
     const totalDue = termFee + arrears;
     const balance = totalDue - totalPaidThisTerm;
 
@@ -673,6 +687,8 @@ router.get('/finance', authenticateParent, async (req: ParentRequest, res) => {
       currentYear,
       student,
       feeStructure,
+      baseTermFee,
+      discountAmount,
       termFee,
       arrears,
       totalDue,

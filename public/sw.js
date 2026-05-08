@@ -55,14 +55,23 @@ self.addEventListener('push', (event) => {
   } catch {
     data = {};
   }
-  const title = data.title || 'ScholarNerve';
+
+  // Support both legacy payload shape and Firebase nested shape.
+  const notif = data.notification || {};
+  const payloadData = data.data || {};
+  const title = notif.title || data.title || payloadData.title || 'ScholarNerve';
+  const body = notif.body || data.body || payloadData.body || 'You have a new update.';
+  const icon = notif.icon || data.icon || payloadData.icon || '/vite.svg';
+  const badge = notif.badge || data.badge || payloadData.badge || icon;
+  const url = payloadData.url || data.url || '/';
+
   const options = {
-    body: data.body || 'You have a new update.',
-    icon: data.icon || '/vite.svg',
-    badge: data.badge || data.icon || '/vite.svg',
-    data: { url: data.url || '/' },
+    body,
+    icon,
+    badge,
+    data: { url },
   };
-  const badgeCountFromPayload = Number(data.unreadCount || 0);
+  const badgeCountFromPayload = Number(payloadData.unreadCount || data.unreadCount || 0);
   event.waitUntil((async () => {
     await self.registration.showNotification(title, options);
     // Reflect unread count on app icon (supported browsers only).

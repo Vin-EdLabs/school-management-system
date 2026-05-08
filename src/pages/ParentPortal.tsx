@@ -3,7 +3,7 @@ import {
   GraduationCap, LogOut, BookOpen, Trophy, CreditCard,
   CalendarCheck, Eye, EyeOff, Lock, ChevronRight, Medal,
   TrendingUp, CheckCircle2, XCircle, Clock, AlertTriangle,
-  BadgeCheck, Home, RefreshCw, Activity, Bell, Download,
+  BadgeCheck, Home, RefreshCw, Activity, Bell, Download, X,
 } from 'lucide-react';
 import ReceiptPrinter from '@/components/common/ReceiptPrinter';
 import { io, Socket } from 'socket.io-client';
@@ -66,7 +66,7 @@ function urlBase64ToUint8Array(base64String: string) {
   return outputArray;
 }
 
-async function ensurePushSubscription(token: string) {
+async function ensurePushSubscription(token: string, tenantId?: number) {
   if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return;
 
   const perm = Notification.permission === 'default'
@@ -98,6 +98,7 @@ async function ensurePushSubscription(token: string) {
   if (publicKey) {
     const fcmToken = await getFcmToken(publicKey).catch(() => null);
     if (fcmToken) {
+      if (tenantId) localStorage.setItem(`parent_fcm_token_${tenantId}`, fcmToken);
       await parentFetch(
         '/parent/push/fcm-token',
         { method: 'POST', body: JSON.stringify({ token: fcmToken }) },
@@ -190,6 +191,8 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
   const [showInstallHelp, setShowInstallHelp] = useState(false);
+  const [hardRefreshing, setHardRefreshing] = useState(false);
+  const [selectedNotification, setSelectedNotification] = useState<ParentAppNotification | null>(null);
 
   // Photo lightbox
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
@@ -354,15 +357,15 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
   useEffect(() => {
     if (!token || typeof window === 'undefined') return;
-    ensurePushSubscription(token).catch(() => undefined);
+    ensurePushSubscription(token, tenantId).catch(() => undefined);
     loadServerNotifications(token).catch(() => undefined);
 
     // Keep backend subscription in sync on long-lived sessions/devices.
     const syncInterval = window.setInterval(() => {
-      ensurePushSubscription(token).catch(() => undefined);
+      ensurePushSubscription(token, tenantId).catch(() => undefined);
     }, 60000);
     return () => window.clearInterval(syncInterval);
-  }, [token, loadServerNotifications]);
+  }, [token, tenantId, loadServerNotifications]);
 
   useEffect(() => {
     if (!token) return;
@@ -414,10 +417,10 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     finally { setDataLoading(false); }
   };
 
-  const hardRefreshApp = async () => {
+  const hardRefreshApp = useCallback(async () => {
     if (!token) return;
-    setDataLoading(true);
     try {
+      setHardRefreshing(true);
       const [financeData, termData, gradesData, attendanceData, meData] = await Promise.all([
         parentFetch('/parent/finance', {}, token).catch(() => null),
         parentFetch('/parent/term-report', {}, token).catch(() => null),
@@ -432,11 +435,17 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       if (meData) setStudent(meData);
       await loadServerNotifications(token).catch(() => undefined);
     } finally {
-      setDataLoading(false);
-      // Force a full page reload so the app reflects all latest server-side changes.
-      window.location.reload();
+      setHardRefreshing(false);
     }
-  };
+  }, [token, loadServerNotifications]);
+
+  useEffect(() => {
+    if (!token) return;
+    const autoHardRefresh = window.setInterval(() => {
+      hardRefreshApp().catch(() => undefined);
+    }, 10000);
+    return () => window.clearInterval(autoHardRefresh);
+  }, [token, hardRefreshApp]);
 
   const openReceipt = (payment: any) => {
     if (!student || !finance) return;
@@ -461,6 +470,8 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   // Resolved school logo — from student record (richer) or prop fallback
   const resolvedLogo = resolveMediaUrl(student?.school_logo_url || schoolLogoUrl);
   const unreadNotifCount = appNotifications.filter(n => !n.read).length;
+  const premiumHeaderGradient = `linear-gradient(120deg, #0b1220 0%, ${brandPrimary} 52%, ${brandSecondary} 100%)`;
+  const premiumLoginGradient = `linear-gradient(140deg, #050816 0%, #111a2f 38%, ${brandPrimary} 72%, ${brandSecondary} 100%)`;
 
   // Resolved student photo
   const studentPhotoUrl = resolveMediaUrl(student?.passport_photo_url);
@@ -528,7 +539,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   // ── Login screen ─────────────────────────────────────────────────────────────
   if (!token || !student) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4" style={{ background: `linear-gradient(135deg, #0f172a 0%, ${brandPrimary} 55%, ${brandSecondary} 100%)` }}>
+      <div className="min-h-screen flex items-center justify-center p-4" style={{ background: premiumLoginGradient }}>
         <div className="w-full max-w-md">
           {/* School logo / branding */}
           <div className="text-center mb-8">
@@ -633,7 +644,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   // ── Force password change screen ──────────────────────────────────────────────
   if (mustChangePassword) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4" style={{ background: `linear-gradient(135deg, #0f172a 0%, ${brandPrimary} 55%, ${brandSecondary} 100%)` }}>
+      <div className="min-h-screen flex items-center justify-center p-4" style={{ background: premiumLoginGradient }}>
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
             {resolvedLogo ? (
@@ -715,7 +726,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   return (
     <div className="min-h-screen bg-slate-50">
       {/* ── Top nav ── */}
-      <header className="shadow-lg sticky top-0 z-30" style={{ background: `linear-gradient(90deg, #0f172a 0%, ${brandPrimary} 55%, ${brandSecondary} 100%)` }}>
+      <header className="shadow-lg sticky top-0 z-30 border-b border-white/10" style={{ background: premiumHeaderGradient }}>
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             {/* School logo */}
@@ -806,26 +817,22 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               ) : (
                 <div className="space-y-2">
                   {appNotifications.map((n) => (
-                    <div key={n.id} className={`rounded-lg border p-2 ${n.read ? 'border-slate-100 bg-white' : 'border-purple-100 bg-purple-50/50'}`}>
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-sm font-semibold text-slate-800">{n.title}</p>
-                        {!n.read && (
-                          <button
-                            onClick={async () => {
-                              if (token && n.serverId) {
-                                await parentFetch(`/parent/notifications/${n.serverId}/read`, { method: 'POST', body: JSON.stringify({}) }, token).catch(() => undefined);
-                              }
-                              setAppNotifications((prev) => prev.map((item) => item.id === n.id ? { ...item, read: true } : item));
-                            }}
-                            className="text-[10px] font-semibold text-purple-600 hover:text-purple-700 shrink-0"
-                          >
-                            Mark read
-                          </button>
-                        )}
-                      </div>
-                      <p className="text-xs text-slate-500">{n.message}</p>
+                    <button
+                      key={n.id}
+                      type="button"
+                      onClick={async () => {
+                        if (token && n.serverId && !n.read) {
+                          await parentFetch(`/parent/notifications/${n.serverId}/read`, { method: 'POST', body: JSON.stringify({}) }, token).catch(() => undefined);
+                        }
+                        setAppNotifications((prev) => prev.map((item) => item.id === n.id ? { ...item, read: true } : item));
+                        setSelectedNotification({ ...n, read: true });
+                      }}
+                      className={`w-full text-left rounded-lg border p-2 transition-colors ${n.read ? 'border-slate-100 bg-white hover:bg-slate-50' : 'border-purple-100 bg-purple-50/50 hover:bg-purple-100/60'}`}
+                    >
+                      <p className="text-sm font-semibold text-slate-800">{n.title}</p>
+                      <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{n.message}</p>
                       <p className="text-[10px] text-slate-400 mt-1">{new Date(n.at).toLocaleString()}</p>
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
@@ -875,12 +882,12 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
           <div className="space-y-5">
             <div className="flex justify-end">
               <button
-                onClick={hardRefreshApp}
-                disabled={dataLoading}
+                onClick={() => hardRefreshApp().catch(() => undefined)}
+                disabled={hardRefreshing}
                 className="inline-flex items-center gap-2 rounded-xl border border-purple-200 bg-white px-3.5 py-2 text-sm font-semibold text-purple-700 shadow-sm hover:bg-purple-50 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                <RefreshCw className={`w-4 h-4 ${dataLoading ? 'animate-spin' : ''}`} />
-                {dataLoading ? 'Refreshing...' : 'Refresh App'}
+                <RefreshCw className={`w-4 h-4 ${hardRefreshing ? 'animate-spin' : ''}`} />
+                {hardRefreshing ? 'Refreshing...' : 'Refresh App'}
               </button>
             </div>
             {/* Student card */}
@@ -1410,7 +1417,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       </footer>
 
       {/* Mobile bottom navigation */}
-      <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-40 border-t border-gray-200 bg-white/95 backdrop-blur px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+      <nav className="sm:hidden fixed bottom-3 left-3 right-3 z-40 border border-gray-200 bg-white/95 backdrop-blur px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] rounded-2xl shadow-xl">
         <div className="grid grid-cols-5 gap-1">
           {tabs.map((t) => (
             <button
@@ -1477,6 +1484,46 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               >
                 OK, got it
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedNotification && (
+        <div
+          className="fixed inset-0 z-50 bg-black/55 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setSelectedNotification(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white border border-slate-200 shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 px-4 py-3 border-b border-slate-100 bg-slate-50">
+              <div>
+                <p className="text-sm font-semibold text-slate-800">{selectedNotification.title}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{new Date(selectedNotification.at).toLocaleString()}</p>
+              </div>
+              <button
+                onClick={() => setSelectedNotification(null)}
+                className="w-8 h-8 rounded-full text-slate-500 hover:bg-slate-200 flex items-center justify-center"
+                title="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="px-4 py-4">
+              <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                {selectedNotification.message}
+              </p>
+              <div className="mt-4 flex justify-end">
+                <button
+                  onClick={() => setSelectedNotification(null)}
+                  className="rounded-lg px-3 py-2 text-sm font-semibold text-white"
+                  style={{ background: `linear-gradient(90deg, ${brandPrimary}, ${brandSecondary})` }}
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>

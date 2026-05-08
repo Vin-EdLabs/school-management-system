@@ -82,14 +82,14 @@ self.addEventListener('push', (event) => {
   event.waitUntil((async () => {
     await self.registration.showNotification(title, options);
     // Reflect unread count on app icon (supported browsers only).
-    if (!self.registration.setAppBadge) return;
+    if (!navigator.setAppBadge) return;
     if (badgeCountFromPayload > 0) {
-      await self.registration.setAppBadge(badgeCountFromPayload);
+      await navigator.setAppBadge(badgeCountFromPayload);
       return;
     }
     const notifs = await self.registration.getNotifications();
-    if (notifs.length > 0) await self.registration.setAppBadge(notifs.length);
-    else if (self.registration.clearAppBadge) await self.registration.clearAppBadge();
+    if (notifs.length > 0) await navigator.setAppBadge(notifs.length);
+    else if (navigator.clearAppBadge) await navigator.clearAppBadge();
   })());
 });
 

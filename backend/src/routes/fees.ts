@@ -233,7 +233,12 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
       console.error('[fees] Ledger sync/auto-bill warning:', syncError);
     }
 
+    // Automatically refresh arrears when fee structure is created
+    const { refreshArrearsForTenant } = await import('../services/arrearsService.js');
+    await refreshArrearsForTenant(tenantId).catch(err => console.error('Auto-sync arrears error:', err));
+    
     emitTenantDataChanged(tenantId, 'fee', 'created');
+    emitTenantDataChanged(tenantId, 'finance-arrears', 'updated');
     
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -284,7 +289,12 @@ router.put('/:id', requireRole('super-admin', 'administrator', 'finance'), async
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
       [tenantId, req.user!.id, 'UPDATE', 'FEE_STRUCTURE', parseInt(id)]
     );
+    // Automatically refresh arrears when fee structure is updated
+    const { refreshArrearsForTenant } = await import('../services/arrearsService.js');
+    await refreshArrearsForTenant(tenantId).catch(err => console.error('Auto-sync arrears error:', err));
+    
     emitTenantDataChanged(tenantId, 'fee', 'updated');
+    emitTenantDataChanged(tenantId, 'finance-arrears', 'updated');
     
     res.json(result.rows[0]);
   } catch (error) {
@@ -342,7 +352,12 @@ router.delete('/:id', requireRole('super-admin', 'administrator', 'finance'), as
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
       [tenantId, req.user!.id, 'DELETE', 'FEE_STRUCTURE', parseInt(id)]
     );
+    // Automatically refresh arrears when fee structure is deleted
+    const { refreshArrearsForTenant } = await import('../services/arrearsService.js');
+    await refreshArrearsForTenant(tenantId).catch(err => console.error('Auto-sync arrears error:', err));
+    
     emitTenantDataChanged(tenantId, 'fee', 'deleted');
+    emitTenantDataChanged(tenantId, 'finance-arrears', 'updated');
     
     res.json({ message: 'Fee structure deleted successfully' });
   } catch (error) {

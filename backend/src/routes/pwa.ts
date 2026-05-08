@@ -19,6 +19,7 @@ router.get('/manifest', async (req: TenantRequest, res) => {
     const origin = `${req.protocol}://${req.get('host')}`;
     const icon192 = logo ? (logo.startsWith('data:') ? logo : `${origin}${logo}`) : `/school-assets/${subdomain}/logo-192.png`;
     const icon512 = logo ? (logo.startsWith('data:') ? logo : `${origin}${logo}`) : `/school-assets/${subdomain}/logo-512.png`;
+    const logoMime = logo?.startsWith('data:') ? logo.split(';')[0].split(':')[1] : 'image/png';
     const startUrl = tenantId > 0 ? `/portal/${tenantId}` : '/';
 
     return res
@@ -37,8 +38,10 @@ router.get('/manifest', async (req: TenantRequest, res) => {
         theme_color: secondary,
         categories: ['education', 'productivity'],
         icons: [
-          { src: icon192, sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
-          { src: icon512, sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
+          { src: icon192, sizes: '192x192', type: logoMime, purpose: 'any' },
+          { src: icon192, sizes: '192x192', type: logoMime, purpose: 'maskable' },
+          { src: icon512, sizes: '512x512', type: logoMime, purpose: 'any' },
+          { src: icon512, sizes: '512x512', type: logoMime, purpose: 'maskable' }
         ],
         shortcuts: [
           {

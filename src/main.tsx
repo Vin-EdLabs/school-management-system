@@ -75,8 +75,8 @@ async function bootstrapTenantBrandingAndManifest() {
       link.rel = 'manifest';
       document.head.appendChild(link);
     }
-    // Use crossorigin="use-credentials" to ensure cookies/headers are sent if needed,
-    // though for tenant resolution we mostly rely on the Host header or Slug.
+    // Crucial for cross-origin manifests on Android
+    link.setAttribute('crossorigin', 'anonymous');
     link.href = manifestUrl;
   } catch {
     // Keep app boot resilient if tenant resolve fails.

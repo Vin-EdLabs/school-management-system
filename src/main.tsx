@@ -67,7 +67,9 @@ async function bootstrapTenantBrandingAndManifest() {
 
     // Set the manifest URL directly to the API instead of using a Blob URL.
     // Chrome/Android cannot generate a WebAPK from a blob: URL.
-    const manifestUrl = `${API_BASE}/pwa/manifest?${slug ? `slug=${slug}` : `tenantId=${tenantId || ''}`}`;
+    // Use a relative path that the Service Worker intercepts.
+    // This solves the 'Cross-Origin Manifest' security errors in Chrome.
+    const manifestUrl = `/manifest.json?${slug ? `slug=${slug}` : `tenantId=${tenantId || ''}`}`;
     
     let link = document.querySelector("link[rel='manifest']") as HTMLLinkElement | null;
     if (!link) {
@@ -75,8 +77,7 @@ async function bootstrapTenantBrandingAndManifest() {
       link.rel = 'manifest';
       document.head.appendChild(link);
     }
-    // Crucial for cross-origin manifests on Android
-    link.setAttribute('crossorigin', 'anonymous');
+    link.removeAttribute('crossorigin');
     link.href = manifestUrl;
   } catch {
     // Keep app boot resilient if tenant resolve fails.

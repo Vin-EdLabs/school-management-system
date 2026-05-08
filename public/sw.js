@@ -1,6 +1,37 @@
 const CACHE_NAME = 'scholarnerve-parent-v2';
 const APP_SHELL = ['/', '/index.html', '/site.webmanifest'];
 
+// Intercept manifest.json requests to provide dynamic manifest from backend
+// while keeping the origin same-site for Chrome's WebAPK generation.
+self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+  if (url.pathname === '/manifest.json') {
+    const tenantId = url.searchParams.get('tenantId');
+    const slug = url.searchParams.get('slug');
+    const apiBase = 'https://scholarnerveserver.onrender.com/api'; // Fallback for production
+    
+    let apiUrl = `${apiBase}/pwa/manifest`;
+    if (slug) apiUrl += `?slug=${slug}`;
+    else if (tenantId) apiUrl += `?tenantId=${tenantId}`;
+
+    event.respondWith(
+      fetch(apiUrl)
+        .then(response => response.json())
+        .then(data => {
+          // Force same-origin URLs in the manifest content
+          const origin = self.location.origin;
+          if (data.start_url && data.start_url.startsWith('/')) {
+            data.start_url = origin + data.start_url;
+          }
+          return new Response(JSON.stringify(data), {
+            headers: { 'Content-Type': 'application/manifest+json' }
+          });
+        })
+        .catch(() => fetch(event.request))
+    );
+  }
+});
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL))

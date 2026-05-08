@@ -147,8 +147,20 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
                 ${receiptData.currentTermFee !== undefined ? `<tr><td>Current Fee</td><td style="text-align:right">${receiptData.currentTermFee.toFixed(2)}</td></tr>` : ''}
                 ${receiptData.arrears !== undefined && receiptData.arrears > 0 ? `<tr><td>Old Arrears</td><td style="text-align:right">${receiptData.arrears.toFixed(2)}</td></tr>` : ''}
               </table>
-              <div class="row total-line"><span>Total Due:</span><span>GHS ${(receiptData.totalAmountDue || (receiptData.amount || 0)).toFixed(2)}</span></div>
-              <div class="row" style="margin-top:5px; font-weight:700;"><span>Balance:</span><span style="color:#000">GHS ${(receiptData.remainingBalance || 0).toFixed(2)}</span></div>
+              <div class="row total-line">
+                <span>Total Due:</span>
+                <span>GHS ${(receiptData.totalAmountDue || (Number(receiptData.currentTermFee || 0) + Number(receiptData.arrears || 0)) || (receiptData.amount || 0)).toFixed(2)}</span>
+              </div>
+              <div class="row" style="margin-top:5px; font-weight:700;">
+                <span>Balance:</span>
+                <span style="color:#000">GHS ${(receiptData.remainingBalance || 0).toFixed(2)}</span>
+              </div>
+              <div class="row" style="margin-top:2px;">
+                <span>Status:</span>
+                <span style="color:${(receiptData.remainingBalance || 0) <= 0 ? '#16a34a' : '#ea580c'}; font-weight:700;">
+                  ${(receiptData.remainingBalance || 0) <= 0 ? 'FULL PAYMENT' : 'PARTIAL PAYMENT'}
+                </span>
+              </div>
             </div>
             ${receiptData.notes ? `<div class="notes">Note: ${receiptData.notes}</div>` : ''}
             <div class="footer">

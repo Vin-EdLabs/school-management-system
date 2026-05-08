@@ -85,17 +85,21 @@ const RecordPayment = () => {
     const paymentAmount = parseFloat(formData.amount);
     const feeDetails = selectedStudentFeeDetails;
 
-    const createdPayment = await addPayment({
+    const paymentResult = await addPayment({
       ...formData,
       amount: paymentAmount,
       term: currentTerm,
       academicYear: currentYear
     });
+    
+    // Refresh to update local context, but use the immediate server response for the receipt
     await refresh();
 
-    const newPaidAmount = feeDetails.totalPaid + paymentAmount;
-    const newBalance = Math.max(0, feeDetails.totalAmountDue - newPaidAmount);
-    const newCreditBalance = Math.max(0, newPaidAmount - feeDetails.totalAmountDue);
+    const { payment: createdPayment, balance: serverBalance } = paymentResult;
+    
+    // If the server provided a real-time balance, use it. Otherwise, fallback to local calculation.
+    const finalBalance = serverBalance ? serverBalance.outstanding : Math.max(0, feeDetails.totalAmountDue - (feeDetails.totalPaid + paymentAmount));
+    const finalTotalDue = serverBalance ? (serverBalance.totalFees + serverBalance.arrears) : feeDetails.totalAmountDue;
 
     setReceiptData({
       studentName: `${student.firstName} ${student.lastName}`,
@@ -108,11 +112,11 @@ const RecordPayment = () => {
       year: currentYear,
       receiptNumber: createdPayment.receiptNumber || `R${Date.now().toString().slice(-8)}`,
       notes: formData.notes,
-      remainingBalance: newBalance,
-      creditBalance: newCreditBalance,
-      arrears: feeDetails.arrears,
-      currentTermFee: feeDetails.currentTermFee,
-      totalAmountDue: feeDetails.totalAmountDue
+      remainingBalance: finalBalance,
+      creditBalance: serverBalance ? serverBalance.credit : Math.max(0, (feeDetails.totalPaid + paymentAmount) - feeDetails.totalAmountDue),
+      arrears: serverBalance ? serverBalance.arrears : feeDetails.arrears,
+      currentTermFee: serverBalance ? serverBalance.totalFees : feeDetails.currentTermFee,
+      totalAmountDue: finalTotalDue
     } as any);
     setShowReceipt(true);
 

@@ -141,7 +141,17 @@ interface DataContextType {
   addFeeStructure: (fee: Omit<FeeStructure, 'id'>) => Promise<void>;
   updateFeeStructure: (id: string, fee: Partial<FeeStructure>) => Promise<void>;
   deleteFeeStructure: (id: string) => Promise<void>;
-  addPayment: (payment: Omit<Payment, 'id'> & { academicYear?: string }) => Promise<Payment>;
+  addPayment: (payment: Omit<Payment, 'id'> & { academicYear?: string }) => Promise<{
+    payment: Payment;
+    balance?: {
+      totalFees: number;
+      totalPaid: number;
+      outstanding: number;
+      arrears: number;
+      credit: number;
+      status: string;
+    }
+  }>;
   addIncome: (income: Omit<Income, 'id'>) => Promise<void>;
   addExpense: (expense: Omit<Expense, 'id'>) => Promise<void>;
   addSubject: (subject: Omit<Subject, 'id'>) => Promise<void>;
@@ -521,9 +531,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await loadData();
   };
 
-  const addPayment = async (paymentData: Omit<Payment, 'id'> & { academicYear?: string }): Promise<Payment> => {
+  const addPayment = async (paymentData: Omit<Payment, 'id'> & { academicYear?: string }): Promise<{ payment: Payment; balance?: any }> => {
     const res = await apiService.post<{
       payment?: { id: number; receipt_number: string; student_id: number; amount: number; payment_date: string; payment_method: string; term: string; notes: string };
+      balance?: any;
       id?: number;
       receipt_number?: string;
       student_id?: number;
@@ -544,15 +555,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const created = (res.payment || res) as any;
     await loadData();
     return {
-      id: created.id.toString(),
-      studentId: (created.student_id || created.studentId)?.toString() || '',
-      studentIdNum: created.student_id || created.studentId,
-      amount: parseFloat(created.amount ?? 0),
-      date: created.payment_date || created.date || '',
-      paymentMethod: created.payment_method || created.paymentMethod || '',
-      term: created.term ?? '',
-      notes: created.notes ?? '',
-      receiptNumber: created.receipt_number || created.receiptNumber,
+      payment: {
+        id: created.id.toString(),
+        studentId: (created.student_id || created.studentId)?.toString() || '',
+        studentIdNum: created.student_id || created.studentId,
+        amount: parseFloat(created.amount ?? 0),
+        date: created.payment_date || created.date || '',
+        paymentMethod: created.payment_method || created.paymentMethod || '',
+        term: created.term ?? '',
+        notes: created.notes ?? '',
+        receiptNumber: created.receipt_number || created.receiptNumber,
+      },
+      balance: res.balance
     };
   };
 

@@ -582,11 +582,11 @@ router.get('/finance', authenticateParent, async (req: ParentRequest, res) => {
            0::numeric AS other_fee,
            term
          FROM fee_structures
-         WHERE (tenant_id = $1 OR tenant_id IS NULL)
-           AND class_id = $2
-           AND (term = $3 OR term LIKE $4 OR term IS NULL OR term = '')
-         ORDER BY created_at DESC LIMIT 1`,
-        [tenantId, student?.class_id, currentTerm, `${currentTerm}%`]
+          WHERE (tenant_id = $1 OR tenant_id IS NULL)
+            AND class_id = $2
+            AND (term = $3 OR $3 LIKE term || '%' OR term LIKE $3 || '%' OR term IS NULL OR term = '')
+          ORDER BY created_at DESC LIMIT 1`,
+        [tenantId, student?.class_id, currentTerm]
       );
     }
     const feeStructure = feeRow.rows[0] || null;

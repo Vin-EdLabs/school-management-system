@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
 import { Search, Receipt, Eye } from 'lucide-react';
 import ReceiptPrinter from '../common/ReceiptPrinter';
+import { calculateStudentFeesSync } from '../../utils/feeCalculations';
 
 const ReceiptHistory = () => {
   const { payments, students } = useData();
@@ -32,6 +33,22 @@ const ReceiptHistory = () => {
     const student = students.find(s => s.id === payment.studentId);
     if (!student) return;
 
+    // Calculate balance at current state (since we don't have historical balance snapshots)
+    const feeDetails = calculateStudentFeesSync(
+      student.id,
+      payment.term || 'Not Set',
+      student.classAssigned,
+      feeStructures,
+      payments,
+      student.classAssignedId,
+      arrearsBalances,
+      {
+        isBeneficiary: !!student.isBeneficiary,
+        discountType: student.discountType,
+        discountValue: student.discountValue
+      }
+    );
+
     const receiptData = {
       studentName: `${student.firstName} ${student.lastName}`,
       studentId: student.studentId,
@@ -41,7 +58,11 @@ const ReceiptHistory = () => {
       paymentMethod: payment.paymentMethod,
       term: payment.term,
       receiptNumber: payment.receiptNumber || `R${payment.id.toString().padStart(8, '0')}`,
-      notes: payment.notes
+      notes: payment.notes,
+      remainingBalance: Math.max(0, feeDetails.totalAmountDue - feeDetails.totalPaid),
+      arrears: feeDetails.arrears,
+      currentTermFee: feeDetails.currentTermFee,
+      totalAmountDue: feeDetails.totalAmountDue
     };
 
     setSelectedReceipt(receiptData);

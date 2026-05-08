@@ -67,6 +67,10 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
 
   if (!show) return null;
 
+  const isFullPayment = (receiptData.remainingBalance || 0) <= 0;
+  const statusLabel = isFullPayment ? "FULL PAYMENT" : "PARTIAL PAYMENT";
+  const currentTime = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+
   const buildReceiptHtml = () => `
       <html>
         <head>
@@ -91,6 +95,7 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
             .receipt-meta h2 { margin: 0; font-size: 10pt; font-weight: bold; text-transform: uppercase; }
             .receipt-meta p { margin: 2pt 0; font-size: 14pt; font-weight: bold; }
             .date { font-size: 8pt; color: #000; }
+            .status-badge { display: inline-block; padding: 4pt 8pt; border: 1pt solid #000; font-size: 9pt; font-weight: bold; margin-top: 5pt; }
             .section { margin-bottom: 10pt; font-size: 9pt; }
             .section-title { font-size: 8pt; font-weight: bold; text-transform: uppercase; border-bottom: 0.5pt solid #ccc; margin-bottom: 4pt; padding-bottom: 2pt; }
             .row { display: flex; justify-content: space-between; margin-bottom: 3pt; line-height: 1.1; }
@@ -119,9 +124,10 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
               </div>
             </div>
             <div class="receipt-meta">
-              <h2>Payment Receipt</h2>
+              <h2>Official Receipt</h2>
               <p>#${receiptData.receiptNumber}</p>
-              <div class="date">Date: ${new Date(receiptData.date).toLocaleDateString('en-GB')}</div>
+              <div class="date">Date: ${new Date(receiptData.date).toLocaleDateString('en-GB')} | ${currentTime}</div>
+              <div class="status-badge">${statusLabel}</div>
             </div>
             <div class="section">
               <div class="section-title">Student & Academic</div>
@@ -147,8 +153,8 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
             ${receiptData.notes ? `<div class="notes">Note: ${receiptData.notes}</div>` : ''}
             <div class="footer">
               <p class="thanks">${receiptSettings?.receipt_footer || 'THANK YOU!'}</p>
-              <p>Computer Generated Receipt</p>
-              <p>Date: ${new Date().toLocaleString()}</p>
+              ${receiptSettings?.contact_phone ? `<p style="font-weight:bold; margin-top:5pt;">School Contact: ${receiptSettings.contact_phone}</p>` : ''}
+              <p>Generated via Technerve SMS | ${new Date().toLocaleString()}</p>
             </div>
           </div>
         </body>
@@ -216,9 +222,12 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
             </div>
 
             <div className="text-center mb-4">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-800">Payment Receipt</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-800">Official Receipt</p>
               <p className="text-lg font-black leading-none mt-1 text-slate-950">#{receiptData.receiptNumber}</p>
-              <p className="text-[8px] text-slate-600 mt-1 uppercase font-bold">Date: {new Date(receiptData.date).toLocaleDateString('en-GB')}</p>
+              <p className="text-[8px] text-slate-600 mt-1 uppercase font-bold">Date: {new Date(receiptData.date).toLocaleDateString('en-GB')} | {currentTime}</p>
+              <div className="inline-block mt-3 px-3 py-1 border border-slate-900 rounded text-[9px] font-black text-slate-900 uppercase">
+                {statusLabel}
+              </div>
             </div>
 
             <div className="space-y-1 mb-4 text-[10px] border-b border-slate-200 pb-4">
@@ -280,7 +289,10 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
 
             <div className="text-center pt-4 border-t border-dashed border-slate-300">
                <p className="text-[9px] font-black uppercase text-slate-900">{receiptSettings?.receipt_footer || 'Thank You!'}</p>
-               <p className="text-[7px] text-slate-500 mt-1 italic font-bold">Generated via Technerve SMS</p>
+               {receiptSettings?.contact_phone && (
+                 <p className="text-[8px] font-black text-slate-700 mt-1 uppercase">Contact: {receiptSettings.contact_phone}</p>
+               )}
+               <p className="text-[7px] text-slate-500 mt-2 italic font-bold">Generated via Technerve SMS | {new Date().toLocaleString()}</p>
             </div>
           </div>
 

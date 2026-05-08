@@ -379,15 +379,15 @@ const SuperAdminDashboard = () => {
     }
   };
 
-  const openSchool = (school: School | { id: number; slug: string }) => {
+  const openSchool = (school: School | { id: number; slug?: string }) => {
     apiService.setTenantContext(school.id);
     localStorage.setItem('currentSchoolId', school.id.toString());
-    const path = school.slug ? `/s/${school.slug}` : `/school/${school.id}`;
+    const path = school.slug ? `/sch/${school.slug}` : `/school/${school.id}`;
     navigate(path);
   };
 
-  const loginUrl = (school: School | { id: number; slug: string }) => {
-    const path = school.slug ? `/s/${school.slug}` : `/school/${school.id}`;
+  const loginUrl = (school: School | { id: number; slug?: string }) => {
+    const path = school.slug ? `/sch/${school.slug}` : `/school/${school.id}`;
     return `${window.location.origin}${path}`;
   };
 

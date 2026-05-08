@@ -352,13 +352,13 @@ const AcademicTermManager = () => {
       </CardHeader>
       <CardContent className="space-y-6">
         {activeTerm && (
-          <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+          <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-semibold text-green-800">Current Active Term</h3>
-                <p className="text-green-700">{activeTerm.term_name} {activeTerm.year}</p>
+                <h3 className="font-semibold text-emerald-600 dark:text-emerald-400">Current Active Term</h3>
+                <p className="text-emerald-600 dark:text-emerald-400 font-medium">{activeTerm.term_name} {activeTerm.year}</p>
                 {activeTerm.start_date && activeTerm.end_date && (
-                  <p className="text-sm text-green-600">
+                  <p className="text-sm text-muted-foreground">
                     {new Date(activeTerm.start_date).toLocaleDateString()} - {new Date(activeTerm.end_date).toLocaleDateString()}
                   </p>
                 )}
@@ -427,15 +427,15 @@ const AcademicTermManager = () => {
         )}
 
         <div className="space-y-3">
-          <h3 className="font-semibold">All Academic Terms</h3>
+          <h3 className="font-semibold text-foreground">All Academic Terms</h3>
           {loading ? (
-            <p className="text-gray-500 text-center py-4">Loading...</p>
+            <p className="text-muted-foreground text-center py-4">Loading...</p>
           ) : terms.length === 0 ? (
-            <p className="text-gray-500 text-center py-4">No academic terms found. Add your first term above.</p>
+            <p className="text-muted-foreground text-center py-4">No academic terms found. Add your first term above.</p>
           ) : (
             <div className="space-y-2">
               {terms.map((term) => (
-                <div key={term.id} className={`p-3 border rounded-lg ${term.is_active ? 'border-green-300 bg-green-50' : 'border-gray-200'}`}>
+                <div key={term.id} className={`p-3 border rounded-lg ${term.is_active ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-border bg-card'}`}>
                   {editingTerm === term.id ? (
                     <EditTermForm
                       term={term}
@@ -451,19 +451,19 @@ const AcademicTermManager = () => {
                             <span className="px-2 py-0.5 text-xs font-medium bg-green-500 text-white rounded">Active</span>
                           )}
                         </div>
-                        {(() => {
-                          const ledgerTerm = ledgerTerms.find(lt =>
-                            lt.name === term.term_name.replace(/\s+\d{4}$/, '').trim() &&
-                            lt.academic_year_name === term.year
-                          );
-                          return ledgerTerm ? (
-                            <p className="text-xs text-blue-600 font-mono mt-1">
-                              Ledger Term ID: {ledgerTerm.id} (Year ID: {ledgerTerm.academic_year_id})
+                        {ledgerTerms
+                          .filter(lt => {
+                            const cleanName = term.term_name.replace(/\s+\d{4}$/, '').trim();
+                            return (lt.name === term.term_name || lt.name === cleanName || `${lt.name} ${lt.academic_year_name}` === term.term_name) && 
+                                   lt.academic_year_name === term.year;
+                          })
+                          .map(lt => (
+                            <p key={lt.id} className="text-xs text-blue-500 dark:text-blue-400 font-mono mt-1">
+                              Ledger Term ID: {lt.id} (Year ID: {lt.academic_year_id})
                             </p>
-                          ) : null;
-                        })()}
+                          ))}
                         {term.start_date && term.end_date && (
-                          <p className="text-sm text-gray-600">
+                          <p className="text-sm text-muted-foreground">
                             {new Date(term.start_date).toLocaleDateString()} - {new Date(term.end_date).toLocaleDateString()}
                           </p>
                         )}

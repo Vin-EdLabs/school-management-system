@@ -245,8 +245,8 @@ const AttendanceModule = () => {
         <Card>
           <CardContent className="p-8 text-center">
             <ClipboardCheck className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No Classes Found</h3>
-            <p className="text-gray-500">{isAdminViewer ? 'No classes have been created yet.' : "You don't have any classes assigned yet. Please contact the administrator."}</p>
+            <h3 className="text-lg font-medium text-foreground mb-2">No Classes Found</h3>
+            <p className="text-muted-foreground">{isAdminViewer ? 'No classes have been created yet.' : "You don't have any classes assigned yet. Please contact the administrator."}</p>
           </CardContent>
         </Card>
       </div>
@@ -254,14 +254,14 @@ const AttendanceModule = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50/50 p-6 space-y-8 max-w-7xl mx-auto">
+    <div className="min-h-screen bg-background p-6 space-y-8 max-w-7xl mx-auto">
       {/* Header Section */}
       <div className="text-center space-y-4">
-        <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl mb-4 shadow-lg shadow-emerald-100">
+        <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl mb-4 shadow-lg shadow-emerald-500/10">
           <ClipboardCheck className="h-8 w-8 text-white" />
         </div>
         <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
             Student Attendance
           </h1>
           <p className="text-lg text-muted-foreground mt-2 max-w-2xl mx-auto">
@@ -270,7 +270,7 @@ const AttendanceModule = () => {
         </div>
         {isAdminViewer && (
           <div className="flex justify-center">
-            <Badge variant="secondary" className="px-4 py-1.5 text-blue-700 bg-blue-50 border border-blue-200 rounded-full font-semibold flex items-center gap-2">
+            <Badge variant="secondary" className="px-4 py-1.5 text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-full font-semibold flex items-center gap-2">
               <Eye className="w-4 h-4" /> Administrative View (Read-Only)
             </Badge>
           </div>
@@ -278,19 +278,19 @@ const AttendanceModule = () => {
       </div>
 
       {/* Class Selector Card */}
-      <Card className="border-0 shadow-2xl bg-white/90 backdrop-blur-md rounded-3xl overflow-hidden hover:shadow-emerald-100/50 transition-all duration-500">
+      <Card className="border-border shadow-2xl bg-card/90 backdrop-blur-md rounded-3xl overflow-hidden hover:shadow-emerald-500/10 transition-all duration-500">
         <CardContent className="p-8">
           <div className="flex flex-col md:flex-row items-center gap-6">
-            <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center shrink-0">
-               <School className="w-6 h-6 text-emerald-600" />
+            <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl flex items-center justify-center shrink-0">
+               <School className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
             </div>
             <div className="flex-1 space-y-2 w-full text-center md:text-left">
-              <Label className="text-sm font-bold text-slate-500 uppercase tracking-widest">Select Target Class</Label>
+              <Label className="text-sm font-bold text-muted-foreground uppercase tracking-widest">Select Target Class</Label>
               <Select value={selectedClassId} onValueChange={v => { setSelectedClassId(v); setTrackerStudentId(''); setTrackerRecords([]); }}>
-                <SelectTrigger className="h-14 rounded-2xl border-2 border-slate-100 bg-white hover:border-emerald-200 focus:ring-4 focus:ring-emerald-50 transition-all text-lg font-semibold">
+                <SelectTrigger className="h-14 rounded-2xl border-2 border-border bg-background hover:border-emerald-200 dark:hover:border-emerald-800 focus:ring-4 focus:ring-emerald-50 dark:focus:ring-emerald-900/20 transition-all text-lg font-semibold">
                   <SelectValue placeholder="Which class are you marking?" />
                 </SelectTrigger>
-                <SelectContent className="rounded-2xl border-2 border-slate-50 shadow-2xl">
+                <SelectContent className="rounded-2xl border-2 border-border shadow-2xl">
                   {teacherClasses.map((cls) => (
                     <SelectItem key={cls.id} value={String(cls.id)} className="h-12 rounded-xl mx-2 my-1">
                       {cls.class_name} ({cls.student_count} registered students)
@@ -352,19 +352,19 @@ const AttendanceModule = () => {
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-4 flex-wrap">
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Users className="w-4 h-4" />
                         <span>{totalStudents} students total</span>
                       </div>
                       {markedStudents.length > 0 && (
                         <>
-                          <span className="flex items-center gap-1 text-sm text-green-700 font-medium">
+                          <span className="flex items-center gap-1 text-sm text-green-700 dark:text-green-400 font-medium">
                             <CheckCircle className="w-4 h-4" /> {presentCount} present
                           </span>
-                          <span className="flex items-center gap-1 text-sm text-red-600 font-medium">
+                          <span className="flex items-center gap-1 text-sm text-red-600 dark:text-red-400 font-medium">
                             <XCircle className="w-4 h-4" /> {absentCount} absent
                           </span>
-                          <span className="text-sm text-gray-400">{totalStudents - markedStudents.length} not marked</span>
+                          <span className="text-sm text-muted-foreground">{totalStudents - markedStudents.length} not marked</span>
                         </>
                       )}
                     </div>
@@ -377,7 +377,7 @@ const AttendanceModule = () => {
                   <CardTitle className="flex items-center justify-between flex-wrap gap-2">
                     <span className="text-base">
                       Student Attendance
-                      <span className="ml-2 text-sm font-normal text-gray-500">
+                      <span className="ml-2 text-sm font-normal text-muted-foreground">
                         — {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                       </span>
                     </span>
@@ -395,8 +395,8 @@ const AttendanceModule = () => {
                   ) : classStudents.length === 0 ? (
                     <div className="text-center py-8">
                       <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">No Students Found</h3>
-                      <p className="text-gray-500">No students are assigned to this class yet.</p>
+                      <h3 className="text-lg font-medium text-foreground mb-2">No Students Found</h3>
+                      <p className="text-muted-foreground">No students are assigned to this class yet.</p>
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -409,8 +409,8 @@ const AttendanceModule = () => {
                               status === true
                                 ? 'bg-green-50 border-green-200'
                                 : status === false
-                                ? 'bg-red-50 border-red-200'
-                                : 'bg-white border-gray-200'
+                                ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                                : 'bg-card border-border'
                             }`}
                           >
                             <div className="flex items-center gap-3">
@@ -420,8 +420,8 @@ const AttendanceModule = () => {
                                 {student.firstName.charAt(0)}{student.lastName.charAt(0)}
                               </div>
                               <div>
-                                <p className="font-medium text-gray-900">{student.firstName} {student.lastName}</p>
-                                <p className="text-xs text-gray-500">ID: {student.studentId}</p>
+                                <p className="font-medium text-foreground">{student.firstName} {student.lastName}</p>
+                                <p className="text-xs text-muted-foreground">ID: {student.studentId}</p>
                               </div>
                             </div>
 
@@ -440,7 +440,7 @@ const AttendanceModule = () => {
                                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
                                       status === true
                                         ? 'bg-green-600 text-white border-green-600'
-                                        : 'bg-white text-gray-600 border-gray-300 hover:border-green-400 hover:text-green-700'
+                                        : 'bg-background text-muted-foreground border-input hover:border-green-400 dark:hover:border-green-800 hover:text-green-700 dark:hover:text-green-400'
                                     }`}
                                   >
                                     <CheckCircle className="w-3.5 h-3.5" /> Present
@@ -450,7 +450,7 @@ const AttendanceModule = () => {
                                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
                                       status === false
                                         ? 'bg-red-600 text-white border-red-600'
-                                        : 'bg-white text-gray-600 border-gray-300 hover:border-red-400 hover:text-red-600'
+                                        : 'bg-background text-muted-foreground border-input hover:border-red-400 dark:hover:border-red-800 hover:text-red-600 dark:hover:text-red-400'
                                     }`}
                                   >
                                     <XCircle className="w-3.5 h-3.5" /> Absent
@@ -500,15 +500,15 @@ const AttendanceModule = () => {
                       return (
                         <div
                           key={entry.date}
-                          className="flex items-center justify-between p-3 rounded-lg border bg-gray-50 hover:bg-gray-100 cursor-pointer transition-colors"
+                          className="flex items-center justify-between p-3 rounded-lg border bg-muted/30 hover:bg-muted/50 cursor-pointer transition-colors"
                           onClick={() => { setSelectedDate(entry.date); setActiveTab('take'); }}
                         >
                           <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 bg-slate-200 rounded-lg flex items-center justify-center shrink-0">
-                              <Calendar className="w-4 h-4 text-slate-600" />
+                            <div className="w-9 h-9 bg-muted rounded-lg flex items-center justify-center shrink-0">
+                              <Calendar className="w-4 h-4 text-muted-foreground" />
                             </div>
                             <div>
-                              <p className="font-medium text-gray-900">{formatted}</p>
+                              <p className="font-medium text-foreground">{formatted}</p>
                               <div className="flex items-center gap-3 mt-0.5 text-xs">
                                 <span className="flex items-center gap-1 text-green-700">
                                   <CheckCircle className="w-3 h-3" /> {entry.present_count} present
@@ -562,15 +562,15 @@ const AttendanceModule = () => {
                         trackerResults.map(s => (
                           <button
                             key={s.id}
-                            className={`w-full flex items-center gap-3 p-3 text-left hover:bg-gray-50 transition-colors ${trackerStudentId === s.id ? 'bg-green-50' : ''}`}
+                            className={`w-full flex items-center gap-3 p-3 text-left hover:bg-muted transition-colors ${trackerStudentId === s.id ? 'bg-emerald-50 dark:bg-emerald-900/20' : ''}`}
                             onClick={() => { handleTrackStudent(s.id); setTrackerSearch(''); }}
                           >
                             <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
                               {s.firstName.charAt(0)}{s.lastName.charAt(0)}
                             </div>
                             <div>
-                              <p className="font-medium text-gray-900 text-sm">{s.firstName} {s.lastName}</p>
-                              <p className="text-xs text-gray-500">ID: {s.studentId} · {s.classAssigned}</p>
+                              <p className="font-medium text-foreground text-sm">{s.firstName} {s.lastName}</p>
+                              <p className="text-xs text-muted-foreground">ID: {s.studentId} · {s.classAssigned}</p>
                             </div>
                           </button>
                         ))

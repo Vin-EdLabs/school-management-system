@@ -35,18 +35,13 @@ interface EditTeacherDialogProps {
   onSuccess: () => void;
 }
 
-const SUBJECTS = [
-  'Mathematics', 'English', 'Science', 'Social Studies', 'French',
-  'Physical Education', 'Art', 'Music', 'Computer Studies', 'Religious Studies'
-];
-
 const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
   teacher,
   open,
   onClose,
   onSuccess
 }) => {
-  const { updateTeacher } = useData();
+  const { updateTeacher, subjects } = useData();
   const { verifyPassword, user } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [password, setPassword] = useState('');
@@ -241,9 +236,9 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
                 <SelectValue placeholder="Add subjects" />
               </SelectTrigger>
               <SelectContent>
-                {SUBJECTS.filter(subject => !formData.subjectsTaught.includes(subject)).map((subject) => (
-                  <SelectItem key={subject} value={subject}>
-                    {subject}
+                {subjects.filter(subject => !formData.subjectsTaught.includes(subject.name)).map((subject) => (
+                  <SelectItem key={subject.id} value={subject.name}>
+                    {subject.name}
                   </SelectItem>
                 ))}
               </SelectContent>

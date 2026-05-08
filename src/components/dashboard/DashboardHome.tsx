@@ -121,12 +121,12 @@ const DashboardHome = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-slate-800">Dashboard</h1>
-          <p className="text-sm text-slate-500 mt-0.5">School overview and quick actions</p>
+          <h1 className="text-xl font-semibold text-foreground">Dashboard</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">School overview and quick actions</p>
         </div>
-        <div className="flex items-center gap-3 px-3 py-2 bg-slate-100 rounded-lg w-fit">
-          <span className="text-sm text-slate-500">Term</span>
-          <span className="text-sm font-medium text-slate-800">{currentTerm}</span>
+        <div className="flex items-center gap-3 px-3 py-2 bg-muted rounded-lg w-fit">
+          <span className="text-sm text-muted-foreground">Term</span>
+          <span className="text-sm font-medium text-foreground">{currentTerm}</span>
         </div>
       </div>
 
@@ -135,69 +135,69 @@ const DashboardHome = () => {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
-        <Card className="border-slate-200/80 bg-white shadow-sm">
+        <Card className="border-border bg-card shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-slate-600">Total Students</CardTitle>
-            <Users className="h-4 w-4 text-slate-400" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Students</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-slate-800">{totalStudents}</div>
-            <p className="text-xs text-slate-500">Active enrollments</p>
+            <div className="text-2xl font-bold text-foreground">{totalStudents}</div>
+            <p className="text-xs text-muted-foreground">Active enrollments</p>
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200/80 bg-white shadow-sm">
+        <Card className="border-border bg-card shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-slate-600">Total Income</CardTitle>
-            <CreditCard className="h-4 w-4 text-slate-400" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Income</CardTitle>
+            <CreditCard className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-slate-800">GHS {totalIncome.toLocaleString()}</div>
-            <p className="text-xs text-slate-500">Fees + other</p>
+            <div className="text-2xl font-bold text-foreground">GHS {totalIncome.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground">Fees + other</p>
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200/80 bg-white shadow-sm">
+        <Card className="border-border bg-card shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-slate-600">Expenses</CardTitle>
-            <TrendingDown className="h-4 w-4 text-slate-400" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">Expenses</CardTitle>
+            <TrendingDown className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-slate-800">GHS {expensesThisYear.toLocaleString()}</div>
-            <p className="text-xs text-slate-500">This year</p>
+            <div className="text-2xl font-bold text-foreground">GHS {expensesThisYear.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground">This year</p>
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200/80 bg-white shadow-sm">
+        <Card className="border-border bg-card shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-slate-600">Net Balance</CardTitle>
-            <CreditCard className="h-4 w-4 text-slate-400" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">Net Balance</CardTitle>
+            <CreditCard className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold ${netBalance >= 0 ? 'text-emerald-600' : 'text-amber-600'}`}>GHS {netBalance.toLocaleString()}</div>
-            <p className="text-xs text-slate-500">Income − Expenses</p>
+            <div className={`text-2xl font-bold ${netBalance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>GHS {netBalance.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground">Income − Expenses</p>
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200/80 bg-white shadow-sm">
+        <Card className="border-border bg-card shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-slate-600">Outstanding</CardTitle>
-            <AlertCircle className="h-4 w-4 text-slate-400" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">Outstanding</CardTitle>
+            <AlertCircle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-slate-800">GHS {outstandingBalances.toLocaleString()}</div>
-            <p className="text-xs text-slate-500">Pending payments</p>
+            <div className="text-2xl font-bold text-foreground">GHS {outstandingBalances.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground">Pending payments</p>
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200/80 bg-white shadow-sm">
+        <Card className="border-border bg-card shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-slate-600">Total Teachers</CardTitle>
-            <GraduationCap className="h-4 w-4 text-slate-400" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Teachers</CardTitle>
+            <GraduationCap className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-slate-800">{totalTeachers}</div>
-            <p className="text-xs text-slate-500">Active staff</p>
+            <div className="text-2xl font-bold text-foreground">{totalTeachers}</div>
+            <p className="text-xs text-muted-foreground">Active staff</p>
           </CardContent>
         </Card>
       </div>
@@ -211,11 +211,15 @@ const DashboardHome = () => {
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={classFeesData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip formatter={(value) => [`GHS ${value}`, 'Fees Collected']} />
-                <Bar dataKey="fees" fill="#3B82F6" />
+                <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-border" />
+                <XAxis dataKey="name" stroke="currentColor" className="text-muted-foreground" />
+                <YAxis stroke="currentColor" className="text-muted-foreground" />
+                <Tooltip 
+                  formatter={(value) => [`GHS ${value}`, 'Fees Collected']}
+                  contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', color: 'hsl(var(--foreground))' }}
+                  itemStyle={{ color: 'hsl(var(--foreground))' }}
+                />
+                <Bar dataKey="fees" fill="#3B82F6" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -242,7 +246,11 @@ const DashboardHome = () => {
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(value) => `GHS ${value}`} />
+                <Tooltip 
+                  formatter={(value) => `GHS ${value}`}
+                  contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', color: 'hsl(var(--foreground))' }}
+                  itemStyle={{ color: 'hsl(var(--foreground))' }}
+                />
               </PieChart>
             </ResponsiveContainer>
           </CardContent>
@@ -256,15 +264,15 @@ const DashboardHome = () => {
             <CardTitle>Quick Actions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Button className="w-full justify-start bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200">
+            <Button className="w-full justify-start bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 border border-blue-500/20 shadow-none">
               <Plus className="w-4 h-4 mr-2" />
               Add Student
             </Button>
-            <Button className="w-full justify-start bg-green-50 text-green-700 hover:bg-green-100 border border-green-200">
+            <Button className="w-full justify-start bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20 shadow-none">
               <Receipt className="w-4 h-4 mr-2" />
               Record Payment
             </Button>
-            <Button className="w-full justify-start bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200">
+            <Button className="w-full justify-start bg-purple-500/10 text-purple-600 dark:text-purple-400 hover:bg-purple-500/20 border border-purple-500/20 shadow-none">
               <FileText className="w-4 h-4 mr-2" />
               Add Expense
             </Button>
@@ -278,11 +286,11 @@ const DashboardHome = () => {
           <CardContent>
             <div className="space-y-3">
               {recentActivities.slice(0, 5).map((activity, index) => (
-                <div key={index} className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
-                  <div className={`w-2 h-2 rounded-full mt-2 ${activity.type === 'payment' ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                <div key={index} className="flex items-start space-x-3 p-3 bg-muted/50 rounded-lg border border-border">
+                  <div className={`w-2 h-2 rounded-full mt-2 ${activity.type === 'payment' ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
                   <div className="flex-1">
-                    <p className="text-sm text-gray-800">{activity.text}</p>
-                    <p className="text-xs text-gray-500">{activity.time}</p>
+                    <p className="text-sm text-foreground">{activity.text}</p>
+                    <p className="text-xs text-muted-foreground">{activity.time}</p>
                   </div>
                 </div>
               ))}

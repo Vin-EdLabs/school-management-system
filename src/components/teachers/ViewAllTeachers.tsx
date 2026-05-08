@@ -133,19 +133,19 @@ const ViewAllTeachers = () => {
           </div>
 
           {/* Teachers Table */}
-          <div className="rounded-md border overflow-x-auto">
-            <Table>
+          <div className="rounded-md border overflow-x-auto w-full">
+            <Table className="w-full">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-14">Photo</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Staff ID</TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead>Subjects</TableHead>
-                  <TableHead>Class Assigned</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Salary</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead className="w-14 whitespace-nowrap">Photo</TableHead>
+                  <TableHead className="whitespace-nowrap min-w-[150px]">Name</TableHead>
+                  <TableHead className="whitespace-nowrap">Staff ID</TableHead>
+                  <TableHead className="whitespace-nowrap">Contact</TableHead>
+                  <TableHead className="whitespace-nowrap">Subjects</TableHead>
+                  <TableHead className="whitespace-nowrap">Class Assigned</TableHead>
+                  <TableHead className="whitespace-nowrap">Status</TableHead>
+                  <TableHead className="whitespace-nowrap">Salary</TableHead>
+                  <TableHead className="whitespace-nowrap text-right pr-6">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -213,12 +213,13 @@ const ViewAllTeachers = () => {
                           <span className="text-gray-400">-</span>
                         )}
                       </TableCell>
-                      <TableCell>
-                        <div className="flex space-x-2">
+                      <TableCell className="text-right pr-6">
+                        <div className="flex justify-end items-center gap-2">
                           <Button 
                             size="sm" 
                             variant="outline"
                             onClick={() => handleViewTeacher(teacher)}
+                            className="h-8 w-8 p-0"
                           >
                             <Eye className="w-4 h-4" />
                           </Button>
@@ -226,6 +227,7 @@ const ViewAllTeachers = () => {
                             size="sm" 
                             variant="outline"
                             onClick={() => handleEditTeacher(teacher)}
+                            className="h-8 w-8 p-0"
                           >
                             <Edit className="w-4 h-4" />
                           </Button>
@@ -233,7 +235,7 @@ const ViewAllTeachers = () => {
                             size="sm" 
                             variant="outline" 
                             onClick={() => handleDeleteClick(teacher)}
-                            className="text-red-600 hover:text-red-800"
+                            className="h-8 w-8 p-0 text-red-600 hover:text-red-800 hover:bg-red-50"
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>

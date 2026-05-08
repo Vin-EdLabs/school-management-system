@@ -63,11 +63,11 @@ const roleLabels: Record<string, string> = {
 };
 
 const roleColors: Record<string, string> = {
-  'super-admin': 'bg-violet-100 text-violet-800 border-violet-200',
-  administrator: 'bg-blue-100 text-blue-800 border-blue-200',
-  finance: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-  teacher: 'bg-amber-100 text-amber-800 border-amber-200',
-  staff: 'bg-slate-100 text-slate-800 border-slate-200',
+  'super-admin': 'bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20',
+  administrator: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
+  finance: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
+  teacher: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
+  staff: 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20',
 };
 
 const roleIcons: Record<string, React.ElementType> = {
@@ -174,13 +174,13 @@ const UsersModule = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
+          <h1 className="text-2xl font-bold text-foreground flex items-center gap-3">
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/25">
               <Users className="w-6 h-6 text-white" />
             </div>
             <span>User Management</span>
           </h1>
-          <p className="text-slate-500 mt-1">All staff with system access. Create users and reset passwords.</p>
+          <p className="text-muted-foreground mt-1">All staff with system access. Create users and reset passwords.</p>
         </div>
         <Button
           onClick={() => setCreateOpen(true)}
@@ -192,26 +192,26 @@ const UsersModule = () => {
       </div>
 
       {/* Info card */}
-      <div className="rounded-xl border border-indigo-100 bg-gradient-to-r from-indigo-50/80 to-violet-50/80 p-4 flex items-start gap-3">
-        <Shield className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
-        <div className="text-sm text-slate-700">
-          <strong className="text-indigo-800">Teachers and Staff appear automatically.</strong> When you add a teacher or payroll staff, they get login credentials (Staff ID + PIN). Use &quot;Create User&quot; to add Administrators or Finance officers manually.
+      <div className="rounded-xl border border-indigo-500/20 bg-gradient-to-r from-indigo-500/10 to-violet-500/10 p-4 flex items-start gap-3">
+        <Shield className="w-5 h-5 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
+        <div className="text-sm text-foreground/80">
+          <strong className="text-indigo-700 dark:text-indigo-300">Teachers and Staff appear automatically.</strong> When you add a teacher or payroll staff, they get login credentials (Staff ID + PIN). Use &quot;Create User&quot; to add Administrators or Finance officers manually.
         </div>
       </div>
 
       {/* Users table */}
-      <Card className="border-slate-200/80 shadow-sm overflow-hidden">
-        <CardHeader className="bg-slate-50/80 border-b">
-          <CardTitle className="text-slate-800 text-lg">All System Users ({users.length})</CardTitle>
+      <Card className="border-border shadow-sm overflow-hidden bg-card">
+        <CardHeader className="bg-muted/50 border-b border-border">
+          <CardTitle className="text-foreground text-lg">All System Users ({users.length})</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           {loading ? (
-            <div className="py-16 text-center text-slate-500">Loading users...</div>
+            <div className="py-16 text-center text-muted-foreground">Loading users...</div>
           ) : users.length === 0 ? (
             <div className="py-16 text-center">
-              <Users className="w-14 h-14 text-slate-300 mx-auto mb-3" />
-              <p className="text-slate-500 font-medium">No users yet</p>
-              <p className="text-sm text-slate-400 mt-1">Add teachers in Teachers or create an Administrator/Finance user.</p>
+              <Users className="w-14 h-14 text-muted/30 mx-auto mb-3" />
+              <p className="text-muted-foreground font-medium">No users yet</p>
+              <p className="text-sm text-muted-foreground/60 mt-1">Add teachers in Teachers or create an Administrator/Finance user.</p>
               <Button variant="outline" className="mt-4" onClick={() => setCreateOpen(true)}>
                 <UserPlus className="w-4 h-4 mr-2" />
                 Create User
@@ -221,36 +221,36 @@ const UsersModule = () => {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-slate-50/80 hover:bg-slate-50/80">
-                    <TableHead className="font-semibold text-slate-700">Name</TableHead>
-                    <TableHead className="font-semibold text-slate-700">Login / Staff ID</TableHead>
-                    <TableHead className="font-semibold text-slate-700">Role</TableHead>
-                    <TableHead className="font-semibold text-slate-700">Email</TableHead>
-                    <TableHead className="font-semibold text-slate-700">Status</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-right w-[140px]">Actions</TableHead>
+                  <TableRow className="bg-muted/50 hover:bg-muted/50 border-border">
+                    <TableHead className="font-semibold text-foreground">Name</TableHead>
+                    <TableHead className="font-semibold text-foreground">Login / Staff ID</TableHead>
+                    <TableHead className="font-semibold text-foreground">Role</TableHead>
+                    <TableHead className="font-semibold text-foreground">Email</TableHead>
+                    <TableHead className="font-semibold text-foreground">Status</TableHead>
+                    <TableHead className="font-semibold text-foreground text-right w-[140px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {users.map((u) => {
                     const RoleIcon = roleIcons[u.role] || UserCheck;
                     return (
-                      <TableRow key={u.id} className="hover:bg-slate-50/50">
+                      <TableRow key={u.id} className="hover:bg-muted/30 border-border">
                         <TableCell>
                           <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                              <RoleIcon className="w-4 h-4 text-slate-600" />
+                            <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                              <RoleIcon className="w-4 h-4 text-muted-foreground" />
                             </div>
                             <div>
-                              <p className="font-medium text-slate-800">{displayName(u)}</p>
+                              <p className="font-medium text-foreground">{displayName(u)}</p>
                               {u.is_primary_admin && (
-                                <span className="text-xs text-indigo-600 font-medium">Primary Admin</span>
+                                <span className="text-xs text-indigo-600 dark:text-indigo-400 font-medium">Primary Admin</span>
                               )}
                             </div>
                           </div>
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            <span className="font-mono text-sm text-slate-700">{u.username}</span>
+                            <span className="font-mono text-sm text-foreground/80">{u.username}</span>
                             {(u.role === 'teacher' || u.role === 'staff') && u.staff_id && (
                               <Button
                                 size="sm"
@@ -271,9 +271,9 @@ const UsersModule = () => {
                             {roleLabels[u.role] || u.role}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-slate-600 text-sm">{u.email || '—'}</TableCell>
+                        <TableCell className="text-muted-foreground text-sm">{u.email || '—'}</TableCell>
                         <TableCell>
-                          <Badge variant="outline" className={u.is_active ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-600'}>
+                          <Badge variant="outline" className={u.is_active ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'border-border bg-muted text-muted-foreground'}>
                             {u.is_active ? 'Active' : 'Inactive'}
                           </Badge>
                         </TableCell>
@@ -282,7 +282,7 @@ const UsersModule = () => {
                             size="sm"
                             variant="outline"
                             onClick={() => openResetDialog(u)}
-                            className="border-slate-200"
+                            className="border-border hover:bg-muted"
                           >
                             <KeyRound className="w-4 h-4 mr-1.5" />
                             Reset Password
@@ -353,7 +353,7 @@ const UsersModule = () => {
                   <SelectItem value="staff">Staff</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-xs text-slate-500 mt-1">Use Teacher/Staff for manual accounts; normally they get accounts when added via Teachers or Payroll.</p>
+              <p className="text-xs text-muted-foreground mt-1">Use Teacher/Staff for manual accounts; normally they get accounts when added via Teachers or Payroll.</p>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
@@ -374,7 +374,7 @@ const UsersModule = () => {
           </DialogHeader>
           {selectedUser && (
             <form onSubmit={handleResetPassword} className="space-y-4">
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-muted-foreground">
                 Set a new password for <strong>{selectedUser.username}</strong> ({roleLabels[selectedUser.role] || selectedUser.role}). They will use this to log in.
               </p>
               <div>

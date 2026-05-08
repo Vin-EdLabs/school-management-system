@@ -153,12 +153,12 @@ const PayrollModule = () => {
     <div className="p-6 md:p-8 space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-slate-800">Payroll</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Monthly salary management — Teachers & staff</p>
+          <h1 className="text-xl font-semibold text-foreground">Payroll</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Monthly salary management — Teachers & staff</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <Select value={String(month)} onValueChange={(v) => setMonth(parseInt(v))}>
-            <SelectTrigger className="w-40 bg-white border-slate-200">
+            <SelectTrigger className="w-40 bg-background border-border">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -168,7 +168,7 @@ const PayrollModule = () => {
             </SelectContent>
           </Select>
           <Select value={String(year)} onValueChange={(v) => setYear(parseInt(v))}>
-            <SelectTrigger className="w-28 bg-white border-slate-200">
+            <SelectTrigger className="w-28 bg-background border-border">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -177,7 +177,7 @@ const PayrollModule = () => {
               ))}
             </SelectContent>
           </Select>
-          <Button onClick={() => setAddStaffOpen(true)} variant="outline" className="border-slate-200">
+          <Button onClick={() => setAddStaffOpen(true)} variant="outline" className="border-border">
             <Plus className="w-4 h-4 mr-2" />
             Add Other Staff
           </Button>
@@ -185,64 +185,64 @@ const PayrollModule = () => {
       </div>
 
       {/* Info banner - teachers auto-appear */}
-      <div className="flex items-start gap-3 p-4 rounded-lg bg-slate-50 border border-slate-200">
-        <Info className="w-5 h-5 text-slate-500 shrink-0 mt-0.5" />
-        <div className="text-sm text-slate-600">
-          <strong className="text-slate-800">Teachers appear automatically.</strong> When you add a teacher in the Teachers module with a monthly salary, they automatically appear here. Use &quot;Add Other Staff&quot; for non-teaching staff (secretaries, security, etc.).
+      <div className="flex items-start gap-3 p-4 rounded-lg bg-muted/50 border border-border">
+        <Info className="w-5 h-5 text-muted-foreground shrink-0 mt-0.5" />
+        <div className="text-sm text-muted-foreground">
+          <strong className="text-foreground font-semibold">Teachers appear automatically.</strong> When you add a teacher in the Teachers module with a monthly salary, they automatically appear here. Use &quot;Add Other Staff&quot; for non-teaching staff (secretaries, security, etc.).
         </div>
       </div>
 
       {/* Summary Cards */}
       {data && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="border-slate-200/80 bg-white shadow-sm">
+          <Card className="border-border bg-card shadow-sm">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center">
-                  <Users className="w-5 h-5 text-slate-600" />
+                <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
+                  <Users className="w-5 h-5 text-muted-foreground" />
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500">Total Staff</p>
-                  <p className="text-xl font-bold text-slate-800">{data.payroll?.length || 0}</p>
+                  <p className="text-sm text-muted-foreground">Total Staff</p>
+                  <p className="text-xl font-bold text-foreground">{data.payroll?.length || 0}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
-          <Card className="border-slate-200/80 bg-white shadow-sm">
+          <Card className="border-border bg-card shadow-sm">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
-                  <DollarSign className="w-5 h-5 text-emerald-600" />
+                <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                  <DollarSign className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500">Total Salary</p>
-                  <p className="text-xl font-bold text-slate-800">GHS {(data.summary?.totalSalary || 0).toLocaleString()}</p>
+                  <p className="text-sm text-muted-foreground">Total Salary</p>
+                  <p className="text-xl font-bold text-foreground">GHS {(data.summary?.totalSalary || 0).toLocaleString()}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
-          <Card className="border-slate-200/80 bg-white shadow-sm">
+          <Card className="border-border bg-card shadow-sm">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-teal-100 flex items-center justify-center">
-                  <CheckCircle className="w-5 h-5 text-teal-600" />
+                <div className="w-10 h-10 rounded-lg bg-teal-500/10 flex items-center justify-center">
+                  <CheckCircle className="w-5 h-5 text-teal-600 dark:text-teal-400" />
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500">Paid</p>
-                  <p className="text-xl font-bold text-slate-800">{data.summary?.paidCount || 0}</p>
+                  <p className="text-sm text-muted-foreground">Paid</p>
+                  <p className="text-xl font-bold text-foreground">{data.summary?.paidCount || 0}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
-          <Card className="border-slate-200/80 bg-white shadow-sm">
+          <Card className="border-border bg-card shadow-sm">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
-                  <AlertCircle className="w-5 h-5 text-amber-600" />
+                <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                  <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500">Unpaid</p>
-                  <p className="text-xl font-bold text-slate-800">{data.summary?.unpaidCount || 0}</p>
+                  <p className="text-sm text-muted-foreground">Unpaid</p>
+                  <p className="text-xl font-bold text-foreground">{data.summary?.unpaidCount || 0}</p>
                 </div>
               </div>
             </CardContent>
@@ -251,63 +251,63 @@ const PayrollModule = () => {
       )}
 
       {/* Payroll Table */}
-      <Card className="border-slate-200/80 bg-white shadow-sm">
+      <Card className="border-border bg-card shadow-sm">
         <CardHeader>
-          <CardTitle className="text-slate-800">Payroll — {MONTHS[month - 1]} {year}</CardTitle>
+          <CardTitle className="text-foreground">Payroll — {MONTHS[month - 1]} {year}</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="py-12 text-center text-slate-500">Loading...</div>
+            <div className="py-12 text-center text-muted-foreground">Loading...</div>
           ) : !data?.payroll?.length ? (
             <div className="py-12 text-center">
-              <Wallet className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <p className="text-slate-500">No staff on payroll for this month.</p>
-              <p className="text-sm text-slate-400 mt-1">Add teachers in the Teachers module, or add other staff above.</p>
+              <Wallet className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
+              <p className="text-muted-foreground">No staff on payroll for this month.</p>
+              <p className="text-sm text-muted-foreground/60 mt-1">Add teachers in the Teachers module, or add other staff above.</p>
             </div>
           ) : (
-            <div className="rounded-lg border border-slate-200 overflow-hidden">
+            <div className="rounded-lg border border-border overflow-hidden">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-slate-50/80 hover:bg-slate-50/80">
-                    <TableHead className="font-medium text-slate-700">Name</TableHead>
-                    <TableHead className="font-medium text-slate-700">Role / Class</TableHead>
-                    <TableHead className="font-medium text-slate-700">Staff ID</TableHead>
-                    <TableHead className="text-right font-medium text-slate-700">Monthly Salary</TableHead>
-                    <TableHead className="text-right font-medium text-slate-700">Amount Paid</TableHead>
-                    <TableHead className="font-medium text-slate-700">Status</TableHead>
-                    <TableHead className="font-medium text-slate-700">Paid Date</TableHead>
+                  <TableRow className="bg-muted/50 hover:bg-muted/50 border-border">
+                    <TableHead className="font-semibold text-foreground">Name</TableHead>
+                    <TableHead className="font-semibold text-foreground">Role / Class</TableHead>
+                    <TableHead className="font-semibold text-foreground">Staff ID</TableHead>
+                    <TableHead className="text-right font-semibold text-foreground">Monthly Salary</TableHead>
+                    <TableHead className="text-right font-semibold text-foreground">Amount Paid</TableHead>
+                    <TableHead className="font-semibold text-foreground">Status</TableHead>
+                    <TableHead className="font-semibold text-foreground">Paid Date</TableHead>
                     <TableHead className="w-[160px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {data.payroll.map((p: any) => (
-                    <TableRow key={`${p.payeeType}-${p.id}`} className="hover:bg-slate-50/50">
-                      <TableCell className="font-medium text-slate-800">{p.name}</TableCell>
-                      <TableCell className="text-slate-600">{p.role || '-'}</TableCell>
-                      <TableCell className="text-slate-500 font-mono text-sm">{p.staffId || '-'}</TableCell>
-                      <TableCell className="text-right font-mono font-medium">GHS {p.monthlySalary.toLocaleString()}</TableCell>
-                      <TableCell className="text-right font-mono text-emerald-600">GHS {p.amountPaid.toLocaleString()}</TableCell>
+                    <TableRow key={`${p.payeeType}-${p.id}`} className="hover:bg-muted/30 border-border transition-colors">
+                      <TableCell className="font-semibold text-foreground">{p.name}</TableCell>
+                      <TableCell className="text-muted-foreground">{p.role || '-'}</TableCell>
+                      <TableCell className="text-muted-foreground font-mono text-sm">{p.staffId || '-'}</TableCell>
+                      <TableCell className="text-right font-mono font-medium text-foreground">GHS {p.monthlySalary.toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-mono text-emerald-600 dark:text-emerald-400 font-bold">GHS {p.amountPaid.toLocaleString()}</TableCell>
                       <TableCell>
                         <Badge
                           variant="outline"
                           className={
                             p.status === 'Paid'
-                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                               : p.status === 'Partially Paid'
-                              ? 'border-amber-200 bg-amber-50 text-amber-700'
-                              : 'border-slate-200 bg-slate-50 text-slate-600'
+                              ? 'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                              : 'border-border bg-muted text-muted-foreground'
                           }
                         >
                           {p.status}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-slate-500">{p.paidDate ? new Date(p.paidDate).toLocaleDateString() : '-'}</TableCell>
+                      <TableCell className="text-muted-foreground">{p.paidDate ? new Date(p.paidDate).toLocaleDateString() : '-'}</TableCell>
                       <TableCell className="flex items-center gap-2">
-                        <Button size="sm" variant="ghost" onClick={() => openEditDialog(p)} className="text-slate-600" title="Edit info and pay">
+                        <Button size="sm" variant="ghost" onClick={() => openEditDialog(p)} className="text-muted-foreground hover:text-foreground" title="Edit info and pay">
                           <Pencil className="w-4 h-4" />
                         </Button>
                         {p.status !== 'Paid' && (
-                          <Button size="sm" variant="outline" onClick={() => openPayDialog(p)} className="border-slate-200">
+                          <Button size="sm" variant="outline" onClick={() => openPayDialog(p)} className="border-border">
                             Record Payment
                           </Button>
                         )}

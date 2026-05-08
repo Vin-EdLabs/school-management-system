@@ -4,6 +4,7 @@ import multer from 'multer';
 import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { sendPushToParentAccount } from '../services/webPushService.js';
+import { setTenantContext } from '../middleware/tenant.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
@@ -173,7 +174,7 @@ router.put('/:id/read', authenticateParent, async (req: ParentRequest, res) => {
 });
 
 // -------- Admin side --------
-router.get('/admin/list', authenticate, requireTenant, async (req: AuthRequest, res) => {
+router.get('/admin/list', authenticate, requireTenant, setTenantContext, async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const rows = await query(
@@ -196,7 +197,7 @@ router.get('/admin/list', authenticate, requireTenant, async (req: AuthRequest, 
   }
 });
 
-router.get('/admin/:id', authenticate, requireTenant, async (req: AuthRequest, res) => {
+router.get('/admin/:id', authenticate, requireTenant, setTenantContext, async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const id = Number(req.params.id);
@@ -223,7 +224,7 @@ router.get('/admin/:id', authenticate, requireTenant, async (req: AuthRequest, r
   }
 });
 
-router.post('/admin/:id/reply', authenticate, requireTenant, upload.single('attachment'), async (req: AuthRequest, res) => {
+router.post('/admin/:id/reply', authenticate, requireTenant, setTenantContext, upload.single('attachment'), async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const id = Number(req.params.id);
@@ -263,7 +264,7 @@ router.post('/admin/:id/reply', authenticate, requireTenant, upload.single('atta
   }
 });
 
-router.put('/admin/:id/status', authenticate, requireTenant, async (req: AuthRequest, res) => {
+router.put('/admin/:id/status', authenticate, requireTenant, setTenantContext, async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const id = Number(req.params.id);

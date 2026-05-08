@@ -150,7 +150,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
     <Sidebar
       variant="sidebar"
       collapsible="icon"
-      className="border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl h-screen sticky top-0"
+      className="border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl overflow-hidden"
     >
       <SidebarHeader className="h-20 flex items-center justify-center border-b border-sidebar-border mb-4 px-2 overflow-hidden">
          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-xl shadow-indigo-500/20 shrink-0 overflow-hidden">

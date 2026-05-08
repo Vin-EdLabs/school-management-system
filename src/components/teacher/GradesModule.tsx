@@ -97,12 +97,6 @@ interface TermReport {
 
 const ASSESSMENT_TYPES = ['Test', 'Exam', 'Quiz', 'Dictation', 'Exercise', 'Assignment', 'Project', 'Homework'];
 
-const JHS_SUBJECTS = [
-  'English Language', 'Mathematics', 'Integrated Science', 'Social Studies',
-  'French', 'Religious & Moral Education', 'ICT / Computing', 'Creative Arts',
-  'Physical Education', 'Career Technology', 'Ghanaian Language',
-];
-
 const getLetterGrade = (pct: number) => {
   if (pct >= 80) return { letter: 'A', color: 'text-green-700 bg-green-50 border border-green-200' };
   if (pct >= 70) return { letter: 'B', color: 'text-blue-700 bg-blue-50 border border-blue-200' };
@@ -1074,17 +1068,9 @@ const GradesModule = () => {
                 <SelectTrigger><SelectValue placeholder="Choose subject…" /></SelectTrigger>
                 <SelectContent>
                   {globalSubjects.length > 0 ? (
-                    <>
-                      <div className="px-2 py-1 text-xs text-gray-400 font-medium">School Subjects</div>
-                      {globalSubjects.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}
-                    </>
+                    globalSubjects.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)
                   ) : (
-                    <>
-                      <div className="px-2 py-1 text-xs text-gray-400 font-medium">Common JHS subjects</div>
-                      {JHS_SUBJECTS.map(s => (
-                        <SelectItem key={s} value={s}>{s}</SelectItem>
-                      ))}
-                    </>
+                    <div className="px-2 py-3 text-sm text-gray-500 text-center italic">No subjects defined in system</div>
                   )}
                   <div className="border-t my-1" />
                   <SelectItem value="__custom__">+ Other (type below)</SelectItem>

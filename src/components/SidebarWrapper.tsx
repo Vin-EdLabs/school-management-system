@@ -32,7 +32,7 @@ const SidebarWrapper: React.FC<SidebarWrapperProps> = ({
             </div>
           </header>
 
-          <main className="flex-1 overflow-auto">
+          <main className="flex-1 overflow-auto min-w-0">
             {children}
           </main>
         </SidebarInset>

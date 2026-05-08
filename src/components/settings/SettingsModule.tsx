@@ -301,8 +301,8 @@ const SettingsModule = () => {
               <Key className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-800">Account Settings</h1>
-              <p className="text-gray-600">Change your password</p>
+              <h1 className="text-3xl font-bold text-foreground">Account Settings</h1>
+              <p className="text-muted-foreground">Change your password</p>
             </div>
           </div>
         </div>
@@ -370,8 +370,8 @@ const SettingsModule = () => {
             <Settings className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">System Settings</h1>
-            <p className="text-gray-600">Configure system settings and preferences</p>
+            <h1 className="text-3xl font-bold text-foreground">System Settings</h1>
+            <p className="text-muted-foreground">Configure system settings and preferences</p>
           </div>
         </div>
       </div>
@@ -542,7 +542,7 @@ const SettingsModule = () => {
                 <Receipt className="w-5 h-5" />
                 <span>Receipt Customization</span>
               </CardTitle>
-              <p className="text-sm text-gray-500">Customize how receipts appear when printing</p>
+              <p className="text-sm text-muted-foreground">Customize how receipts appear when printing</p>
             </CardHeader>
             <CardContent>
               <form onSubmit={async (e) => {
@@ -568,7 +568,7 @@ const SettingsModule = () => {
                     placeholder="R (default)"
                     maxLength={5}
                   />
-                  <p className="text-xs text-gray-500">e.g. R for R00012345</p>
+                  <p className="text-xs text-muted-foreground">e.g. R for R00012345</p>
                 </div>
                 <div className="space-y-2">
                   <Label>Postal Address (for receipt header)</Label>
@@ -610,53 +610,63 @@ const SettingsModule = () => {
 
         {/* Parent Portal Link */}
         {hasSettingsFull && school?.id && (
-          <Card className="border-purple-200 bg-purple-50/30">
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2 text-purple-700">
-                <GraduationCap className="w-5 h-5" />
-                <span>Parent Portal</span>
+          <Card className="border-purple-500/20 bg-purple-500/5 dark:bg-purple-500/10 backdrop-blur-sm overflow-hidden">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center space-x-2 text-purple-600 dark:text-purple-400 font-bold">
+                <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                  <GraduationCap className="w-5 h-5" />
+                </div>
+                <span>Parent Portal Gateway</span>
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm text-gray-600">
-                Share this link with parents so they can view their child's grades, attendance and fee balance.
-                Parents log in using their child's <strong>Student ID</strong> as both username and initial password.
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Share this secure link with parents to provide real-time access to grades, attendance, and financial records. 
+                Parents log in using the <span className="text-foreground font-bold">Student ID</span> as both username and initial password.
               </p>
-              <div className="flex items-center gap-2 bg-white border border-purple-200 rounded-lg p-2.5">
-                <code className="text-xs text-purple-700 flex-1 truncate select-all">
-                  {window.location.origin}/portal/{school.id}
+              
+              <div className="flex items-center gap-2 bg-background/50 border border-purple-500/20 rounded-xl p-3 shadow-inner group">
+                <code className="text-xs text-purple-600 dark:text-purple-400 flex-1 truncate font-mono select-all">
+                  {window.location.origin}/portal/{school.slug || school.id}
                 </code>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(`${window.location.origin}/portal/${school.id}`);
-                    toast({ title: 'Link copied!', description: 'Parent portal link copied to clipboard.' });
-                  }}
-                  className="text-purple-500 hover:text-purple-700 transition-colors shrink-0"
-                  title="Copy link"
-                >
-                  <Copy className="w-4 h-4" />
-                </button>
-                <a
-                  href={`/portal/${school.id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-purple-500 hover:text-purple-700 transition-colors shrink-0"
-                  title="Open portal"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                </a>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => {
+                      const url = `${window.location.origin}/portal/${school.slug || school.id}`;
+                      navigator.clipboard.writeText(url);
+                      toast({ title: 'Link Copied', description: 'The branded parent portal link is now in your clipboard.' });
+                    }}
+                    className="p-2 text-purple-500 hover:text-purple-700 hover:bg-purple-500/10 rounded-lg transition-all"
+                    title="Copy link"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                  <a
+                    href={`/portal/${school.slug || school.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2 text-purple-500 hover:text-purple-700 hover:bg-purple-500/10 rounded-lg transition-all"
+                    title="Open portal"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                  </a>
+                </div>
               </div>
-              <p className="text-xs text-gray-400">
-                First-time login: Student ID is both the username and default password. Parents are prompted to change it on first login.
-              </p>
+
+              <div className="flex items-start gap-3 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                  <strong>Security Note:</strong> Parents will be prompted to change their password immediately upon their first successful login to ensure data privacy.
+                </p>
+              </div>
             </CardContent>
           </Card>
         )}
 
-        <Card className="border-red-100 shadow-xl overflow-hidden mt-6">
+        <Card className="border-red-500/20 shadow-xl overflow-hidden mt-6">
           <div className="h-1 bg-red-500" />
           <CardHeader>
-            <CardTitle className="flex items-center space-x-3 text-red-700">
+            <CardTitle className="flex items-center space-x-3 text-red-600 dark:text-red-400">
               <Download className="w-5 h-5" />
               <span>Data Management</span>
             </CardTitle>
@@ -665,32 +675,32 @@ const SettingsModule = () => {
             {/* Export Section */}
             <div className="space-y-4">
               <div>
-                <h4 className="font-bold text-slate-800 mb-1">Export System Data</h4>
-                <p className="text-sm text-slate-500 mb-4">
+                <h4 className="font-bold text-foreground mb-1">Export System Data</h4>
+                <p className="text-sm text-muted-foreground mb-4">
                   Archive all academic, financial, and personnel records for backup or migration.
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="p-4 rounded-xl border-2 border-slate-50 bg-slate-50/50 hover:border-blue-100 hover:bg-white transition-all cursor-pointer group" onClick={handleExportJSON}>
+                  <div className="p-4 rounded-xl border-2 border-border bg-muted/50 hover:bg-muted transition-all cursor-pointer group" onClick={handleExportJSON}>
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-white rounded-lg shadow-sm flex items-center justify-center text-blue-600">
+                      <div className="w-10 h-10 bg-background rounded-lg shadow-sm flex items-center justify-center text-blue-600">
                         <FileJson className="w-5 h-5" />
                       </div>
                       <div className="flex-1">
-                        <p className="font-bold text-sm text-slate-800">JSON Archive</p>
-                        <p className="text-xs text-slate-500">Full system backup</p>
+                        <p className="font-bold text-sm text-foreground">JSON Archive</p>
+                        <p className="text-xs text-muted-foreground">Full system backup</p>
                       </div>
                       <Download className="w-4 h-4 text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
                     </div>
                   </div>
 
-                  <div className="p-4 rounded-xl border-2 border-slate-50 bg-slate-50/50 hover:border-emerald-100 hover:bg-white transition-all cursor-pointer group" onClick={handleExportExcel}>
+                  <div className="p-4 rounded-xl border-2 border-border bg-muted/50 hover:bg-muted transition-all cursor-pointer group" onClick={handleExportExcel}>
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-white rounded-lg shadow-sm flex items-center justify-center text-emerald-600">
+                      <div className="w-10 h-10 bg-background rounded-lg shadow-sm flex items-center justify-center text-emerald-600">
                         <FileSpreadsheet className="w-5 h-5" />
                       </div>
                       <div className="flex-1">
-                        <p className="font-bold text-sm text-slate-800">Excel Spreadsheets</p>
-                        <p className="text-xs text-slate-500">Summarized records</p>
+                        <p className="font-bold text-sm text-foreground">Excel Spreadsheets</p>
+                        <p className="text-xs text-muted-foreground">Summarized records</p>
                       </div>
                       <Download className="w-4 h-4 text-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity" />
                     </div>
@@ -698,36 +708,36 @@ const SettingsModule = () => {
                 </div>
               </div>
 
-              <Separator className="bg-slate-100" />
+              <Separator className="bg-border" />
 
               {/* Import Section */}
               <div>
-                <h4 className="font-bold text-slate-800 mb-1">Import System Data</h4>
-                <p className="text-sm text-slate-500 mb-4">
+                <h4 className="font-bold text-foreground mb-1">Import System Data</h4>
+                <p className="text-sm text-muted-foreground mb-4">
                   Quickly upload large volumes of student and teacher data using Excel or CSV templates.
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="p-4 rounded-xl border-2 border-slate-50 bg-slate-50/50 hover:border-blue-100 hover:bg-white transition-all cursor-pointer group relative overflow-hidden">
+                  <div className="p-4 rounded-xl border-2 border-border bg-muted/50 hover:bg-muted transition-all cursor-pointer group relative overflow-hidden">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-white rounded-lg shadow-sm flex items-center justify-center text-blue-600">
+                      <div className="w-10 h-10 bg-background rounded-lg shadow-sm flex items-center justify-center text-blue-600">
                         <Upload className="w-5 h-5" />
                       </div>
                       <div className="flex-1">
-                        <p className="font-bold text-sm text-slate-800">Import Students</p>
-                        <p className="text-xs text-slate-500">Excel / CSV Support</p>
+                        <p className="font-bold text-sm text-foreground">Import Students</p>
+                        <p className="text-xs text-muted-foreground">Excel / CSV Support</p>
                       </div>
                     </div>
                     <Input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept=".csv,.xlsx,.xls" onChange={() => toast({ title: "Importing...", description: "Processing student data file..." })} />
                   </div>
 
-                  <div className="p-4 rounded-xl border-2 border-slate-50 bg-slate-50/50 hover:border-emerald-100 hover:bg-white transition-all cursor-pointer group relative overflow-hidden">
+                  <div className="p-4 rounded-xl border-2 border-border bg-muted/50 hover:bg-muted transition-all cursor-pointer group relative overflow-hidden">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-white rounded-lg shadow-sm flex items-center justify-center text-emerald-600">
+                      <div className="w-10 h-10 bg-background rounded-lg shadow-sm flex items-center justify-center text-emerald-600">
                         <UserPlus className="w-5 h-5" />
                       </div>
                       <div className="flex-1">
-                        <p className="font-bold text-sm text-slate-800">Import Teachers</p>
-                        <p className="text-xs text-slate-500">Bulk staff onboarding</p>
+                        <p className="font-bold text-sm text-foreground">Import Teachers</p>
+                        <p className="text-xs text-muted-foreground">Bulk staff onboarding</p>
                       </div>
                     </div>
                     <Input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept=".csv,.xlsx,.xls" onChange={() => toast({ title: "Importing...", description: "Processing staff data file..." })} />
@@ -735,17 +745,17 @@ const SettingsModule = () => {
                 </div>
               </div>
 
-              <Separator className="bg-slate-100" />
+              <Separator className="bg-border" />
 
               {/* Reset Section */}
-              <div className="p-6 rounded-2xl border-2 border-red-50 bg-red-50/30">
+              <div className="p-6 rounded-2xl border-2 border-red-500/20 bg-red-500/5">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                   <div className="flex-1 space-y-2">
-                    <h4 className="text-lg font-bold text-red-900 flex items-center gap-2">
+                    <h4 className="text-lg font-bold text-red-600 dark:text-red-400 flex items-center gap-2">
                       <AlertTriangle className="w-5 h-5" />
                       Reset Everything
                     </h4>
-                    <p className="text-sm text-red-700 max-w-xl">
+                    <p className="text-sm text-red-600 dark:text-red-400 max-w-xl">
                       Permanently wipe all records and start from scratch.
                       <strong className="block mt-1 font-bold">This action is irreversible.</strong>
                     </p>
@@ -758,35 +768,35 @@ const SettingsModule = () => {
                         Reset All Data
                       </Button>
                     </DialogTrigger>
-                    <DialogContent className="sm:max-w-md border-0 shadow-2xl">
+                    <DialogContent className="sm:max-w-md border-border shadow-2xl bg-card">
                       <DialogHeader>
-                        <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center text-red-600 mx-auto mb-4">
+                        <div className="w-12 h-12 bg-red-500/20 rounded-full flex items-center justify-center text-red-600 mx-auto mb-4">
                           <ShieldAlert className="w-6 h-6" />
                         </div>
-                        <DialogTitle className="text-center text-2xl font-bold text-red-900">Are you absolutely sure?</DialogTitle>
+                        <DialogTitle className="text-center text-2xl font-bold text-foreground">Are you absolutely sure?</DialogTitle>
                         <DialogDescription className="text-center space-y-4 pt-2">
-                          <Alert variant="destructive" className="bg-red-50 border-red-200">
-                            <AlertTitle className="flex items-center gap-2 text-red-800 font-bold">
+                          <Alert variant="destructive" className="bg-red-500/10 border-red-500/20">
+                            <AlertTitle className="flex items-center gap-2 text-red-600 font-bold">
                               <AlertTriangle className="h-4 w-4" />
                               Security Authentication Required
                             </AlertTitle>
-                            <AlertDescription className="text-red-700">
+                            <AlertDescription className="text-red-600/90 dark:text-red-400/90">
                               All student files, financial records, and settings will be permanently erased.
                             </AlertDescription>
                           </Alert>
-                          <p className="text-slate-600 font-medium">To authorize this reset, enter your administrator password.</p>
+                          <p className="text-muted-foreground font-medium">To authorize this reset, enter your administrator password.</p>
                         </DialogDescription>
                       </DialogHeader>
                       <div className="space-y-4 py-4">
                         <div className="space-y-2">
                           <Label htmlFor="reset-auth">Admin Password</Label>
                           <div className="relative">
-                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                             <Input
                               id="reset-auth"
                               type="password"
                               placeholder="••••••••"
-                              className="pl-10 h-11 border-2 border-slate-100 bg-slate-50 focus:border-red-500 rounded-xl"
+                              className="pl-10 h-11 border-2 border-border bg-muted/50 focus:border-red-500 rounded-xl"
                               value={resetPassword}
                               onChange={(e) => setResetPassword(e.target.value)}
                             />
@@ -821,7 +831,7 @@ const SettingsModule = () => {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </div >
   );
 };
 

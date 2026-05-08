@@ -206,7 +206,7 @@ const ReportsModule = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-6">
+    <div className="min-h-screen bg-background p-6">
       <div className="max-w-7xl mx-auto space-y-8">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -215,10 +215,10 @@ const ReportsModule = () => {
               <BarChart3 className="w-7 h-7 text-white" />
             </div>
             <div>
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
+              <h1 className="text-4xl font-bold text-foreground">
                 Financial Reports & Analytics
               </h1>
-              <p className="text-gray-600 text-lg">Real-time financial insights for {selectedTerm} {getActiveAcademicYear()}</p>
+              <p className="text-muted-foreground text-lg">Real-time financial insights for {selectedTerm} {getActiveAcademicYear()}</p>
             </div>
           </div>
         </div>
@@ -294,7 +294,7 @@ const ReportsModule = () => {
         {/* Charts Section */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
           {/* Income vs Expenses Trend */}
-          <Card className="shadow-xl border-0 bg-white/70 backdrop-blur-sm">
+          <Card className="shadow-xl border-border bg-card/70 backdrop-blur-sm">
             <CardHeader className="pb-4">
               <CardTitle className="flex items-center space-x-2 text-xl">
                 <Calendar className="w-6 h-6 text-blue-600" />
@@ -304,16 +304,18 @@ const ReportsModule = () => {
             <CardContent>
               <ResponsiveContainer width="100%" height={350}>
                 <LineChart data={incomeVsExpenseData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="month" stroke="#64748b" fontSize={12} />
-                  <YAxis stroke="#64748b" fontSize={12} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-border" />
+                  <XAxis dataKey="month" stroke="currentColor" className="text-muted-foreground" fontSize={12} />
+                  <YAxis stroke="currentColor" className="text-muted-foreground" fontSize={12} />
                   <Tooltip 
                     contentStyle={{ 
-                      backgroundColor: 'white', 
-                      border: '1px solid #e2e8f0',
+                      backgroundColor: 'hsl(var(--card))', 
+                      border: '1px solid hsl(var(--border))',
                       borderRadius: '8px',
-                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                      color: 'hsl(var(--foreground))'
                     }}
+                    itemStyle={{ color: 'hsl(var(--foreground))' }}
                   />
                   <Line 
                     type="monotone" 
@@ -337,7 +339,7 @@ const ReportsModule = () => {
           </Card>
 
           {/* Income Sources */}
-          <Card className="shadow-xl border-0 bg-white/70 backdrop-blur-sm">
+          <Card className="shadow-xl border-border bg-card/70 backdrop-blur-sm">
             <CardHeader className="pb-4">
               <CardTitle className="flex items-center space-x-2 text-xl">
                 <TrendingUp className="w-6 h-6 text-green-600" />
@@ -364,10 +366,12 @@ const ReportsModule = () => {
                   <Tooltip 
                     formatter={(value: any) => [`GHS ${value.toLocaleString()}`, 'Amount']}
                     contentStyle={{ 
-                      backgroundColor: 'white', 
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '8px'
+                      backgroundColor: 'hsl(var(--card))', 
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px',
+                      color: 'hsl(var(--foreground))'
                     }}
+                    itemStyle={{ color: 'hsl(var(--foreground))' }}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -378,7 +382,7 @@ const ReportsModule = () => {
         {/* Detailed Breakdown */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
           {/* Income Details */}
-          <Card className="shadow-xl border-0 bg-white/70 backdrop-blur-sm">
+          <Card className="shadow-xl border-border bg-card/70 backdrop-blur-sm">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="flex items-center space-x-2 text-xl">
                 <DollarSign className="w-6 h-6 text-green-600" />
@@ -391,10 +395,10 @@ const ReportsModule = () => {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-4">
                   <div className="flex justify-between items-center">
-                    <span className="font-semibold text-green-800">Total Income</span>
-                    <span className="text-2xl font-bold text-green-600">GHS {incomeBreakdown.total.toLocaleString()}</span>
+                    <span className="font-semibold text-emerald-600 dark:text-emerald-400">Total Income</span>
+                    <span className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">GHS {incomeBreakdown.total.toLocaleString()}</span>
                   </div>
                 </div>
                 
@@ -402,11 +406,11 @@ const ReportsModule = () => {
                   {Object.entries(incomeBreakdown.bySource)
                     .sort(([,a], [,b]) => (b as number) - (a as number))
                     .map(([source, amount], index) => (
-                      <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                        <span className="font-medium text-gray-700">{source}</span>
+                      <div key={index} className="flex justify-between items-center p-3 bg-muted/50 rounded-lg border border-border">
+                        <span className="font-medium text-foreground">{source}</span>
                         <div className="text-right">
-                          <div className="font-bold text-green-600">GHS {(amount as number).toLocaleString()}</div>
-                          <div className="text-sm text-gray-500">
+                          <div className="font-bold text-emerald-600 dark:text-emerald-400">GHS {(amount as number).toLocaleString()}</div>
+                          <div className="text-sm text-muted-foreground">
                             {((amount as number / incomeBreakdown.total) * 100).toFixed(1)}%
                           </div>
                         </div>
@@ -418,7 +422,7 @@ const ReportsModule = () => {
           </Card>
 
           {/* Expense Details */}
-          <Card className="shadow-xl border-0 bg-white/70 backdrop-blur-sm">
+          <Card className="shadow-xl border-border bg-card/70 backdrop-blur-sm">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="flex items-center space-x-2 text-xl">
                 <TrendingDown className="w-6 h-6 text-red-600" />
@@ -431,10 +435,10 @@ const ReportsModule = () => {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
                   <div className="flex justify-between items-center">
-                    <span className="font-semibold text-red-800">Total Expenses</span>
-                    <span className="text-2xl font-bold text-red-600">GHS {expenseBreakdown.total.toLocaleString()}</span>
+                    <span className="font-semibold text-red-600 dark:text-red-400">Total Expenses</span>
+                    <span className="text-2xl font-bold text-red-600 dark:text-red-400">GHS {expenseBreakdown.total.toLocaleString()}</span>
                   </div>
                 </div>
                 
@@ -442,14 +446,14 @@ const ReportsModule = () => {
                   {Object.entries(expenseBreakdown.byCategory)
                     .sort(([,a], [,b]) => (b as any).amount - (a as any).amount)
                     .map(([category, data], index) => (
-                      <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                      <div key={index} className="flex justify-between items-center p-3 bg-muted/50 rounded-lg border border-border">
                         <div>
-                          <span className="font-medium text-gray-700">{category}</span>
-                          <div className="text-sm text-gray-500">{(data as any).count} transactions</div>
+                          <span className="font-medium text-foreground">{category}</span>
+                          <div className="text-sm text-muted-foreground">{(data as any).count} transactions</div>
                         </div>
                         <div className="text-right">
-                          <div className="font-bold text-red-600">GHS {((data as any).amount || 0).toLocaleString()}</div>
-                          <div className="text-sm text-gray-500">
+                          <div className="font-bold text-red-600 dark:text-red-400">GHS {((data as any).amount || 0).toLocaleString()}</div>
+                          <div className="text-sm text-muted-foreground">
                             {(((data as any).amount / expenseBreakdown.total) * 100).toFixed(1)}%
                           </div>
                         </div>
@@ -462,7 +466,7 @@ const ReportsModule = () => {
         </div>
 
         {/* Recent Transactions */}
-        <Card className="shadow-xl border-0 bg-white/70 backdrop-blur-sm">
+        <Card className="shadow-xl border-border bg-card/70 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="flex items-center space-x-2 text-xl">
               <FileText className="w-6 h-6 text-blue-600" />
@@ -473,12 +477,12 @@ const ReportsModule = () => {
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left p-3 font-semibold text-gray-700">Date</th>
-                    <th className="text-left p-3 font-semibold text-gray-700">Type</th>
-                    <th className="text-left p-3 font-semibold text-gray-700">Description</th>
-                    <th className="text-left p-3 font-semibold text-gray-700">Category/Source</th>
-                    <th className="text-right p-3 font-semibold text-gray-700">Amount</th>
+                  <tr className="border-b border-border">
+                    <th className="text-left p-3 font-semibold text-foreground">Date</th>
+                    <th className="text-left p-3 font-semibold text-foreground">Type</th>
+                    <th className="text-left p-3 font-semibold text-foreground">Description</th>
+                    <th className="text-left p-3 font-semibold text-foreground">Category/Source</th>
+                    <th className="text-right p-3 font-semibold text-foreground">Amount</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -489,30 +493,30 @@ const ReportsModule = () => {
                     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                     .slice(0, 10)
                     .map((transaction, index) => (
-                      <tr key={index} className="border-b border-gray-100 hover:bg-gray-50">
-                        <td className="p-3 text-gray-600">
+                      <tr key={index} className="border-b border-border hover:bg-muted/30 transition-colors">
+                        <td className="p-3 text-muted-foreground">
                           {new Date(transaction.date).toLocaleDateString()}
                         </td>
                         <td className="p-3">
                           <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                             transaction.type === 'Income' 
-                              ? 'bg-green-100 text-green-800' 
-                              : 'bg-red-100 text-red-800'
+                              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' 
+                              : 'bg-red-500/10 text-red-600 dark:text-red-400'
                           }`}>
                             {transaction.type}
                           </span>
                         </td>
-                        <td className="p-3 text-gray-700">
+                        <td className="p-3 text-foreground">
                           {'description' in transaction ? transaction.description : 
                            'source' in transaction ? `Income from ${transaction.source}` : 
                            'Other transaction'}
                         </td>
-                        <td className="p-3 text-gray-600">
+                        <td className="p-3 text-muted-foreground">
                           {'category' in transaction ? transaction.category : 
                            'source' in transaction ? transaction.source : 'N/A'}
                         </td>
                         <td className={`p-3 font-bold text-right ${
-                          transaction.type === 'Income' ? 'text-green-600' : 'text-red-600'
+                          transaction.type === 'Income' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
                         }`}>
                           {transaction.type === 'Income' ? '+' : '-'}GHS {transaction.amount.toLocaleString()}
                         </td>
@@ -525,7 +529,7 @@ const ReportsModule = () => {
         </Card>
 
         {/* Export Actions */}
-        <Card className="shadow-xl border-0 bg-white/70 backdrop-blur-sm">
+        <Card className="shadow-xl border-border bg-card/70 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="flex items-center space-x-2 text-xl">
               <Download className="w-6 h-6 text-blue-600" />

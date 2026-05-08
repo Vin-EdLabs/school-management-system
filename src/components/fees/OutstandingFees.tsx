@@ -136,87 +136,76 @@ const OutstandingFees = () => {
   return (
     <div className="space-y-6">
       {/* Header with summary stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <AlertTriangle className="w-5 h-5 text-orange-500" />
-              <div>
-                <p className="text-sm text-gray-600">Students Owing</p>
-                <p className="text-2xl font-bold">{summaryStats.studentsOwing}</p>
-                <p className="text-xs text-gray-500">of {summaryStats.totalStudents} total</p>
-              </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-orange-500/5 border border-orange-500/10 rounded-2xl p-4 flex flex-col justify-between shadow-sm backdrop-blur-sm group hover:border-orange-500/30 transition-all">
+          <div className="flex items-center justify-between mb-3">
+            <div className="bg-orange-500/10 p-2 rounded-xl text-orange-500">
+              <AlertTriangle className="w-5 h-5" />
             </div>
-          </CardContent>
-        </Card>
+            <p className="text-[9px] uppercase tracking-[0.1em] font-black text-orange-500/60">Students</p>
+          </div>
+          <div>
+            <p className="text-2xl font-black text-foreground tracking-tight">{summaryStats.studentsOwing}</p>
+            <p className="text-[10px] text-muted-foreground font-medium">of {summaryStats.totalStudents} students owing</p>
+          </div>
+        </div>
 
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <DollarSign className="w-5 h-5 text-red-500" />
-              <div>
-                <p className="text-sm text-gray-600">Total Outstanding</p>
-                <p className="text-2xl font-bold">GHS {summaryStats.totalOutstanding.toLocaleString()}</p>
-                <p className="text-xs text-gray-500">across all students</p>
-              </div>
+        <div className="bg-red-500/5 border border-red-500/10 rounded-2xl p-4 flex flex-col justify-between shadow-sm backdrop-blur-sm group hover:border-red-500/30 transition-all">
+          <div className="flex items-center justify-between mb-3">
+            <div className="bg-red-500/10 p-2 rounded-xl text-red-500">
+              <DollarSign className="w-5 h-5" />
             </div>
-          </CardContent>
-        </Card>
+            <p className="text-[9px] uppercase tracking-[0.1em] font-black text-red-500/60">Outstanding</p>
+          </div>
+          <div>
+            <p className="text-xl font-black text-foreground tracking-tight">GHS {summaryStats.totalOutstanding.toLocaleString()}</p>
+            <p className="text-[10px] text-muted-foreground font-medium">total amount due</p>
+          </div>
+        </div>
 
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <Clock className="w-5 h-5 text-yellow-500" />
-              <div>
-                <p className="text-sm text-gray-600">Total Arrears</p>
-                <p className="text-2xl font-bold">GHS {summaryStats.totalArrears.toLocaleString()}</p>
-                <p className="text-xs text-gray-500">from previous terms</p>
-              </div>
+        <div className="bg-amber-500/5 border border-amber-500/10 rounded-2xl p-4 flex flex-col justify-between shadow-sm backdrop-blur-sm group hover:border-amber-500/30 transition-all">
+          <div className="flex items-center justify-between mb-3">
+            <div className="bg-amber-500/10 p-2 rounded-xl text-amber-500">
+              <Clock className="w-5 h-5" />
             </div>
-          </CardContent>
-        </Card>
+            <p className="text-[9px] uppercase tracking-[0.1em] font-black text-amber-500/60">Arrears</p>
+          </div>
+          <div>
+            <p className="text-xl font-black text-foreground tracking-tight">GHS {summaryStats.totalArrears.toLocaleString()}</p>
+            <p className="text-[10px] text-muted-foreground font-medium">from previous terms</p>
+          </div>
+        </div>
 
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <TrendingUp className="w-5 h-5 text-blue-500" />
-              <div>
-                <p className="text-sm text-gray-600">Average Outstanding</p>
-                <p className="text-2xl font-bold">GHS {summaryStats.averageOutstanding.toLocaleString()}</p>
-                <p className="text-xs text-gray-500">per student owing</p>
-              </div>
+        <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-2xl p-4 flex flex-col justify-between shadow-sm backdrop-blur-sm group hover:border-indigo-500/30 transition-all">
+          <div className="flex items-center justify-between mb-3">
+            <div className="bg-indigo-500/10 p-2 rounded-xl text-indigo-500">
+              <TrendingUp className="w-5 h-5" />
             </div>
-          </CardContent>
-        </Card>
+            <p className="text-[9px] uppercase tracking-[0.1em] font-black text-indigo-500/60">Average</p>
+          </div>
+          <div>
+            <p className="text-xl font-black text-foreground tracking-tight">GHS {summaryStats.averageOutstanding.toLocaleString()}</p>
+            <p className="text-[10px] text-muted-foreground font-medium">per student owing</p>
+          </div>
+        </div>
       </div>
 
-      {/* Filters and Actions */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Outstanding Fees Overview - {selectedTerm}</CardTitle>
-            <div className="flex items-center space-x-2">
-              <Button onClick={exportOutstandingReport} size="sm">
-                <Download className="w-4 h-4 mr-2" />
-                Export
-              </Button>
-            </div>
+      {/* Filters and Table */}
+      <div className="space-y-4 pt-4 border-t border-border/50">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1 group">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-indigo-500 transition-colors" />
+            <Input
+              placeholder="Search students or admission numbers..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 bg-background/50 border-border/50 focus:border-indigo-500/50 rounded-xl"
+            />
           </div>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col md:flex-row gap-4 mb-6">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 absolute left-3 top-3 text-gray-400" />
-              <Input
-                placeholder="Search students..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
+          <div className="flex gap-2">
             <Select value={selectedClass} onValueChange={setSelectedClass}>
-              <SelectTrigger className="w-48">
-                <SelectValue />
+              <SelectTrigger className="w-36 bg-background/50 border-border/50 rounded-xl">
+                <SelectValue placeholder="Class" />
               </SelectTrigger>
               <SelectContent>
                 {uniqueClasses.map(className => (
@@ -226,85 +215,85 @@ const OutstandingFees = () => {
                 ))}
               </SelectContent>
             </Select>
+            <Button 
+              onClick={exportOutstandingReport} 
+              variant="outline" 
+              className="rounded-xl border-border/50 hover:bg-indigo-500/10 hover:text-indigo-500 hover:border-indigo-500/30"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              CSV
+            </Button>
           </div>
+        </div>
 
-          {/* Outstanding Students Table */}
-          {filteredStudents.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left p-3">Student</th>
-                    <th className="text-left p-3">Class</th>
-                    <th className="text-left p-3">Term Fee</th>
-                    <th className="text-left p-3">Arrears</th>
-                    <th className="text-left p-3">Total Due</th>
-                    <th className="text-left p-3">Paid</th>
-                    <th className="text-left p-3">Outstanding</th>
-                    <th className="text-left p-3">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredStudents.map((student, index) => (
-                    <tr key={student.studentId} className="border-b hover:bg-gray-50">
-                      <td className="p-3">
-                        <div>
-                          <p className="font-medium">{student.studentName}</p>
-                          <p className="text-sm text-gray-500 break-all">ID: {student.admissionNo}</p>
-                        </div>
-                      </td>
-                      <td className="p-3">{student.className}</td>
-                      <td className="p-3">GHS {student.currentTermFee.toLocaleString()}</td>
-                      <td className="p-3">
-                        {student.arrears > 0 ? (
-                          <span className="text-orange-600 font-medium">
-                            GHS {student.arrears.toLocaleString()}
-                          </span>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
-                      </td>
-                      <td className="p-3">GHS {student.totalAmountDue.toLocaleString()}</td>
-                      <td className="p-3">
-                        <span className="text-green-600">
-                          GHS {student.totalPaid.toLocaleString()}
-                        </span>
-                      </td>
-                      <td className="p-3">
-                        <span className="text-red-600 font-bold">
-                          GHS {student.outstanding.toLocaleString()}
-                        </span>
-                      </td>
-                      <td className="p-3">
-                        <div className="flex flex-col space-y-1">
-                          <Badge variant={student.arrears > 0 ? "destructive" : "secondary"}>
-                            {student.arrears > 0 ? "Has Arrears" : "Current Term"}
-                          </Badge>
-                          {student.totalPaid > 0 && (
-                            <Badge variant="outline" className="text-xs">
-                              Partial Payment
-                            </Badge>
+        {/* Outstanding Students Table */}
+        {filteredStudents.length > 0 ? (
+          <div className="rounded-2xl border border-border/50 overflow-hidden bg-card/30 backdrop-blur-sm">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border/50 bg-muted/40">
+                  <th className="text-left p-3 font-bold text-muted-foreground uppercase tracking-wider">Student & Class</th>
+                  <th className="text-right p-3 font-bold text-muted-foreground uppercase tracking-wider">Financials</th>
+                  <th className="text-right p-3 font-bold text-muted-foreground uppercase tracking-wider">Balance</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/30">
+                {filteredStudents.map((student) => (
+                  <tr key={student.studentId} className="hover:bg-indigo-500/5 transition-colors group">
+                    <td className="p-3 align-top">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-foreground text-sm tracking-tight">{student.studentName}</span>
+                          {student.arrears > 0 && (
+                            <Badge variant="destructive" className="h-4 px-1.5 text-[8px] uppercase font-black tracking-tighter bg-red-500/20 text-red-500 border-red-500/20">Arrears</Badge>
                           )}
                         </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="text-center py-8">
-              <AlertTriangle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No Outstanding Fees</h3>
-              <p className="text-gray-600">
-                {searchTerm || selectedClass !== 'All'
-                  ? 'No students match your current filters.'
-                  : 'All students have paid their fees for this term.'}
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <span className="px-1.5 py-0.5 rounded-md bg-indigo-500/5 text-indigo-500 border border-indigo-500/10 text-[9px] font-bold">{student.className}</span>
+                          <span className="text-[10px] opacity-40 font-mono">#{student.admissionNo}</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="p-3 text-right align-top">
+                      <div className="flex flex-col">
+                        <span className="text-foreground/90 font-medium">Due: GHS {student.totalAmountDue.toLocaleString()}</span>
+                        <div className="flex justify-end gap-2 text-[9px] text-muted-foreground mt-0.5 opacity-60">
+                          <span>Fee: {student.currentTermFee.toLocaleString()}</span>
+                          {student.arrears > 0 && <span className="text-orange-500/70 font-semibold">Arr: {student.arrears.toLocaleString()}</span>}
+                        </div>
+                        <span className="text-emerald-500/80 font-bold text-[9px] mt-1">Paid: GHS {student.totalPaid.toLocaleString()}</span>
+                      </div>
+                    </td>
+                    <td className="p-3 text-right align-top">
+                      <div className="flex flex-col items-end">
+                        <span className="text-red-500 dark:text-red-400 font-black text-sm">
+                          GHS {student.outstanding.toLocaleString()}
+                        </span>
+                        {student.totalPaid > 0 && (
+                          <div className="flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded-md bg-emerald-500/5 text-emerald-500 border border-emerald-500/10 text-[8px] font-black uppercase tracking-tighter">
+                            <TrendingUp className="w-2.5 h-2.5" />
+                            Partial
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="text-center py-16 bg-muted/20 rounded-2xl border border-dashed border-border/50">
+            <AlertTriangle className="w-12 h-12 text-muted-foreground/20 mx-auto mb-4" />
+            <h3 className="text-lg font-bold text-foreground mb-1">Clear Ledger</h3>
+            <p className="text-sm text-muted-foreground max-w-[200px] mx-auto leading-relaxed">
+              {searchTerm || selectedClass !== 'All'
+                ? 'No students matching these filters have outstanding balances.'
+                : 'All students are up to date with their payments for this term.'}
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

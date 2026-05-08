@@ -139,13 +139,13 @@ const FinancialDashboard = () => {
   return (
     <div className="flex h-full">
       {/* Main Content */}
-      <div className={`flex-1 transition-all duration-300 ${sidebarOpen ? 'mr-96' : ''}`}>
+      <div className={`flex-1 transition-all duration-300 ${sidebarOpen ? 'mr-[600px]' : ''}`}>
         <div className="p-6 space-y-6">
           {/* Header */}
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-800">Financial Dashboard</h1>
-              <p className="text-gray-600">Comprehensive financial overview and management</p>
+              <h1 className="text-3xl font-bold text-foreground">Financial Dashboard</h1>
+              <p className="text-muted-foreground">Comprehensive financial overview and management</p>
             </div>
             <div className="flex items-center space-x-4">
               <Button
@@ -158,8 +158,8 @@ const FinancialDashboard = () => {
                 {sidebarOpen ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
               </Button>
               <div className="text-right">
-                <p className="text-sm text-gray-500">Current Term</p>
-                <p className="text-lg font-semibold text-gray-800">
+                <p className="text-sm text-muted-foreground">Current Term</p>
+                <p className="text-lg font-semibold text-foreground">
                   {currentTerm.includes(currentYear) ? currentTerm : `${currentTerm} ${currentYear}`}
                 </p>
               </div>
@@ -247,13 +247,17 @@ const FinancialDashboard = () => {
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
                   <LineChart data={monthlyIncomeData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <Tooltip formatter={(value) => [`GHS ${value}`, 'Amount']} />
-                    <Line type="monotone" dataKey="fees" stroke="#3B82F6" name="Fees" strokeWidth={2} />
-                    <Line type="monotone" dataKey="otherIncome" stroke="#10B981" name="Other Income" strokeWidth={2} />
-                    <Line type="monotone" dataKey="total" stroke="#8B5CF6" name="Total" strokeWidth={3} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-border" />
+                    <XAxis dataKey="month" stroke="currentColor" className="text-muted-foreground" />
+                    <YAxis stroke="currentColor" className="text-muted-foreground" />
+                    <Tooltip 
+                      formatter={(value) => [`GHS ${value}`, 'Amount']}
+                      contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', color: 'hsl(var(--foreground))' }}
+                      itemStyle={{ color: 'hsl(var(--foreground))' }}
+                    />
+                    <Line type="monotone" dataKey="fees" stroke="#3B82F6" name="Fees" strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                    <Line type="monotone" dataKey="otherIncome" stroke="#10B981" name="Other Income" strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                    <Line type="monotone" dataKey="total" stroke="#8B5CF6" name="Total" strokeWidth={3} dot={{ r: 5 }} activeDot={{ r: 8 }} />
                   </LineChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -277,10 +281,14 @@ const FinancialDashboard = () => {
                       dataKey="value"
                     >
                       {expenseChartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="currentColor" className="text-card" strokeWidth={2} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(value) => `GHS ${value}`} />
+                    <Tooltip 
+                      formatter={(value) => `GHS ${value}`}
+                      contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', color: 'hsl(var(--foreground))' }}
+                      itemStyle={{ color: 'hsl(var(--foreground))' }}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -296,17 +304,17 @@ const FinancialDashboard = () => {
               <CardContent>
                 <div className="space-y-3 max-h-80 overflow-y-auto">
                   {recentActivities.slice(0, 10).map((activity, index) => (
-                    <div key={index} className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
+                    <div key={index} className="flex items-start space-x-3 p-3 bg-muted/50 rounded-lg border border-border">
                       <div className={`w-2 h-2 rounded-full mt-2 ${
-                        activity.type === 'payment' ? 'bg-green-500' : 
+                        activity.type === 'payment' ? 'bg-emerald-500' : 
                         activity.type === 'income' ? 'bg-blue-500' : 'bg-red-500'
                       }`}></div>
                       <div className="flex-1">
-                        <p className="text-sm text-gray-800">{activity.text}</p>
-                        <p className="text-xs text-gray-500">{activity.time}</p>
+                        <p className="text-sm text-foreground">{activity.text}</p>
+                        <p className="text-xs text-muted-foreground">{activity.time}</p>
                       </div>
                       <div className={`text-sm font-medium ${
-                        activity.type === 'expense' ? 'text-red-600' : 'text-green-600'
+                        activity.type === 'expense' ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'
                       }`}>
                         {activity.type === 'expense' ? '-' : '+'}GHS{activity.amount.toLocaleString()}
                       </div>
@@ -321,19 +329,19 @@ const FinancialDashboard = () => {
                 <CardTitle>Quick Financial Actions</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <Button className="w-full justify-start bg-green-50 text-green-700 hover:bg-green-100 border border-green-200">
+                <Button className="w-full justify-start bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20 shadow-none">
                   <Receipt className="w-4 h-4 mr-2" />
                   Record Fee Payment
                 </Button>
-                <Button className="w-full justify-start bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200">
+                <Button className="w-full justify-start bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 border border-blue-500/20 shadow-none">
                   <Plus className="w-4 h-4 mr-2" />
                   Add Other Income
                 </Button>
-                <Button className="w-full justify-start bg-red-50 text-red-700 hover:bg-red-100 border border-red-200">
+                <Button className="w-full justify-start bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500/20 border border-red-500/20 shadow-none">
                   <FileText className="w-4 h-4 mr-2" />
                   Record Expense
                 </Button>
-                <Button className="w-full justify-start bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200">
+                <Button className="w-full justify-start bg-purple-500/10 text-purple-600 dark:text-purple-400 hover:bg-purple-500/20 border border-purple-500/20 shadow-none">
                   <Calculator className="w-4 h-4 mr-2" />
                   Generate Financial Report
                 </Button>
@@ -343,23 +351,35 @@ const FinancialDashboard = () => {
         </div>
       </div>
 
-      {/* Outstanding Fees Sidebar */}
+      {/* Outstanding Fees Sidebar Drawer */}
       {sidebarOpen && (
-        <div className="fixed right-0 top-0 h-full w-96 bg-white shadow-lg border-l border-gray-200 z-50 overflow-y-auto">
-          <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-800">Outstanding Fees by Class</h2>
-            <Button
-              onClick={() => setSidebarOpen(false)}
-              variant="ghost"
-              size="sm"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </Button>
+        <>
+          {/* Backdrop */}
+          <div 
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity"
+            onClick={() => setSidebarOpen(false)}
+          />
+          
+          <div className="fixed right-0 top-0 h-full w-[600px] bg-card shadow-[-10px_0_30px_rgba(0,0,0,0.5)] border-l border-border z-50 overflow-y-auto animate-in slide-in-from-right duration-300">
+            <div className="sticky top-0 bg-card/95 backdrop-blur-md p-6 border-b border-border flex items-center justify-between z-10">
+              <div>
+                <h2 className="text-xl font-bold text-foreground">Outstanding Fees Overview</h2>
+                <p className="text-sm text-muted-foreground">Class-wise breakdown and arrears</p>
+              </div>
+              <Button
+                onClick={() => setSidebarOpen(false)}
+                variant="ghost"
+                size="icon"
+                className="hover:bg-muted rounded-full"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </Button>
+            </div>
+            <div className="p-6">
+              <OutstandingFees />
+            </div>
           </div>
-          <div className="p-4">
-            <OutstandingFees />
-          </div>
-        </div>
+        </>
       )}
     </div>
   );

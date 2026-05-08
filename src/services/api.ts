@@ -166,6 +166,24 @@ export class ApiService {
     }
     return response.json();
   }
+
+  async postForm<T>(endpoint: string, formData: FormData): Promise<T> {
+    const token = localStorage.getItem('authToken');
+    const headers: HeadersInit = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (this.tenantId !== null) headers['X-Tenant-Id'] = this.tenantId.toString();
+
+    const response = await fetch(this.buildURL(endpoint), {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Request failed' }));
+      throw new Error(error.error || `HTTP error! status: ${response.status}`);
+    }
+    return response.json();
+  }
 }
 
 export const apiService = new ApiService();

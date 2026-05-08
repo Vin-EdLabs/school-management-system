@@ -30,10 +30,10 @@ const AuditModule = () => {
 
   const getActionBadgeColor = (actionType: string) => {
     switch (actionType) {
-      case 'Login': return 'bg-blue-100 text-blue-800';
-      case 'Edit': return 'bg-yellow-100 text-yellow-800';
-      case 'Delete': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'Login': return 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20';
+      case 'Edit': return 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20';
+      case 'Delete': return 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20';
+      default: return 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20';
     }
   };
 
@@ -43,8 +43,8 @@ const AuditModule = () => {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Audit Logs</h1>
-          <p className="text-gray-600 mt-1">Track all system activities and changes</p>
+          <h1 className="text-3xl font-bold text-foreground">Audit Logs</h1>
+          <p className="text-muted-foreground mt-1">Track all system activities and changes</p>
         </div>
         <Dialog>
           <DialogTrigger asChild>
@@ -58,7 +58,7 @@ const AuditModule = () => {
               <DialogTitle>Clear All Audit Logs</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <p className="text-gray-600">
+              <p className="text-muted-foreground">
                 Are you sure you want to delete all audit logs? This action cannot be undone.
               </p>
               <div className="flex gap-2 justify-end">
@@ -79,8 +79,8 @@ const AuditModule = () => {
             <div className="flex items-center space-x-2">
               <Activity className="w-5 h-5 text-blue-500" />
               <div>
-                <p className="text-sm font-medium text-gray-600">Total Activities</p>
-                <p className="text-2xl font-bold text-gray-900">{auditLogs.length}</p>
+                <p className="text-sm font-medium text-muted-foreground">Total Activities</p>
+                <p className="text-2xl font-bold text-foreground">{auditLogs.length}</p>
               </div>
             </div>
           </CardContent>
@@ -90,8 +90,8 @@ const AuditModule = () => {
             <div className="flex items-center space-x-2">
               <User className="w-5 h-5 text-blue-500" />
               <div>
-                <p className="text-sm font-medium text-gray-600">Logins Today</p>
-                <p className="text-2xl font-bold text-gray-900">
+                <p className="text-sm font-medium text-muted-foreground">Logins Today</p>
+                <p className="text-2xl font-bold text-foreground">
                   {auditLogs.filter(log => 
                     log.actionType === 'Login' && 
                     new Date(log.timestamp).toDateString() === new Date().toDateString()
@@ -106,8 +106,8 @@ const AuditModule = () => {
             <div className="flex items-center space-x-2">
               <Calendar className="w-5 h-5 text-yellow-500" />
               <div>
-                <p className="text-sm font-medium text-gray-600">Edits Today</p>
-                <p className="text-2xl font-bold text-gray-900">
+                <p className="text-sm font-medium text-muted-foreground">Edits Today</p>
+                <p className="text-2xl font-bold text-foreground">
                   {auditLogs.filter(log => 
                     log.actionType === 'Edit' && 
                     new Date(log.timestamp).toDateString() === new Date().toDateString()
@@ -122,8 +122,8 @@ const AuditModule = () => {
             <div className="flex items-center space-x-2">
               <Trash2 className="w-5 h-5 text-red-500" />
               <div>
-                <p className="text-sm font-medium text-gray-600">Deletions Today</p>
-                <p className="text-2xl font-bold text-gray-900">
+                <p className="text-sm font-medium text-muted-foreground">Deletions Today</p>
+                <p className="text-2xl font-bold text-foreground">
                   {auditLogs.filter(log => 
                     log.actionType === 'Delete' && 
                     new Date(log.timestamp).toDateString() === new Date().toDateString()
@@ -141,7 +141,7 @@ const AuditModule = () => {
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1">
               <div className="relative">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Search by username, module, item, or reason..."
                   value={searchTerm}
@@ -185,22 +185,22 @@ const AuditModule = () => {
           <div className="overflow-x-auto">
             <div className="space-y-3">
               {filteredLogs.map((log) => (
-                <div key={log.id} className="border rounded-lg p-4 hover:bg-gray-50">
+                <div key={log.id} className="border border-border rounded-lg p-4 hover:bg-muted/30">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
                       <Badge className={getActionBadgeColor(log.actionType)}>
                         {log.actionType}
                       </Badge>
-                      <div>
-                        <div className="font-medium text-gray-900">
+                       <div>
+                        <div className="font-medium text-foreground">
                           {log.itemName ? `${log.module}: ${log.itemName}` : log.module}
                         </div>
-                        <div className="text-sm text-gray-500">
+                        <div className="text-sm text-muted-foreground">
                           by {log.username} ({log.role}) • {log.timestamp.toLocaleString()}
                         </div>
                         {log.reason && (
-                          <div className="text-sm text-gray-600 mt-1">
-                            <span className="font-medium">Reason:</span> {log.reason}
+                          <div className="text-sm text-muted-foreground mt-1">
+                            <span className="font-medium text-foreground">Reason:</span> {log.reason}
                           </div>
                         )}
                       </div>
@@ -216,8 +216,8 @@ const AuditModule = () => {
                   </div>
                 </div>
               ))}
-              {filteredLogs.length === 0 && (
-                <div className="text-center py-8 text-gray-500">
+               {filteredLogs.length === 0 && (
+                <div className="text-center py-8 text-muted-foreground">
                   No audit logs found matching your criteria.
                 </div>
               )}

@@ -195,8 +195,8 @@ const PrintFeeStatusModule = () => {
             <Printer className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">Fee Status / Class Report</h1>
-            <p className="text-gray-600">All students in a class for the current academic period — calculations done server-side</p>
+            <h1 className="text-3xl font-bold text-foreground">Fee Status / Class Report</h1>
+            <p className="text-muted-foreground">All students in a class for the current academic period — calculations done server-side</p>
           </div>
         </div>
       </div>
@@ -209,18 +209,18 @@ const PrintFeeStatusModule = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-muted-foreground">
             The report uses the <strong>current academic period</strong> from school settings. Select a class below to load the fee status for all students in that class.
           </p>
           {report?.academicPeriod && (
             <div className="mt-3 grid grid-cols-2 gap-4">
               <div>
-                <p className="text-sm text-gray-500">Term</p>
-                <p className="font-semibold">{report.academicPeriod.term}</p>
+                <p className="text-sm text-muted-foreground">Term</p>
+                <p className="font-semibold text-foreground">{report.academicPeriod.term}</p>
               </div>
               <div>
-                <p className="text-sm text-gray-500">Academic Year</p>
-                <p className="font-semibold">{report.academicPeriod.academicYear}</p>
+                <p className="text-sm text-muted-foreground">Academic Year</p>
+                <p className="font-semibold text-foreground">{report.academicPeriod.academicYear}</p>
               </div>
             </div>
           )}
@@ -236,9 +236,9 @@ const PrintFeeStatusModule = () => {
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Class</label>
+            <label className="block text-sm font-medium text-muted-foreground mb-2">Class</label>
             <Select value={selectedClassId} onValueChange={handleClassChange}>
-              <SelectTrigger className="w-full bg-white">
+              <SelectTrigger className="w-full bg-background border-border">
                 <SelectValue placeholder="Select a class" />
               </SelectTrigger>
               <SelectContent>
@@ -254,9 +254,9 @@ const PrintFeeStatusModule = () => {
             </Select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Show</label>
+            <label className="block text-sm font-medium text-muted-foreground mb-2">Show</label>
             <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
-              <SelectTrigger className="w-full bg-white max-w-xs">
+              <SelectTrigger className="w-full bg-background border-border max-w-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -267,26 +267,26 @@ const PrintFeeStatusModule = () => {
             </Select>
           </div>
           {error && (
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 text-red-800 text-sm">
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 text-sm">
               <AlertCircle className="w-5 h-5 shrink-0" />
               <span>{error}</span>
             </div>
           )}
           {selectedClassId && report && (
-            <div className="p-4 bg-blue-50 rounded-lg">
-              <h3 className="font-semibold text-blue-900 mb-2">Report summary</h3>
+            <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+              <h3 className="font-semibold text-blue-600 dark:text-blue-400 mb-2">Report summary</h3>
               <div className="grid grid-cols-3 gap-4 text-sm">
                 <div>
-                  <p className="text-blue-600">Class</p>
-                  <p className="font-medium">{report.class.name}</p>
+                  <p className="text-blue-600/80 dark:text-blue-400/80">Class</p>
+                  <p className="font-medium text-foreground">{report.class.name}</p>
                 </div>
                 <div>
-                  <p className="text-blue-600">Students</p>
-                  <p className="font-medium">{report.summary.count}</p>
+                  <p className="text-blue-600/80 dark:text-blue-400/80">Students</p>
+                  <p className="font-medium text-foreground">{report.summary.count}</p>
                 </div>
                 <div>
-                  <p className="text-blue-600">Total balance</p>
-                  <p className="font-medium text-red-600">GHS {report.summary.totalBalance.toLocaleString()}</p>
+                  <p className="text-blue-600/80 dark:text-blue-400/80">Total balance</p>
+                  <p className="font-medium text-red-600 dark:text-red-400">GHS {report.summary.totalBalance.toLocaleString()}</p>
                 </div>
               </div>
             </div>
@@ -311,31 +311,31 @@ const PrintFeeStatusModule = () => {
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse">
                   <thead>
-                    <tr className="border-b bg-gray-50">
-                      <th className="text-left p-3 font-medium">Student ID</th>
-                      <th className="text-left p-3 font-medium">Student Name</th>
-                      <th className="text-left p-3 font-medium">Class</th>
-                      <th className="text-right p-3 font-medium">Total Fee Expected</th>
-                      <th className="text-right p-3 font-medium">Total Paid</th>
-                      <th className="text-right p-3 font-medium">Balance</th>
-                      <th className="text-left p-3 font-medium">Status</th>
+                    <tr className="border-b border-border bg-muted/50">
+                      <th className="text-left p-3 font-medium text-foreground">Student ID</th>
+                      <th className="text-left p-3 font-medium text-foreground">Student Name</th>
+                      <th className="text-left p-3 font-medium text-foreground">Class</th>
+                      <th className="text-right p-3 font-medium text-foreground">Total Fee Expected</th>
+                      <th className="text-right p-3 font-medium text-foreground">Total Paid</th>
+                      <th className="text-right p-3 font-medium text-foreground">Balance</th>
+                      <th className="text-left p-3 font-medium text-foreground">Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     {studentsToShow.map((s) => (
-                      <tr key={s.studentId} className="border-b hover:bg-gray-50/50">
-                        <td className="p-3">{s.studentNumber}</td>
-                        <td className="p-3">{s.studentName}</td>
-                        <td className="p-3">{s.className}</td>
-                        <td className="p-3 text-right">GHS {s.totalFeeExpected.toLocaleString()}</td>
-                        <td className="p-3 text-right text-green-600">GHS {s.totalPaid.toLocaleString()}</td>
-                        <td className={`p-3 text-right font-medium ${s.balance > 0 ? 'text-red-600' : s.balance < 0 ? 'text-emerald-600' : ''}`}>
+                      <tr key={s.studentId} className="border-b border-border hover:bg-muted/30 transition-colors">
+                        <td className="p-3 text-foreground">{s.studentNumber}</td>
+                        <td className="p-3 text-foreground">{s.studentName}</td>
+                        <td className="p-3 text-foreground">{s.className}</td>
+                        <td className="p-3 text-right text-foreground">GHS {s.totalFeeExpected.toLocaleString()}</td>
+                        <td className="p-3 text-right text-emerald-600 dark:text-emerald-400">GHS {s.totalPaid.toLocaleString()}</td>
+                        <td className={`p-3 text-right font-medium ${s.balance > 0 ? 'text-red-600 dark:text-red-400' : s.balance < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-foreground'}`}>
                           GHS {s.balance.toLocaleString()}
                         </td>
                         <td className="p-3">
                           <Badge
                             variant={s.status === 'owing' ? 'destructive' : s.status === 'credit' ? 'secondary' : 'default'}
-                            className={s.status === 'paid' ? 'bg-emerald-600' : ''}
+                            className={s.status === 'paid' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
                           >
                             {s.status === 'owing' ? 'Owing' : s.status === 'credit' ? 'Credit' : 'Paid'}
                           </Badge>
@@ -346,7 +346,7 @@ const PrintFeeStatusModule = () => {
                 </table>
               </div>
             ) : (
-              <p className="text-center py-8 text-gray-500">
+              <p className="text-center py-8 text-muted-foreground">
                 {report ? `No students ${statusFilter === 'owing' ? 'owing' : statusFilter === 'paid' ? 'fully paid' : ''} in this class.` : 'Select a class to load the report.'}
               </p>
             )}

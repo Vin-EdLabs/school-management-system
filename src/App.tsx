@@ -26,7 +26,7 @@ const queryClient = new QueryClient();
 
 const HostAwareLanding = () => {
   const slug = detectTenantSlugFromHost();
-  if (slug) return <Navigate to={`/s/${slug}`} replace />;
+  if (slug) return <Navigate to={`/sch/${slug}`} replace />;
   return <LandingPage />;
 };
 
@@ -91,7 +91,7 @@ const App = () => (
                 <Route path="/register-school" element={<RegisterSchool />} />
                 <Route path="/super-admin" element={<SuperAdminDashboard />} />
                 <Route path="/school/:schoolId/*" element={<IndexWithSchool />} />
-                <Route path="/s/:slug/*" element={<IndexWithSchool />} />
+                <Route path="/sch/:slug/*" element={<IndexWithSchool />} />
                 <Route path="/portal/:tenantId" element={<ParentPortalRoute />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>

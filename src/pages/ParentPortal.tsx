@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   GraduationCap, LogOut, BookOpen, Trophy, CreditCard,
   CalendarCheck, Eye, EyeOff, Lock, ChevronRight, Medal,
@@ -222,6 +222,14 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   const [deskContact, setDeskContact] = useState<any>({});
   const [deskReply, setDeskReply] = useState('');
   const [deskReplyAttachment, setDeskReplyAttachment] = useState<File | null>(null);
+  const parentScrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (selectedDeskMessage || deskConversation.length > 0) {
+      setTimeout(() => parentScrollRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+    }
+  }, [selectedDeskMessage, deskConversation]);
+
   const [appNotifications, setAppNotifications] = useState<ParentAppNotification[]>([]);
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
@@ -1741,7 +1749,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               onChange={(e) => setDeskBody(e.target.value)}
               rows={5}
               placeholder="Write your message..."
-              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200"
+              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-200"
             />
             <div className="mt-2 text-right text-xs text-slate-400">{deskBody.length} characters</div>
             <input type="file" accept="image/*" onChange={(e) => setDeskAttachment(e.target.files?.[0] || null)} className="mt-2 block w-full text-xs text-slate-500" />
@@ -1770,7 +1778,17 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               {/* Parent's original message (own message) should be on the right */}
               <div className="flex justify-end">
                 <div className="max-w-[86%] rounded-2xl rounded-br-md px-3 py-2 bg-[#dcf8c6] border border-green-200 text-sm text-slate-700 shadow-sm">
-                {selectedDeskMessage.message}
+                  <p>{selectedDeskMessage.message}</p>
+                  {selectedDeskMessage.attachment_url && (
+                    <div className="mt-2 rounded-lg overflow-hidden border border-green-300">
+                      <img 
+                        src={selectedDeskMessage.attachment_url} 
+                        alt="Attachment" 
+                        className="max-h-48 w-full object-cover cursor-pointer" 
+                        onClick={() => setLightboxUrl(selectedDeskMessage.attachment_url)}
+                      />
+                    </div>
+                  )}
                   <div className="mt-1 text-[10px] text-slate-500 text-right">{new Date(selectedDeskMessage.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ✓✓</div>
                 </div>
               </div>
@@ -1781,14 +1799,25 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                       ? 'bg-[#dcf8c6] border border-green-200 text-slate-700 rounded-br-md'
                       : 'bg-white border border-slate-200 text-slate-700 rounded-bl-md'
                   }`}>
-                    {r.reply_text}
+                    <p>{r.reply_text}</p>
+                    {r.attachment_url && (
+                      <div className={`mt-2 rounded-lg overflow-hidden border ${r.sender_type === 'parent' ? 'border-green-300' : 'border-slate-200'}`}>
+                        <img 
+                          src={r.attachment_url} 
+                          alt="Reply Attachment" 
+                          className="max-h-48 w-full object-cover cursor-pointer" 
+                          onClick={() => setLightboxUrl(r.attachment_url)}
+                        />
+                      </div>
+                    )}
                     <div className="mt-1 text-[10px] text-slate-400 text-right">{new Date(r.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}{r.sender_type === 'parent' ? ' ✓✓' : ''}</div>
                   </div>
                 </div>
               ))}
+              <div ref={parentScrollRef} />
             </div>
             <div className="p-3 border-t border-slate-100">
-              <textarea value={deskReply} onChange={(e) => setDeskReply(e.target.value)} rows={2} placeholder="Type your follow-up reply..." className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200" />
+              <textarea value={deskReply} onChange={(e) => setDeskReply(e.target.value)} rows={2} placeholder="Type your follow-up reply..." className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-200" />
               <div className="mt-2 flex items-center gap-2">
                 <input type="file" accept="image/*" onChange={(e) => setDeskReplyAttachment(e.target.files?.[0] || null)} className="block text-xs text-slate-500 flex-1" />
                 <button onClick={() => submitDeskReply().catch(() => undefined)} className="rounded-lg px-3 py-2 text-xs font-semibold text-white" style={{ backgroundColor: brandPrimary }}>
@@ -1938,36 +1967,77 @@ const EmptyCard = ({ icon, message }: { icon: React.ReactNode; message: string }
 import { useParams } from 'react-router-dom';
 
 export const ParentPortalRoute: React.FC = () => {
-  const { tenantId } = useParams<{ tenantId: string }>();
+  const { tenantId: tenantIdParam, slug } = useParams<{ tenantId?: string; slug?: string }>();
+  const [tenantId, setTenantId] = React.useState<number | null>(null);
   const [schoolName, setSchoolName] = React.useState('');
   const [schoolLogoUrl, setSchoolLogoUrl] = React.useState<string | null>(null);
   const [primaryColor, setPrimaryColor] = React.useState<string | null>(null);
   const [secondaryColor, setSecondaryColor] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    if (!tenantId) return;
-    fetch(`${API}/tenant/by-id/${tenantId}`)
-      .then(r => r.json())
-      .then(d => {
-        if (d?.tenant?.name) setSchoolName(d.tenant.name);
-        if (d?.tenant?.logo_url) setSchoolLogoUrl(d.tenant.logo_url);
-        if (d?.tenant?.primary_color) setPrimaryColor(d.tenant.primary_color);
-        if (d?.tenant?.secondary_color) setSecondaryColor(d.tenant.secondary_color);
-      })
-      .catch(() => {});
-  }, [tenantId]);
+    const fetchTenant = async () => {
+      setLoading(true);
+      try {
+        let fetchUrl = '';
+        if (slug) {
+          fetchUrl = `${API}/tenant/by-slug/${slug}`;
+        } else if (tenantIdParam) {
+          // If it's a number, try by ID; otherwise, try as a slug
+          if (!isNaN(Number(tenantIdParam)) && /^\d+$/.test(tenantIdParam)) {
+            fetchUrl = `${API}/tenant/by-id/${tenantIdParam}`;
+          } else {
+            fetchUrl = `${API}/tenant/by-slug/${tenantIdParam}`;
+          }
+        } else {
+          setLoading(false);
+          return;
+        }
 
-  if (!tenantId || isNaN(Number(tenantId))) {
+        const res = await fetch(fetchUrl);
+        const d = await res.json();
+        
+        if (d?.tenant?.id) {
+          setTenantId(Number(d.tenant.id));
+          if (d.tenant.name) setSchoolName(d.tenant.name);
+          if (d.tenant.logo_url) setSchoolLogoUrl(d.tenant.logo_url);
+          if (d.tenant.primary_color) setPrimaryColor(d.tenant.primary_color);
+          if (d.tenant.secondary_color) setSecondaryColor(d.tenant.secondary_color);
+        }
+      } catch (err) {
+        console.error('Failed to resolve tenant for parent portal:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTenant();
+  }, [tenantIdParam, slug]);
+
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-gray-500">
-        Invalid portal link. Please check your school's URL.
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 gap-4">
+        <RefreshCw className="w-8 h-8 text-purple-500 animate-spin" />
+        <p className="text-purple-300/60 font-medium animate-pulse uppercase tracking-widest text-xs">Resolving Portal...</p>
+      </div>
+    );
+  }
+
+  if (!tenantId) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950">
+        <div className="max-w-md p-8 text-center bg-white/5 border border-white/10 rounded-3xl backdrop-blur-xl">
+          <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-white mb-2">Invalid Portal Link</h2>
+          <p className="text-slate-400 text-sm">We couldn't find the school portal you're looking for. Please double-check the URL or contact the school administration.</p>
+        </div>
       </div>
     );
   }
 
   return (
     <ParentPortal
-      tenantId={Number(tenantId)}
+      tenantId={tenantId}
       schoolName={schoolName}
       schoolLogoUrl={schoolLogoUrl}
       primaryColor={primaryColor}

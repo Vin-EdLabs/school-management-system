@@ -17,8 +17,8 @@ router.get('/manifest', async (req: TenantRequest, res) => {
     const tenantId = Number(tenant?.id || 0);
 
     const origin = `${req.protocol}://${req.get('host')}`;
-    const icon192 = logo ? `${origin}${logo}` : `/school-assets/${subdomain}/logo-192.png`;
-    const icon512 = logo ? `${origin}${logo}` : `/school-assets/${subdomain}/logo-512.png`;
+    const icon192 = logo ? (logo.startsWith('data:') ? logo : `${origin}${logo}`) : `/school-assets/${subdomain}/logo-192.png`;
+    const icon512 = logo ? (logo.startsWith('data:') ? logo : `${origin}${logo}`) : `/school-assets/${subdomain}/logo-512.png`;
     const startUrl = tenantId > 0 ? `/portal/${tenantId}` : '/';
 
     return res

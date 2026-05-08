@@ -100,7 +100,11 @@ export async function sendPushToStudentParents(
       [tenantId]
     ).catch(() => ({ rows: [] as any[] }));
     if (settings.rows[0]?.logo_url) {
-      payload.icon = settings.rows[0].logo_url;
+      const logo = settings.rows[0].logo_url;
+      // Skip Base64 strings for push payloads as they exceed the 4KB limit
+      if (!logo.startsWith('data:')) {
+        payload.icon = logo;
+      }
     }
   }
 
@@ -110,14 +114,16 @@ export async function sendPushToStudentParents(
      WHERE tenant_id = $1 AND student_id = $2`,
     [tenantId, studentId]
   );
-  for (const parent of parentRows.rows) {
-    await query(
-      `INSERT INTO parent_notifications (tenant_id, parent_account_id, title, message, url, icon)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [tenantId, parent.id, payload.title, payload.body, payload.url || '/parent', payload.icon || null]
-    ).catch(() => {});
-    await sendPushToParentAccount(parent.id, payload);
-  }
+  await Promise.all(
+    parentRows.rows.map(async (parent) => {
+      await query(
+        `INSERT INTO parent_notifications (tenant_id, parent_account_id, title, message, url, icon)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [tenantId, parent.id, payload.title, payload.body, payload.url || '/parent', payload.icon || null]
+      ).catch(() => {});
+      return sendPushToParentAccount(parent.id, payload).catch(() => {});
+    })
+  );
 }
 
 export async function sendPushToTenantParents(
@@ -134,7 +140,11 @@ export async function sendPushToTenantParents(
       [tenantId]
     ).catch(() => ({ rows: [] as any[] }));
     if (settings.rows[0]?.logo_url) {
-      payload.icon = settings.rows[0].logo_url;
+      const logo = settings.rows[0].logo_url;
+      // Skip Base64 strings for push payloads as they exceed the 4KB limit
+      if (!logo.startsWith('data:')) {
+        payload.icon = logo;
+      }
     }
   }
 
@@ -150,14 +160,16 @@ export async function sendPushToTenantParents(
     [tenantId]
   ).catch(() => ({ rows: [{ total: 0 }] as any[] }));
 
-  for (const parent of parentRows.rows) {
-    await query(
-      `INSERT INTO parent_notifications (tenant_id, parent_account_id, title, message, url, icon)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [tenantId, parent.id, payload.title, payload.body, payload.url || '/parent', payload.icon || null]
-    ).catch(() => {});
-    await sendPushToParentAccount(parent.id, payload);
-  }
+  await Promise.all(
+    parentRows.rows.map(async (parent) => {
+      await query(
+        `INSERT INTO parent_notifications (tenant_id, parent_account_id, title, message, url, icon)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [tenantId, parent.id, payload.title, payload.body, payload.url || '/parent', payload.icon || null]
+      ).catch(() => {});
+      return sendPushToParentAccount(parent.id, payload).catch(() => {});
+    })
+  );
 
   return {
     parentAccounts: parentRows.rows.length,

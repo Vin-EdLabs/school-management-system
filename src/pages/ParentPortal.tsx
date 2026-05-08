@@ -3,7 +3,7 @@ import {
   GraduationCap, LogOut, BookOpen, Trophy, CreditCard,
   CalendarCheck, Eye, EyeOff, Lock, ChevronRight, Medal,
   TrendingUp, CheckCircle2, XCircle, Clock, AlertTriangle,
-  BadgeCheck, Home, RefreshCw, Activity, Bell, Download, X,
+  BadgeCheck, Home, RefreshCw, Activity, Bell, Download, X, MessageSquare, Send, Phone, Mail, Plus,
 } from 'lucide-react';
 import ReceiptPrinter from '@/components/common/ReceiptPrinter';
 import { io, Socket } from 'socket.io-client';
@@ -15,6 +15,15 @@ const API_ROOT = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/ap
 // ── API base ──────────────────────────────────────────────────────────────────
 
 const API = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+const FIREBASE_WEB_PUSH_VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY || '';
+const MESSAGE_TYPE_LABEL: Record<'absence' | 'fee' | 'academic' | 'teacher' | 'late' | 'general', string> = {
+  absence: 'Absence Notice',
+  fee: 'Fee Query',
+  academic: 'Academic Concern',
+  teacher: 'Teacher Concern',
+  late: 'Late Arrival',
+  general: 'General Enquiry',
+};
 
 async function parentFetch(path: string, opts: RequestInit = {}, token?: string) {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -22,6 +31,17 @@ async function parentFetch(path: string, opts: RequestInit = {}, token?: string)
   const slug = detectTenantSlugFromHost();
   if (slug) headers['X-Tenant-Slug'] = slug;
   const res = await fetch(`${API}${path}`, { ...opts, headers });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+
+async function parentFetchForm(path: string, formData: FormData, token?: string) {
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const slug = detectTenantSlugFromHost();
+  if (slug) headers['X-Tenant-Slug'] = slug;
+  const res = await fetch(`${API}${path}`, { method: 'POST', body: formData, headers });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Request failed');
   return data;
@@ -93,10 +113,8 @@ async function ensurePushSubscription(token: string, tenantId?: number) {
     token
   ).catch(() => undefined);
 
-  const keyRes = await parentFetch('/parent/push/public-key', {}, token).catch(() => null);
-  const publicKey = keyRes?.publicKey as string | undefined;
-  if (publicKey) {
-    const fcmToken = await getFcmToken(publicKey).catch(() => null);
+  if (FIREBASE_WEB_PUSH_VAPID_KEY) {
+    const fcmToken = await getFcmToken(FIREBASE_WEB_PUSH_VAPID_KEY).catch(() => null);
     if (fcmToken) {
       if (tenantId) localStorage.setItem(`parent_fcm_token_${tenantId}`, fcmToken);
       await parentFetch(
@@ -105,6 +123,8 @@ async function ensurePushSubscription(token: string, tenantId?: number) {
         token
       ).catch(() => undefined);
     }
+  } else {
+    console.warn('[parent] VITE_FIREBASE_VAPID_KEY missing; skipping FCM token registration');
   }
 }
 
@@ -124,7 +144,7 @@ interface StudentInfo {
   school_logo_url?: string | null;
 }
 
-type Tab = 'overview' | 'grades' | 'position' | 'finance' | 'attendance';
+type Tab = 'overview' | 'grades' | 'position' | 'finance' | 'attendance' | 'desk';
 type ParentAppNotification = {
   id: string;
   serverId?: number;
@@ -186,6 +206,17 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   const [dataLoading, setDataLoading] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<any>(null);
   const [showReceipt, setShowReceipt] = useState(false);
+  const [deskMessages, setDeskMessages] = useState<any[]>([]);
+  const [deskLoading, setDeskLoading] = useState(false);
+  const [deskComposeOpen, setDeskComposeOpen] = useState(false);
+  const [deskType, setDeskType] = useState<'absence' | 'fee' | 'academic' | 'teacher' | 'late' | 'general'>('general');
+  const [deskBody, setDeskBody] = useState('');
+  const [deskAttachment, setDeskAttachment] = useState<File | null>(null);
+  const [selectedDeskMessage, setSelectedDeskMessage] = useState<any | null>(null);
+  const [deskConversation, setDeskConversation] = useState<any[]>([]);
+  const [deskContact, setDeskContact] = useState<any>({});
+  const [deskReply, setDeskReply] = useState('');
+  const [deskReplyAttachment, setDeskReplyAttachment] = useState<File | null>(null);
   const [appNotifications, setAppNotifications] = useState<ParentAppNotification[]>([]);
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
@@ -193,6 +224,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   const [showInstallHelp, setShowInstallHelp] = useState(false);
   const [hardRefreshing, setHardRefreshing] = useState(false);
   const [selectedNotification, setSelectedNotification] = useState<ParentAppNotification | null>(null);
+  const [showDeskGuide, setShowDeskGuide] = useState(false);
 
   // Photo lightbox
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
@@ -321,6 +353,56 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     setAppNotifications(mapped);
   }, []);
 
+  const loadDeskMessages = useCallback(async () => {
+    if (!token) return;
+    setDeskLoading(true);
+    try {
+      const data = await parentFetch('/messages?page=1&limit=20', {}, token);
+      setDeskMessages(Array.isArray(data?.messages) ? data.messages : []);
+      setDeskContact(data?.contact || {});
+    } catch {
+      setDeskMessages([]);
+    } finally {
+      setDeskLoading(false);
+    }
+  }, [token]);
+
+  const openDeskConversation = useCallback(async (id: number) => {
+    if (!token) return;
+    const data = await parentFetch(`/messages/${id}`, {}, token);
+    setSelectedDeskMessage(data?.message || null);
+    setDeskConversation(Array.isArray(data?.replies) ? data.replies : []);
+    await parentFetch(`/messages/${id}/read`, { method: 'PUT', body: JSON.stringify({}) }, token).catch(() => undefined);
+    setDeskMessages((prev) => prev.map((m) => (Number(m.id) === Number(id) ? { ...m, unread_replies: 0 } : m)));
+  }, [token]);
+
+  const submitDeskMessage = useCallback(async () => {
+    if (!token || !deskBody.trim()) return;
+    const autoSubject = MESSAGE_TYPE_LABEL[deskType];
+    const form = new FormData();
+    form.append('type', deskType);
+    form.append('subject', autoSubject);
+    form.append('message', deskBody.trim());
+    if (deskAttachment) form.append('attachment', deskAttachment);
+    await parentFetchForm('/messages', form, token);
+    setDeskComposeOpen(false);
+    setDeskBody('');
+    setDeskAttachment(null);
+    await loadDeskMessages();
+  }, [token, deskType, deskBody, deskAttachment, loadDeskMessages]);
+
+  const submitDeskReply = useCallback(async () => {
+    if (!token || !selectedDeskMessage?.id || !deskReply.trim()) return;
+    const form = new FormData();
+    form.append('reply_text', deskReply.trim());
+    if (deskReplyAttachment) form.append('attachment', deskReplyAttachment);
+    await parentFetchForm(`/messages/${selectedDeskMessage.id}/reply`, form, token);
+    setDeskReply('');
+    setDeskReplyAttachment(null);
+    await openDeskConversation(Number(selectedDeskMessage.id));
+    await loadDeskMessages();
+  }, [token, selectedDeskMessage, deskReply, deskReplyAttachment, openDeskConversation, loadDeskMessages]);
+
   const fetchTabData = useCallback(async (tab: Tab) => {
     if (!token) return;
     setDataLoading(true);
@@ -337,13 +419,15 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       } else if (tab === 'attendance' && !attendance) {
         const d = await parentFetch('/parent/attendance', {}, token);
         setAttendance(d);
+      } else if (tab === 'desk') {
+        await loadDeskMessages();
       }
     } catch (err: any) {
       console.error(`Error loading ${tab}:`, err);
     } finally {
       setDataLoading(false);
     }
-  }, [token, grades, termReport, finance, attendance]);
+  }, [token, grades, termReport, finance, attendance, loadDeskMessages]);
 
   useEffect(() => {
     if (!token || activeTab !== 'finance') return;
@@ -413,6 +497,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       else if (activeTab === 'position') { const d = await parentFetch('/parent/term-report', {}, token); setTermReport(d); }
       else if (activeTab === 'finance') { const d = await parentFetch('/parent/finance', {}, token); setFinance(d); }
       else if (activeTab === 'attendance') { const d = await parentFetch('/parent/attendance', {}, token); setAttendance(d); }
+      else if (activeTab === 'desk') { await loadDeskMessages(); }
     } catch { /* silent */ }
     finally { setDataLoading(false); }
   };
@@ -721,6 +806,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     { key: 'position', icon: <Trophy className="w-4 h-4" />, label: 'Position' },
     { key: 'finance', icon: <CreditCard className="w-4 h-4" />, label: 'Finance' },
     { key: 'attendance', icon: <CalendarCheck className="w-4 h-4" />, label: 'Attendance' },
+    { key: 'desk', icon: <MessageSquare className="w-4 h-4" />, label: 'Parent Desk' },
   ];
 
   return (
@@ -945,13 +1031,14 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                 <button
                   key={t.key}
                   onClick={() => handleTabChange(t.key)}
-                  className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col items-center gap-2 hover:border-purple-300 hover:shadow-md hover:shadow-purple-50 transition-all group min-h-[110px]"
+                  className="relative overflow-hidden bg-white border border-gray-200 rounded-2xl p-4 flex flex-col items-center gap-2 hover:border-purple-300 hover:shadow-lg hover:shadow-purple-100 transition-all group min-h-[115px]"
                 >
-                  <span className="w-9 h-9 bg-purple-50 group-hover:bg-purple-100 rounded-lg flex items-center justify-center text-purple-600 transition-colors">
+                  <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-500 via-fuchsia-500 to-indigo-500 opacity-90" />
+                  <span className="w-10 h-10 bg-gradient-to-br from-purple-50 to-indigo-50 group-hover:from-purple-100 group-hover:to-indigo-100 rounded-xl flex items-center justify-center text-purple-600 transition-colors shadow-sm">
                     {t.icon}
                   </span>
-                  <span className="text-sm font-medium text-gray-700">{t.label}</span>
-                  <ChevronRight className="w-3.5 h-3.5 text-gray-300 group-hover:text-purple-400 transition-colors" />
+                  <span className="text-sm font-semibold text-gray-700">{t.label}</span>
+                  <ChevronRight className="w-3.5 h-3.5 text-gray-300 group-hover:text-purple-500 transition-colors" />
                 </button>
               ))}
             </div>
@@ -1409,6 +1496,93 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             )}
           </div>
         )}
+
+        {activeTab === 'desk' && (
+          <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="flex justify-end">
+              <button
+                onClick={() => setShowDeskGuide(true)}
+                className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-100 transition-colors"
+              >
+                How to use Parent Desk
+              </button>
+            </div>
+            <div
+              className="rounded-2xl border border-white/30 p-4 shadow-lg"
+              style={{ background: `linear-gradient(130deg, ${brandPrimary}22 0%, #ffffff 55%, ${brandSecondary}1a 100%)` }}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl overflow-hidden bg-white border border-white/60 flex items-center justify-center">
+                  {resolvedLogo ? <img src={resolvedLogo} alt="" className="w-full h-full object-contain p-1" /> : <GraduationCap className="w-5 h-5 text-slate-500" />}
+                </div>
+                <div>
+                  <p className="text-lg font-semibold text-slate-900">{student.school_name}</p>
+                  <p className="text-xs text-slate-500">Direct line to your school support desk</p>
+                </div>
+              </div>
+              <div className="mt-3 grid gap-2 text-sm">
+                <a href={`tel:${deskContact?.phone_number || deskContact?.contact_phone || deskContact?.contact || ''}`} className="flex items-center gap-2 text-slate-700 hover:text-slate-900"><Phone className="w-4 h-4" /> {deskContact?.phone_number || deskContact?.contact_phone || deskContact?.contact || 'School phone not set'}</a>
+                <a href={`https://wa.me/${String(deskContact?.whatsapp_number || '').replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-slate-700 hover:text-slate-900"><MessageSquare className="w-4 h-4" /> {deskContact?.whatsapp_number || 'WhatsApp not set'}</a>
+                <a href={`mailto:${deskContact?.email || ''}`} className="flex items-center gap-2 text-slate-700 hover:text-slate-900"><Mail className="w-4 h-4" /> {deskContact?.email || 'Email not set'}</a>
+                <div className="text-xs text-slate-500 pl-6">{deskContact?.office_hours || 'Mon-Fri • 7:00am - 4:00pm'}</div>
+                <div className="text-xs text-slate-500 pl-6">{deskContact?.physical_address || deskContact?.address || deskContact?.postal_address || 'School address not set'}</div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-slate-900">Your Conversations</h2>
+              <button onClick={() => loadDeskMessages()} className="text-sm text-purple-700 hover:text-purple-800">Refresh</button>
+            </div>
+
+            {deskLoading ? (
+              <LoadingCard />
+            ) : deskMessages.length === 0 ? (
+              <div className="bg-white border border-gray-200 rounded-xl p-8 text-center shadow-sm">
+                <MessageSquare className="w-10 h-10 text-purple-300 mx-auto mb-3" />
+                <p className="text-sm font-semibold text-slate-700">Have a question or concern?</p>
+                <p className="text-xs text-slate-500 mt-1">Your school is just one message away.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {deskMessages.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => openDeskConversation(Number(m.id))}
+                    className="w-full text-left rounded-2xl border border-slate-200 bg-white p-4 shadow-sm hover:shadow-lg hover:border-purple-200 transition-all"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-slate-800 text-sm truncate">{m.subject}</p>
+                        <p className="text-xs text-slate-500 mt-0.5 truncate">{m.first_name} {m.last_name} • {m.class_name || 'No class'}</p>
+                      </div>
+                      <span className="text-[11px] text-slate-400 shrink-0">{new Date(m.created_at).toLocaleDateString()}</span>
+                    </div>
+                    <p className="text-xs text-slate-600 mt-2 line-clamp-2">{m.message}</p>
+                    <div className="mt-2 flex items-center justify-between">
+                      <span className={`text-[11px] px-2 py-1 rounded-full ${
+                        m.status === 'resolved' ? 'bg-emerald-100 text-emerald-700' :
+                        m.status === 'urgent' ? 'bg-red-100 text-red-700' :
+                        m.status === 'in_review' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'
+                      }`}>
+                        {String(m.status || 'pending').replace('_', ' ')}
+                      </span>
+                      {(Number(m.unread_replies || 0) > 0) && <span className="text-[11px] text-purple-700 font-semibold animate-pulse">● New Reply</span>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <button
+              onClick={() => setDeskComposeOpen(true)}
+              className="fixed bottom-24 right-5 sm:bottom-8 sm:right-8 w-14 h-14 rounded-full text-white shadow-2xl flex items-center justify-center animate-bounce"
+              style={{ background: `linear-gradient(135deg, ${brandPrimary}, ${brandSecondary})` }}
+            >
+              <Plus className="w-6 h-6" />
+            </button>
+          </div>
+        )}
       </main>
 
       {/* Footer */}
@@ -1417,18 +1591,22 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       </footer>
 
       {/* Mobile bottom navigation */}
-      <nav className="sm:hidden fixed bottom-3 left-3 right-3 z-40 border border-gray-200 bg-white/95 backdrop-blur px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] rounded-2xl shadow-xl">
-        <div className="grid grid-cols-5 gap-1">
+      <nav className="sm:hidden fixed bottom-3 left-3 right-3 z-40 border border-violet-200/70 bg-white/95 backdrop-blur px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] rounded-2xl shadow-xl">
+        <div
+          className="absolute inset-x-0 top-0 h-1 rounded-t-2xl"
+          style={{ background: `linear-gradient(90deg, ${brandPrimary}, ${brandSecondary})` }}
+        />
+        <div className="grid grid-cols-6 gap-1">
           {tabs.map((t) => (
             <button
               key={t.key}
               onClick={() => handleTabChange(t.key)}
               className={`flex flex-col items-center justify-center gap-1 rounded-lg py-2 text-[10px] font-medium transition-colors ${
                 activeTab === t.key
-                  ? 'text-white shadow'
+                  ? 'text-white shadow-lg'
                   : 'text-gray-500 hover:text-gray-700'
               }`}
-              style={activeTab === t.key ? { backgroundColor: brandPrimary } : undefined}
+              style={activeTab === t.key ? { background: `linear-gradient(135deg, ${brandPrimary}, ${brandSecondary})` } : undefined}
             >
               {t.icon}
               <span className="leading-none">{t.label}</span>
@@ -1483,6 +1661,135 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                 style={{ background: `linear-gradient(90deg, ${brandPrimary}, ${brandSecondary})` }}
               >
                 OK, got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deskComposeOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="w-full sm:max-w-lg rounded-t-3xl sm:rounded-2xl bg-white shadow-2xl p-4 sm:p-5 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-base font-semibold text-slate-900">New Parent Desk Message</h3>
+              <button onClick={() => setDeskComposeOpen(false)} className="text-slate-500 hover:text-slate-700"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
+              {[
+                ['absence', '🤒 Absence'],
+                ['fee', '💰 Fee Query'],
+                ['academic', '📚 Academic'],
+                ['teacher', '👨‍🏫 Teacher'],
+                ['late', '🚌 Late'],
+                ['general', '💬 General'],
+              ].map(([k, label]) => (
+                <button
+                  key={k}
+                  onClick={() => setDeskType(k as any)}
+                  className={`rounded-xl border px-3 py-2 text-sm transition-all ${deskType === k ? 'border-purple-400 bg-purple-50 text-purple-700 scale-[1.01]' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="mb-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+              <p className="text-[11px] text-slate-500">Subject</p>
+              <p className="text-sm font-semibold text-slate-700">{MESSAGE_TYPE_LABEL[deskType]}</p>
+            </div>
+            <textarea
+              value={deskBody}
+              onChange={(e) => setDeskBody(e.target.value)}
+              rows={5}
+              placeholder="Write your message..."
+              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200"
+            />
+            <div className="mt-2 text-right text-xs text-slate-400">{deskBody.length} characters</div>
+            <input type="file" accept="image/*" onChange={(e) => setDeskAttachment(e.target.files?.[0] || null)} className="mt-2 block w-full text-xs text-slate-500" />
+            <button
+              onClick={() => submitDeskMessage().catch(() => undefined)}
+              className="mt-3 w-full rounded-xl text-white font-semibold py-2.5 flex items-center justify-center gap-2"
+              style={{ background: `linear-gradient(90deg, ${brandPrimary}, ${brandSecondary})` }}
+            >
+              <Send className="w-4 h-4" /> Send Message
+            </button>
+          </div>
+        </div>
+      )}
+
+      {selectedDeskMessage && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="w-full sm:max-w-2xl rounded-t-3xl sm:rounded-2xl bg-white shadow-2xl max-h-[92vh] overflow-hidden flex flex-col">
+            <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <p className="font-semibold text-slate-900 text-sm">{selectedDeskMessage.subject}</p>
+                <p className="text-xs text-slate-500 capitalize">{selectedDeskMessage.type} · {String(selectedDeskMessage.status || '').replace('_', ' ')}</p>
+              </div>
+              <button onClick={() => setSelectedDeskMessage(null)} className="text-slate-500 hover:text-slate-700"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#e5ddd5]">
+              {/* Parent's original message (own message) should be on the right */}
+              <div className="flex justify-end">
+                <div className="max-w-[86%] rounded-2xl rounded-br-md px-3 py-2 bg-[#dcf8c6] border border-green-200 text-sm text-slate-700 shadow-sm">
+                {selectedDeskMessage.message}
+                  <div className="mt-1 text-[10px] text-slate-500 text-right">{new Date(selectedDeskMessage.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ✓✓</div>
+                </div>
+              </div>
+              {deskConversation.map((r) => (
+                <div key={r.id} className={`flex ${r.sender_type === 'parent' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[86%] rounded-2xl px-3 py-2 text-sm shadow-sm ${
+                    r.sender_type === 'parent'
+                      ? 'bg-[#dcf8c6] border border-green-200 text-slate-700 rounded-br-md'
+                      : 'bg-white border border-slate-200 text-slate-700 rounded-bl-md'
+                  }`}>
+                    {r.reply_text}
+                    <div className="mt-1 text-[10px] text-slate-400 text-right">{new Date(r.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}{r.sender_type === 'parent' ? ' ✓✓' : ''}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="p-3 border-t border-slate-100">
+              <textarea value={deskReply} onChange={(e) => setDeskReply(e.target.value)} rows={2} placeholder="Type your follow-up reply..." className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200" />
+              <div className="mt-2 flex items-center gap-2">
+                <input type="file" accept="image/*" onChange={(e) => setDeskReplyAttachment(e.target.files?.[0] || null)} className="block text-xs text-slate-500 flex-1" />
+                <button onClick={() => submitDeskReply().catch(() => undefined)} className="rounded-lg px-3 py-2 text-xs font-semibold text-white" style={{ backgroundColor: brandPrimary }}>
+                  Send
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDeskGuide && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white border border-slate-200 shadow-2xl overflow-hidden">
+            <div className="px-4 py-3 text-white" style={{ background: `linear-gradient(90deg, ${brandPrimary}, ${brandSecondary})` }}>
+              <p className="text-sm font-semibold">Parent Desk Guide</p>
+              <p className="text-xs text-white/90 mt-0.5">Quick steps for parents</p>
+            </div>
+            <div className="p-4 space-y-3 text-sm text-slate-700">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="font-semibold">1) Tap the + button</p>
+                <p className="text-xs text-slate-500 mt-1">Start a new message to your school.</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="font-semibold">2) Choose a category</p>
+                <p className="text-xs text-slate-500 mt-1">Absence, Fee Query, Academic, Teacher Concern, Late Arrival or General.</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="font-semibold">3) Write your message and send</p>
+                <p className="text-xs text-slate-500 mt-1">You can also attach an image when needed.</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="font-semibold">4) Open conversation cards</p>
+                <p className="text-xs text-slate-500 mt-1">Check school replies and continue chat anytime.</p>
+              </div>
+              <button
+                onClick={() => setShowDeskGuide(false)}
+                className="w-full rounded-lg py-2 text-sm font-semibold text-white"
+                style={{ background: `linear-gradient(90deg, ${brandPrimary}, ${brandSecondary})` }}
+              >
+                Got it
               </button>
             </div>
           </div>

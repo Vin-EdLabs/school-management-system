@@ -25,6 +25,7 @@ function getAppInstance() {
 
 export async function getFcmToken(vapidKey: string): Promise<string | null> {
   if (!isConfigured()) return null;
+  if (!vapidKey) return null;
   const supported = await isSupported().catch(() => false);
   if (!supported) return null;
   const app = getAppInstance();

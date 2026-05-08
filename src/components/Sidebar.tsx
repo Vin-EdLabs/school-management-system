@@ -27,6 +27,7 @@ import {
   History,
   MessageCircle,
   BellRing,
+  MessagesSquare,
 } from 'lucide-react';
 import { resolveLogoUrl } from '../services/tenantService';
 import {
@@ -91,6 +92,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
   ],
   notifications: [
     ...(hasAccess('push-notifications') ? [{ id: 'push-notifications', label: 'Push Notifications', icon: BellRing }] : []),
+    ...(hasAccess('parent-desk') ? [{ id: 'parent-desk', label: 'Parent Desk', icon: MessagesSquare }] : []),
   ],
 });
 

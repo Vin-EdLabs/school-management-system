@@ -93,7 +93,8 @@ router.put('/', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, res) =
   try {
     const tenantId = req.user!.tenantId!;
     const { school_name, address, contact, email, current_year, current_term, primary_color, secondary_color,
-      receipt_prefix, postal_address, contact_phone, receipt_footer, bank_details } = req.body;
+      receipt_prefix, postal_address, contact_phone, receipt_footer, bank_details,
+      phone_number, whatsapp_number, office_hours, physical_address } = req.body;
     const skipAutoPost = (req.body as any).skip_auto_post === true;
 
     const isTermChange = current_year !== undefined || current_term !== undefined;
@@ -121,10 +122,19 @@ router.put('/', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, res) =
            contact_phone = COALESCE($9, contact_phone),
            receipt_footer = COALESCE($10, receipt_footer),
            bank_details = COALESCE($11, bank_details),
+           phone_number = COALESCE($12, phone_number),
+           whatsapp_number = COALESCE($13, whatsapp_number),
+           office_hours = COALESCE($14, office_hours),
+           physical_address = COALESCE($15, physical_address),
            updated_at = CURRENT_TIMESTAMP
-       WHERE tenant_id = $12
+       WHERE tenant_id = $16
        RETURNING *`,
-      [school_name, address, contact, email, current_year, current_term, receipt_prefix, postal_address, contact_phone, receipt_footer, bank_details, tenantId]
+      [
+        school_name, address, contact, email, current_year, current_term,
+        receipt_prefix, postal_address, contact_phone, receipt_footer, bank_details,
+        phone_number, whatsapp_number, office_hours, physical_address,
+        tenantId
+      ]
     );
     
     await query(
@@ -140,8 +150,18 @@ router.put('/', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, res) =
     if (result.rows.length === 0) {
       // Create if doesn't exist
       const insertResult = await query(
-        'INSERT INTO school_settings (tenant_id, school_name, address, contact, email, current_year, current_term) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-        [tenantId, school_name || 'School', address, contact, email, current_year, current_term]
+        `INSERT INTO school_settings (
+          tenant_id, school_name, address, contact, email, current_year, current_term,
+          phone_number, whatsapp_number, office_hours, physical_address
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        RETURNING *`,
+        [
+          tenantId, school_name || 'School', address, contact, email, current_year, current_term,
+          phone_number || contact_phone || contact || null,
+          whatsapp_number || null,
+          office_hours || null,
+          physical_address || address || postal_address || null
+        ]
       );
       const saved = insertResult.rows[0];
       const year = saved?.current_year ?? current_year;
@@ -635,7 +655,8 @@ router.post('/reset-data', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequ
           current_year = $2, current_term = NULL,
           receipt_prefix = 'R', postal_address = NULL, 
           contact_phone = NULL, receipt_footer = NULL, 
-          bank_details = NULL, updated_at = CURRENT_TIMESTAMP
+          bank_details = NULL, phone_number = NULL, whatsapp_number = NULL,
+          office_hours = NULL, physical_address = NULL, updated_at = CURRENT_TIMESTAMP
       WHERE tenant_id = $1`, 
       [tenantId, new Date().getFullYear().toString()]
     );

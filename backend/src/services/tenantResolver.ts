@@ -33,8 +33,10 @@ export async function resolveTenantBySlug(slug: string): Promise<TenantInfo | nu
     `SELECT id, name, slug, subdomain, logo_url, primary_color, secondary_color,
             COALESCE(subscription_status, 'active') as subscription_status,
             COALESCE(is_active, true) as is_active
-     FROM tenants WHERE (slug = $1 OR subdomain = $1) AND COALESCE(is_active, true) = true`,
-    [slug.toLowerCase()]
+     FROM tenants 
+     WHERE (LOWER(slug) = LOWER($1) OR LOWER(subdomain) = LOWER($1)) 
+     AND COALESCE(is_active, true) = true`,
+    [slug]
   );
   if (result.rows.length === 0) return null;
   return mapRow(result.rows[0]);

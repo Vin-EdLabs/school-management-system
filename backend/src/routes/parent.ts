@@ -567,9 +567,9 @@ router.get('/finance', authenticateParent, async (req: ParentRequest, res) => {
          FROM fee_structures
          WHERE tenant_id = $1
            AND class_id = $2
-           AND (term = $3 OR term LIKE $4 OR term IS NULL OR term = '')
+           AND (term = $3 OR $3 LIKE term || '%' OR term LIKE $3 || '%' OR term IS NULL OR term = '')
          ORDER BY created_at DESC LIMIT 1`,
-        [tenantId, student?.class_id, currentTerm, `${currentTerm}%`]
+        [tenantId, student?.class_id, currentTerm]
       );
     } catch {
       feeRow = await query(
@@ -594,7 +594,7 @@ router.get('/finance', authenticateParent, async (req: ParentRequest, res) => {
     // Get arrears for current term
     const arrearsRow = await query(
       `SELECT amount FROM term_arrears
-       WHERE tenant_id = $1 AND student_id = $2 AND current_term = $3`,
+       WHERE tenant_id = $1 AND student_id = $2 AND (current_term = $3 OR $3 LIKE current_term || '%' OR current_term LIKE $3 || '%')`,
       [tenantId, studentId, currentTerm]
     );
     const arrears = parseFloat(arrearsRow.rows[0]?.amount || '0');

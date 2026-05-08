@@ -54,8 +54,8 @@ async function getStudentFeeBalance(
 
   const feeRes = await client.query(
     `SELECT COALESCE(SUM(amount), 0) as total FROM fee_structures
-     WHERE tenant_id = $1 AND class_id = $2 AND (term = $3 OR term LIKE $4)`,
-    [tenantId, classId, termMatch, `${termMatch}%`]
+     WHERE tenant_id = $1 AND class_id = $2 AND (term = $3 OR $3 LIKE term || '%' OR term LIKE $3 || '%')`,
+    [tenantId, classId, termMatch]
   );
   const totalFees = parseFloat(feeRes.rows[0]?.total || '0');
 
@@ -63,8 +63,8 @@ async function getStudentFeeBalance(
   try {
     paidRes = await client.query(
       `SELECT COALESCE(SUM(amount), 0) as total FROM payments
-       WHERE tenant_id = $1 AND student_id = $2 AND (term = $3 OR term LIKE $4)`,
-      [tenantId, studentId, termMatch, `${termMatch}%`]
+       WHERE tenant_id = $1 AND student_id = $2 AND (term = $3 OR $3 LIKE term || '%' OR term LIKE $3 || '%')`,
+      [tenantId, studentId, termMatch]
     );
   } catch {
     // Legacy schema fallback: payments.term may not exist.
@@ -79,8 +79,8 @@ async function getStudentFeeBalance(
   // Fetch arrears from term_arrears
   const arrearsRes = await client.query(
     `SELECT COALESCE(SUM(amount), 0) as total FROM term_arrears
-     WHERE tenant_id = $1 AND student_id = $2 AND (current_term = $3 OR current_term = $4)`,
-    [tenantId, studentId, termMatch, term]
+     WHERE tenant_id = $1 AND student_id = $2 AND (current_term = $3 OR $3 LIKE current_term || '%' OR current_term LIKE $3 || '%')`,
+    [tenantId, studentId, termMatch]
   );
   const arrears = parseFloat(arrearsRes.rows[0]?.total || '0');
 

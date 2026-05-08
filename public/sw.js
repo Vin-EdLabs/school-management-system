@@ -61,8 +61,15 @@ self.addEventListener('push', (event) => {
   const payloadData = data.data || {};
   const title = notif.title || data.title || payloadData.title || 'ScholarNerve';
   const body = notif.body || data.body || payloadData.body || 'You have a new update.';
-  const icon = notif.icon || data.icon || payloadData.icon || '/vite.svg';
-  const badge = notif.badge || data.badge || payloadData.badge || icon;
+  
+  // Android/Chrome doesn't support SVG for notification icons. Use PNG.
+  let icon = notif.icon || data.icon || payloadData.icon || '/android-chrome-192x192.png';
+  let badge = notif.badge || data.badge || payloadData.badge || icon;
+
+  // Ensure absolute URLs for Android/Chrome reliability.
+  if (icon.startsWith('/')) icon = self.location.origin + icon;
+  if (badge.startsWith('/')) badge = self.location.origin + badge;
+
   const url = payloadData.url || data.url || '/';
 
   const options = {

@@ -46,7 +46,8 @@ router.get('/manifest', async (req: TenantRequest, res) => {
             short_name: 'Portal',
             url: startUrl,
           }
-        ]
+        ],
+        gcm_sender_id: "103953800507"
       });
   } catch (error) {
     console.error('PWA manifest error:', error);

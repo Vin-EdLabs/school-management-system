@@ -90,6 +90,20 @@ export async function sendPushToStudentParents(
   studentId: number,
   payload: PushPayload
 ) {
+  // Try to get school logo if no icon provided
+  if (!payload.icon) {
+    const settings = await query(
+      `SELECT COALESCE(ss.logo_url, t.logo_url) as logo_url
+       FROM tenants t
+       LEFT JOIN school_settings ss ON ss.tenant_id = t.id
+       WHERE t.id = $1`,
+      [tenantId]
+    ).catch(() => ({ rows: [] as any[] }));
+    if (settings.rows[0]?.logo_url) {
+      payload.icon = settings.rows[0].logo_url;
+    }
+  }
+
   const parentRows = await query(
     `SELECT id
      FROM parent_portal_accounts
@@ -110,6 +124,20 @@ export async function sendPushToTenantParents(
   tenantId: number,
   payload: PushPayload
 ): Promise<{ parentAccounts: number; subscribedAccounts: number }> {
+  // Try to get school logo if no icon provided
+  if (!payload.icon) {
+    const settings = await query(
+      `SELECT COALESCE(ss.logo_url, t.logo_url) as logo_url
+       FROM tenants t
+       LEFT JOIN school_settings ss ON ss.tenant_id = t.id
+       WHERE t.id = $1`,
+      [tenantId]
+    ).catch(() => ({ rows: [] as any[] }));
+    if (settings.rows[0]?.logo_url) {
+      payload.icon = settings.rows[0].logo_url;
+    }
+  }
+
   const parentRows = await query(
     `SELECT id FROM parent_portal_accounts WHERE tenant_id = $1`,
     [tenantId]

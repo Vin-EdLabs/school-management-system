@@ -62,10 +62,6 @@ export async function sendFcmToParentAccount(parentAccountId: number, payload: F
   const unreadCount = await getUnreadCount(parentAccountId);
   const response = await admin.messaging().sendEachForMulticast({
     tokens,
-    notification: {
-      title: payload.title,
-      body: payload.body,
-    },
     data: {
       url: payload.url || '/parent',
       unreadCount: String(unreadCount),
@@ -74,13 +70,6 @@ export async function sendFcmToParentAccount(parentAccountId: number, payload: F
       icon: payload.icon || '',
       badge: payload.badge || payload.icon || '',
       at: String(Date.now()),
-    },
-    android: {
-      priority: 'high',
-      notification: {
-        channelId: 'default',
-        icon: payload.icon || undefined,
-      },
     },
     webpush: {
       headers: {

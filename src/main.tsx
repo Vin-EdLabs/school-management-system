@@ -65,24 +65,19 @@ async function bootstrapTenantBrandingAndManifest() {
       }
     }
 
-    const mRes = await fetch(`${API_BASE}/pwa/manifest`, {
-      credentials: 'include',
-      headers: Object.keys(headers).length ? headers : undefined,
-    });
-    if (mRes.ok) {
-      const manifest = await mRes.json();
-      const blob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
-      const blobUrl = URL.createObjectURL(blob);
-      if (manifestBlobUrl) URL.revokeObjectURL(manifestBlobUrl);
-      manifestBlobUrl = blobUrl;
-      let link = document.querySelector("link[rel='manifest']") as HTMLLinkElement | null;
-      if (!link) {
-        link = document.createElement('link');
-        link.rel = 'manifest';
-        document.head.appendChild(link);
-      }
-      link.href = blobUrl;
+    // Set the manifest URL directly to the API instead of using a Blob URL.
+    // Chrome/Android cannot generate a WebAPK from a blob: URL.
+    const manifestUrl = `${API_BASE}/pwa/manifest?${slug ? `slug=${slug}` : `tenantId=${tenantId || ''}`}`;
+    
+    let link = document.querySelector("link[rel='manifest']") as HTMLLinkElement | null;
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'manifest';
+      document.head.appendChild(link);
     }
+    // Use crossorigin="use-credentials" to ensure cookies/headers are sent if needed,
+    // though for tenant resolution we mostly rely on the Host header or Slug.
+    link.href = manifestUrl;
   } catch {
     // Keep app boot resilient if tenant resolve fails.
   }

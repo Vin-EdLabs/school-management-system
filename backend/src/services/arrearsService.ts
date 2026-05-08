@@ -36,9 +36,16 @@ export async function refreshArrearsForTenant(tenantId: number, overrideTerm?: s
     ? `${current_term} ${current_year}`.trim()
     : current_term;
 
-  // 2. Fetch all students to process
+  // 2. Fetch all academic terms for date mapping
+  const termsRes = await query(
+    'SELECT term_name, year, start_date, end_date FROM academic_terms WHERE tenant_id = $1',
+    [tenantId]
+  );
+  const allTerms = termsRes.rows;
+
+  // 3. Fetch all students to process
   const studentsRes = await query(
-    `SELECT id FROM students WHERE tenant_id = $1`,
+    `SELECT id, date_of_admission FROM students WHERE tenant_id = $1`,
     [tenantId]
   );
 
@@ -68,13 +75,39 @@ export async function refreshArrearsForTenant(tenantId: number, overrideTerm?: s
     );
 
     let legacyArrears = 0;
+    const admissionDate = studentRow.date_of_admission ? new Date(studentRow.date_of_admission) : null;
+
     for (const row of legacyResult.rows) {
       const termStr = row.term || '';
       const match = termStr.match(/\b(20\d{2})\b/);
       const year = match ? parseInt(match[1], 10) : currentYearNum;
       const rowTermNum = parseInt(termStr.match(/Term\s*(\d)/i)?.[1] || '0', 10);
 
-      // Include only if Year is older, OR if same year but Term Number is older
+      // Skip if term ended before admission date
+      if (admissionDate && allTerms.length > 0) {
+        const termData = allTerms.find((t: any) => 
+          (t.term_name === termStr || `${t.term_name} ${t.year}` === termStr)
+        );
+        if (termData && termData.end_date) {
+          const termEndDate = new Date(termData.end_date);
+          if (termEndDate < admissionDate) {
+            continue; // Student joined after this term ended
+          }
+        } else {
+          // Fallback to year/term number check if no date range found
+          const admissionYear = admissionDate.getFullYear();
+          const admissionMonth = admissionDate.getMonth(); // 0-11
+          let admissionTermNum = 1;
+          if (admissionMonth >= 4 && admissionMonth <= 7) admissionTermNum = 2;
+          else if (admissionMonth >= 8) admissionTermNum = 3;
+
+          if (year < admissionYear || (year === admissionYear && rowTermNum < admissionTermNum)) {
+            continue;
+          }
+        }
+      }
+
+      // Include only if Year is older, OR if same year but Term Number is older than CURRENT processing term
       if (year < currentYearNum || (year === currentYearNum && rowTermNum < currentTermNum)) {
         legacyArrears += parseFloat(row.amount);
       }

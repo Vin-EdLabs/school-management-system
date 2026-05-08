@@ -608,6 +608,23 @@ router.post('/push/test', requirePrimaryAdminOrSuperAdmin, async (req: AuthReque
   }
 });
 
+// Sync Arrears for current tenant
+router.post('/sync-arrears', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    if (!tenantId) return res.status(400).json({ error: 'Tenant context required' });
+
+    const { refreshArrearsForTenant } = await import('../services/arrearsService.js');
+    const result = await refreshArrearsForTenant(tenantId);
+    
+    emitTenantDataChanged(tenantId, 'finance-arrears', 'updated');
+    res.json({ message: 'Arrears synchronized successfully', ...result });
+  } catch (error: any) {
+    console.error('Sync arrears error:', error);
+    res.status(500).json({ error: error.message || 'Failed to synchronize arrears' });
+  }
+});
+
 // Reset all school data (Primary Admin only + Password verification)
 router.post('/reset-data', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, res) => {
   const client = await query('BEGIN'); // Start transaction manually via pool won't work easily if we don't have the client

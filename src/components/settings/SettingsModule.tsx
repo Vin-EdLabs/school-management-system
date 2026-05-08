@@ -672,6 +672,39 @@ const SettingsModule = () => {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-8">
+            {/* Arrears Sync Section */}
+            <div className="p-4 rounded-xl border-2 border-amber-500/20 bg-amber-500/5">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <h4 className="font-bold text-amber-700 dark:text-amber-400 flex items-center gap-2">
+                    <RefreshCw className="w-5 h-5" />
+                    Synchronize Arrears
+                  </h4>
+                  <p className="text-sm text-amber-600/80 dark:text-amber-400/80">
+                    Recalculate all student balances and arrears based on their admission dates and fee structures.
+                  </p>
+                </div>
+                <Button 
+                  variant="outline" 
+                  className="border-amber-500/50 hover:bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                  onClick={async () => {
+                    try {
+                      toast({ title: 'Synchronizing...', description: 'Recalculating arrears for all students...' });
+                      const res = await apiService.post<any>('/settings/sync-arrears', {});
+                      toast({ 
+                        title: 'Sync Complete', 
+                        description: `${res.studentsUpdated} student records updated for ${res.currentTerm}.` 
+                      });
+                    } catch (err: any) {
+                      toast({ title: 'Sync Failed', description: err.message, variant: 'destructive' });
+                    }
+                  }}
+                >
+                  Sync Arrears Now
+                </Button>
+              </div>
+            </div>
+
             {/* Export Section */}
             <div className="space-y-4">
               <div>

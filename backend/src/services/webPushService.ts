@@ -1,5 +1,6 @@
 import webpush from 'web-push';
 import { query } from '../db/connection.js';
+import { sendFcmToParentAccount } from './fcmService.js';
 
 export type PushPayload = {
   title: string;
@@ -32,7 +33,7 @@ export function getVapidPublicKey(): string {
 
 export async function sendPushToParentAccount(parentAccountId: number, payload: PushPayload) {
   ensureConfigured();
-  if (!configured) return;
+  const webPushEnabled = configured;
 
   const subs = await query(
     `SELECT endpoint, p256dh, auth
@@ -41,45 +42,47 @@ export async function sendPushToParentAccount(parentAccountId: number, payload: 
     [parentAccountId]
   );
 
-  if (subs.rows.length === 0) return;
+  if (webPushEnabled && subs.rows.length > 0) {
+    const unreadRes = await query(
+      `SELECT COUNT(*)::int AS total
+       FROM parent_notifications
+       WHERE parent_account_id = $1 AND is_read = false`,
+      [parentAccountId]
+    ).catch(() => ({ rows: [{ total: 0 }] as any[] }));
+    const unreadCount = Number(unreadRes.rows[0]?.total || 0);
 
-  const unreadRes = await query(
-    `SELECT COUNT(*)::int AS total
-     FROM parent_notifications
-     WHERE parent_account_id = $1 AND is_read = false`,
-    [parentAccountId]
-  ).catch(() => ({ rows: [{ total: 0 }] as any[] }));
-  const unreadCount = Number(unreadRes.rows[0]?.total || 0);
+    const data = JSON.stringify({
+      title: payload.title,
+      body: payload.body,
+      icon: payload.icon || undefined,
+      badge: payload.badge || payload.icon || undefined,
+      url: payload.url || '/parent',
+      unreadCount,
+      at: Date.now(),
+    });
 
-  const data = JSON.stringify({
-    title: payload.title,
-    body: payload.body,
-    icon: payload.icon || undefined,
-    badge: payload.badge || payload.icon || undefined,
-    url: payload.url || '/parent',
-    unreadCount,
-    at: Date.now(),
-  });
-
-  for (const sub of subs.rows) {
-    const subscription = {
-      endpoint: sub.endpoint,
-      keys: { p256dh: sub.p256dh, auth: sub.auth },
-    };
-    try {
-      await webpush.sendNotification(subscription as any, data);
-    } catch (error: any) {
-      const statusCode = error?.statusCode;
-      if (statusCode === 404 || statusCode === 410) {
-        await query(
-          'DELETE FROM parent_push_subscriptions WHERE parent_account_id = $1 AND endpoint = $2',
-          [parentAccountId, sub.endpoint]
-        ).catch(() => {});
-      } else {
-        console.error('[web-push] send failed:', error?.message || error);
+    for (const sub of subs.rows) {
+      const subscription = {
+        endpoint: sub.endpoint,
+        keys: { p256dh: sub.p256dh, auth: sub.auth },
+      };
+      try {
+        await webpush.sendNotification(subscription as any, data);
+      } catch (error: any) {
+        const statusCode = error?.statusCode;
+        if (statusCode === 404 || statusCode === 410) {
+          await query(
+            'DELETE FROM parent_push_subscriptions WHERE parent_account_id = $1 AND endpoint = $2',
+            [parentAccountId, sub.endpoint]
+          ).catch(() => {});
+        } else {
+          console.error('[web-push] send failed:', error?.message || error);
+        }
       }
     }
   }
+
+  await sendFcmToParentAccount(parentAccountId, payload).catch(() => {});
 }
 
 export async function sendPushToStudentParents(

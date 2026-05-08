@@ -605,6 +605,21 @@ const runMigrations = async () => {
       ON parent_push_subscriptions (parent_account_id)
     `).catch(() => { });
     await client.query(`
+      CREATE TABLE IF NOT EXISTS parent_fcm_tokens (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        parent_account_id INTEGER NOT NULL REFERENCES parent_portal_accounts(id) ON DELETE CASCADE,
+        token TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(parent_account_id, token)
+      )
+    `).catch(() => { });
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_parent_fcm_tokens_parent
+      ON parent_fcm_tokens (parent_account_id)
+    `).catch(() => { });
+    await client.query(`
       CREATE TABLE IF NOT EXISTS parent_notifications (
         id SERIAL PRIMARY KEY,
         tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,

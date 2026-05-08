@@ -11,6 +11,7 @@ import { setTenantContext } from '../middleware/tenant.js';
 import { resolveLedgerTermFromSettings, postFeesForNewTerm, postFeesForNewTermWithArrears } from '../services/ledgerFinanceService.js';
 import { getIO } from '../socket.js';
 import { sendPushToTenantParents } from '../services/webPushService.js';
+import { isFcmConfigured } from '../services/fcmService.js';
 
 const router = express.Router();
 
@@ -521,11 +522,17 @@ router.get('/push/stats', requirePrimaryAdminOrSuperAdmin, async (req: AuthReque
       'SELECT COUNT(*)::int AS total FROM parent_push_subscriptions WHERE tenant_id = $1',
       [tenantId]
     );
+    const fcmTokensRes = await query(
+      'SELECT COUNT(*)::int AS total FROM parent_fcm_tokens WHERE tenant_id = $1',
+      [tenantId]
+    ).catch(() => ({ rows: [{ total: 0 }] as any[] }));
 
     return res.json({
       parentAccounts: Number(parentsRes.rows[0]?.total || 0),
       subscribedAccounts: Number(subscribedRes.rows[0]?.total || 0),
       totalEndpoints: Number(endpointsRes.rows[0]?.total || 0),
+      fcmTokens: Number(fcmTokensRes.rows[0]?.total || 0),
+      fcmConfigured: isFcmConfigured(),
     });
   } catch (error) {
     console.error('Get push stats error:', error);

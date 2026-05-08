@@ -13,12 +13,14 @@ type PushStats = {
   parentAccounts: number;
   subscribedAccounts: number;
   totalEndpoints: number;
+  fcmTokens?: number;
+  fcmConfigured?: boolean;
 };
 
 const PushNotificationsModule: React.FC = () => {
   const { hasAccess } = useAuth();
   const { school } = useSchool();
-  const [stats, setStats] = useState<PushStats>({ parentAccounts: 0, subscribedAccounts: 0, totalEndpoints: 0 });
+  const [stats, setStats] = useState<PushStats>({ parentAccounts: 0, subscribedAccounts: 0, totalEndpoints: 0, fcmTokens: 0, fcmConfigured: false });
   const [loadingStats, setLoadingStats] = useState(false);
   const [sending, setSending] = useState(false);
   const [title, setTitle] = useState('Parent Portal Test Notification');
@@ -33,6 +35,8 @@ const PushNotificationsModule: React.FC = () => {
         parentAccounts: Number(res?.parentAccounts || 0),
         subscribedAccounts: Number(res?.subscribedAccounts || 0),
         totalEndpoints: Number(res?.totalEndpoints || 0),
+        fcmTokens: Number(res?.fcmTokens || 0),
+        fcmConfigured: Boolean(res?.fcmConfigured),
       });
     } catch (err: any) {
       toast({ title: 'Failed to load push stats', description: err?.message, variant: 'destructive' });
@@ -82,7 +86,7 @@ const PushNotificationsModule: React.FC = () => {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader><CardTitle className="text-sm">Parent Accounts</CardTitle></CardHeader>
           <CardContent><p className="text-2xl font-bold">{stats.parentAccounts}</p></CardContent>
@@ -94,6 +98,15 @@ const PushNotificationsModule: React.FC = () => {
         <Card>
           <CardHeader><CardTitle className="text-sm">Total Device Endpoints</CardTitle></CardHeader>
           <CardContent><p className="text-2xl font-bold">{stats.totalEndpoints}</p></CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle className="text-sm">FCM Tokens</CardTitle></CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{stats.fcmTokens || 0}</p>
+            <p className={`text-xs mt-1 ${stats.fcmConfigured ? 'text-green-600' : 'text-amber-600'}`}>
+              {stats.fcmConfigured ? 'Firebase ready' : 'Firebase not configured'}
+            </p>
+          </CardContent>
         </Card>
       </div>
 

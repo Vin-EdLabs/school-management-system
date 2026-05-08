@@ -205,6 +205,45 @@ router.post('/push/unsubscribe', authenticateParent, async (req: ParentRequest, 
   }
 });
 
+router.post('/push/fcm-token', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    const token = String(req.body?.token || '').trim();
+    if (!token) return res.status(400).json({ error: 'token is required' });
+    await query(
+      `INSERT INTO parent_fcm_tokens (tenant_id, parent_account_id, token)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (parent_account_id, token)
+       DO UPDATE SET updated_at = CURRENT_TIMESTAMP`,
+      [req.parent!.tenantId, req.parent!.accountId, token]
+    );
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Parent FCM token save error:', error);
+    return res.status(500).json({ error: 'Failed to save FCM token' });
+  }
+});
+
+router.post('/push/fcm-unsubscribe', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    const token = String(req.body?.token || '').trim();
+    if (!token) {
+      await query(
+        'DELETE FROM parent_fcm_tokens WHERE parent_account_id = $1',
+        [req.parent!.accountId]
+      );
+    } else {
+      await query(
+        'DELETE FROM parent_fcm_tokens WHERE parent_account_id = $1 AND token = $2',
+        [req.parent!.accountId, token]
+      );
+    }
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Parent FCM token remove error:', error);
+    return res.status(500).json({ error: 'Failed to remove FCM token' });
+  }
+});
+
 router.get('/notifications', authenticateParent, async (req: ParentRequest, res) => {
   try {
     const rows = await query(

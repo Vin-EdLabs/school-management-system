@@ -8,6 +8,7 @@ import {
 import ReceiptPrinter from '@/components/common/ReceiptPrinter';
 import { io, Socket } from 'socket.io-client';
 import { detectTenantSlugFromHost } from '@/utils/tenantHost';
+import { getFcmToken, removeFcmToken } from '@/services/firebase';
 
 const API_ROOT = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api').replace('/api', '');
 
@@ -91,6 +92,19 @@ async function ensurePushSubscription(token: string) {
     { method: 'POST', body: JSON.stringify(subscription) },
     token
   ).catch(() => undefined);
+
+  const keyRes = await parentFetch('/parent/push/public-key', {}, token).catch(() => null);
+  const publicKey = keyRes?.publicKey as string | undefined;
+  if (publicKey) {
+    const fcmToken = await getFcmToken(publicKey).catch(() => null);
+    if (fcmToken) {
+      await parentFetch(
+        '/parent/push/fcm-token',
+        { method: 'POST', body: JSON.stringify({ token: fcmToken }) },
+        token
+      ).catch(() => undefined);
+    }
+  }
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -247,6 +261,14 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
           return sub.unsubscribe().catch(() => undefined);
         })
         .catch(() => undefined);
+      const storedFcmToken = localStorage.getItem(`parent_fcm_token_${tenantId}`);
+      if (storedFcmToken) {
+        parentFetch('/parent/push/fcm-unsubscribe', {
+          method: 'POST',
+          body: JSON.stringify({ token: storedFcmToken }),
+        }, token).catch(() => undefined);
+      }
+      removeFcmToken().catch(() => undefined);
     }
     localStorage.removeItem(`parent_token_${tenantId}`);
     localStorage.removeItem(`parent_student_${tenantId}`);
@@ -258,6 +280,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     setAttendance(null);
     setActiveTab('overview');
     setAppNotifications([]);
+    localStorage.removeItem(`parent_fcm_token_${tenantId}`);
   };
 
   const pushNotification = useCallback((title: string, message: string) => {
@@ -389,6 +412,30 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       else if (activeTab === 'attendance') { const d = await parentFetch('/parent/attendance', {}, token); setAttendance(d); }
     } catch { /* silent */ }
     finally { setDataLoading(false); }
+  };
+
+  const hardRefreshApp = async () => {
+    if (!token) return;
+    setDataLoading(true);
+    try {
+      const [financeData, termData, gradesData, attendanceData, meData] = await Promise.all([
+        parentFetch('/parent/finance', {}, token).catch(() => null),
+        parentFetch('/parent/term-report', {}, token).catch(() => null),
+        parentFetch('/parent/grades', {}, token).catch(() => null),
+        parentFetch('/parent/attendance', {}, token).catch(() => null),
+        parentFetch('/parent/me', {}, token).catch(() => null),
+      ]);
+      if (financeData) setFinance(financeData);
+      if (termData) setTermReport(termData);
+      if (gradesData) setGrades(gradesData);
+      if (attendanceData) setAttendance(attendanceData);
+      if (meData) setStudent(meData);
+      await loadServerNotifications(token).catch(() => undefined);
+    } finally {
+      setDataLoading(false);
+      // Force a full page reload so the app reflects all latest server-side changes.
+      window.location.reload();
+    }
   };
 
   const openReceipt = (payment: any) => {
@@ -826,6 +873,16 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         {/* ── Overview tab ── */}
         {activeTab === 'overview' && (
           <div className="space-y-5">
+            <div className="flex justify-end">
+              <button
+                onClick={hardRefreshApp}
+                disabled={dataLoading}
+                className="inline-flex items-center gap-2 rounded-xl border border-purple-200 bg-white px-3.5 py-2 text-sm font-semibold text-purple-700 shadow-sm hover:bg-purple-50 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <RefreshCw className={`w-4 h-4 ${dataLoading ? 'animate-spin' : ''}`} />
+                {dataLoading ? 'Refreshing...' : 'Refresh App'}
+              </button>
+            </div>
             {/* Student card */}
             <div className="bg-gradient-to-br from-purple-600 to-pink-600 rounded-2xl p-5 text-white shadow-xl shadow-purple-200">
               <div className="flex items-start gap-4">

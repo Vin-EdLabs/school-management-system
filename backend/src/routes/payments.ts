@@ -23,14 +23,8 @@ router.use(requireTenant);
 router.use(setTenantContext);
 
 /** Resolve term string for matching fee_structures and payments */
-function resolveTermForMatch(term: string | null, academicYear: string | null): string | null {
-  if (!term) return null;
-  const t = String(term).trim();
-  if (academicYear) {
-    const y = String(academicYear).trim();
-    return `${t} ${y}`;
-  }
-  return t;
+function resolveTermForMatch(term: string | null, _academicYear: string | null): string | null {
+  return term ? String(term).trim() : null;
 }
 
 /** Compute total fees and total paid for a student, return balance (all backend, dynamic) */

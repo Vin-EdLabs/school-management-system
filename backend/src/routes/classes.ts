@@ -111,32 +111,28 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
     // Support both modern schema (class_name) and legacy schema (name)
     let result: any;
     try {
+      // Try most complete schema first
       result = await query(
         `INSERT INTO classes (tenant_id, class_name, name, level, stream, assigned_teacher_id, max_class_size)
          VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-        [
-          tenantId,
-          class_name,
-          class_name,
-          level || null,
-          stream || null,
-          assigned_teacher_id || null,
-          max_class_size || 30,
-        ]
+        [tenantId, class_name, class_name, level || null, stream || null, assigned_teacher_id || null, max_class_size || 30]
       );
-    } catch {
-      result = await query(
-        `INSERT INTO classes (tenant_id, name, level, stream, assigned_teacher_id, max_class_size)
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-        [
-          tenantId,
-          class_name,
-          level || null,
-          stream || null,
-          assigned_teacher_id || null,
-          max_class_size || 30,
-        ]
-      );
+    } catch (err1: any) {
+      try {
+        // Try without 'name' column (modern schema only)
+        result = await query(
+          `INSERT INTO classes (tenant_id, class_name, level, stream, assigned_teacher_id, max_class_size)
+           VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+          [tenantId, class_name, level || null, stream || null, assigned_teacher_id || null, max_class_size || 30]
+        );
+      } catch (err2: any) {
+        // Try without 'class_name' column (legacy schema only)
+        result = await query(
+          `INSERT INTO classes (tenant_id, name, level, stream, assigned_teacher_id, max_class_size)
+           VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+          [tenantId, class_name, level || null, stream || null, assigned_teacher_id || null, max_class_size || 30]
+        );
+      }
     }
     
     // Log creation
@@ -192,32 +188,42 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
     
     let result;
     try {
+      // Try updating both columns for compatibility
       result = await query(
         `UPDATE classes SET ${updateFields.join(', ')} WHERE tenant_id = $${paramCount} AND id = $${paramCount + 1} RETURNING *`,
         values
       );
-    } catch {
-      // Legacy fallback: class_name column may not exist, update using name.
-      result = await query(
-        `UPDATE classes
-         SET name = COALESCE($1, name),
-             level = COALESCE($2, level),
-             stream = COALESCE($3, stream),
-             assigned_teacher_id = COALESCE($4, assigned_teacher_id),
-             max_class_size = COALESCE($5, max_class_size),
-             updated_at = CURRENT_TIMESTAMP
-         WHERE tenant_id = $6 AND id = $7
-         RETURNING *`,
-        [
-          updates.class_name,
-          updates.level,
-          updates.stream,
-          updates.assigned_teacher_id,
-          updates.max_class_size,
-          tenantId,
-          id
-        ]
-      );
+    } catch (err1: any) {
+      try {
+        // Fallback: If 'name' column is missing, remove 'name = $x' from updateFields and try again
+        const modernFields = updateFields.filter(f => !f.startsWith('name ='));
+        result = await query(
+          `UPDATE classes SET ${modernFields.join(', ')} WHERE tenant_id = $${paramCount} AND id = $${paramCount + 1} RETURNING *`,
+          values
+        );
+      } catch (err2: any) {
+        // Legacy fallback: class_name column may not exist, update using name.
+        result = await query(
+          `UPDATE classes
+           SET name = COALESCE($1, name),
+               level = COALESCE($2, level),
+               stream = COALESCE($3, stream),
+               assigned_teacher_id = COALESCE($4, assigned_teacher_id),
+               max_class_size = COALESCE($5, max_class_size),
+               updated_at = CURRENT_TIMESTAMP
+           WHERE tenant_id = $6 AND id = $7
+           RETURNING *`,
+          [
+            updates.class_name || updates.name,
+            updates.level,
+            updates.stream,
+            updates.assigned_teacher_id,
+            updates.max_class_size,
+            tenantId,
+            id
+          ]
+        );
+      }
     }
     
     if (result.rows.length === 0) {

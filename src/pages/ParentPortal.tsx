@@ -2050,58 +2050,90 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         />
       )}
 
-      {/* Account Switcher Modal (Instagram style) */}
+      {/* Account Switcher - Instagram Style Bottom Sheet */}
       {showSwitcher && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowSwitcher(false)} />
-          <div className="relative w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="font-bold text-slate-800">Switch Account</h3>
-              <button onClick={() => setShowSwitcher(false)} className="p-1 hover:bg-slate-100 rounded-full transition-colors">
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300" 
+            onClick={() => setShowSwitcher(false)} 
+          />
+          
+          {/* Sheet */}
+          <div className="relative w-full max-w-lg sm:max-w-sm bg-white rounded-t-[2.5rem] sm:rounded-[2rem] shadow-2xl overflow-hidden animate-in slide-in-from-bottom-full sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-500 ease-out">
+            {/* Mobile Handle */}
+            <div className="sm:hidden flex justify-center pt-3 pb-1">
+              <div className="w-10 h-1 bg-slate-200 rounded-full" />
+            </div>
+
+            <div className="p-5 border-b border-slate-50 flex items-center justify-between">
+              <h3 className="font-bold text-slate-900 text-base">Switch Account</h3>
+              <button 
+                onClick={() => setShowSwitcher(false)} 
+                className="hidden sm:block p-1.5 hover:bg-slate-100 rounded-full transition-colors"
+              >
                 <X className="w-5 h-5 text-slate-400" />
               </button>
             </div>
-            <div className="max-h-[60vh] overflow-y-auto">
-              {linkedAccounts.map((acc) => (
-                <button
-                  key={acc.student.admission_number}
-                  onClick={() => handleSwitchAccount(acc)}
-                  className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-slate-100 group-hover:border-purple-200 transition-colors">
-                      {acc.student.passport_photo_url ? (
-                        <img src={resolveMediaUrl(acc.student.passport_photo_url)!} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full bg-slate-100 flex items-center justify-center text-slate-400 font-bold">
-                          {acc.student.first_name[0]}{acc.student.last_name[0]}
+
+            <div className="max-h-[60vh] overflow-y-auto px-2 py-2">
+              <div className="space-y-1">
+                {linkedAccounts.map((acc) => {
+                  const isActive = acc.student.admission_number === student.admission_number;
+                  return (
+                    <button
+                      key={acc.student.admission_number}
+                      onClick={() => handleSwitchAccount(acc)}
+                      className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all duration-200 ${
+                        isActive 
+                          ? 'bg-purple-50/50 border border-purple-100' 
+                          : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className={`relative w-14 h-14 rounded-2xl overflow-hidden shadow-sm border-2 transition-all duration-300 ${
+                          isActive ? 'border-purple-500 scale-105' : 'border-white'
+                        }`}>
+                          {acc.student.passport_photo_url ? (
+                            <img src={resolveMediaUrl(acc.student.passport_photo_url)!} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full bg-slate-100 flex items-center justify-center text-slate-400 font-black text-lg">
+                              {acc.student.first_name[0]}{acc.student.last_name[0]}
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-left">
+                          <p className={`font-bold text-sm tracking-tight ${isActive ? 'text-purple-900' : 'text-slate-800'}`}>
+                            {acc.student.first_name} {acc.student.last_name}
+                          </p>
+                          <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mt-0.5">
+                            ID: {acc.student.admission_number}
+                          </p>
+                        </div>
+                      </div>
+                      {isActive && (
+                        <div className="w-6 h-6 rounded-full bg-purple-600 flex items-center justify-center shadow-lg shadow-purple-200">
+                          <CheckCircle2 className="w-4 h-4 text-white" />
                         </div>
                       )}
-                    </div>
-                    <div className="text-left">
-                      <p className="font-semibold text-slate-800 text-sm">{acc.student.first_name} {acc.student.last_name}</p>
-                      <p className="text-xs text-slate-500">{acc.student.admission_number}</p>
-                    </div>
-                  </div>
-                  {acc.student.admission_number === student.admission_number ? (
-                    <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center">
-                      <CheckCircle2 className="w-4 h-4 text-white" />
-                    </div>
-                  ) : (
-                    <ChevronRight className="w-5 h-5 text-slate-300" />
-                  )}
-                </button>
-              ))}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <div className="p-3 bg-slate-50">
+
+            <div className="p-5 bg-slate-50/50 border-t border-slate-100">
               <button
                 onClick={() => {
                   setShowSwitcher(false);
                   setIsAddingAccount(true);
                 }}
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-white border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+                className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-white border border-slate-200 text-sm font-bold text-slate-700 hover:bg-slate-100 hover:border-slate-300 transition-all active:scale-[0.98] shadow-sm"
               >
-                <Plus className="w-4 h-4" /> Add Child Account
+                <div className="w-6 h-6 rounded-full border-2 border-slate-200 flex items-center justify-center">
+                  <Plus className="w-3.5 h-3.5" />
+                </div>
+                Add Sibling Account
               </button>
             </div>
           </div>

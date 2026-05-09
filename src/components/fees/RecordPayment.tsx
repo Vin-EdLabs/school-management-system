@@ -23,11 +23,33 @@ const RecordPayment = () => {
     amount: '',
     date: new Date().toISOString().split('T')[0],
     paymentMethod: 'Cash',
-    notes: ''
+    notes: '',
+    term: currentTerm || ''
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [showReceipt, setShowReceipt] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
+
+  // Load available terms for selection
+  const [availableTerms, setAvailableTerms] = useState<any[]>([]);
+  React.useEffect(() => {
+    const fetchTerms = async () => {
+      try {
+        const terms = await apiService.get<any[]>('/finance/terms');
+        setAvailableTerms(terms || []);
+      } catch (err) {
+        console.error('Failed to fetch terms:', err);
+      }
+    };
+    fetchTerms();
+  }, []);
+
+  // Update form term when active term changes
+  React.useEffect(() => {
+    if (currentTerm && !formData.term) {
+      setFormData(prev => ({ ...prev, term: currentTerm }));
+    }
+  }, [currentTerm]);
 
   const filteredStudents = students.filter(student =>
     student.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -88,7 +110,7 @@ const RecordPayment = () => {
     const paymentResult = await addPayment({
       ...formData,
       amount: paymentAmount,
-      term: currentTerm,
+      term: formData.term || currentTerm,
       academicYear: currentYear
     });
     
@@ -108,7 +130,7 @@ const RecordPayment = () => {
       amount: paymentAmount,
       date: formData.date,
       paymentMethod: formData.paymentMethod,
-      term: currentTerm,
+      term: formData.term || currentTerm,
       year: currentYear,
       receiptNumber: createdPayment.receiptNumber || `R${Date.now().toString().slice(-8)}`,
       notes: formData.notes,
@@ -250,6 +272,29 @@ const RecordPayment = () => {
                 )}
               </div>
             )}
+
+            <div className="space-y-2">
+              <Label htmlFor="term">Academic Term</Label>
+              <Select
+                value={formData.term}
+                onValueChange={(value) => handleInputChange('term', value)}
+              >
+                <SelectTrigger id="term">
+                  <SelectValue placeholder="Select Term" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableTerms.length > 0 ? (
+                    availableTerms.map((t) => (
+                      <SelectItem key={t.id} value={`${t.name} ${t.academic_year_name}`}>
+                        {t.name} {t.academic_year_name}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value={currentTerm}>{currentTerm}</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">

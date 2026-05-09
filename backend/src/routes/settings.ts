@@ -234,6 +234,17 @@ router.put('/', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, res) =
       }
     }
 
+    // Auto-refresh arrears in background whenever settings change (especially term changes)
+    (async () => {
+      try {
+        const { refreshArrearsForTenant } = await import('../services/arrearsService.js');
+        await refreshArrearsForTenant(tenantId);
+        console.log(`[settings] Arrears refreshed for tenant ${tenantId} due to settings update`);
+      } catch (err) {
+        console.error('[settings] Failed to auto-refresh arrears on settings update:', err);
+      }
+    })();
+
     emitTenantDataChanged(tenantId, 'settings', 'updated');
     res.json(saved ?? result.rows[0]);
   } catch (error) {

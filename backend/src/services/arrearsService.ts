@@ -74,6 +74,11 @@ export async function refreshArrearsForTenant(tenantId: number, overrideTerm?: s
       [studentId, tenantId, fullTerm, current_term, termOnly]
     );
 
+    // Identify which terms have payments (signaling the student is being billed for them)
+    const termsWithPayments = new Set(
+      legacyResult.rows.filter(r => r.type === 'payment').map(r => r.term)
+    );
+
     let legacyArrears = 0;
     const admissionDate = studentRow.date_of_admission ? new Date(studentRow.date_of_admission) : null;
 
@@ -84,7 +89,8 @@ export async function refreshArrearsForTenant(tenantId: number, overrideTerm?: s
       const rowTermNum = parseInt(termStr.match(/Term\s*(\d)/i)?.[1] || '0', 10);
 
       // Skip if term ended before admission date
-      if (admissionDate && allTerms.length > 0) {
+      // UNLESS the student has explicitly made a payment for this term
+      if (admissionDate && allTerms.length > 0 && !termsWithPayments.has(termStr)) {
         const termData = allTerms.find((t: any) => 
           (t.term_name === termStr || `${t.term_name} ${t.year}` === termStr)
         );

@@ -12,7 +12,7 @@ import FeesModule from './fees/FeesModule';
 import IncomeModule from './income/IncomeModule';
 import ExpensesModule from './expenses/ExpensesModule';
 import PayrollModule from './payroll/PayrollModule';
-import ReportsModule from './reports/ReportsModule';
+import AdvancedReports from './reports/AdvancedReports';
 import SettingsModule from './settings/SettingsModule';
 import UsersModule from './users/UsersModule';
 import AuditModule from './audit/AuditModule';
@@ -97,7 +97,7 @@ const Dashboard = () => {
       case 'payroll':
         return <PayrollModule />;
       case 'reports':
-        return <ReportsModule />;
+        return <AdvancedReports />;
       case 'print-fee-status':
         return <PrintFeeStatusModule />;
       case 'users':

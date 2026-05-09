@@ -65,7 +65,7 @@ router.post('/login', resolveTenant, async (req: ParentRequest & TenantRequest, 
     // Also try admission_number in case school uses that format instead
     const studentRow = await query(
       `SELECT id, first_name, last_name, student_id AS admission_number,
-              class_assigned_id
+              class_assigned_id, passport_photo_url, guardian_name, guardian_contact
        FROM students
        WHERE tenant_id = $1
          AND (LOWER(student_id) = LOWER($2) OR LOWER(admission_number) = LOWER($2))`,
@@ -120,6 +120,9 @@ router.post('/login', resolveTenant, async (req: ParentRequest & TenantRequest, 
         lastName: student.last_name,
         admissionNumber: student.admission_number,
         classId: student.class_assigned_id,
+        passportPhotoUrl: student.passport_photo_url,
+        guardianName: student.guardian_name,
+        guardianContact: student.guardian_contact,
       },
     });
   } catch (error: any) {
@@ -316,7 +319,7 @@ router.get('/me', authenticateParent, async (req: ParentRequest, res) => {
            NULLIF(at.year::text, '')
          ) AS current_year,
          pa.must_change_password, pa.last_login,
-         s.is_beneficiary, s.beneficiary_type, s.discount_type, s.discount_value, s.beneficiary_notes
+         s.is_beneficiary, s.beneficiary_type, s.discount_type, s.discount_value, s.beneficiary_notes, s.guardian_name, s.guardian_contact
        FROM students s
        LEFT JOIN classes c ON s.class_assigned_id = c.id
        LEFT JOIN tenants t ON s.tenant_id = t.id
@@ -340,6 +343,75 @@ router.get('/me', authenticateParent, async (req: ParentRequest, res) => {
   } catch (error) {
     console.error('Parent me error:', error);
     res.status(500).json({ error: 'Failed to fetch student info' });
+  }
+});
+ 
+// ── POST /api/parent/link-siblings ───────────────────────────────────────────
+// Links two students as siblings in the database if they share the same guardian.
+ 
+router.post('/link-siblings', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    const { studentId: currentStudentId, tenantId } = req.parent!;
+    const { targetStudentId } = req.body;
+ 
+    if (!targetStudentId) {
+      return res.status(400).json({ error: 'targetStudentId is required' });
+    }
+ 
+    // Fetch both students
+    const students = await query(
+      `SELECT id, first_name, last_name, guardian_name, guardian_contact, names_of_siblings, number_of_siblings
+       FROM students
+       WHERE id IN ($1, $2) AND tenant_id = $3`,
+      [currentStudentId, targetStudentId, tenantId]
+    );
+ 
+    if (students.rows.length < 2) {
+      return res.status(404).json({ error: 'One or both students not found' });
+    }
+ 
+    const studentA = students.rows.find(s => s.id === currentStudentId);
+    const studentB = students.rows.find(s => s.id === targetStudentId);
+ 
+    // Verify guardian name matches (case-insensitive, trimmed)
+    const gA = (studentA.guardian_name || '').trim().toLowerCase();
+    const gB = (studentB.guardian_name || '').trim().toLowerCase();
+ 
+    // Verify guardian contact matches (normalized digits only)
+    const cA = (studentA.guardian_contact || '').replace(/\D/g, '');
+    const cB = (studentB.guardian_contact || '').replace(/\D/g, '');
+ 
+    if (!gA || !gB || gA !== gB) {
+      return res.status(403).json({ error: 'Guardian name mismatch.' });
+    }
+    
+    if (!cA || !cB || cA !== cB) {
+      return res.status(403).json({ error: 'Guardian phone number mismatch.' });
+    }
+ 
+    // Update both records
+    const updateStudent = async (student: any, sibling: any) => {
+      const existingSiblings = (student.names_of_siblings || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+      const siblingFullName = `${sibling.first_name} ${sibling.last_name}`;
+      
+      if (!existingSiblings.includes(siblingFullName)) {
+        existingSiblings.push(siblingFullName);
+        await query(
+          `UPDATE students 
+           SET names_of_siblings = $1, number_of_siblings = $2, updated_at = NOW()
+           WHERE id = $3`,
+          [existingSiblings.join(', '), existingSiblings.length, student.id]
+        );
+      }
+    };
+ 
+    await updateStudent(studentA, studentB);
+    await updateStudent(studentB, studentA);
+ 
+    res.json({ success: true, message: 'Siblings linked successfully' });
+  } catch (error) {
+    console.error('Link siblings error:', error);
+    res.status(500).json({ error: 'Failed to link siblings' });
   }
 });
 

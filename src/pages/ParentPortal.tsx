@@ -147,6 +147,14 @@ interface StudentInfo {
   discount_type?: string | null;
   discount_value?: number;
   beneficiary_notes?: string | null;
+  guardian_name?: string | null;
+  guardian_contact?: string | null;
+  id?: number;
+}
+
+interface LinkedAccount {
+  token: string;
+  student: StudentInfo;
 }
 
 type Tab = 'overview' | 'grades' | 'position' | 'finance' | 'attendance' | 'desk';
@@ -242,9 +250,50 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   // Photo lightbox
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
+  // Multi-account switcher
+  const [linkedAccounts, setLinkedAccounts] = useState<LinkedAccount[]>(() => {
+    const saved = localStorage.getItem(`parent_accounts_${tenantId}`);
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [showSwitcher, setShowSwitcher] = useState(false);
+  const [isAddingAccount, setIsAddingAccount] = useState(false);
+
   const persist = (t: string, s: StudentInfo) => {
     localStorage.setItem(`parent_token_${tenantId}`, t);
     localStorage.setItem(`parent_student_${tenantId}`, JSON.stringify(s));
+
+    // Update linked accounts list
+    setLinkedAccounts(prev => {
+      const existingIdx = prev.findIndex(acc => acc.student.admission_number === s.admission_number);
+      let updated;
+      if (existingIdx >= 0) {
+        updated = [...prev];
+        updated[existingIdx] = { token: t, student: s };
+      } else {
+        updated = [...prev, { token: t, student: s }];
+      }
+      localStorage.setItem(`parent_accounts_${tenantId}`, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleSwitchAccount = async (acc: LinkedAccount) => {
+    // Clear current student data
+    setGrades(null);
+    setTermReport(null);
+    setFinance(null);
+    setAttendance(null);
+    setDeskMessages([]);
+    
+    // Set new context
+    setToken(acc.token);
+    setStudent(acc.student);
+    setMustChangePassword(acc.student.must_change_password);
+    localStorage.setItem(`parent_token_${tenantId}`, acc.token);
+    localStorage.setItem(`parent_student_${tenantId}`, JSON.stringify(acc.student));
+    
+    setShowSwitcher(false);
+    setActiveTab('overview');
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -256,12 +305,41 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         method: 'POST',
         body: JSON.stringify({ tenantId, studentId: loginAdmission.trim(), password: loginPassword }),
       });
+      
+      // Fetch full student info for the NEW student
+      const me = await parentFetch('/parent/me', {}, data.token);
+
+      // IF we are adding an account, verify guardian name & phone matches the CURRENT student
+      if (isAddingAccount && student) {
+        const currentGuardian = (student.guardian_name || '').trim().toLowerCase();
+        const newGuardian = (me.guardian_name || '').trim().toLowerCase();
+
+        const normalizePhone = (p: string | null | undefined) => (p || '').replace(/\D/g, '');
+        const currentPhone = normalizePhone(student.guardian_contact);
+        const newPhone = normalizePhone(me.guardian_contact);
+
+        if (!currentGuardian || !newGuardian || currentGuardian !== newGuardian) {
+          throw new Error(`Guardian mismatch. This session is for ${student.guardian_name || 'N/A'}, but this child belongs to ${me.guardian_name || 'N/A'}.`);
+        }
+
+        if (!currentPhone || !newPhone || currentPhone !== newPhone) {
+          throw new Error(`Guardian contact mismatch. Phone numbers must match to link siblings automatically.`);
+        }
+
+        // Call backend to link them as siblings officially in the database
+        await parentFetch('/parent/link-siblings', {
+          method: 'POST',
+          body: JSON.stringify({ targetStudentId: me.id }),
+        }, token!); 
+      }
+
       setToken(data.token);
       setMustChangePassword(data.mustChangePassword);
-      // Fetch full student info
-      const me = await parentFetch('/parent/me', {}, data.token);
       setStudent(me);
       persist(data.token, me);
+      setIsAddingAccount(false);
+      setLoginAdmission('');
+      setLoginPassword('');
     } catch (err: any) {
       setLoginError(err.message || 'Login failed');
     } finally {
@@ -318,17 +396,29 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       }
       removeFcmToken().catch(() => undefined);
     }
-    localStorage.removeItem(`parent_token_${tenantId}`);
-    localStorage.removeItem(`parent_student_${tenantId}`);
-    setToken(null);
-    setStudent(null);
-    setGrades(null);
-    setTermReport(null);
-    setFinance(null);
-    setAttendance(null);
-    setActiveTab('overview');
-    setAppNotifications([]);
-    localStorage.removeItem(`parent_fcm_token_${tenantId}`);
+
+    // Remove only the current account from linked accounts
+    const updatedAccounts = linkedAccounts.filter(acc => acc.student.admission_number !== student?.admission_number);
+    setLinkedAccounts(updatedAccounts);
+    localStorage.setItem(`parent_accounts_${tenantId}`, JSON.stringify(updatedAccounts));
+
+    if (updatedAccounts.length > 0) {
+      // Switch to the next available account
+      handleSwitchAccount(updatedAccounts[0]);
+    } else {
+      // Complete logout
+      localStorage.removeItem(`parent_token_${tenantId}`);
+      localStorage.removeItem(`parent_student_${tenantId}`);
+      setToken(null);
+      setStudent(null);
+      setGrades(null);
+      setTermReport(null);
+      setFinance(null);
+      setAttendance(null);
+      setActiveTab('overview');
+      setAppNotifications([]);
+      localStorage.removeItem(`parent_fcm_token_${tenantId}`);
+    }
   };
 
   const pushNotification = useCallback((title: string, message: string) => {
@@ -635,7 +725,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   // ── SCREENS ──
 
   // ── Login screen ─────────────────────────────────────────────────────────────
-  if (!token || !student) {
+  if (!token || !student || isAddingAccount) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4" style={{ background: premiumLoginGradient }}>
         <div className="w-full max-w-md">
@@ -668,11 +758,21 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                 <h1 className="text-2xl font-bold text-white">{schoolName || 'School'} — ScholarNerve Parent Portal</h1>
               </>
             )}
-            <p className="text-slate-400 text-sm mt-3">Use your child's Student ID to log in</p>
+            <p className="text-slate-400 text-sm mt-3">
+              {isAddingAccount ? 'Log in to add another child account' : "Use your child's Student ID to log in"}
+            </p>
           </div>
 
           {/* Card */}
-          <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 shadow-2xl">
+          <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 shadow-2xl relative">
+            {isAddingAccount && (
+              <button
+                onClick={() => setIsAddingAccount(false)}
+                className="absolute -top-12 right-0 text-white/60 hover:text-white flex items-center gap-1 text-sm transition-colors"
+              >
+                <X className="w-4 h-4" /> Cancel
+              </button>
+            )}
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-200 mb-1.5">Student ID</label>
@@ -834,24 +934,31 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                 ? <img src={resolvedLogo} alt="" className="w-full h-full object-contain p-0.5" />
                 : <GraduationCap className="w-4 h-4 text-white" />}
             </div>
-            {/* Student photo thumbnail */}
+            {/* Student profile switcher trigger */}
             <button
-              onClick={() => studentPhotoUrl && setLightboxUrl(studentPhotoUrl)}
-              className={`w-8 h-8 rounded-full overflow-hidden shrink-0 border-2 border-purple-400/60 flex items-center justify-center text-xs font-bold text-white ${studentPhotoUrl ? 'cursor-pointer hover:border-white transition-colors' : 'cursor-default bg-gradient-to-br from-purple-400 to-pink-400'}`}
-              title={studentPhotoUrl ? 'View photo' : undefined}
+              onClick={() => setShowSwitcher(true)}
+              className="flex items-center gap-3 min-w-0 hover:bg-white/5 p-1 rounded-xl transition-colors text-left"
             >
-              {studentPhotoUrl
-                ? <img src={studentPhotoUrl} alt="" className="w-full h-full object-cover" />
-                : `${student.first_name[0]}${student.last_name[0]}`}
+              {/* Student photo thumbnail */}
+              <div
+                className={`w-8 h-8 rounded-full overflow-hidden shrink-0 border-2 border-purple-400/60 flex items-center justify-center text-xs font-bold text-white ${studentPhotoUrl ? 'bg-white' : 'bg-gradient-to-br from-purple-400 to-pink-400'}`}
+              >
+                {studentPhotoUrl
+                  ? <img src={studentPhotoUrl} alt="" className="w-full h-full object-cover" />
+                  : `${student.first_name[0]}${student.last_name[0]}`}
+              </div>
+              <div className="min-w-0 flex items-center gap-1.5">
+                <div className="min-w-0">
+                  <p className="text-white font-semibold text-sm truncate">
+                    {student.first_name} {student.last_name}
+                  </p>
+                  <p className="text-purple-300 text-[10px] truncate uppercase tracking-tight">
+                    {student.class_name}
+                  </p>
+                </div>
+                <ChevronRight className="w-3.5 h-3.5 text-white/40 shrink-0 rotate-90" />
+              </div>
             </button>
-            <div className="min-w-0">
-              <p className="text-white font-semibold text-sm truncate">
-                {student.first_name} {student.last_name}
-              </p>
-              <p className="text-purple-300 text-xs truncate">
-                {student.class_name} · {student.current_term} {student.current_year}
-              </p>
-            </div>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -1941,6 +2048,64 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
           schoolNameOverride={student.school_name || schoolName}
           logoUrlOverride={student.school_logo_url || schoolLogoUrl}
         />
+      )}
+
+      {/* Account Switcher Modal (Instagram style) */}
+      {showSwitcher && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowSwitcher(false)} />
+          <div className="relative w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="font-bold text-slate-800">Switch Account</h3>
+              <button onClick={() => setShowSwitcher(false)} className="p-1 hover:bg-slate-100 rounded-full transition-colors">
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+            <div className="max-h-[60vh] overflow-y-auto">
+              {linkedAccounts.map((acc) => (
+                <button
+                  key={acc.student.admission_number}
+                  onClick={() => handleSwitchAccount(acc)}
+                  className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-slate-100 group-hover:border-purple-200 transition-colors">
+                      {acc.student.passport_photo_url ? (
+                        <img src={resolveMediaUrl(acc.student.passport_photo_url)!} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full bg-slate-100 flex items-center justify-center text-slate-400 font-bold">
+                          {acc.student.first_name[0]}{acc.student.last_name[0]}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-left">
+                      <p className="font-semibold text-slate-800 text-sm">{acc.student.first_name} {acc.student.last_name}</p>
+                      <p className="text-xs text-slate-500">{acc.student.admission_number}</p>
+                    </div>
+                  </div>
+                  {acc.student.admission_number === student.admission_number ? (
+                    <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center">
+                      <CheckCircle2 className="w-4 h-4 text-white" />
+                    </div>
+                  ) : (
+                    <ChevronRight className="w-5 h-5 text-slate-300" />
+                  )}
+                </button>
+              ))}
+            </div>
+            <div className="p-3 bg-slate-50">
+              <button
+                onClick={() => {
+                  setShowSwitcher(false);
+                  setIsAddingAccount(true);
+                }}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-white border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+              >
+                <Plus className="w-4 h-4" /> Add Child Account
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

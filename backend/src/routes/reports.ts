@@ -245,4 +245,296 @@ router.get('/fee-status', async (req: AuthRequest, res) => {
   }
 });
 
+/**
+ * GET /api/reports/financial-summary
+ */
+router.get('/financial-summary', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const { term, year } = req.query;
+
+    const summaryQuery = `
+      WITH ledger_totals AS (
+        SELECT 
+          COALESCE(SUM(CASE WHEN entry_type = 'term_fee' OR entry_type = 'arrears' THEN debit ELSE 0 END), 0)::numeric as total_expected,
+          COALESCE(SUM(credit), 0)::numeric as total_collected
+        FROM student_ledger
+        WHERE tenant_id = $1
+      ),
+      expense_total AS (
+        SELECT COALESCE(SUM(amount), 0)::numeric as total_expenses FROM expenses WHERE tenant_id = $1
+      ),
+      income_total AS (
+        SELECT COALESCE(SUM(amount), 0)::numeric as total_other_income FROM income WHERE tenant_id = $1
+      )
+      SELECT 
+        lt.total_expected, 
+        lt.total_collected,
+        et.total_expenses,
+        it.total_other_income
+      FROM ledger_totals lt, expense_total et, income_total it
+    `;
+
+    const result = await query(summaryQuery, [tenantId]);
+    const row = result.rows[0];
+
+    const totalExpected = parseFloat(row.total_expected) || 0;
+    const collected = parseFloat(row.total_collected) || 0;
+    const expenses = parseFloat(row.total_expenses) || 0;
+    const otherIncome = parseFloat(row.total_other_income) || 0;
+
+    res.json({
+      totalExpected,
+      collected,
+      outstanding: totalExpected - collected,
+      netBalance: (collected + otherIncome) - expenses,
+      collectionRate: totalExpected > 0 ? (collected / totalExpected) * 100 : 0
+    });
+  } catch (error) {
+    console.error('Financial summary error:', error);
+    res.status(500).json({ error: 'Failed to fetch financial summary' });
+  }
+});
+
+/**
+ * GET /api/reports/fees-by-class
+ */
+router.get('/fees-by-class', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    
+    const feesByClassQuery = `
+      SELECT 
+        c.id, 
+        c.class_name as name,
+        COUNT(s.id)::int as students,
+        COALESCE(SUM(CASE WHEN sl.entry_type = 'term_fee' OR sl.entry_type = 'arrears' THEN sl.debit ELSE 0 END), 0)::numeric as expected,
+        COALESCE(SUM(sl.credit), 0)::numeric as collected,
+        (COALESCE(SUM(CASE WHEN sl.entry_type = 'term_fee' OR sl.entry_type = 'arrears' THEN sl.debit ELSE 0 END), 0) - COALESCE(SUM(sl.credit), 0))::numeric as outstanding
+      FROM classes c
+      LEFT JOIN students s ON s.class_assigned_id = c.id
+      LEFT JOIN student_ledger sl ON sl.student_id = s.id AND sl.tenant_id = c.tenant_id
+      WHERE c.tenant_id = $1
+      GROUP BY c.id, c.class_name
+      ORDER BY c.class_name
+    `;
+
+    const result = await query(feesByClassQuery, [tenantId]);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Fees by class error:', error);
+    res.status(500).json({ error: 'Failed to fetch fees by class' });
+  }
+});
+
+/**
+ * GET /api/reports/outstanding-fees
+ */
+router.get('/outstanding-fees', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    
+    const outstandingQuery = `
+      SELECT 
+        s.id,
+        s.first_name || ' ' || s.last_name as name,
+        c.class_name as class,
+        (COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(sl.credit), 0))::numeric as amount,
+        EXTRACT(DAY FROM (NOW() - MIN(sl.created_at)))::int as days
+      FROM students s
+      JOIN classes c ON s.class_assigned_id = c.id
+      JOIN student_ledger sl ON sl.student_id = s.id AND sl.tenant_id = s.tenant_id
+      WHERE s.tenant_id = $1
+      GROUP BY s.id, s.first_name, s.last_name, c.class_name
+      HAVING (COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(sl.credit), 0)) > 0
+      ORDER BY amount DESC
+      LIMIT 50
+    `;
+
+    const result = await query(outstandingQuery, [tenantId]);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Outstanding fees error:', error);
+    res.status(500).json({ error: 'Failed to fetch outstanding fees' });
+  }
+});
+
+/**
+ * GET /api/reports/expenditure
+ */
+router.get('/expenditure', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    
+    const expenditureQuery = `
+      SELECT 
+        category as name,
+        SUM(amount)::numeric as value
+      FROM expenses
+      WHERE tenant_id = $1
+      GROUP BY category
+      ORDER BY value DESC
+    `;
+
+    const result = await query(expenditureQuery, [tenantId]);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Expenditure error:', error);
+    res.status(500).json({ error: 'Failed to fetch expenditure report' });
+  }
+});
+
+/**
+ * GET /api/reports/payroll-summary
+ */
+router.get('/payroll-summary', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const month = req.query.month || new Date().getMonth() + 1;
+    const year = req.query.year || new Date().getFullYear();
+
+    const payrollQuery = `
+      SELECT 
+        t.full_name as name,
+        'Teacher' as role,
+        t.monthly_salary as basic,
+        (t.monthly_salary * 0.055) as ssnit,
+        (t.monthly_salary - (t.monthly_salary * 0.055)) as net
+      FROM teachers t
+      WHERE t.tenant_id = $1 AND t.employment_status = 'active'
+    `;
+
+    const result = await query(payrollQuery, [tenantId]);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Payroll summary error:', error);
+    res.status(500).json({ error: 'Failed to fetch payroll summary' });
+  }
+});
+
+/**
+ * GET /api/reports/academic-performance
+ */
+router.get('/academic-performance', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    
+    const performanceQuery = `
+      SELECT 
+        c.class_name as name,
+        AVG(sg.score)::numeric as score
+      FROM classes c
+      JOIN grade_assignments ga ON ga.class_id = c.id
+      JOIN student_grades sg ON sg.assignment_id = ga.id
+      WHERE c.tenant_id = $1
+      GROUP BY c.id, c.class_name
+      ORDER BY score DESC
+    `;
+
+    const topPerformersQuery = `
+      SELECT 
+        s.first_name || ' ' || s.last_name as name,
+        c.class_name as class,
+        AVG(sg.score)::numeric as score
+      FROM students s
+      JOIN classes c ON s.class_assigned_id = c.id
+      JOIN student_grades sg ON sg.student_id = s.id
+      WHERE s.tenant_id = $1
+      GROUP BY s.id, s.first_name, s.last_name, c.class_name
+      ORDER BY score DESC
+      LIMIT 10
+    `;
+
+    const [classPerformance, topPerformers] = await Promise.all([
+      query(performanceQuery, [tenantId]),
+      query(topPerformersQuery, [tenantId])
+    ]);
+
+    const scores = classPerformance.rows.map((r: any) => parseFloat(r.score));
+    const schoolAverage = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+
+    res.json({
+      schoolAverage,
+      classPerformance: classPerformance.rows,
+      topPerformers: topPerformers.rows
+    });
+  } catch (error) {
+    console.error('Academic performance error:', error);
+    res.status(500).json({ error: 'Failed to fetch academic performance' });
+  }
+});
+
+/**
+ * GET /api/reports/attendance-summary
+ */
+router.get('/attendance-summary', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    
+    const summaryQuery = `
+      SELECT 
+        attendance_date as date,
+        COUNT(CASE WHEN present THEN 1 END)::int as present,
+        COUNT(*)::int as total
+      FROM attendance
+      WHERE tenant_id = $1
+      GROUP BY attendance_date
+      ORDER BY attendance_date DESC
+      LIMIT 30
+    `;
+
+    const result = await query(summaryQuery, [tenantId]);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Attendance summary error:', error);
+    res.status(500).json({ error: 'Failed to fetch attendance summary' });
+  }
+});
+
+/**
+ * GET /api/reports/income-vs-expenditure
+ */
+router.get('/income-vs-expenditure', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    
+    const monthlyQuery = `
+      WITH months AS (
+        SELECT generate_series(
+          date_trunc('year', now()),
+          date_trunc('year', now()) + interval '11 months',
+          interval '1 month'
+        ) AS month
+      ),
+      monthly_income AS (
+        SELECT date_trunc('month', income_date) as month, SUM(amount) as amount
+        FROM income WHERE tenant_id = $1 GROUP BY 1
+      ),
+      monthly_fees AS (
+        SELECT date_trunc('month', created_at) as month, SUM(credit) as amount
+        FROM student_ledger WHERE tenant_id = $1 AND entry_type = 'payment' GROUP BY 1
+      ),
+      monthly_expenses AS (
+        SELECT date_trunc('month', payment_date) as month, SUM(amount) as amount
+        FROM expenses WHERE tenant_id = $1 GROUP BY 1
+      )
+      SELECT 
+        to_char(m.month, 'Mon') as name,
+        COALESCE(mi.amount, 0) + COALESCE(mf.amount, 0) as income,
+        COALESCE(me.amount, 0) as expense
+      FROM months m
+      LEFT JOIN monthly_income mi ON mi.month = m.month
+      LEFT JOIN monthly_fees mf ON mf.month = m.month
+      LEFT JOIN monthly_expenses me ON me.month = m.month
+      ORDER BY m.month
+    `;
+
+    const result = await query(monthlyQuery, [tenantId]);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Income vs expenditure error:', error);
+    res.status(500).json({ error: 'Failed to fetch income vs expenditure report' });
+  }
+});
+
 export default router;

@@ -116,8 +116,6 @@ export async function refreshArrearsForTenant(tenantId: number, overrideTerm?: s
     }
 
     // B. Calculate Ledger Arrears (from student_ledger)
-    const ledgerArrearsRes = await query(
-    // B. Calculate Ledger Arrears (from student_ledger)
     // ONLY include terms that are strictly BEFORE the current one
     const ledgerResult = await query(
       `SELECT SUM(COALESCE(debit, 0) - COALESCE(credit, 0)) as arrears 

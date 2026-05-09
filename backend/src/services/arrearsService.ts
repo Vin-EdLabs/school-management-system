@@ -83,7 +83,7 @@ export async function refreshArrearsForTenant(tenantId: number, overrideTerm?: s
     const admissionDate = studentRow.date_of_admission ? new Date(studentRow.date_of_admission) : null;
 
     for (const row of legacyResult.rows) {
-      const termStr = row.term || '';
+      const termStr = (row.term || '').trim();
       const match = termStr.match(/\b(20\d{2})\b/);
       const year = match ? parseInt(match[1], 10) : currentYearNum;
       const rowTermNum = parseInt(termStr.match(/Term\s*(\d)/i)?.[1] || '0', 10);
@@ -97,48 +97,43 @@ export async function refreshArrearsForTenant(tenantId: number, overrideTerm?: s
         if (termData && termData.end_date) {
           const termEndDate = new Date(termData.end_date);
           if (termEndDate < admissionDate) {
-            continue; // Student joined after this term ended
-          }
-        } else {
-          // Fallback to year/term number check if no date range found
-          const admissionYear = admissionDate.getFullYear();
-          const admissionMonth = admissionDate.getMonth(); // 0-11
-          let admissionTermNum = 1;
-          if (admissionMonth >= 4 && admissionMonth <= 7) admissionTermNum = 2;
-          else if (admissionMonth >= 8) admissionTermNum = 3;
-
-          if (year < admissionYear || (year === admissionYear && rowTermNum < admissionTermNum)) {
-            continue;
+            console.log(`[arrears] Skipping ${termStr} (ended ${termEndDate.toISOString()} before admission ${admissionDate.toISOString()})`);
+            continue; 
           }
         }
       }
 
       // Include only if Year is older, OR if same year but Term Number is older than CURRENT processing term
-      if (year < currentYearNum || (year === currentYearNum && rowTermNum < currentTermNum)) {
-        legacyArrears += parseFloat(row.amount);
+      const isHistorical = year < currentYearNum || (year === currentYearNum && rowTermNum < currentTermNum);
+      
+      if (isHistorical) {
+        const amt = parseFloat(row.amount) || 0;
+        legacyArrears += amt;
+        console.log(`[arrears] student=${studentId} term=${termStr} type=${row.type} amount=${amt} -> Running total: ${legacyArrears}`);
+      } else {
+        console.log(`[arrears] student=${studentId} term=${termStr} is current/future (skipped)`);
       }
     }
 
     // B. Calculate Ledger Arrears (from student_ledger)
     const ledgerArrearsRes = await query(
-      `SELECT (COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0))::numeric AS balance
-       FROM student_ledger sl
-       JOIN terms t ON sl.term_id = t.id
-       JOIN academic_years ay ON t.academic_year_id = ay.id
-       WHERE sl.tenant_id = $1 AND sl.student_id = $2
-         AND t.id NOT IN (
-           SELECT id FROM terms WHERE tenant_id = $1 AND (name = $3 OR name = $4 OR name = $5)
-         )
+    // B. Calculate Ledger Arrears (from student_ledger)
+    // ONLY include terms that are strictly BEFORE the current one
+    const ledgerResult = await query(
+      `SELECT SUM(COALESCE(debit, 0) - COALESCE(credit, 0)) as arrears 
+       FROM student_ledger l
+       LEFT JOIN academic_terms t ON l.term_id = t.id
+       WHERE l.tenant_id = $1 AND l.student_id = $2
          AND (
-           CAST(ay.name AS INTEGER) < $6
-           OR (CAST(ay.name AS INTEGER) = $6 AND (
-              CAST(substring(t.name from 'Term\\s*(\\d)') AS INTEGER) < $7
+           CAST(t.year AS INTEGER) < $3 
+           OR (CAST(t.year AS INTEGER) = $3 AND (
+             CAST(REGEXP_REPLACE(t.term_name, '[^0-9]', '', 'g') AS INTEGER) < $4
            ))
          )`,
-      [tenantId, studentId, fullTerm, current_term, termOnly, currentYearNum, currentTermNum]
+      [tenantId, studentId, currentYearNum, currentTermNum]
     );
-    const ledgerArrears = parseFloat(ledgerArrearsRes.rows[0].balance) || 0;
 
+    const ledgerArrears = ledgerResult.rows[0]?.arrears ? parseFloat(ledgerResult.rows[0].arrears) : 0;
     const totalArrears = legacyArrears + ledgerArrears;
 
     // 3. Upsert into term_arrears
@@ -147,11 +142,12 @@ export async function refreshArrearsForTenant(tenantId: number, overrideTerm?: s
         `INSERT INTO term_arrears (tenant_id, student_id, current_term, amount)
          VALUES ($1, $2, $3, $4)
          ON CONFLICT (tenant_id, student_id, current_term) 
-         DO UPDATE SET amount = EXCLUDED.amount`,
+         DO UPDATE SET amount = EXCLUDED.amount, created_at = NOW()`,
         [tenantId, studentId, fullTerm, totalArrears]
       );
       updatedCount++;
     } else {
+      // If total is 0, clean up any existing arrears row
       await query(
         `DELETE FROM term_arrears 
          WHERE tenant_id = $1 AND student_id = $2 AND current_term = $3`,

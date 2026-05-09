@@ -58,7 +58,20 @@ router.post('/post-fees', async (req: AuthRequest, res: Response) => {
       validatedBody.academicYearId,
       validatedBody.termId
     );
-    emitTenantDataChanged(getTenantId(req), 'finance-fees', 'updated');
+    
+    // Trigger background arrears refresh
+    const tenantId = getTenantId(req);
+    (async () => {
+      try {
+        const { refreshArrearsForTenant } = await import('../services/arrearsService.js');
+        await refreshArrearsForTenant(tenantId);
+        emitTenantDataChanged(tenantId, 'finance-arrears', 'updated');
+      } catch (e) {
+        console.error('Background arrears refresh error (post-fees):', e);
+      }
+    })();
+
+    emitTenantDataChanged(tenantId, 'finance-fees', 'updated');
     return res.json(result);
   } catch (error: any) {
     if (error instanceof z.ZodError) {
@@ -82,12 +95,24 @@ router.post('/payment', async (req: AuthRequest, res: Response) => {
       receiptNumber: z.string().optional(),
     });
     const validatedBody = schema.parse(req.body);
+    const tenantId = getTenantId(req);
     const paymentData = {
       ...validatedBody,
-      tenantId: getTenantId(req),
+      tenantId,
     };
     const payment = await recordPayment(paymentData);
-    const tenantId = getTenantId(req);
+    
+    // Trigger background arrears refresh
+    (async () => {
+      try {
+        const { refreshArrearsForTenant } = await import('../services/arrearsService.js');
+        await refreshArrearsForTenant(tenantId);
+        emitTenantDataChanged(tenantId, 'finance-arrears', 'updated');
+      } catch (e) {
+        console.error('Background arrears refresh error (payment):', e);
+      }
+    })();
+
     emitTenantDataChanged(tenantId, 'finance-payment', 'created');
 
     // Push for finance-ledger payment path (this is commonly used in production).

@@ -241,9 +241,9 @@ const AttendanceModule = () => {
 
   if (teacherClasses.length === 0 && !loading) {
     return (
-      <div className="p-6">
+      <div className="px-4 py-5 sm:p-6 max-w-7xl mx-auto w-full">
         <Card>
-          <CardContent className="p-8 text-center">
+          <CardContent className="p-6 sm:p-8 text-center">
             <ClipboardCheck className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-foreground mb-2">No Classes Found</h3>
             <p className="text-muted-foreground">{isAdminViewer ? 'No classes have been created yet.' : "You don't have any classes assigned yet. Please contact the administrator."}</p>
@@ -254,18 +254,18 @@ const AttendanceModule = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background p-6 space-y-8 max-w-7xl mx-auto">
+    <div className="min-h-0 bg-background px-4 py-5 sm:p-6 space-y-5 sm:space-y-8 max-w-7xl mx-auto w-full">
       {/* Header Section */}
-      <div className="text-center space-y-4">
-        <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl mb-4 shadow-lg shadow-emerald-500/10">
-          <ClipboardCheck className="h-8 w-8 text-white" />
+      <div className="text-center sm:text-center space-y-3 sm:space-y-4">
+        <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl mb-2 sm:mb-4 shadow-lg shadow-emerald-500/10">
+          <ClipboardCheck className="h-7 w-7 sm:h-8 sm:w-8 text-white" />
         </div>
         <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent px-1">
             Student Attendance
           </h1>
-          <p className="text-lg text-muted-foreground mt-2 max-w-2xl mx-auto">
-            {isAdminViewer ? 'View and track attendance history across all classes' : 'Effortlessly mark and manage student attendance with real-time tracking'}
+          <p className="text-sm sm:text-base text-muted-foreground mt-2 max-w-2xl mx-auto px-1">
+            {isAdminViewer ? 'View and track attendance across all classes' : 'Mark attendance quickly — optimized for your phone'}
           </p>
         </div>
         {isAdminViewer && (
@@ -278,16 +278,16 @@ const AttendanceModule = () => {
       </div>
 
       {/* Class Selector Card */}
-      <Card className="border-border shadow-2xl bg-card/90 backdrop-blur-md rounded-3xl overflow-hidden hover:shadow-emerald-500/10 transition-all duration-500">
-        <CardContent className="p-8">
-          <div className="flex flex-col md:flex-row items-center gap-6">
-            <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl flex items-center justify-center shrink-0">
+      <Card className="border-border shadow-2xl bg-card/90 backdrop-blur-md rounded-2xl sm:rounded-3xl overflow-hidden hover:shadow-emerald-500/10 transition-all duration-500">
+        <CardContent className="p-4 sm:p-8">
+          <div className="flex flex-col md:flex-row items-center gap-4 sm:gap-6">
+            <div className="w-11 h-11 sm:w-12 sm:h-12 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl flex items-center justify-center shrink-0">
                <School className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
             </div>
             <div className="flex-1 space-y-2 w-full text-center md:text-left">
-              <Label className="text-sm font-bold text-muted-foreground uppercase tracking-widest">Select Target Class</Label>
+              <Label className="text-xs sm:text-sm font-bold text-muted-foreground uppercase tracking-widest">Select class</Label>
               <Select value={selectedClassId} onValueChange={v => { setSelectedClassId(v); setTrackerStudentId(''); setTrackerRecords([]); }}>
-                <SelectTrigger className="h-14 rounded-2xl border-2 border-border bg-background hover:border-emerald-200 dark:hover:border-emerald-800 focus:ring-4 focus:ring-emerald-50 dark:focus:ring-emerald-900/20 transition-all text-lg font-semibold">
+                <SelectTrigger className="h-12 sm:h-14 min-h-[48px] rounded-2xl border-2 border-border bg-background hover:border-emerald-200 dark:hover:border-emerald-800 focus:ring-4 focus:ring-emerald-50 dark:focus:ring-emerald-900/20 transition-all text-base sm:text-lg font-semibold">
                   <SelectValue placeholder="Which class are you marking?" />
                 </SelectTrigger>
                 <SelectContent className="rounded-2xl border-2 border-border shadow-2xl">
@@ -306,16 +306,17 @@ const AttendanceModule = () => {
       {selectedClassId && (
         <>
           {/* Tabs */}
-          <div className="flex gap-0 border-b">
+          <div className="flex gap-0 border-b -mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto touch-pan-x">
             {[
-              { key: 'take', icon: ClipboardCheck, label: isAdminViewer ? 'View Attendance' : 'Take Attendance' },
-              { key: 'history', icon: History, label: 'Attendance History', badge: history.length > 0 ? history.length : undefined },
-              { key: 'tracker', icon: UserCheck, label: 'Student Tracker' },
+              { key: 'take', icon: ClipboardCheck, label: isAdminViewer ? 'View' : 'Take' },
+              { key: 'history', icon: History, label: 'History', badge: history.length > 0 ? history.length : undefined },
+              { key: 'tracker', icon: UserCheck, label: 'Tracker' },
             ].map(tab => (
               <button
                 key={tab.key}
+                type="button"
                 onClick={() => setActiveTab(tab.key as any)}
-                className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                className={`flex items-center gap-1.5 px-3 sm:px-4 min-h-[48px] shrink-0 text-sm font-medium border-b-2 transition-colors whitespace-nowrap touch-manipulation ${
                   activeTab === tab.key
                     ? 'border-green-600 text-green-700'
                     : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -332,7 +333,8 @@ const AttendanceModule = () => {
 
           {/* ── TAKE ATTENDANCE TAB ── */}
           {activeTab === 'take' && (
-            <div className="space-y-4">
+            <>
+            <div className={`space-y-4 ${!isAdminViewer ? 'pb-24 sm:pb-0' : ''}`}>
               <Card>
                 <CardContent className="pt-4">
                   <div className="space-y-2">
@@ -341,7 +343,7 @@ const AttendanceModule = () => {
                       type="date"
                       value={selectedDate}
                       onChange={(e) => setSelectedDate(e.target.value)}
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      className="flex h-12 min-h-[48px] w-full rounded-xl border border-input bg-background px-3 py-2 text-base sm:text-sm touch-manipulation"
                     />
                   </div>
                 </CardContent>
@@ -373,18 +375,19 @@ const AttendanceModule = () => {
               </Card>
 
               <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between flex-wrap gap-2">
-                    <span className="text-base">
-                      Student Attendance
-                      <span className="ml-2 text-sm font-normal text-muted-foreground">
-                        — {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                <CardHeader className="space-y-2">
+                  <CardTitle className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
+                    <span className="text-base leading-snug min-w-0">
+                      <span className="block sm:inline">Student attendance</span>
+                      <span className="block sm:inline sm:ml-2 text-sm font-normal text-muted-foreground">
+                        <span className="sm:hidden">{new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+                        <span className="hidden sm:inline">— {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
                       </span>
                     </span>
                     {!isAdminViewer && (
-                      <Button onClick={handleSaveAttendance} disabled={saving} size="sm">
+                      <Button onClick={handleSaveAttendance} disabled={saving} size="sm" className="hidden sm:inline-flex shrink-0 touch-manipulation">
                         <Save className="w-4 h-4 mr-2" />
-                        {saving ? 'Saving…' : 'Save Attendance'}
+                        {saving ? 'Saving…' : 'Save'}
                       </Button>
                     )}
                   </CardTitle>
@@ -405,7 +408,7 @@ const AttendanceModule = () => {
                         return (
                           <div
                             key={student.id}
-                            className={`flex items-center justify-between p-3 rounded-lg border transition-colors ${
+                            className={`flex flex-col gap-3 p-3 sm:p-3 sm:flex-row sm:items-center sm:justify-between rounded-xl border transition-colors touch-manipulation ${
                               status === true
                                 ? 'bg-green-50 border-green-200'
                                 : status === false
@@ -413,47 +416,49 @@ const AttendanceModule = () => {
                                 : 'bg-card border-border'
                             }`}
                           >
-                            <div className="flex items-center gap-3">
-                              <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold ${
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-white text-sm font-bold ${
                                 status === true ? 'bg-green-500' : status === false ? 'bg-red-400' : 'bg-gray-400'
                               }`}>
                                 {student.firstName.charAt(0)}{student.lastName.charAt(0)}
                               </div>
-                              <div>
-                                <p className="font-medium text-foreground">{student.firstName} {student.lastName}</p>
+                              <div className="min-w-0">
+                                <p className="font-medium text-foreground truncate">{student.firstName} {student.lastName}</p>
                                 <p className="text-xs text-muted-foreground">ID: {student.studentId}</p>
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-stretch sm:items-center gap-2 w-full sm:w-auto sm:shrink-0">
                               {isAdminViewer ? (
                                 <Badge
                                   variant={status === false ? 'destructive' : status === true ? 'default' : 'outline'}
-                                  className={status === true ? 'bg-green-600' : ''}
+                                  className={`justify-center py-2 ${status === true ? 'bg-green-600' : ''}`}
                                 >
                                   {status === true ? 'Present' : status === false ? 'Absent' : 'Not recorded'}
                                 </Badge>
                               ) : (
                                 <>
                                   <button
+                                    type="button"
                                     onClick={() => handleAttendanceChange(student.id, true)}
-                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                                    className={`flex flex-1 sm:flex-initial items-center justify-center gap-1.5 min-h-[44px] px-3 rounded-xl text-sm font-medium border transition-colors touch-manipulation active:scale-[0.98] ${
                                       status === true
                                         ? 'bg-green-600 text-white border-green-600'
                                         : 'bg-background text-muted-foreground border-input hover:border-green-400 dark:hover:border-green-800 hover:text-green-700 dark:hover:text-green-400'
                                     }`}
                                   >
-                                    <CheckCircle className="w-3.5 h-3.5" /> Present
+                                    <CheckCircle className="w-4 h-4 shrink-0" /> Present
                                   </button>
                                   <button
+                                    type="button"
                                     onClick={() => handleAttendanceChange(student.id, false)}
-                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                                    className={`flex flex-1 sm:flex-initial items-center justify-center gap-1.5 min-h-[44px] px-3 rounded-xl text-sm font-medium border transition-colors touch-manipulation active:scale-[0.98] ${
                                       status === false
                                         ? 'bg-red-600 text-white border-red-600'
                                         : 'bg-background text-muted-foreground border-input hover:border-red-400 dark:hover:border-red-800 hover:text-red-600 dark:hover:text-red-400'
                                     }`}
                                   >
-                                    <XCircle className="w-3.5 h-3.5" /> Absent
+                                    <XCircle className="w-4 h-4 shrink-0" /> Absent
                                   </button>
                                 </>
                               )}
@@ -466,6 +471,15 @@ const AttendanceModule = () => {
                 </CardContent>
               </Card>
             </div>
+            {!isAdminViewer && (
+              <div className="sm:hidden fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 backdrop-blur-md px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(0,0,0,0.06)] dark:shadow-[0_-8px_24px_rgba(0,0,0,0.25)]">
+                <Button className="w-full h-12 text-base font-semibold touch-manipulation" onClick={handleSaveAttendance} disabled={saving}>
+                  <Save className="w-4 h-4 mr-2" />
+                  {saving ? 'Saving…' : 'Save attendance'}
+                </Button>
+              </div>
+            )}
+            </>
           )}
 
           {/* ── HISTORY TAB ── */}

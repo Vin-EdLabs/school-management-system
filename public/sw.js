@@ -1,4 +1,4 @@
-const CACHE_NAME = 'scholarnerve-parent-v2';
+const CACHE_NAME = 'scholarnerve-app-v3';
 const APP_SHELL = ['/', '/index.html', '/site.webmanifest'];
 
 // Intercept manifest.json requests to provide dynamic manifest from backend
@@ -6,13 +6,12 @@ const APP_SHELL = ['/', '/index.html', '/site.webmanifest'];
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (url.pathname === '/manifest.json') {
-    const tenantId = url.searchParams.get('tenantId');
-    const slug = url.searchParams.get('slug');
-    const apiBase = 'https://scholarnerveserver.onrender.com/api'; // Fallback for production
-    
-    let apiUrl = `${apiBase}/pwa/manifest`;
-    if (slug) apiUrl += `?slug=${slug}`;
-    else if (tenantId) apiUrl += `?tenantId=${tenantId}`;
+    const apiBase =
+      self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1'
+        ? 'http://localhost:3001/api'
+        : 'https://scholarnerveserver.onrender.com/api';
+    const qs = url.search || '';
+    const apiUrl = `${apiBase}/pwa/manifest${qs}`;
 
     event.respondWith(
       fetch(apiUrl)
@@ -54,6 +53,7 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
+  if (url.pathname === '/manifest.json') return;
 
   // Never serve API from stale cache; always prefer fresh data.
   const isApiRequest = url.pathname.startsWith('/api/');

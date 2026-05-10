@@ -74,6 +74,7 @@ const LoginPage = () => {
         <PwaInstallButton
           variant="outline"
           size="icon"
+          logoUrl={logoUrl}
           className="h-10 w-10 rounded-xl border-slate-200 bg-white/95 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50"
         />
       </div>

@@ -60,14 +60,14 @@ const TeacherProfileModule = () => {
   }, [schoolId]);
 
   if (loading) {
-    return <div className="p-6 animate-pulse text-slate-500">Loading profile...</div>;
+    return <div className="px-4 py-5 sm:p-6 animate-pulse text-slate-500">Loading profile...</div>;
   }
 
   if (!profile) {
     return (
-      <div className="p-6">
+      <div className="px-4 py-5 sm:p-6">
         <Card>
-          <CardContent className="p-8 text-center">
+          <CardContent className="p-6 sm:p-8 text-center">
             <User className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">Profile Not Found</h3>
             <p className="text-gray-500">Your profile is not set up. Please contact the administrator.</p>
@@ -78,14 +78,14 @@ const TeacherProfileModule = () => {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center gap-3">
-        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center">
+    <div className="px-4 py-5 sm:p-6 space-y-5 sm:space-y-6 max-w-4xl mx-auto w-full">
+      <div className="flex items-start gap-3">
+        <div className="w-11 h-11 sm:w-12 sm:h-12 shrink-0 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center">
           <User className="w-6 h-6 text-white" />
         </div>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">My Profile</h1>
-          <p className="text-gray-600">Your account and work information</p>
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-gray-100">My Profile</h1>
+          <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400">Your account and work information</p>
         </div>
       </div>
 
@@ -97,11 +97,11 @@ const TeacherProfileModule = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="flex justify-between py-2 border-b"><span className="text-gray-600">Full Name</span><span className="font-medium">{profile.full_name}</span></div>
-            <div className="flex justify-between py-2 border-b"><span className="text-gray-600">Staff ID</span><span className="font-mono">{profile.staff_id}</span></div>
-            <div className="flex justify-between py-2 border-b"><span className="text-gray-600">Email</span><span>{profile.email || '—'}</span></div>
-            <div className="flex justify-between py-2 border-b"><span className="text-gray-600">Phone</span><span>{profile.phone_number || '—'}</span></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+            <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between sm:items-baseline py-2 border-b"><span className="text-gray-600 text-sm shrink-0">Full Name</span><span className="font-medium text-right sm:text-left break-words">{profile.full_name}</span></div>
+            <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between sm:items-baseline py-2 border-b"><span className="text-gray-600 text-sm shrink-0">Staff ID</span><span className="font-mono text-right sm:text-left break-all">{profile.staff_id}</span></div>
+            <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between sm:items-baseline py-2 border-b"><span className="text-gray-600 text-sm shrink-0">Email</span><span className="text-right sm:text-left break-all">{profile.email || '—'}</span></div>
+            <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between sm:items-baseline py-2 border-b"><span className="text-gray-600 text-sm shrink-0">Phone</span><span className="text-right sm:text-left">{profile.phone_number || '—'}</span></div>
           </div>
           <div>
             <p className="text-sm text-gray-600 mb-2">Classes Assigned</p>

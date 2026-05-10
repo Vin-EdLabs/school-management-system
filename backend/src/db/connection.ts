@@ -606,6 +606,26 @@ const runMigrations = async () => {
       ON parent_push_subscriptions (parent_account_id)
     `).catch(() => { });
     await client.query(`
+      CREATE TABLE IF NOT EXISTS staff_user_push_subscriptions (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        endpoint TEXT NOT NULL,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, endpoint)
+      )
+    `).catch(() => { });
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_staff_user_push_tenant
+      ON staff_user_push_subscriptions (tenant_id)
+    `).catch(() => { });
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_staff_user_push_user
+      ON staff_user_push_subscriptions (user_id)
+    `).catch(() => { });
+    await client.query(`
       CREATE TABLE IF NOT EXISTS parent_fcm_tokens (
         id SERIAL PRIMARY KEY,
         tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,

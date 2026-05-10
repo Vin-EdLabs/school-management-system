@@ -10,7 +10,12 @@ import { requireRole, requirePrimaryAdminOrSuperAdmin } from '../middleware/auth
 import { setTenantContext } from '../middleware/tenant.js';
 import { resolveLedgerTermFromSettings, postFeesForNewTerm, postFeesForNewTermWithArrears } from '../services/ledgerFinanceService.js';
 import { getIO } from '../socket.js';
-import { sendPushToTenantParents, sendPushToStudentsParents, sendPushToClassParents } from '../services/webPushService.js';
+import {
+  sendPushToTenantParents,
+  sendPushToStudentsParents,
+  sendPushToClassParents,
+  sendPushToTenantStaff,
+} from '../services/webPushService.js';
 import { isFcmConfigured } from '../services/fcmService.js';
 
 const router = express.Router();
@@ -558,12 +563,29 @@ router.get('/push/stats', requirePrimaryAdminOrSuperAdmin, async (req: AuthReque
       [tenantId]
     ).catch(() => ({ rows: [{ total: 0 }] as any[] }));
 
+    const staffUsersRes = await query(
+      `SELECT COUNT(*)::int AS total FROM users
+       WHERE tenant_id = $1 AND role IN ('teacher', 'staff') AND is_active = true`,
+      [tenantId]
+    ).catch(() => ({ rows: [{ total: 0 }] as any[] }));
+    const staffSubsUsersRes = await query(
+      `SELECT COUNT(DISTINCT user_id)::int AS total FROM staff_user_push_subscriptions WHERE tenant_id = $1`,
+      [tenantId]
+    ).catch(() => ({ rows: [{ total: 0 }] as any[] }));
+    const staffEndpointsRes = await query(
+      'SELECT COUNT(*)::int AS total FROM staff_user_push_subscriptions WHERE tenant_id = $1',
+      [tenantId]
+    ).catch(() => ({ rows: [{ total: 0 }] as any[] }));
+
     return res.json({
       parentAccounts: Number(parentsRes.rows[0]?.total || 0),
       subscribedAccounts: Number(subscribedRes.rows[0]?.total || 0),
       totalEndpoints: Number(endpointsRes.rows[0]?.total || 0),
       fcmTokens: Number(fcmTokensRes.rows[0]?.total || 0),
       fcmConfigured: isFcmConfigured(),
+      staffUserAccounts: Number(staffUsersRes.rows[0]?.total || 0),
+      staffSubscribedUsers: Number(staffSubsUsersRes.rows[0]?.total || 0),
+      staffPushEndpoints: Number(staffEndpointsRes.rows[0]?.total || 0),
     });
   } catch (error) {
     console.error('Get push stats error:', error);
@@ -583,13 +605,36 @@ router.post('/push/test', requirePrimaryAdminOrSuperAdmin, async (req: AuthReque
     ).slice(0, 300);
 
     const audience = String(req.body?.audience || 'all').toLowerCase();
-    const pushPayload = { title, body, url: `/portal/${tenantId}` as string };
+    const pushPayloadParents = { title, body, url: `/portal/${tenantId}` as string };
+    const pushPayloadStaff = { title, body, url: `/school/${tenantId}` as string };
 
-    let stats: { parentAccounts: number; subscribedAccounts: number };
+    let stats: {
+      parentAccounts?: number;
+      subscribedAccounts?: number;
+      staffUserAccounts?: number;
+      subscribedUserAccounts?: number;
+      subscribedDevices?: number;
+    };
     let targetStudentIds: number[] | undefined;
     let targetClassId: number | undefined;
 
-    if (audience === 'students' || audience === 'student') {
+    if (audience === 'staff') {
+      stats = await sendPushToTenantStaff(tenantId, pushPayloadStaff);
+      try {
+        const io = getIO();
+        io.to(`tenant:${tenantId}`).emit('tenant-data-changed', {
+          tenantId,
+          entity: 'admin-staff-test-push',
+          action: 'created',
+          title,
+          body,
+          at: Date.now(),
+          audience: 'staff',
+        });
+      } catch {
+        /* ignore */
+      }
+    } else if (audience === 'students' || audience === 'student') {
       let ids: number[] = [];
       if (Array.isArray(req.body?.studentIds)) {
         ids = (req.body.studentIds as unknown[])
@@ -604,7 +649,7 @@ router.post('/push/test', requirePrimaryAdminOrSuperAdmin, async (req: AuthReque
         return res.status(400).json({ error: 'studentIds is required (database student ids), at least one' });
       }
       try {
-        stats = await sendPushToStudentsParents(tenantId, ids, pushPayload);
+        stats = await sendPushToStudentsParents(tenantId, ids, pushPayloadParents);
       } catch (e: any) {
         if (e?.statusCode === 404) {
           return res.status(404).json({ error: e?.message || 'One or more students not found' });
@@ -618,7 +663,7 @@ router.post('/push/test', requirePrimaryAdminOrSuperAdmin, async (req: AuthReque
         return res.status(400).json({ error: 'classId is required when audience is class' });
       }
       try {
-        stats = await sendPushToClassParents(tenantId, classId, pushPayload);
+        stats = await sendPushToClassParents(tenantId, classId, pushPayloadParents);
       } catch (e: any) {
         if (e?.statusCode === 404 || e?.message === 'Class not found') {
           return res.status(404).json({ error: 'Class not found' });
@@ -627,25 +672,27 @@ router.post('/push/test', requirePrimaryAdminOrSuperAdmin, async (req: AuthReque
       }
       targetClassId = classId;
     } else {
-      stats = await sendPushToTenantParents(tenantId, pushPayload);
+      stats = await sendPushToTenantParents(tenantId, pushPayloadParents);
     }
 
     // Realtime in-app banner for open parent sessions (filtered on client when targeted).
-    try {
-      const io = getIO();
-      io.to(`tenant:${tenantId}`).emit('tenant-data-changed', {
-        tenantId,
-        entity: 'admin-test-push',
-        action: 'created',
-        title,
-        body,
-        at: Date.now(),
-        audience: audience === 'class' ? 'class' : audience === 'students' || audience === 'student' ? 'students' : 'all',
-        ...(targetStudentIds && targetStudentIds.length ? { targetStudentIds } : {}),
-        ...(targetClassId != null ? { targetClassId } : {}),
-      });
-    } catch {
-      // ignore realtime emit failures; web push path is primary
+    if (audience !== 'staff') {
+      try {
+        const io = getIO();
+        io.to(`tenant:${tenantId}`).emit('tenant-data-changed', {
+          tenantId,
+          entity: 'admin-test-push',
+          action: 'created',
+          title,
+          body,
+          at: Date.now(),
+          audience: audience === 'class' ? 'class' : audience === 'students' || audience === 'student' ? 'students' : 'all',
+          ...(targetStudentIds && targetStudentIds.length ? { targetStudentIds } : {}),
+          ...(targetClassId != null ? { targetClassId } : {}),
+        });
+      } catch {
+        // ignore realtime emit failures; web push path is primary
+      }
     }
 
     await query(
@@ -657,7 +704,14 @@ router.post('/push/test', requirePrimaryAdminOrSuperAdmin, async (req: AuthReque
         'SETTINGS',
         JSON.stringify({
           title,
-          audience: audience === 'class' ? 'class' : audience === 'students' || audience === 'student' ? 'students' : 'all',
+          audience:
+            audience === 'staff'
+              ? 'staff'
+              : audience === 'class'
+                ? 'class'
+                : audience === 'students' || audience === 'student'
+                  ? 'students'
+                  : 'all',
           targetStudentIds,
           targetClassId,
           ...stats,
@@ -668,7 +722,14 @@ router.post('/push/test', requirePrimaryAdminOrSuperAdmin, async (req: AuthReque
     return res.json({
       success: true,
       message: 'Test push sent',
-      audience: audience === 'class' ? 'class' : audience === 'students' || audience === 'student' ? 'students' : 'all',
+      audience:
+        audience === 'staff'
+          ? 'staff'
+          : audience === 'class'
+            ? 'class'
+            : audience === 'students' || audience === 'student'
+              ? 'students'
+              : 'all',
       ...stats,
     });
   } catch (error) {

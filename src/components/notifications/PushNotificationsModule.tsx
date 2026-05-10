@@ -13,7 +13,7 @@ import { useSchool } from '@/contexts/SchoolContext';
 import { useData } from '@/contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { BellRing, RefreshCw, Send, Users, ListChecks, GraduationCap, Search } from 'lucide-react';
+import { BellRing, RefreshCw, Send, Users, ListChecks, GraduationCap, Search, Megaphone } from 'lucide-react';
 
 type PushStats = {
   parentAccounts: number;
@@ -21,9 +21,12 @@ type PushStats = {
   totalEndpoints: number;
   fcmTokens?: number;
   fcmConfigured?: boolean;
+  staffUserAccounts?: number;
+  staffSubscribedUsers?: number;
+  staffPushEndpoints?: number;
 };
 
-type Audience = 'all' | 'students' | 'class';
+type Audience = 'all' | 'students' | 'class' | 'staff';
 
 function studentMatchesSearch(
   s: {
@@ -78,6 +81,9 @@ const PushNotificationsModule: React.FC = () => {
     totalEndpoints: 0,
     fcmTokens: 0,
     fcmConfigured: false,
+    staffUserAccounts: 0,
+    staffSubscribedUsers: 0,
+    staffPushEndpoints: 0,
   });
   const [loadingStats, setLoadingStats] = useState(false);
   const [sending, setSending] = useState(false);
@@ -140,6 +146,9 @@ const PushNotificationsModule: React.FC = () => {
         totalEndpoints: Number(res?.totalEndpoints || 0),
         fcmTokens: Number(res?.fcmTokens || 0),
         fcmConfigured: Boolean(res?.fcmConfigured),
+        staffUserAccounts: Number(res?.staffUserAccounts || 0),
+        staffSubscribedUsers: Number(res?.staffSubscribedUsers || 0),
+        staffPushEndpoints: Number(res?.staffPushEndpoints || 0),
       });
     } catch (err: any) {
       toast({ title: 'Failed to load push stats', description: err?.message, variant: 'destructive' });
@@ -187,16 +196,25 @@ const PushNotificationsModule: React.FC = () => {
         parentAccounts?: number;
         subscribedAccounts?: number;
         audience?: string;
+        staffUserAccounts?: number;
+        subscribedUserAccounts?: number;
+        subscribedDevices?: number;
       }>('/settings/push/test', body);
       const scope =
-        res.audience === 'students'
-          ? 'selected students’ parents'
-          : res.audience === 'class'
-            ? 'parents in the selected class'
-            : 'all parents';
+        res.audience === 'staff'
+          ? 'teachers and staff (school app)'
+          : res.audience === 'students'
+            ? 'selected students’ parents'
+            : res.audience === 'class'
+              ? 'parents in the selected class'
+              : 'all parents';
+      const description =
+        res.audience === 'staff'
+          ? `Sent to ${scope}: ${res.staffUserAccounts ?? 0} staff/teacher account(s), ${res.subscribedUserAccounts ?? 0} with at least one device, ${res.subscribedDevices ?? 0} push endpoint(s).`
+          : `Sent to ${scope}: ${res.parentAccounts ?? 0} parent account(s), ${res.subscribedAccounts ?? 0} with an active device subscription.`;
       toast({
         title: 'Notification sent',
-        description: `Sent to ${scope}: ${res.parentAccounts ?? 0} parent account(s), ${res.subscribedAccounts ?? 0} with an active device subscription.`,
+        description,
       });
       await loadStats();
     } catch (err: any) {
@@ -227,6 +245,12 @@ const PushNotificationsModule: React.FC = () => {
       label: 'One class',
       hint: 'Parents of all students currently assigned to the class',
     },
+    {
+      value: 'staff',
+      icon: <Megaphone className="h-5 w-5 shrink-0 text-indigo-600" />,
+      label: 'Teachers & staff',
+      hint: 'Teacher and payroll staff accounts using the school app (not parents)',
+    },
   ];
 
   return (
@@ -239,7 +263,8 @@ const PushNotificationsModule: React.FC = () => {
           <div className="min-w-0">
             <h1 className="text-3xl lg:text-4xl font-bold tracking-tight text-gray-900">Push notifications</h1>
             <p className="text-gray-600 mt-2 text-base lg:text-lg max-w-3xl">
-              Send messages to parent devices (web push / Firebase). Choose who should receive each message.
+              Send web push to parents (parent portal) or to teachers and payroll staff (school app). Same VAPID keys;
+              staff must open the school app once and allow notifications to register their device.
             </p>
           </div>
         </div>
@@ -287,6 +312,33 @@ const PushNotificationsModule: React.FC = () => {
         </Card>
       </div>
 
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 lg:gap-6">
+        <Card className="border-slate-200/80 shadow-sm min-h-[120px]">
+          <CardHeader className="pb-2 pt-5 px-6">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Teacher &amp; staff accounts</CardTitle>
+          </CardHeader>
+          <CardContent className="px-6 pb-5">
+            <p className="text-3xl lg:text-4xl font-semibold tabular-nums">{stats.staffUserAccounts ?? 0}</p>
+          </CardContent>
+        </Card>
+        <Card className="border-slate-200/80 shadow-sm min-h-[120px]">
+          <CardHeader className="pb-2 pt-5 px-6">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Staff with push enabled</CardTitle>
+          </CardHeader>
+          <CardContent className="px-6 pb-5">
+            <p className="text-3xl lg:text-4xl font-semibold tabular-nums">{stats.staffSubscribedUsers ?? 0}</p>
+          </CardContent>
+        </Card>
+        <Card className="border-slate-200/80 shadow-sm min-h-[120px]">
+          <CardHeader className="pb-2 pt-5 px-6">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Staff push endpoints</CardTitle>
+          </CardHeader>
+          <CardContent className="px-6 pb-5">
+            <p className="text-3xl lg:text-4xl font-semibold tabular-nums">{stats.staffPushEndpoints ?? 0}</p>
+          </CardContent>
+        </Card>
+      </div>
+
       <Card className="border-slate-200/80 shadow-md overflow-hidden">
         <CardHeader className="bg-gradient-to-r from-slate-50 to-indigo-50/40 border-b py-6 px-6 sm:px-8 lg:px-10 lg:py-8">
           <CardTitle className="text-xl lg:text-2xl">Compose notification</CardTitle>
@@ -302,7 +354,7 @@ const PushNotificationsModule: React.FC = () => {
               <RadioGroup
                 value={audience}
                 onValueChange={(v) => setAudience(v as Audience)}
-                className="grid gap-4 lg:gap-5 sm:grid-cols-3"
+                className="grid gap-4 lg:gap-5 sm:grid-cols-2 xl:grid-cols-4"
               >
                 {audienceCards.map((opt) => (
                   <label
@@ -472,7 +524,11 @@ const PushNotificationsModule: React.FC = () => {
                   rows={6}
                   required
                   className="bg-white resize-y min-h-[140px] text-base max-w-3xl"
-                  placeholder="Write the message parents will see…"
+                  placeholder={
+                    audience === 'staff'
+                      ? 'Write the message teachers and staff will see on their device…'
+                      : 'Write the message parents will see…'
+                  }
                 />
                 <p className="text-xs text-muted-foreground">{message.length}/300</p>
               </div>
@@ -480,7 +536,11 @@ const PushNotificationsModule: React.FC = () => {
 
             <Button type="submit" className="w-full sm:w-auto min-w-[220px] h-12 text-base" size="lg" disabled={sending || dataLoading}>
               {sending ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
-              {sending ? 'Sending…' : `Send to ${school?.name || 'parents'}`}
+              {sending
+                ? 'Sending…'
+                : audience === 'staff'
+                  ? `Send to staff — ${school?.name || 'school'}`
+                  : `Send to ${school?.name || 'parents'}`}
             </Button>
           </form>
         </CardContent>

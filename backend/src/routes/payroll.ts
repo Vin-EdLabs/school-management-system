@@ -12,10 +12,21 @@ function generatePin(): string {
 
 const router = express.Router();
 
-const emitTenantDataChanged = (tenantId: number, entity: string, action: 'created' | 'updated' | 'deleted') => {
+const emitTenantDataChanged = (
+  tenantId: number,
+  entity: string,
+  action: 'created' | 'updated' | 'deleted',
+  extra?: Record<string, unknown>
+) => {
   try {
     const io = getIO();
-    io.to(`tenant:${tenantId}`).emit('tenant-data-changed', { tenantId, entity, action, at: Date.now() });
+    io.to(`tenant:${tenantId}`).emit('tenant-data-changed', {
+      tenantId,
+      entity,
+      action,
+      at: Date.now(),
+      ...(extra || {}),
+    });
   } catch {
     // Socket server may be unavailable in some non-realtime contexts.
   }
@@ -264,7 +275,13 @@ router.post('/pay', requireRole('super-admin', 'administrator', 'finance'), asyn
        RETURNING *`,
       [tenantId, payee_type, payee_id, parseInt(month), parseInt(year), parseFloat(amount), paid_date || null, payment_method || null, notes || null]
     );
-    emitTenantDataChanged(tenantId, 'salary-payment', 'created');
+    emitTenantDataChanged(tenantId, 'salary-payment', 'created', {
+      payee_type: String(payee_type),
+      payee_id: Number(payee_id),
+      month: parseInt(month as string, 10),
+      year: parseInt(year as string, 10),
+      amount: parseFloat(amount as string),
+    });
     res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error('Record salary payment error:', error);

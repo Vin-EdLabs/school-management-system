@@ -480,32 +480,32 @@ const GradesModule = () => {
   const subjectsToDisplay = activeSubjects;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="px-4 py-5 sm:p-6 space-y-5 sm:space-y-6 max-w-7xl mx-auto w-full">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg flex items-center justify-center">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex items-start gap-3 min-w-0">
+          <div className="w-11 h-11 shrink-0 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl flex items-center justify-center">
             <BookOpen className="w-6 h-6 text-white" />
           </div>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-800">Grades</h1>
-            <p className="text-gray-600">
-              {isAdminViewer ? 'View grades across all classes (read-only)' : 'Manage subjects, assessments and student grades'}
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-800 dark:text-gray-100 leading-tight">Grades</h1>
+            <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-1">
+              {isAdminViewer ? 'View grades (read-only)' : 'Assessments and student grades'}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full lg:w-auto shrink-0">
           {isAdminViewer ? (
-            <Badge variant="secondary" className="flex items-center gap-1 text-blue-700 bg-blue-50 border border-blue-200">
+            <Badge variant="secondary" className="justify-center py-2 flex items-center gap-1 text-blue-700 bg-blue-50 border border-blue-200">
               <Eye className="w-3 h-3" /> Read Only
             </Badge>
           ) : (
-            <Button onClick={() => setIsAddOpen(true)} disabled={!selectedClassId}>
+            <Button className="min-h-[48px] w-full sm:w-auto touch-manipulation" onClick={() => setIsAddOpen(true)} disabled={!selectedClassId}>
               <Plus className="w-4 h-4 mr-2" /> Add Assessment
             </Button>
           )}
           {selectedClassId && (
-            <Button variant="outline" onClick={handleLoadReport}>
+            <Button variant="outline" className="min-h-[48px] w-full sm:w-auto touch-manipulation" onClick={handleLoadReport}>
               <Trophy className="w-4 h-4 mr-2" /> Term Report
             </Button>
           )}
@@ -514,11 +514,11 @@ const GradesModule = () => {
 
       {/* Class selector */}
       <Card>
-        <CardContent className="pt-4">
+        <CardContent className="pt-4 px-4 sm:px-6">
           <div className="space-y-1.5">
             <Label>Class</Label>
             <Select value={selectedClassId} onValueChange={setSelectedClassId}>
-              <SelectTrigger><SelectValue placeholder="Select a class" /></SelectTrigger>
+              <SelectTrigger className="h-12 min-h-[48px] text-base sm:text-sm rounded-xl"><SelectValue placeholder="Select a class" /></SelectTrigger>
               <SelectContent>
                 {teacherClasses.map(c => (
                   <SelectItem key={c.id} value={String(c.id)}>{c.class_name}</SelectItem>
@@ -532,18 +532,19 @@ const GradesModule = () => {
       {selectedClassId && (
         <>
           {/* Tabs */}
-          <div className="flex gap-0 border-b">
+          <div className="flex gap-0 border-b -mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto touch-pan-x">
             {[
               { key: 'grades', icon: BookOpen, label: 'Grade Entry' },
               { key: 'report', icon: Trophy, label: 'Term Report' },
             ].map(tab => (
               <button
                 key={tab.key}
+                type="button"
                 onClick={() => tab.key === 'report' ? handleLoadReport() : setActiveTab('grades')}
-                className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.key ? 'border-purple-600 text-purple-700' : 'border-transparent text-gray-500 hover:text-gray-700'
+                className={`flex items-center gap-1.5 px-4 min-h-[48px] shrink-0 text-sm font-medium border-b-2 transition-colors touch-manipulation ${activeTab === tab.key ? 'border-purple-600 text-purple-700' : 'border-transparent text-gray-500 hover:text-gray-700'
                   }`}
               >
-                <tab.icon className="w-4 h-4" />{tab.label}
+                <tab.icon className="w-4 h-4 shrink-0" />{tab.label}
               </button>
             ))}
           </div>

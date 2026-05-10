@@ -3,9 +3,14 @@ import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
 import { detectTenantSlugFromHost } from './utils/tenantHost'
+import { resolveLogoUrl } from './services/tenantService'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
-let manifestBlobUrl: string | null = null;
+
+function detectSchSlugFromPath(pathname: string): string | null {
+  const m = pathname.match(/^\/sch\/([^/]+)/i);
+  return m ? decodeURIComponent(m[1]) : null;
+}
 
 function detectTenantIdFromPath(pathname: string = window.location.pathname): number | null {
   const portalMatch = pathname.match(/^\/portal\/(\d+)(\/|$)/i);
@@ -13,6 +18,12 @@ function detectTenantIdFromPath(pathname: string = window.location.pathname): nu
   const schoolMatch = pathname.match(/^\/school\/(\d+)(\/|$)/i);
   if (schoolMatch) return Number(schoolMatch[1]);
   return null;
+}
+
+function detectPwaKind(pathname: string): 'parent' | 'school' {
+  if (/^\/portal\//i.test(pathname)) return 'parent';
+  if (/^\/school\//i.test(pathname) || /^\/sch\//i.test(pathname)) return 'school';
+  return 'parent';
 }
 
 function setCssBrandingVars(tenant: any) {
@@ -36,8 +47,12 @@ function setCssBrandingVars(tenant: any) {
 
 async function bootstrapTenantBrandingAndManifest() {
   try {
-    const slug = detectTenantSlugFromHost();
-    const tenantId = detectTenantIdFromPath();
+    const path = window.location.pathname;
+    const pathSlug = detectSchSlugFromPath(path);
+    const hostSlug = detectTenantSlugFromHost();
+    const slug = pathSlug || hostSlug;
+    const tenantId = detectTenantIdFromPath(path);
+    const kind = detectPwaKind(path);
     const headers: Record<string, string> = {};
     if (slug) headers['X-Tenant-Slug'] = slug;
     if (!slug && tenantId) headers['X-Tenant-Id'] = String(tenantId);
@@ -52,16 +67,17 @@ async function bootstrapTenantBrandingAndManifest() {
 
     if (tenant) {
       setCssBrandingVars(tenant);
-      document.title = `${tenant.name} Parent Portal`;
-      const logoUrl = tenant.logo_url as string | undefined;
-      if (logoUrl) {
+      const portalLabel = kind === 'school' ? 'School' : 'Parent Portal';
+      document.title = `${tenant.name} — ${portalLabel}`;
+      const resolved = resolveLogoUrl(tenant.logo_url as string | null);
+      if (resolved) {
         let appleTouch = document.querySelector("link[rel='apple-touch-icon']") as HTMLLinkElement | null;
         if (!appleTouch) {
           appleTouch = document.createElement('link');
           appleTouch.rel = 'apple-touch-icon';
           document.head.appendChild(appleTouch);
         }
-        appleTouch.href = logoUrl;
+        appleTouch.href = resolved;
       }
     }
 
@@ -69,7 +85,11 @@ async function bootstrapTenantBrandingAndManifest() {
     // Chrome/Android cannot generate a WebAPK from a blob: URL.
     // Use a relative path that the Service Worker intercepts.
     // This solves the 'Cross-Origin Manifest' security errors in Chrome.
-    const manifestUrl = `/manifest.json?${slug ? `slug=${slug}` : `tenantId=${tenantId || ''}`}`;
+    const manifestParams = new URLSearchParams();
+    if (tenantId) manifestParams.set('tenantId', String(tenantId));
+    else if (slug) manifestParams.set('slug', slug);
+    manifestParams.set('kind', kind);
+    const manifestUrl = `/manifest.json?${manifestParams.toString()}`;
     
     let link = document.querySelector("link[rel='manifest']") as HTMLLinkElement | null;
     if (!link) {

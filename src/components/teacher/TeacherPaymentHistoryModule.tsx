@@ -51,14 +51,14 @@ const TeacherPaymentHistoryModule = () => {
   }, [schoolId]);
 
   if (loading) {
-    return <div className="p-6 animate-pulse text-slate-500">Loading payment history...</div>;
+    return <div className="px-4 py-5 sm:p-6 animate-pulse text-slate-500">Loading payment history...</div>;
   }
 
   if (error || !salaryInfo) {
     return (
-      <div className="p-6">
+      <div className="px-4 py-5 sm:p-6">
         <Card>
-          <CardContent className="p-8 text-center">
+          <CardContent className="p-6 sm:p-8 text-center">
             <History className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">Unable to Load</h3>
             <p className="text-gray-500">Only teachers can view salary payment history. If you are a teacher, please contact the administrator.</p>
@@ -69,14 +69,14 @@ const TeacherPaymentHistoryModule = () => {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center gap-3">
-        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
+    <div className="px-4 py-5 sm:p-6 space-y-5 sm:space-y-6 max-w-4xl mx-auto w-full">
+      <div className="flex items-start gap-3">
+        <div className="w-11 h-11 sm:w-12 sm:h-12 shrink-0 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
           <History className="w-6 h-6 text-white" />
         </div>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">Payment History</h1>
-          <p className="text-gray-600">Your salary payments over time</p>
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-gray-100">Payment History</h1>
+          <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400">Your salary payments over time</p>
         </div>
       </div>
 
@@ -86,14 +86,17 @@ const TeacherPaymentHistoryModule = () => {
             <Wallet className="w-5 h-5" />
             Salary Summary
           </CardTitle>
-          <p className="text-sm text-slate-500 mt-1">
-            Monthly salary: <strong>GHS {salaryInfo.monthlySalary.toLocaleString()}</strong> — Current month: <Badge variant={salaryInfo.currentMonthStatus === 'Paid' ? 'default' : 'secondary'} className="ml-1">{salaryInfo.currentMonthStatus}</Badge>
+          <p className="text-sm text-slate-500 mt-1 leading-relaxed">
+            Monthly: <strong>GHS {salaryInfo.monthlySalary.toLocaleString()}</strong>
+            <span className="hidden sm:inline"> — </span>
+            <span className="sm:hidden"><br /></span>
+            Current month: <Badge variant={salaryInfo.currentMonthStatus === 'Paid' ? 'default' : 'secondary'} className="ml-1 align-middle">{salaryInfo.currentMonthStatus}</Badge>
           </p>
         </CardHeader>
         <CardContent>
           {salaryInfo.paymentHistory?.length > 0 ? (
-            <div className="rounded-lg border overflow-hidden">
-              <Table>
+            <div className="rounded-lg border overflow-x-auto -mx-1 sm:mx-0 touch-pan-x">
+              <Table className="min-w-[520px] sm:min-w-0">
                 <TableHeader>
                   <TableRow className="bg-slate-50">
                     <TableHead className="font-medium">Month / Year</TableHead>

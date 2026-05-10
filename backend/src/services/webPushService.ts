@@ -100,6 +100,115 @@ export async function sendPushToParentAccount(parentAccountId: number, payload: 
   await sendFcmToParentAccount(parentAccountId, payload).catch(() => {});
 }
 
+export async function sendPushToStaffUser(userId: number, payload: PushPayload) {
+  ensureConfigured();
+  const webPushEnabled = configured;
+
+  const subs = await query(
+    `SELECT endpoint, p256dh, auth
+     FROM staff_user_push_subscriptions
+     WHERE user_id = $1`,
+    [userId]
+  );
+
+  if (!webPushEnabled || subs.rows.length === 0) return;
+
+  const data = JSON.stringify({
+    title: payload.title,
+    body: payload.body,
+    icon: payload.icon || undefined,
+    badge: payload.badge || payload.icon || undefined,
+    url: payload.url || '/',
+    at: Date.now(),
+  });
+
+  for (const sub of subs.rows) {
+    const subscription = {
+      endpoint: sub.endpoint,
+      keys: { p256dh: sub.p256dh, auth: sub.auth },
+    };
+    try {
+      await webpush.sendNotification(subscription as any, data);
+    } catch (error: any) {
+      const statusCode = error?.statusCode;
+      if (statusCode === 404 || statusCode === 410) {
+        await query(
+          'DELETE FROM staff_user_push_subscriptions WHERE user_id = $1 AND endpoint = $2',
+          [userId, sub.endpoint]
+        ).catch(() => {});
+      } else {
+        console.error('[web-push] staff send failed:', error?.message || error);
+      }
+    }
+  }
+}
+
+/** All teacher and staff user accounts for the tenant (web push to saved devices). */
+export async function sendPushToTenantStaff(
+  tenantId: number,
+  payload: PushPayload
+): Promise<{ staffUserAccounts: number; subscribedUserAccounts: number; subscribedDevices: number }> {
+  await attachSchoolLogoToPayloadIfNeeded(tenantId, payload);
+
+  const usersRes = await query(
+    `SELECT COUNT(*)::int AS c FROM users
+     WHERE tenant_id = $1 AND role IN ('teacher', 'staff') AND is_active = true`,
+    [tenantId]
+  );
+  const staffUserAccounts = Number(usersRes.rows[0]?.c || 0);
+
+  const subsRes = await query(
+    `SELECT s.user_id, s.endpoint, s.p256dh, s.auth
+     FROM staff_user_push_subscriptions s
+     INNER JOIN users u ON u.id = s.user_id AND u.tenant_id = s.tenant_id
+     WHERE s.tenant_id = $1 AND u.role IN ('teacher', 'staff') AND u.is_active = true`,
+    [tenantId]
+  );
+
+  const distinctUsers = new Set<number>();
+  for (const row of subsRes.rows as { user_id: number }[]) {
+    distinctUsers.add(row.user_id);
+  }
+
+  await Promise.all(
+    (subsRes.rows as { user_id: number; endpoint: string; p256dh: string; auth: string }[]).map(async (row) => {
+      const subscription = {
+        endpoint: row.endpoint,
+        keys: { p256dh: row.p256dh, auth: row.auth },
+      };
+      ensureConfigured();
+      if (!configured) return;
+      const data = JSON.stringify({
+        title: payload.title,
+        body: payload.body,
+        icon: payload.icon || undefined,
+        badge: payload.badge || payload.icon || undefined,
+        url: payload.url || '/',
+        at: Date.now(),
+      });
+      try {
+        await webpush.sendNotification(subscription as any, data);
+      } catch (error: any) {
+        const statusCode = error?.statusCode;
+        if (statusCode === 404 || statusCode === 410) {
+          await query(
+            'DELETE FROM staff_user_push_subscriptions WHERE user_id = $1 AND endpoint = $2',
+            [row.user_id, row.endpoint]
+          ).catch(() => {});
+        } else {
+          console.error('[web-push] staff broadcast send failed:', error?.message || error);
+        }
+      }
+    })
+  );
+
+  return {
+    staffUserAccounts,
+    subscribedUserAccounts: distinctUsers.size,
+    subscribedDevices: subsRes.rows.length,
+  };
+}
+
 /** Parent portal accounts for one or more students (same tenant). Deduplicates one parent with multiple selected children. */
 export async function sendPushToStudentsParents(
   tenantId: number,

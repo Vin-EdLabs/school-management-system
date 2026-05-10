@@ -77,7 +77,7 @@ const TeacherDashboard = () => {
 
   if (loading) {
     return (
-      <div className="p-6">
+      <div className="px-4 py-5 sm:p-6">
         <div className="animate-pulse text-slate-500">Loading your dashboard...</div>
       </div>
     );
@@ -85,9 +85,9 @@ const TeacherDashboard = () => {
 
   if (profileError || !profile) {
     return (
-      <div className="p-6">
+      <div className="px-4 py-5 sm:p-6">
         <Card>
-          <CardContent className="p-8 text-center">
+          <CardContent className="p-6 sm:p-8 text-center">
             <BookOpen className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">Teacher Profile Not Found</h3>
             <p className="text-gray-500">Your teacher profile is not set up. Please contact the administrator.</p>
@@ -98,31 +98,34 @@ const TeacherDashboard = () => {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="px-4 py-5 sm:p-6 space-y-5 sm:space-y-6 max-w-7xl mx-auto w-full">
       {/* Welcome Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg flex items-center justify-center">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-3 min-w-0">
+          <div className="w-11 h-11 shrink-0 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center">
             <BookOpen className="w-6 h-6 text-white" />
           </div>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-800">Welcome back, {profile.full_name}!</h1>
-            <p className="text-gray-600">Here's your teaching overview for today</p>
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-800 dark:text-gray-100 leading-tight break-words">
+              Welcome back, {profile.full_name}!
+            </h1>
+            <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-1">Your teaching overview for today</p>
           </div>
         </div>
-        <div className="text-right text-sm text-gray-500">
-          <p>{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+        <div className="text-left sm:text-right text-xs sm:text-sm text-gray-500 shrink-0 pl-14 sm:pl-0">
+          <p className="sm:hidden">{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</p>
+          <p className="hidden sm:block">{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
         </div>
       </div>
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-6">
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">My Classes</p>
-                <p className="text-3xl font-bold text-gray-900">{teacherClasses.length}</p>
+                <p className="text-2xl sm:text-3xl font-bold text-gray-900">{teacherClasses.length}</p>
               </div>
               <School className="w-8 h-8 text-blue-500" />
             </div>
@@ -130,11 +133,11 @@ const TeacherDashboard = () => {
         </Card>
 
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Students</p>
-                <p className="text-3xl font-bold text-gray-900">{totalStudents}</p>
+                <p className="text-2xl sm:text-3xl font-bold text-gray-900">{totalStudents}</p>
               </div>
               <Users className="w-8 h-8 text-green-500" />
             </div>
@@ -142,11 +145,11 @@ const TeacherDashboard = () => {
         </Card>
 
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Subjects</p>
-                <p className="text-3xl font-bold text-gray-900">{profile.subjects_taught?.length || 0}</p>
+                <p className="text-2xl sm:text-3xl font-bold text-gray-900">{profile.subjects_taught?.length || 0}</p>
               </div>
               <ClipboardCheck className="w-8 h-8 text-purple-500" />
             </div>
@@ -154,11 +157,11 @@ const TeacherDashboard = () => {
         </Card>
 
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
                 <p className="text-sm font-medium text-gray-600">Staff ID</p>
-                <p className="text-xl font-bold text-gray-900">{profile.staff_id}</p>
+                <p className="text-lg sm:text-xl font-bold text-gray-900 truncate">{profile.staff_id}</p>
               </div>
               <BookOpen className="w-8 h-8 text-orange-500" />
             </div>
@@ -183,9 +186,9 @@ const TeacherDashboard = () => {
                 <p className="text-gray-500">You don't have any classes assigned yet.</p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2 sm:space-y-3">
                 {teacherClasses.map((cls) => (
-                  <div key={cls.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div key={cls.id} className="flex items-center justify-between min-h-[52px] p-3 sm:p-4 bg-gray-50 dark:bg-gray-900/40 rounded-xl touch-manipulation">
                     <div>
                       <h4 className="font-medium text-gray-900">{cls.class_name}</h4>
                       <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
@@ -210,11 +213,11 @@ const TeacherDashboard = () => {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-3">
-              <div className="flex justify-between"><span className="text-sm text-gray-600">Name:</span><span className="font-medium">{profile.full_name}</span></div>
-              <div className="flex justify-between"><span className="text-sm text-gray-600">Staff ID:</span><span className="font-mono">{profile.staff_id}</span></div>
-              <div className="flex justify-between"><span className="text-sm text-gray-600">Email:</span><span>{profile.email || '—'}</span></div>
-              <div className="flex justify-between"><span className="text-sm text-gray-600">Phone:</span><span>{profile.phone_number || '—'}</span></div>
-              <div className="flex justify-between"><span className="text-sm text-gray-600">Classes:</span><span>{teacherClasses.map(c => c.class_name).join(', ') || 'None'}</span></div>
+              <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between sm:gap-4"><span className="text-sm text-gray-600 shrink-0">Name</span><span className="font-medium text-right sm:text-left break-words">{profile.full_name}</span></div>
+              <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between sm:gap-4"><span className="text-sm text-gray-600 shrink-0">Staff ID</span><span className="font-mono text-right sm:text-left break-all">{profile.staff_id}</span></div>
+              <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between sm:gap-4"><span className="text-sm text-gray-600 shrink-0">Email</span><span className="text-right sm:text-left break-all">{profile.email || '—'}</span></div>
+              <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between sm:gap-4"><span className="text-sm text-gray-600 shrink-0">Phone</span><span className="text-right sm:text-left">{profile.phone_number || '—'}</span></div>
+              <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between sm:gap-4"><span className="text-sm text-gray-600 shrink-0">Classes</span><span className="text-right sm:text-left break-words">{teacherClasses.map(c => c.class_name).join(', ') || 'None'}</span></div>
               <div>
                 <span className="text-sm text-gray-600">Subjects:</span>
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -261,7 +264,7 @@ const TeacherDashboard = () => {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {teacherStudents.slice(0, 6).map((student) => (
-                <div key={student.id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                <div key={student.id} className="flex items-center space-x-3 min-h-[52px] p-3 bg-gray-50 dark:bg-gray-900/40 rounded-xl">
                   <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
                     {student.firstName.charAt(0)}{student.lastName.charAt(0)}
                   </div>

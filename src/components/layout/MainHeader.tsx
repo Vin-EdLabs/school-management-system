@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '../../contexts/AuthContext';
-import { Bot, User, Clock, Calendar, Moon, Sun } from 'lucide-react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useSchool } from '../../contexts/SchoolContext';
+import { useTeacherNotifications } from '../../contexts/TeacherNotificationContext';
+import { resolveLogoUrl } from '../../services/tenantService';
+import { Bell, Bot, User, Clock, Calendar, Moon, Sun } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import PwaInstallButton from '../common/PwaInstallButton';
 
@@ -12,9 +16,13 @@ interface MainHeaderProps {
 
 const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick }) => {
   const { user } = useAuth();
+  const { school } = useSchool();
+  const { items, unreadCount, markRead, markAllRead } = useTeacherNotifications();
   const { theme, toggleTheme } = useTheme();
-  const navigate = useNavigate();
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [notifOpen, setNotifOpen] = useState(false);
+  const pwaLogo = resolveLogoUrl(school?.logo_url ?? null);
+  const showStaffNotifications = user?.role === 'teacher' || user?.role === 'staff';
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -49,14 +57,14 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick }) => {
   };
 
   return (
-    <div className="flex items-center justify-between w-full h-full gap-6">
+    <div className="flex items-center justify-between w-full h-full gap-2 sm:gap-4 md:gap-6 min-w-0">
       {/* Welcome Section */}
-      <div className="flex items-center gap-4 min-w-0">
-        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0 shadow-sm">
-          <User className="w-5 h-5 text-white" />
+      <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
+        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0 shadow-sm">
+          <User className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
         </div>
-        <div className="min-w-0">
-          <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100 truncate tracking-tight">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-sm sm:text-lg font-semibold text-slate-900 dark:text-slate-100 truncate tracking-tight">
             {getGreeting()}, <span className="text-indigo-600 dark:text-indigo-400">{user?.username}</span>
           </h1>
           <div className="flex items-center gap-2">
@@ -68,7 +76,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick }) => {
       </div>
 
       {/* Right Section: Time and Actions */}
-      <div className="flex items-center gap-4 shrink-0">
+      <div className="flex items-center gap-1 sm:gap-2 md:gap-4 shrink-0">
         <div className="hidden lg:flex items-center gap-3">
           <div className="px-3 py-2 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-100 dark:border-slate-800 flex items-center gap-2 shadow-sm">
             <Calendar className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
@@ -86,8 +94,69 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick }) => {
           <PwaInstallButton
             variant="ghost"
             size="icon"
+            logoUrl={pwaLogo}
             className="h-10 w-10 rounded-xl text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-indigo-950/50"
           />
+          {showStaffNotifications && (
+            <Popover open={notifOpen} onOpenChange={setNotifOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="relative h-10 w-10 shrink-0 rounded-xl text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-indigo-950/50 touch-manipulation"
+                  title="Notifications"
+                >
+                  <Bell className="h-5 w-5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[min(100vw-1.5rem,22rem)] p-0" align="end" sideOffset={8}>
+                <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+                  <p className="text-xs font-semibold text-foreground">Notifications</p>
+                  {items.length > 0 && (
+                    <button
+                      type="button"
+                      className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+                      onClick={() => markAllRead()}
+                    >
+                      Mark all read
+                    </button>
+                  )}
+                </div>
+                <ScrollArea className="max-h-[min(50vh,260px)]">
+                  {items.length === 0 ? (
+                    <p className="p-4 text-xs text-muted-foreground">No notifications yet.</p>
+                  ) : (
+                    <div className="space-y-1 p-2">
+                      {items.map((n) => (
+                        <button
+                          key={n.id}
+                          type="button"
+                          onClick={() => {
+                            markRead(n.id);
+                          }}
+                          className={`w-full rounded-lg border p-2.5 text-left transition-colors touch-manipulation ${
+                            n.read
+                              ? 'border-border bg-card hover:bg-muted/50'
+                              : 'border-indigo-200/80 bg-indigo-50/60 hover:bg-indigo-100/70 dark:border-indigo-900 dark:bg-indigo-950/40 dark:hover:bg-indigo-950/60'
+                          }`}
+                        >
+                          <p className="text-sm font-semibold text-foreground">{n.title}</p>
+                          <p className="mt-0.5 line-clamp-3 text-xs text-muted-foreground">{n.body}</p>
+                          <p className="mt-1 text-[10px] text-muted-foreground">{new Date(n.at).toLocaleString()}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+              </PopoverContent>
+            </Popover>
+          )}
           <Button
             variant="ghost"
             size="icon"

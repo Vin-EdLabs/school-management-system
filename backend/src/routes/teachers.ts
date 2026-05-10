@@ -5,6 +5,7 @@ import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js'
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { getIO } from '../socket.js';
+import { sendPushToTenantStaff } from '../services/webPushService.js';
 
 function generatePin(): string {
   return String(Math.floor(10000 + Math.random() * 90000));
@@ -12,10 +13,21 @@ function generatePin(): string {
 
 const router = express.Router();
 
-const emitTenantDataChanged = (tenantId: number, entity: string, action: 'created' | 'updated' | 'deleted') => {
+const emitTenantDataChanged = (
+  tenantId: number,
+  entity: string,
+  action: 'created' | 'updated' | 'deleted',
+  extra?: Record<string, unknown>
+) => {
   try {
     const io = getIO();
-    io.to(`tenant:${tenantId}`).emit('tenant-data-changed', { tenantId, entity, action, at: Date.now() });
+    io.to(`tenant:${tenantId}`).emit('tenant-data-changed', {
+      tenantId,
+      entity,
+      action,
+      at: Date.now(),
+      ...(extra || {}),
+    });
   } catch {
     // Socket server may be unavailable in some non-realtime contexts.
   }
@@ -73,6 +85,34 @@ router.get('/me/classes', async (req: AuthRequest, res) => {
     res.status(500).json({ error: 'Failed to fetch classes' });
   }
 });
+
+// Broadcast in-app notice to teachers and payroll staff (socket + bell / toast on client)
+router.post(
+  '/announce',
+  requireRole('super-admin', 'administrator', 'finance'),
+  async (req: AuthRequest, res) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const title = String(req.body?.title || 'Message from school').slice(0, 120);
+      const body = String(req.body?.message || '').trim().slice(0, 800);
+      if (!body) return res.status(400).json({ error: 'message is required' });
+      emitTenantDataChanged(tenantId, 'school-staff-notice', 'created', { title, body });
+      await sendPushToTenantStaff(tenantId, {
+        title,
+        body,
+        url: `/school/${tenantId}`,
+      }).catch(() => {});
+      await query(
+        'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, details) VALUES ($1, $2, $3, $4, $5)',
+        [tenantId, req.user!.id, 'SCHOOL_STAFF_ANNOUNCE', 'TEACHERS_AND_STAFF', JSON.stringify({ title, bodyLen: body.length })],
+      ).catch(() => {});
+      return res.json({ success: true });
+    } catch (error) {
+      console.error('Teacher announce error:', error);
+      return res.status(500).json({ error: 'Failed to send notice' });
+    }
+  }
+);
 
 // Display name for classes: junction (Assign Class tab) + legacy teachers.class_assigned_id
 const TEACHER_CLASS_NAME_SQL = `

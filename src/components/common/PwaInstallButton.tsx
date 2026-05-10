@@ -11,12 +11,15 @@ interface PwaInstallButtonProps {
   className?: string;
   variant?: 'default' | 'ghost' | 'outline';
   size?: 'default' | 'sm' | 'icon';
+  /** School logo (absolute URL). Shown on the install button like the parent portal. */
+  logoUrl?: string | null;
 }
 
 const PwaInstallButton: React.FC<PwaInstallButtonProps> = ({
   className = '',
   variant = 'ghost',
   size = 'icon',
+  logoUrl,
 }) => {
   const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
 
@@ -58,9 +61,17 @@ const PwaInstallButton: React.FC<PwaInstallButtonProps> = ({
       size={size}
       onClick={handleInstall}
       className={className}
-      title="Install app"
+      title="Add to Home screen"
     >
-      <Download className="h-4 w-4" />
+      {logoUrl ? (
+        <img
+          src={logoUrl}
+          alt=""
+          className="h-7 w-7 rounded-lg object-contain border border-slate-200/80 bg-white p-0.5 dark:border-slate-600 dark:bg-slate-800"
+        />
+      ) : (
+        <Download className="h-4 w-4" />
+      )}
     </Button>
   );
 };

@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { query } from '../db/connection.js';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
+import { getVapidPublicKey } from '../services/webPushService.js';
 
 const router = express.Router();
 
@@ -42,7 +43,7 @@ router.post('/login', async (req, res) => {
     const attempts: Array<{ sql: string; params: any[] }> = [
       {
         sql: `
-          SELECT u.id, u.tenant_id, u.username, u.password_hash, u.role, u.teacher_id, u.is_primary_admin,
+          SELECT u.id, u.tenant_id, u.username, u.password_hash, u.role, u.teacher_id, u.other_staff_id, u.is_primary_admin,
                  COALESCE(t.full_name, s.full_name, u.username) as full_name
           FROM users u
           LEFT JOIN teachers t ON u.teacher_id::text = t.id::text AND t.tenant_id = u.tenant_id
@@ -54,7 +55,7 @@ router.post('/login', async (req, res) => {
       },
       {
         sql: `
-          SELECT u.id, u.tenant_id, u.username, u.password_hash, u.role, u.teacher_id, u.is_primary_admin,
+          SELECT u.id, u.tenant_id, u.username, u.password_hash, u.role, u.teacher_id, u.other_staff_id, u.is_primary_admin,
                  u.username as full_name
           FROM users u
           WHERE u.username = $1
@@ -118,13 +119,14 @@ router.post('/login', async (req, res) => {
     const isPrimaryAdmin = userRow.is_primary_admin === true;
     res.json({
       token,
-      user: {
+        user: {
         id: user.id,
         username: user.username,
         fullName: user.full_name,
         role: normalizeRole(user.role),
         tenantId: user.tenant_id,
         teacherId: user.teacher_id,
+        otherStaffId: user.other_staff_id ?? null,
         isPrimaryAdmin,
       },
     });
@@ -227,7 +229,7 @@ router.post('/logout', authenticate, async (req: AuthRequest, res) => {
 router.get('/me', authenticate, async (req: AuthRequest, res) => {
   try {
     const result = await query(
-      `SELECT u.id, u.username, u.role, u.tenant_id, u.teacher_id, u.is_primary_admin,
+      `SELECT u.id, u.username, u.role, u.tenant_id, u.teacher_id, u.other_staff_id, u.is_primary_admin,
               COALESCE(t.full_name, s.full_name, u.username) as full_name
        FROM users u
        LEFT JOIN teachers t ON u.teacher_id::text = t.id::text AND t.tenant_id = u.tenant_id
@@ -259,6 +261,7 @@ router.get('/me', authenticate, async (req: AuthRequest, res) => {
         role: normalizeRole(user.role),
         tenantId: user.tenant_id,
         teacherId: user.teacher_id,
+        otherStaffId: user.other_staff_id ?? null,
         isPrimaryAdmin: user.is_primary_admin === true,
         tenant,
       },
@@ -266,6 +269,64 @@ router.get('/me', authenticate, async (req: AuthRequest, res) => {
   } catch (error) {
     console.error('Get user error:', error);
     res.status(500).json({ error: 'Failed to get user' });
+  }
+});
+
+// Web push for teacher/staff school app (same VAPID keys as parent portal)
+router.get('/push/public-key', authenticate, async (req: AuthRequest, res) => {
+  const role = normalizeRole(req.user!.role);
+  if (role !== 'teacher' && role !== 'staff') {
+    return res.status(403).json({ error: 'Only teacher or staff accounts can use school push' });
+  }
+  const publicKey = getVapidPublicKey();
+  if (!publicKey) {
+    return res.status(503).json({ error: 'Push notifications are not configured yet' });
+  }
+  return res.json({ publicKey });
+});
+
+router.post('/push/subscribe', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const role = normalizeRole(req.user!.role);
+    if (role !== 'teacher' && role !== 'staff') {
+      return res.status(403).json({ error: 'Only teacher or staff accounts can subscribe' });
+    }
+    const tenantId = req.user!.tenantId;
+    if (!tenantId) return res.status(400).json({ error: 'School context required' });
+
+    const { endpoint, keys } = req.body || {};
+    const p256dh = keys?.p256dh;
+    const auth = keys?.auth;
+    if (!endpoint || !p256dh || !auth) {
+      return res.status(400).json({ error: 'Invalid push subscription payload' });
+    }
+
+    await query(
+      `INSERT INTO staff_user_push_subscriptions (tenant_id, user_id, endpoint, p256dh, auth)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (user_id, endpoint)
+       DO UPDATE SET p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth`,
+      [tenantId, req.user!.id, endpoint, p256dh, auth]
+    );
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Staff push subscribe error:', error);
+    return res.status(500).json({ error: 'Failed to save push subscription' });
+  }
+});
+
+router.post('/push/unsubscribe', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const endpoint = req.body?.endpoint;
+    if (!endpoint) return res.status(400).json({ error: 'endpoint is required' });
+    await query('DELETE FROM staff_user_push_subscriptions WHERE user_id = $1 AND endpoint = $2', [
+      req.user!.id,
+      endpoint,
+    ]);
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Staff push unsubscribe error:', error);
+    return res.status(500).json({ error: 'Failed to remove push subscription' });
   }
 });
 

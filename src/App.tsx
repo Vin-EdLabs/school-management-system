@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import { SocketProvider } from "./contexts/SocketContext";
+import { TeacherNotificationProvider } from "./contexts/TeacherNotificationContext";
 import { AuditProvider } from "./contexts/AuditContext";
 import { DataProvider } from "./contexts/DataContext";
 import { SchoolProvider } from "./contexts/SchoolContext";
@@ -82,6 +83,7 @@ const App = () => (
     <ThemeProvider>
       <AuthProvider>
         <SocketProvider>
+          <TeacherNotificationProvider>
           <TooltipProvider>
             <Toaster />
             <Sonner />
@@ -97,6 +99,7 @@ const App = () => (
               </Routes>
             </BrowserRouter>
           </TooltipProvider>
+          </TeacherNotificationProvider>
         </SocketProvider>
       </AuthProvider>
     </ThemeProvider>

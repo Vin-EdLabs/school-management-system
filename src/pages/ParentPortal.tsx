@@ -3,7 +3,7 @@ import {
   GraduationCap, LogOut, BookOpen, Trophy, CreditCard,
   CalendarCheck, Eye, EyeOff, Lock, ChevronRight, Medal,
   TrendingUp, CheckCircle2, XCircle, Clock, AlertTriangle,
-  BadgeCheck, Home, RefreshCw, Activity, Bell, Download, X, MessageSquare, Send, Phone, Mail, Plus,
+  BadgeCheck, Home, RefreshCw, Activity, Bell, Download, X,   MessageSquare, Send, Phone, Mail, Plus, Paperclip,
 } from 'lucide-react';
 import ReceiptPrinter from '@/components/common/ReceiptPrinter';
 import { parseReceiptSnapshot, termsMatch } from '@/utils/feeCalculations';
@@ -233,6 +233,8 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   const [deskReply, setDeskReply] = useState('');
   const [deskReplyAttachment, setDeskReplyAttachment] = useState<File | null>(null);
   const parentScrollRef = useRef<HTMLDivElement>(null);
+  const deskComposeFileRef = useRef<HTMLInputElement>(null);
+  const deskReplyFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (selectedDeskMessage || deskConversation.length > 0) {
@@ -1915,22 +1917,46 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               <p className="text-[11px] text-slate-500">Subject</p>
               <p className="text-sm font-semibold text-slate-700">{MESSAGE_TYPE_LABEL[deskType]}</p>
             </div>
-            <textarea
-              value={deskBody}
-              onChange={(e) => setDeskBody(e.target.value)}
-              rows={5}
-              placeholder="Write your message..."
-              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-200"
-            />
-            <div className="mt-2 text-right text-xs text-slate-400">{deskBody.length} characters</div>
-            <input type="file" accept="image/*" onChange={(e) => setDeskAttachment(e.target.files?.[0] || null)} className="mt-2 block w-full text-xs text-slate-500" />
-            <button
-              onClick={() => submitDeskMessage().catch(() => undefined)}
-              className="mt-3 w-full rounded-xl text-white font-semibold py-2.5 flex items-center justify-center gap-2"
-              style={{ background: `linear-gradient(90deg, ${brandPrimary}, ${brandSecondary})` }}
-            >
-              <Send className="w-4 h-4" /> Send Message
-            </button>
+            <div className="mt-1">
+              <div className="flex items-end gap-1.5 rounded-2xl border border-slate-200 bg-slate-50/90 pl-1.5 pr-1 py-1.5 shadow-inner">
+                <input
+                  ref={deskComposeFileRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => setDeskAttachment(e.target.files?.[0] || null)}
+                />
+                <button
+                  type="button"
+                  onClick={() => deskComposeFileRef.current?.click()}
+                  className="shrink-0 flex h-11 w-11 items-center justify-center rounded-full text-slate-600 hover:bg-slate-200/80 active:scale-95"
+                  aria-label="Attach image"
+                >
+                  <Paperclip className="w-5 h-5" />
+                </button>
+                <textarea
+                  value={deskBody}
+                  onChange={(e) => setDeskBody(e.target.value)}
+                  rows={1}
+                  placeholder="Message"
+                  className="flex-1 min-w-0 min-h-[44px] max-h-[140px] resize-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-base text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-200/60"
+                />
+                <button
+                  type="button"
+                  onClick={() => submitDeskMessage().catch(() => undefined)}
+                  disabled={!deskBody.trim()}
+                  className="shrink-0 flex h-11 w-11 items-center justify-center rounded-full text-white shadow-md disabled:opacity-40 disabled:shadow-none active:scale-95"
+                  style={{ background: `linear-gradient(135deg, ${brandPrimary}, ${brandSecondary})` }}
+                  aria-label="Send message"
+                >
+                  <Send className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="mt-1 flex items-center justify-between gap-2 px-1 text-[11px] text-slate-400">
+                <span className="truncate min-h-[1em]">{deskAttachment?.name || ''}</span>
+                <span className="shrink-0">{deskBody.length} chars</span>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -1953,7 +1979,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                   {selectedDeskMessage.attachment_url && (
                     <div className="mt-2 rounded-lg overflow-hidden border border-green-300">
                       <img 
-                        src={selectedDeskMessage.attachment_url} 
+                        src={resolveMediaUrl(selectedDeskMessage.attachment_url) || selectedDeskMessage.attachment_url} 
                         alt="Attachment" 
                         className="max-h-48 w-full object-cover cursor-pointer" 
                         onClick={() => setLightboxUrl(selectedDeskMessage.attachment_url)}
@@ -1974,7 +2000,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                     {r.attachment_url && (
                       <div className={`mt-2 rounded-lg overflow-hidden border ${r.sender_type === 'parent' ? 'border-green-300' : 'border-slate-200'}`}>
                         <img 
-                          src={r.attachment_url} 
+                          src={resolveMediaUrl(r.attachment_url) || r.attachment_url || ''} 
                           alt="Reply Attachment" 
                           className="max-h-48 w-full object-cover cursor-pointer" 
                           onClick={() => setLightboxUrl(r.attachment_url)}
@@ -1987,14 +2013,44 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               ))}
               <div ref={parentScrollRef} />
             </div>
-            <div className="p-3 border-t border-slate-100">
-              <textarea value={deskReply} onChange={(e) => setDeskReply(e.target.value)} rows={2} placeholder="Type your follow-up reply..." className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-200" />
-              <div className="mt-2 flex items-center gap-2">
-                <input type="file" accept="image/*" onChange={(e) => setDeskReplyAttachment(e.target.files?.[0] || null)} className="block text-xs text-slate-500 flex-1" />
-                <button onClick={() => submitDeskReply().catch(() => undefined)} className="rounded-lg px-3 py-2 text-xs font-semibold text-white" style={{ backgroundColor: brandPrimary }}>
-                  Send
+            <div className="p-3 border-t border-slate-100 bg-slate-50/80">
+              <div className="flex items-end gap-1.5 rounded-2xl border border-slate-200 bg-white pl-1.5 pr-1 py-1 shadow-sm">
+                <input
+                  ref={deskReplyFileRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => setDeskReplyAttachment(e.target.files?.[0] || null)}
+                />
+                <button
+                  type="button"
+                  onClick={() => deskReplyFileRef.current?.click()}
+                  className="shrink-0 flex h-11 w-11 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100 active:scale-95"
+                  aria-label="Attach image"
+                >
+                  <Paperclip className="w-5 h-5" />
+                </button>
+                <textarea
+                  value={deskReply}
+                  onChange={(e) => setDeskReply(e.target.value)}
+                  rows={1}
+                  placeholder="Type a message"
+                  className="flex-1 min-w-0 min-h-[44px] max-h-[120px] resize-none rounded-xl border border-slate-100 bg-slate-50/50 px-3 py-2.5 text-base text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-200/50"
+                />
+                <button
+                  type="button"
+                  onClick={() => submitDeskReply().catch(() => undefined)}
+                  disabled={!deskReply.trim()}
+                  className="shrink-0 flex h-11 w-11 items-center justify-center rounded-full text-white shadow-md disabled:opacity-40 disabled:shadow-none active:scale-95"
+                  style={{ background: `linear-gradient(135deg, ${brandPrimary}, ${brandSecondary})` }}
+                  aria-label="Send reply"
+                >
+                  <Send className="w-5 h-5" />
                 </button>
               </div>
+              {deskReplyAttachment ? (
+                <p className="mt-1 truncate px-1 text-[11px] text-slate-500">{deskReplyAttachment.name}</p>
+              ) : null}
             </div>
           </div>
         </div>

@@ -8,8 +8,11 @@ router.use(resolveTenant);
 router.get('/manifest', async (req: TenantRequest, res) => {
   try {
     const tenant = req.tenant;
-    const appName = tenant?.name || 'ScholarNerve Parent Portal';
-    const shortName = (tenant?.name || 'ScholarNerve').slice(0, 12);
+    const kind = String(req.query.kind || 'parent').toLowerCase() === 'school' ? 'school' : 'parent';
+    const baseName = tenant?.name || 'ScholarNerve';
+    const appName =
+      kind === 'school' ? `${baseName} — School` : `${baseName} — Parent Portal`;
+    const shortName = baseName.slice(0, 12);
     const primary = tenant?.primary_color || '#0f766e';
     const secondary = tenant?.secondary_color || primary;
     const subdomain = tenant?.subdomain || tenant?.slug || 'default';
@@ -17,10 +20,27 @@ router.get('/manifest', async (req: TenantRequest, res) => {
     const tenantId = Number(tenant?.id || 0);
 
     const origin = `${req.protocol}://${req.get('host')}`;
-    const icon192 = logo ? (logo.startsWith('data:') ? logo : `${origin}${logo}`) : `/school-assets/${subdomain}/logo-192.png`;
-    const icon512 = logo ? (logo.startsWith('data:') ? logo : `${origin}${logo}`) : `/school-assets/${subdomain}/logo-512.png`;
+    const absLogo = (() => {
+      if (!logo) return '';
+      if (logo.startsWith('data:') || logo.startsWith('http')) return logo;
+      return `${origin}${logo.startsWith('/') ? '' : '/'}${logo}`;
+    })();
+    const icon192 = absLogo || `/school-assets/${subdomain}/logo-192.png`;
+    const icon512 = absLogo || `/school-assets/${subdomain}/logo-512.png`;
     const logoMime = logo?.startsWith('data:') ? logo.split(';')[0].split(':')[1] : 'image/png';
-    const startUrl = tenantId > 0 ? `/portal/${tenantId}` : '/';
+
+    let startUrl = '/';
+    if (tenantId > 0) {
+      if (kind === 'school') {
+        const slug = tenant?.slug || tenant?.subdomain;
+        startUrl = slug ? `/sch/${String(slug).replace(/^\/+|\/+$/g, '')}` : `/school/${tenantId}`;
+      } else {
+        startUrl = `/portal/${tenantId}`;
+      }
+    }
+
+    const description =
+      kind === 'school' ? `${baseName} staff and teacher portal` : `${baseName} parent portal`;
 
     return res
       .type('application/manifest+json')
@@ -28,7 +48,7 @@ router.get('/manifest', async (req: TenantRequest, res) => {
         id: startUrl,
         name: appName,
         short_name: shortName,
-        description: `${appName} Parent Portal`,
+        description,
         start_url: startUrl,
         scope: '/',
         display: 'standalone',
@@ -45,8 +65,8 @@ router.get('/manifest', async (req: TenantRequest, res) => {
         ],
         shortcuts: [
           {
-            name: 'Open Parent Portal',
-            short_name: 'Portal',
+            name: kind === 'school' ? 'Open school app' : 'Open parent portal',
+            short_name: kind === 'school' ? 'School' : 'Portal',
             url: startUrl,
           }
         ],

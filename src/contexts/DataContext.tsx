@@ -82,6 +82,14 @@ interface Payment {
   term: string;
   notes: string;
   receiptNumber?: string;
+  /** Frozen at payment time — do not recompute from live balances for receipts */
+  receiptSnapshot?: {
+    totalDue: number;
+    termFee: number;
+    arrears: number;
+    balanceAfter: number;
+    credit?: number;
+  };
 }
 
 interface Income {
@@ -354,6 +362,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         term: p.term ?? '',
         notes: p.notes ?? '',
         receiptNumber: p.receipt_number ?? p.receiptNumber,
+        receiptSnapshot: p.receipt_snapshot ?? p.receiptSnapshot ?? undefined,
       })));
       setIncome((Array.isArray(incomeRes) ? incomeRes : []).map((i: any) => ({
         id: i.id.toString(),
@@ -565,6 +574,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         term: created.term ?? '',
         notes: created.notes ?? '',
         receiptNumber: created.receipt_number || created.receiptNumber,
+        receiptSnapshot: created.receipt_snapshot ?? created.receiptSnapshot,
       },
       balance: res.balance
     };

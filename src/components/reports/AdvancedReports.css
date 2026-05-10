@@ -16,7 +16,7 @@
 .reports-container {
   background: radial-gradient(circle at top right, #111b33 0%, #0a0e1a 100%);
   color: var(--report-text-primary);
-  min-height: 100vh;
+  min-height: 100dvh;
   font-family: 'Inter', -apple-system, sans-serif;
 }
 

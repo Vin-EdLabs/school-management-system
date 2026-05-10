@@ -304,11 +304,18 @@ router.post('/:id/teachers', requireRole('super-admin', 'administrator'), async 
        VALUES ($1, $2, $3, $4) ON CONFLICT (class_id, teacher_id) DO UPDATE SET is_main = $4`,
       [tenantId, id, teacher_id, !!is_main]
     );
+    await query(
+      `UPDATE teachers SET class_assigned_id = $1::int
+       WHERE id = $2::int AND tenant_id = $3 AND class_assigned_id IS NULL`,
+      [id, teacher_id, tenantId]
+    ).catch(() => {});
     const updated = await query(
       `SELECT ct.*, t.full_name, t.staff_id FROM class_teachers ct JOIN teachers t ON ct.teacher_id = t.id
        WHERE ct.class_id = $1 AND ct.tenant_id = $2`,
       [id, tenantId]
     );
+    emitTenantDataChanged(tenantId, 'class', 'updated');
+    emitTenantDataChanged(tenantId, 'teacher', 'updated');
     res.json(updated.rows);
   } catch (error: any) {
     if (error.code === '42P01') return res.status(500).json({ error: 'class_teachers table not found' });
@@ -332,6 +339,8 @@ router.delete('/:id/teachers/:teacherId', requireRole('super-admin', 'administra
       await query('UPDATE classes SET assigned_teacher_id = $1 WHERE id = $2 AND tenant_id = $3', [newMain, id, tenantId]);
       if (newMain) await query('UPDATE class_teachers SET is_main = true WHERE class_id = $1 AND teacher_id = $2', [id, newMain]);
     }
+    emitTenantDataChanged(tenantId, 'class', 'updated');
+    emitTenantDataChanged(tenantId, 'teacher', 'updated');
     res.json({ message: 'Teacher removed from class' });
   } catch (error) {
     console.error('Remove class teacher error:', error);
@@ -347,6 +356,8 @@ router.patch('/:id/teachers/:teacherId/main', requireRole('super-admin', 'admini
     await query('UPDATE class_teachers SET is_main = false WHERE class_id = $1 AND tenant_id = $2', [id, tenantId]);
     await query('UPDATE class_teachers SET is_main = true WHERE class_id = $1 AND teacher_id = $2 AND tenant_id = $3', [id, teacherId, tenantId]);
     await query('UPDATE classes SET assigned_teacher_id = $1 WHERE id = $2 AND tenant_id = $3', [teacherId, id, tenantId]);
+    emitTenantDataChanged(tenantId, 'class', 'updated');
+    emitTenantDataChanged(tenantId, 'teacher', 'updated');
     res.json({ message: 'Main teacher updated' });
   } catch (error) {
     console.error('Set main teacher error:', error);

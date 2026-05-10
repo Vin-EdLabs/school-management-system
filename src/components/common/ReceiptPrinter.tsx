@@ -206,7 +206,7 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
-      <Card className="max-w-md w-full max-h-[90vh] overflow-y-auto shadow-2xl border-0 rounded-2xl">
+      <Card className="modal max-w-md w-full shadow-2xl border-0 rounded-2xl">
         <CardHeader className="bg-white border-b sticky top-0 z-10 py-4 px-6">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-bold text-slate-800">Print Preview</h3>

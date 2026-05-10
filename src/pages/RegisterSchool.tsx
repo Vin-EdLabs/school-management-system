@@ -82,7 +82,7 @@ const RegisterSchool = () => {
 
       <main className="relative container mx-auto px-4 pt-20 pb-12 max-w-6xl">
         {submitted ? (
-          <div className="min-h-[60vh] flex items-center justify-center">
+          <div className="min-h-[60dvh] flex items-center justify-center">
             <div className="text-center max-w-md mx-auto animate-in fade-in-0 zoom-in-95 duration-500">
               <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-emerald-100 flex items-center justify-center">
                 <CheckCircle className="w-12 h-12 text-emerald-600" />

@@ -110,7 +110,7 @@ router.get('/', async (req: AuthRequest, res) => {
 
     let queryText = `
       SELECT p.id, p.tenant_id, p.student_id, p.amount, p.payment_date, p.payment_method,
-             p.term, p.notes, p.receipt_number, p.created_at, p.updated_at,
+             p.term, p.notes, p.receipt_number, p.receipt_snapshot, p.created_at, p.updated_at,
              s.first_name, s.last_name, s.student_id as admission_no, s.admission_number, c.class_name
       FROM payments p
       LEFT JOIN students s ON p.student_id = s.id
@@ -171,7 +171,7 @@ router.get('/', async (req: AuthRequest, res) => {
         // Older schema fallback: notes column may also be missing.
         let fallbackQueryNoNotes = `
           SELECT p.id, p.tenant_id, p.student_id, p.amount, p.payment_date,
-                 p.receipt_number, p.created_at, p.updated_at,
+                 p.receipt_number, NULL::jsonb as receipt_snapshot, p.created_at, p.updated_at,
                  ''::text as notes,
                  ''::text as term,
                  ''::text as payment_method,
@@ -211,7 +211,7 @@ router.get('/:id', async (req: AuthRequest, res) => {
     try {
       result = await query(
         `SELECT p.id, p.tenant_id, p.student_id, p.amount, p.payment_date, p.payment_method,
-                p.term, p.notes, p.receipt_number, p.created_at, p.updated_at,
+                p.term, p.notes, p.receipt_number, p.receipt_snapshot, p.created_at, p.updated_at,
                 s.first_name, s.last_name, s.student_id as admission_no, s.admission_number, c.class_name
          FROM payments p
          LEFT JOIN students s ON p.student_id = s.id
@@ -223,7 +223,7 @@ router.get('/:id', async (req: AuthRequest, res) => {
       try {
         result = await query(
           `SELECT p.id, p.tenant_id, p.student_id, p.amount, p.payment_date,
-                  p.notes, p.receipt_number, p.created_at, p.updated_at,
+                  p.notes, p.receipt_number, NULL::jsonb as receipt_snapshot, p.created_at, p.updated_at,
                   ''::text as payment_method,
                   ''::text as term,
                   s.first_name, s.last_name, s.student_id as admission_no, s.admission_number, c.class_name
@@ -236,7 +236,7 @@ router.get('/:id', async (req: AuthRequest, res) => {
       } catch {
         result = await query(
           `SELECT p.id, p.tenant_id, p.student_id, p.amount, p.payment_date,
-                  p.receipt_number, p.created_at, p.updated_at,
+                  p.receipt_number, NULL::jsonb as receipt_snapshot, p.created_at, p.updated_at,
                   ''::text as notes,
                   ''::text as payment_method,
                   ''::text as term,
@@ -360,6 +360,7 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
 
     const client = await getClient();
     let balance = null;
+    let receiptSnapshot: Record<string, number> | null = null;
     try {
       balance = await getStudentFeeBalance(
         client,
@@ -368,13 +369,38 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
         term || null,
         academic_year || null
       );
+      if (balance) {
+        const totalFees = Number(balance.totalFees) || 0;
+        const arrearsNum = Number(balance.arrears) || 0;
+        const outstanding = Number(balance.outstanding);
+        receiptSnapshot = {
+          totalDue: totalFees + arrearsNum,
+          termFee: totalFees,
+          arrears: arrearsNum,
+          balanceAfter: Math.max(0, Number.isFinite(outstanding) ? outstanding : 0),
+          credit: Number(balance.credit) || 0,
+        };
+      }
     } finally {
       client.release();
     }
 
+    if (receiptSnapshot) {
+      try {
+        await query(
+          `UPDATE payments SET receipt_snapshot = $1::jsonb WHERE id = $2 AND tenant_id = $3`,
+          [JSON.stringify(receiptSnapshot), payment.id, tenantId]
+        );
+      } catch (snapErr) {
+        console.error('[payments] Failed to persist receipt_snapshot:', snapErr);
+      }
+    }
+
+    const paymentOut = { ...payment, receipt_snapshot: receiptSnapshot };
+
     await query(
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'CREATE', 'PAYMENT', payment.id]
+      [tenantId, req.user!.id, 'CREATE', 'PAYMENT', paymentOut.id]
     );
     emitTenantDataChanged(tenantId, 'payment', 'created');
     const studentNameRes = await query(
@@ -391,7 +417,7 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
     }).catch(() => {});
 
     res.status(201).json({
-      payment,
+      payment: paymentOut,
       balance: balance || undefined,
     });
 

@@ -12,6 +12,21 @@ export type PushPayload = {
 
 let configured = false;
 
+async function attachSchoolLogoToPayloadIfNeeded(tenantId: number, payload: PushPayload) {
+  if (payload.icon) return;
+  const settings = await query(
+    `SELECT COALESCE(ss.logo_url, t.logo_url) as logo_url
+     FROM tenants t
+     LEFT JOIN school_settings ss ON ss.tenant_id = t.id
+     WHERE t.id = $1`,
+    [tenantId]
+  ).catch(() => ({ rows: [] as any[] }));
+  const logo = settings.rows[0]?.logo_url;
+  if (logo && !String(logo).startsWith('data:')) {
+    payload.icon = logo;
+  }
+}
+
 function ensureConfigured() {
   if (configured) return;
   const publicKey = process.env.VAPID_PUBLIC_KEY || '';
@@ -85,37 +100,50 @@ export async function sendPushToParentAccount(parentAccountId: number, payload: 
   await sendFcmToParentAccount(parentAccountId, payload).catch(() => {});
 }
 
-export async function sendPushToStudentParents(
+/** Parent portal accounts for one or more students (same tenant). Deduplicates one parent with multiple selected children. */
+export async function sendPushToStudentsParents(
   tenantId: number,
-  studentId: number,
+  studentIds: number[],
   payload: PushPayload
-) {
-  // Try to get school logo if no icon provided
-  if (!payload.icon) {
-    const settings = await query(
-      `SELECT COALESCE(ss.logo_url, t.logo_url) as logo_url
-       FROM tenants t
-       LEFT JOIN school_settings ss ON ss.tenant_id = t.id
-       WHERE t.id = $1`,
-      [tenantId]
-    ).catch(() => ({ rows: [] as any[] }));
-    if (settings.rows[0]?.logo_url) {
-      const logo = settings.rows[0].logo_url;
-      // Skip Base64 strings for push payloads as they exceed the 4KB limit
-      if (!logo.startsWith('data:')) {
-        payload.icon = logo;
-      }
-    }
+): Promise<{ parentAccounts: number; subscribedAccounts: number }> {
+  const uniq = [...new Set(studentIds.map((id) => Number(id)).filter((n) => Number.isFinite(n) && n > 0))];
+  if (uniq.length === 0) {
+    return { parentAccounts: 0, subscribedAccounts: 0 };
   }
 
-  const parentRows = await query(
-    `SELECT id
-     FROM parent_portal_accounts
-     WHERE tenant_id = $1 AND student_id = $2`,
-    [tenantId, studentId]
+  const stCheck = await query(
+    `SELECT id FROM students WHERE tenant_id = $1 AND id = ANY($2::int[])`,
+    [tenantId, uniq]
   );
+  if (stCheck.rows.length !== uniq.length) {
+    const err: Error & { statusCode?: number } = new Error('One or more students not found in this school');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  await attachSchoolLogoToPayloadIfNeeded(tenantId, payload);
+
+  const parentRows = await query(
+    `SELECT DISTINCT ppa.id
+     FROM parent_portal_accounts ppa
+     WHERE ppa.tenant_id = $1 AND ppa.student_id = ANY($2::int[])`,
+    [tenantId, uniq]
+  );
+
+  const ids = parentRows.rows.map((r: { id: number }) => r.id);
+  let subscribedAccounts = 0;
+  if (ids.length > 0) {
+    const subRes = await query(
+      `SELECT COUNT(DISTINCT parent_account_id)::int AS total
+       FROM parent_push_subscriptions
+       WHERE tenant_id = $1 AND parent_account_id = ANY($2::int[])`,
+      [tenantId, ids]
+    ).catch(() => ({ rows: [{ total: 0 }] as any[] }));
+    subscribedAccounts = Number(subRes.rows[0]?.total || 0);
+  }
+
   await Promise.all(
-    parentRows.rows.map(async (parent) => {
+    parentRows.rows.map(async (parent: { id: number }) => {
       await query(
         `INSERT INTO parent_notifications (tenant_id, parent_account_id, title, message, url, icon)
          VALUES ($1, $2, $3, $4, $5, $6)`,
@@ -124,29 +152,71 @@ export async function sendPushToStudentParents(
       return sendPushToParentAccount(parent.id, payload).catch(() => {});
     })
   );
+
+  return { parentAccounts: parentRows.rows.length, subscribedAccounts };
+}
+
+export async function sendPushToStudentParents(
+  tenantId: number,
+  studentId: number,
+  payload: PushPayload
+): Promise<{ parentAccounts: number; subscribedAccounts: number }> {
+  return sendPushToStudentsParents(tenantId, [studentId], payload);
+}
+
+export async function sendPushToClassParents(
+  tenantId: number,
+  classId: number,
+  payload: PushPayload
+): Promise<{ parentAccounts: number; subscribedAccounts: number }> {
+  const cls = await query('SELECT id FROM classes WHERE id = $1 AND tenant_id = $2', [classId, tenantId]);
+  if (cls.rows.length === 0) {
+    const err: Error & { statusCode?: number } = new Error('Class not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  await attachSchoolLogoToPayloadIfNeeded(tenantId, payload);
+
+  const parentRows = await query(
+    `SELECT DISTINCT ppa.id
+     FROM parent_portal_accounts ppa
+     INNER JOIN students s ON s.id = ppa.student_id AND s.tenant_id = ppa.tenant_id
+     WHERE ppa.tenant_id = $1 AND s.class_assigned_id = $2`,
+    [tenantId, classId]
+  );
+
+  const ids = parentRows.rows.map((r: { id: number }) => r.id);
+  let subscribedAccounts = 0;
+  if (ids.length > 0) {
+    const subRes = await query(
+      `SELECT COUNT(DISTINCT parent_account_id)::int AS total
+       FROM parent_push_subscriptions
+       WHERE tenant_id = $1 AND parent_account_id = ANY($2::int[])`,
+      [tenantId, ids]
+    ).catch(() => ({ rows: [{ total: 0 }] as any[] }));
+    subscribedAccounts = Number(subRes.rows[0]?.total || 0);
+  }
+
+  await Promise.all(
+    parentRows.rows.map(async (parent: { id: number }) => {
+      await query(
+        `INSERT INTO parent_notifications (tenant_id, parent_account_id, title, message, url, icon)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [tenantId, parent.id, payload.title, payload.body, payload.url || '/parent', payload.icon || null]
+      ).catch(() => {});
+      return sendPushToParentAccount(parent.id, payload).catch(() => {});
+    })
+  );
+
+  return { parentAccounts: parentRows.rows.length, subscribedAccounts };
 }
 
 export async function sendPushToTenantParents(
   tenantId: number,
   payload: PushPayload
 ): Promise<{ parentAccounts: number; subscribedAccounts: number }> {
-  // Try to get school logo if no icon provided
-  if (!payload.icon) {
-    const settings = await query(
-      `SELECT COALESCE(ss.logo_url, t.logo_url) as logo_url
-       FROM tenants t
-       LEFT JOIN school_settings ss ON ss.tenant_id = t.id
-       WHERE t.id = $1`,
-      [tenantId]
-    ).catch(() => ({ rows: [] as any[] }));
-    if (settings.rows[0]?.logo_url) {
-      const logo = settings.rows[0].logo_url;
-      // Skip Base64 strings for push payloads as they exceed the 4KB limit
-      if (!logo.startsWith('data:')) {
-        payload.icon = logo;
-      }
-    }
-  }
+  await attachSchoolLogoToPayloadIfNeeded(tenantId, payload);
 
   const parentRows = await query(
     `SELECT id FROM parent_portal_accounts WHERE tenant_id = $1`,

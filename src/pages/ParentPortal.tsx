@@ -6,6 +6,7 @@ import {
   BadgeCheck, Home, RefreshCw, Activity, Bell, Download, X, MessageSquare, Send, Phone, Mail, Plus,
 } from 'lucide-react';
 import ReceiptPrinter from '@/components/common/ReceiptPrinter';
+import { parseReceiptSnapshot, termsMatch } from '@/utils/feeCalculations';
 import { io, Socket } from 'socket.io-client';
 import { detectTenantSlugFromHost } from '@/utils/tenantHost';
 import { getFcmToken, removeFcmToken } from '@/services/firebase';
@@ -135,6 +136,7 @@ interface StudentInfo {
   last_name: string;
   admission_number: string;
   class_name: string;
+  class_assigned_id?: number | null;
   gender: string;
   school_name: string;
   current_term: string;
@@ -577,6 +579,24 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         pushNotification('Results Released', 'New term results are now available in your portal.');
         await loadServerNotifications(token).catch(() => undefined);
       } else if (entity === 'admin-test-push') {
+        const rawIds = evt?.targetStudentIds;
+        const targetStudentIds = Array.isArray(rawIds)
+          ? rawIds.map((x: unknown) => Number(x)).filter((n) => Number.isFinite(n))
+          : [];
+        const targetStudentIdLegacy =
+          evt?.targetStudentId != null && evt.targetStudentId !== '' ? Number(evt.targetStudentId) : null;
+        const targetClassId =
+          evt?.targetClassId != null && evt.targetClassId !== '' ? Number(evt.targetClassId) : null;
+        const myStudentId = student?.id != null ? Number(student.id) : null;
+        const myClassId = student?.class_assigned_id != null ? Number(student.class_assigned_id) : null;
+        if (targetStudentIds.length > 0) {
+          if (myStudentId == null || !targetStudentIds.includes(myStudentId)) return;
+        } else if (targetStudentIdLegacy != null && Number.isFinite(targetStudentIdLegacy)) {
+          if (myStudentId == null || myStudentId !== targetStudentIdLegacy) return;
+        }
+        if (targetClassId != null && Number.isFinite(targetClassId)) {
+          if (myClassId == null || myClassId !== targetClassId) return;
+        }
         pushNotification(evt?.title || 'Test Notification', evt?.body || 'School sent a push notification test.');
         await loadServerNotifications(token).catch(() => undefined);
       }
@@ -585,7 +605,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     return () => {
       socket.disconnect();
     };
-  }, [token, tenantId, pushNotification, loadServerNotifications]);
+  }, [token, tenantId, student, pushNotification, loadServerNotifications]);
 
   const handleTabChange = (tab: Tab) => {
     setActiveTab(tab);
@@ -637,6 +657,50 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
   const openReceipt = (payment: any) => {
     if (!student || !finance) return;
+    const snap = parseReceiptSnapshot(payment?.receipt_snapshot);
+    if (snap) {
+      setSelectedReceipt({
+        studentName: `${student.first_name} ${student.last_name}`,
+        studentId: student.admission_number,
+        className: student.class_name,
+        amount: parseFloat(payment?.amount_paid || '0'),
+        date: payment?.payment_date,
+        paymentMethod: payment?.payment_method || 'N/A',
+        term: payment?.term || finance.currentTerm,
+        receiptNumber: payment?.receipt_number || 'N/A',
+        notes: payment?.notes || (payment?.reference_number ? `Ref: ${payment.reference_number}` : ''),
+        remainingBalance: snap.balanceAfter,
+        arrears: snap.arrears,
+        currentTermFee: snap.termFee,
+        totalAmountDue: snap.totalDue,
+      });
+      setShowReceipt(true);
+      return;
+    }
+
+    const anchorTerm = String(payment?.term || finance.currentTerm || '').trim();
+    const totalDue = Number(finance.totalDue || 0);
+    const termFee = Number(finance.termFee || 0);
+    const arrears = Number(finance.arrears || 0);
+    const list = [...(finance.payments || [])]
+      .filter((p: any) => {
+        const pt = String(p.term || '').trim();
+        if (!anchorTerm) return true;
+        if (!pt) return true;
+        return termsMatch(anchorTerm, pt);
+      })
+      .sort((a: any, b: any) => {
+        const ta = new Date(a.payment_date).getTime();
+        const tb = new Date(b.payment_date).getTime();
+        if (ta !== tb) return ta - tb;
+        return Number(a.id || 0) - Number(b.id || 0);
+      });
+    let cumulative = 0;
+    for (const p of list) {
+      cumulative += parseFloat(p.amount_paid || '0');
+      if (payment?.id != null && Number(p.id) === Number(payment.id)) break;
+      if (payment?.id == null && p.receipt_number === payment?.receipt_number && String(p.payment_date) === String(payment?.payment_date)) break;
+    }
     setSelectedReceipt({
       studentName: `${student.first_name} ${student.last_name}`,
       studentId: student.admission_number,
@@ -647,10 +711,10 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       term: payment?.term || finance.currentTerm,
       receiptNumber: payment?.receipt_number || 'N/A',
       notes: payment?.notes || (payment?.reference_number ? `Ref: ${payment.reference_number}` : ''),
-      remainingBalance: Math.max(0, Number(finance.balance || 0)),
-      arrears: Number(finance.arrears || 0),
-      currentTermFee: Number(finance.termFee || 0),
-      totalAmountDue: Number(finance.totalDue || 0),
+      remainingBalance: Math.max(0, totalDue - cumulative),
+      arrears,
+      currentTermFee: termFee,
+      totalAmountDue: totalDue,
     });
     setShowReceipt(true);
   };
@@ -1504,8 +1568,8 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                     <div className="px-4 py-6 text-center text-sm text-gray-400">No payments recorded yet.</div>
                   ) : (
                     <div className="divide-y divide-gray-50 max-h-64 overflow-y-auto">
-                      {finance.payments.map((p: any, i: number) => (
-                        <div key={i} className="flex items-center gap-3 px-4 py-3">
+                      {finance.payments.map((p: any) => (
+                        <div key={p.id ?? `${p.receipt_number}-${p.payment_date}`} className="flex items-center gap-3 px-4 py-3">
                           <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
                             p.term === finance.currentTerm ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
                           }`}>
@@ -1824,7 +1888,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
       {deskComposeOpen && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="w-full sm:max-w-lg rounded-t-3xl sm:rounded-2xl bg-white shadow-2xl p-4 sm:p-5 max-h-[90vh] overflow-y-auto">
+          <div className="modal w-full sm:max-w-lg rounded-t-3xl sm:rounded-2xl bg-white shadow-2xl p-4 sm:p-5">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-base font-semibold text-slate-900">New Parent Desk Message</h3>
               <button onClick={() => setDeskComposeOpen(false)} className="text-slate-500 hover:text-slate-700"><X className="w-4 h-4" /></button>
@@ -1873,7 +1937,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
       {selectedDeskMessage && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="w-full sm:max-w-2xl rounded-t-3xl sm:rounded-2xl bg-white shadow-2xl max-h-[92vh] overflow-hidden flex flex-col">
+          <div className="w-full sm:max-w-2xl rounded-t-3xl sm:rounded-2xl bg-white shadow-2xl max-h-[92dvh] overflow-hidden flex flex-col overscroll-contain">
             <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <p className="font-semibold text-slate-900 text-sm">{selectedDeskMessage.subject}</p>
@@ -2022,7 +2086,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             <img
               src={lightboxUrl}
               alt={`${student.first_name} ${student.last_name}`}
-              className="w-full rounded-2xl shadow-2xl border-4 border-white/10 object-contain max-h-[80vh]"
+              className="w-full rounded-2xl shadow-2xl border-4 border-white/10 object-contain max-h-[80dvh]"
             />
             <div className="absolute top-0 inset-x-0 flex items-center justify-between px-4 pt-3">
               <div className="bg-black/50 text-white text-sm font-semibold px-3 py-1.5 rounded-full backdrop-blur-sm">
@@ -2076,7 +2140,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               </button>
             </div>
 
-            <div className="max-h-[60vh] overflow-y-auto px-2 py-2">
+            <div className="max-h-[60dvh] overflow-y-auto [-webkit-overflow-scrolling:touch] overscroll-contain px-2 py-2">
               <div className="space-y-1">
                 {linkedAccounts.map((acc) => {
                   const isActive = acc.student.admission_number === student.admission_number;

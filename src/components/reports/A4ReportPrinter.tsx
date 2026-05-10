@@ -667,7 +667,7 @@ const A4ReportPrinter: React.FC<A4ReportPrinterProps> = ({
 
   return (
     <Dialog open={show} onOpenChange={onClose}>
-      <DialogContent className="max-w-7xl max-h-[95vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-7xl max-h-[95dvh] overflow-hidden flex flex-col">
         <DialogHeader className="flex-shrink-0">
           <div className="flex items-center justify-between">
             <DialogTitle className="text-xl font-bold">📊 Comprehensive School Report</DialogTitle>

@@ -10,7 +10,7 @@ import { requireRole, requirePrimaryAdminOrSuperAdmin } from '../middleware/auth
 import { setTenantContext } from '../middleware/tenant.js';
 import { resolveLedgerTermFromSettings, postFeesForNewTerm, postFeesForNewTermWithArrears } from '../services/ledgerFinanceService.js';
 import { getIO } from '../socket.js';
-import { sendPushToTenantParents } from '../services/webPushService.js';
+import { sendPushToTenantParents, sendPushToStudentsParents, sendPushToClassParents } from '../services/webPushService.js';
 import { isFcmConfigured } from '../services/fcmService.js';
 
 const router = express.Router();
@@ -582,13 +582,55 @@ router.post('/push/test', requirePrimaryAdminOrSuperAdmin, async (req: AuthReque
       req.body?.message || 'This is a test push from school admin. If you can see this, push works while app is closed.'
     ).slice(0, 300);
 
-    const stats = await sendPushToTenantParents(tenantId, {
-      title,
-      body,
-      url: `/portal/${tenantId}`,
-    });
+    const audience = String(req.body?.audience || 'all').toLowerCase();
+    const pushPayload = { title, body, url: `/portal/${tenantId}` as string };
 
-    // Also emit realtime in-app test notification for currently open parent sessions.
+    let stats: { parentAccounts: number; subscribedAccounts: number };
+    let targetStudentIds: number[] | undefined;
+    let targetClassId: number | undefined;
+
+    if (audience === 'students' || audience === 'student') {
+      let ids: number[] = [];
+      if (Array.isArray(req.body?.studentIds)) {
+        ids = (req.body.studentIds as unknown[])
+          .map((x) => parseInt(String(x), 10))
+          .filter((n) => Number.isFinite(n) && n > 0);
+      }
+      if (ids.length === 0 && req.body?.studentId != null) {
+        const one = parseInt(String(req.body.studentId), 10);
+        if (Number.isFinite(one) && one > 0) ids = [one];
+      }
+      if (ids.length === 0) {
+        return res.status(400).json({ error: 'studentIds is required (database student ids), at least one' });
+      }
+      try {
+        stats = await sendPushToStudentsParents(tenantId, ids, pushPayload);
+      } catch (e: any) {
+        if (e?.statusCode === 404) {
+          return res.status(404).json({ error: e?.message || 'One or more students not found' });
+        }
+        throw e;
+      }
+      targetStudentIds = ids;
+    } else if (audience === 'class') {
+      const classId = parseInt(String(req.body?.classId), 10);
+      if (!Number.isFinite(classId)) {
+        return res.status(400).json({ error: 'classId is required when audience is class' });
+      }
+      try {
+        stats = await sendPushToClassParents(tenantId, classId, pushPayload);
+      } catch (e: any) {
+        if (e?.statusCode === 404 || e?.message === 'Class not found') {
+          return res.status(404).json({ error: 'Class not found' });
+        }
+        throw e;
+      }
+      targetClassId = classId;
+    } else {
+      stats = await sendPushToTenantParents(tenantId, pushPayload);
+    }
+
+    // Realtime in-app banner for open parent sessions (filtered on client when targeted).
     try {
       const io = getIO();
       io.to(`tenant:${tenantId}`).emit('tenant-data-changed', {
@@ -598,6 +640,9 @@ router.post('/push/test', requirePrimaryAdminOrSuperAdmin, async (req: AuthReque
         title,
         body,
         at: Date.now(),
+        audience: audience === 'class' ? 'class' : audience === 'students' || audience === 'student' ? 'students' : 'all',
+        ...(targetStudentIds && targetStudentIds.length ? { targetStudentIds } : {}),
+        ...(targetClassId != null ? { targetClassId } : {}),
       });
     } catch {
       // ignore realtime emit failures; web push path is primary
@@ -605,12 +650,25 @@ router.post('/push/test', requirePrimaryAdminOrSuperAdmin, async (req: AuthReque
 
     await query(
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, details) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'PUSH_TEST', 'SETTINGS', JSON.stringify({ title, ...stats })]
+      [
+        tenantId,
+        req.user!.id,
+        'PUSH_TEST',
+        'SETTINGS',
+        JSON.stringify({
+          title,
+          audience: audience === 'class' ? 'class' : audience === 'students' || audience === 'student' ? 'students' : 'all',
+          targetStudentIds,
+          targetClassId,
+          ...stats,
+        }),
+      ]
     ).catch(() => {});
 
     return res.json({
       success: true,
       message: 'Test push sent',
+      audience: audience === 'class' ? 'class' : audience === 'students' || audience === 'student' ? 'students' : 'all',
       ...stats,
     });
   } catch (error) {

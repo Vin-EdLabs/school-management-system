@@ -64,7 +64,7 @@ const SupportModule = () => {
 
   if (!isSuperAdmin) {
     return (
-      <div className="p-4 md:p-6 h-[calc(100vh-140px)] md:h-[calc(100vh-100px)]">
+      <div className="p-4 md:p-6 h-[calc(100dvh-140px)] md:h-[calc(100dvh-100px)]">
         <div className="max-w-5xl mx-auto h-full bg-white dark:bg-slate-900 rounded-[1.5rem] md:rounded-[2.5rem] shadow-2xl shadow-indigo-100/50 dark:shadow-none border border-slate-100 dark:border-slate-800 overflow-hidden flex flex-col">
           <SupportChatWindow isSuperAdmin={false} />
         </div>
@@ -73,7 +73,7 @@ const SupportModule = () => {
   }
 
   return (
-    <div className="p-4 md:p-6 h-[calc(100vh-140px)] md:h-[calc(100vh-100px)] flex flex-col md:flex-row gap-4 md:gap-6">
+    <div className="p-4 md:p-6 h-[calc(100dvh-140px)] md:h-[calc(100dvh-100px)] flex flex-col md:flex-row gap-4 md:gap-6">
       {/* Conversations List */}
       <Card className={cn(
         "w-full md:w-96 rounded-[1.5rem] md:rounded-[2.5rem] shadow-xl shadow-slate-100 dark:shadow-none border-slate-100 dark:border-slate-800 overflow-hidden flex flex-col transition-all duration-300",

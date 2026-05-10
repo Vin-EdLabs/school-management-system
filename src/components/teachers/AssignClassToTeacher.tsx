@@ -252,7 +252,16 @@ const AssignClassToTeacher = () => {
         <CardContent>
           <div className="space-y-3">
             {classes.map((cls) => {
-              const mainTeacher = teachers.find(t => String(t.id) === String(cls.assignedTeacherId));
+              const nameNorm = (cls.className || '').trim().toLowerCase();
+              const mainTeacher =
+                teachers.find((t) => String(t.id) === String(cls.assignedTeacherId)) ||
+                teachers.find((t) =>
+                  (t.classAssigned || '')
+                    .split(',')
+                    .map((s) => s.trim().toLowerCase())
+                    .filter(Boolean)
+                    .includes(nameNorm)
+                );
               return (
                 <div key={cls.id} className="flex items-center justify-between p-3 border rounded-lg">
                   <div>
@@ -263,9 +272,12 @@ const AssignClassToTeacher = () => {
                   </div>
                   <div>
                     {mainTeacher ? (
-                      <Badge variant="default">{mainTeacher.fullName} (Main)</Badge>
+                      <Badge variant="default">
+                        {mainTeacher.fullName}
+                        {String(mainTeacher.id) === String(cls.assignedTeacherId) ? ' (Main)' : ''}
+                      </Badge>
                     ) : (
-                      <Badge variant="outline">No main teacher</Badge>
+                      <Badge variant="outline">No teacher linked in list</Badge>
                     )}
                   </div>
                 </div>

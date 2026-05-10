@@ -539,7 +539,7 @@ export default function CalendarModule() {
 
         {/* Event Dialog */}
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto border-border shadow-2xl bg-card/95 backdrop-blur-sm">
+          <DialogContent className="sm:max-w-[700px] max-h-[90dvh] border-border shadow-2xl bg-card/95 backdrop-blur-sm">
             <DialogHeader className="pb-6 border-b border-border">
               <DialogTitle className="text-2xl font-bold text-foreground flex items-center gap-3">
                 <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">

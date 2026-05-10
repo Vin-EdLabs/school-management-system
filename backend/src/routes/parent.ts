@@ -676,13 +676,15 @@ router.get('/finance', authenticateParent, async (req: ParentRequest, res) => {
     try {
       paymentsRow = await query(
         `SELECT
+           p.id,
            COALESCE(p.amount_paid, p.amount) AS amount_paid,
            p.payment_date,
            p.payment_method,
            p.receipt_number,
            p.reference_number,
            p.notes,
-           p.term
+           p.term,
+           p.receipt_snapshot
          FROM payments p
          WHERE p.tenant_id = $1 AND p.student_id = $2
          ORDER BY p.payment_date DESC`,
@@ -692,13 +694,15 @@ router.get('/finance', authenticateParent, async (req: ParentRequest, res) => {
       try {
         paymentsRow = await query(
           `SELECT
+             p.id,
              COALESCE(p.amount_paid, p.amount) AS amount_paid,
              p.payment_date,
              ''::text AS payment_method,
              p.receipt_number,
              ''::text AS reference_number,
              p.notes,
-             ''::text AS term
+             ''::text AS term,
+             NULL::jsonb AS receipt_snapshot
            FROM payments p
            WHERE p.tenant_id = $1 AND p.student_id = $2
            ORDER BY p.payment_date DESC`,
@@ -707,13 +711,15 @@ router.get('/finance', authenticateParent, async (req: ParentRequest, res) => {
       } catch {
         paymentsRow = await query(
           `SELECT
+             p.id,
              COALESCE(p.amount_paid, p.amount) AS amount_paid,
              p.payment_date,
              ''::text AS payment_method,
              p.receipt_number,
              ''::text AS reference_number,
              ''::text AS notes,
-             ''::text AS term
+             ''::text AS term,
+             NULL::jsonb AS receipt_snapshot
            FROM payments p
            WHERE p.tenant_id = $1 AND p.student_id = $2
            ORDER BY p.payment_date DESC`,

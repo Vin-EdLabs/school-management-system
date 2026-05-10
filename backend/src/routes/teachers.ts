@@ -74,28 +74,65 @@ router.get('/me/classes', async (req: AuthRequest, res) => {
   }
 });
 
+// Display name for classes: junction (Assign Class tab) + legacy teachers.class_assigned_id
+const TEACHER_CLASS_NAME_SQL = `
+  COALESCE(
+    NULLIF((
+      SELECT STRING_AGG(DISTINCT cl.class_name, ', ' ORDER BY cl.class_name)
+      FROM class_teachers ct2
+      JOIN classes cl ON cl.id = ct2.class_id AND cl.tenant_id = ct2.tenant_id
+      WHERE ct2.teacher_id = t.id AND ct2.tenant_id = t.tenant_id
+    ), ''),
+    c.class_name
+  ) AS class_name
+`;
+
 // Get all teachers
 router.get('/', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const { classId } = req.query;
-    
+
     let queryText = `
-      SELECT t.*, c.class_name, c.level, c.stream
+      SELECT t.*, ${TEACHER_CLASS_NAME_SQL.trim()},
+        c.level, c.stream
       FROM teachers t
       LEFT JOIN classes c ON t.class_assigned_id = c.id
       WHERE t.tenant_id = $1
     `;
     const params: any[] = [tenantId];
-    
+
     if (classId) {
-      queryText += ' AND t.class_assigned_id = $2';
+      queryText += ` AND (
+        t.class_assigned_id = $2::int
+        OR EXISTS (
+          SELECT 1 FROM class_teachers ct3
+          WHERE ct3.teacher_id = t.id AND ct3.class_id = $2::int AND ct3.tenant_id = t.tenant_id
+        )
+      )`;
       params.push(classId);
     }
-    
+
     queryText += ' ORDER BY t.created_at DESC';
-    
-    const result = await query(queryText, params);
+
+    let result;
+    try {
+      result = await query(queryText, params);
+    } catch (e: any) {
+      if (e?.code === '42P01') {
+        queryText = `
+          SELECT t.*, c.class_name, c.level, c.stream
+          FROM teachers t
+          LEFT JOIN classes c ON t.class_assigned_id = c.id
+          WHERE t.tenant_id = $1
+          ${classId ? ' AND t.class_assigned_id = $2' : ''}
+          ORDER BY t.created_at DESC
+        `;
+        result = await query(queryText, classId ? [tenantId, classId] : [tenantId]);
+      } else {
+        throw e;
+      }
+    }
     res.json(result.rows);
   } catch (error) {
     console.error('Get teachers error:', error);
@@ -109,18 +146,34 @@ router.get('/:id', async (req: AuthRequest, res) => {
     const tenantId = req.user!.tenantId!;
     const { id } = req.params;
     
-    const result = await query(
-      `SELECT t.*, c.class_name, c.level, c.stream
-       FROM teachers t
-       LEFT JOIN classes c ON t.class_assigned_id = c.id
-       WHERE t.id = $1 AND t.tenant_id = $2`,
-      [id, tenantId]
-    );
-    
+    let result;
+    try {
+      result = await query(
+        `SELECT t.*, ${TEACHER_CLASS_NAME_SQL.trim()},
+           c.level, c.stream
+         FROM teachers t
+         LEFT JOIN classes c ON t.class_assigned_id = c.id
+         WHERE t.id = $1 AND t.tenant_id = $2`,
+        [id, tenantId]
+      );
+    } catch (e: any) {
+      if (e?.code === '42P01') {
+        result = await query(
+          `SELECT t.*, c.class_name, c.level, c.stream
+           FROM teachers t
+           LEFT JOIN classes c ON t.class_assigned_id = c.id
+           WHERE t.id = $1 AND t.tenant_id = $2`,
+          [id, tenantId]
+        );
+      } else {
+        throw e;
+      }
+    }
+
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Teacher not found' });
     }
-    
+
     res.json(result.rows[0]);
   } catch (error) {
     console.error('Get teacher error:', error);

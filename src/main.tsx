@@ -102,6 +102,20 @@ document.addEventListener('wheel', (e) => {
   }
 });
 
+// PWA / mobile: keep textarea visible when the virtual keyboard opens (iOS + Android)
+document.addEventListener(
+  'focusin',
+  (e) => {
+    const t = e.target;
+    if (t instanceof HTMLTextAreaElement) {
+      window.setTimeout(() => {
+        t.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 300);
+    }
+  },
+  true
+);
+
 bootstrapTenantBrandingAndManifest().finally(registerServiceWorker);
 
 createRoot(document.getElementById("root")!).render(<App />);

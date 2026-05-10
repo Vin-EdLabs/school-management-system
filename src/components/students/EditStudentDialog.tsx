@@ -202,7 +202,7 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[80dvh]">
         <DialogHeader>
           <DialogTitle>Edit Student Information</DialogTitle>
         </DialogHeader>

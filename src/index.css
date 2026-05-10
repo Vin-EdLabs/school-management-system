@@ -2,6 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+/* PWA mobile: iOS avoids input-zoom below 16px; modal panels scroll when keyboard opens */
+input,
+textarea,
+select {
+  font-size: 16px !important;
+}
+
+.modal {
+  max-height: 90dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 @layer utilities {
   .scrollbar-hide {
     -ms-overflow-style: none;

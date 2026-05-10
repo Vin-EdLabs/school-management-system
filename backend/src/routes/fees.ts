@@ -289,6 +289,71 @@ router.put('/:id', requireRole('super-admin', 'administrator', 'finance'), async
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
       [tenantId, req.user!.id, 'UPDATE', 'FEE_STRUCTURE', parseInt(id)]
     );
+
+    // Keep ledger in sync with edited fee (same as create path) so reports and ledger balances match Set Fees.
+    try {
+      const row = result.rows[0];
+      const classIdNum = Number(row.class_id);
+      const amountNum = parseFloat(String(row.amount ?? '0'));
+      const termStr = String(row.term || '').trim();
+      if (!Number.isNaN(classIdNum) && termStr && !Number.isNaN(amountNum)) {
+        const settingsRes = await query(
+          'SELECT current_year FROM school_settings WHERE tenant_id = $1 LIMIT 1',
+          [tenantId]
+        );
+        const fallbackYear = settingsRes.rows[0]?.current_year ? String(settingsRes.rows[0].current_year) : undefined;
+        const { termName, yearName } = splitTermAndYear(termStr, fallbackYear);
+        if (termName && yearName) {
+          const yearRes = await query(
+            `INSERT INTO academic_years (tenant_id, name, is_current)
+             VALUES ($1, $2, false)
+             ON CONFLICT (tenant_id, name) DO UPDATE SET name = EXCLUDED.name
+             RETURNING id`,
+            [tenantId, yearName]
+          );
+          const academicYearId = yearRes.rows[0]?.id;
+          if (academicYearId) {
+            const termRes = await query(
+              `INSERT INTO terms (tenant_id, academic_year_id, name, is_current)
+               VALUES ($1, $2, $3, false)
+               ON CONFLICT (tenant_id, academic_year_id, name) DO UPDATE SET name = EXCLUDED.name
+               RETURNING id`,
+              [tenantId, academicYearId, termName]
+            );
+            const termId = termRes.rows[0]?.id;
+            if (termId) {
+              await query(
+                `INSERT INTO ledger_fee_structures (tenant_id, class_id, academic_year_id, term_id, tuition_fee, pta_fee, exam_fee, total)
+                 VALUES ($1, $2, $3, $4, $5, 0, 0, $5)
+                 ON CONFLICT (tenant_id, class_id, academic_year_id, term_id)
+                 DO UPDATE SET tuition_fee = EXCLUDED.tuition_fee, total = EXCLUDED.total`,
+                [tenantId, classIdNum, academicYearId, termId, amountNum]
+              );
+              await query(
+                `UPDATE student_ledger AS sl
+                 SET debit = CASE
+                   WHEN s.is_beneficiary = true AND s.discount_type = 'percentage' THEN $4::numeric - ($4::numeric * COALESCE(s.discount_value, 0) / 100)
+                   WHEN s.is_beneficiary = true AND s.discount_type = 'fixed' THEN GREATEST(0, $4::numeric - COALESCE(s.discount_value, 0))
+                   ELSE $4::numeric
+                 END
+                 FROM students AS s
+                 WHERE sl.student_id = s.id
+                   AND sl.tenant_id = $1
+                   AND sl.term_id = $2
+                   AND sl.entry_type = 'term_fee'
+                   AND s.tenant_id = $1
+                   AND s.class_assigned_id = $3`,
+                [tenantId, termId, classIdNum, amountNum]
+              );
+              await postFeesForClass(tenantId, classIdNum, academicYearId, termId);
+            }
+          }
+        }
+      }
+    } catch (syncError) {
+      console.error('[fees] Ledger sync on update warning:', syncError);
+    }
+
     // Automatically refresh arrears when fee structure is updated
     const { refreshArrearsForTenant } = await import('../services/arrearsService.js');
     await refreshArrearsForTenant(tenantId).catch(err => console.error('Auto-sync arrears error:', err));

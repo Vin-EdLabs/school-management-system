@@ -120,10 +120,119 @@ export const calculateStudentFees = async (
 };
 
 /** Check if two terms match (e.g. "Term 1" matches "Term 1 2024" and vice versa) */
-function termsMatch(term1: string | undefined, term2: string | undefined): boolean {
+export function termsMatch(term1: string | undefined, term2: string | undefined): boolean {
   if (!term1 || !term2) return false;
   if (term1 === term2) return true;
   return term1.includes(term2) || term2.includes(term1);
+}
+
+/** Persisted on each payment when recorded — balance line must never change for old receipts. */
+export type ReceiptSnapshotData = {
+  totalDue: number;
+  termFee: number;
+  arrears: number;
+  balanceAfter: number;
+  credit?: number;
+};
+
+export function parseReceiptSnapshot(raw: unknown): ReceiptSnapshotData | null {
+  if (raw == null) return null;
+  if (typeof raw === 'string') {
+    try {
+      return parseReceiptSnapshot(JSON.parse(raw));
+    } catch {
+      return null;
+    }
+  }
+  if (typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.balanceAfter !== 'number' && typeof o.balanceAfter !== 'string') return null;
+  return {
+    totalDue: Number(o.totalDue ?? 0),
+    termFee: Number(o.termFee ?? 0),
+    arrears: Number(o.arrears ?? 0),
+    balanceAfter: Math.max(0, Number(o.balanceAfter ?? 0)),
+    credit: Number(o.credit ?? 0),
+  };
+}
+
+/**
+ * Receipt totals: prefer DB snapshot; else estimate from cumulative paid up to this payment (same term).
+ */
+export function receiptAmountsForPayment(
+  payment: {
+    id: string;
+    studentId: string;
+    studentIdNum?: number;
+    amount: number;
+    term: string;
+    date: string;
+    receiptSnapshot?: unknown;
+    receipt_snapshot?: unknown;
+  },
+  allPayments: { id: string; studentId: string; studentIdNum?: number; amount: number; term: string; date: string }[],
+  student: {
+    classAssigned: string;
+    classAssignedId?: number | string | null;
+    isBeneficiary?: boolean;
+    discountType?: string;
+    discountValue?: number;
+  },
+  feeStructures: any[],
+  arrearsBalances?: Record<string, number> | null
+): { remainingBalance: number; totalAmountDue: number; currentTermFee: number; arrears: number; creditBalance: number } {
+  const snap = parseReceiptSnapshot(payment.receiptSnapshot ?? payment.receipt_snapshot);
+  if (snap) {
+    return {
+      remainingBalance: snap.balanceAfter,
+      totalAmountDue: snap.totalDue,
+      currentTermFee: snap.termFee,
+      arrears: snap.arrears,
+      creditBalance: Math.max(0, snap.credit || 0),
+    };
+  }
+
+  const termForCalc = (payment.term || '').trim() || 'Not Set';
+  const feeDetails = calculateStudentFeesSync(
+    payment.studentId,
+    termForCalc,
+    student.classAssigned,
+    feeStructures,
+    allPayments,
+    student.classAssignedId ?? undefined,
+    arrearsBalances,
+    {
+      isBeneficiary: !!student.isBeneficiary,
+      discountType: student.discountType,
+      discountValue: student.discountValue,
+    }
+  );
+
+  const sameStudent = (p: { studentId: string; studentIdNum?: number }) =>
+    String(p.studentId) === String(payment.studentId) || String(p.studentIdNum ?? '') === String(payment.studentId);
+
+  const chronological = [...allPayments]
+    .filter((p) => sameStudent(p) && termsMatch(termForCalc, p.term))
+    .sort((a, b) => {
+      const ta = new Date(a.date).getTime();
+      const tb = new Date(b.date).getTime();
+      if (ta !== tb) return ta - tb;
+      return Number(a.id) - Number(b.id);
+    });
+
+  let cumulative = 0;
+  for (const p of chronological) {
+    cumulative += Number(p.amount) || 0;
+    if (String(p.id) === String(payment.id)) break;
+  }
+
+  return {
+    remainingBalance: Math.max(0, feeDetails.totalAmountDue - cumulative),
+    totalAmountDue: feeDetails.totalAmountDue,
+    currentTermFee: feeDetails.currentTermFee,
+    arrears: feeDetails.arrears,
+    creditBalance: Math.max(0, cumulative - feeDetails.totalAmountDue),
+  };
 }
 
 /** Sync version - Matches backend: total_outstanding = previous_arrears + current_term_fee, remaining = total_outstanding - total_paid */

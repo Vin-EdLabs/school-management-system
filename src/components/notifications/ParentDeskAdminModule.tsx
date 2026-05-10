@@ -54,7 +54,7 @@ const ParentDeskAdminModule: React.FC = () => {
   useEffect(() => { load().catch(() => undefined); }, []);
 
   return (
-    <div className="h-[calc(100vh-120px)] grid grid-cols-1 lg:grid-cols-[320px,1fr] gap-0 bg-background overflow-hidden border border-border/50 rounded-2xl shadow-sm mx-4">
+    <div className="h-[calc(100dvh-120px)] grid grid-cols-1 lg:grid-cols-[320px,1fr] gap-0 bg-background overflow-hidden border border-border/50 rounded-2xl shadow-sm mx-4">
       {/* Lightbox */}
       {lightbox && (
         <div 

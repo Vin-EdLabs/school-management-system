@@ -1,26 +1,25 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useData } from '../../contexts/DataContext';
+import { useActiveTerm } from '../../contexts/ActiveTermContext';
 import { Users, GraduationCap, BookOpen, DollarSign, AlertCircle, Eye } from 'lucide-react';
-import { getActiveAcademicTerm, getActiveAcademicYear, calculateStudentFeeStatus } from '../../utils/feeCalculations';
+import { calculateStudentFeesSync, calculateStudentFeeStatusSync } from '../../utils/feeCalculations';
+
+/** Map sync fee status to labels this dashboard already renders */
+function feeStatusForDashboard(sync: ReturnType<typeof calculateStudentFeeStatusSync>) {
+  if (sync.status === 'Paid') return { status: 'Fully Paid' as const, balance: 0 };
+  if (sync.status === 'Credit Balance') return { status: 'Credit Balance' as const, balance: sync.balance };
+  if (sync.status === 'No Fee Set') return { status: 'No Fee Set' as const, balance: 0 };
+  return { status: 'Amount Owing' as const, balance: sync.balance };
+}
 
 const AdministratorDashboard = () => {
-  const { students, teachers, classes, payments, feeStructures } = useData();
+  const { students, teachers, classes, payments, feeStructures, arrearsBalances } = useData();
+  const { currentTerm: activeAcademicTerm, currentYear: activeAcademicYear } = useActiveTerm();
   const [selectedClass, setSelectedClass] = useState('all-classes');
-  const [activeAcademicTerm, setActiveAcademicTerm] = useState('');
-  const [activeAcademicYear, setActiveAcademicYear] = useState('');
-
-  // Load active academic settings
-  useEffect(() => {
-    const activeTerm = getActiveAcademicTerm();
-    const activeYear = getActiveAcademicYear();
-    setActiveAcademicTerm(activeTerm);
-    setActiveAcademicYear(activeYear);
-  }, []);
 
   // Calculate real-time student statistics
   const totalStudents = students.length;
@@ -35,16 +34,41 @@ const AdministratorDashboard = () => {
   // Calculate active classes count
   const activeClasses = classes.filter(cls => cls.className && cls.className.trim() !== '').length;
 
-  // Filter students by class
-  const filteredStudents = selectedClass === 'all-classes' 
-    ? students 
-    : students.filter(student => student.classAssigned === selectedClass);
+  const filteredStudents = useMemo(
+    () =>
+      selectedClass === 'all-classes'
+        ? students
+        : students.filter((student) => student.classAssigned === selectedClass),
+    [students, selectedClass]
+  );
 
-  // Calculate fee status for each student using real data
-  const studentsWithFeeStatus = filteredStudents.map(student => ({
-    ...student,
-    feeStatus: calculateStudentFeeStatus(student.id, activeAcademicTerm, students, feeStructures, payments)
-  }));
+  const studentsWithFeeStatus = useMemo(() => {
+    const term = activeAcademicTerm?.trim() || '';
+    if (!term || term === 'Not Set') {
+      return filteredStudents.map((student) => ({
+        ...student,
+        feeStatus: { status: 'No Fee Set' as const, balance: 0 },
+      }));
+    }
+    return filteredStudents.map((student) => {
+      const feeCalc = calculateStudentFeesSync(
+        student.id,
+        term,
+        student.classAssigned,
+        feeStructures,
+        payments,
+        student.classAssignedId,
+        arrearsBalances,
+        {
+          isBeneficiary: !!student.isBeneficiary,
+          discountType: student.discountType,
+          discountValue: student.discountValue,
+        }
+      );
+      const sync = calculateStudentFeeStatusSync(feeCalc);
+      return { ...student, feeStatus: feeStatusForDashboard(sync) };
+    });
+  }, [filteredStudents, activeAcademicTerm, feeStructures, payments, arrearsBalances]);
 
   // Calculate real-time fee overview totals
   const totalOwing = studentsWithFeeStatus

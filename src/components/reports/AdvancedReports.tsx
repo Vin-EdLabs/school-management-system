@@ -204,7 +204,7 @@ const AdvancedReports = () => {
 
   if (loading && !financialSummary) {
     return (
-      <div className="flex flex-col items-center justify-center h-[80vh] space-y-4">
+      <div className="flex flex-col items-center justify-center h-[80dvh] space-y-4">
         <RefreshCw className="animate-spin text-blue-500" size={48} />
         <p className="text-[var(--report-text-secondary)] font-medium">Synthesizing intelligence data...</p>
       </div>
@@ -213,7 +213,7 @@ const AdvancedReports = () => {
 
   if (error && !financialSummary) {
     return (
-      <div className="flex flex-col items-center justify-center h-[80vh] space-y-4">
+      <div className="flex flex-col items-center justify-center h-[80dvh] space-y-4">
         <AlertCircle className="text-red-500" size={48} />
         <h2 className="text-xl font-bold">Data Synchronization Failed</h2>
         <p className="text-[var(--report-text-secondary)]">{error}</p>

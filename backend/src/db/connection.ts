@@ -377,6 +377,7 @@ const runMigrations = async () => {
     await client.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_date TIMESTAMP`).catch(() => { });
     await client.query(`UPDATE payments SET amount_paid = amount WHERE amount_paid IS NULL AND amount IS NOT NULL`).catch(() => { });
     await client.query(`UPDATE payments SET payment_date = created_at WHERE payment_date IS NULL AND created_at IS NOT NULL`).catch(() => { });
+    await client.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS receipt_snapshot JSONB`).catch(() => { });
 
     // Create receipts table
     await client.query(`

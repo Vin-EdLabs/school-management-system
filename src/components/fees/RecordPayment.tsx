@@ -11,7 +11,7 @@ import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
 import { CreditCard, Search } from 'lucide-react';
 import ReceiptPrinter from '../common/ReceiptPrinter';
-import { calculateStudentFeesSync } from '../../utils/feeCalculations';
+import { calculateStudentFeesSync, parseReceiptSnapshot } from '../../utils/feeCalculations';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
 
 const RecordPayment = () => {
@@ -118,10 +118,17 @@ const RecordPayment = () => {
     await refresh();
 
     const { payment: createdPayment, balance: serverBalance } = paymentResult;
-    
-    // If the server provided a real-time balance, use it. Otherwise, fallback to local calculation.
-    const finalBalance = serverBalance ? serverBalance.outstanding : Math.max(0, feeDetails.totalAmountDue - (feeDetails.totalPaid + paymentAmount));
-    const finalTotalDue = serverBalance ? (serverBalance.totalFees + serverBalance.arrears) : feeDetails.totalAmountDue;
+
+    const snap = parseReceiptSnapshot(createdPayment.receiptSnapshot);
+    const finalBalance = snap
+      ? snap.balanceAfter
+      : serverBalance
+        ? Math.max(0, Number(serverBalance.outstanding) || 0)
+        : Math.max(0, feeDetails.totalAmountDue - (feeDetails.totalPaid + paymentAmount));
+    const finalTotalDue = snap ? snap.totalDue : serverBalance ? (serverBalance.totalFees + serverBalance.arrears) : feeDetails.totalAmountDue;
+    const finalArrears = snap ? snap.arrears : serverBalance ? serverBalance.arrears : feeDetails.arrears;
+    const finalTermFee = snap ? snap.termFee : serverBalance ? serverBalance.totalFees : feeDetails.currentTermFee;
+    const finalCredit = snap ? Math.max(0, snap.credit || 0) : serverBalance ? serverBalance.credit : Math.max(0, (feeDetails.totalPaid + paymentAmount) - feeDetails.totalAmountDue);
 
     setReceiptData({
       studentName: `${student.firstName} ${student.lastName}`,
@@ -135,9 +142,9 @@ const RecordPayment = () => {
       receiptNumber: createdPayment.receiptNumber || `R${Date.now().toString().slice(-8)}`,
       notes: formData.notes,
       remainingBalance: finalBalance,
-      creditBalance: serverBalance ? serverBalance.credit : Math.max(0, (feeDetails.totalPaid + paymentAmount) - feeDetails.totalAmountDue),
-      arrears: serverBalance ? serverBalance.arrears : feeDetails.arrears,
-      currentTermFee: serverBalance ? serverBalance.totalFees : feeDetails.currentTermFee,
+      creditBalance: finalCredit,
+      arrears: finalArrears,
+      currentTermFee: finalTermFee,
       totalAmountDue: finalTotalDue
     } as any);
     setShowReceipt(true);

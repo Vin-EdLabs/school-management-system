@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useSchool } from '../../contexts/SchoolContext';
+import { useSocket } from '../../contexts/SocketContext';
 import { apiService } from '../../services/api';
-import { Printer, FileText, Users, GraduationCap, Loader2, AlertCircle } from 'lucide-react';
+import { Printer, FileText, Users, GraduationCap, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 
 /** One row from the fee status report (server-calculated). */
 interface FeeStatusStudent {
@@ -13,6 +14,11 @@ interface FeeStatusStudent {
   studentNumber: string;
   studentName: string;
   className: string;
+  /** Current-term fee from Set Fees (after beneficiary discount). */
+  termFee?: number;
+  /** Arrears carried into this term (from term_arrears). */
+  arrears?: number;
+  /** termFee + arrears — amount due before payments. */
   totalFeeExpected: number;
   totalPaid: number;
   balance: number;
@@ -23,13 +29,21 @@ interface FeeStatusReport {
   academicPeriod: { term: string; academicYear: string; label: string };
   class: { id: number; name: string };
   students: FeeStatusStudent[];
-  summary: { totalExpected: number; totalPaid: number; totalBalance: number; count: number };
+  summary: {
+    totalTermFee?: number;
+    totalArrears?: number;
+    totalExpected: number;
+    totalPaid: number;
+    totalBalance: number;
+    count: number;
+  };
 }
 
 type StatusFilter = 'all' | 'owing' | 'paid';
 
 const PrintFeeStatusModule = () => {
   const { school, schoolId } = useSchool();
+  const { socket } = useSocket();
   const schoolName = school?.name ?? 'School';
 
   const [selectedClassId, setSelectedClassId] = useState<string>('');
@@ -45,14 +59,33 @@ const PrintFeeStatusModule = () => {
     loadClasses();
   }, [schoolId]);
 
-  useEffect(() => {
+  const loadReport = useCallback(async () => {
     if (!selectedClassId) {
       setReport(null);
       setError(null);
       return;
     }
-    loadReport();
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({
+        classId: selectedClassId,
+        status: statusFilter,
+        _t: String(Date.now()),
+      });
+      const res = await apiService.get<FeeStatusReport>(`/reports/fee-status?${params}`);
+      setReport(res);
+    } catch (err: any) {
+      setReport(null);
+      setError(err?.message || 'Failed to load report');
+    } finally {
+      setLoading(false);
+    }
   }, [selectedClassId, statusFilter]);
+
+  useEffect(() => {
+    loadReport();
+  }, [loadReport]);
 
   const loadClasses = async () => {
     try {
@@ -64,23 +97,27 @@ const PrintFeeStatusModule = () => {
     }
   };
 
-  const loadReport = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params = new URLSearchParams({
-        classId: selectedClassId,
-        status: statusFilter,
-      });
-      const res = await apiService.get<FeeStatusReport>(`/reports/fee-status?${params}`);
-      setReport(res);
-    } catch (err: any) {
-      setReport(null);
-      setError(err?.message || 'Failed to load report');
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    if (!socket || !selectedClassId) return;
+    const onTenantDataChanged = (evt: { entity?: string } | undefined) => {
+      const e = evt?.entity || '';
+      if (e === 'fee' || e === 'finance-arrears' || e === 'payment') {
+        loadReport();
+      }
+    };
+    socket.on('tenant-data-changed', onTenantDataChanged);
+    return () => {
+      socket.off('tenant-data-changed', onTenantDataChanged);
+    };
+  }, [socket, selectedClassId, loadReport]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === 'visible' && selectedClassId) loadReport();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [selectedClassId, loadReport]);
 
   const handleClassChange = (classId: string) => {
     setSelectedClassId(classId);
@@ -112,7 +149,9 @@ const PrintFeeStatusModule = () => {
           <td>${s.studentNumber}</td>
           <td>${s.studentName}</td>
           <td>${s.className}</td>
-          <td class="amount">GHS ${s.totalFeeExpected.toLocaleString()}</td>
+          <td class="amount">GHS ${(s.termFee ?? 0).toLocaleString()}</td>
+          <td class="amount">GHS ${(s.arrears ?? 0).toLocaleString()}</td>
+          <td class="amount">GHS ${(s.totalFeeExpected ?? 0).toLocaleString()}</td>
           <td class="amount">GHS ${s.totalPaid.toLocaleString()}</td>
           <td class="amount ${s.balance > 0 ? 'owing' : s.balance < 0 ? 'credit' : ''}">GHS ${s.balance.toLocaleString()}</td>
           <td>${s.status === 'owing' ? 'Owing' : s.status === 'credit' ? 'Credit' : 'Paid'}</td>
@@ -163,15 +202,17 @@ const PrintFeeStatusModule = () => {
               <th>Student ID</th>
               <th>Student Name</th>
               <th>Class</th>
-              <th>Total Fee Expected</th>
-              <th>Total Amount Paid</th>
+              <th>Term fee</th>
+              <th>Arrears</th>
+              <th>Total due</th>
+              <th>Total paid</th>
               <th>Balance</th>
               <th>Status</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>
-        ${summary != null ? `<div class="summary"><strong>Summary:</strong> Total Expected: GHS ${summary.totalExpected.toLocaleString()} &nbsp;|&nbsp; Total Paid: GHS ${summary.totalPaid.toLocaleString()} &nbsp;|&nbsp; Total Balance: GHS ${summary.totalBalance.toLocaleString()}</div>` : ''}
+        ${summary != null ? `<div class="summary"><strong>Summary:</strong> Term fees: GHS ${(summary.totalTermFee ?? 0).toLocaleString()} &nbsp;|&nbsp; Arrears: GHS ${(summary.totalArrears ?? 0).toLocaleString()} &nbsp;|&nbsp; Total due: GHS ${summary.totalExpected.toLocaleString()} &nbsp;|&nbsp; Paid: GHS ${summary.totalPaid.toLocaleString()} &nbsp;|&nbsp; Balance: GHS ${summary.totalBalance.toLocaleString()}</div>` : ''}
         <div class="footer">Generated by ${schoolName}</div>
       </body>
       </html>
@@ -189,7 +230,7 @@ const PrintFeeStatusModule = () => {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center space-x-3">
           <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-red-600 rounded-lg flex items-center justify-center">
             <Printer className="w-6 h-6 text-white" />
@@ -199,6 +240,17 @@ const PrintFeeStatusModule = () => {
             <p className="text-muted-foreground">All students in a class for the current academic period — calculations done server-side</p>
           </div>
         </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={!selectedClassId || loading}
+          onClick={() => loadReport()}
+          className="shrink-0"
+        >
+          <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+          Refresh report
+        </Button>
       </div>
 
       <Card>
@@ -210,7 +262,7 @@ const PrintFeeStatusModule = () => {
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            The report uses the <strong>current academic period</strong> from school settings. Select a class below to load the fee status for all students in that class.
+            The report uses the <strong>current academic period</strong> from school settings. <strong>Term fee</strong> comes from Set Fees; <strong>arrears</strong> from carried balances; <strong>total due</strong> = term fee + arrears; <strong>balance</strong> = total due − paid.
           </p>
           {report?.academicPeriod && (
             <div className="mt-3 grid grid-cols-2 gap-4">
@@ -275,7 +327,7 @@ const PrintFeeStatusModule = () => {
           {selectedClassId && report && (
             <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
               <h3 className="font-semibold text-blue-600 dark:text-blue-400 mb-2">Report summary</h3>
-              <div className="grid grid-cols-3 gap-4 text-sm">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 text-sm">
                 <div>
                   <p className="text-blue-600/80 dark:text-blue-400/80">Class</p>
                   <p className="font-medium text-foreground">{report.class.name}</p>
@@ -285,8 +337,23 @@ const PrintFeeStatusModule = () => {
                   <p className="font-medium text-foreground">{report.summary.count}</p>
                 </div>
                 <div>
-                  <p className="text-blue-600/80 dark:text-blue-400/80">Total balance</p>
-                  <p className="font-medium text-red-600 dark:text-red-400">GHS {report.summary.totalBalance.toLocaleString()}</p>
+                  <p className="text-blue-600/80 dark:text-blue-400/80">Term fees</p>
+                  <p className="font-medium text-foreground">GHS {(report.summary.totalTermFee ?? 0).toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-blue-600/80 dark:text-blue-400/80">Arrears</p>
+                  <p className="font-medium text-amber-700 dark:text-amber-400">GHS {(report.summary.totalArrears ?? 0).toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-blue-600/80 dark:text-blue-400/80">Total due</p>
+                  <p className="font-medium text-foreground">GHS {report.summary.totalExpected.toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-blue-600/80 dark:text-blue-400/80">Paid / Balance</p>
+                  <p className="font-medium text-emerald-600 dark:text-emerald-400">GHS {report.summary.totalPaid.toLocaleString()}</p>
+                  <p className={`font-medium ${report.summary.totalBalance > 0 ? 'text-red-600 dark:text-red-400' : report.summary.totalBalance < 0 ? 'text-emerald-600' : 'text-foreground'}`}>
+                    Bal: GHS {report.summary.totalBalance.toLocaleString()}
+                  </p>
                 </div>
               </div>
             </div>
@@ -315,8 +382,10 @@ const PrintFeeStatusModule = () => {
                       <th className="text-left p-3 font-medium text-foreground">Student ID</th>
                       <th className="text-left p-3 font-medium text-foreground">Student Name</th>
                       <th className="text-left p-3 font-medium text-foreground">Class</th>
-                      <th className="text-right p-3 font-medium text-foreground">Total Fee Expected</th>
-                      <th className="text-right p-3 font-medium text-foreground">Total Paid</th>
+                      <th className="text-right p-3 font-medium text-foreground">Term fee</th>
+                      <th className="text-right p-3 font-medium text-foreground">Arrears</th>
+                      <th className="text-right p-3 font-medium text-foreground">Total due</th>
+                      <th className="text-right p-3 font-medium text-foreground">Paid</th>
                       <th className="text-right p-3 font-medium text-foreground">Balance</th>
                       <th className="text-left p-3 font-medium text-foreground">Status</th>
                     </tr>
@@ -327,7 +396,9 @@ const PrintFeeStatusModule = () => {
                         <td className="p-3 text-foreground">{s.studentNumber}</td>
                         <td className="p-3 text-foreground">{s.studentName}</td>
                         <td className="p-3 text-foreground">{s.className}</td>
-                        <td className="p-3 text-right text-foreground">GHS {s.totalFeeExpected.toLocaleString()}</td>
+                        <td className="p-3 text-right text-foreground">GHS {(s.termFee ?? 0).toLocaleString()}</td>
+                        <td className="p-3 text-right text-amber-700 dark:text-amber-400">GHS {(s.arrears ?? 0).toLocaleString()}</td>
+                        <td className="p-3 text-right font-medium text-foreground">GHS {(s.totalFeeExpected ?? 0).toLocaleString()}</td>
                         <td className="p-3 text-right text-emerald-600 dark:text-emerald-400">GHS {s.totalPaid.toLocaleString()}</td>
                         <td className={`p-3 text-right font-medium ${s.balance > 0 ? 'text-red-600 dark:text-red-400' : s.balance < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-foreground'}`}>
                           GHS {s.balance.toLocaleString()}

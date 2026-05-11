@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { query } from '../db/connection.js';
 import { authenticate, AuthRequest, requireRole, requireTenant } from '../middleware/auth.js';
 import { getIO } from '../socket.js';
+import { sendPushToClassParents } from '../services/webPushService.js';
 
 const router = express.Router();
 
@@ -512,11 +513,21 @@ router.post('/teacher-quizzes', authenticate, requireTenant, requireRole('teache
         entity: 'learning-teacher-quiz',
         action: 'created',
         classId,
+        quizId,
+        title,
         at: Date.now(),
       });
     } catch {
       /* ignore realtime failures */
     }
+    const subjectLabel = String(subject || '').toUpperCase();
+    const dueLine = dueDate ? ` Due ${dueDate}.` : '';
+    void sendPushToClassParents(tenantId, classId, {
+      title: 'New learning quiz',
+      body: `${teacherName} posted “${title}” (${subjectLabel}) for your child’s class.${dueLine} Open the parent portal to complete it.`,
+      url: `/portal/${tenantId}`,
+    }).catch((err) => console.error('[push] notify parents new teacher quiz:', err));
+
     return res.status(201).json({ success: true, id: quizId });
   } catch (error) {
     console.error('Create teacher quiz error:', error);

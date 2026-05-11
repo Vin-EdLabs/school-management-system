@@ -586,22 +586,30 @@ export default function StudentLearningMode({
         )}
 
         {screen === 'leaderboard' && (
-          <div className="rounded-3xl bg-white/85 backdrop-blur border border-white p-4 animate-in slide-in-from-right-2 duration-300">
-            <div className="flex items-center justify-between">
-              <p className="font-bold">🏆 {student.class_name || classLevel.toUpperCase()} — This Week</p>
-              <button onClick={() => setScreen('home')} className="text-sm text-indigo-600 font-semibold">Close</button>
+          <div className="rounded-3xl bg-white border border-slate-200 p-4 animate-in slide-in-from-right-2 duration-300 text-slate-900 shadow-sm">
+            <div className="flex items-center justify-between gap-2">
+              <p className="font-bold text-slate-900">🏆 {student.class_name || classLevel.toUpperCase()} — This Week</p>
+              <button type="button" onClick={() => setScreen('home')} className="text-sm text-indigo-700 font-semibold shrink-0">
+                Close
+              </button>
             </div>
-            <div className="mt-3 rounded-xl border overflow-hidden">
-              <div className="grid grid-cols-[64px_1fr_120px] bg-slate-100/80 px-3 py-2 text-xs font-semibold text-slate-600">
+            <div className="mt-3 rounded-xl border border-slate-200 overflow-hidden">
+              <div className="grid grid-cols-[64px_1fr_120px] bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 border-b border-slate-200">
                 <span>Rank</span>
                 <span>Student</span>
-                <span className="text-right">Marks Points</span>
+                <span className="text-right">Points</span>
               </div>
-              <div className="max-h-[52vh] overflow-y-auto">
+              <div className="max-h-[52vh] overflow-y-auto bg-white">
                 {leaderboard.slice(0, 30).map((row) => (
-                  <div key={row.studentId} className={`grid grid-cols-[64px_1fr_120px] px-3 py-2.5 border-t text-sm ${row.isMe ? 'bg-indigo-50' : 'bg-white'}`}>
-                    <span className="font-semibold text-slate-700">{row.rank}</span>
-                    <span className="truncate">{row.name}{row.isMe ? ' ← You' : ''}</span>
+                  <div
+                    key={row.studentId}
+                    className={`grid grid-cols-[64px_1fr_120px] px-3 py-2.5 border-t border-slate-100 text-sm ${row.isMe ? 'bg-indigo-50' : 'bg-white'}`}
+                  >
+                    <span className="font-semibold text-slate-800">{row.rank}</span>
+                    <span className="truncate font-medium text-slate-900">
+                      {row.name}
+                      {row.isMe ? <span className="text-indigo-700 font-semibold"> ← You</span> : ''}
+                    </span>
                     <span className="text-right font-semibold text-indigo-700">{row.points}</span>
                   </div>
                 ))}

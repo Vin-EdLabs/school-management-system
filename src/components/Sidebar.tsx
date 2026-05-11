@@ -106,6 +106,8 @@ const MenuSection: React.FC<{
   activeModule: string;
   setActiveModule: (module: string) => void;
 }> = ({ items, label, activeModule, setActiveModule }) => {
+  const { isMobile, setOpenMobile } = useSidebar();
+
   if (items.length === 0) return null;
 
   return (
@@ -119,7 +121,10 @@ const MenuSection: React.FC<{
             <SidebarMenuItem key={item.id} className="flex justify-center">
               <SidebarMenuButton
                 isActive={activeModule === item.id}
-                onClick={() => setActiveModule(item.id)}
+                onClick={() => {
+                  setActiveModule(item.id);
+                  if (isMobile) setOpenMobile(false);
+                }}
                 tooltip={item.label}
                 className={cn(
                   "rounded-xl mx-auto w-[calc(100%-12px)] h-9 text-sidebar-foreground/70 transition-all duration-300 group-data-[collapsible=icon]:w-9 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:mx-0",
@@ -147,6 +152,7 @@ const MenuSection: React.FC<{
 export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveModule }) => {
   const { logout, hasAccess } = useAuth();
   const { school } = useSchool();
+  const { isMobile, setOpenMobile } = useSidebar();
 
   const menuItems = getMenuItems(hasAccess);
 
@@ -193,7 +199,10 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
         <SidebarMenu>
           <SidebarMenuItem className="flex justify-center">
             <SidebarMenuButton
-              onClick={logout}
+              onClick={() => {
+                if (isMobile) setOpenMobile(false);
+                logout();
+              }}
               className="rounded-xl w-full h-10 text-sidebar-foreground/60 hover:text-red-500 hover:bg-red-500/10 transition-all group-data-[collapsible=icon]:w-10 group-data-[collapsible=icon]:justify-center"
               tooltip="Terminate Session"
             >

@@ -1126,15 +1126,17 @@ const GradesModule = () => {
 
       {/* ── Add Assessment Dialog ── */}
       <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md bg-white text-slate-900 border-slate-200 dark:bg-slate-950 dark:text-slate-100 dark:border-slate-700">
           <DialogHeader>
-            <DialogTitle>Add Assessment</DialogTitle>
+            <DialogTitle className="text-slate-900 dark:text-white">Add Assessment</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 pt-2">
+          <div className="space-y-4 pt-2 text-slate-900 dark:text-slate-100">
             <div className="space-y-1.5">
-              <Label>Subject</Label>
+              <Label className="text-slate-700 dark:text-slate-200">Subject</Label>
               <Select value={newAssignment.subject} onValueChange={v => setNewAssignment(p => ({ ...p, subject: v }))}>
-                <SelectTrigger><SelectValue placeholder="Choose subject…" /></SelectTrigger>
+                <SelectTrigger className="bg-white text-slate-900 border-slate-300 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-600">
+                  <SelectValue placeholder="Choose subject…" />
+                </SelectTrigger>
                 <SelectContent>
                   {globalSubjects.length > 0 ? (
                     globalSubjects.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)
@@ -1151,41 +1153,52 @@ const GradesModule = () => {
                   value={newAssignment.subjectCustom}
                   onChange={e => setNewAssignment(p => ({ ...p, subjectCustom: e.target.value }))}
                   autoFocus
+                  className="bg-white text-slate-900 border-slate-300 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-600"
                 />
               )}
             </div>
 
             <div className="space-y-1.5">
-              <Label>Assessment Name</Label>
+              <Label className="text-slate-700 dark:text-slate-200">Assessment Name</Label>
               <Input
                 placeholder="e.g. Mid-Term Test, End of Term Exam…"
                 value={newAssignment.name}
                 onChange={e => setNewAssignment(p => ({ ...p, name: e.target.value }))}
+                className="bg-white text-slate-900 border-slate-300 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-600"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label>Type</Label>
+                <Label className="text-slate-700 dark:text-slate-200">Type</Label>
                 <Select value={newAssignment.assignmentType} onValueChange={v => setNewAssignment(p => ({ ...p, assignmentType: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="bg-white text-slate-900 border-slate-300 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-600">
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
                     {ASSESSMENT_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label>Max Marks</Label>
+                <Label className="text-slate-700 dark:text-slate-200">Max Marks</Label>
                 <Input
                   type="number" min={1} step={0.5}
                   value={newAssignment.maxScore}
                   onChange={e => setNewAssignment(p => ({ ...p, maxScore: e.target.value }))}
                   placeholder="e.g. 20, 50, 100"
+                  className="bg-white text-slate-900 border-slate-300 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-600"
                 />
               </div>
             </div>
 
-            <Button onClick={handleAddAssignment} className="w-full">Add Assessment</Button>
+            <Button
+              type="button"
+              onClick={handleAddAssignment}
+              className="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold border-2 border-purple-800 shadow-sm h-11"
+            >
+              Add Assessment
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

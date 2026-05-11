@@ -344,9 +344,14 @@ const AttendanceModule = () => {
           {activeTab === 'take' && (
             <>
             {!isAdminViewer && (
-              <div className="sm:hidden sticky top-0 z-20 -mx-4 px-4 py-2 border-b border-border bg-background/95 backdrop-blur-md supports-[backdrop-filter]:bg-background/80 shadow-sm">
-                <Button className="w-full h-12 text-base font-semibold touch-manipulation" onClick={handleSaveAttendance} disabled={saving}>
-                  <Save className="w-4 h-4 mr-2" />
+              <div className="sm:hidden sticky top-0 z-20 -mx-4 px-4 py-2 border-b border-slate-200 bg-white/95 dark:bg-slate-950/95 backdrop-blur-md shadow-sm">
+                <Button
+                  type="button"
+                  className="w-full h-12 text-base font-semibold touch-manipulation bg-emerald-600 hover:bg-emerald-700 text-white border-2 border-emerald-800 shadow-md disabled:opacity-60"
+                  onClick={handleSaveAttendance}
+                  disabled={saving}
+                >
+                  <Save className="w-4 h-4 mr-2 shrink-0 text-white" />
                   {saving ? 'Saving…' : 'Save attendance'}
                 </Button>
               </div>

@@ -313,8 +313,24 @@ const TeacherQuizModule = () => {
             </div>
           )}
           <div className="flex flex-wrap items-center gap-2 border-b pb-3 mb-1 -mt-1 sm:sticky sm:top-0 sm:z-10 sm:bg-card sm:-mx-1 sm:px-1 sm:pt-1">
-            <Button type="button" variant="outline" size="sm" className="touch-manipulation" onClick={() => setQuestions((prev) => [...prev, emptyQ()])}>Add Question</Button>
-            <Button type="button" size="sm" className="touch-manipulation" onClick={publish} disabled={saving}>{saving ? (editingQuizId ? 'Saving…' : 'Publishing…') : (editingQuizId ? 'Save Changes' : 'Publish Quiz')}</Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="touch-manipulation border-2 border-indigo-600 text-indigo-900 bg-white hover:bg-indigo-50 dark:border-indigo-400 dark:text-indigo-100 dark:bg-slate-900 dark:hover:bg-slate-800 font-semibold"
+              onClick={() => setQuestions((prev) => [...prev, emptyQ()])}
+            >
+              Add Question
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              className="touch-manipulation bg-indigo-600 hover:bg-indigo-700 text-white font-semibold border-2 border-indigo-700 shadow-sm disabled:opacity-60"
+              onClick={publish}
+              disabled={saving}
+            >
+              {saving ? (editingQuizId ? 'Saving…' : 'Publishing…') : (editingQuizId ? 'Save Changes' : 'Publish Quiz')}
+            </Button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Quiz title" />

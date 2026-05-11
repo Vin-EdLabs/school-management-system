@@ -67,10 +67,16 @@ export function PwaUpdateManager() {
       considerWaiting(reg);
       attach(reg);
       reg.update().catch(() => undefined);
-      interval = window.setInterval(() => reg.update().catch(() => undefined), 60 * 60 * 1000);
+      interval = window.setInterval(() => reg.update().catch(() => undefined), 15 * 60 * 1000);
     });
 
     const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        void navigator.serviceWorker.getRegistration().then((reg) => {
+          reg?.update().catch(() => undefined);
+        });
+        return;
+      }
       if (document.visibilityState !== 'hidden') return;
       if (MAJOR_UPDATE_MODE || dismissedRef.current) return;
       void navigator.serviceWorker.getRegistration().then((reg) => {
@@ -82,9 +88,17 @@ export function PwaUpdateManager() {
     };
     document.addEventListener('visibilitychange', onVisibility);
 
+    const onWindowFocus = () => {
+      void navigator.serviceWorker.getRegistration().then((reg) => {
+        reg?.update().catch(() => undefined);
+      });
+    };
+    window.addEventListener('focus', onWindowFocus);
+
     return () => {
       navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
       document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('focus', onWindowFocus);
       if (interval) clearInterval(interval);
     };
   }, []);

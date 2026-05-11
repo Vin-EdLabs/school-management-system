@@ -471,20 +471,20 @@ export default function StudentLearningMode({
         )}
 
         {(screen === 'quiz' || screen === 'review') && q && activeSubject && (
-          <div className="space-y-4 animate-in slide-in-from-right-2 duration-300">
-            <div className="rounded-3xl bg-white/85 backdrop-blur border border-white p-4 shadow-sm">
-              <div className="flex items-center justify-between">
-                <p className="font-semibold">{SUBJECTS.find((s) => s.key === activeSubject)?.icon} {activeQuizTitle || labelForSubject(activeSubject)}</p>
-                <p className="text-sm text-slate-500">Q {idx + 1} of {questions.length}</p>
+          <div className="space-y-4 animate-in slide-in-from-right-2 duration-300 text-slate-900">
+            <div className="rounded-3xl bg-white border border-slate-200 p-4 shadow-sm">
+              <div className="flex items-center justify-between gap-2 text-slate-900">
+                <p className="font-semibold text-slate-900">
+                  {SUBJECTS.find((s) => s.key === activeSubject)?.icon} {activeQuizTitle || labelForSubject(activeSubject)}
+                </p>
+                <p className="text-sm font-medium text-slate-600 shrink-0">Q {idx + 1} of {questions.length}</p>
               </div>
               <div className="mt-3 h-2 rounded-full bg-slate-100 overflow-hidden">
                 <div className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-all duration-500" style={{ width: `${Math.round(((idx + 1) / questions.length) * 100)}%` }} />
               </div>
               <p className="mt-3 text-base font-medium text-slate-900 text-center leading-7">{q.questionText}</p>
-              {screen === 'quiz' ? (
-                <p className="text-xs text-slate-500 text-center mt-2">Current points: {Object.keys(answers).reduce((acc, key) => (answers[Number(key)] === questions[Number(key)]?.correctOption ? acc + 10 : acc), 0)}</p>
-              ) : (
-                <p className="text-xs text-slate-500 text-center mt-2">Revision mode: review all questions and correct answers.</p>
+              {screen === 'review' && (
+                <p className="text-xs text-slate-600 text-center mt-2">Revision mode: review all questions and correct answers.</p>
               )}
             </div>
             <div className="space-y-2.5">
@@ -497,13 +497,20 @@ export default function StudentLearningMode({
                   : isWrongSelected
                     ? 'bg-rose-50 border-rose-300 shadow-[0_0_0_1px_rgba(244,63,94,0.2)]'
                     : isSelected
-                      ? 'bg-indigo-50 border-indigo-300'
-                      : 'bg-white/90 border-slate-200 hover:border-slate-300';
+                      ? 'bg-indigo-50 border-indigo-400'
+                      : 'bg-white border-slate-300 hover:border-indigo-300 hover:bg-slate-50';
                 return (
-                  <button key={opt} onClick={() => (screen === 'quiz' ? answer(opt) : undefined)} className={`w-full rounded-2xl border p-3 text-left transition-all duration-200 ${bg}`} disabled={screen === 'review'}>
-                    <span className="font-semibold uppercase mr-2">{opt}.</span>{q.options[opt]}
-                    {isCorrect && <CheckCircle2 className="w-4 h-4 text-emerald-600 inline ml-2" />}
-                    {isWrongSelected && <XCircle className="w-4 h-4 text-rose-600 inline ml-2" />}
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => (screen === 'quiz' ? answer(opt) : undefined)}
+                    className={`w-full rounded-2xl border p-3.5 text-left text-slate-900 transition-all duration-200 ${bg}`}
+                    disabled={screen === 'review'}
+                  >
+                    <span className="font-bold text-indigo-700 uppercase mr-2">{opt}.</span>
+                    <span className="text-slate-900 font-medium">{q.options[opt]}</span>
+                    {isCorrect && <CheckCircle2 className="w-4 h-4 text-emerald-600 inline ml-2 align-middle" />}
+                    {isWrongSelected && <XCircle className="w-4 h-4 text-rose-600 inline ml-2 align-middle" />}
                   </button>
                 );
               })}
@@ -511,7 +518,7 @@ export default function StudentLearningMode({
             <div className="flex items-center justify-between gap-2">
               <button
                 type="button"
-                className="rounded-xl border px-4 py-2 text-sm font-semibold disabled:opacity-50"
+                className="rounded-xl border-2 border-slate-300 bg-white text-slate-900 px-4 py-2.5 text-sm font-semibold shadow-sm disabled:opacity-40 disabled:text-slate-400"
                 disabled={idx === 0}
                 onClick={() => {
                   if (idx > 0) {
@@ -526,7 +533,7 @@ export default function StudentLearningMode({
               {idx < questions.length - 1 ? (
                 <button
                   type="button"
-                  className="rounded-xl bg-slate-900 text-white px-4 py-2 text-sm font-semibold"
+                  className="rounded-xl bg-slate-900 text-white px-4 py-2.5 text-sm font-semibold shadow-md"
                   onClick={() => {
                     const next = idx + 1;
                     setIdx(next);
@@ -538,7 +545,7 @@ export default function StudentLearningMode({
               ) : screen === 'quiz' ? (
                 <button
                   type="button"
-                  className="rounded-xl bg-indigo-600 text-white px-4 py-2 text-sm font-semibold disabled:opacity-50"
+                  className="rounded-xl bg-indigo-600 text-white px-4 py-2.5 text-sm font-semibold shadow-md disabled:opacity-50"
                   disabled={Object.keys(answers).length < questions.length}
                   onClick={submitQuiz}
                 >
@@ -547,7 +554,7 @@ export default function StudentLearningMode({
               ) : (
                 <button
                   type="button"
-                  className="rounded-xl bg-indigo-600 text-white px-4 py-2 text-sm font-semibold"
+                  className="rounded-xl bg-indigo-600 text-white px-4 py-2.5 text-sm font-semibold shadow-md"
                   onClick={() => setScreen('home')}
                 >
                   Back Home

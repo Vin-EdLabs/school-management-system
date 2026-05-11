@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { apiService } from '../services/api';
 import { toast } from '@/hooks/use-toast';
 import { Building, GraduationCap, ArrowRight, Shield } from 'lucide-react';
+import { BrandedLoading } from '@/components/common/BrandedLoading';
 
 interface School {
   id: number;
@@ -145,7 +146,7 @@ const SchoolSelector = () => {
         </CardHeader>
         <CardContent className="space-y-4">
           {loading ? (
-            <div className="text-center py-8 text-gray-500">Loading schools...</div>
+            <BrandedLoading label="One moment…" className="py-6 px-2" />
           ) : schools.length > 0 ? (
             <div className="space-y-2">
               {schools.map((school) => (

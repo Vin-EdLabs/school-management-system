@@ -41,7 +41,8 @@ router.use(setTenantContext);
 router.get('/me', async (req: AuthRequest, res) => {
   try {
     const teacherId = req.user!.teacherId;
-    if (!teacherId || req.user!.role !== 'teacher') {
+    const role = req.user!.role;
+    if (!teacherId || (role !== 'teacher' && role !== 'staff')) {
       return res.status(403).json({ error: 'Not a teacher account' });
     }
     const tenantId = req.user!.tenantId!;
@@ -64,7 +65,8 @@ router.get('/me', async (req: AuthRequest, res) => {
 router.get('/me/classes', async (req: AuthRequest, res) => {
   try {
     const teacherId = req.user!.teacherId;
-    if (!teacherId || req.user!.role !== 'teacher') {
+    const role = req.user!.role;
+    if (!teacherId || (role !== 'teacher' && role !== 'staff')) {
       return res.status(403).json({ error: 'Not a teacher account' });
     }
     const tenantId = req.user!.tenantId!;

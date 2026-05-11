@@ -30,6 +30,20 @@ function normalizeSubject(value: string | null | undefined): string {
   return SUBJECT_MAP[s] || s;
 }
 
+function actsAsInstructor(u: { role?: string; teacherId?: string | null } | undefined): boolean {
+  if (!u?.role) return false;
+  const r = String(u.role).toLowerCase();
+  if (r === 'teacher') return true;
+  if (r === 'staff' && u.teacherId) return true;
+  return false;
+}
+
+function isElevatedQuizUser(u: { role?: string } | undefined): boolean {
+  if (!u?.role) return false;
+  const r = String(u.role).toLowerCase();
+  return r === 'administrator' || r === 'finance' || r === 'super-admin' || r === 'superadmin';
+}
+
 async function getTeacherScopedClassIds(tenantId: number, userId: number, teacherId: string | null | undefined) {
   const ids = new Set<number>();
   if (!teacherId) return ids;
@@ -436,9 +450,13 @@ router.get('/teacher-quiz/:id/questions', authenticateParent, async (req: Parent
   }
 });
 
-router.post('/teacher-quizzes', authenticate, requireTenant, requireRole('teacher', 'administrator', 'finance', 'super-admin'), async (req: AuthRequest, res) => {
+router.post('/teacher-quizzes', authenticate, requireTenant, requireRole('teacher', 'staff', 'administrator', 'finance', 'super-admin'), async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
+    const role = String(req.user!.role || '').toLowerCase();
+    if (role === 'staff' && !req.user!.teacherId) {
+      return res.status(403).json({ error: 'Teaching profile not linked to this staff account.' });
+    }
     const teacherName = req.user!.fullName || req.user!.username;
     const title = String(req.body?.title || '').trim();
     const classId = Number(req.body?.class_id);
@@ -448,7 +466,7 @@ router.post('/teacher-quizzes', authenticate, requireTenant, requireRole('teache
     if (!title || !subject || !Number.isFinite(classId) || questions.length === 0) {
       return res.status(400).json({ error: 'title, class_id, subject and questions are required' });
     }
-    if (req.user!.role === 'teacher') {
+    if (actsAsInstructor(req.user)) {
       const allowedClassIds = await getTeacherScopedClassIds(tenantId, req.user!.id, req.user!.teacherId);
       if (!allowedClassIds.has(classId)) {
         return res.status(403).json({ error: 'You can only publish quizzes for your assigned class(es).' });
@@ -506,9 +524,13 @@ router.post('/teacher-quizzes', authenticate, requireTenant, requireRole('teache
   }
 });
 
-router.put('/teacher-quizzes/:id', authenticate, requireTenant, requireRole('teacher', 'administrator', 'finance', 'super-admin'), async (req: AuthRequest, res) => {
+router.put('/teacher-quizzes/:id', authenticate, requireTenant, requireRole('teacher', 'staff', 'administrator', 'finance', 'super-admin'), async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
+    const role = String(req.user!.role || '').toLowerCase();
+    if (role === 'staff' && !req.user!.teacherId) {
+      return res.status(403).json({ error: 'Teaching profile not linked to this staff account.' });
+    }
     const quizId = Number(req.params.id);
     if (!Number.isFinite(quizId)) return res.status(400).json({ error: 'Invalid quiz id' });
     const quizRow = await query(
@@ -517,7 +539,7 @@ router.put('/teacher-quizzes/:id', authenticate, requireTenant, requireRole('tea
       [quizId, tenantId]
     );
     if (!quizRow.rows[0]) return res.status(404).json({ error: 'Quiz not found' });
-    if (req.user!.role === 'teacher' && Number(quizRow.rows[0].teacher_user_id) !== Number(req.user!.id)) {
+    if (!isElevatedQuizUser(req.user) && Number(quizRow.rows[0].teacher_user_id) !== Number(req.user!.id)) {
       return res.status(403).json({ error: 'You can only edit quizzes you created.' });
     }
 
@@ -530,7 +552,7 @@ router.put('/teacher-quizzes/:id', authenticate, requireTenant, requireRole('tea
       return res.status(400).json({ error: 'title, class_id, subject and questions are required' });
     }
 
-    if (req.user!.role === 'teacher') {
+    if (actsAsInstructor(req.user)) {
       const allowedClassIds = await getTeacherScopedClassIds(tenantId, req.user!.id, req.user!.teacherId);
       if (!allowedClassIds.has(classId)) {
         return res.status(403).json({ error: 'You can only publish quizzes for your assigned class(es).' });
@@ -594,19 +616,27 @@ router.put('/teacher-quizzes/:id', authenticate, requireTenant, requireRole('tea
   }
 });
 
-router.get('/teacher-quizzes/:id/results', authenticate, requireTenant, requireRole('teacher', 'administrator', 'finance', 'super-admin'), async (req: AuthRequest, res) => {
+router.get('/teacher-quizzes/:id/results', authenticate, requireTenant, requireRole('teacher', 'staff', 'administrator', 'finance', 'super-admin'), async (req: AuthRequest, res) => {
   try {
+    const role = String(req.user!.role || '').toLowerCase();
+    if (role === 'staff' && !req.user!.teacherId) {
+      return res.status(403).json({ error: 'Teaching profile not linked to this staff account.' });
+    }
     const tenantId = req.user!.tenantId!;
     const quizId = Number(req.params.id);
     if (!Number.isFinite(quizId)) return res.status(400).json({ error: 'Invalid quiz id' });
     const quizRes = await query(
-      `SELECT q.id, q.title, q.subject, q.class_id, c.class_name, q.due_date
+      `SELECT q.id, q.title, q.subject, q.class_id, c.class_name, q.due_date, q.teacher_user_id
        FROM learning_teacher_quizzes q
        LEFT JOIN classes c ON c.id = q.class_id
        WHERE q.id = $1 AND q.tenant_id = $2`,
       [quizId, tenantId]
     );
-    if (!quizRes.rows[0]) return res.status(404).json({ error: 'Quiz not found' });
+    const quizRow = quizRes.rows[0];
+    if (!quizRow) return res.status(404).json({ error: 'Quiz not found' });
+    if (!isElevatedQuizUser(req.user) && Number(quizRow.teacher_user_id) !== Number(req.user!.id)) {
+      return res.status(403).json({ error: 'You can only view results for quizzes you created.' });
+    }
     const rows = await query(
       `SELECT a.student_id, a.score, a.total_questions, a.correct_answers, a.wrong_answers, a.total_marks, a.completed_at,
               s.first_name, s.last_name, s.student_id as admission_number
@@ -616,15 +646,20 @@ router.get('/teacher-quizzes/:id/results', authenticate, requireTenant, requireR
        ORDER BY a.completed_at DESC`,
       [tenantId, quizId]
     );
-    return res.json({ quiz: quizRes.rows[0], attempts: rows.rows });
+    const { teacher_user_id: _tw, ...quizOut } = quizRow as any;
+    return res.json({ quiz: quizOut, attempts: rows.rows });
   } catch (error) {
     console.error('Get teacher quiz results error:', error);
     return res.status(500).json({ error: 'Failed to load quiz results' });
   }
 });
 
-router.get('/teacher-quizzes/:id/questions', authenticate, requireTenant, requireRole('teacher', 'administrator', 'finance', 'super-admin'), async (req: AuthRequest, res) => {
+router.get('/teacher-quizzes/:id/questions', authenticate, requireTenant, requireRole('teacher', 'staff', 'administrator', 'finance', 'super-admin'), async (req: AuthRequest, res) => {
   try {
+    const role = String(req.user!.role || '').toLowerCase();
+    if (role === 'staff' && !req.user!.teacherId) {
+      return res.status(403).json({ error: 'Teaching profile not linked to this staff account.' });
+    }
     const tenantId = req.user!.tenantId!;
     const quizId = Number(req.params.id);
     if (!Number.isFinite(quizId)) return res.status(400).json({ error: 'Invalid quiz id' });
@@ -637,7 +672,7 @@ router.get('/teacher-quizzes/:id/questions', authenticate, requireTenant, requir
     );
     const quiz = quizRes.rows[0];
     if (!quiz) return res.status(404).json({ error: 'Quiz not found' });
-    if (req.user!.role === 'teacher' && Number(quiz.teacher_user_id) !== Number(req.user!.id)) {
+    if (!isElevatedQuizUser(req.user) && Number(quiz.teacher_user_id) !== Number(req.user!.id)) {
       return res.status(403).json({ error: 'You can only view question sets you created.' });
     }
     const rows = await query(
@@ -671,8 +706,12 @@ router.get('/teacher-quizzes/:id/questions', authenticate, requireTenant, requir
   }
 });
 
-router.get('/teacher-quizzes/my', authenticate, requireTenant, requireRole('teacher', 'administrator', 'finance', 'super-admin'), async (req: AuthRequest, res) => {
+router.get('/teacher-quizzes/my', authenticate, requireTenant, requireRole('teacher', 'staff', 'administrator', 'finance', 'super-admin'), async (req: AuthRequest, res) => {
   try {
+    const role = String(req.user!.role || '').toLowerCase();
+    if (role === 'staff' && !req.user!.teacherId) {
+      return res.status(403).json({ error: 'Teaching profile not linked to this staff account.' });
+    }
     const tenantId = req.user!.tenantId!;
     const rows = await query(
       `SELECT q.id, q.title, q.subject, q.class_id, c.class_name, q.due_date, q.created_at,

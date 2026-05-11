@@ -35,7 +35,7 @@ const TeacherQuizModule = () => {
   const { user } = useAuth();
   const { classes, subjects } = useData();
   const [title, setTitle] = useState('');
-  const [subject, setSubject] = useState('maths');
+  const [subject, setSubject] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [classId, setClassId] = useState('');
   const [saving, setSaving] = useState(false);
@@ -50,6 +50,11 @@ const TeacherQuizModule = () => {
   const [teacherSubjects, setTeacherSubjects] = useState<string[]>([]);
   const [editingQuizId, setEditingQuizId] = useState<number | null>(null);
 
+  const teacherApiUser = useMemo(
+    () => !!(user && (user.role === 'teacher' || (user.role === 'staff' && user.teacherId))),
+    [user]
+  );
+
   const loadQuizzes = async () => {
     const data = await apiService.get<{ quizzes?: any[] }>('/student/teacher-quizzes/my').catch(() => ({ quizzes: [] }));
     setQuizzes(Array.isArray(data.quizzes) ? data.quizzes : []);
@@ -58,20 +63,30 @@ const TeacherQuizModule = () => {
   useEffect(() => {
     if (schoolId != null) apiService.setTenantContext(schoolId);
     loadQuizzes().catch(() => undefined);
-    if (user?.role === 'teacher') {
+    if (teacherApiUser) {
       apiService.get<Array<{ id: number; class_name: string }>>('/teachers/me/classes')
         .then((r) => setTeacherClasses(Array.isArray(r) ? r : []))
         .catch(() => setTeacherClasses([]));
       apiService.get<{ subjects_taught?: string[] }>('/teachers/me')
         .then((r) => setTeacherSubjects(Array.isArray(r?.subjects_taught) ? r.subjects_taught : []))
         .catch(() => setTeacherSubjects([]));
+    } else {
+      setTeacherClasses([]);
+      setTeacherSubjects([]);
     }
-  }, [schoolId]);
+  }, [schoolId, teacherApiUser]);
 
   const availableClasses = useMemo(() => {
-    if (user?.role === 'teacher') return teacherClasses.map((c) => ({ id: c.id, className: c.class_name }));
-    return classes.map((c) => ({ id: Number(c.id), className: c.className }));
-  }, [user?.role, teacherClasses, classes]);
+    if (!teacherApiUser) return classes.map((c) => ({ id: Number(c.id), className: c.className }));
+    const fromApi = teacherClasses.map((c) => ({ id: c.id, className: c.class_name }));
+    const seen = new Set(fromApi.map((c) => c.id));
+    const tid = user?.teacherId != null ? Number(user.teacherId) : NaN;
+    const fallback = classes
+      .filter((c) => Number.isFinite(tid) && Number(c.assignedTeacherId) === tid)
+      .filter((c) => !seen.has(Number(c.id)))
+      .map((c) => ({ id: Number(c.id), className: c.className }));
+    return [...fromApi, ...fallback];
+  }, [teacherApiUser, teacherClasses, classes, user?.teacherId]);
 
   const createdSubjects = useMemo(
     () => subjects.map((s) => String(s.name || '').trim()).filter(Boolean),
@@ -80,11 +95,11 @@ const TeacherQuizModule = () => {
 
   const availableSubjects = useMemo(() => {
     if (!createdSubjects.length) return [];
-    if (user?.role !== 'teacher') return createdSubjects;
-    if (!teacherSubjects.length) return [];
+    if (!teacherApiUser) return createdSubjects;
+    if (!teacherSubjects.length) return createdSubjects;
     const normalizedTeacher = new Set(teacherSubjects.map((s) => s.toLowerCase().trim()));
     return createdSubjects.filter((s) => normalizedTeacher.has(s.toLowerCase().trim()));
-  }, [createdSubjects, teacherSubjects, user?.role]);
+  }, [createdSubjects, teacherSubjects, teacherApiUser]);
 
   useEffect(() => {
     if (!availableSubjects.length) {
@@ -112,7 +127,7 @@ const TeacherQuizModule = () => {
       toast({ title: 'Title, class and subject are required', variant: 'destructive' });
       return;
     }
-    if (user?.role === 'teacher' && !availableClasses.some((c) => String(c.id) === String(classId))) {
+    if (teacherApiUser && !availableClasses.some((c) => String(c.id) === String(classId))) {
       toast({
         title: 'Class assignment required',
         description: 'You can only publish quizzes for classes assigned to you.',
@@ -297,9 +312,13 @@ const TeacherQuizModule = () => {
               </Button>
             </div>
           )}
+          <div className="flex flex-wrap items-center gap-2 border-b pb-3 mb-1 -mt-1 sm:sticky sm:top-0 sm:z-10 sm:bg-card sm:-mx-1 sm:px-1 sm:pt-1">
+            <Button type="button" variant="outline" size="sm" className="touch-manipulation" onClick={() => setQuestions((prev) => [...prev, emptyQ()])}>Add Question</Button>
+            <Button type="button" size="sm" className="touch-manipulation" onClick={publish} disabled={saving}>{saving ? (editingQuizId ? 'Saving…' : 'Publishing…') : (editingQuizId ? 'Save Changes' : 'Publish Quiz')}</Button>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Quiz title" />
-            <Select value={classId} onValueChange={setClassId}>
+            <Select value={classId || undefined} onValueChange={setClassId}>
               <SelectTrigger><SelectValue placeholder="Class" /></SelectTrigger>
               <SelectContent>
                 {availableClasses.map((c) => (
@@ -307,8 +326,8 @@ const TeacherQuizModule = () => {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={subject} onValueChange={setSubject}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+            <Select value={subject || undefined} onValueChange={setSubject}>
+              <SelectTrigger><SelectValue placeholder="Subject" /></SelectTrigger>
               <SelectContent>
                 {availableSubjects.map((s) => (
                   <SelectItem key={s} value={s}>{s}</SelectItem>
@@ -317,14 +336,14 @@ const TeacherQuizModule = () => {
             </Select>
             <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
           </div>
-          {user?.role === 'teacher' && availableClasses.length === 0 && (
+          {teacherApiUser && availableClasses.length === 0 && (
             <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
               You are not assigned to any class yet. Ask admin to assign your class before posting quizzes.
             </p>
           )}
-          {availableSubjects.length === 0 && (
+          {createdSubjects.length === 0 && (
             <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-              No subjects available. Admin must create subjects and assign you to subject(s) first.
+              No subjects exist for this school yet. Ask an administrator to create subjects first.
             </p>
           )}
 
@@ -365,10 +384,6 @@ const TeacherQuizModule = () => {
             ))}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" variant="outline" onClick={() => setQuestions((prev) => [...prev, emptyQ()])}>Add Question</Button>
-            <Button type="button" onClick={publish} disabled={saving}>{saving ? (editingQuizId ? 'Saving…' : 'Publishing…') : (editingQuizId ? 'Save Changes' : 'Publish Quiz')}</Button>
-          </div>
         </CardContent>
       </Card>
 

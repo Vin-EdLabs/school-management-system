@@ -343,7 +343,15 @@ const AttendanceModule = () => {
           {/* ── TAKE ATTENDANCE TAB ── */}
           {activeTab === 'take' && (
             <>
-            <div className={`space-y-4 ${!isAdminViewer ? 'pb-24 sm:pb-0' : ''}`}>
+            {!isAdminViewer && (
+              <div className="sm:hidden sticky top-0 z-20 -mx-4 px-4 py-2 border-b border-border bg-background/95 backdrop-blur-md supports-[backdrop-filter]:bg-background/80 shadow-sm">
+                <Button className="w-full h-12 text-base font-semibold touch-manipulation" onClick={handleSaveAttendance} disabled={saving}>
+                  <Save className="w-4 h-4 mr-2" />
+                  {saving ? 'Saving…' : 'Save attendance'}
+                </Button>
+              </div>
+            )}
+            <div className="space-y-4">
               <Card>
                 <CardContent className="pt-4">
                   <div className="space-y-2">
@@ -489,14 +497,6 @@ const AttendanceModule = () => {
                 </CardContent>
               </Card>
             </div>
-            {!isAdminViewer && (
-              <div className="sm:hidden fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 backdrop-blur-md px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(0,0,0,0.06)] dark:shadow-[0_-8px_24px_rgba(0,0,0,0.25)]">
-                <Button className="w-full h-12 text-base font-semibold touch-manipulation" onClick={handleSaveAttendance} disabled={saving}>
-                  <Save className="w-4 h-4 mr-2" />
-                  {saving ? 'Saving…' : 'Save attendance'}
-                </Button>
-              </div>
-            )}
             </>
           )}
 

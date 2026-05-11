@@ -490,7 +490,7 @@ const GradesModule = () => {
   const subjectsToDisplay = activeSubjects;
 
   return (
-    <div className={`px-4 py-5 sm:p-6 space-y-5 sm:space-y-6 max-w-7xl mx-auto w-full ${!isAdminViewer && activeTab === 'grades' ? 'pb-28 sm:pb-6' : ''}`}>
+    <div className="px-4 py-5 sm:p-6 space-y-5 sm:space-y-6 max-w-7xl mx-auto w-full">
       {/* Header */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex items-start gap-3 min-w-0">
@@ -558,6 +558,30 @@ const GradesModule = () => {
               </button>
             ))}
           </div>
+
+          {!isAdminViewer && activeTab === 'grades' && (
+            <div className="sm:hidden sticky top-0 z-20 -mx-4 px-4 py-2 border-b border-border bg-background/95 backdrop-blur-md supports-[backdrop-filter]:bg-background/80 shadow-sm grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-12 text-sm font-semibold touch-manipulation"
+                onClick={() => setIsAddOpen(true)}
+                disabled={!selectedClassId}
+              >
+                <Plus className="w-4 h-4 mr-1.5" />
+                Add assessment
+              </Button>
+              <Button
+                type="button"
+                className="h-12 text-sm font-semibold touch-manipulation bg-purple-600 hover:bg-purple-700"
+                onClick={handleBulkSave}
+                disabled={!isBulkEditing || bulkSaving}
+              >
+                <Save className="w-4 h-4 mr-1.5" />
+                {bulkSaving ? 'Saving…' : 'Save grades'}
+              </Button>
+            </div>
+          )}
 
           {/* ── GRADE ENTRY TAB ── */}
           {activeTab === 'grades' && (
@@ -1181,31 +1205,6 @@ const GradesModule = () => {
         </DialogContent>
       </Dialog>
 
-      {!isAdminViewer && activeTab === 'grades' && (
-        <div className="sm:hidden fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 backdrop-blur-md px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(0,0,0,0.06)] dark:shadow-[0_-8px_24px_rgba(0,0,0,0.25)]">
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              className="h-12 text-sm font-semibold touch-manipulation"
-              onClick={() => setIsAddOpen(true)}
-              disabled={!selectedClassId}
-            >
-              <Plus className="w-4 h-4 mr-1.5" />
-              Add assessment
-            </Button>
-            <Button
-              type="button"
-              className="h-12 text-sm font-semibold touch-manipulation bg-purple-600 hover:bg-purple-700"
-              onClick={handleBulkSave}
-              disabled={!isBulkEditing || bulkSaving}
-            >
-              <Save className="w-4 h-4 mr-1.5" />
-              {bulkSaving ? 'Saving…' : 'Save grades'}
-            </Button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

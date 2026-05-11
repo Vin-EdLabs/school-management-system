@@ -11,6 +11,7 @@ import { io, Socket } from 'socket.io-client';
 import { detectTenantSlugFromHost } from '@/utils/tenantHost';
 import { getFcmToken, removeFcmToken } from '@/services/firebase';
 import StudentLearningMode from '@/components/parent/StudentLearningMode';
+import { BrandedLoading, BrandedLoadingScreen } from '@/components/common/BrandedLoading';
 
 const API_ROOT = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api').replace('/api', '');
 
@@ -1423,7 +1424,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             </div>
 
             {dataLoading && !grades ? (
-              <LoadingCard />
+              <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} />
             ) : !grades?.grades?.length ? (
               <EmptyCard icon={<BookOpen className="w-10 h-10 text-gray-300" />} message="No grades recorded yet." />
             ) : (() => {
@@ -1506,7 +1507,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             </div>
 
             {dataLoading && !termReport ? (
-              <LoadingCard />
+              <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} />
             ) : !termReport?.report ? (
               <div className="bg-white border border-gray-200 rounded-xl p-8 text-center shadow-sm">
                 <Clock className="w-10 h-10 text-gray-300 mx-auto mb-3" />
@@ -1615,7 +1616,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             </div>
 
             {dataLoading && !finance ? (
-              <LoadingCard />
+              <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} />
             ) : !finance ? (
               <EmptyCard icon={<CreditCard className="w-10 h-10 text-gray-300" />} message="No finance data available." />
             ) : (
@@ -1809,7 +1810,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             </div>
 
             {dataLoading && !attendance ? (
-              <LoadingCard />
+              <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} />
             ) : !attendance ? (
               <EmptyCard icon={<CalendarCheck className="w-10 h-10 text-gray-300" />} message="No attendance records yet." />
             ) : (
@@ -1924,7 +1925,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             </div>
 
             {deskLoading ? (
-              <LoadingCard />
+              <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} />
             ) : deskMessages.length === 0 ? (
               <div className="bg-white border border-gray-200 rounded-xl p-8 text-center shadow-sm">
                 <MessageSquare className="w-10 h-10 text-purple-300 mx-auto mb-3" />
@@ -2433,10 +2434,9 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
 // ── Shared sub-components ─────────────────────────────────────────────────────
 
-const LoadingCard = () => (
-  <div className="bg-white border border-gray-200 rounded-xl p-8 text-center shadow-sm">
-    <RefreshCw className="w-8 h-8 text-purple-300 animate-spin mx-auto mb-3" />
-    <p className="text-sm text-gray-400">Loading…</p>
+const LoadingCard = ({ logoUrl }: { logoUrl?: string | null }) => (
+  <div className="bg-white border border-gray-200 rounded-xl p-6 text-center shadow-sm">
+    <BrandedLoading logoUrl={logoUrl} label="Loading…" className="py-2" />
   </div>
 );
 
@@ -2501,10 +2501,11 @@ export const ParentPortalRoute: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 gap-4">
-        <RefreshCw className="w-8 h-8 text-purple-500 animate-spin" />
-        <p className="text-purple-300/60 font-medium animate-pulse uppercase tracking-widest text-xs">Resolving Portal...</p>
-      </div>
+      <BrandedLoadingScreen
+        logoUrl={schoolLogoUrl}
+        label="Opening parent portal…"
+        tone="dark"
+      />
     );
   }
 

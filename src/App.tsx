@@ -21,6 +21,7 @@ import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import { ParentPortalRoute } from "./pages/ParentPortal";
 import { detectTenantSlugFromHost } from "./utils/tenantHost";
 import { PwaUpdateManager } from "@/components/pwa/PwaUpdateManager";
+import { BrandedLoadingScreen } from "@/components/common/BrandedLoading";
 
 import { ThemeProvider } from "./contexts/ThemeContext";
 
@@ -63,7 +64,7 @@ const IndexWithSchool = () => {
     }
   }, [schoolId, slug]);
 
-  if (resolving) return <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">Loading school...</div>;
+  if (resolving) return <BrandedLoadingScreen label="Opening your school…" />;
   if (!resolvedId) return <Navigate to="/" replace />;
 
   return (

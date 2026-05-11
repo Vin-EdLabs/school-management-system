@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { apiService } from '../services/api';
 import { useAuth } from './AuthContext';
 import { useSchool } from './SchoolContext';
@@ -313,12 +313,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [arrearsBalances, setArrearsBalances] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
+  const [workspaceReady, setWorkspaceReady] = useState(false);
+  const loadGeneration = useRef(0);
+
+  useEffect(() => {
+    if (!isAuthenticated) setWorkspaceReady(false);
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    setWorkspaceReady(false);
+  }, [schoolId]);
 
   const loadData = useCallback(async () => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated) {
+      setLoading(false);
+      setWorkspaceReady(false);
+      return;
+    }
     if (schoolId != null) {
       apiService.setTenantContext(schoolId);
     }
+    const gen = ++loadGeneration.current;
     setLoading(true);
     try {
       const [studentsRes, teachersRes, classesRes, feesRes, paymentsRes, incomeRes, expensesRes, arrearsRes, subjectsRes] = await Promise.all([
@@ -398,7 +413,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
-      setLoading(false);
+      if (gen === loadGeneration.current) {
+        setLoading(false);
+        setWorkspaceReady(true);
+      }
     }
   }, [isAuthenticated, schoolId]);
 
@@ -662,6 +680,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       subjects,
       arrearsBalances,
       loading,
+      workspaceReady,
       refresh,
       addStudent,
       updateStudent,

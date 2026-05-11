@@ -32,10 +32,15 @@ import PushNotificationsModule from './notifications/PushNotificationsModule';
 import ParentDeskAdminModule from './notifications/ParentDeskAdminModule';
 import TeacherNotifyModule from './notifications/TeacherNotifyModule';
 import { useAuth } from '../contexts/AuthContext';
+import { useSchool } from '../contexts/SchoolContext';
+import { useData } from '../contexts/DataContext';
 import { useStaffPushSync } from '../hooks/useStaffPushSync';
+import { BrandedLoadingScreen } from '@/components/common/BrandedLoading';
 
 const Dashboard = () => {
   const { hasAccess, user } = useAuth();
+  const { school } = useSchool();
+  const { workspaceReady } = useData();
   useStaffPushSync();
   const [activeModule, setActiveModule] = useState(() => {
     // Set default module based on user role
@@ -137,6 +142,14 @@ const Dashboard = () => {
         return <DashboardHome />;
     }
   };
+
+  if (!workspaceReady) {
+    return (
+      <SidebarWrapper activeModule={activeModule} setActiveModule={setActiveModule}>
+        <BrandedLoadingScreen logoUrl={school?.logo_url} label="Loading your workspace…" />
+      </SidebarWrapper>
+    );
+  }
 
   return (
     <SidebarWrapper

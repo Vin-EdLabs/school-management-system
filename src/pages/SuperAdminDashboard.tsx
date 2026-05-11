@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { BrandedLoading, BrandedLoadingScreen } from '@/components/common/BrandedLoading';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -393,7 +394,7 @@ const SuperAdminDashboard = () => {
 
   const formatDate = (d: string) => new Date(d).toLocaleString();
 
-  if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">Loading...</div>;
+  if (authLoading) return <BrandedLoadingScreen label="Loading…" />;
   if (!user || user.role !== 'super-admin') return <SuperAdminLoginForm />;
 
   const mainItems = [
@@ -657,10 +658,7 @@ const SuperAdminDashboard = () => {
                   )}
 
                   {loading ? (
-                    <div className="flex flex-col items-center justify-center py-20 gap-4">
-                      <div className="w-10 h-10 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" />
-                      <p className="text-sm font-bold text-slate-500 uppercase tracking-widest animate-pulse">Synchronizing Core...</p>
-                    </div>
+                    <BrandedLoading label="Synchronizing core…" className="py-20" />
                   ) : (
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                       {schools
@@ -821,10 +819,7 @@ const SuperAdminDashboard = () => {
                 </div>
 
                 {loading ? (
-                  <div className="flex flex-col items-center justify-center py-20 gap-4">
-                    <div className="w-10 h-10 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" />
-                    <p className="text-sm font-bold text-slate-500 uppercase tracking-widest animate-pulse">Syncing Requests...</p>
-                  </div>
+                  <BrandedLoading label="Syncing requests…" className="py-20" />
                 ) : registrations.length === 0 ? (
                   <Card className="border-slate-200 dark:border-slate-800 p-20 text-center bg-white dark:bg-slate-900/50">
                     <ClipboardList className="w-16 h-16 text-slate-200 dark:text-slate-700 mx-auto mb-6" />
@@ -1121,10 +1116,7 @@ const SuperAdminDashboard = () => {
                 </div>
 
                 {loading ? (
-                  <div className="flex flex-col items-center justify-center py-20 gap-4">
-                    <div className="w-10 h-10 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" />
-                    <p className="text-sm font-bold text-slate-500 uppercase tracking-widest animate-pulse">Parsing Forensics...</p>
-                  </div>
+                  <BrandedLoading label="Parsing forensics…" className="py-20" />
                 ) : auditLogs.length === 0 ? (
                   <Card className="border-slate-200 dark:border-slate-800 p-20 text-center bg-white dark:bg-slate-900/50">
                     <Shield className="w-16 h-16 text-slate-200 dark:text-slate-700 mx-auto mb-6" />

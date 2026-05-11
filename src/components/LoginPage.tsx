@@ -6,7 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '../contexts/AuthContext';
-import { GraduationCap, Lock, User, ArrowLeft, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { GraduationCap, Lock, User, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { BrandedLoading, BrandedLoadingScreen } from '@/components/common/BrandedLoading';
 import { toast } from '@/hooks/use-toast';
 import PwaInstallButton from './common/PwaInstallButton';
 
@@ -19,19 +20,24 @@ const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [tenant, setTenant] = useState<{ name: string; logo_url: string | null; primary_color: string | null; secondary_color: string | null } | null>(null);
+  const [tenantBrandingLoading, setTenantBrandingLoading] = useState(!!(contextSchoolId ?? (schoolId ? parseInt(schoolId, 10) : undefined)));
   const { login } = useAuth();
 
   const tenantId = contextSchoolId ?? (schoolId ? parseInt(schoolId, 10) : undefined);
 
   useEffect(() => {
-    if (tenantId) {
-      fetchTenantById(tenantId).then((t) => {
+    if (!tenantId) {
+      setTenant(null);
+      setTenantBrandingLoading(false);
+      return;
+    }
+    setTenantBrandingLoading(true);
+    fetchTenantById(tenantId)
+      .then((t) => {
         if (t) setTenant({ name: t.name, logo_url: t.logo_url, primary_color: t.primary_color, secondary_color: t.secondary_color });
         else setTenant(null);
-      });
-    } else {
-      setTenant(null);
-    }
+      })
+      .finally(() => setTenantBrandingLoading(false));
   }, [tenantId]);
 
   const primaryColor = tenant?.primary_color || '#2563eb';
@@ -68,6 +74,10 @@ const LoginPage = () => {
     }
   };
 
+  if (tenantBrandingLoading && tenantId) {
+    return <BrandedLoadingScreen logoUrl={tenant?.logo_url ?? undefined} label="Loading school…" />;
+  }
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-auto bg-slate-100 p-3 md:p-4">
       <div className="absolute right-4 top-4 z-[110]">
@@ -78,7 +88,12 @@ const LoginPage = () => {
           className="h-10 w-10 rounded-xl border-slate-200 bg-white/95 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50"
         />
       </div>
-      <div className="w-full max-w-5xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl md:rounded-3xl">
+      <div className="relative w-full max-w-5xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl md:rounded-3xl">
+        {isSubmitting && (
+          <div className="absolute inset-0 z-[120] flex items-center justify-center rounded-2xl bg-white/85 backdrop-blur-[2px] md:rounded-3xl">
+            <BrandedLoading logoUrl={tenant?.logo_url ?? null} label="Signing you in…" className="py-4" />
+          </div>
+        )}
         <div className="grid min-h-[560px] grid-cols-1 md:min-h-[620px] md:grid-cols-2">
           {/* Left: School branding / logo */}
           <div
@@ -164,12 +179,7 @@ const LoginPage = () => {
                   className="h-12 w-full rounded-xl text-base font-semibold text-white shadow-lg"
                   style={{ background: `linear-gradient(120deg, ${primaryColor} 0%, ${secondaryColor} 100%)` }}
                 >
-                  {isSubmitting ? (
-                    <span className="inline-flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Signing you in...
-                    </span>
-                  ) : 'Login'}
+                  Login
                 </Button>
               </form>
 

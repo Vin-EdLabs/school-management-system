@@ -46,6 +46,15 @@ interface AttendanceResponse {
 // undefined = not yet marked, true = present, false = absent
 type AttendanceStatus = Record<string, boolean | undefined>;
 
+const resolvePhotoUrl = (photoUrl?: string | null) => {
+  if (!photoUrl) return '';
+  if (/^https?:\/\//i.test(photoUrl) || photoUrl.startsWith('data:')) return photoUrl;
+  const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+  const origin = apiBase.replace(/\/api\/?$/, '');
+  const normalized = photoUrl.startsWith('/') ? photoUrl : `/${photoUrl}`;
+  return `${origin}${normalized}`;
+};
+
 const AttendanceModule = () => {
   const { schoolId } = useSchool();
   const { students, classes } = useData();
@@ -417,10 +426,19 @@ const AttendanceModule = () => {
                             }`}
                           >
                             <div className="flex items-center gap-3 min-w-0">
-                              <div className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-white text-sm font-bold ${
+                              <div className={`w-10 h-10 shrink-0 rounded-full overflow-hidden flex items-center justify-center text-white text-sm font-bold ${
                                 status === true ? 'bg-green-500' : status === false ? 'bg-red-400' : 'bg-gray-400'
                               }`}>
-                                {student.firstName.charAt(0)}{student.lastName.charAt(0)}
+                                {student.passportPhotoUrl ? (
+                                  <img
+                                    src={resolvePhotoUrl(student.passportPhotoUrl)}
+                                    alt={`${student.firstName} ${student.lastName}`}
+                                    className="w-full h-full object-cover"
+                                    loading="lazy"
+                                  />
+                                ) : (
+                                  <>{student.firstName.charAt(0)}{student.lastName.charAt(0)}</>
+                                )}
                               </div>
                               <div className="min-w-0">
                                 <p className="font-medium text-foreground truncate">{student.firstName} {student.lastName}</p>
@@ -579,8 +597,17 @@ const AttendanceModule = () => {
                             className={`w-full flex items-center gap-3 p-3 text-left hover:bg-muted transition-colors ${trackerStudentId === s.id ? 'bg-emerald-50 dark:bg-emerald-900/20' : ''}`}
                             onClick={() => { handleTrackStudent(s.id); setTrackerSearch(''); }}
                           >
-                            <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
-                              {s.firstName.charAt(0)}{s.lastName.charAt(0)}
+                            <div className="w-8 h-8 rounded-full overflow-hidden bg-blue-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                              {s.passportPhotoUrl ? (
+                                <img
+                                  src={resolvePhotoUrl(s.passportPhotoUrl)}
+                                  alt={`${s.firstName} ${s.lastName}`}
+                                  className="w-full h-full object-cover"
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <>{s.firstName.charAt(0)}{s.lastName.charAt(0)}</>
+                              )}
                             </div>
                             <div>
                               <p className="font-medium text-foreground text-sm">{s.firstName} {s.lastName}</p>
@@ -599,8 +626,17 @@ const AttendanceModule = () => {
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-base flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full bg-blue-500 flex items-center justify-center text-white text-sm font-bold shrink-0">
-                        {trackedStudent.firstName.charAt(0)}{trackedStudent.lastName.charAt(0)}
+                      <div className="w-9 h-9 rounded-full overflow-hidden bg-blue-500 flex items-center justify-center text-white text-sm font-bold shrink-0">
+                        {trackedStudent.passportPhotoUrl ? (
+                          <img
+                            src={resolvePhotoUrl(trackedStudent.passportPhotoUrl)}
+                            alt={`${trackedStudent.firstName} ${trackedStudent.lastName}`}
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <>{trackedStudent.firstName.charAt(0)}{trackedStudent.lastName.charAt(0)}</>
+                        )}
                       </div>
                       <div>
                         <p>{trackedStudent.firstName} {trackedStudent.lastName}</p>

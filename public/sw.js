@@ -1,10 +1,46 @@
-const CACHE_NAME = 'scholarnerve-app-v3';
+/* ScholarNerve service worker — caching + push. Bump CACHE_VERSION on breaking cache changes. */
+const CACHE_VERSION = '2026-05-11-v6';
+const CACHE_NAME = `scholarnerve-app-${CACHE_VERSION}`;
 const APP_SHELL = ['/', '/index.html', '/site.webmanifest'];
 
-// Intercept manifest.json requests to provide dynamic manifest from backend
-// while keeping the origin same-site for Chrome's WebAPK generation.
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL).catch(() => undefined))
+  );
+  // Do not skipWaiting here — the app controls when to activate (Update now / background).
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+      )
+      .then(() => self.clients.claim())
+  );
+});
+
+function isNavigationRequest(request) {
+  return (
+    request.mode === 'navigate' ||
+    (request.headers.get('accept') || '').includes('text/html')
+  );
+}
+
+function isStaticAsset(url) {
+  return (
+    /\.(?:js|mjs|css|woff2?|ttf|eot|png|jpg|jpeg|webp|gif|svg|ico|json|map)$/i.test(url.pathname) ||
+    url.pathname.startsWith('/assets/')
+  );
+}
+
 self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin) return;
+
+  // Dynamic manifest from API (same-origin path proxied / built).
   if (url.pathname === '/manifest.json') {
     const apiBase =
       self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1'
@@ -15,65 +51,76 @@ self.addEventListener('fetch', (event) => {
 
     event.respondWith(
       fetch(apiUrl)
-        .then(response => response.json())
-        .then(data => {
-          // Force same-origin URLs in the manifest content
+        .then((response) => response.json())
+        .then((data) => {
           const origin = self.location.origin;
           if (data.start_url && data.start_url.startsWith('/')) {
             data.start_url = origin + data.start_url;
           }
           return new Response(JSON.stringify(data), {
-            headers: { 'Content-Type': 'application/manifest+json' }
+            headers: { 'Content-Type': 'application/manifest+json' },
           });
         })
         .catch(() => fetch(event.request))
     );
+    return;
   }
-});
 
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL))
-  );
-  self.skipWaiting();
-});
-
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))
-      )
-    )
-  );
-  self.clients.claim();
-});
-
-self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
-  const url = new URL(event.request.url);
-  if (url.origin !== self.location.origin) return;
-  if (url.pathname === '/manifest.json') return;
-
-  // Never serve API from stale cache; always prefer fresh data.
   const isApiRequest = url.pathname.startsWith('/api/');
   if (isApiRequest) {
+    event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
+    return;
+  }
+
+  // HTML navigations: network-first to avoid stale app shell after deploy (prevents blank / broken bundles).
+  if (isNavigationRequest(event.request)) {
     event.respondWith(
-      fetch(event.request).catch(() => caches.match(event.request))
+      fetch(event.request)
+        .then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return response;
+        })
+        .catch(() =>
+          caches.match(event.request).then((cached) => cached || caches.match('/index.html'))
+        )
     );
     return;
   }
 
+  // Hashed build assets: cache-first for speed offline; network fills cache on miss.
+  if (isStaticAsset(url)) {
+    event.respondWith(
+      caches.match(event.request).then((cached) => {
+        if (cached) return cached;
+        return fetch(event.request)
+          .then((response) => {
+            if (response.ok) {
+              const clone = response.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+            }
+            return response;
+          })
+          .catch(() => caches.match('/index.html'));
+      })
+    );
+    return;
+  }
+
+  // Other same-origin GET: try cache then network.
   event.respondWith(
     caches.match(event.request).then((cached) => {
       const networkFetch = fetch(event.request)
         .then((response) => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
           return response;
         })
         .catch(() => cached);
-
       return cached || networkFetch;
     })
   );
@@ -87,17 +134,14 @@ self.addEventListener('push', (event) => {
     data = {};
   }
 
-  // Support both legacy payload shape and Firebase nested shape.
   const notif = data.notification || {};
   const payloadData = data.data || {};
   const title = notif.title || data.title || payloadData.title || 'ScholarNerve';
   const body = notif.body || data.body || payloadData.body || 'You have a new update.';
-  
-  // Android/Chrome doesn't support SVG for notification icons. Use PNG.
+
   let icon = notif.icon || data.icon || payloadData.icon || '/android-chrome-192x192.png';
   let badge = notif.badge || data.badge || payloadData.badge || icon;
 
-  // Ensure absolute URLs for Android/Chrome reliability.
   if (icon.startsWith('/')) icon = self.location.origin + icon;
   if (badge.startsWith('/')) badge = self.location.origin + badge;
 
@@ -110,18 +154,19 @@ self.addEventListener('push', (event) => {
     data: { url },
   };
   const badgeCountFromPayload = Number(payloadData.unreadCount || data.unreadCount || 0);
-  event.waitUntil((async () => {
-    await self.registration.showNotification(title, options);
-    // Reflect unread count on app icon (supported browsers only).
-    if (!navigator.setAppBadge) return;
-    if (badgeCountFromPayload > 0) {
-      await navigator.setAppBadge(badgeCountFromPayload);
-      return;
-    }
-    const notifs = await self.registration.getNotifications();
-    if (notifs.length > 0) await navigator.setAppBadge(notifs.length);
-    else if (navigator.clearAppBadge) await navigator.clearAppBadge();
-  })());
+  event.waitUntil(
+    (async () => {
+      await self.registration.showNotification(title, options);
+      if (!navigator.setAppBadge) return;
+      if (badgeCountFromPayload > 0) {
+        await navigator.setAppBadge(badgeCountFromPayload);
+        return;
+      }
+      const notifs = await self.registration.getNotifications();
+      if (notifs.length > 0) await navigator.setAppBadge(notifs.length);
+      else if (navigator.clearAppBadge) await navigator.clearAppBadge();
+    })()
+  );
 });
 
 self.addEventListener('notificationclick', (event) => {
@@ -146,12 +191,14 @@ self.addEventListener('notificationclick', (event) => {
 });
 
 self.addEventListener('notificationclose', (event) => {
-  event.waitUntil((async () => {
-    if (!self.registration.setAppBadge) return;
-    const notifs = await self.registration.getNotifications();
-    if (notifs.length > 0) await self.registration.setAppBadge(notifs.length);
-    else if (self.registration.clearAppBadge) await self.registration.clearAppBadge();
-  })());
+  event.waitUntil(
+    (async () => {
+      if (!self.registration.setAppBadge) return;
+      const notifs = await self.registration.getNotifications();
+      if (notifs.length > 0) await self.registration.setAppBadge(notifs.length);
+      else if (self.registration.clearAppBadge) await self.registration.clearAppBadge();
+    })()
+  );
 });
 
 self.addEventListener('message', (event) => {
@@ -162,10 +209,11 @@ self.addEventListener('message', (event) => {
   }
   if (data.type !== 'SET_BADGE_COUNT') return;
   const count = Number(data.count || 0);
-  event.waitUntil((async () => {
-    if (!self.registration.setAppBadge) return;
-    if (count > 0) await self.registration.setAppBadge(count);
-    else if (self.registration.clearAppBadge) await self.registration.clearAppBadge();
-  })());
+  event.waitUntil(
+    (async () => {
+      if (!self.registration.setAppBadge) return;
+      if (count > 0) await self.registration.setAppBadge(count);
+      else if (self.registration.clearAppBadge) await self.registration.clearAppBadge();
+    })()
+  );
 });
-

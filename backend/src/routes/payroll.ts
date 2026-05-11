@@ -5,6 +5,7 @@ import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js'
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { getIO } from '../socket.js';
+import { sendPushToStaffUser } from '../services/webPushService.js';
 
 function generatePin(): string {
   return String(Math.floor(10000 + Math.random() * 90000));
@@ -275,13 +276,53 @@ router.post('/pay', requireRole('super-admin', 'administrator', 'finance'), asyn
        RETURNING *`,
       [tenantId, payee_type, payee_id, parseInt(month), parseInt(year), parseFloat(amount), paid_date || null, payment_method || null, notes || null]
     );
+    const parsedMonth = parseInt(month as string, 10);
+    const parsedYear = parseInt(year as string, 10);
+    const parsedAmount = parseFloat(amount as string);
+    const period = new Date(parsedYear, parsedMonth - 1, 1).toLocaleDateString('en-US', {
+      month: 'long',
+      year: 'numeric',
+    });
+    const amountLabel = Number.isFinite(parsedAmount)
+      ? `GHS ${parsedAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      : null;
+    const salaryTitle = 'Salary paid';
+    const salaryBody = amountLabel
+      ? `Your salary for ${period} has been recorded: ${amountLabel}.`
+      : `Your salary for ${period} has been recorded.`;
+
     emitTenantDataChanged(tenantId, 'salary-payment', 'created', {
       payee_type: String(payee_type),
       payee_id: Number(payee_id),
-      month: parseInt(month as string, 10),
-      year: parseInt(year as string, 10),
-      amount: parseFloat(amount as string),
+      month: parsedMonth,
+      year: parsedYear,
+      amount: parsedAmount,
+      title: salaryTitle,
+      body: salaryBody,
     });
+
+    const normalizedPayeeType = String(payee_type);
+    const normalizedPayeeId = Number(payee_id);
+    if (Number.isFinite(normalizedPayeeId)) {
+      const userRes = await query(
+        normalizedPayeeType === 'teacher'
+          ? `SELECT id FROM users
+             WHERE tenant_id = $1 AND role = 'teacher' AND teacher_id = $2 AND is_active = true
+             ORDER BY id ASC LIMIT 1`
+          : `SELECT id FROM users
+             WHERE tenant_id = $1 AND role = 'staff' AND other_staff_id = $2 AND is_active = true
+             ORDER BY id ASC LIMIT 1`,
+        [tenantId, normalizedPayeeId]
+      ).catch(() => ({ rows: [] as any[] }));
+      const targetUserId = Number(userRes.rows[0]?.id);
+      if (Number.isFinite(targetUserId)) {
+        await sendPushToStaffUser(targetUserId, {
+          title: salaryTitle,
+          body: salaryBody,
+          url: `/school/${tenantId}`,
+        }).catch(() => {});
+      }
+    }
     res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error('Record salary payment error:', error);

@@ -20,6 +20,7 @@ import RegisterSchool from "./pages/RegisterSchool";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import { ParentPortalRoute } from "./pages/ParentPortal";
 import { detectTenantSlugFromHost } from "./utils/tenantHost";
+import { PwaUpdateManager } from "@/components/pwa/PwaUpdateManager";
 
 import { ThemeProvider } from "./contexts/ThemeContext";
 
@@ -85,6 +86,7 @@ const App = () => (
         <SocketProvider>
           <TeacherNotificationProvider>
           <TooltipProvider>
+            <PwaUpdateManager />
             <Toaster />
             <Sonner />
             <BrowserRouter>

@@ -659,6 +659,120 @@ const runMigrations = async () => {
       ON parent_notifications (parent_account_id, created_at DESC)
     `).catch(() => { });
     await client.query(`
+      CREATE TABLE IF NOT EXISTS learning_questions (
+        id SERIAL PRIMARY KEY,
+        class_level VARCHAR(20) NOT NULL,
+        subject VARCHAR(50) NOT NULL,
+        term INTEGER NOT NULL CHECK (term IN (1, 2, 3)),
+        question_text TEXT NOT NULL,
+        option_a TEXT NOT NULL,
+        option_b TEXT NOT NULL,
+        option_c TEXT NOT NULL,
+        option_d TEXT NOT NULL,
+        correct_option VARCHAR(1) NOT NULL CHECK (correct_option IN ('a', 'b', 'c', 'd')),
+        question_source VARCHAR(20) NOT NULL DEFAULT 'system' CHECK (question_source IN ('system', 'teacher')),
+        school_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
+        teacher_id INTEGER REFERENCES teachers(id) ON DELETE SET NULL,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `).catch(() => { });
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_learning_questions_lookup
+      ON learning_questions (class_level, subject, term, is_active)
+    `).catch(() => { });
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS learning_teacher_quizzes (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        teacher_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        teacher_name VARCHAR(255) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        class_id INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+        subject VARCHAR(50) NOT NULL,
+        due_date DATE,
+        is_published BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `).catch(() => { });
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_learning_teacher_quizzes_class
+      ON learning_teacher_quizzes (tenant_id, class_id, due_date)
+    `).catch(() => { });
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS learning_teacher_quiz_questions (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        teacher_quiz_id INTEGER NOT NULL REFERENCES learning_teacher_quizzes(id) ON DELETE CASCADE,
+        question_text TEXT NOT NULL,
+        option_a TEXT NOT NULL,
+        option_b TEXT NOT NULL,
+        option_c TEXT NOT NULL,
+        option_d TEXT NOT NULL,
+        correct_option VARCHAR(1) NOT NULL CHECK (correct_option IN ('a', 'b', 'c', 'd')),
+        marks INTEGER NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `).catch(() => { });
+    await client.query(`
+      ALTER TABLE learning_teacher_quiz_questions
+      ADD COLUMN IF NOT EXISTS marks INTEGER NOT NULL DEFAULT 1
+    `).catch(() => { });
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS quiz_sessions (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+        subject VARCHAR(50) NOT NULL,
+        class_level VARCHAR(20) NOT NULL,
+        source VARCHAR(20) NOT NULL DEFAULT 'daily' CHECK (source IN ('daily', 'teacher')),
+        teacher_quiz_id INTEGER REFERENCES learning_teacher_quizzes(id) ON DELETE SET NULL,
+        total_questions INTEGER NOT NULL,
+        correct_answers INTEGER NOT NULL,
+        points_earned INTEGER NOT NULL DEFAULT 0,
+        completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `).catch(() => { });
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_quiz_sessions_weekly
+      ON quiz_sessions (tenant_id, student_id, completed_at DESC)
+    `).catch(() => { });
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS student_points (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+        total_points INTEGER NOT NULL DEFAULT 0,
+        weekly_points INTEGER NOT NULL DEFAULT 0,
+        current_streak INTEGER NOT NULL DEFAULT 0,
+        last_quiz_date DATE,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(tenant_id, student_id)
+      )
+    `).catch(() => { });
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_student_points_tenant
+      ON student_points (tenant_id, student_id)
+    `).catch(() => { });
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS learning_teacher_quiz_attempts (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        teacher_quiz_id INTEGER NOT NULL REFERENCES learning_teacher_quizzes(id) ON DELETE CASCADE,
+        student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+        score INTEGER NOT NULL DEFAULT 0,
+        total_questions INTEGER NOT NULL DEFAULT 0,
+        correct_answers INTEGER NOT NULL DEFAULT 0,
+        wrong_answers INTEGER NOT NULL DEFAULT 0,
+        total_marks INTEGER NOT NULL DEFAULT 0,
+        completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(teacher_quiz_id, student_id)
+      )
+    `).catch(() => { });
+    await client.query(`ALTER TABLE learning_teacher_quiz_attempts ADD COLUMN IF NOT EXISTS correct_answers INTEGER NOT NULL DEFAULT 0`).catch(() => { });
+    await client.query(`ALTER TABLE learning_teacher_quiz_attempts ADD COLUMN IF NOT EXISTS wrong_answers INTEGER NOT NULL DEFAULT 0`).catch(() => { });
+    await client.query(`ALTER TABLE learning_teacher_quiz_attempts ADD COLUMN IF NOT EXISTS total_marks INTEGER NOT NULL DEFAULT 0`).catch(() => { });
+    await client.query(`
       CREATE TABLE IF NOT EXISTS parent_messages (
         id SERIAL PRIMARY KEY,
         tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,

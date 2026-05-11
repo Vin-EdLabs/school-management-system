@@ -23,6 +23,7 @@ import AttendanceModule from './teacher/AttendanceModule';
 import GradesModule from './teacher/GradesModule';
 import TeacherProfileModule from './teacher/TeacherProfileModule';
 import TeacherPaymentHistoryModule from './teacher/TeacherPaymentHistoryModule';
+import TeacherQuizModule from './teacher/TeacherQuizModule';
 import AiChatModule from './ai/AiChatModule';
 import RecordsModule from './records/RecordsModule';
 import SubjectsModule from './subjects/SubjectsModule';
@@ -51,7 +52,11 @@ const Dashboard = () => {
 
   const renderActiveModule = () => {
     // Check access before rendering
-    if (!hasAccess(activeModule) && !hasAccess(activeModule + '-view-only')) {
+    const hasModuleAccess =
+      hasAccess(activeModule) ||
+      hasAccess(activeModule + '-view-only') ||
+      (activeModule === 'teacher-quizzes' && (hasAccess('grades') || user?.role === 'teacher'));
+    if (!hasModuleAccess) {
       return (
         <div className="p-6 text-center">
           <h2 className="text-2xl font-bold text-gray-800 mb-4">Access Denied</h2>
@@ -91,6 +96,8 @@ const Dashboard = () => {
         return <TeacherProfileModule />;
       case 'teacher-payment-history':
         return <TeacherPaymentHistoryModule />;
+      case 'teacher-quizzes':
+        return <TeacherQuizModule />;
       case 'fees':
         return <FeesModule />;
       case 'income':

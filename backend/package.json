@@ -8,7 +8,8 @@
     "start-server": "node start-server.js",
     "build": "tsc",
     "start": "node dist/index.js",
-    "migrate": "node --loader ts-node/esm src/db/migrate.ts"
+    "migrate": "node --loader ts-node/esm src/db/migrate.ts",
+    "seed:learning": "node --loader ts-node/esm src/db/seedLearningQuestions.ts"
   },
   "keywords": [],
   "author": "",

@@ -31,6 +31,7 @@ import eventsRoutes from './routes/events.js';
 import globalChatRoutes from './routes/globalChat.js';
 import conversationRoutes from './routes/conversations.js';
 import messagesRoutes from './routes/messages.js';
+import studentLearningRoutes from './routes/student.js';
 import { initSocket } from './socket.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import path from 'path';
@@ -99,6 +100,7 @@ app.use('/api/events', eventsRoutes);
 app.use('/api/global-chat', globalChatRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/messages', messagesRoutes);
+app.use('/api/student', studentLearningRoutes);
 
 // Error handling middleware
 app.use(errorHandler);

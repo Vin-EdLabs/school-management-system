@@ -139,8 +139,10 @@ export const TeacherNotificationProvider: React.FC<{ children: React.ReactNode }
             ? new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
             : 'your account';
         const amtStr = !Number.isNaN(amount) ? `GHS ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '';
-        const title = 'Salary recorded';
-        const body = amtStr ? `Payment for ${period}: ${amtStr}.` : `A salary payment was recorded for ${period}.`;
+        const title = String(evt.title || 'Salary paid');
+        const body = String(
+          evt.body || (amtStr ? `Payment for ${period}: ${amtStr}.` : `A salary payment was recorded for ${period}.`)
+        );
         const at = Number(evt.at) || Date.now();
         const id = `salary-${payeeId}-${month}-${year}-${at}`;
         setItems((prev) => {

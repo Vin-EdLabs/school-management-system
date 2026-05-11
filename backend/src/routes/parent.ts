@@ -7,6 +7,11 @@ import { resolveTenant, TenantRequest } from '../middleware/tenantResolver.js';
 
 const router = express.Router();
 
+function parentJwtExpiresIn(): jwt.SignOptions['expiresIn'] {
+  const raw = process.env.PARENT_JWT_EXPIRES_IN?.trim();
+  return (raw && raw.length > 0 ? raw : '365d') as jwt.SignOptions['expiresIn'];
+}
+
 // ── Parent JWT middleware ─────────────────────────────────────────────────────
 
 interface ParentRequest extends express.Request {
@@ -108,7 +113,7 @@ router.post('/login', resolveTenant, async (req: ParentRequest & TenantRequest, 
     const token = jwt.sign(
       { parentAccountId: account.id, studentId: student.id, tenantId, role: 'parent' },
       process.env.JWT_SECRET || 'secret',
-      { expiresIn: '12h' }
+      { expiresIn: parentJwtExpiresIn() }
     );
 
     res.json({
@@ -128,6 +133,28 @@ router.post('/login', resolveTenant, async (req: ParentRequest & TenantRequest, 
   } catch (error: any) {
     console.error('Parent login error:', error?.message || error);
     res.status(500).json({ error: 'Login failed', detail: error?.message });
+  }
+});
+
+// ── POST /api/parent/refresh ─────────────────────────────────────────────────
+// Issues a new JWT while the current one is still valid — keeps long-lived sessions fresh.
+
+router.post('/refresh', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    const token = jwt.sign(
+      {
+        parentAccountId: req.parent!.accountId,
+        studentId: req.parent!.studentId,
+        tenantId: req.parent!.tenantId,
+        role: 'parent',
+      },
+      process.env.JWT_SECRET || 'secret',
+      { expiresIn: parentJwtExpiresIn() }
+    );
+    return res.json({ token });
+  } catch (error) {
+    console.error('Parent refresh error:', error);
+    return res.status(500).json({ error: 'Failed to refresh session' });
   }
 });
 

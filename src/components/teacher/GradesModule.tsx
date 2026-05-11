@@ -121,6 +121,15 @@ const relativeTime = (isoString: string | null): string => {
   return new Date(isoString).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 };
 
+const resolvePhotoUrl = (photoUrl?: string | null) => {
+  if (!photoUrl) return '';
+  if (/^https?:\/\//i.test(photoUrl) || photoUrl.startsWith('data:')) return photoUrl;
+  const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+  const origin = apiBase.replace(/\/api\/?$/, '');
+  const normalized = photoUrl.startsWith('/') ? photoUrl : `/${photoUrl}`;
+  return `${origin}${normalized}`;
+};
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 const GradesModule = () => {
@@ -475,12 +484,13 @@ const GradesModule = () => {
     win.print();
   };
 
+
   // ── Render ───────────────────────────────────────────────────────────────────
 
   const subjectsToDisplay = activeSubjects;
 
   return (
-    <div className="px-4 py-5 sm:p-6 space-y-5 sm:space-y-6 max-w-7xl mx-auto w-full">
+    <div className={`px-4 py-5 sm:p-6 space-y-5 sm:space-y-6 max-w-7xl mx-auto w-full ${!isAdminViewer && activeTab === 'grades' ? 'pb-28 sm:pb-6' : ''}`}>
       {/* Header */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex items-start gap-3 min-w-0">
@@ -964,6 +974,9 @@ const GradesModule = () => {
                             {termReport.students.map((s, idx) => {
                               const pct = s.percentage;
                               const grade = getLetterGrade(pct);
+                              const sourceStudent = students.find((st) => Number(st.id) === Number(s.studentId));
+                              const photoUrl =
+                                sourceStudent?.passportPhotoUrl || (s as any).passportPhotoUrl || (s as any).passport_photo_url || '';
                               const rowBg =
                                 s.position === 1 ? 'bg-yellow-50' :
                                   s.position === 2 ? 'bg-slate-50' :
@@ -976,8 +989,8 @@ const GradesModule = () => {
                                     <div className="flex items-center gap-2">
                                       {/* Passport photo */}
                                       <div className="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center shrink-0 text-white text-xs font-bold">
-                                        {(s as any).passportPhotoUrl
-                                          ? <img src={`${import.meta.env.VITE_API_BASE_URL?.replace('/api', '') || 'http://localhost:3001'}${(s as any).passportPhotoUrl}`} alt="" className="w-full h-full object-cover" />
+                                        {photoUrl
+                                          ? <img src={resolvePhotoUrl(photoUrl)} alt={`${s.firstName} ${s.lastName}`} className="w-full h-full object-cover" loading="lazy" />
                                           : `${s.firstName[0]}${s.lastName[0]}`}
                                       </div>
                                       {s.position <= 3 && (
@@ -1167,6 +1180,32 @@ const GradesModule = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {!isAdminViewer && activeTab === 'grades' && (
+        <div className="sm:hidden fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 backdrop-blur-md px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(0,0,0,0.06)] dark:shadow-[0_-8px_24px_rgba(0,0,0,0.25)]">
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-12 text-sm font-semibold touch-manipulation"
+              onClick={() => setIsAddOpen(true)}
+              disabled={!selectedClassId}
+            >
+              <Plus className="w-4 h-4 mr-1.5" />
+              Add assessment
+            </Button>
+            <Button
+              type="button"
+              className="h-12 text-sm font-semibold touch-manipulation bg-purple-600 hover:bg-purple-700"
+              onClick={handleBulkSave}
+              disabled={!isBulkEditing || bulkSaving}
+            >
+              <Save className="w-4 h-4 mr-1.5" />
+              {bulkSaving ? 'Saving…' : 'Save grades'}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

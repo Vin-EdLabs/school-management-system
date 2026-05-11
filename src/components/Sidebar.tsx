@@ -29,6 +29,7 @@ import {
   BellRing,
   MessagesSquare,
   Megaphone,
+  ClipboardList,
 } from 'lucide-react';
 import { resolveLogoUrl } from '../services/tenantService';
 import {
@@ -68,6 +69,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
     ...(hasAccess('teacher-classes') ? [{ id: 'teacher-classes', label: 'My Classes', icon: BookOpen }] : []),
     ...(hasAccess('attendance') ? [{ id: 'attendance', label: 'Attendance', icon: UserCheck }] : []),
     ...(hasAccess('grades') ? [{ id: 'grades', label: 'Grades', icon: Award }] : []),
+    ...(hasAccess('grades') ? [{ id: 'teacher-quizzes', label: 'Learning Quizzes', icon: ClipboardList }] : []),
     ...(hasAccess('teacher-profile') ? [{ id: 'teacher-profile', label: 'My Profile', icon: User }] : []),
     ...(hasAccess('teacher-payment-history') ? [{ id: 'teacher-payment-history', label: 'Payment History', icon: History }] : []),
   ],

@@ -34,6 +34,15 @@ interface SalaryInfo {
   currentMonthStatus: string;
 }
 
+const resolvePhotoUrl = (photoUrl?: string | null) => {
+  if (!photoUrl) return '';
+  if (/^https?:\/\//i.test(photoUrl) || photoUrl.startsWith('data:')) return photoUrl;
+  const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+  const origin = apiBase.replace(/\/api\/?$/, '');
+  const normalized = photoUrl.startsWith('/') ? photoUrl : `/${photoUrl}`;
+  return `${origin}${normalized}`;
+};
+
 const TeacherDashboard = () => {
   const { schoolId } = useSchool();
   const { students } = useData();
@@ -265,8 +274,17 @@ const TeacherDashboard = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {teacherStudents.slice(0, 6).map((student) => (
                 <div key={student.id} className="flex items-center space-x-3 min-h-[52px] p-3 bg-gray-50 dark:bg-gray-900/40 rounded-xl">
-                  <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
-                    {student.firstName.charAt(0)}{student.lastName.charAt(0)}
+                  <div className="w-8 h-8 rounded-full overflow-hidden bg-blue-500 flex items-center justify-center text-white text-sm font-bold">
+                    {student.passportPhotoUrl ? (
+                      <img
+                        src={resolvePhotoUrl(student.passportPhotoUrl)}
+                        alt={`${student.firstName} ${student.lastName}`}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <>{student.firstName.charAt(0)}{student.lastName.charAt(0)}</>
+                    )}
                   </div>
                   <div>
                     <p className="font-medium text-gray-900">{student.firstName} {student.lastName}</p>

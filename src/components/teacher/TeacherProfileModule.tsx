@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { User, Wallet, CheckCircle, XCircle } from 'lucide-react';
 import { apiService } from '../../services/api';
 import { useSchool } from '../../contexts/SchoolContext';
+import { type TeacherMySalaryResponse, formatTeacherMoney, salaryStatusBadgeClass } from './teacherSalaryPortal';
 
 interface TeacherProfile {
   id: number;
@@ -22,16 +23,12 @@ interface TeacherClass {
   is_main: boolean;
 }
 
-interface SalaryInfo {
-  monthlySalary: number;
-  currentMonthStatus: string;
-}
 
 const TeacherProfileModule = () => {
   const { schoolId } = useSchool();
   const [profile, setProfile] = useState<TeacherProfile | null>(null);
   const [teacherClasses, setTeacherClasses] = useState<TeacherClass[]>([]);
-  const [salaryInfo, setSalaryInfo] = useState<SalaryInfo | null>(null);
+  const [salaryInfo, setSalaryInfo] = useState<TeacherMySalaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -45,11 +42,11 @@ const TeacherProfileModule = () => {
         const [profRes, classesRes, salaryRes] = await Promise.all([
           apiService.get<TeacherProfile>('/teachers/me').catch(() => null),
           apiService.get<TeacherClass[]>('/teachers/me/classes').catch(() => []),
-          apiService.get<SalaryInfo & { fullName: string; staffId: string; paymentHistory?: unknown }>('/payroll/my-salary').catch(() => null),
+          apiService.get<TeacherMySalaryResponse>('/payroll/my-salary').catch(() => null),
         ]);
         setProfile(profRes);
         setTeacherClasses(Array.isArray(classesRes) ? classesRes : []);
-        setSalaryInfo(salaryRes ? { monthlySalary: salaryRes.monthlySalary, currentMonthStatus: salaryRes.currentMonthStatus } : null);
+        setSalaryInfo(salaryRes);
       } catch {
         setProfile(null);
       } finally {
@@ -121,26 +118,62 @@ const TeacherProfileModule = () => {
       </Card>
 
       {salaryInfo && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Wallet className="w-5 h-5" />
-              Salary Summary
+        <Card className="overflow-hidden border-emerald-200/50 dark:border-emerald-900/30 shadow-sm">
+          <CardHeader className="border-b bg-gradient-to-r from-emerald-50/90 to-teal-50/50 dark:from-emerald-950/30 dark:to-teal-950/20">
+            <CardTitle className="flex items-center gap-2 text-gray-900 dark:text-gray-100">
+              <Wallet className="w-5 h-5 shrink-0" />
+              Salary
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex justify-between items-center py-2">
-              <span className="text-gray-600">Monthly Salary</span>
-              <span className="font-semibold text-lg">GHS {salaryInfo.monthlySalary.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between items-center py-2">
-              <span className="text-gray-600">This Month</span>
-              <Badge variant={salaryInfo.currentMonthStatus === 'Paid' ? 'default' : 'secondary'} className={salaryInfo.currentMonthStatus === 'Paid' ? 'bg-emerald-600' : ''}>
-                {salaryInfo.currentMonthStatus === 'Paid' ? <CheckCircle className="w-3 h-3 mr-1 inline" /> : <XCircle className="w-3 h-3 mr-1 inline" />}
-                {salaryInfo.currentMonthStatus}
-              </Badge>
-            </div>
-            <p className="text-sm text-gray-500">View full payment history in the Payment History section.</p>
+          <CardContent className="space-y-4 pt-5">
+            {(() => {
+              const c = salaryInfo.currency || 'GHS';
+              const snap = salaryInfo.currentMonthSnapshot;
+              return (
+                <>
+                  <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-muted/30 p-4 space-y-2.5">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Contract (typical)</p>
+                    <div className="flex justify-between gap-3 text-sm">
+                      <span className="text-muted-foreground">Gross / month</span>
+                      <span className="font-mono tabular-nums font-semibold">{formatTeacherMoney(c, salaryInfo.monthlySalary)}</span>
+                    </div>
+                    {salaryInfo.ssnitEnabled !== false && (
+                      <div className="flex justify-between gap-3 text-sm">
+                        <span className="text-muted-foreground">SSNIT ({salaryInfo.defaultSsnitPercent ?? 5.5}%)</span>
+                        <span className="font-mono tabular-nums text-amber-700 dark:text-amber-400">−{formatTeacherMoney(c, salaryInfo.ssnitDeduction)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between gap-3 text-sm pt-1 border-t border-border">
+                      <span className="font-medium">Net (typical)</span>
+                      <span className="font-mono tabular-nums font-bold text-emerald-700 dark:text-emerald-400">{formatTeacherMoney(c, salaryInfo.netSalary)}</span>
+                    </div>
+                  </div>
+                  {snap && (
+                    <div className="rounded-xl border border-border p-4 space-y-2">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">This calendar month</p>
+                      <div className="flex justify-between text-sm gap-2">
+                        <span className="text-muted-foreground">Net due</span>
+                        <span className="font-mono tabular-nums">{formatTeacherMoney(c, snap.netSalary)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm gap-2">
+                        <span className="text-muted-foreground">Paid</span>
+                        <span className="font-mono tabular-nums">{formatTeacherMoney(c, snap.amountPaid)}</span>
+                      </div>
+                      <div className="flex justify-between items-center pt-1">
+                        <span className="text-sm text-muted-foreground">Status</span>
+                        <Badge className={salaryStatusBadgeClass(snap.status)}>
+                          {snap.status === 'Paid' ? <CheckCircle className="w-3 h-3 mr-1 inline" /> : <XCircle className="w-3 h-3 mr-1 inline" />}
+                          {snap.status}
+                        </Badge>
+                      </div>
+                    </div>
+                  )}
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    Full month-by-month breakdown (gross, SSNIT, net, paid) is in <strong className="text-foreground">Payment History</strong>.
+                  </p>
+                </>
+              );
+            })()}
           </CardContent>
         </Card>
       )}

@@ -3,32 +3,35 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '../contexts/AuthContext';
-import { GraduationCap, Lock, User, ArrowLeft, Shield, ShieldCheck } from 'lucide-react';
+import { GraduationCap, Lock, User, ArrowLeft, Shield, ShieldCheck, AlertCircle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { Link } from 'react-router-dom';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { getFriendlyLoginMessage, getFriendlyLoginTitle } from '../utils/loginErrors';
 
 const SuperAdminLoginForm = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [formError, setFormError] = useState('');
   const { login } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError('');
     try {
       const success = await login(username, password, 'super-admin', undefined);
       if (success) {
         toast({ title: 'Login Successful', description: 'Welcome to Super Admin Panel' });
       } else {
-        toast({
-          title: 'Login Failed',
-          description: 'Invalid Super Admin credentials',
-          variant: 'destructive',
-        });
+        setFormError('Sign-in failed. Check your username and password.');
+        toast({ title: 'Sign-in failed', description: 'Check your username and password.', variant: 'destructive' });
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const friendly = getFriendlyLoginMessage(error);
+      setFormError(friendly);
       toast({
-        title: 'Login Failed',
-        description: error?.message || 'An error occurred. Please try again.',
+        title: getFriendlyLoginTitle(error),
+        description: friendly,
         variant: 'destructive',
       });
     }
@@ -76,6 +79,13 @@ const SuperAdminLoginForm = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
+              {formError && (
+                <Alert variant="destructive" className="border-red-500/40 bg-red-950/50 text-red-100">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle className="text-sm font-semibold">Sign-in failed</AlertTitle>
+                  <AlertDescription className="text-sm text-red-100/90">{formError}</AlertDescription>
+                </Alert>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="username" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">
                   Admin Identity

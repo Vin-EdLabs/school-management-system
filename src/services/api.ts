@@ -2,6 +2,16 @@
 // API service for backend integration
 import { detectTenantSlugFromHost } from '../utils/tenantHost';
 
+async function readResponseJson<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  if (!text.trim()) return {} as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error('Could not read server response. You may be offline, or the server returned an invalid page.');
+  }
+}
+
 export class ApiService {
   private baseURL: string;
   private tenantId: number | null = null;
@@ -55,11 +65,23 @@ export class ApiService {
     const response = await fetch(this.buildURL(endpoint), {
       headers: this.getAuthHeaders(),
     });
+    const data = await readResponseJson<any>(response);
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Request failed' }));
-      throw new Error(error.error || `HTTP error! status: ${response.status}`);
+      throw new Error(data?.error || `Request failed (${response.status})`);
     }
-    return response.json();
+    return data as T;
+  }
+
+  /** Plain text / CSV (e.g. audit export). */
+  async getText(endpoint: string): Promise<string> {
+    const response = await fetch(this.buildURL(endpoint), {
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      throw new Error(errText || `HTTP error! status: ${response.status}`);
+    }
+    return response.text();
   }
 
   async postPublic<T>(endpoint: string, data: any): Promise<T> {
@@ -68,11 +90,11 @@ export class ApiService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
+    const payload = await readResponseJson<any>(response);
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Request failed' }));
-      throw new Error(error.error || `HTTP error! status: ${response.status}`);
+      throw new Error(payload.error || `Request failed (${response.status})`);
     }
-    return response.json();
+    return payload as T;
   }
 
   async post<T>(endpoint: string, data: any): Promise<T> {
@@ -81,11 +103,14 @@ export class ApiService {
       headers: this.getAuthHeaders(),
       body: JSON.stringify(data),
     });
+    const payload = await readResponseJson<any>(response);
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Request failed' }));
-      throw new Error(error.error || `HTTP error! status: ${response.status}`);
+      let msg = payload.error || `Request failed (${response.status})`;
+      if (payload.hint) msg += ` ${payload.hint}`;
+      if (payload.detail) msg += ` (${payload.detail})`;
+      throw new Error(msg);
     }
-    return response.json();
+    return payload as T;
   }
 
   async patch<T>(endpoint: string, data: any): Promise<T> {
@@ -94,11 +119,11 @@ export class ApiService {
       headers: this.getAuthHeaders(),
       body: JSON.stringify(data),
     });
+    const payload = await readResponseJson<any>(response);
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Request failed' }));
-      throw new Error(error.error || `HTTP error! status: ${response.status}`);
+      throw new Error(payload.error || `Request failed (${response.status})`);
     }
-    return response.json();
+    return payload as T;
   }
 
   async put<T>(endpoint: string, data: any): Promise<T> {
@@ -107,11 +132,11 @@ export class ApiService {
       headers: this.getAuthHeaders(),
       body: JSON.stringify(data),
     });
+    const payload = await readResponseJson<any>(response);
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Request failed' }));
-      throw new Error(error.error || `HTTP error! status: ${response.status}`);
+      throw new Error(payload.error || `Request failed (${response.status})`);
     }
-    return response.json();
+    return payload as T;
   }
 
   async delete<T>(endpoint: string): Promise<T> {
@@ -119,11 +144,11 @@ export class ApiService {
       method: 'DELETE',
       headers: this.getAuthHeaders(),
     });
+    const payload = await readResponseJson<any>(response);
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Request failed' }));
-      throw new Error(error.error || `HTTP error! status: ${response.status}`);
+      throw new Error(payload.error || `Request failed (${response.status})`);
     }
-    return response.json();
+    return payload as T;
   }
 
   async uploadStudentPhoto(studentId: string, file: File): Promise<unknown> {
@@ -138,10 +163,10 @@ export class ApiService {
       body: formData,
     });
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Upload failed' }));
+      const error = await readResponseJson<{ error?: string }>(response).catch(() => ({ error: 'Upload failed' }));
       throw new Error(error.error || `HTTP error! status: ${response.status}`);
     }
-    return response.json();
+    return readResponseJson(response);
   }
 
   async uploadFile<T>(endpoint: string, file: File, fieldName: string = 'file'): Promise<T> {
@@ -161,10 +186,10 @@ export class ApiService {
     });
     
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Upload failed' }));
+      const error = await readResponseJson<{ error?: string }>(response).catch(() => ({ error: 'Upload failed' }));
       throw new Error(error.error || `HTTP error! status: ${response.status}`);
     }
-    return response.json();
+    return readResponseJson<T>(response);
   }
 
   async postForm<T>(endpoint: string, formData: FormData): Promise<T> {
@@ -179,10 +204,10 @@ export class ApiService {
       body: formData,
     });
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Request failed' }));
+      const error = await readResponseJson<{ error?: string }>(response).catch(() => ({ error: 'Request failed' }));
       throw new Error(error.error || `HTTP error! status: ${response.status}`);
     }
-    return response.json();
+    return readResponseJson<T>(response);
   }
 }
 

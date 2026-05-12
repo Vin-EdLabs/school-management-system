@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -47,6 +47,17 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
       [field]: value
     }));
   };
+
+  const computedAge = useMemo(() => {
+    if (!formData.dateOfBirth) return null;
+    const birth = new Date(`${formData.dateOfBirth}T12:00:00`);
+    if (Number.isNaN(birth.getTime())) return null;
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const md = today.getMonth() - birth.getMonth();
+    if (md < 0 || (md === 0 && today.getDate() < birth.getDate())) age -= 1;
+    return age >= 0 && age < 120 ? age : null;
+  }, [formData.dateOfBirth]);
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -148,7 +159,7 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
   };
 
   return (
-    <Card className="border-slate-200 dark:border-slate-800 shadow-xl bg-white dark:bg-slate-900/50 backdrop-blur-xl rounded-[2rem] overflow-hidden animate-in fade-in zoom-in duration-500">
+    <Card className="border-slate-200 dark:border-slate-800 shadow-xl bg-white dark:bg-slate-900/50 rounded-[2rem] overflow-hidden animate-in fade-in duration-500">
       <CardHeader className="bg-slate-50/50 dark:bg-slate-800/30 border-b border-slate-200/50 dark:border-slate-800/50 px-8 py-6">
         <CardTitle className="flex items-center gap-3 text-slate-900 dark:text-white font-black font-outfit text-xl tracking-tight">
           <div className="w-10 h-10 rounded-xl bg-indigo-500/10 flex items-center justify-center">
@@ -161,7 +172,7 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
         <form onSubmit={handleSubmit} className="space-y-10">
           {/* Passport Photo Section */}
           <div className="bg-slate-50/30 dark:bg-slate-800/20 p-6 rounded-[1.5rem] border border-slate-200/50 dark:border-slate-700/50 space-y-4">
-            <Label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-1">Passport Identity</Label>
+            <Label className="text-sm font-medium text-slate-700 dark:text-slate-300 ml-1">Passport photo</Label>
             <div className="flex flex-col sm:flex-row items-center gap-8">
               <div className="relative group">
                 <div className="w-32 h-32 rounded-[2rem] border-2 border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 flex items-center justify-center overflow-hidden transition-all group-hover:border-indigo-500/50 group-hover:bg-indigo-50/10 shadow-inner">
@@ -244,15 +255,27 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
                 </Select>
               </div>
               <div className="space-y-2.5">
-                <Label htmlFor="dateOfBirth" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Date of Birth <span className="text-red-500">*</span></Label>
+                <Label htmlFor="dateOfBirth" className="text-sm font-medium text-slate-700 dark:text-slate-300 ml-1">
+                  Date of birth <span className="text-red-500">*</span>
+                </Label>
                 <Input
                   id="dateOfBirth"
                   type="date"
                   value={formData.dateOfBirth}
                   onChange={(e) => handleInputChange('dateOfBirth', e.target.value)}
                   required
-                  className="h-12 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl"
+                  className="h-12 bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-700 rounded-xl text-base antialiased [text-rendering:optimizeLegibility]"
                 />
+                {computedAge !== null && (
+                  <p
+                    className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-900 antialiased [text-rendering:optimizeLegibility] dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                    aria-live="polite"
+                  >
+                    Age:{' '}
+                    <span className="tabular-nums font-semibold text-slate-950 dark:text-white">{computedAge}</span> years
+                    old
+                  </p>
+                )}
               </div>
               <div className="space-y-2.5">
                 <Label htmlFor="nationality" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Nationality <span className="text-red-500">*</span></Label>
@@ -269,20 +292,22 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
 
             <div className="flex items-center gap-3">
               <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Institutional Context</span>
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">School</span>
               <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
             </div>
 
             {/* School Information */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2.5">
-                <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Identity Tokens</Label>
-                <div className="h-12 flex items-center px-4 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/30 dark:bg-slate-900/30 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 italic">
-                  Auto-Provisioned Upon Commit
+                <Label className="text-sm font-medium text-slate-700 dark:text-slate-300 ml-1">Student ID & admission</Label>
+                <div className="flex h-12 items-center rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-400">
+                  Generated automatically when you save
                 </div>
               </div>
               <div className="space-y-2.5">
-                <Label htmlFor="classAssigned" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Level Assignment <span className="text-red-500">*</span></Label>
+                <Label htmlFor="classAssigned" className="text-sm font-medium text-slate-700 dark:text-slate-300 ml-1">
+                  Class <span className="text-red-500">*</span>
+                </Label>
                 <Select value={formData.classAssigned} onValueChange={(value) => handleInputChange('classAssigned', value)}>
                   <SelectTrigger className="h-12 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl">
                     <SelectValue placeholder="Select class" />
@@ -300,14 +325,16 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
 
             <div className="flex items-center gap-3">
               <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Guardian Protocol</span>
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Parent / guardian</span>
               <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
             </div>
 
             {/* Guardian Information */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2.5">
-                <Label htmlFor="guardianName" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Guardian Identity <span className="text-red-500">*</span></Label>
+                <Label htmlFor="guardianName" className="text-sm font-medium text-slate-700 dark:text-slate-300 ml-1">
+                  Guardian name <span className="text-red-500">*</span>
+                </Label>
                 <Input
                   id="guardianName"
                   value={formData.guardianName}
@@ -318,7 +345,9 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
                 />
               </div>
               <div className="space-y-2.5">
-                <Label htmlFor="guardianContact" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Communication Channel <span className="text-red-500">*</span></Label>
+                <Label htmlFor="guardianContact" className="text-sm font-medium text-slate-700 dark:text-slate-300 ml-1">
+                  Phone or email <span className="text-red-500">*</span>
+                </Label>
                 <Input
                   id="guardianContact"
                   value={formData.guardianContact}
@@ -331,12 +360,14 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
             </div>
 
             <div className="space-y-2.5">
-              <Label htmlFor="homeAddress" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Geographical Baseline <span className="text-red-500">*</span></Label>
+              <Label htmlFor="homeAddress" className="text-sm font-medium text-slate-700 dark:text-slate-300 ml-1">
+                Home address <span className="text-red-500">*</span>
+              </Label>
               <Textarea
                 id="homeAddress"
                 value={formData.homeAddress}
                 onChange={(e) => handleInputChange('homeAddress', e.target.value)}
-                placeholder="Full residential coordinates..."
+                placeholder="Street, area, city…"
                 rows={3}
                 required
                 className="bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20"
@@ -345,7 +376,7 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
 
             <div className="flex items-center gap-3">
               <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Supplementary Forensics</span>
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">More information</span>
               <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
             </div>
 
@@ -399,7 +430,7 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
             </div>
 
             <div className="space-y-2.5">
-              <Label htmlFor="notes" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Administrative Notes</Label>
+              <Label htmlFor="notes" className="ml-1 text-sm font-medium text-slate-700 dark:text-slate-300">Notes (optional)</Label>
               <Textarea
                 id="notes"
                 value={formData.notes}
@@ -418,9 +449,9 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
                     <div className="w-10 h-10 rounded-xl bg-indigo-500/20 flex items-center justify-center">
                       <ScholarshipIcon className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                     </div>
-                    <Label className="text-xl font-black text-slate-900 dark:text-white font-outfit tracking-tight">Beneficiary Protocol</Label>
+                    <Label className="text-lg font-semibold text-slate-900 dark:text-white">Scholarship or discount</Label>
                   </div>
-                  <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mt-2 ml-1">Apply Financial Support or Scholarships</p>
+                  <p className="mt-2 ml-1 text-sm text-slate-500 dark:text-slate-400">Turn on if this student gets a fee reduction or scholarship.</p>
                 </div>
                 <Switch
                   checked={formData.isBeneficiary}
@@ -460,7 +491,7 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
                     <div className="space-y-8 animate-in fade-in duration-300">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-2.5">
-                          <Label htmlFor="beneficiaryType" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Support Archetype</Label>
+                          <Label htmlFor="beneficiaryType" className="text-sm font-medium text-slate-700 dark:text-slate-300 ml-1">Type</Label>
                           <Select 
                             value={formData.beneficiaryType} 
                             onValueChange={(value) => handleInputChange('beneficiaryType', value)}
@@ -479,7 +510,7 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
                           </Select>
                         </div>
                         <div className="space-y-2.5">
-                          <Label htmlFor="discountType" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Calculation Metric</Label>
+                          <Label htmlFor="discountType" className="text-sm font-medium text-slate-700 dark:text-slate-300 ml-1">Discount style</Label>
                           <Select 
                             value={formData.discountType} 
                             onValueChange={(value: 'percentage' | 'fixed') => handleInputChange('discountType', value)}
@@ -498,7 +529,7 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-2.5">
                           <Label htmlFor="discountValue" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">
-                            {formData.discountType === 'percentage' ? 'Quantum (%)' : 'Scalar Amount'}
+                            {formData.discountType === 'percentage' ? 'Discount (%)' : 'Amount (GHS)'}
                           </Label>
                           <Input
                             id="discountValue"
@@ -515,7 +546,7 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
                   )}
 
                   <div className="space-y-2.5">
-                    <Label htmlFor="beneficiaryNotes" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Beneficiary Reasoning</Label>
+                    <Label htmlFor="beneficiaryNotes" className="text-sm font-medium text-slate-700 dark:text-slate-300 ml-1">Notes</Label>
                     <Textarea
                       id="beneficiaryNotes"
                       value={formData.beneficiaryNotes}
@@ -531,9 +562,9 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
           </div>
 
           <div className="flex justify-end pt-4">
-            <Button type="submit" className="h-14 px-10 bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90 rounded-[1.25rem] font-black text-xs uppercase tracking-[0.2em] shadow-2xl shadow-slate-900/20 dark:shadow-white/10 transition-all hover:scale-[1.02] active:scale-[0.98]">
-              <Save className="w-4 h-4 mr-3" />
-              Commit Identity
+            <Button type="submit" className="h-12 px-8 bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90 rounded-xl text-sm font-semibold shadow-lg">
+              <Save className="mr-2 h-4 w-4" />
+              Save student
             </Button>
           </div>
         </form>

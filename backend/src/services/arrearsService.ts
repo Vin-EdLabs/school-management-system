@@ -27,7 +27,10 @@ export async function refreshArrearsForTenant(tenantId: number, overrideTerm?: s
 
   if (!current_term || !current_year) throw new Error('Term and Year are required for sync');
 
-  const currentYearNum = parseInt(current_year, 10);
+  /** First calendar year in key (e.g. "2026/2027" → 2026); supports slash or single year. */
+  const currentYearStr = String(current_year).trim();
+  const yearStartMatch = currentYearStr.match(/^(\d{4})/);
+  const currentYearNum = yearStartMatch ? parseInt(yearStartMatch[1], 10) : parseInt(currentYearStr, 10) || new Date().getFullYear();
   const currentTermNum = parseInt(current_term.match(/Term\s*(\d)/i)?.[1] || '1', 10);
 
   // Standardize current term strings for exclusion
@@ -117,16 +120,33 @@ export async function refreshArrearsForTenant(tenantId: number, overrideTerm?: s
 
     // B. Calculate Ledger Arrears (from student_ledger)
     // ONLY include terms that are strictly BEFORE the current one
+    // academic_terms.year may be "2026", "2026/2027", etc. — never cast whole string to int.
     const ledgerResult = await query(
       `SELECT SUM(COALESCE(debit, 0) - COALESCE(credit, 0)) as arrears 
        FROM student_ledger l
        LEFT JOIN academic_terms t ON l.term_id = t.id
        WHERE l.tenant_id = $1 AND l.student_id = $2
          AND (
-           CAST(t.year AS INTEGER) < $3 
-           OR (CAST(t.year AS INTEGER) = $3 AND (
-             CAST(REGEXP_REPLACE(t.term_name, '[^0-9]', '', 'g') AS INTEGER) < $4
-           ))
+           (
+             CASE
+               WHEN trim(COALESCE(t.year::text, '')) ~ '^[0-9]{4}'
+                 THEN substr(trim(t.year::text), 1, 4)::integer
+               ELSE 0
+             END
+           ) < $3
+           OR (
+             (
+               CASE
+                 WHEN trim(COALESCE(t.year::text, '')) ~ '^[0-9]{4}'
+                   THEN substr(trim(t.year::text), 1, 4)::integer
+                 ELSE 0
+               END
+             ) = $3
+             AND COALESCE(
+               NULLIF(regexp_replace(trim(COALESCE(t.term_name, '')), '[^0-9]', '', 'g'), '')::integer,
+               0
+             ) < $4
+           )
          )`,
       [tenantId, studentId, currentYearNum, currentTermNum]
     );

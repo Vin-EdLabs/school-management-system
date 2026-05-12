@@ -268,7 +268,7 @@ function formatAction(action: string, entityType: string): string {
 
 async function buildTeacherProfile(tenantId: number, teacher: any) {
   const salaryPaymentsRes = await query(
-    `SELECT month, year, amount, paid_date, payment_method
+    `SELECT month, year, amount, paid_date, payment_method, net_salary
      FROM salary_payments
      WHERE tenant_id = $1 AND payee_type = 'teacher' AND payee_id = $2
      ORDER BY year DESC, month DESC`,
@@ -276,15 +276,20 @@ async function buildTeacherProfile(tenantId: number, teacher: any) {
   );
 
   const monthlySalary = parseFloat(teacher.monthly_salary || 0);
-  const salaryPayments = salaryPaymentsRes.rows.map((p: any) => ({
-    month: p.month,
-    year: p.year,
-    salaryAmount: monthlySalary,
-    paidAmount: parseFloat(p.amount),
-    balance: Math.max(0, monthlySalary - parseFloat(p.amount)),
-    paymentDate: p.paid_date,
-    status: parseFloat(p.amount) >= monthlySalary ? 'Paid' : 'Partially Paid',
-  }));
+  const salaryPayments = salaryPaymentsRes.rows.map((p: any) => {
+    const netExpected =
+      p.net_salary != null ? parseFloat(p.net_salary) : monthlySalary;
+    const paid = parseFloat(p.amount);
+    return {
+      month: p.month,
+      year: p.year,
+      salaryAmount: monthlySalary,
+      paidAmount: paid,
+      balance: Math.max(0, netExpected - paid),
+      paymentDate: p.paid_date,
+      status: paid >= netExpected - 0.01 ? 'Paid' : paid > 0 ? 'Partially Paid' : 'Unpaid',
+    };
+  });
 
   const classTeachersRes = await query(
     `SELECT c.class_name, ct.is_main FROM class_teachers ct
@@ -329,7 +334,7 @@ async function buildTeacherProfile(tenantId: number, teacher: any) {
 
 async function buildStaffProfile(tenantId: number, staff: any) {
   const salaryPaymentsRes = await query(
-    `SELECT month, year, amount, paid_date, payment_method
+    `SELECT month, year, amount, paid_date, payment_method, net_salary
      FROM salary_payments
      WHERE tenant_id = $1 AND payee_type = 'staff' AND payee_id = $2
      ORDER BY year DESC, month DESC`,
@@ -337,15 +342,20 @@ async function buildStaffProfile(tenantId: number, staff: any) {
   );
 
   const monthlySalary = parseFloat(staff.monthly_salary || 0);
-  const salaryPayments = salaryPaymentsRes.rows.map((p: any) => ({
-    month: p.month,
-    year: p.year,
-    salaryAmount: monthlySalary,
-    paidAmount: parseFloat(p.amount),
-    balance: Math.max(0, monthlySalary - parseFloat(p.amount)),
-    paymentDate: p.paid_date,
-    status: parseFloat(p.amount) >= monthlySalary ? 'Paid' : 'Partially Paid',
-  }));
+  const salaryPayments = salaryPaymentsRes.rows.map((p: any) => {
+    const netExpected =
+      p.net_salary != null ? parseFloat(p.net_salary) : monthlySalary;
+    const paid = parseFloat(p.amount);
+    return {
+      month: p.month,
+      year: p.year,
+      salaryAmount: monthlySalary,
+      paidAmount: paid,
+      balance: Math.max(0, netExpected - paid),
+      paymentDate: p.paid_date,
+      status: paid >= netExpected - 0.01 ? 'Paid' : paid > 0 ? 'Partially Paid' : 'Unpaid',
+    };
+  });
 
   return {
     header: {

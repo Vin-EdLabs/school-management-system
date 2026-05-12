@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ChevronDown, ChevronUp, DollarSign, TrendingUp, Calculator } from 'lucide-react';
 import { useData } from '../../contexts/DataContext';
-import { getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
+import { getActiveAcademicTerm, getActiveAcademicYear, dateMatchesAcademicYearSetting } from '../../utils/feeCalculations';
 
 const FinancialSummary = () => {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -26,7 +26,7 @@ const FinancialSummary = () => {
     .filter(inc => inc.category !== 'Fee Payment')
     .filter(inc => {
       const incomeDate = new Date(inc.date);
-      return incomeDate.getFullYear().toString() === currentYear;
+      return dateMatchesAcademicYearSetting(incomeDate, currentYear);
     })
     .reduce((sum, inc) => sum + inc.amount, 0);
 
@@ -37,8 +37,7 @@ const FinancialSummary = () => {
   const totalExpenses = expenses
     .filter(expense => {
       const expenseDate = new Date(expense.paymentDate);
-      const currentYear = new Date().getFullYear();
-      return expenseDate.getFullYear() === currentYear;
+      return dateMatchesAcademicYearSetting(expenseDate, currentYear);
     })
     .reduce((sum, expense) => sum + expense.amount, 0);
 

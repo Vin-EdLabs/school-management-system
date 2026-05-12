@@ -10,12 +10,13 @@ import { Users, UserPlus, Eye, TrendingUp } from 'lucide-react';
 
 const StudentsModule = () => {
   const [activeTab, setActiveTab] = useState('view-all');
+  const [promoteStudentIdSeed, setPromoteStudentIdSeed] = useState<string | null>(null);
 
   return (
-    <div className="p-6 md:p-8 animate-in fade-in duration-700">
-      <div className="mb-8">
-        <h1 className="text-2xl font-black text-slate-900 dark:text-white font-outfit tracking-tight">Students</h1>
-        <p className="text-sm text-slate-500 font-medium mt-1 uppercase tracking-widest text-[10px]">Manage student information and records</p>
+    <div className="p-4 md:p-6 lg:p-8 animate-in fade-in duration-500">
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Students</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Manage student information, enrollment, and promotions.</p>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
@@ -35,7 +36,12 @@ const StudentsModule = () => {
         </TabsList>
 
         <TabsContent value="view-all">
-          <ViewAllStudents />
+          <ViewAllStudents
+            onRequestPromoteStudent={(id) => {
+              setPromoteStudentIdSeed(id);
+              setActiveTab('promote');
+            }}
+          />
         </TabsContent>
 
         <TabsContent value="add-student">
@@ -43,7 +49,10 @@ const StudentsModule = () => {
         </TabsContent>
 
         <TabsContent value="promote">
-          <PromoteStudents />
+          <PromoteStudents
+            initialStudentId={promoteStudentIdSeed}
+            onConsumeInitialStudentId={() => setPromoteStudentIdSeed(null)}
+          />
         </TabsContent>
       </Tabs>
     </div>

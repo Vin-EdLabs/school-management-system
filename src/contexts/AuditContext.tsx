@@ -1,80 +1,59 @@
-
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useCallback } from 'react';
 import { useAuth } from './AuthContext';
+import { apiService } from '../services/api';
 
+/** Client-side audit payload (synced to server; immutable on server). */
 export interface AuditLog {
-  id: string;
-  actionType: 'Login' | 'Edit' | 'Delete';
+  id?: string;
+  actionType: string;
   module: string;
   itemId?: string;
   itemName?: string;
-  username: string;
-  role: string;
-  timestamp: Date;
   reason?: string;
-  details?: any;
+  details?: Record<string, unknown>;
 }
 
 interface AuditContextType {
-  auditLogs: AuditLog[];
-  addAuditLog: (log: Omit<AuditLog, 'id' | 'timestamp' | 'username' | 'role'>) => void;
-  deleteAuditLog: (id: string) => void;
-  clearAllLogs: () => void;
+  /** Sends an append-only audit event to the server (non-blocking). */
+  addAuditLog: (log: Omit<AuditLog, 'id'>) => Promise<void>;
 }
 
 const AuditContext = createContext<AuditContextType | undefined>(undefined);
 
 export const AuditProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
 
-  useEffect(() => {
-    const savedLogs = localStorage.getItem('rosaGardensAuditLogs');
-    if (savedLogs) {
-      const parsedLogs = JSON.parse(savedLogs).map((log: any) => ({
-        ...log,
-        timestamp: new Date(log.timestamp)
-      }));
-      setAuditLogs(parsedLogs);
-    }
-  }, []);
-
-  const addAuditLog = (log: Omit<AuditLog, 'id' | 'timestamp' | 'username' | 'role'>) => {
-    if (!user) return;
-
-    const newLog: AuditLog = {
-      ...log,
-      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-      timestamp: new Date(),
-      username: user.username,
-      role: user.role
-    };
-
-    setAuditLogs(prev => {
-      const updated = [newLog, ...prev];
-      localStorage.setItem('rosaGardensAuditLogs', JSON.stringify(updated));
-      return updated;
-    });
-  };
-
-  const deleteAuditLog = (id: string) => {
-    setAuditLogs(prev => {
-      const updated = prev.filter(log => log.id !== id);
-      localStorage.setItem('rosaGardensAuditLogs', JSON.stringify(updated));
-      return updated;
-    });
-  };
-
-  const clearAllLogs = () => {
-    setAuditLogs([]);
-    localStorage.removeItem('rosaGardensAuditLogs');
-  };
-
-  return (
-    <AuditContext.Provider value={{ auditLogs, addAuditLog, deleteAuditLog, clearAllLogs }}>
-      {children}
-    </AuditContext.Provider>
+  const addAuditLog = useCallback(
+    async (log: Omit<AuditLog, 'id'>) => {
+      if (!user) return;
+      try {
+        let entityId: number | undefined;
+        if (log.itemId != null && log.itemId !== '') {
+          const n = parseInt(String(log.itemId), 10);
+          if (Number.isFinite(n)) entityId = n;
+        }
+        await apiService.post('/audit/log', {
+          action: String(log.actionType || 'ACTION').toUpperCase().slice(0, 100),
+          module: log.module || 'general',
+          entityType: 'UI',
+          entityId,
+          status: 'success',
+          summary: (log.itemName || `${log.module}: ${log.actionType}`).slice(0, 2000),
+          details: {
+            ...log.details,
+            reason: log.reason,
+            clientUsername: user.username,
+            clientRole: user.role,
+          },
+        });
+      } catch (e) {
+        console.warn('[audit] client log failed', e);
+      }
+    },
+    [user]
   );
+
+  return <AuditContext.Provider value={{ addAuditLog }}>{children}</AuditContext.Provider>;
 };
 
 export const useAudit = () => {

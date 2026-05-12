@@ -10,6 +10,9 @@ import { GraduationCap, Lock, User, ArrowLeft, Eye, EyeOff } from 'lucide-react'
 import { BrandedLoading, BrandedLoadingScreen } from '@/components/common/BrandedLoading';
 import { toast } from '@/hooks/use-toast';
 import PwaInstallButton from './common/PwaInstallButton';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { AlertCircle } from 'lucide-react';
+import { getFriendlyLoginMessage, getFriendlyLoginTitle } from '../utils/loginErrors';
 
 const LoginPage = () => {
   const { schoolId } = useParams<{ schoolId?: string }>();
@@ -18,6 +21,7 @@ const LoginPage = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [formError, setFormError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [tenant, setTenant] = useState<{ name: string; logo_url: string | null; primary_color: string | null; secondary_color: string | null } | null>(null);
   const [tenantBrandingLoading, setTenantBrandingLoading] = useState(!!(contextSchoolId ?? (schoolId ? parseInt(schoolId, 10) : undefined)));
@@ -47,26 +51,28 @@ const LoginPage = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError('');
     setIsSubmitting(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1100));
+      if (tenantId == null || Number.isNaN(tenantId)) {
+        const msg = 'This page is missing a valid school. Open the portal using your school link (or pick your school from the home page).';
+        setFormError(msg);
+        toast({ title: 'School not found', description: msg, variant: 'destructive' });
+        return;
+      }
       const success = await login(username, password, 'administrator', tenantId);
       if (success) {
         toast({
           title: "Login Successful",
           description: `Welcome to ${schoolName} Management System`,
         });
-      } else {
-        toast({
-          title: "Login Failed",
-          description: "Invalid username or password",
-          variant: "destructive",
-        });
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const friendly = getFriendlyLoginMessage(error);
+      setFormError(friendly);
       toast({
-        title: "Login Failed",
-        description: error?.message || "An error occurred during login. Please try again.",
+        title: getFriendlyLoginTitle(error),
+        description: friendly,
         variant: "destructive",
       });
     } finally {
@@ -129,6 +135,13 @@ const LoginPage = () => {
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-4 md:space-y-5">
+                {formError && (
+                  <Alert variant="destructive" className="border-red-200 bg-red-50 text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle className="text-sm font-semibold">Could not sign you in</AlertTitle>
+                    <AlertDescription className="text-sm opacity-95">{formError}</AlertDescription>
+                  </Alert>
+                )}
                 <div className="space-y-2">
                   <Label htmlFor="username" className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                     Username

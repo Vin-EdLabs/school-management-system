@@ -6,6 +6,8 @@ import { setTenantContext } from '../middleware/tenant.js';
 import { calculateFeeBalance } from '../services/financeCalculationService.js';
 import { getIO } from '../socket.js';
 import { sendPushToStudentParents } from '../services/webPushService.js';
+import { writeAuditLog } from '../services/auditService.js';
+import { getClientIp } from '../utils/clientIp.js';
 
 const router = express.Router();
 
@@ -398,18 +400,40 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
 
     const paymentOut = { ...payment, receipt_snapshot: receiptSnapshot };
 
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'CREATE', 'PAYMENT', paymentOut.id]
-    );
-    emitTenantDataChanged(tenantId, 'payment', 'created');
     const studentNameRes = await query(
-      'SELECT first_name, last_name FROM students WHERE tenant_id = $1 AND id = $2',
+      'SELECT first_name, last_name, student_id as school_student_code FROM students WHERE tenant_id = $1 AND id = $2',
       [tenantId, student_id]
     ).catch(() => ({ rows: [] as any[] }));
     const studentName = studentNameRes.rows[0]
       ? `${studentNameRes.rows[0].first_name} ${studentNameRes.rows[0].last_name}`.trim()
-      : 'Your ward';
+      : 'Student';
+    const schoolStudentCode = studentNameRes.rows[0]?.school_student_code || '';
+
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'FEE_PAYMENT',
+      entityType: 'PAYMENT',
+      entityId: paymentOut.id,
+      module: 'finance',
+      status: 'success',
+      summary: `Recorded fee payment GHS ${paymentAmount.toLocaleString()} for ${studentName} (receipt ${receiptNumber})`,
+      details: {
+        paymentId: paymentOut.id,
+        studentId: student_id,
+        studentName,
+        schoolStudentCode,
+        amount: paymentAmount,
+        receiptNumber,
+        term: termToStore || term || null,
+        paymentMethod: payment_method || null,
+        balanceAfter: receiptSnapshot?.balanceAfter ?? null,
+      },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') || null,
+    });
+    emitTenantDataChanged(tenantId, 'payment', 'created');
     await sendPushToStudentParents(tenantId, Number(student_id), {
       title: 'Fee Payment Received',
       body: `${studentName}: GHS ${paymentAmount.toFixed(2)} was received. Receipt #${receiptNumber}.`,

@@ -12,6 +12,7 @@ import { detectTenantSlugFromHost } from '@/utils/tenantHost';
 import { getFcmToken, removeFcmToken } from '@/services/firebase';
 import StudentLearningMode from '@/components/parent/StudentLearningMode';
 import { BrandedLoading, BrandedLoadingScreen } from '@/components/common/BrandedLoading';
+import { getFriendlyLoginMessage } from '@/utils/loginErrors';
 
 const API_ROOT = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api').replace('/api', '');
 
@@ -28,14 +29,30 @@ const MESSAGE_TYPE_LABEL: Record<'absence' | 'fee' | 'academic' | 'teacher' | 'l
   general: 'General Enquiry',
 };
 
+async function parseParentResponse(res: Response): Promise<Record<string, unknown>> {
+  const text = await res.text();
+  if (!text.trim()) return {};
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    if (!res.ok) {
+      throw new Error(`Server returned an invalid response (HTTP ${res.status}). Check your API URL.`);
+    }
+    return {};
+  }
+}
+
 async function parentFetch(path: string, opts: RequestInit = {}, token?: string) {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   const slug = detectTenantSlugFromHost();
   if (slug) headers['X-Tenant-Slug'] = slug;
   const res = await fetch(`${API}${path}`, { ...opts, headers });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Request failed');
+  const data = await parseParentResponse(res);
+  if (!res.ok) {
+    const err = data.error;
+    throw new Error(typeof err === 'string' && err.trim() ? err : `Request failed (HTTP ${res.status})`);
+  }
   return data;
 }
 
@@ -45,8 +62,11 @@ async function parentFetchForm(path: string, formData: FormData, token?: string)
   const slug = detectTenantSlugFromHost();
   if (slug) headers['X-Tenant-Slug'] = slug;
   const res = await fetch(`${API}${path}`, { method: 'POST', body: formData, headers });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Request failed');
+  const data = await parseParentResponse(res);
+  if (!res.ok) {
+    const err = data.error;
+    throw new Error(typeof err === 'string' && err.trim() ? err : `Request failed (HTTP ${res.status})`);
+  }
   return data;
 }
 
@@ -353,8 +373,8 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       setIsAddingAccount(false);
       setLoginAdmission('');
       setLoginPassword('');
-    } catch (err: any) {
-      setLoginError(err.message || 'Login failed');
+    } catch (err: unknown) {
+      setLoginError(getFriendlyLoginMessage(err));
     } finally {
       setLoginLoading(false);
     }

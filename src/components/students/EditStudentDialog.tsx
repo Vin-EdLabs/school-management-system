@@ -38,6 +38,7 @@ interface Student {
   discountType?: 'percentage' | 'fixed';
   discountValue?: number;
   beneficiaryNotes?: string;
+  enrollmentStatus?: string;
 }
 
 interface EditStudentDialogProps {
@@ -71,7 +72,10 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
 
   useEffect(() => {
     if (student) {
-      setFormData({ ...student });
+      setFormData({
+        ...student,
+        enrollmentStatus: student.enrollmentStatus || 'active',
+      });
       setPhotoFile(null);
       setPhotoPreview(null);
     }
@@ -314,6 +318,22 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
                   onChange={(e) => handleInputChange('nationality', e.target.value)}
                   required
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="enrollmentStatus">Enrollment status</Label>
+                <Select
+                  value={formData.enrollmentStatus || 'active'}
+                  onValueChange={(value) => handleInputChange('enrollmentStatus', value)}
+                >
+                  <SelectTrigger id="enrollmentStatus">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="graduated">Graduated</SelectItem>
+                    <SelectItem value="suspended">Suspended</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label>Student ID</Label>

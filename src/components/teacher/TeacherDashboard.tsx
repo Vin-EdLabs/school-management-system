@@ -6,6 +6,7 @@ import { School, Users, ClipboardCheck, BookOpen, Wallet, CheckCircle, XCircle }
 import { apiService } from '../../services/api';
 import { useSchool } from '../../contexts/SchoolContext';
 import { useData } from '../../contexts/DataContext';
+import { type TeacherMySalaryResponse, formatTeacherMoney, salaryStatusBadgeClass } from './teacherSalaryPortal';
 
 interface TeacherProfile {
   id: number;
@@ -27,12 +28,7 @@ interface TeacherClass {
   student_count: string;
 }
 
-interface SalaryInfo {
-  fullName: string;
-  staffId: string;
-  monthlySalary: number;
-  currentMonthStatus: string;
-}
+type SalaryInfo = TeacherMySalaryResponse;
 
 const resolvePhotoUrl = (photoUrl?: string | null) => {
   if (!photoUrl) return '';
@@ -236,25 +232,57 @@ const TeacherDashboard = () => {
             </div>
 
             {salaryInfo && (
-              <div className="pt-4 border-t">
-                <h4 className="font-medium flex items-center gap-2 mb-3">
-                  <Wallet className="w-4 h-4" />
-                  Salary Summary
+              <div className="pt-4 border-t border-gray-200 dark:border-gray-800">
+                <h4 className="font-medium flex items-center gap-2 mb-3 text-gray-900 dark:text-gray-100">
+                  <Wallet className="w-4 h-4 shrink-0" />
+                  Salary
                 </h4>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Monthly Salary:</span>
-                    <span className="font-semibold">GHS {salaryInfo.monthlySalary.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">This Month:</span>
-                    <Badge variant={salaryInfo.currentMonthStatus === 'Paid' ? 'default' : 'secondary'} className={salaryInfo.currentMonthStatus === 'Paid' ? 'bg-emerald-600' : ''}>
-                      {salaryInfo.currentMonthStatus === 'Paid' ? <CheckCircle className="w-3 h-3 mr-1 inline" /> : <XCircle className="w-3 h-3 mr-1 inline" />}
-                      {salaryInfo.currentMonthStatus}
-                    </Badge>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-2">View full payment history in the Payment History section.</p>
-                </div>
+                {(() => {
+                  const c = salaryInfo.currency || 'GHS';
+                  const snap = salaryInfo.currentMonthSnapshot;
+                  return (
+                    <div className="space-y-3">
+                      <div className="rounded-xl border border-emerald-200/70 dark:border-emerald-900/50 bg-gradient-to-br from-emerald-50/80 to-teal-50/40 dark:from-emerald-950/25 dark:to-teal-950/10 p-3 sm:p-4 space-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800/90 dark:text-emerald-200/90">Contract (typical month)</p>
+                        <div className="flex justify-between gap-2 text-sm">
+                          <span className="text-gray-600 dark:text-gray-400">Gross</span>
+                          <span className="font-mono tabular-nums font-medium">{formatTeacherMoney(c, salaryInfo.monthlySalary)}</span>
+                        </div>
+                        {salaryInfo.ssnitEnabled !== false && (
+                          <div className="flex justify-between gap-2 text-sm">
+                            <span className="text-gray-600 dark:text-gray-400">SSNIT</span>
+                            <span className="font-mono tabular-nums text-amber-700 dark:text-amber-400">−{formatTeacherMoney(c, salaryInfo.ssnitDeduction)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between gap-2 text-sm pt-1 border-t border-emerald-200/60 dark:border-emerald-900/40">
+                          <span className="font-medium text-gray-800 dark:text-gray-200">Net</span>
+                          <span className="font-mono tabular-nums font-bold text-emerald-700 dark:text-emerald-400">{formatTeacherMoney(c, salaryInfo.netSalary)}</span>
+                        </div>
+                      </div>
+                      {snap && (
+                        <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-900/40 p-3 sm:p-4 space-y-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">This month</p>
+                          <div className="flex justify-between gap-2 text-sm">
+                            <span className="text-gray-600 dark:text-gray-400">Net due</span>
+                            <span className="font-mono tabular-nums font-medium">{formatTeacherMoney(c, snap.netSalary)}</span>
+                          </div>
+                          <div className="flex justify-between gap-2 text-sm">
+                            <span className="text-gray-600 dark:text-gray-400">Paid</span>
+                            <span className="font-mono tabular-nums">{formatTeacherMoney(c, snap.amountPaid)}</span>
+                          </div>
+                          <div className="flex justify-between items-center gap-2 pt-1">
+                            <span className="text-sm text-gray-600 dark:text-gray-400">Status</span>
+                            <Badge className={salaryStatusBadgeClass(snap.status)}>
+                              {snap.status === 'Paid' ? <CheckCircle className="w-3 h-3 mr-1 inline" /> : <XCircle className="w-3 h-3 mr-1 inline" />}
+                              {snap.status}
+                            </Badge>
+                          </div>
+                        </div>
+                      )}
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Open <strong className="text-gray-700 dark:text-gray-300">Payment History</strong> for every month, gross, SSNIT, and paid amounts.</p>
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </CardContent>

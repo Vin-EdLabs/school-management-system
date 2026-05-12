@@ -541,7 +541,7 @@ router.post('/users', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, 
 });
 
 // Push diagnostics (primary admin or super-admin)
-router.get('/push/stats', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, res) => {
+router.get('/push/stats', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     if (!tenantId) return res.status(400).json({ error: 'Tenant context required' });
@@ -594,7 +594,7 @@ router.get('/push/stats', requirePrimaryAdminOrSuperAdmin, async (req: AuthReque
 });
 
 // Send test push notification to parent portal devices (primary admin or super-admin)
-router.post('/push/test', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, res) => {
+router.post('/push/test', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     if (!tenantId) return res.status(400).json({ error: 'Tenant context required' });
@@ -787,7 +787,7 @@ router.post('/reset-data', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequ
       'receipts', 'payments', 'student_credits', 'income', 'expenses',
       'student_ledger', 'ledger_fee_structures', 'term_outstanding_balances',
       'student_arrears', 'student_arrears_balance', 'term_arrears',
-      'salary_payments', 'payroll_other_staff', 'class_teachers', 'students',
+      'salary_payments', 'payroll_other_staff', 'payroll_settings', 'class_teachers', 'students',
       'classes', 'subjects', 'support_messages', 'term_report_releases',
       'parent_portal_accounts', 'receipt_number_seq', 'terms', 'academic_years',
       'academic_terms', 'events'

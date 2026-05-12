@@ -5,7 +5,7 @@ import { useAuth } from './AuthContext';
 import { useSchool } from './SchoolContext';
 import { useSocket } from './SocketContext';
 
-interface Student {
+export interface Student {
   id: string;
   firstName: string;
   lastName: string;
@@ -30,6 +30,8 @@ interface Student {
   discountType?: 'percentage' | 'fixed';
   discountValue?: number;
   beneficiaryNotes?: string;
+  /** active | graduated | suspended (and custom values from DB) */
+  enrollmentStatus?: string;
 }
 
 interface Teacher {
@@ -62,7 +64,7 @@ interface Class {
   studentCount?: number;
 }
 
-interface FeeStructure {
+export interface FeeStructure {
   id: string;
   className: string;
   classId?: number;
@@ -212,6 +214,7 @@ const mapStudent = (backendStudent: any): Student => ({
   discountType: backendStudent.discount_type || 'percentage',
   discountValue: backendStudent.discount_value ? parseFloat(backendStudent.discount_value) : 0,
   beneficiaryNotes: backendStudent.beneficiary_notes || '',
+  enrollmentStatus: (backendStudent.enrollment_status || 'active').toLowerCase(),
 });
 
 // Helper function to map frontend student to backend format
@@ -236,6 +239,7 @@ const mapStudentToBackend = (student: Partial<Student>): any => ({
   discount_type: student.discountType,
   discount_value: student.discountValue,
   beneficiary_notes: student.beneficiaryNotes,
+  enrollment_status: student.enrollmentStatus,
 });
 
 // Helper function to map backend teacher to frontend format
@@ -450,18 +454,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (!socket || !isAuthenticated) return;
 
-    let lastRefresh = 0;
-    const minRefreshGapMs = 500;
-
+    let debounceTimer: ReturnType<typeof setTimeout> | undefined;
     const refreshNow = () => {
-      const now = Date.now();
-      if (now - lastRefresh < minRefreshGapMs) return;
-      lastRefresh = now;
-      loadData().catch(() => undefined);
+      if (debounceTimer != null) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = undefined;
+        loadData().catch(() => undefined);
+      }, 120);
     };
 
     socket.on('tenant-data-changed', refreshNow);
     return () => {
+      if (debounceTimer != null) clearTimeout(debounceTimer);
       socket.off('tenant-data-changed', refreshNow);
     };
   }, [socket, isAuthenticated, loadData]);

@@ -4,6 +4,8 @@ import jwt from 'jsonwebtoken';
 import { query } from '../db/connection.js';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { getVapidPublicKey } from '../services/webPushService.js';
+import { writeAuditLog } from '../services/auditService.js';
+import { getClientIp } from '../utils/clientIp.js';
 
 const router = express.Router();
 
@@ -85,35 +87,96 @@ router.post('/login', async (req, res) => {
     }
     
     if (result.rows.length === 0) {
+      await writeAuditLog({
+        tenantId: hasTenantId ? tenantId : null,
+        userId: null,
+        userRole: null,
+        action: 'FAILED_LOGIN',
+        entityType: 'USER',
+        module: 'security',
+        status: 'failed',
+        summary: `Failed login — unknown username`,
+        details: { username: String(username).slice(0, 120) },
+        ipAddress: getClientIp(req),
+        userAgent: req.get('user-agent') || null,
+      });
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-    
+
     const user = result.rows[0];
+
+    const lockRes = await query(
+      `SELECT locked_until, failed_login_attempts FROM users WHERE id = $1`,
+      [user.id]
+    ).catch(() => ({ rows: [{}] }));
+    const lockRow = lockRes.rows[0] || {};
+    const lockedUntil = lockRow.locked_until ? new Date(lockRow.locked_until) : null;
+    if (lockedUntil && lockedUntil.getTime() > Date.now()) {
+      await writeAuditLog({
+        tenantId: user.tenant_id,
+        userId: user.id,
+        userRole: normalizeRole(user.role),
+        action: 'LOGIN_BLOCKED',
+        entityType: 'USER',
+        module: 'security',
+        status: 'failed',
+        summary: 'Login blocked — account temporarily locked',
+        details: { lockedUntil: lockedUntil.toISOString() },
+        ipAddress: getClientIp(req),
+        userAgent: req.get('user-agent') || null,
+      });
+      return res.status(423).json({
+        error: 'Account temporarily locked after multiple failed attempts. Try again later or contact an administrator.',
+      });
+    }
+
     const isValidPassword = await bcrypt.compare(password, user.password_hash);
-    
+
     if (!isValidPassword) {
+      await query(
+        `UPDATE users SET
+           failed_login_attempts = failed_login_attempts + 1,
+           locked_until = CASE WHEN failed_login_attempts + 1 >= 5 THEN NOW() + interval '15 minutes' ELSE locked_until END
+         WHERE id = $1`,
+        [user.id]
+      ).catch(() => {});
+      await writeAuditLog({
+        tenantId: user.tenant_id,
+        userId: user.id,
+        userRole: normalizeRole(user.role),
+        action: 'FAILED_LOGIN',
+        entityType: 'USER',
+        module: 'security',
+        status: 'failed',
+        summary: `Failed login — wrong password`,
+        details: { username: user.username },
+        ipAddress: getClientIp(req),
+        userAgent: req.get('user-agent') || null,
+      });
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-    
+
+    await query(`UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = $1`, [user.id]).catch(() => {});
+
     const token = jwt.sign(
       { userId: user.id, tenantId: user.tenant_id, role: normalizeRole(user.role) },
       process.env.JWT_SECRET || 'secret',
       { expiresIn: '7d' }
     );
-    
-    // Log login
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, ip_address, user_agent, details) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [
-        user.tenant_id,
-        user.id,
-        'LOGIN',
-        'USER',
-        req.ip || null,
-        req.get('user-agent') || null,
-        JSON.stringify({ username: user.username, role: normalizeRole(user.role) }),
-      ]
-    ).catch(() => { });
+
+    await writeAuditLog({
+      tenantId: user.tenant_id,
+      userId: user.id,
+      userRole: normalizeRole(user.role),
+      action: 'LOGIN',
+      entityType: 'USER',
+      module: 'security',
+      status: 'success',
+      summary: `Successful login — ${user.username}`,
+      details: { username: user.username, role: normalizeRole(user.role) },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') || null,
+    });
     
     const userRow = result.rows[0];
     const isPrimaryAdmin = userRow.is_primary_admin === true;
@@ -190,11 +253,19 @@ router.post('/change-password', authenticate, async (req: AuthRequest, res) => {
       [hashedPassword, req.user!.id]
     );
     
-    // Log password change
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type) VALUES ($1, $2, $3, $4)',
-      [req.user!.tenantId, req.user!.id, 'PASSWORD_CHANGE', 'USER']
-    );
+    await writeAuditLog({
+      tenantId: req.user!.tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'PASSWORD_CHANGE',
+      entityType: 'USER',
+      module: 'security',
+      status: 'success',
+      summary: 'Password changed',
+      details: { userId: req.user!.id },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') || null,
+    });
     
     res.json({ message: 'Password changed successfully' });
   } catch (error) {
@@ -206,18 +277,19 @@ router.post('/change-password', authenticate, async (req: AuthRequest, res) => {
 // Logout - logs LOGOUT for audit
 router.post('/logout', authenticate, async (req: AuthRequest, res) => {
   try {
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, ip_address, user_agent, details) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [
-        req.user!.tenantId,
-        req.user!.id,
-        'LOGOUT',
-        'USER',
-        req.ip || null,
-        req.get('user-agent') || null,
-        JSON.stringify({ username: req.user!.username }),
-      ]
-    );
+    await writeAuditLog({
+      tenantId: req.user!.tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'LOGOUT',
+      entityType: 'USER',
+      module: 'security',
+      status: 'success',
+      summary: `Logout — ${req.user!.username}`,
+      details: { username: req.user!.username },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') || null,
+    });
     res.json({ message: 'Logged out' });
   } catch (error) {
     console.error('Logout audit error:', error);

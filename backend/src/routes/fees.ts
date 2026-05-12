@@ -5,6 +5,8 @@ import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { getIO } from '../socket.js';
 import { postFeesForClass } from '../services/ledgerFinanceService.js';
+import { writeAuditLog } from '../services/auditService.js';
+import { getClientIp } from '../utils/clientIp.js';
 
 const router = express.Router();
 
@@ -178,11 +180,21 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
       throw lastError || new Error('Failed to create fee structure on legacy schema');
     }
     
-    // Log creation
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'CREATE', 'FEE_STRUCTURE', result.rows[0].id]
-    );
+    const fs = result.rows[0] as Record<string, unknown>;
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'FEE_STRUCTURE_CREATE',
+      entityType: 'FEE_STRUCTURE',
+      entityId: Number(fs.id),
+      module: 'finance',
+      status: 'success',
+      summary: `Fee structure created — class ${class_id}, term ${term}, GHS ${amount}`,
+      details: { fee_structure: fs },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
 
     // Keep ledger finance in sync so students are billed immediately after fee setup.
     try {
@@ -271,6 +283,12 @@ router.put('/:id', requireRole('super-admin', 'administrator', 'finance'), async
     if (updateFields.length === 0) {
       return res.status(400).json({ error: 'No valid fields to update' });
     }
+
+    const oldRes = await query('SELECT * FROM fee_structures WHERE tenant_id = $1 AND id = $2', [tenantId, id]);
+    if (oldRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Fee structure not found' });
+    }
+    const previous = oldRes.rows[0] as Record<string, unknown>;
     
     updateFields.push(`updated_at = CURRENT_TIMESTAMP`);
     values.push(tenantId, id);
@@ -283,12 +301,31 @@ router.put('/:id', requireRole('super-admin', 'administrator', 'finance'), async
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Fee structure not found' });
     }
-    
-    // Log update
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'UPDATE', 'FEE_STRUCTURE', parseInt(id)]
-    );
+    const next = result.rows[0] as Record<string, unknown>;
+    const prevAmt = previous.amount != null ? Number(previous.amount) : null;
+    const nextAmt = next.amount != null ? Number(next.amount) : null;
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'FEE_STRUCTURE_UPDATE',
+      entityType: 'FEE_STRUCTURE',
+      entityId: parseInt(id, 10),
+      module: 'finance',
+      status: 'success',
+      summary:
+        prevAmt != null && nextAmt != null && prevAmt !== nextAmt
+          ? `Fee structure amount changed from GHS ${prevAmt} to GHS ${nextAmt}`
+          : `Fee structure #${id} updated`,
+      details: {
+        fee_structure_id: parseInt(id, 10),
+        previous,
+        new: next,
+        changed_fields: Object.keys(updates).filter((k) => allowedFields.includes(k)),
+      },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
 
     // Keep ledger in sync with edited fee (same as create path) so reports and ledger balances match Set Fees.
     try {
@@ -408,15 +445,27 @@ router.delete('/:id', requireRole('super-admin', 'administrator', 'finance'), as
     }
     
     const result = await query(
-      'DELETE FROM fee_structures WHERE id = $1 AND tenant_id = $2 RETURNING id',
+      'DELETE FROM fee_structures WHERE id = $1 AND tenant_id = $2 RETURNING *',
       [id, tenantId]
     );
-    
-    // Log deletion
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'DELETE', 'FEE_STRUCTURE', parseInt(id)]
-    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Fee structure not found' });
+    }
+    const deleted = result.rows[0] as Record<string, unknown>;
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'FEE_STRUCTURE_DELETE',
+      entityType: 'FEE_STRUCTURE',
+      entityId: parseInt(id, 10),
+      module: 'finance',
+      status: 'success',
+      summary: `Fee structure deleted (class ${String(deleted.class_id ?? '')}, term ${String(deleted.term ?? '')})`,
+      details: { fee_structure_id: parseInt(id, 10), deleted_record: deleted },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
     // Automatically refresh arrears when fee structure is deleted
     const { refreshArrearsForTenant } = await import('../services/arrearsService.js');
     await refreshArrearsForTenant(tenantId).catch(err => console.error('Auto-sync arrears error:', err));

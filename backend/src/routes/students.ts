@@ -218,7 +218,8 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
       'class_assigned_id', 'guardian_name', 'guardian_contact', 'home_address',
       'number_of_siblings', 'names_of_siblings', 'previous_school',
       'date_of_admission', 'notes', 'passport_photo_url',
-      'is_beneficiary', 'beneficiary_type', 'discount_type', 'discount_value', 'beneficiary_notes'
+      'is_beneficiary', 'beneficiary_type', 'discount_type', 'discount_value', 'beneficiary_notes',
+      'enrollment_status',
     ];
     
     for (const field of allowedFields) {

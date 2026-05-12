@@ -65,6 +65,44 @@ export const getActiveAcademicTerm = () => _cachedTerm;
 
 export const getActiveAcademicYear = () => _cachedYear;
 
+/**
+ * `current_year` in settings may be a calendar year ("2026") or an academic span ("2025/2026").
+ * Use this for dashboard filters so income/expense rows from the DB are not dropped.
+ */
+export function dateMatchesAcademicYearSetting(date: Date, academicYearSetting: string): boolean {
+  const y = date.getFullYear();
+  const s = (academicYearSetting || '').trim();
+  if (!s) return true;
+  if (/^\d{4}$/.test(s)) return y === parseInt(s, 10);
+  const span = s.match(/^(\d{4})\s*[/\\-]\s*(\d{4})\s*$/);
+  if (span) {
+    const y1 = parseInt(span[1], 10);
+    const y2 = parseInt(span[2], 10);
+    if (!Number.isFinite(y1) || !Number.isFinite(y2)) return String(y) === s;
+    return y === y1 || y === y2;
+  }
+  const head = parseInt(s.slice(0, 4), 10);
+  if (!Number.isNaN(head) && /^\d{4}/.test(s)) return y === head;
+  return String(y) === s;
+}
+
+/** Single calendar year for Jan–Dec charts when the setting is an academic span. */
+export function getDashboardCalendarYearForMonthlyChart(academicYearSetting: string): string {
+  const s = (academicYearSetting || '').trim();
+  if (/^\d{4}$/.test(s)) return s;
+  const span = s.match(/^(\d{4})\s*[/\\-]\s*(\d{4})\s*$/);
+  if (span) {
+    const y1 = parseInt(span[1], 10);
+    const y2 = parseInt(span[2], 10);
+    const nowY = new Date().getFullYear();
+    if (nowY === y1 || nowY === y2) return String(nowY);
+    return String(Math.max(y1, y2));
+  }
+  const head = parseInt(s.slice(0, 4), 10);
+  if (!Number.isNaN(head) && /^\d{4}/.test(s)) return String(head);
+  return String(new Date().getFullYear());
+}
+
 export const calculateStudentFees = async (
   studentId: string,
   currentTerm: string,

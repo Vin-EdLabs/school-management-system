@@ -4,7 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useParams, Link } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import { SocketProvider } from "./contexts/SocketContext";
 import { TeacherNotificationProvider } from "./contexts/TeacherNotificationContext";
@@ -40,32 +40,93 @@ const IndexWithSchool = () => {
     return id && !isNaN(id) ? id : null;
   });
   const [resolving, setResolving] = React.useState(!schoolId && !!slug);
+  const [schoolResolveError, setSchoolResolveError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
+    setSchoolResolveError(null);
     const schoolIdNum = schoolId ? parseInt(schoolId, 10) : null;
-    if (schoolIdNum && !isNaN(schoolIdNum)) {
+
+    if (schoolId && (schoolIdNum === null || Number.isNaN(schoolIdNum))) {
+      setResolvedId(null);
+      setSchoolResolveError(
+        'This link does not contain a valid school ID. Use the numeric ID from your school or open the portal from the home page.'
+      );
+      setResolving(false);
+      return;
+    }
+
+    if (schoolIdNum !== null && !Number.isNaN(schoolIdNum)) {
       setResolvedId(schoolIdNum);
       setResolving(false);
       return;
     }
+
     if (slug) {
       setResolving(true);
-      fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api'}/tenant/by-slug/${slug}`)
-        .then((r) => r.json())
-        .then((d) => {
-          if (d?.tenant?.id) setResolvedId(d.tenant.id);
-          else setResolvedId(null);
+      const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+      fetch(`${base}/tenant/by-slug/${encodeURIComponent(slug)}`)
+        .then(async (r) => {
+          const text = await r.text();
+          let d: { tenant?: { id?: number }; error?: string } = {};
+          if (text.trim()) {
+            try {
+              d = JSON.parse(text);
+            } catch {
+              setResolvedId(null);
+              setSchoolResolveError(
+                r.ok
+                  ? 'The server returned an unexpected response. Check your API configuration.'
+                  : `Could not load this school (HTTP ${r.status}).`
+              );
+              return;
+            }
+          }
+          if (!r.ok) {
+            setResolvedId(null);
+            setSchoolResolveError(
+              typeof d.error === 'string' && d.error.trim()
+                ? d.error
+                : `Could not load this school (HTTP ${r.status}).`
+            );
+            return;
+          }
+          if (d?.tenant?.id != null) {
+            setResolvedId(d.tenant.id);
+          } else {
+            setResolvedId(null);
+            setSchoolResolveError('No school matches this link. Check the spelling or ask your school for an updated link.');
+          }
         })
-        .catch(() => setResolvedId(null))
+        .catch((e) => {
+          setResolvedId(null);
+          const m = e instanceof Error ? e.message : String(e);
+          const low = m.toLowerCase();
+          setSchoolResolveError(
+            low.includes('failed to fetch') || low.includes('network')
+              ? 'Cannot reach the server. Check your connection and that the API is running and the site URL is correct.'
+              : m || 'Could not load school.'
+          );
+        })
         .finally(() => setResolving(false));
-    } else if (!schoolId) {
-      setResolvedId(null);
-      setResolving(false);
+      return;
     }
+
+    setResolvedId(null);
+    setResolving(false);
   }, [schoolId, slug]);
 
   if (resolving) return <BrandedLoadingScreen label="Opening your school…" />;
-  if (!resolvedId) return <Navigate to="/" replace />;
+  if (!resolvedId) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background p-6 text-center text-foreground">
+        <p className="text-lg font-semibold">School portal unavailable</p>
+        <p className="text-muted-foreground max-w-md">{schoolResolveError ?? 'We could not open this school.'}</p>
+        <Link to="/" className="text-primary underline underline-offset-4">
+          Back to home
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <SchoolProvider schoolIdFromUrl={resolvedId}>

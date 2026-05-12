@@ -8,6 +8,7 @@ import schoolRoutes from './routes/schools.js';
 import studentRoutes from './routes/students.js';
 import teacherRoutes from './routes/teachers.js';
 import classRoutes from './routes/classes.js';
+import classLevelsRoutes from './routes/classLevels.js';
 import feeRoutes from './routes/fees.js';
 import paymentRoutes from './routes/payments.js';
 import incomeRoutes from './routes/income.js';
@@ -46,6 +47,11 @@ const app = express();
 const httpServer = createServer(app);
 const PORT = process.env.PORT || 3001;
 
+// So req.ip and secure cookies respect X-Forwarded-For (public client IP behind Render/nginx).
+if (process.env.TRUST_PROXY === '1' || process.env.TRUST_PROXY === 'true' || process.env.RENDER) {
+  app.set('trust proxy', 1);
+}
+
 // Initialize Socket.IO
 initSocket(httpServer);
 
@@ -54,7 +60,17 @@ app.use(cors({
   origin: ['https://scholarnerve.onrender.com', 'http://localhost:8080', 'http://localhost:5173'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'x-tenant-id']
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'Accept',
+    'x-tenant-id',
+    'X-Tenant-Id',
+    'X-Forwarded-For',
+    'X-Real-Ip',
+    'CF-Connecting-IP',
+  ],
 }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -80,6 +96,7 @@ app.use('/api/schools', schoolRoutes);
 app.use('/api/students', studentRoutes);
 app.use('/api/teachers', teacherRoutes);
 app.use('/api/classes', classRoutes);
+app.use('/api/class-levels', classLevelsRoutes);
 app.use('/api/fees', feeRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/income', incomeRoutes);

@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -7,11 +6,14 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
-import { Save, Plus } from 'lucide-react';
+import { Save, Plus, Trash2, Loader2 } from 'lucide-react';
+import { apiService } from '@/services/api';
 
 interface CreateClassFormProps {
   onSuccess?: () => void;
 }
+
+type ClassLevelRow = { id: number; name: string };
 
 const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
   const { addClass, teachers } = useData();
@@ -23,12 +25,78 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
     maxClassSize: 30
   });
 
-  const levels = [
-    'KG1', 'KG2', 'Primary 1', 'Primary 2', 'Primary 3', 'Primary 4', 'Primary 5', 'Primary 6',
-    'JHS 1', 'JHS 2', 'JHS 3'
-  ];
+  const [levels, setLevels] = useState<string[]>([]);
+  const [customLevels, setCustomLevels] = useState<ClassLevelRow[]>([]);
+  const [levelsLoading, setLevelsLoading] = useState(true);
+  const [newLevelName, setNewLevelName] = useState('');
+  const [addingLevel, setAddingLevel] = useState(false);
+
+  const loadClassLevels = useCallback(async () => {
+    setLevelsLoading(true);
+    try {
+      const data = await apiService.get<{ levels: string[]; custom: ClassLevelRow[] }>('/class-levels');
+      setLevels(data.levels || []);
+      setCustomLevels(data.custom || []);
+    } catch {
+      toast({
+        title: 'Could not load levels',
+        description: 'Using empty list; refresh the page or check your connection.',
+        variant: 'destructive',
+      });
+      setLevels([]);
+      setCustomLevels([]);
+    } finally {
+      setLevelsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadClassLevels();
+  }, [loadClassLevels]);
 
   const streams = ['Red', 'Blue', 'Green', 'Yellow', 'Orange', 'Purple', 'A', 'B', 'C', 'D'];
+
+  const handleAddCustomLevel = async () => {
+    const name = newLevelName.trim();
+    if (!name) {
+      toast({ title: 'Enter a level name', variant: 'destructive' });
+      return;
+    }
+    setAddingLevel(true);
+    try {
+      const row = await apiService.post<ClassLevelRow>('/class-levels', { name });
+      setNewLevelName('');
+      await loadClassLevels();
+      setFormData((prev) => ({ ...prev, level: row.name }));
+      toast({ title: 'Level added', description: `"${row.name}" is available for this school.` });
+    } catch (e: unknown) {
+      toast({
+        title: 'Could not add level',
+        description: e instanceof Error ? e.message : 'Try again',
+        variant: 'destructive',
+      });
+    } finally {
+      setAddingLevel(false);
+    }
+  };
+
+  const handleRemoveCustomLevel = async (row: ClassLevelRow) => {
+    if (!window.confirm(`Remove "${row.name}" from your school’s level list? Existing classes keep this label until edited.`)) {
+      return;
+    }
+    try {
+      await apiService.delete(`/class-levels/${row.id}`);
+      await loadClassLevels();
+      setFormData((prev) => (prev.level === row.name ? { ...prev, level: '' } : prev));
+      toast({ title: 'Level removed' });
+    } catch (e: unknown) {
+      toast({
+        title: 'Could not remove level',
+        description: e instanceof Error ? e.message : 'Try again',
+        variant: 'destructive',
+      });
+    }
+  };
 
   const activeTeachers = teachers.filter(teacher => 
     teacher.employmentStatus === 'Active' && 
@@ -118,9 +186,13 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
             </div>
             <div className="space-y-2">
               <Label htmlFor="level">Level *</Label>
-              <Select value={formData.level} onValueChange={(value) => handleInputChange('level', value)}>
+              <Select
+                value={formData.level}
+                onValueChange={(value) => handleInputChange('level', value)}
+                disabled={levelsLoading || levels.length === 0}
+              >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select level" />
+                  <SelectValue placeholder={levelsLoading ? 'Loading levels…' : 'Select level'} />
                 </SelectTrigger>
                 <SelectContent>
                   {levels.map((level) => (
@@ -130,6 +202,45 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
                   ))}
                 </SelectContent>
               </Select>
+              <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                <Input
+                  placeholder="Add a school-specific level"
+                  value={newLevelName}
+                  onChange={(e) => setNewLevelName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddCustomLevel();
+                    }
+                  }}
+                  disabled={addingLevel}
+                  className="sm:flex-1"
+                />
+                <Button type="button" variant="outline" onClick={handleAddCustomLevel} disabled={addingLevel || levelsLoading}>
+                  {addingLevel ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Add level'}
+                </Button>
+              </div>
+              {customLevels.length > 0 && (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <span className="text-xs text-muted-foreground w-full">School-only levels (remove from list):</span>
+                  {customLevels.map((row) => (
+                    <span
+                      key={row.id}
+                      className="inline-flex items-center gap-1 rounded-md border bg-muted/50 px-2 py-1 text-xs"
+                    >
+                      {row.name}
+                      <button
+                        type="button"
+                        className="rounded p-0.5 text-destructive hover:bg-destructive/10"
+                        aria-label={`Remove ${row.name}`}
+                        onClick={() => handleRemoveCustomLevel(row)}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 

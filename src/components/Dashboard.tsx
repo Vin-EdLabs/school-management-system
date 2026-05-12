@@ -30,7 +30,6 @@ import SubjectsModule from './subjects/SubjectsModule';
 import SupportModule from './support/SupportModule';
 import PushNotificationsModule from './notifications/PushNotificationsModule';
 import ParentDeskAdminModule from './notifications/ParentDeskAdminModule';
-import TeacherNotifyModule from './notifications/TeacherNotifyModule';
 import { useAuth } from '../contexts/AuthContext';
 import { useSchool } from '../contexts/SchoolContext';
 import { useData } from '../contexts/DataContext';
@@ -131,8 +130,6 @@ const Dashboard = () => {
         return <PushNotificationsModule />;
       case 'parent-desk':
         return <ParentDeskAdminModule />;
-      case 'teacher-notify':
-        return <TeacherNotifyModule />;
       default:
         if (user?.role === 'teacher') {
           return <TeacherDashboard />;

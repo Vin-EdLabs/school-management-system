@@ -4,6 +4,8 @@ import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js'
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { getIO } from '../socket.js';
+import { writeAuditLog } from '../services/auditService.js';
+import { getClientIp } from '../utils/clientIp.js';
 
 const router = express.Router();
 
@@ -111,11 +113,32 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
       ]
     );
     
-    // Log creation
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'CREATE', 'EXPENSE', result.rows[0].id]
-    );
+    const row = result.rows[0];
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'EXPENSE_CREATE',
+      entityType: 'EXPENSE',
+      entityId: row.id,
+      module: 'finance',
+      status: 'success',
+      summary: `Expense "${title}" created — GHS ${amount}`,
+      details: {
+        expense_id: row.id,
+        title,
+        category: category || null,
+        amount: Number(amount),
+        payee_name: payee_name || null,
+        payment_date,
+        payment_method: payment_method || null,
+        vendor: vendor || null,
+        term: term || null,
+        academic_year: academic_year || null,
+      },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
     emitTenantDataChanged(tenantId, 'expense', 'created');
     
     res.status(201).json(result.rows[0]);
@@ -149,6 +172,12 @@ router.put('/:id', requireRole('super-admin', 'administrator', 'finance'), async
     if (updateFields.length === 0) {
       return res.status(400).json({ error: 'No valid fields to update' });
     }
+
+    const oldRes = await query('SELECT * FROM expenses WHERE tenant_id = $1 AND id = $2', [tenantId, id]);
+    if (oldRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Expense record not found' });
+    }
+    const previous = oldRes.rows[0] as Record<string, unknown>;
     
     updateFields.push(`updated_at = CURRENT_TIMESTAMP`);
     values.push(tenantId, id);
@@ -161,12 +190,32 @@ router.put('/:id', requireRole('super-admin', 'administrator', 'finance'), async
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Expense record not found' });
     }
-    
-    // Log update
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'UPDATE', 'EXPENSE', parseInt(id)]
-    );
+    const next = result.rows[0] as Record<string, unknown>;
+    const prevAmount = previous.amount != null ? Number(previous.amount) : null;
+    const nextAmount = next.amount != null ? Number(next.amount) : null;
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'EXPENSE_UPDATE',
+      entityType: 'EXPENSE',
+      entityId: parseInt(id, 10),
+      module: 'finance',
+      status: 'success',
+      summary:
+        prevAmount != null && nextAmount != null && prevAmount !== nextAmount
+          ? `Expense edited from GHS ${prevAmount} to GHS ${nextAmount}`
+          : `Expense "${String(next.title ?? previous.title)}" updated`,
+      details: {
+        expense_id: parseInt(id, 10),
+        previous,
+        new: next,
+        amount_affected: nextAmount,
+        changed_fields: Object.keys(updates).filter((k) => allowedFields.includes(k)),
+      },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
     emitTenantDataChanged(tenantId, 'expense', 'updated');
     
     res.json(result.rows[0]);
@@ -183,19 +232,28 @@ router.delete('/:id', requireRole('super-admin', 'administrator', 'finance'), as
     const { id } = req.params;
     
     const result = await query(
-      'DELETE FROM expenses WHERE id = $1 AND tenant_id = $2 RETURNING id',
+      'DELETE FROM expenses WHERE id = $1 AND tenant_id = $2 RETURNING *',
       [id, tenantId]
     );
     
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Expense record not found' });
     }
-    
-    // Log deletion
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'DELETE', 'EXPENSE', parseInt(id)]
-    );
+    const deleted = result.rows[0] as Record<string, unknown>;
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'EXPENSE_DELETE',
+      entityType: 'EXPENSE',
+      entityId: parseInt(id, 10),
+      module: 'finance',
+      status: 'success',
+      summary: `Expense deleted — "${String(deleted.title ?? id)}" (GHS ${deleted.amount ?? '—'})`,
+      details: { expense_id: parseInt(id, 10), deleted_record: deleted },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
     emitTenantDataChanged(tenantId, 'expense', 'deleted');
     
     res.json({ message: 'Expense record deleted successfully' });

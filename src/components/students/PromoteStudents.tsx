@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -16,11 +16,28 @@ import {
 } from '../../utils/feeCalculations';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
 
-const PromoteStudents = () => {
+type PromoteStudentsProps = {
+  initialStudentId?: string | null;
+  onConsumeInitialStudentId?: () => void;
+};
+
+const PromoteStudents: React.FC<PromoteStudentsProps> = ({
+  initialStudentId = null,
+  onConsumeInitialStudentId,
+}) => {
   const { students, classes, promoteStudent, promoteClass, feeStructures, payments } = useData();
   const { currentTerm, currentYear } = useActiveTerm();
   const [promotionType, setPromotionType] = useState<'individual' | 'class'>('individual');
   const [selectedStudent, setSelectedStudent] = useState('');
+
+  useEffect(() => {
+    if (!initialStudentId) return;
+    const exists = students.some((s) => s.id === String(initialStudentId));
+    if (!exists) return;
+    setPromotionType('individual');
+    setSelectedStudent(String(initialStudentId));
+    onConsumeInitialStudentId?.();
+  }, [initialStudentId, students, onConsumeInitialStudentId]);
   const [selectedCurrentClass, setSelectedCurrentClass] = useState('');
   const [selectedNewClass, setSelectedNewClass] = useState('');
   const [showFeeWarning, setShowFeeWarning] = useState(false);
@@ -257,59 +274,66 @@ const PromoteStudents = () => {
     <div className="space-y-8 animate-in fade-in duration-700">
       {/* Fee Warning Dialog */}
       {showFeeWarning && feeImpactData && (
-        <Card className="border-orange-200 dark:border-orange-800/50 bg-orange-50/50 dark:bg-orange-500/10 backdrop-blur-xl rounded-[2rem] overflow-hidden shadow-2xl border-2">
+        <Card className="border-orange-200 dark:border-orange-800/50 bg-orange-50/50 dark:bg-orange-500/10 rounded-[2rem] overflow-hidden shadow-2xl border-2">
           <CardHeader className="bg-orange-100/50 dark:bg-orange-500/10 border-b border-orange-200/50 dark:border-orange-800/50 px-8 py-6">
-            <CardTitle className="flex items-center gap-3 text-orange-900 dark:text-orange-400 font-black font-outfit tracking-tight">
-              <div className="w-10 h-10 rounded-xl bg-orange-500/20 flex items-center justify-center">
-                <AlertTriangle className="w-5 h-5" />
+            <CardTitle className="flex items-center gap-3 text-lg font-semibold text-orange-950 dark:text-orange-200">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500/20">
+                <AlertTriangle className="h-5 w-5" />
               </div>
-              Financial Protocol Warning
+              Fees reminder before promotion
             </CardTitle>
           </CardHeader>
           <CardContent className="p-8">
             {promotionType === 'individual' ? (
               <div className="space-y-6">
-                <p className="text-sm font-bold text-orange-800 dark:text-orange-300 uppercase tracking-wider">
-                  Outstanding balance detected for <span className="text-orange-950 dark:text-white font-black underline decoration-orange-500/50 underline-offset-4">{feeImpactData.studentName}</span>:
+                <p className="text-sm font-medium text-orange-900 dark:text-orange-200">
+                  <span className="font-semibold">{feeImpactData.studentName}</span> still has school fees that are not fully
+                  paid:
                 </p>
-                <div className="bg-white dark:bg-slate-900/50 p-6 rounded-[1.5rem] border border-orange-200 dark:border-orange-800/50 shadow-inner">
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-6 text-[11px]">
+                <div className="rounded-[1.5rem] border border-orange-200 bg-white p-6 shadow-inner dark:border-orange-800/50 dark:bg-slate-900/50">
+                  <div className="grid grid-cols-2 gap-6 text-sm md:grid-cols-3">
                     <div className="space-y-1">
-                      <p className="font-black text-slate-400 uppercase tracking-widest">Current Class</p>
-                      <p className="font-bold text-slate-900 dark:text-white">{feeImpactData.currentClass}</p>
+                      <p className="text-xs font-medium text-slate-500">Class now</p>
+                      <p className="font-semibold text-slate-900 dark:text-white">{feeImpactData.currentClass}</p>
                     </div>
                     <div className="space-y-1">
-                      <p className="font-black text-slate-400 uppercase tracking-widest">Target Class</p>
-                      <p className="font-bold text-slate-900 dark:text-white">{feeImpactData.newClass}</p>
+                      <p className="text-xs font-medium text-slate-500">Moving to</p>
+                      <p className="font-semibold text-slate-900 dark:text-white">{feeImpactData.newClass}</p>
                     </div>
                     <div className="space-y-1">
-                      <p className="font-black text-red-500 uppercase tracking-widest">Balance Due</p>
-                      <p className="font-black text-red-600 dark:text-red-400 text-lg">GHS {feeImpactData.outstandingBalance.toLocaleString()}</p>
+                      <p className="text-xs font-medium text-red-600">Still to pay</p>
+                      <p className="text-lg font-semibold tabular-nums text-red-600 dark:text-red-400">
+                        GHS {feeImpactData.outstandingBalance.toLocaleString()}
+                      </p>
                     </div>
                     <div className="space-y-1">
-                      <p className="font-black text-slate-400 uppercase tracking-widest">Paid to Date</p>
-                      <p className="font-bold text-emerald-600 dark:text-emerald-400">GHS {feeImpactData.totalPaid.toLocaleString()}</p>
+                      <p className="text-xs font-medium text-slate-500">Paid so far</p>
+                      <p className="font-semibold text-emerald-600 dark:text-emerald-400">GHS {feeImpactData.totalPaid.toLocaleString()}</p>
                     </div>
                     <div className="space-y-1">
-                      <p className="font-black text-slate-400 uppercase tracking-widest">Legacy Arrears</p>
-                      <p className="font-bold text-slate-900 dark:text-white">GHS {feeImpactData.arrears.toLocaleString()}</p>
+                      <p className="text-xs font-medium text-slate-500">Older fees owed</p>
+                      <p className="font-semibold text-slate-900 dark:text-white">GHS {feeImpactData.arrears.toLocaleString()}</p>
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-3 text-[10px] font-black text-orange-700 dark:text-orange-400 uppercase tracking-[0.2em] bg-orange-500/5 p-4 rounded-xl border border-orange-200/30">
-                  <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
-                  Carry-forward protocol: Balance will be added to the target class arrears account.
+                <div className="flex items-start gap-3 rounded-xl border border-orange-200/60 bg-orange-500/5 p-4 text-sm text-orange-900 dark:text-orange-100">
+                  <div className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-orange-500" />
+                  <span>
+                    The amount still owed will be kept on the student&apos;s account for the new class (arrears), so you can
+                    collect it later.
+                  </span>
                 </div>
               </div>
             ) : (
               <div className="space-y-6">
-                <p className="text-sm font-bold text-orange-800 dark:text-orange-300 uppercase tracking-wider">
-                  <span className="text-orange-950 dark:text-white font-black">{feeImpactData.studentsWithOutstanding} units</span> exhibit financial deficits in this batch promotion:
+                <p className="text-sm font-medium text-orange-900 dark:text-orange-200">
+                  <span className="font-semibold">{feeImpactData.studentsWithOutstanding}</span> of{' '}
+                  {feeImpactData.totalStudents} students in this class still owe fees:
                 </p>
-                <div className="bg-white dark:bg-slate-900/50 p-6 rounded-[1.5rem] border border-orange-200 dark:border-orange-800/50 shadow-inner">
-                  <div className="flex items-center justify-between mb-6 pb-6 border-b border-orange-100 dark:border-orange-800/50">
-                    <span className="font-black text-slate-400 uppercase tracking-widest text-[11px]">Total Deficit Exposure:</span>
-                    <span className="text-red-600 dark:text-red-400 font-black text-2xl font-outfit">
+                <div className="rounded-[1.5rem] border border-orange-200 bg-white p-6 shadow-inner dark:border-orange-800/50 dark:bg-slate-900/50">
+                  <div className="mb-6 flex items-center justify-between border-b border-orange-100 pb-6 dark:border-orange-800/50">
+                    <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Total still owed</span>
+                    <span className="text-2xl font-semibold tabular-nums text-red-600 dark:text-red-400">
                       GHS {feeImpactData.totalOutstandingAmount.toLocaleString()}
                     </span>
                   </div>
@@ -317,79 +341,84 @@ const PromoteStudents = () => {
                     {feeImpactData.studentDetails
                       .filter((s: any) => s.willBecomeArrears)
                       .map((student: any) => (
-                        <div key={student.studentId} className="flex justify-between items-center text-[11px] bg-slate-50 dark:bg-slate-800/50 p-3 rounded-lg border border-slate-100 dark:border-slate-700/50">
-                          <span className="font-bold text-slate-900 dark:text-white uppercase tracking-wider">{student.studentName}</span>
-                          <span className="text-red-600 dark:text-red-400 font-black tracking-widest">GHS {student.outstandingBalance.toLocaleString()}</span>
+                        <div
+                          key={student.studentId}
+                          className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 p-3 text-sm dark:border-slate-700/50 dark:bg-slate-800/50"
+                        >
+                          <span className="font-medium text-slate-900 dark:text-white">{student.studentName}</span>
+                          <span className="tabular-nums font-semibold text-red-600 dark:text-red-400">
+                            GHS {student.outstandingBalance.toLocaleString()}
+                          </span>
                         </div>
                       ))}
                   </div>
                 </div>
-                <div className="flex items-center gap-3 text-[10px] font-black text-orange-700 dark:text-orange-400 uppercase tracking-[0.2em] bg-orange-500/5 p-4 rounded-xl border border-orange-200/30">
-                  <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
-                  Mass Migration Policy: All deficits will persist across the institutional transition.
+                <div className="flex items-start gap-3 rounded-xl border border-orange-200/60 bg-orange-500/5 p-4 text-sm text-orange-900 dark:text-orange-100">
+                  <div className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-orange-500" />
+                  <span>Those balances stay on each student&apos;s account after promotion so you can follow up for payment.</span>
                 </div>
               </div>
             )}
-            <div className="flex flex-col sm:flex-row gap-4 mt-8 pt-6 border-t border-orange-200/50 dark:border-orange-800/50">
-              <Button 
+            <div className="mt-8 flex flex-col gap-3 border-t border-orange-200/50 pt-6 dark:border-orange-800/50 sm:flex-row">
+              <Button
                 onClick={promotionType === 'individual' ? executeIndividualPromotion : executeClassPromotion}
-                className="h-14 px-8 bg-orange-600 dark:bg-orange-500 text-white hover:bg-orange-700 dark:hover:bg-orange-400 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-xl shadow-orange-600/20"
+                className="h-11 rounded-xl bg-orange-600 px-8 text-sm font-semibold text-white shadow-lg hover:bg-orange-700 dark:bg-orange-500 dark:hover:bg-orange-400"
               >
-                Authorize Promotion
+                Yes, promote anyway
               </Button>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={() => {
                   setShowFeeWarning(false);
                   setFeeImpactData(null);
                 }}
-                className="h-14 px-8 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
+                className="h-11 rounded-xl border-slate-200 px-8 text-sm font-medium dark:border-slate-700"
               >
-                Abort Protocol
+                Cancel
               </Button>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Promotion Engine */}
-      <Card className="border-slate-200 dark:border-slate-800 shadow-xl bg-white dark:bg-slate-900/50 backdrop-blur-xl rounded-[2rem] overflow-hidden">
-        <CardHeader className="bg-slate-50/50 dark:bg-slate-800/30 border-b border-slate-200/50 dark:border-slate-800/50 px-8 py-6">
-          <CardTitle className="flex items-center gap-3 text-slate-900 dark:text-white font-black font-outfit text-xl tracking-tight">
-            <div className="w-10 h-10 rounded-xl bg-indigo-500/10 flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+      {/* Main promote form */}
+      <Card className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900/50">
+        <CardHeader className="border-b border-slate-200/50 bg-slate-50/50 px-8 py-6 dark:border-slate-800/50 dark:bg-slate-800/30">
+          <CardTitle className="flex flex-wrap items-center gap-3 text-xl font-semibold tracking-tight text-slate-900 dark:text-white">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10">
+              <TrendingUp className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
             </div>
-            Institutional Promotion Engine
-            <Badge variant="outline" className="ml-2 text-[10px] font-black uppercase tracking-widest border-indigo-500/20 text-indigo-600 dark:text-indigo-400 bg-indigo-500/5">
-              Cycle: {currentTerm}
+            Promote students
+            <Badge variant="outline" className="ml-0 text-xs font-medium border-indigo-500/20 bg-indigo-500/5 text-indigo-700 dark:text-indigo-300">
+              Term: {currentTerm}
             </Badge>
           </CardTitle>
         </CardHeader>
         <CardContent className="p-8">
-          <div className="flex flex-wrap gap-4 mb-10">
+          <div className="mb-10 flex flex-wrap gap-3">
             <Button
               variant={promotionType === 'individual' ? 'default' : 'outline'}
               onClick={() => setPromotionType('individual')}
-              className={`h-14 px-8 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] transition-all flex items-center gap-3 ${
-                promotionType === 'individual' 
-                ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xl shadow-slate-900/20 dark:shadow-white/10' 
-                : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'
+              className={`flex h-11 items-center gap-2 rounded-xl px-6 text-sm font-medium transition-all ${
+                promotionType === 'individual'
+                  ? 'bg-slate-900 text-white shadow-lg dark:bg-white dark:text-slate-900'
+                  : 'border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-400'
               }`}
             >
-              <User className="w-4 h-4" />
-              Individual Token
+              <User className="h-4 w-4" />
+              One student
             </Button>
             <Button
               variant={promotionType === 'class' ? 'default' : 'outline'}
               onClick={() => setPromotionType('class')}
-              className={`h-14 px-8 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] transition-all flex items-center gap-3 ${
-                promotionType === 'class' 
-                ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xl shadow-slate-900/20 dark:shadow-white/10' 
-                : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'
+              className={`flex h-11 items-center gap-2 rounded-xl px-6 text-sm font-medium transition-all ${
+                promotionType === 'class'
+                  ? 'bg-slate-900 text-white shadow-lg dark:bg-white dark:text-slate-900'
+                  : 'border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-400'
               }`}
             >
-              <Users className="w-4 h-4" />
-              Class Batch
+              <Users className="h-4 w-4" />
+              Whole class
             </Button>
           </div>
 
@@ -397,10 +426,10 @@ const PromoteStudents = () => {
             <div className="space-y-8 animate-in slide-in-from-left-4 duration-500">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="space-y-2.5">
-                  <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Identity Selection</Label>
+                  <Label className="ml-1 text-sm font-medium text-slate-700 dark:text-slate-300">Student</Label>
                   <Select value={selectedStudent} onValueChange={setSelectedStudent}>
-                    <SelectTrigger className="h-14 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-2xl font-medium">
-                      <SelectValue placeholder="Choose target identity" />
+                    <SelectTrigger className="h-12 rounded-xl border-slate-200 bg-slate-50/50 font-medium dark:border-slate-700 dark:bg-slate-800/50">
+                      <SelectValue placeholder="Choose a student" />
                     </SelectTrigger>
                     <SelectContent className="rounded-2xl border-slate-200 dark:border-slate-800 shadow-2xl">
                       {students.map((student) => {
@@ -408,9 +437,13 @@ const PromoteStudents = () => {
                         return (
                           <SelectItem key={student.id} value={student.id} className="rounded-xl p-3">
                             <div className="flex items-center justify-between w-full">
-                              <span className="font-bold text-slate-900 dark:text-white uppercase tracking-wider text-[11px]">{student.firstName} {student.lastName}</span>
+                              <span className="text-sm font-medium text-slate-900 dark:text-white">
+                                {student.firstName} {student.lastName}
+                              </span>
                               <div className="flex items-center gap-2">
-                                <Badge variant="outline" className="text-[8px] font-black">{student.classAssigned}</Badge>
+                                <Badge variant="outline" className="text-xs font-medium">
+                                  {student.classAssigned}
+                                </Badge>
                                 {studentWithFee?.hasOutstanding && (
                                   <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                                 )}
@@ -423,15 +456,15 @@ const PromoteStudents = () => {
                   </Select>
                 </div>
                 <div className="space-y-2.5">
-                  <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Migration Target</Label>
+                  <Label className="ml-1 text-sm font-medium text-slate-700 dark:text-slate-300">New class</Label>
                   <Select value={selectedNewClass} onValueChange={setSelectedNewClass}>
-                    <SelectTrigger className="h-14 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-2xl font-medium">
-                      <SelectValue placeholder="Assign new Level" />
+                    <SelectTrigger className="h-12 rounded-xl border-slate-200 bg-slate-50/50 font-medium dark:border-slate-700 dark:bg-slate-800/50">
+                      <SelectValue placeholder="Pick the new class" />
                     </SelectTrigger>
                     <SelectContent className="rounded-2xl border-slate-200 dark:border-slate-800 shadow-2xl">
                       {classes.map((cls) => (
                         <SelectItem key={cls.id} value={cls.className} className="rounded-xl">
-                          {cls.className.toUpperCase()}
+                          {cls.className}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -445,20 +478,21 @@ const PromoteStudents = () => {
                     const studentWithFee = getStudentWithFeeInfo(selectedStudent);
                     return (
                       <>
-                        <div className="w-16 h-16 rounded-[1.5rem] bg-indigo-500/20 flex items-center justify-center font-black text-indigo-600 text-xl font-outfit uppercase">
-                          {studentWithFee?.firstName?.[0]}{studentWithFee?.lastName?.[0]}
+                        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-500/20 text-xl font-semibold text-indigo-700 dark:text-indigo-300">
+                          {studentWithFee?.firstName?.[0]}
+                          {studentWithFee?.lastName?.[0]}
                         </div>
                         <div className="flex-1 space-y-2">
-                          <p className="text-sm font-black text-slate-900 dark:text-white font-outfit tracking-tight uppercase">
+                          <p className="text-base font-semibold text-slate-900 dark:text-white">
                             {studentWithFee?.firstName} {studentWithFee?.lastName}
                           </p>
-                          <div className="flex flex-wrap gap-3">
-                            <Badge variant="outline" className="text-[9px] font-black uppercase tracking-widest border-indigo-500/30 text-indigo-600 dark:text-indigo-400">
-                              Current: {studentWithFee?.classAssigned}
+                          <div className="flex flex-wrap gap-2">
+                            <Badge variant="outline" className="text-xs font-medium border-indigo-500/30 text-indigo-700 dark:text-indigo-300">
+                              Class now: {studentWithFee?.classAssigned}
                             </Badge>
                             {studentWithFee?.hasOutstanding && (
-                              <Badge variant="outline" className="text-[9px] font-black uppercase tracking-widest border-red-500/30 text-red-600 dark:text-red-400 bg-red-500/5">
-                                DEFICIT: GHS {studentWithFee.outstandingBalance.toLocaleString()}
+                              <Badge variant="outline" className="border-red-500/30 bg-red-500/5 text-xs font-medium text-red-700 dark:text-red-300">
+                                Owes GHS {studentWithFee.outstandingBalance.toLocaleString()}
                               </Badge>
                             )}
                           </div>
@@ -470,8 +504,11 @@ const PromoteStudents = () => {
               )}
 
               <div className="flex justify-end">
-                <Button onClick={handleIndividualPromotion} className="h-14 px-12 bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-2xl transition-all hover:scale-105 active:scale-95">
-                  Execute Migration
+                <Button
+                  onClick={handleIndividualPromotion}
+                  className="h-11 rounded-xl bg-slate-900 px-10 text-sm font-semibold text-white shadow-lg transition-opacity hover:opacity-90 dark:bg-white dark:text-slate-900"
+                >
+                  Promote student
                 </Button>
               </div>
             </div>
@@ -479,10 +516,10 @@ const PromoteStudents = () => {
             <div className="space-y-8 animate-in slide-in-from-right-4 duration-500">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="space-y-2.5">
-                  <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Current Sector</Label>
+                  <Label className="ml-1 text-sm font-medium text-slate-700 dark:text-slate-300">Class to move from</Label>
                   <Select value={selectedCurrentClass} onValueChange={setSelectedCurrentClass}>
-                    <SelectTrigger className="h-14 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-2xl font-medium">
-                      <SelectValue placeholder="Select origin class" />
+                    <SelectTrigger className="h-12 rounded-xl border-slate-200 bg-slate-50/50 font-medium dark:border-slate-700 dark:bg-slate-800/50">
+                      <SelectValue placeholder="Choose current class" />
                     </SelectTrigger>
                     <SelectContent className="rounded-2xl border-slate-200 dark:border-slate-800 shadow-2xl">
                       {classes.map((cls) => {
@@ -495,9 +532,11 @@ const PromoteStudents = () => {
                         return (
                           <SelectItem key={cls.id} value={cls.className} className="rounded-xl p-3">
                             <div className="flex items-center justify-between w-full">
-                              <span className="font-bold text-slate-900 dark:text-white uppercase tracking-wider text-[11px]">{cls.className}</span>
+                              <span className="text-sm font-medium text-slate-900 dark:text-white">{cls.className}</span>
                               <div className="flex items-center gap-2">
-                                <Badge variant="outline" className="text-[8px] font-black">{studentsInClass.length} UNITS</Badge>
+                                <Badge variant="outline" className="text-xs font-medium">
+                                  {studentsInClass.length} students
+                                </Badge>
                                 {studentsWithOutstanding > 0 && (
                                   <div className="flex items-center gap-1 text-red-500 text-[10px] font-black">
                                     <AlertTriangle className="w-3 h-3" />
@@ -513,15 +552,15 @@ const PromoteStudents = () => {
                   </Select>
                 </div>
                 <div className="space-y-2.5">
-                  <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Institutional Target</Label>
+                  <Label className="ml-1 text-sm font-medium text-slate-700 dark:text-slate-300">New class</Label>
                   <Select value={selectedNewClass} onValueChange={setSelectedNewClass}>
-                    <SelectTrigger className="h-14 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-2xl font-medium">
-                      <SelectValue placeholder="Select target class" />
+                    <SelectTrigger className="h-12 rounded-xl border-slate-200 bg-slate-50/50 font-medium dark:border-slate-700 dark:bg-slate-800/50">
+                      <SelectValue placeholder="Choose new class" />
                     </SelectTrigger>
                     <SelectContent className="rounded-2xl border-slate-200 dark:border-slate-800 shadow-2xl">
                       {classes.map((cls) => (
                         <SelectItem key={cls.id} value={cls.className} className="rounded-xl">
-                          {cls.className.toUpperCase()}
+                          {cls.className}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -532,11 +571,9 @@ const PromoteStudents = () => {
               {selectedCurrentClass && (
                 <div className="bg-emerald-500/5 dark:bg-emerald-500/10 p-8 rounded-[2rem] border border-emerald-500/20 shadow-inner space-y-6">
                   <div className="flex items-center justify-between border-b border-emerald-500/10 pb-4">
-                    <p className="text-sm font-black text-emerald-900 dark:text-emerald-400 font-outfit uppercase tracking-wider">
-                      Migration Manifest: {selectedCurrentClass}
-                    </p>
-                    <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 font-black uppercase tracking-widest text-[9px]">
-                      {getStudentsInClass(selectedCurrentClass).length} Units Detected
+                    <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-300">Students in {selectedCurrentClass}</p>
+                    <Badge variant="outline" className="border-emerald-500/20 bg-emerald-500/10 text-xs font-medium text-emerald-800 dark:text-emerald-200">
+                      {getStudentsInClass(selectedCurrentClass).length} students
                     </Badge>
                   </div>
                   <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
@@ -546,7 +583,7 @@ const PromoteStudents = () => {
                         <Badge 
                           key={student.id} 
                           variant="outline" 
-                          className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                          className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
                             studentWithFee?.hasOutstanding 
                             ? 'border-orange-300 dark:border-orange-800 bg-orange-50 dark:bg-orange-950 text-orange-700 dark:text-orange-400' 
                             : 'border-emerald-200 dark:border-emerald-800 bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400'
@@ -564,8 +601,11 @@ const PromoteStudents = () => {
               )}
 
               <div className="flex justify-end">
-                <Button onClick={handleClassPromotion} className="h-14 px-12 bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-2xl transition-all hover:scale-105 active:scale-95">
-                  Execute Batch Migration
+                <Button
+                  onClick={handleClassPromotion}
+                  className="h-11 rounded-xl bg-slate-900 px-10 text-sm font-semibold text-white shadow-lg transition-opacity hover:opacity-90 dark:bg-white dark:text-slate-900"
+                >
+                  Promote whole class
                 </Button>
               </div>
             </div>
@@ -576,7 +616,7 @@ const PromoteStudents = () => {
       {/* Registry Overview */}
       <Card className="border-slate-200 dark:border-slate-800 shadow-xl bg-white dark:bg-slate-900/50 backdrop-blur-xl rounded-[2rem] overflow-hidden">
         <CardHeader className="bg-slate-50/50 dark:bg-slate-800/30 border-b border-slate-200/50 dark:border-slate-800/50 px-8 py-6">
-          <CardTitle className="text-xl font-black text-slate-900 dark:text-white font-outfit tracking-tight">Institutional Registry Status</CardTitle>
+          <CardTitle className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">Students by class</CardTitle>
         </CardHeader>
         <CardContent className="p-8">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -591,8 +631,10 @@ const PromoteStudents = () => {
                 <div key={cls.id} className="p-6 bg-slate-50/50 dark:bg-slate-800/20 rounded-[1.5rem] border border-slate-200 dark:border-slate-700/50 hover:border-indigo-500/30 transition-all group">
                   <div className="flex items-start justify-between mb-4">
                     <div className="space-y-1">
-                      <h3 className="font-black text-slate-900 dark:text-white font-outfit tracking-tight uppercase text-sm group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{cls.className}</h3>
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{cls.level}</p>
+                      <h3 className="text-sm font-semibold text-slate-900 transition-colors group-hover:text-indigo-600 dark:text-white dark:group-hover:text-indigo-400">
+                        {cls.className}
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">{cls.level}</p>
                     </div>
                     {studentsWithOutstanding.length > 0 && (
                       <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center">
@@ -602,12 +644,12 @@ const PromoteStudents = () => {
                   </div>
                   
                   <div className="flex flex-wrap gap-2 mb-6">
-                    <Badge variant="outline" className="text-[9px] font-black uppercase tracking-widest bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800">
-                      {studentsInClass.length} UNITS
+                    <Badge variant="outline" className="border-slate-200 bg-white text-xs font-medium dark:border-slate-800 dark:bg-slate-950">
+                      {studentsInClass.length} students
                     </Badge>
                     {studentsWithOutstanding.length > 0 && (
-                      <Badge variant="destructive" className="text-[9px] font-black uppercase tracking-widest bg-red-500 text-white border-0">
-                        {studentsWithOutstanding.length} DEFICITS
+                      <Badge variant="destructive" className="border-0 bg-red-500 text-xs font-medium text-white">
+                        {studentsWithOutstanding.length} with balance
                       </Badge>
                     )}
                   </div>
@@ -618,7 +660,7 @@ const PromoteStudents = () => {
                         const studentWithFee = getStudentWithFeeInfo(student.id);
                         return (
                           <div key={student.id} className="flex items-center justify-between text-[10px]">
-                            <p className="font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider truncate mr-4">
+                            <p className="mr-4 truncate text-xs font-medium text-slate-600 dark:text-slate-400">
                               {student.firstName} {student.lastName}
                             </p>
                             {studentWithFee?.hasOutstanding && (
@@ -628,8 +670,8 @@ const PromoteStudents = () => {
                         );
                       })}
                       {studentsInClass.length > 3 && (
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] pt-1">
-                          + {studentsInClass.length - 3} OTHERS IN INDEX
+                        <p className="pt-1 text-xs text-slate-500 dark:text-slate-400">
+                          + {studentsInClass.length - 3} more students
                         </p>
                       )}
                     </div>

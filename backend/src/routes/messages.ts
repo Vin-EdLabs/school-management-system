@@ -249,6 +249,7 @@ router.get('/admin/:id', authenticate, requireTenant, setTenantContext, async (r
     );
     await query(`UPDATE parent_messages SET is_read_by_school = true, status = CASE WHEN status='pending' THEN 'in_review' ELSE status END WHERE id = $1`, [id]);
     await query(`UPDATE message_replies SET is_read = true WHERE message_id = $1 AND sender_type = 'parent'`, [id]);
+    await emitParentDeskToTenant(tenantId);
     return res.json({ message: msg.rows[0], replies: replies.rows });
   } catch (error) {
     console.error('Admin conversation fetch error:', error);

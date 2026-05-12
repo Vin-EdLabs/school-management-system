@@ -32,6 +32,20 @@ const authenticateParent = async (
   }
 };
 
+async function emitParentDeskToTenant(tenantId: number) {
+  try {
+    const { getIO } = await import('../socket.js');
+    getIO().to(`tenant:${tenantId}`).emit('tenant-data-changed', {
+      tenantId,
+      entity: 'parent-desk',
+      action: 'updated',
+      at: Date.now(),
+    });
+  } catch {
+    // ignore
+  }
+}
+
 const MESSAGE_TYPES = new Set(['absence', 'fee', 'academic', 'teacher', 'late', 'general']);
 const MESSAGE_TYPE_LABEL: Record<string, string> = {
   absence: 'Absence Notice',
@@ -70,10 +84,27 @@ router.post('/', authenticateParent, upload.single('attachment'), async (req: Pa
       [req.parent!.tenantId, req.parent!.accountId, selectedStudentId, safeType, finalSubject, String(message).trim(), attachmentUrl]
     );
 
+    await emitParentDeskToTenant(req.parent!.tenantId);
     return res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error('Create parent message error:', error);
     return res.status(500).json({ error: 'Failed to send message' });
+  }
+});
+
+router.get('/unread-count', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    const r = await query(
+      `SELECT COUNT(*)::int AS c
+       FROM message_replies r
+       INNER JOIN parent_messages m ON m.id = r.message_id
+       WHERE m.parent_account_id = $1 AND r.sender_type = 'school' AND r.is_read = false`,
+      [req.parent!.accountId]
+    );
+    return res.json({ count: Number(r.rows[0]?.c ?? 0) });
+  } catch (error) {
+    console.error('Parent messages unread-count error:', error);
+    return res.status(500).json({ error: 'Failed to read unread count' });
   }
 });
 
@@ -149,6 +180,7 @@ router.post('/:id/reply', authenticateParent, upload.single('attachment'), async
       [id, replyText, attachmentUrl]
     );
     await query(`UPDATE parent_messages SET is_read_by_school = false, status = 'pending' WHERE id = $1`, [id]);
+    await emitParentDeskToTenant(req.parent!.tenantId);
     return res.status(201).json(inserted.rows[0]);
   } catch (error) {
     console.error('Parent reply error:', error);
@@ -257,6 +289,7 @@ router.post('/admin/:id/reply', authenticate, requireTenant, setTenantContext, u
       body: replyText.slice(0, 160),
       url: `/portal/${tenantId}`,
     }).catch(() => {});
+    await emitParentDeskToTenant(tenantId);
     return res.status(201).json(inserted.rows[0]);
   } catch (error) {
     console.error('Admin parent desk reply error:', error);

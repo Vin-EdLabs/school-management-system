@@ -238,6 +238,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   const [deskContact, setDeskContact] = useState<any>({});
   const [deskReply, setDeskReply] = useState('');
   const [deskReplyAttachment, setDeskReplyAttachment] = useState<File | null>(null);
+  const [parentDeskUnread, setParentDeskUnread] = useState(0);
   const parentScrollRef = useRef<HTMLDivElement>(null);
   const deskComposeFileRef = useRef<HTMLInputElement>(null);
   const deskReplyFileRef = useRef<HTMLInputElement>(null);
@@ -523,6 +524,23 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     };
   }, [token, student, tenantId]);
 
+  const refreshParentDeskUnread = useCallback(async () => {
+    if (!token) return;
+    try {
+      const r = await parentFetch('/messages/unread-count', {}, token);
+      setParentDeskUnread(Number(r?.count ?? 0));
+    } catch {
+      setParentDeskUnread(0);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+    void refreshParentDeskUnread();
+    const id = window.setInterval(() => void refreshParentDeskUnread(), 45000);
+    return () => window.clearInterval(id);
+  }, [token, refreshParentDeskUnread]);
+
   const loadDeskMessages = useCallback(async () => {
     if (!token) return;
     setDeskLoading(true);
@@ -534,8 +552,9 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       setDeskMessages([]);
     } finally {
       setDeskLoading(false);
+      void refreshParentDeskUnread();
     }
-  }, [token]);
+  }, [token, refreshParentDeskUnread]);
 
   const openDeskConversation = useCallback(async (id: number) => {
     if (!token) return;
@@ -544,7 +563,8 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     setDeskConversation(Array.isArray(data?.replies) ? data.replies : []);
     await parentFetch(`/messages/${id}/read`, { method: 'PUT', body: JSON.stringify({}) }, token).catch(() => undefined);
     setDeskMessages((prev) => prev.map((m) => (Number(m.id) === Number(id) ? { ...m, unread_replies: 0 } : m)));
-  }, [token]);
+    void refreshParentDeskUnread();
+  }, [token, refreshParentDeskUnread]);
 
   const submitDeskMessage = useCallback(async () => {
     if (!token || !deskBody.trim()) return;
@@ -559,7 +579,8 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     setDeskBody('');
     setDeskAttachment(null);
     await loadDeskMessages();
-  }, [token, deskType, deskBody, deskAttachment, loadDeskMessages]);
+    void refreshParentDeskUnread();
+  }, [token, deskType, deskBody, deskAttachment, loadDeskMessages, refreshParentDeskUnread]);
 
   const submitDeskReply = useCallback(async () => {
     if (!token || !selectedDeskMessage?.id || !deskReply.trim()) return;
@@ -571,7 +592,8 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     setDeskReplyAttachment(null);
     await openDeskConversation(Number(selectedDeskMessage.id));
     await loadDeskMessages();
-  }, [token, selectedDeskMessage, deskReply, deskReplyAttachment, openDeskConversation, loadDeskMessages]);
+    void refreshParentDeskUnread();
+  }, [token, selectedDeskMessage, deskReply, deskReplyAttachment, openDeskConversation, loadDeskMessages, refreshParentDeskUnread]);
 
   const fetchTabData = useCallback(async (tab: Tab) => {
     if (!token) return;
@@ -676,13 +698,18 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             dueDate: pending.due_date ? String(pending.due_date) : null,
           });
         }
+      } else if (entity === 'parent-desk') {
+        void refreshParentDeskUnread();
+        if (activeTab === 'desk') {
+          await loadDeskMessages();
+        }
       }
     });
 
     return () => {
       socket.disconnect();
     };
-  }, [token, tenantId, student, pushNotification, loadServerNotifications]);
+  }, [token, tenantId, student, pushNotification, loadServerNotifications, refreshParentDeskUnread, activeTab, loadDeskMessages]);
 
   const handleTabChange = (tab: Tab) => {
     setActiveTab(tab);
@@ -1217,7 +1244,15 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                   : 'border-transparent text-slate-400 hover:text-slate-200'
               }`}
             >
-              {t.icon}{t.label}
+              <span className="inline-flex items-center gap-1.5">
+                {t.icon}
+                {t.label}
+                {t.key === 'desk' && parentDeskUnread > 0 && (
+                  <span className="min-h-4 min-w-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold leading-4 text-center">
+                    {parentDeskUnread > 9 ? '9+' : parentDeskUnread}
+                  </span>
+                )}
+              </span>
             </button>
           ))}
         </div>
@@ -1394,8 +1429,13 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                   className="relative overflow-hidden bg-white border border-gray-200 rounded-2xl p-4 flex flex-col items-center gap-2 hover:border-purple-300 hover:shadow-lg hover:shadow-purple-100 transition-all group min-h-[115px]"
                 >
                   <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-500 via-fuchsia-500 to-indigo-500 opacity-90" />
-                  <span className="w-10 h-10 bg-gradient-to-br from-purple-50 to-indigo-50 group-hover:from-purple-100 group-hover:to-indigo-100 rounded-xl flex items-center justify-center text-purple-600 transition-colors shadow-sm">
+                  <span className="relative w-10 h-10 bg-gradient-to-br from-purple-50 to-indigo-50 group-hover:from-purple-100 group-hover:to-indigo-100 rounded-xl flex items-center justify-center text-purple-600 transition-colors shadow-sm">
                     {t.icon}
+                    {t.key === 'desk' && parentDeskUnread > 0 && (
+                      <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-0.5 text-[9px] font-bold text-white ring-2 ring-white">
+                        {parentDeskUnread > 9 ? '9' : parentDeskUnread}
+                      </span>
+                    )}
                   </span>
                   <span className="text-sm font-semibold text-gray-700">{t.label}</span>
                   <ChevronRight className="w-3.5 h-3.5 text-gray-300 group-hover:text-purple-500 transition-colors" />
@@ -1998,7 +2038,14 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               }`}
               style={activeTab === t.key ? { background: `linear-gradient(135deg, ${brandPrimary}, ${brandSecondary})` } : undefined}
             >
-              {t.icon}
+              <span className="relative inline-flex">
+                {t.icon}
+                {t.key === 'desk' && parentDeskUnread > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-red-500 px-0.5 text-[8px] font-bold leading-none text-white ring-2 ring-white">
+                    {parentDeskUnread > 9 ? '9' : parentDeskUnread}
+                  </span>
+                )}
+              </span>
               <span className="leading-none">{t.label}</span>
             </button>
           ))}

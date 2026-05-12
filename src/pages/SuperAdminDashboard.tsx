@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { BrandedLoading, BrandedLoadingScreen } from '@/components/common/BrandedLoading';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -39,6 +39,7 @@ import {
 } from '@/components/ui/sidebar';
 import { Separator } from '@/components/ui/separator';
 import { useAuth } from '../contexts/AuthContext';
+import { useSocket } from '../contexts/SocketContext';
 import { apiService } from '../services/api';
 import { toast } from '@/hooks/use-toast';
 import {
@@ -122,9 +123,11 @@ type Section = 'schools' | 'registrations' | 'audit' | 'super-admins' | 'support
 const SuperAdminDashboard = () => {
   const navigate = useNavigate();
   const { user, logout, loading: authLoading } = useAuth();
+  const { socket } = useSocket();
   const { theme, toggleTheme } = useTheme();
   const darkMode = theme === 'dark';
   const [section, setSection] = useState<Section>('schools');
+  const [supportInboxUnread, setSupportInboxUnread] = useState(0);
   const [schools, setSchools] = useState<School[]>([]);
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
@@ -163,6 +166,43 @@ const SuperAdminDashboard = () => {
   useEffect(() => {
     if (user?.role === 'super-admin' && section === 'audit') loadAuditLogs();
   }, [auditFilters.action, auditFilters.tenantId, auditFilters.limit, section]);
+
+  const refreshSupportInboxUnread = useCallback(async () => {
+    if (user?.role !== 'super-admin') return;
+    try {
+      const r = await apiService.get<{ count: number }>('/support-chat/unread-count');
+      setSupportInboxUnread(Number(r?.count ?? 0));
+    } catch {
+      setSupportInboxUnread(0);
+    }
+  }, [user?.role]);
+
+  useEffect(() => {
+    if (user?.role !== 'super-admin') return;
+    void refreshSupportInboxUnread();
+    const id = window.setInterval(() => void refreshSupportInboxUnread(), 45000);
+    return () => window.clearInterval(id);
+  }, [user?.role, refreshSupportInboxUnread]);
+
+  useEffect(() => {
+    if (!socket || user?.role !== 'super-admin') return;
+    const onNew = (msg: { is_from_superadmin?: boolean }) => {
+      if (msg && msg.is_from_superadmin === false) void refreshSupportInboxUnread();
+    };
+    const onTenant = (evt: { entity?: string }) => {
+      if (String(evt?.entity || '') === 'support-chat') void refreshSupportInboxUnread();
+    };
+    socket.on('new-support-message', onNew);
+    socket.on('tenant-data-changed', onTenant);
+    return () => {
+      socket.off('new-support-message', onNew);
+      socket.off('tenant-data-changed', onTenant);
+    };
+  }, [socket, user?.role, refreshSupportInboxUnread]);
+
+  useEffect(() => {
+    if (user?.role === 'super-admin' && section === 'support-chat') void refreshSupportInboxUnread();
+  }, [section, user?.role, refreshSupportInboxUnread]);
 
   const loadAuditLogs = async () => {
     const params = new URLSearchParams();
@@ -440,6 +480,11 @@ const SuperAdminDashboard = () => {
                         {id === 'registrations' && registrations.filter((r) => r.status === 'pending').length > 0 && (
                           <Badge variant="destructive" className="ml-auto h-5 px-1.5 text-xs">
                             {registrations.filter((r) => r.status === 'pending').length}
+                          </Badge>
+                        )}
+                        {id === 'support-chat' && supportInboxUnread > 0 && (
+                          <Badge variant="destructive" className="ml-auto h-5 px-1.5 text-xs">
+                            {supportInboxUnread > 99 ? '99+' : supportInboxUnread}
                           </Badge>
                         )}
                       </SidebarMenuButton>

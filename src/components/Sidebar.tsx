@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '../contexts/AuthContext';
 import { useSchool } from '../contexts/SchoolContext';
+import { useSocket } from '../contexts/SocketContext';
+import { apiService } from '../services/api';
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -28,7 +30,6 @@ import {
   MessageCircle,
   BellRing,
   MessagesSquare,
-  Megaphone,
   ClipboardList,
 } from 'lucide-react';
 import { resolveLogoUrl } from '../services/tenantService';
@@ -84,19 +85,20 @@ const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
   records: [
     ...(hasAccess('records') ? [{ id: 'records', label: 'Records', icon: Search }] : []),
   ],
-  system: [
-    ...(hasAccess('users') ? [{ id: 'users', label: 'Users', icon: UserCog }] : []),
-    ...(hasAccess('settings') || hasAccess('settings-password-only') ? [{ id: 'settings', label: 'Settings', icon: Settings }] : []),
-    ...(hasAccess('audit') ? [{ id: 'audit', label: 'Audit Logs', icon: Shield }] : []),
+  /** Previously sat with System; now placed here (where Settings group was). */
+  announcements: [
+    ...(hasAccess('push-notifications') ? [{ id: 'push-notifications', label: 'Push Notifications', icon: BellRing }] : []),
+    ...(hasAccess('parent-desk') ? [{ id: 'parent-desk', label: 'Parent Desk', icon: MessagesSquare }] : []),
   ],
   ai: [
     ...(hasAccess('ai-assistant') ? [{ id: 'ai-assistant', label: 'AI Assistant', icon: Bot, badge: 'New' }] : []),
     ...(hasAccess('support-chat') ? [{ id: 'support-chat', label: 'Support Chat', icon: MessageCircle }] : []),
   ],
-  notifications: [
-    ...(hasAccess('push-notifications') ? [{ id: 'push-notifications', label: 'Push Notifications', icon: BellRing }] : []),
-    ...(hasAccess('parent-desk') ? [{ id: 'parent-desk', label: 'Parent Desk', icon: MessagesSquare }] : []),
-    ...(hasAccess('teacher-notify') ? [{ id: 'teacher-notify', label: 'Staff announcements', icon: Megaphone }] : []),
+  /** Users, Settings, Audit — always last before footer. */
+  system: [
+    ...(hasAccess('users') ? [{ id: 'users', label: 'Users', icon: UserCog }] : []),
+    ...(hasAccess('settings') || hasAccess('settings-password-only') ? [{ id: 'settings', label: 'Settings', icon: Settings }] : []),
+    ...(hasAccess('audit') ? [{ id: 'audit', label: 'Audit Logs', icon: Shield }] : []),
   ],
 });
 
@@ -105,7 +107,8 @@ const MenuSection: React.FC<{
   label: string;
   activeModule: string;
   setActiveModule: (module: string) => void;
-}> = ({ items, label, activeModule, setActiveModule }) => {
+  itemCounts?: Record<string, number>;
+}> = ({ items, label, activeModule, setActiveModule, itemCounts }) => {
   const { isMobile, setOpenMobile } = useSidebar();
 
   if (items.length === 0) return null;
@@ -117,7 +120,9 @@ const MenuSection: React.FC<{
       </SidebarGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu className="space-y-1">
-          {items.map((item) => (
+          {items.map((item) => {
+            const unread = itemCounts?.[item.id] ?? 0;
+            return (
             <SidebarMenuItem key={item.id} className="flex justify-center">
               <SidebarMenuButton
                 isActive={activeModule === item.id}
@@ -127,22 +132,37 @@ const MenuSection: React.FC<{
                 }}
                 tooltip={item.label}
                 className={cn(
-                  "rounded-xl mx-auto w-[calc(100%-12px)] h-9 text-sidebar-foreground/70 transition-all duration-300 group-data-[collapsible=icon]:w-9 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:mx-0",
+                  "relative rounded-xl mx-auto w-[calc(100%-12px)] h-9 text-sidebar-foreground/70 transition-all duration-300 group-data-[collapsible=icon]:w-9 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:mx-0",
                   activeModule === item.id 
                     ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-lg shadow-sidebar-primary/20" 
                     : "hover:bg-sidebar-accent hover:text-sidebar-foreground"
                 )}
               >
-                <item.icon className="h-[1.1rem] w-[1.1rem] shrink-0 opacity-80 group-data-[active=true]:opacity-100 transition-all duration-300 group-hover/menu-item:scale-110" />
-                <span className="font-bold text-sm group-data-[collapsible=icon]:hidden ml-3">{item.label}</span>
-                {item.badge && ! (activeModule === item.id) && (
+                <span className="relative inline-flex shrink-0">
+                  <item.icon className="h-[1.1rem] w-[1.1rem] opacity-80 group-data-[active=true]:opacity-100 transition-all duration-300 group-hover/menu-item:scale-110" />
+                  {unread > 0 && (
+                    <span className="absolute -right-1.5 -top-1 flex h-[15px] min-w-[15px] items-center justify-center rounded-full bg-destructive px-0.5 text-[9px] font-bold leading-none text-destructive-foreground ring-2 ring-sidebar">
+                      {unread > 99 ? '99' : unread}
+                    </span>
+                  )}
+                </span>
+                <span className="font-bold text-sm group-data-[collapsible=icon]:hidden ml-3 flex min-w-0 flex-1 items-center gap-1.5 text-left">
+                  <span className="truncate">{item.label}</span>
+                  {unread > 0 && (
+                    <span className="shrink-0 rounded-full bg-destructive px-1.5 py-0 text-[10px] font-bold leading-5 text-destructive-foreground">
+                      {unread > 99 ? '99+' : unread}
+                    </span>
+                  )}
+                </span>
+                {item.badge && !(activeModule === item.id) && (
                   <Badge variant="secondary" className="ml-auto text-[9px] px-1.5 py-0 bg-sidebar-primary/20 text-sidebar-primary border-0 group-data-[collapsible=icon]:hidden">
                     {item.badge}
                   </Badge>
                 )}
               </SidebarMenuButton>
             </SidebarMenuItem>
-          ))}
+            );
+          })}
         </SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>
@@ -150,17 +170,62 @@ const MenuSection: React.FC<{
 };
 
 export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveModule }) => {
-  const { logout, hasAccess } = useAuth();
+  const { logout, hasAccess, user } = useAuth();
   const { school } = useSchool();
   const { isMobile, setOpenMobile } = useSidebar();
+  const { socket } = useSocket();
+  const [parentDeskUnread, setParentDeskUnread] = useState(0);
+  const [supportUnread, setSupportUnread] = useState(0);
 
   const menuItems = getMenuItems(hasAccess);
+
+  const refreshCommsBadges = useCallback(async () => {
+    try {
+      if (hasAccess('parent-desk')) {
+        const d = await apiService.get<{ count: number }>('/messages/admin/unread-count');
+        setParentDeskUnread(Number(d?.count ?? 0));
+      } else {
+        setParentDeskUnread(0);
+      }
+      if (hasAccess('support-chat')) {
+        const s = await apiService.get<{ count: number }>('/support-chat/unread-count');
+        setSupportUnread(Number(s?.count ?? 0));
+      } else {
+        setSupportUnread(0);
+      }
+    } catch {
+      setParentDeskUnread(0);
+      setSupportUnread(0);
+    }
+  }, [hasAccess]);
+
+  useEffect(() => {
+    if (!user) return;
+    void refreshCommsBadges();
+    const id = window.setInterval(() => void refreshCommsBadges(), 48000);
+    return () => window.clearInterval(id);
+  }, [user, refreshCommsBadges]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const onTenant = (evt: { entity?: string }) => {
+      const e = String(evt?.entity || '');
+      if (e === 'parent-desk' || e === 'support-chat') void refreshCommsBadges();
+    };
+    const onSupport = () => void refreshCommsBadges();
+    socket.on('tenant-data-changed', onTenant);
+    socket.on('new-support-message', onSupport);
+    return () => {
+      socket.off('tenant-data-changed', onTenant);
+      socket.off('new-support-message', onSupport);
+    };
+  }, [socket, refreshCommsBadges]);
 
   return (
     <Sidebar
       variant="sidebar"
       collapsible="icon"
-      className="border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl overflow-hidden"
+      className="border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl overflow-hidden print:hidden"
     >
       <SidebarHeader className="h-20 flex items-center justify-center border-b border-sidebar-border mb-4 px-2 overflow-hidden">
          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-xl shadow-indigo-500/20 shrink-0 overflow-hidden">
@@ -189,10 +254,22 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
         <MenuSection items={menuItems.teaching} label="Teaching Room" activeModule={activeModule} setActiveModule={setActiveModule} />
         <MenuSection items={menuItems.financial} label="Financial Ops" activeModule={activeModule} setActiveModule={setActiveModule} />
         <MenuSection items={menuItems.records} label="Data Center" activeModule={activeModule} setActiveModule={setActiveModule} />
-        <MenuSection items={menuItems.system} label="System Engine" activeModule={activeModule} setActiveModule={setActiveModule} />
+        <MenuSection
+          items={menuItems.announcements}
+          label="Announcements & parent desk"
+          activeModule={activeModule}
+          setActiveModule={setActiveModule}
+          itemCounts={{ 'parent-desk': parentDeskUnread }}
+        />
         <SidebarSeparator className="bg-sidebar-border mx-4 my-2" />
-        <MenuSection items={menuItems.ai} label="Innovation" activeModule={activeModule} setActiveModule={setActiveModule} />
-        <MenuSection items={menuItems.notifications} label="Notifications" activeModule={activeModule} setActiveModule={setActiveModule} />
+        <MenuSection
+          items={menuItems.ai}
+          label="Innovation"
+          activeModule={activeModule}
+          setActiveModule={setActiveModule}
+          itemCounts={{ 'support-chat': supportUnread }}
+        />
+        <MenuSection items={menuItems.system} label="System" activeModule={activeModule} setActiveModule={setActiveModule} />
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border p-3 space-y-4 bg-sidebar-accent/50">

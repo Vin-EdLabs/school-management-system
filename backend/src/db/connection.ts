@@ -261,6 +261,10 @@ const runMigrations = async () => {
     await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS discount_value DECIMAL(10, 2) DEFAULT 0`).catch(() => { });
     await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS beneficiary_notes TEXT`).catch(() => { });
     await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`).catch(() => { });
+    await client.query(
+      `ALTER TABLE students ADD COLUMN IF NOT EXISTS enrollment_status VARCHAR(50) DEFAULT 'active'`
+    ).catch(() => { });
+    await client.query(`UPDATE students SET enrollment_status = 'active' WHERE enrollment_status IS NULL`).catch(() => { });
     await client.query(`UPDATE students SET class_assigned_id = class_id WHERE class_assigned_id IS NULL AND class_id IS NOT NULL`).catch(() => { });
     await client.query(`ALTER TABLE students ALTER COLUMN passport_photo_url TYPE TEXT`).catch(() => { });
     await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS is_beneficiary BOOLEAN DEFAULT false`).catch(() => { });
@@ -310,6 +314,20 @@ const runMigrations = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(class_id, teacher_id)
       )
+    `).catch(() => { });
+
+    // Per-school extra class levels (dropdown); standard levels are defined in API (DEFAULT_CLASS_LEVELS)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS school_class_levels (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        name VARCHAR(120) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `).catch(() => { });
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS school_class_levels_tenant_name_lower
+      ON school_class_levels (tenant_id, lower(trim(name)))
     `).catch(() => { });
 
     // Create subjects table
@@ -437,6 +455,20 @@ const runMigrations = async () => {
     await client.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS tenant_id INTEGER`).catch(() => { });
     await client.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS payment_date TIMESTAMP`).catch(() => { });
     await client.query(`UPDATE expenses SET payment_date = created_at WHERE payment_date IS NULL AND created_at IS NOT NULL`).catch(() => { });
+    // Legacy DBs may have been created without `title` (payroll and expenses API expect it)
+    await client.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS title VARCHAR(255)`).catch(() => { });
+    await client.query(`
+      UPDATE expenses SET title = LEFT(COALESCE(NULLIF(TRIM(title), ''), description, notes, purpose, 'Expense'), 255)
+      WHERE title IS NULL OR TRIM(COALESCE(title, '')) = ''
+    `).catch(() => { });
+    // Older installs may predate these columns; payroll + finance POST require them
+    await client.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS payee_name VARCHAR(255)`).catch(() => { });
+    await client.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS category VARCHAR(100)`).catch(() => { });
+    await client.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS payment_method VARCHAR(100)`).catch(() => { });
+    await client.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS purpose TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS notes TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS description TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS vendor VARCHAR(255)`).catch(() => { });
 
     // Create student_arrears table for tracking outstanding fees (legacy, kept for migration)
     await client.query(`
@@ -879,6 +911,8 @@ const runMigrations = async () => {
       CREATE INDEX IF NOT EXISTS idx_income_tenant ON income(tenant_id);
       CREATE INDEX IF NOT EXISTS idx_expenses_tenant ON expenses(tenant_id);
       CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant ON audit_logs(tenant_id);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_created ON audit_logs(tenant_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_module ON audit_logs(tenant_id, module);
       CREATE INDEX IF NOT EXISTS idx_student_arrears_tenant ON student_arrears(tenant_id);
       CREATE INDEX IF NOT EXISTS idx_student_arrears_student ON student_arrears(student_id);
       CREATE INDEX IF NOT EXISTS idx_student_arrears_balance_tenant ON student_arrears_balance(tenant_id);
@@ -888,6 +922,15 @@ const runMigrations = async () => {
       CREATE INDEX IF NOT EXISTS idx_payroll_other_staff_tenant ON payroll_other_staff(tenant_id);
       CREATE INDEX IF NOT EXISTS idx_salary_payments_tenant ON salary_payments(tenant_id);
     `).catch(() => { });
+
+    await client.query(`ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS module VARCHAR(120)`).catch(() => { });
+    await client.query(`ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS status VARCHAR(32) NOT NULL DEFAULT 'success'`).catch(() => { });
+    await client.query(`ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS summary TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS user_role VARCHAR(64)`).catch(() => { });
+    await client.query(`UPDATE audit_logs SET status = 'success' WHERE status IS NULL`).catch(() => { });
+
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER NOT NULL DEFAULT 0`).catch(() => { });
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ`).catch(() => { });
 
     // Calendar Events table
     await client.query(`
@@ -954,6 +997,64 @@ const runMigrations = async () => {
     await client.query(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`).catch(() => { });
     await client.query(`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('super-admin', 'administrator', 'finance', 'teacher', 'staff'))`).catch(() => { });
 
+    // Payroll settings (per tenant)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS payroll_settings (
+        tenant_id INTEGER PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+        default_ssnit_percent NUMERIC(8, 4) NOT NULL DEFAULT 5.5,
+        currency VARCHAR(10) NOT NULL DEFAULT 'GHS',
+        payroll_generation_day SMALLINT NOT NULL DEFAULT 1,
+        auto_generate_payroll BOOLEAN NOT NULL DEFAULT false,
+        payslip_footer_text TEXT,
+        payslip_signature_text TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `).catch(() => { });
+
+    await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS ssnit_enabled BOOLEAN NOT NULL DEFAULT true`).catch(() => { });
+    await client.query(`ALTER TABLE payroll_other_staff ADD COLUMN IF NOT EXISTS ssnit_enabled BOOLEAN NOT NULL DEFAULT true`).catch(() => { });
+
+    await client.query(`ALTER TABLE salary_payments ADD COLUMN IF NOT EXISTS gross_salary NUMERIC(12, 2)`).catch(() => { });
+    await client.query(`ALTER TABLE salary_payments ADD COLUMN IF NOT EXISTS ssnit_percent NUMERIC(8, 4)`).catch(() => { });
+    await client.query(`ALTER TABLE salary_payments ADD COLUMN IF NOT EXISTS ssnit_amount NUMERIC(12, 2)`).catch(() => { });
+    await client.query(`ALTER TABLE salary_payments ADD COLUMN IF NOT EXISTS other_deductions NUMERIC(12, 2) NOT NULL DEFAULT 0`).catch(() => { });
+    await client.query(`ALTER TABLE salary_payments ADD COLUMN IF NOT EXISTS allowances NUMERIC(12, 2) NOT NULL DEFAULT 0`).catch(() => { });
+    await client.query(`ALTER TABLE salary_payments ADD COLUMN IF NOT EXISTS net_salary NUMERIC(12, 2)`).catch(() => { });
+    await client.query(`ALTER TABLE salary_payments ADD COLUMN IF NOT EXISTS payroll_notes TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE salary_payments ADD COLUMN IF NOT EXISTS expense_id INTEGER`).catch(() => { });
+    await client.query(`ALTER TABLE salary_payments ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`).catch(() => { });
+    await client.query(
+      `ALTER TABLE salary_payments ADD COLUMN IF NOT EXISTS gross_manual BOOLEAN NOT NULL DEFAULT false`
+    ).catch(() => { });
+
+    await client.query(`
+      DO $$ BEGIN
+        ALTER TABLE salary_payments
+          ADD CONSTRAINT salary_payments_expense_id_fkey
+          FOREIGN KEY (expense_id) REFERENCES expenses(id) ON DELETE SET NULL;
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    `).catch(() => { });
+
+    // Remove duplicate period rows (keeps newest id) so a unique index can be created
+    await client.query(`
+      DELETE FROM salary_payments sp
+      WHERE EXISTS (
+        SELECT 1 FROM salary_payments sp2
+        WHERE sp2.tenant_id = sp.tenant_id
+          AND sp2.payee_type = sp.payee_type
+          AND sp2.payee_id = sp.payee_id
+          AND sp2.month = sp.month
+          AND sp2.year = sp.year
+          AND sp2.id > sp.id
+      )
+    `).catch((e) => console.warn('[migration] salary_payments dedupe:', (e as Error).message));
+
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_salary_payments_period
+      ON salary_payments(tenant_id, payee_type, payee_id, month, year)
+    `).catch((e) => console.warn('[migration] uq_salary_payments_period:', (e as Error).message));
+
     // Migrate legacy student_arrears into student_arrears_balance (student-scoped, no term)
     await client.query(`
       INSERT INTO student_arrears_balance (tenant_id, student_id, amount)
@@ -978,6 +1079,10 @@ const runMigrations = async () => {
       )
     `);
     await client.query(`ALTER TABLE support_messages ALTER COLUMN image_url TYPE TEXT`).catch(() => { });
+    // Super-admin replies were incorrectly inserted with read_at set; school-unread uses read_at on SA rows.
+    await client
+      .query(`UPDATE support_messages SET read_at = NULL WHERE is_from_superadmin = true`)
+      .catch(() => { });
     await client.query(`ALTER TABLE global_chat_messages ADD COLUMN IF NOT EXISTS media_url TEXT`).catch(() => { });
     await client.query(`ALTER TABLE global_chat_messages ALTER COLUMN media_url TYPE TEXT`).catch(() => { });
 

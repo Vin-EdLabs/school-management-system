@@ -31,6 +31,7 @@ import {
   BellRing,
   MessagesSquare,
   ClipboardList,
+  Scale,
 } from 'lucide-react';
 import { resolveLogoUrl } from '../services/tenantService';
 import {
@@ -70,7 +71,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
     ...(hasAccess('teacher-classes') ? [{ id: 'teacher-classes', label: 'My Classes', icon: BookOpen }] : []),
     ...(hasAccess('attendance') ? [{ id: 'attendance', label: 'Attendance', icon: UserCheck }] : []),
     ...(hasAccess('grades') ? [{ id: 'grades', label: 'Grades', icon: Award }] : []),
-    ...(hasAccess('grades') ? [{ id: 'teacher-quizzes', label: 'Learning Quizzes', icon: ClipboardList }] : []),
+    ...(hasAccess('grades') ? [{ id: 'teacher-quizzes', label: 'Online assessments', icon: ClipboardList }] : []),
     ...(hasAccess('teacher-profile') ? [{ id: 'teacher-profile', label: 'My Profile', icon: User }] : []),
     ...(hasAccess('teacher-payment-history') ? [{ id: 'teacher-payment-history', label: 'Payment History', icon: History }] : []),
   ],
@@ -81,6 +82,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
     ...(hasAccess('payroll') ? [{ id: 'payroll', label: 'Payroll', icon: Wallet }] : []),
     ...(hasAccess('reports') ? [{ id: 'reports', label: 'Reports', icon: BarChart3 }] : []),
     ...(hasAccess('print-fee-status') ? [{ id: 'print-fee-status', label: 'Fee Status', icon: FileText }] : []),
+    ...(hasAccess('manual-adjustments') ? [{ id: 'manual-adjustments', label: 'Balance overrides', icon: Scale }] : []),
   ],
   records: [
     ...(hasAccess('records') ? [{ id: 'records', label: 'Records', icon: Search }] : []),

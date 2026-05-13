@@ -119,7 +119,15 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
     if (formData) {
       setFormData({
         ...formData,
-        isBeneficiary: checked
+        isBeneficiary: checked,
+        ...(checked
+          ? {}
+          : {
+              beneficiaryType: '',
+              discountType: 'percentage',
+              discountValue: 0,
+              beneficiaryNotes: formData.beneficiaryNotes,
+            }),
       });
     }
   };

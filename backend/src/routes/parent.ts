@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { query } from '../db/connection.js';
 import { getVapidPublicKey } from '../services/webPushService.js';
 import { resolveTenant, TenantRequest } from '../middleware/tenantResolver.js';
+import { beneficiaryAdjustedFee } from '../utils/beneficiaryFee.js';
 
 const router = express.Router();
 
@@ -771,18 +772,7 @@ router.get('/finance', authenticateParent, async (req: ParentRequest, res) => {
     });
     const totalPaidThisTerm = termPayments.reduce((s: number, p: any) => s + parseFloat(p.amount_paid), 0);
     const baseTermFee = parseFloat(feeStructure?.total_amount || '0');
-    
-    // Calculate discount
-    let discountAmount = 0;
-    if (student?.is_beneficiary) {
-      if (student.discount_type === 'percentage') {
-        discountAmount = (baseTermFee * parseFloat(student.discount_value || '0')) / 100;
-      } else {
-        discountAmount = parseFloat(student.discount_value || '0');
-      }
-    }
-    
-    const termFee = Math.max(0, baseTermFee - discountAmount);
+    const { totalFees: termFee, discountAmount } = beneficiaryAdjustedFee(baseTermFee, student);
     const totalDue = termFee + arrears;
     const balance = totalDue - totalPaidThisTerm;
 

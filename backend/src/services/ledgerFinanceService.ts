@@ -1,4 +1,5 @@
 import { query, getClient } from '../db/connection.js';
+import { beneficiaryAdjustedFee, SQL_BENEFICIARY_TERM_FEE_DEBIT } from '../utils/beneficiaryFee.js';
 import { z } from 'zod';
 
 // Consistent SQL query for calculating a student's cumulative balance.
@@ -125,12 +126,36 @@ export const getStudentSummary = async (tenantId: number, studentId: number) => 
     status = 'credit';
   }
 
+  const settingsRow = await query(
+    'SELECT current_term, current_year FROM school_settings WHERE tenant_id = $1',
+    [validatedTenantId]
+  );
+  const current_term = String(settingsRow.rows[0]?.current_term || '').trim();
+  const current_year = String(settingsRow.rows[0]?.current_year || '').trim();
+
+  let term_arrears = 0;
+  if (current_term) {
+    const arRes = await query(
+      `SELECT amount FROM term_arrears
+       WHERE tenant_id = $1 AND student_id = $2
+         AND (current_term = $3 OR $3 LIKE current_term || '%' OR current_term LIKE $3 || '%')`,
+      [validatedTenantId, validatedStudentId, current_term]
+    );
+    term_arrears = parseFloat(arRes.rows[0]?.amount || '0');
+    if (!Number.isFinite(term_arrears)) term_arrears = 0;
+  }
+
   return {
     total_debit: parseFloat(balanceData.total_debit),
     total_credit: parseFloat(balanceData.total_credit),
     balance,
     status,
     history: ledgerHistoryResult.rows,
+    /** School settings — active academic period */
+    current_term,
+    current_year,
+    /** Carried-forward arrears attributed to the current term (from `term_arrears`; refreshed after ledger changes). */
+    term_arrears,
   };
 };
 
@@ -188,17 +213,7 @@ export const postFeesForClass = async (tenantId: number, classId: number, academ
           [student.id]
         );
         const s = studentDetailsRes.rows[0];
-        let finalFee = feeAmount;
-
-        if (s?.is_beneficiary) {
-          const dType = s.discount_type;
-          const dVal = parseFloat(s.discount_value || '0');
-          if (dType === 'percentage') {
-            finalFee = feeAmount - (feeAmount * dVal / 100);
-          } else if (dType === 'fixed') {
-            finalFee = Math.max(0, feeAmount - dVal);
-          }
-        }
+        const { totalFees: finalFee } = beneficiaryAdjustedFee(feeAmount, s);
 
         await client.query(
           `INSERT INTO student_ledger (tenant_id, student_id, academic_year_id, term_id, description, debit, credit, entry_type)
@@ -286,11 +301,7 @@ export const postFeesForNewTerm = async (tenantId: number, newTermId: number) =>
                 t.id as term_id,
                 'Term Fee - ' || t.name as description,
                 'term_fee' as entry_type,
-                CASE 
-                  WHEN s.is_beneficiary = true AND s.discount_type = 'percentage' THEN fs.total - (fs.total * COALESCE(s.discount_value, 0) / 100)
-                  WHEN s.is_beneficiary = true AND s.discount_type = 'fixed' THEN GREATEST(0, fs.total - COALESCE(s.discount_value, 0))
-                  ELSE fs.total
-                END as debit,
+                (${SQL_BENEFICIARY_TERM_FEE_DEBIT.trim()}) as debit,
                 0 as credit
             FROM students s
             INNER JOIN classes c ON s.class_assigned_id = c.id
@@ -391,6 +402,16 @@ export const postFeesForNewTermWithArrears = async (
       `students_with_balance=${prevBalances.rows.length}`
     );
 
+    const fullWaiverRes = await client.query(
+      `SELECT id FROM students WHERE tenant_id = $1 AND is_beneficiary = true
+       AND (
+         discount_type IS NULL OR TRIM(COALESCE(discount_type::text, '')) = ''
+         OR (LOWER(TRIM(discount_type::text)) = 'percentage' AND COALESCE(discount_value, 0) >= 100)
+       )`,
+      [tid]
+    );
+    const fullWaiverStudentIds = new Set(fullWaiverRes.rows.map((r: { id: number }) => Number(r.id)));
+
     // ── STEP 2: Guard against duplicate arrears ───────────────────────────────
     const existingArrearsRes = await client.query(
       `SELECT student_id FROM student_ledger
@@ -420,6 +441,7 @@ export const postFeesForNewTermWithArrears = async (
       const balance = parseFloat(row.balance);
       const studentId = Number(row.student_id);
       if (balance <= 0) continue;
+      if (fullWaiverStudentIds.has(studentId)) continue;
 
       // 3.1 Update term_arrears (simple view used by Student Balances / receipts)
       // This ensures the "Arrears" label in UI is accurate
@@ -462,11 +484,7 @@ export const postFeesForNewTermWithArrears = async (
        SELECT
          s.tenant_id, s.id, t.academic_year_id, t.id,
          'Term Fee - ' || t.name, 'term_fee', 
-         CASE 
-           WHEN s.is_beneficiary = true AND s.discount_type = 'percentage' THEN fs.total - (fs.total * COALESCE(s.discount_value, 0) / 100)
-           WHEN s.is_beneficiary = true AND s.discount_type = 'fixed' THEN GREATEST(0, fs.total - COALESCE(s.discount_value, 0))
-           ELSE fs.total
-         END, 0
+         (${SQL_BENEFICIARY_TERM_FEE_DEBIT.trim()}), 0
        FROM students s
        INNER JOIN classes c ON s.class_assigned_id = c.id
        INNER JOIN terms t ON t.id = $2 AND t.tenant_id = $1
@@ -708,3 +726,55 @@ export const backfillArrearsForCurrentTerm = async (tenantId: number) => {
     client.release();
   }
 };
+
+export type ManualBalanceOverrideInput = {
+  tenantId: number;
+  studentId: number;
+  academicYearId: number;
+  termId: number;
+  newBalance: number;
+  adjustmentAmount: number;
+  reasonCategory: string;
+  notes: string;
+  documentUrl: string | null;
+  createdByUserId: number;
+  approvedByUserId: number | null;
+  periodLabel: string | null;
+};
+
+/**
+ * Append-only ledger entry for a manual balance correction (audit trail).
+ * Positive adjustment increases amount owing (debit); negative reduces owing (credit).
+ */
+export async function recordManualBalanceOverride(input: ManualBalanceOverrideInput) {
+  const previousBalance = Math.round((input.newBalance - input.adjustmentAmount) * 100) / 100;
+  const desc = `Manual balance override: GH₵${previousBalance.toFixed(2)} → GH₵${input.newBalance.toFixed(2)} (${input.reasonCategory})`;
+  const debit = input.adjustmentAmount > 0 ? input.adjustmentAmount : 0;
+  const credit = input.adjustmentAmount < 0 ? -input.adjustmentAmount : 0;
+
+  const result = await query(
+    `INSERT INTO student_ledger (
+      tenant_id, student_id, academic_year_id, term_id, description, entry_type,
+      debit, credit, adjustment_category, adjustment_notes, supporting_document_url,
+      approved_by_user_id, created_by_user_id, adjustment_amount, period_label
+    ) VALUES ($1, $2, $3, $4, $5, 'manual_adjustment', $6, $7, $8, $9, $10, $11, $12, $13, $14)
+    RETURNING id, created_at, debit, credit, adjustment_amount`,
+    [
+      input.tenantId,
+      input.studentId,
+      input.academicYearId,
+      input.termId,
+      desc,
+      debit,
+      credit,
+      input.reasonCategory,
+      input.notes,
+      input.documentUrl,
+      input.approvedByUserId,
+      input.createdByUserId,
+      input.adjustmentAmount,
+      input.periodLabel,
+    ]
+  );
+  return result.rows[0];
+}

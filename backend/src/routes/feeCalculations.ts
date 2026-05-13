@@ -3,6 +3,7 @@ import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest, requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { calculateFeeBalance } from '../services/financeCalculationService.js';
+import { beneficiaryAdjustedFee } from '../utils/beneficiaryFee.js';
 
 const router = express.Router();
 
@@ -103,22 +104,9 @@ async function computeStudentBalance(
     [tenantId, classId, termMatch, `${termMatch}%`]
   );
   const standardFees = parseFloat(feeRes.rows[0]?.total || '0');
-  let totalFees = standardFees;
-  let discountAmount = 0;
-
-  // 3. Apply Beneficiary Discount
-  if (student?.is_beneficiary) {
-    const discountType = student.discount_type;
-    const discountValue = parseFloat(student.discount_value || '0');
-
-    if (discountType === 'percentage') {
-      discountAmount = (standardFees * discountValue) / 100;
-      totalFees = standardFees - discountAmount;
-    } else if (discountType === 'fixed') {
-      discountAmount = Math.min(standardFees, discountValue);
-      totalFees = Math.max(0, standardFees - discountValue);
-    }
-  }
+  const adjusted = beneficiaryAdjustedFee(standardFees, student);
+  const totalFees = adjusted.totalFees;
+  const discountAmount = adjusted.discountAmount;
 
   // 4. Fetch Payments
   const paidRes = await query(

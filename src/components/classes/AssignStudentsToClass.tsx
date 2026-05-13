@@ -23,7 +23,7 @@ const AssignStudentsToClass = () => {
     }
   };
 
-  const handleAssignStudents = () => {
+  const handleAssignStudents = async () => {
     if (!selectedClass || selectedStudents.length === 0) {
       toast({
         title: "Validation Error",
@@ -33,7 +33,7 @@ const AssignStudentsToClass = () => {
       return;
     }
 
-    const targetClass = classes.find(c => c.id === selectedClass);
+    const targetClass = classes.find((c) => String(c.id) === String(selectedClass));
     if (!targetClass) {
       toast({
         title: "Error",
@@ -43,7 +43,15 @@ const AssignStudentsToClass = () => {
       return;
     }
 
-    const currentStudentsInClass = students.filter(s => s.classAssigned === targetClass.className).length;
+    const classAssignedId = Number.parseInt(String(targetClass.id), 10);
+    if (!Number.isFinite(classAssignedId)) {
+      toast({ title: "Error", description: "Invalid class id", variant: "destructive" });
+      return;
+    }
+
+    const currentStudentsInClass = students.filter(
+      (s) => s.classAssignedId === classAssignedId || s.classAssigned === targetClass.className
+    ).length;
     const newTotal = currentStudentsInClass + selectedStudents.length;
 
     if (targetClass.maxClassSize && newTotal > targetClass.maxClassSize) {
@@ -55,22 +63,34 @@ const AssignStudentsToClass = () => {
       return;
     }
 
-    selectedStudents.forEach(studentId => {
-      updateStudent(studentId, { classAssigned: targetClass.className });
-    });
+    try {
+      for (const studentId of selectedStudents) {
+        await updateStudent(studentId, {
+          classAssigned: targetClass.className,
+          classAssignedId,
+        });
+      }
 
-    toast({
-      title: "Students Assigned Successfully",
-      description: `${selectedStudents.length} students have been assigned to ${targetClass.className}`,
-    });
+      toast({
+        title: "Students Assigned Successfully",
+        description: `${selectedStudents.length} students have been assigned to ${targetClass.className}`,
+      });
 
-    setSelectedStudents([]);
-    setSelectedClass('');
+      setSelectedStudents([]);
+      setSelectedClass('');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Could not save class assignment.";
+      toast({
+        title: "Assignment failed",
+        description: msg,
+        variant: "destructive",
+      });
+    }
   };
 
   const filteredStudents = students.filter(student => {
     if (filterCurrentClass === 'all') return true;
-    if (filterCurrentClass === 'unassigned') return !student.classAssigned;
+    if (filterCurrentClass === 'unassigned') return !student.classAssignedId && !student.classAssigned;
     return student.classAssigned === filterCurrentClass;
   });
 
@@ -105,7 +125,7 @@ const AssignStudentsToClass = () => {
                         const currentCount = getStudentCount(cls.className);
                         const capacity = cls.maxClassSize ? ` (${currentCount}/${cls.maxClassSize})` : ` (${currentCount})`;
                         return (
-                          <SelectItem key={cls.id} value={cls.id}>
+                          <SelectItem key={cls.id} value={String(cls.id)}>
                             {cls.className}{capacity}
                           </SelectItem>
                         );

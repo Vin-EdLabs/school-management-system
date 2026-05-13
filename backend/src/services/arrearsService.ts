@@ -1,4 +1,5 @@
 import { query } from '../db/connection.js';
+import { isFullFeeWaiverStudentRow, sqlBeneficiaryAdjustedAmount } from '../utils/beneficiaryFee.js';
 
 /**
  * Recalculates and updates the term_arrears table for all students in a tenant.
@@ -52,18 +53,30 @@ export async function refreshArrearsForTenant(tenantId: number, overrideTerm?: s
     [tenantId]
   );
 
+  const legacyFeeAmountSql = sqlBeneficiaryAdjustedAmount('fs.amount').trim();
+
   let updatedCount = 0;
   for (const studentRow of studentsRes.rows) {
     const studentId = studentRow.id;
 
+    const beneficiaryRow = await query(
+      `SELECT is_beneficiary, discount_type, discount_value FROM students WHERE id = $1 AND tenant_id = $2`,
+      [studentId, tenantId]
+    );
+    const ben = beneficiaryRow.rows[0];
+    if (isFullFeeWaiverStudentRow(ben)) {
+      await query(
+        `DELETE FROM term_arrears
+         WHERE tenant_id = $1 AND student_id = $2 AND (current_term = $3 OR current_term = $4 OR current_term = $5)`,
+        [tenantId, studentId, fullTerm, current_term, termOnly]
+      );
+      continue;
+    }
+
     // A. Calculate Legacy Arrears (from fee_structures and payments)
     const legacyResult = await query(
       `SELECT term, 
-       CASE 
-         WHEN s.is_beneficiary = true AND s.discount_type = 'percentage' THEN fs.amount - (fs.amount * COALESCE(s.discount_value, 0) / 100)
-         WHEN s.is_beneficiary = true AND s.discount_type = 'fixed' THEN GREATEST(0, fs.amount - COALESCE(s.discount_value, 0))
-         ELSE fs.amount
-       END as amount, 
+       ${legacyFeeAmountSql} as amount, 
        'fee' as type 
        FROM fee_structures fs
        JOIN students s ON s.id = $1
@@ -152,7 +165,15 @@ export async function refreshArrearsForTenant(tenantId: number, overrideTerm?: s
     );
 
     const ledgerArrears = ledgerResult.rows[0]?.arrears ? parseFloat(ledgerResult.rows[0].arrears) : 0;
-    const totalArrears = legacyArrears + ledgerArrears;
+
+    const ledgerHistRes = await query(
+      `SELECT 1 FROM student_ledger
+       WHERE tenant_id = $1 AND student_id = $2 AND entry_type = 'term_fee'
+       LIMIT 1`,
+      [tenantId, studentId]
+    );
+    const useLedgerOnly = ledgerHistRes.rows.length > 0;
+    const totalArrears = useLedgerOnly ? ledgerArrears : legacyArrears;
 
     // 3. Upsert into term_arrears
     if (totalArrears !== 0) {

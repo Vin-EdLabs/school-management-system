@@ -17,6 +17,7 @@ import SettingsModule from './settings/SettingsModule';
 import UsersModule from './users/UsersModule';
 import AuditModule from './audit/AuditModule';
 import PrintFeeStatusModule from './fees/PrintFeeStatusModule';
+import ManualAdjustmentsReport from './finance/ManualAdjustmentsReport';
 import TeacherDashboard from './teacher/TeacherDashboard';
 import TeacherClassesModule from './teacher/TeacherClassesModule';
 import AttendanceModule from './teacher/AttendanceModule';
@@ -114,6 +115,8 @@ const Dashboard = () => {
         return <AdvancedReports />;
       case 'print-fee-status':
         return <PrintFeeStatusModule />;
+      case 'manual-adjustments':
+        return <ManualAdjustmentsReport />;
       case 'users':
         return <UsersModule />;
       case 'settings':

@@ -36,7 +36,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useData } from '../../contexts/DataContext';
+import { useData, type Student } from '../../contexts/DataContext';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
 import { useAudit } from '../../contexts/AuditContext';
 import {
@@ -58,7 +58,6 @@ import { resolveLogoUrl } from '../../services/tenantService';
 import StudentDetailsDialog from './StudentDetailsDialog';
 import EditStudentDialog from './EditStudentDialog';
 import StudentQuickViewSheet from './StudentQuickViewSheet';
-import type { Student } from '../../contexts/DataContext';
 import {
   classBadgeClass,
   exportStudentsToCsv,

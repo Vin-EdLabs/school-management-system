@@ -209,10 +209,30 @@ const mapStudent = (backendStudent: any): Student => ({
   dateOfAdmission: formatDateForInput(backendStudent.date_of_admission),
   notes: backendStudent.notes || '',
   passportPhotoUrl: backendStudent.passport_photo_url || undefined,
-  isBeneficiary: backendStudent.is_beneficiary || false,
+  isBeneficiary: !!backendStudent.is_beneficiary,
   beneficiaryType: backendStudent.beneficiary_type || '',
-  discountType: backendStudent.discount_type || 'percentage',
-  discountValue: backendStudent.discount_value ? parseFloat(backendStudent.discount_value) : 0,
+  ...(() => {
+    const isBen = !!backendStudent.is_beneficiary;
+    const rawType =
+      backendStudent.discount_type != null ? String(backendStudent.discount_type).trim() : '';
+    if (isBen) {
+      if (!rawType) {
+        return { discountType: 'percentage' as const, discountValue: 100 };
+      }
+      const discountType = rawType === 'fixed' ? ('fixed' as const) : ('percentage' as const);
+      const discountValue =
+        backendStudent.discount_value != null && backendStudent.discount_value !== ''
+          ? parseFloat(String(backendStudent.discount_value))
+          : discountType === 'percentage'
+            ? 100
+            : 0;
+      return { discountType, discountValue: Number.isFinite(discountValue) ? discountValue : discountType === 'percentage' ? 100 : 0 };
+    }
+    return {
+      discountType: (backendStudent.discount_type as 'percentage' | 'fixed') || 'percentage',
+      discountValue: backendStudent.discount_value ? parseFloat(String(backendStudent.discount_value)) : 0,
+    };
+  })(),
   beneficiaryNotes: backendStudent.beneficiary_notes || '',
   enrollmentStatus: (backendStudent.enrollment_status || 'active').toLowerCase(),
 });
@@ -235,9 +255,9 @@ const mapStudentToBackend = (student: Partial<Student>): any => ({
   notes: student.notes,
   passport_photo_url: student.passportPhotoUrl,
   is_beneficiary: student.isBeneficiary,
-  beneficiary_type: student.beneficiaryType,
-  discount_type: student.discountType,
-  discount_value: student.discountValue,
+  beneficiary_type: student.isBeneficiary ? student.beneficiaryType ?? null : null,
+  discount_type: student.isBeneficiary ? student.discountType ?? null : null,
+  discount_value: student.isBeneficiary ? student.discountValue ?? null : null,
   beneficiary_notes: student.beneficiaryNotes,
   enrollment_status: student.enrollmentStatus,
 });

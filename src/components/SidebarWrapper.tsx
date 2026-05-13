@@ -28,7 +28,11 @@ const SidebarWrapper: React.FC<SidebarWrapperProps> = ({
             <div className="flex h-full min-h-[3.25rem] sm:min-h-0 items-center gap-2 sm:gap-4 px-3 sm:px-4 md:px-8">
               <SidebarTrigger className="h-10 w-10 sm:h-9 sm:w-9 shrink-0 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-all hover:scale-105 active:scale-95 shadow-sm touch-manipulation" />
               <div className="h-6 w-px bg-slate-200 dark:bg-slate-800 hidden sm:block" />
-              <MainHeader onAiAssistantClick={handleAiAssistantClick} />
+              <MainHeader
+                activeModule={activeModule}
+                setActiveModule={setActiveModule}
+                onAiAssistantClick={handleAiAssistantClick}
+              />
             </div>
           </header>
 

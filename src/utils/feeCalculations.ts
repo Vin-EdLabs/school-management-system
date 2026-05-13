@@ -103,6 +103,30 @@ export function getDashboardCalendarYearForMonthlyChart(academicYearSetting: str
   return String(new Date().getFullYear());
 }
 
+/** Align with backend `beneficiaryAdjustedFee`: missing discount type on a beneficiary = full waiver. */
+function applyBeneficiaryToBaseFee(
+  baseTermFee: number,
+  info?: { isBeneficiary?: boolean; discountType?: string; discountValue?: number }
+): { currentTermFee: number; discountAmount: number } {
+  const base = Number(baseTermFee) || 0;
+  if (!info?.isBeneficiary) return { currentTermFee: base, discountAmount: 0 };
+  const type = String(info.discountType ?? '')
+    .trim()
+    .toLowerCase();
+  const val = Number(info.discountValue) || 0;
+  if (!type) return { currentTermFee: 0, discountAmount: base };
+  if (type === 'percentage') {
+    const pct = Math.min(100, Math.max(0, val));
+    const discountAmount = (base * pct) / 100;
+    return { currentTermFee: Math.max(0, base - discountAmount), discountAmount };
+  }
+  if (type === 'fixed') {
+    const discountAmount = Math.min(base, val);
+    return { currentTermFee: Math.max(0, base - val), discountAmount };
+  }
+  return { currentTermFee: 0, discountAmount: base };
+}
+
 export const calculateStudentFees = async (
   studentId: string,
   currentTerm: string,
@@ -299,17 +323,7 @@ export const calculateStudentFeesSync = (
   const termMatch = (t: string | undefined) => !t || termsMatch(currentTerm, t);
   const matchingFees = (feeStructures || []).filter((fee: any) => classMatch(fee) && termMatch(fee.term));
   const baseTermFee = matchingFees.reduce((sum: number, f: any) => sum + (parseFloat(f.amount) || 0), 0);
-  
-  // Apply beneficiary discount
-  let currentTermFee = baseTermFee;
-  if (studentBeneficiaryInfo?.isBeneficiary) {
-    const { discountType, discountValue = 0 } = studentBeneficiaryInfo;
-    if (discountType === 'percentage') {
-      currentTermFee = baseTermFee - (baseTermFee * (discountValue / 100));
-    } else if (discountType === 'fixed') {
-      currentTermFee = Math.max(0, baseTermFee - discountValue);
-    }
-  }
+  const { currentTermFee } = applyBeneficiaryToBaseFee(baseTermFee, studentBeneficiaryInfo);
 
   const previousArrears = (arrearsBalances && arrearsBalances[studentId]) ? arrearsBalances[studentId] : 0;
   const totalPaid = (payments || [])

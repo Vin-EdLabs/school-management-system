@@ -7,6 +7,7 @@ import { getIO } from '../socket.js';
 import { postFeesForClass } from '../services/ledgerFinanceService.js';
 import { writeAuditLog } from '../services/auditService.js';
 import { getClientIp } from '../utils/clientIp.js';
+import { sqlBeneficiaryAdjustedAmount } from '../utils/beneficiaryFee.js';
 
 const router = express.Router();
 
@@ -26,6 +27,9 @@ const splitTermAndYear = (termRaw: string, fallbackYear?: string): { termName: s
   const termName = yearMatch ? raw.replace(/\s+(19|20)\d{2}$/, '').trim() : raw;
   return { termName, yearName };
 };
+
+/** Matches ledger term_fee recalculation when class fee totals change (param $4 = standard fee). */
+const LEDGER_DEBIT_FROM_STANDARD_FEE = sqlBeneficiaryAdjustedAmount('$4').trim();
 
 router.use(authenticate);
 router.use(requireTenant);
@@ -368,11 +372,7 @@ router.put('/:id', requireRole('super-admin', 'administrator', 'finance'), async
               );
               await query(
                 `UPDATE student_ledger AS sl
-                 SET debit = CASE
-                   WHEN s.is_beneficiary = true AND s.discount_type = 'percentage' THEN $4::numeric - ($4::numeric * COALESCE(s.discount_value, 0) / 100)
-                   WHEN s.is_beneficiary = true AND s.discount_type = 'fixed' THEN GREATEST(0, $4::numeric - COALESCE(s.discount_value, 0))
-                   ELSE $4::numeric
-                 END
+                 SET debit = ${LEDGER_DEBIT_FROM_STANDARD_FEE}
                  FROM students AS s
                  WHERE sl.student_id = s.id
                    AND sl.tenant_id = $1

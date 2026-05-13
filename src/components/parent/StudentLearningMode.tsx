@@ -16,10 +16,16 @@ type SubjectKey = 'maths' | 'science' | 'english' | 'social' | 'rme' | 'french' 
 type QuizQuestion = {
   id: number;
   questionText: string;
+  questionType?: 'mcq' | 'true_false';
   options: { a: string; b: string; c: string; d: string };
   correctOption: 'a' | 'b' | 'c' | 'd';
   marks?: number;
 };
+
+function visibleOptions(q: QuizQuestion): Array<'a' | 'b' | 'c' | 'd'> {
+  if (q.questionType === 'true_false') return ['a', 'b'];
+  return (['a', 'b', 'c', 'd'] as const).filter((k) => String(q.options[k] ?? '').trim().length > 0) as Array<'a' | 'b' | 'c' | 'd'>;
+}
 
 type RecentSession = {
   id: number;
@@ -166,7 +172,10 @@ export default function StudentLearningMode({
         `/student/questions?class=${classLevel}&subject=${subject}&term=1&count=5`,
         token
       );
-      const list = Array.isArray(data.questions) ? data.questions : [];
+      const list = (Array.isArray(data.questions) ? data.questions : []).map((raw: any) => ({
+        ...raw,
+        questionType: raw.questionType === 'true_false' || raw.question_type === 'true_false' ? 'true_false' as const : 'mcq' as const,
+      }));
       if (!list.length) throw new Error('No questions yet for this subject.');
       setActiveSource('daily');
       setActiveTeacherQuizId(null);
@@ -187,7 +196,10 @@ export default function StudentLearningMode({
     setLoading(true);
     try {
       const data = await apiFetch(`/student/teacher-quiz/${quizId}/questions`, token);
-      const list = Array.isArray(data.questions) ? data.questions : [];
+      const list = (Array.isArray(data.questions) ? data.questions : []).map((raw: any) => ({
+        ...raw,
+        questionType: raw.questionType === 'true_false' || raw.question_type === 'true_false' ? 'true_false' as const : 'mcq' as const,
+      }));
       if (!list.length) throw new Error('No questions found in this teacher quiz.');
       setActiveSource('teacher');
       setActiveTeacherQuizId(quizId);
@@ -208,7 +220,10 @@ export default function StudentLearningMode({
     setLoading(true);
     try {
       const data = await apiFetch(`/student/teacher-quiz/${quizId}/questions`, token);
-      const list = Array.isArray(data.questions) ? data.questions : [];
+      const list = (Array.isArray(data.questions) ? data.questions : []).map((raw: any) => ({
+        ...raw,
+        questionType: raw.questionType === 'true_false' || raw.question_type === 'true_false' ? 'true_false' as const : 'mcq' as const,
+      }));
       if (!list.length) throw new Error('No questions found in this teacher quiz.');
       setActiveSource('teacher');
       setActiveTeacherQuizId(quizId);
@@ -396,14 +411,14 @@ export default function StudentLearningMode({
 
             {pendingTeacherQuiz && (
               <div className="rounded-3xl border border-rose-200 bg-gradient-to-r from-rose-50 to-orange-50 p-4 shadow-sm">
-                <p className="text-sm font-semibold text-rose-900">📋 New Quiz from {pendingTeacherQuiz.teacher_name}</p>
+                <p className="text-sm font-semibold text-rose-900">📋 New online assessment from {pendingTeacherQuiz.teacher_name}</p>
                 <p className="text-sm text-rose-700 mt-1 font-medium">{pendingTeacherQuiz.title}</p>
                 <p className="text-xs text-rose-600 mt-0.5">Due {pendingTeacherQuiz.due_date || 'soon'}</p>
                 <button
                   onClick={() => startTeacherQuiz(Number(pendingTeacherQuiz.id), normalizeSubject(pendingTeacherQuiz.subject) as SubjectKey)}
                   className="mt-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm px-4 py-2 font-semibold"
                 >
-                  Start Quiz →
+                  Start assessment →
                 </button>
               </div>
             )}
@@ -411,7 +426,7 @@ export default function StudentLearningMode({
             {visibleTeacherQuizzes.length > 0 && (
               <div className="rounded-3xl bg-white/80 backdrop-blur border border-white p-4 space-y-2 shadow-sm">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold text-slate-800">📝 Teacher Quizzes</p>
+                  <p className="text-sm font-semibold text-slate-800">📝 Teacher assessments</p>
                   <button
                     type="button"
                     onClick={() => loadHome().catch(() => undefined)}
@@ -488,7 +503,7 @@ export default function StudentLearningMode({
               )}
             </div>
             <div className="space-y-2.5">
-              {(['a', 'b', 'c', 'd'] as const).map((opt) => {
+              {visibleOptions(q).map((opt) => {
                 const isSelected = selected === opt;
                 const isCorrect = screen === 'review' ? q.correctOption === opt : false;
                 const isWrongSelected = false;

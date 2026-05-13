@@ -1,11 +1,26 @@
 import express, { Response } from 'express';
-import { getClient } from '../db/connection.js';
-import { getStudentSummary, postFeesForClass, recordPayment, postFeesForNewTerm, postFeesForNewTermWithArrears, backfillArrearsForCurrentTerm } from '../services/ledgerFinanceService.js';
-import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
+import { getClient, query } from '../db/connection.js';
+import {
+  getStudentSummary,
+  postFeesForClass,
+  recordPayment,
+  postFeesForNewTerm,
+  postFeesForNewTermWithArrears,
+  backfillArrearsForCurrentTerm,
+  resolveLedgerTermFromSettings,
+  recordManualBalanceOverride,
+} from '../services/ledgerFinanceService.js';
+import { authenticate, requireTenant, AuthRequest, requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { z } from 'zod';
 import { getIO } from '../socket.js';
 import { sendPushToStudentParents } from '../services/webPushService.js';
+import multer from 'multer';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { writeAuditLog } from '../services/auditService.js';
+import { getClientIp } from '../utils/clientIp.js';
 
 const router = express.Router();
 
@@ -27,6 +42,83 @@ function getTenantId(req: AuthRequest): number {
   if (id == null) throw new Error('Tenant context required');
   return id;
 }
+
+const financeBalanceOverrideRoles = requireRole('super-admin', 'administrator', 'finance');
+
+const OVERRIDE_REASONS = z.enum([
+  'wrong_arrears',
+  'payment_not_captured',
+  'fee_waiver',
+  'system_error',
+  'other',
+]);
+
+function roundMoney(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/** Parse ledger description for before/after balances (legacy rows may only list the new balance after "→"). */
+function parseManualOverrideBalances(
+  description: string | null | undefined,
+  adjustmentAmount: unknown,
+  debit: unknown,
+  credit: unknown
+): { balance_before: number | null; balance_after: number | null } {
+  const adj =
+    adjustmentAmount != null && adjustmentAmount !== ''
+      ? Number(adjustmentAmount)
+      : Number(debit || 0) - Number(credit || 0);
+  const desc = String(description || '');
+  const paired = desc.match(/GH₵\s*([\d,.]+)\s*→\s*GH₵\s*([\d,.]+)/);
+  if (paired) {
+    const before = parseFloat(paired[1].replace(/,/g, ''));
+    const after = parseFloat(paired[2].replace(/,/g, ''));
+    if (Number.isFinite(before) && Number.isFinite(after)) {
+      return { balance_before: before, balance_after: after };
+    }
+  }
+  const legacy = desc.match(/→\s*GH₵\s*([\d,.]+)/);
+  if (legacy) {
+    const after = parseFloat(legacy[1].replace(/,/g, ''));
+    if (Number.isFinite(after) && Number.isFinite(adj)) {
+      return { balance_after: after, balance_before: roundMoney(after - adj) };
+    }
+  }
+  return { balance_before: null, balance_after: null };
+}
+
+/** GET /api/finance/student-override-search?q= — find students for manual balance override UI */
+router.get('/student-override-search', financeBalanceOverrideRoles, async (req: AuthRequest, res: Response) => {
+  try {
+    const tenantId = getTenantId(req);
+    const q = String(req.query.q || '').trim();
+    if (q.length < 1) {
+      return res.status(400).json({ error: 'Enter a search term (student ID, admission no., or name).' });
+    }
+    const pattern = `%${q.replace(/%/g, '\\%').replace(/_/g, '\\_')}%`;
+    const result = await query(
+      `SELECT s.id, s.first_name, s.last_name, s.student_id, s.admission_number, c.class_name
+       FROM students s
+       LEFT JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
+       WHERE s.tenant_id = $1
+         AND (
+           s.student_id ILIKE $2
+           OR s.admission_number ILIKE $2
+           OR CAST(s.id AS text) = $3
+           OR (s.first_name || ' ' || s.last_name) ILIKE $2
+           OR s.first_name ILIKE $2
+           OR s.last_name ILIKE $2
+         )
+       ORDER BY s.last_name, s.first_name
+       LIMIT 30`,
+      [tenantId, pattern, q]
+    );
+    return res.json({ matches: result.rows });
+  } catch (e: any) {
+    console.error('student-override-search:', e);
+    return res.status(500).json({ error: 'Student search failed.' });
+  }
+});
 
 // GET /api/finance/student/:id/summary
 router.get('/student/:id/summary', async (req: AuthRequest, res: Response) => {
@@ -409,5 +501,239 @@ router.post('/clear-all-payments', async (req: AuthRequest, res: Response) => {
     client.release();
   }
 });
+
+const __financeFilename = fileURLToPath(import.meta.url);
+const __financeDirname = path.dirname(__financeFilename);
+const FINANCE_ADJUST_UPLOAD_DIR = path.join(__financeDirname, '../../uploads/finance-adjustments');
+const manualBalanceUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+
+/** GET /api/finance/manual-adjustments — audited report */
+router.get('/manual-adjustments', financeBalanceOverrideRoles, async (req: AuthRequest, res: Response) => {
+  try {
+    const tenantId = getTenantId(req);
+    const schema = z.object({
+      from: z.string().optional(),
+      to: z.string().optional(),
+      studentId: z.coerce.number().int().optional(),
+      createdBy: z.coerce.number().int().optional(),
+      minAmount: z.coerce.number().optional(),
+      maxAmount: z.coerce.number().optional(),
+    });
+    const q = schema.parse(req.query);
+
+    const params: unknown[] = [tenantId];
+    let p = 2;
+    let where = `sl.tenant_id = $1 AND sl.entry_type = 'manual_adjustment'`;
+
+    if (q.from) {
+      where += ` AND sl.created_at >= $${p}::timestamptz`;
+      params.push(q.from);
+      p++;
+    }
+    if (q.to) {
+      where += ` AND sl.created_at <= $${p}::timestamptz`;
+      params.push(q.to);
+      p++;
+    }
+    if (q.studentId) {
+      where += ` AND sl.student_id = $${p}`;
+      params.push(q.studentId);
+      p++;
+    }
+    if (q.createdBy) {
+      where += ` AND sl.created_by_user_id = $${p}`;
+      params.push(q.createdBy);
+      p++;
+    }
+    if (q.minAmount != null && !Number.isNaN(q.minAmount)) {
+      where += ` AND ABS(COALESCE(sl.adjustment_amount, sl.debit - sl.credit)) >= $${p}`;
+      params.push(q.minAmount);
+      p++;
+    }
+    if (q.maxAmount != null && !Number.isNaN(q.maxAmount)) {
+      where += ` AND ABS(COALESCE(sl.adjustment_amount, sl.debit - sl.credit)) <= $${p}`;
+      params.push(q.maxAmount);
+      p++;
+    }
+
+    const rows = await query(
+      `SELECT sl.id, sl.student_id, sl.created_at, sl.description, sl.debit, sl.credit, sl.adjustment_amount,
+              sl.adjustment_category, sl.adjustment_notes, sl.supporting_document_url,
+              sl.approved_by_user_id, sl.created_by_user_id, sl.period_label,
+              s.first_name, s.last_name, s.student_id AS school_student_id,
+              cu.username AS created_by_username, cu.full_name AS created_by_full_name,
+              au.username AS approved_by_username, au.full_name AS approved_by_full_name
+       FROM student_ledger sl
+       INNER JOIN students s ON s.id = sl.student_id AND s.tenant_id = sl.tenant_id
+       LEFT JOIN users cu ON cu.id = sl.created_by_user_id
+       LEFT JOIN users au ON au.id = sl.approved_by_user_id
+       WHERE ${where}
+       ORDER BY sl.created_at DESC
+       LIMIT 500`,
+      params
+    );
+    const adjustments = rows.rows.map((r: Record<string, unknown>) => {
+      const { balance_before, balance_after } = parseManualOverrideBalances(
+        r.description as string,
+        r.adjustment_amount,
+        r.debit,
+        r.credit
+      );
+      const full = (r.created_by_full_name as string | null)?.trim();
+      const user = (r.created_by_username as string | null)?.trim();
+      const recorded_by_display =
+        full && user && full.toLowerCase() !== user.toLowerCase() ? `${full} (${user})` : full || user || null;
+      return { ...r, balance_before, balance_after, recorded_by_display };
+    });
+    return res.json({ adjustments });
+  } catch (e: any) {
+    if (e instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Invalid query filters.', details: e.errors });
+    }
+    console.error('manual-adjustments report:', e);
+    return res.status(500).json({ error: 'Failed to load manual adjustments.' });
+  }
+});
+
+/**
+ * POST /api/finance/student/:id/manual-balance-override
+ * multipart: newBalance, reasonCategory, notes, document?
+ * Period is always the active term from School Settings (no term picker).
+ */
+router.post(
+  '/student/:id/manual-balance-override',
+  financeBalanceOverrideRoles,
+  manualBalanceUpload.single('document'),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const tenantId = getTenantId(req);
+      const studentId = parseInt(req.params.id, 10);
+      if (Number.isNaN(studentId)) {
+        return res.status(400).json({ error: 'Invalid student id.' });
+      }
+
+      const bodySchema = z.object({
+        newBalance: z.coerce.number().finite(),
+        reasonCategory: OVERRIDE_REASONS,
+        notes: z.string().trim().min(5, 'Notes are required (at least 5 characters).'),
+      });
+
+      const parsed = bodySchema.safeParse({
+        newBalance: req.body.newBalance,
+        reasonCategory: req.body.reasonCategory,
+        notes: req.body.notes,
+      });
+      if (!parsed.success) {
+        return res.status(400).json({ error: parsed.error.flatten().fieldErrors });
+      }
+      const { newBalance, reasonCategory, notes } = parsed.data;
+
+      const stu = await query('SELECT id FROM students WHERE id = $1 AND tenant_id = $2', [studentId, tenantId]);
+      if (stu.rows.length === 0) {
+        return res.status(404).json({ error: 'Student not found.' });
+      }
+
+      const summary = await getStudentSummary(tenantId, studentId);
+      const currentBalance = roundMoney(Number(summary.balance));
+      const targetBalance = roundMoney(newBalance);
+      const adjustmentAmount = roundMoney(targetBalance - currentBalance);
+
+      if (adjustmentAmount === 0) {
+        return res.status(400).json({ error: 'New balance matches current balance. No adjustment needed.' });
+      }
+
+      let academicYearId: number;
+      let termId: number;
+      let periodLabel: string | null = null;
+
+      const settings = await query(
+        'SELECT current_term, current_year FROM school_settings WHERE tenant_id = $1',
+        [tenantId]
+      );
+      const ct = settings.rows[0]?.current_term;
+      const cy = settings.rows[0]?.current_year;
+      if (!ct || !cy) {
+        return res.status(400).json({ error: 'Set the active term and year in School Settings before recording a balance override.' });
+      }
+      const resolved = await resolveLedgerTermFromSettings(tenantId, String(cy), String(ct));
+      if (!resolved) {
+        return res.status(400).json({ error: 'Could not resolve the active term to a ledger term. Check Settings → academic year and term names.' });
+      }
+      academicYearId = resolved.academicYearId;
+      termId = resolved.termId;
+      periodLabel = `${ct} ${cy}`.trim();
+
+      let documentUrl: string | null = null;
+      if (req.file?.buffer?.length) {
+        await fs.mkdir(FINANCE_ADJUST_UPLOAD_DIR, { recursive: true });
+        const ext = path.extname(req.file.originalname || '').slice(0, 8) || '.bin';
+        const safe = `${tenantId}-${studentId}-${Date.now()}${ext}`;
+        const diskPath = path.join(FINANCE_ADJUST_UPLOAD_DIR, safe);
+        await fs.writeFile(diskPath, req.file.buffer);
+        documentUrl = `/uploads/finance-adjustments/${safe}`;
+      }
+
+      const row = await recordManualBalanceOverride({
+        tenantId,
+        studentId,
+        academicYearId,
+        termId,
+        newBalance: targetBalance,
+        adjustmentAmount,
+        reasonCategory,
+        notes,
+        documentUrl,
+        createdByUserId: req.user!.id,
+        approvedByUserId: null,
+        periodLabel,
+      });
+
+      await writeAuditLog({
+        tenantId,
+        userId: req.user!.id,
+        userRole: req.user!.role,
+        action: 'MANUAL_BALANCE_OVERRIDE',
+        entityType: 'STUDENT',
+        entityId: studentId,
+        module: 'finance',
+        status: 'success',
+        summary: `Manual balance override GH₵${currentBalance.toFixed(2)} → GH₵${targetBalance.toFixed(2)} (adj ${adjustmentAmount.toFixed(2)})`,
+        details: {
+          ledgerEntryId: row.id,
+          reasonCategory,
+          adjustmentAmount,
+          approvedByUserId: null,
+          periodLabel,
+          hasDocument: !!documentUrl,
+        },
+        ipAddress: getClientIp(req),
+        userAgent: req.headers['user-agent'] as string | undefined,
+      });
+
+      (async () => {
+        try {
+          const { refreshArrearsForTenant } = await import('../services/arrearsService.js');
+          await refreshArrearsForTenant(tenantId);
+          emitTenantDataChanged(tenantId, 'finance-arrears', 'updated');
+        } catch (e) {
+          console.error('Arrears refresh after manual override:', e);
+        }
+      })();
+
+      emitTenantDataChanged(tenantId, 'finance-ledger', 'updated');
+
+      const nextSummary = await getStudentSummary(tenantId, studentId);
+      return res.status(201).json({
+        ledgerEntry: row,
+        previousBalance: currentBalance,
+        newBalance: roundMoney(Number(nextSummary.balance)),
+        adjustmentAmount,
+      });
+    } catch (e: any) {
+      console.error('manual-balance-override:', e);
+      return res.status(500).json({ error: e.message || 'Failed to apply manual balance override.' });
+    }
+  }
+);
 
 export default router;

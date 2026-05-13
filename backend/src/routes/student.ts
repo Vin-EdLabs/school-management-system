@@ -45,6 +45,162 @@ function isElevatedQuizUser(u: { role?: string } | undefined): boolean {
   return r === 'administrator' || r === 'finance' || r === 'super-admin' || r === 'superadmin';
 }
 
+type ParsedQuizQuestion = {
+  questionText: string;
+  optionA: string;
+  optionB: string;
+  optionC: string;
+  optionD: string;
+  correctOption: string;
+  marks: number;
+  questionType: 'mcq' | 'true_false';
+};
+
+function parseQuestionType(q: { question_type?: string; questionType?: string } | null | undefined): 'mcq' | 'true_false' {
+  const t = String(q?.question_type || q?.questionType || 'mcq').toLowerCase();
+  return t === 'true_false' || t === 'tf' ? 'true_false' : 'mcq';
+}
+
+function normalizeTeacherQuizQuestionInput(q: any): ParsedQuizQuestion | null {
+  const questionType = parseQuestionType(q);
+  const questionText = String(q?.question_text || q?.questionText || '').trim();
+  const marks = Math.max(1, Number(q?.marks || 1));
+  let optionA = String(q?.option_a || q?.optionA || '').trim();
+  let optionB = String(q?.option_b || q?.optionB || '').trim();
+  let optionC = String(q?.option_c || q?.optionC || '').trim();
+  let optionD = String(q?.option_d || q?.optionD || '').trim();
+  const correctRaw = String(q?.correct_option || q?.correctOption || '').trim().toLowerCase();
+  if (!questionText) return null;
+  if (questionType === 'true_false') {
+    optionA = optionA || 'True';
+    optionB = optionB || 'False';
+    optionC = '';
+    optionD = '';
+    if (!['a', 'b'].includes(correctRaw)) return null;
+    return { questionText, optionA, optionB, optionC, optionD, correctOption: correctRaw, marks, questionType };
+  }
+  if (!optionA || !optionB || !optionC || !optionD || !['a', 'b', 'c', 'd'].includes(correctRaw)) return null;
+  return { questionText, optionA, optionB, optionC, optionD, correctOption: correctRaw, marks, questionType: 'mcq' };
+}
+
+async function notifyAssessmentPublished(
+  tenantId: number,
+  classId: number,
+  teacherName: string,
+  title: string,
+  subject: string,
+  dueDate: string | null
+) {
+  try {
+    const io = getIO();
+    io.to(`tenant:${tenantId}`).emit('tenant-data-changed', {
+      tenantId,
+      entity: 'learning-teacher-quiz',
+      action: 'published',
+      classId,
+      title,
+      at: Date.now(),
+    });
+  } catch {
+    /* ignore realtime failures */
+  }
+  const subjectLabel = String(subject || '').toUpperCase();
+  const dueLine = dueDate ? ` Due ${dueDate}.` : '';
+  void sendPushToClassParents(tenantId, classId, {
+    title: 'New online assessment',
+    body: `${teacherName} posted “${title}” (${subjectLabel}) for your child’s class.${dueLine} Open the parent portal to complete it.`,
+    url: `/portal/${tenantId}`,
+  }).catch((err) => console.error('[push] notify parents new assessment:', err));
+}
+
+async function insertParsedQuestionsForQuiz(tenantId: number, quizId: number, list: ParsedQuizQuestion[]) {
+  for (const p of list) {
+    await query(
+      `INSERT INTO learning_teacher_quiz_questions
+       (tenant_id, teacher_quiz_id, question_text, option_a, option_b, option_c, option_d, correct_option, marks, question_type)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [
+        tenantId,
+        quizId,
+        p.questionText,
+        p.optionA,
+        p.optionB,
+        p.optionC,
+        p.optionD,
+        p.correctOption,
+        p.marks,
+        p.questionType,
+      ]
+    );
+  }
+}
+
+async function buildQuestionListFromBody(
+  tenantId: number,
+  teacherUserId: number,
+  questions: any[],
+  bankQuestionIds: number[]
+): Promise<{ list: ParsedQuizQuestion[]; error?: string }> {
+  const list: ParsedQuizQuestion[] = [];
+  const seenBank = new Set<number>();
+  for (const bid of bankQuestionIds) {
+    if (seenBank.has(bid)) continue;
+    seenBank.add(bid);
+    const row = await query(
+      `SELECT question_text, option_a, option_b, option_c, option_d, correct_option, marks, question_type
+       FROM learning_teacher_question_bank
+       WHERE id = $1 AND tenant_id = $2 AND teacher_user_id = $3`,
+      [bid, tenantId, teacherUserId]
+    );
+    const b = row.rows[0];
+    if (!b) return { list: [], error: 'One or more bank questions were not found or do not belong to you.' };
+    const parsed = normalizeTeacherQuizQuestionInput({
+      question_text: b.question_text,
+      option_a: b.option_a,
+      option_b: b.option_b,
+      option_c: b.option_c,
+      option_d: b.option_d,
+      correct_option: b.correct_option,
+      marks: b.marks,
+      question_type: b.question_type,
+    });
+    if (parsed) list.push(parsed);
+  }
+  for (const q of questions) {
+    const parsed = normalizeTeacherQuizQuestionInput(q);
+    if (parsed) list.push(parsed);
+  }
+  return { list };
+}
+
+async function getTeacherQuizQuestionCount(tenantId: number, quizId: number): Promise<number> {
+  const c = await query(
+    `SELECT COUNT(*)::int AS n FROM learning_teacher_quiz_questions WHERE tenant_id = $1 AND teacher_quiz_id = $2`,
+    [tenantId, quizId]
+  );
+  return Number(c.rows[0]?.n || 0);
+}
+
+async function getTeacherQuizMeta(tenantId: number, quizId: number) {
+  const r = await query(
+    `SELECT id, title, subject, class_id, due_date, teacher_name, teacher_user_id, is_published
+     FROM learning_teacher_quizzes WHERE id = $1 AND tenant_id = $2`,
+    [quizId, tenantId]
+  );
+  return r.rows[0] as
+    | {
+        id: number;
+        title: string;
+        subject: string;
+        class_id: number;
+        due_date: string | null;
+        teacher_name: string;
+        teacher_user_id: number;
+        is_published: boolean;
+      }
+    | undefined;
+}
+
 async function getTeacherScopedClassIds(tenantId: number, userId: number, teacherId: string | null | undefined) {
   const ids = new Set<number>();
   if (!teacherId) return ids;
@@ -429,7 +585,7 @@ router.get('/teacher-quiz/:id/questions', authenticateParent, async (req: Parent
     if (!quizRes.rows[0]) return res.status(404).json({ error: 'Quiz not found' });
     const rows = await query(
       `SELECT id, question_text, option_a, option_b, option_c, option_d, correct_option
-            , marks
+            , marks, COALESCE(question_type, 'mcq') AS question_type
        FROM learning_teacher_quiz_questions
        WHERE teacher_quiz_id = $1 AND tenant_id = $2
        ORDER BY id ASC`,
@@ -440,6 +596,7 @@ router.get('/teacher-quiz/:id/questions', authenticateParent, async (req: Parent
       questions: rows.rows.map((q: any) => ({
         id: q.id,
         questionText: q.question_text,
+        questionType: q.question_type === 'true_false' ? 'true_false' : 'mcq',
         options: { a: q.option_a, b: q.option_b, c: q.option_c, d: q.option_d },
         correctOption: q.correct_option,
         marks: Number(q.marks || 1),
@@ -464,13 +621,27 @@ router.post('/teacher-quizzes', authenticate, requireTenant, requireRole('teache
     const subject = normalizeSubject(String(req.body?.subject || ''));
     const dueDate = req.body?.due_date ? String(req.body.due_date).slice(0, 10) : null;
     const questions = Array.isArray(req.body?.questions) ? req.body.questions : [];
-    if (!title || !subject || !Number.isFinite(classId) || questions.length === 0) {
-      return res.status(400).json({ error: 'title, class_id, subject and questions are required' });
+    const bankIds = Array.isArray(req.body?.bank_question_ids)
+      ? req.body.bank_question_ids.map((x: any) => Number(x)).filter((n: number) => Number.isFinite(n))
+      : [];
+    const isPublished = req.body?.is_published === true || req.body?.is_published === 'true';
+
+    if (!title || !subject || !Number.isFinite(classId)) {
+      return res.status(400).json({ error: 'title, class_id, and subject are required' });
     }
+
+    const built = await buildQuestionListFromBody(tenantId, req.user!.id, questions, bankIds);
+    if (built.error) return res.status(400).json({ error: built.error });
+    if (isPublished && built.list.length === 0) {
+      return res.status(400).json({
+        error: 'Add at least one valid question (from your bank or custom) before publishing.',
+      });
+    }
+
     if (actsAsInstructor(req.user)) {
       const allowedClassIds = await getTeacherScopedClassIds(tenantId, req.user!.id, req.user!.teacherId);
       if (!allowedClassIds.has(classId)) {
-        return res.status(403).json({ error: 'You can only publish quizzes for your assigned class(es).' });
+        return res.status(403).json({ error: 'You can only publish assessments for your assigned class(es).' });
       }
       const teacherRow = await query(
         'SELECT subjects_taught FROM teachers WHERE tenant_id = $1 AND id = $2::int',
@@ -478,40 +649,26 @@ router.post('/teacher-quizzes', authenticate, requireTenant, requireRole('teache
       ).catch(() => ({ rows: [] as any[] }));
       const taught = Array.isArray(teacherRow.rows[0]?.subjects_taught) ? teacherRow.rows[0].subjects_taught.map((s: string) => normalizeSubject(s)) : [];
       if (taught.length > 0 && !taught.includes(subject)) {
-        return res.status(403).json({ error: 'You can only publish quizzes for your assigned subject(s).' });
+        return res.status(403).json({ error: 'You can only publish assessments for your assigned subject(s).' });
       }
     }
 
     const quizRes = await query(
       `INSERT INTO learning_teacher_quizzes
        (tenant_id, teacher_user_id, teacher_name, title, class_id, subject, due_date, is_published)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,true)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
        RETURNING id`,
-      [tenantId, req.user!.id, teacherName, title, classId, subject, dueDate]
+      [tenantId, req.user!.id, teacherName, title, classId, subject, dueDate, isPublished]
     );
     const quizId = Number(quizRes.rows[0].id);
-    for (const q of questions) {
-      const questionText = String(q?.question_text || q?.questionText || '').trim();
-      const optionA = String(q?.option_a || q?.optionA || '').trim();
-      const optionB = String(q?.option_b || q?.optionB || '').trim();
-      const optionC = String(q?.option_c || q?.optionC || '').trim();
-      const optionD = String(q?.option_d || q?.optionD || '').trim();
-      const correctOption = String(q?.correct_option || q?.correctOption || '').trim().toLowerCase();
-      const marks = Math.max(1, Number(q?.marks || 1));
-      if (!questionText || !optionA || !optionB || !optionC || !optionD || !['a', 'b', 'c', 'd'].includes(correctOption)) continue;
-      await query(
-        `INSERT INTO learning_teacher_quiz_questions
-         (tenant_id, teacher_quiz_id, question_text, option_a, option_b, option_c, option_d, correct_option, marks)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [tenantId, quizId, questionText, optionA, optionB, optionC, optionD, correctOption, marks]
-      );
-    }
+    await insertParsedQuestionsForQuiz(tenantId, quizId, built.list);
+
     try {
       const io = getIO();
       io.to(`tenant:${tenantId}`).emit('tenant-data-changed', {
         tenantId,
         entity: 'learning-teacher-quiz',
-        action: 'created',
+        action: isPublished ? 'created' : 'draft-saved',
         classId,
         quizId,
         title,
@@ -520,18 +677,15 @@ router.post('/teacher-quizzes', authenticate, requireTenant, requireRole('teache
     } catch {
       /* ignore realtime failures */
     }
-    const subjectLabel = String(subject || '').toUpperCase();
-    const dueLine = dueDate ? ` Due ${dueDate}.` : '';
-    void sendPushToClassParents(tenantId, classId, {
-      title: 'New learning quiz',
-      body: `${teacherName} posted “${title}” (${subjectLabel}) for your child’s class.${dueLine} Open the parent portal to complete it.`,
-      url: `/portal/${tenantId}`,
-    }).catch((err) => console.error('[push] notify parents new teacher quiz:', err));
 
-    return res.status(201).json({ success: true, id: quizId });
+    if (isPublished) {
+      await notifyAssessmentPublished(tenantId, classId, teacherName, title, subject, dueDate);
+    }
+
+    return res.status(201).json({ success: true, id: quizId, is_published: isPublished });
   } catch (error) {
     console.error('Create teacher quiz error:', error);
-    return res.status(500).json({ error: 'Failed to create teacher quiz' });
+    return res.status(500).json({ error: 'Failed to create assessment' });
   }
 });
 
@@ -545,28 +699,44 @@ router.put('/teacher-quizzes/:id', authenticate, requireTenant, requireRole('tea
     const quizId = Number(req.params.id);
     if (!Number.isFinite(quizId)) return res.status(400).json({ error: 'Invalid quiz id' });
     const quizRow = await query(
-      `SELECT id, teacher_user_id FROM learning_teacher_quizzes
+      `SELECT id, teacher_user_id, is_published FROM learning_teacher_quizzes
        WHERE id = $1 AND tenant_id = $2`,
       [quizId, tenantId]
     );
     if (!quizRow.rows[0]) return res.status(404).json({ error: 'Quiz not found' });
     if (!isElevatedQuizUser(req.user) && Number(quizRow.rows[0].teacher_user_id) !== Number(req.user!.id)) {
-      return res.status(403).json({ error: 'You can only edit quizzes you created.' });
+      return res.status(403).json({ error: 'You can only edit assessments you created.' });
     }
+
+    const wasPublished = Boolean(quizRow.rows[0].is_published);
+    const bodyPub = req.body?.is_published;
+    const nextPublished = typeof bodyPub === 'boolean' ? bodyPub : wasPublished;
 
     const title = String(req.body?.title || '').trim();
     const classId = Number(req.body?.class_id);
     const subject = normalizeSubject(String(req.body?.subject || ''));
     const dueDate = req.body?.due_date ? String(req.body.due_date).slice(0, 10) : null;
     const questions = Array.isArray(req.body?.questions) ? req.body.questions : [];
-    if (!title || !subject || !Number.isFinite(classId) || questions.length === 0) {
-      return res.status(400).json({ error: 'title, class_id, subject and questions are required' });
+    const bankIds = Array.isArray(req.body?.bank_question_ids)
+      ? req.body.bank_question_ids.map((x: any) => Number(x)).filter((n: number) => Number.isFinite(n))
+      : [];
+
+    if (!title || !subject || !Number.isFinite(classId)) {
+      return res.status(400).json({ error: 'title, class_id, and subject are required' });
+    }
+
+    const built = await buildQuestionListFromBody(tenantId, req.user!.id, questions, bankIds);
+    if (built.error) return res.status(400).json({ error: built.error });
+    if (nextPublished && built.list.length === 0) {
+      return res.status(400).json({
+        error: 'A published assessment needs at least one valid question. Save as draft or add questions.',
+      });
     }
 
     if (actsAsInstructor(req.user)) {
       const allowedClassIds = await getTeacherScopedClassIds(tenantId, req.user!.id, req.user!.teacherId);
       if (!allowedClassIds.has(classId)) {
-        return res.status(403).json({ error: 'You can only publish quizzes for your assigned class(es).' });
+        return res.status(403).json({ error: 'You can only publish assessments for your assigned class(es).' });
       }
       const teacherRow = await query(
         'SELECT subjects_taught FROM teachers WHERE tenant_id = $1 AND id = $2::int',
@@ -574,39 +744,19 @@ router.put('/teacher-quizzes/:id', authenticate, requireTenant, requireRole('tea
       ).catch(() => ({ rows: [] as any[] }));
       const taught = Array.isArray(teacherRow.rows[0]?.subjects_taught) ? teacherRow.rows[0].subjects_taught.map((s: string) => normalizeSubject(s)) : [];
       if (taught.length > 0 && !taught.includes(subject)) {
-        return res.status(403).json({ error: 'You can only publish quizzes for your assigned subject(s).' });
+        return res.status(403).json({ error: 'You can only publish assessments for your assigned subject(s).' });
       }
     }
 
     await query(
       `UPDATE learning_teacher_quizzes
-       SET title = $1, class_id = $2, subject = $3, due_date = $4, is_published = true
-       WHERE id = $5 AND tenant_id = $6`,
-      [title, classId, subject, dueDate, quizId, tenantId]
+       SET title = $1, class_id = $2, subject = $3, due_date = $4, is_published = $5
+       WHERE id = $6 AND tenant_id = $7`,
+      [title, classId, subject, dueDate, nextPublished, quizId, tenantId]
     );
 
-    await query(
-      `DELETE FROM learning_teacher_quiz_questions
-       WHERE teacher_quiz_id = $1 AND tenant_id = $2`,
-      [quizId, tenantId]
-    );
-
-    for (const q of questions) {
-      const questionText = String(q?.question_text || q?.questionText || '').trim();
-      const optionA = String(q?.option_a || q?.optionA || '').trim();
-      const optionB = String(q?.option_b || q?.optionB || '').trim();
-      const optionC = String(q?.option_c || q?.optionC || '').trim();
-      const optionD = String(q?.option_d || q?.optionD || '').trim();
-      const correctOption = String(q?.correct_option || q?.correctOption || '').trim().toLowerCase();
-      const marks = Math.max(1, Number(q?.marks || 1));
-      if (!questionText || !optionA || !optionB || !optionC || !optionD || !['a', 'b', 'c', 'd'].includes(correctOption)) continue;
-      await query(
-        `INSERT INTO learning_teacher_quiz_questions
-         (tenant_id, teacher_quiz_id, question_text, option_a, option_b, option_c, option_d, correct_option, marks)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [tenantId, quizId, questionText, optionA, optionB, optionC, optionD, correctOption, marks]
-      );
-    }
+    await query(`DELETE FROM learning_teacher_quiz_questions WHERE teacher_quiz_id = $1 AND tenant_id = $2`, [quizId, tenantId]);
+    await insertParsedQuestionsForQuiz(tenantId, quizId, built.list);
 
     try {
       const io = getIO();
@@ -620,10 +770,243 @@ router.put('/teacher-quizzes/:id', authenticate, requireTenant, requireRole('tea
     } catch {
       /* ignore realtime failures */
     }
-    return res.json({ success: true, id: quizId });
+    return res.json({ success: true, id: quizId, is_published: nextPublished });
   } catch (error) {
     console.error('Update teacher quiz error:', error);
-    return res.status(500).json({ error: 'Failed to update teacher quiz' });
+    return res.status(500).json({ error: 'Failed to update assessment' });
+  }
+});
+
+router.post(
+  '/teacher-quizzes/:id/publish',
+  authenticate,
+  requireTenant,
+  requireRole('teacher', 'staff', 'administrator', 'finance', 'super-admin'),
+  async (req: AuthRequest, res) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const role = String(req.user!.role || '').toLowerCase();
+      if (role === 'staff' && !req.user!.teacherId) {
+        return res.status(403).json({ error: 'Teaching profile not linked to this staff account.' });
+      }
+      const quizId = Number(req.params.id);
+      if (!Number.isFinite(quizId)) return res.status(400).json({ error: 'Invalid quiz id' });
+
+      const meta = await getTeacherQuizMeta(tenantId, quizId);
+      if (!meta) return res.status(404).json({ error: 'Assessment not found' });
+      if (!isElevatedQuizUser(req.user) && Number(meta.teacher_user_id) !== Number(req.user!.id)) {
+        return res.status(403).json({ error: 'You can only publish your own assessments.' });
+      }
+
+      const title = (String(req.body?.title ?? '').trim() || String(meta.title || '').trim());
+      const classId = Number.isFinite(Number(req.body?.class_id)) ? Number(req.body.class_id) : Number(meta.class_id);
+      const subject = normalizeSubject(String(req.body?.subject ?? meta.subject ?? ''));
+      const dueDate = req.body?.due_date != null ? String(req.body.due_date).slice(0, 10) : meta.due_date ? String(meta.due_date).slice(0, 10) : null;
+
+      if (!title || !subject || !Number.isFinite(classId)) {
+        return res.status(400).json({ error: 'title, class_id, and subject are required' });
+      }
+
+      if (actsAsInstructor(req.user)) {
+        const allowedClassIds = await getTeacherScopedClassIds(tenantId, req.user!.id, req.user!.teacherId);
+        if (!allowedClassIds.has(classId)) {
+          return res.status(403).json({ error: 'You can only publish for your assigned class(es).' });
+        }
+        const teacherRow = await query(
+          'SELECT subjects_taught FROM teachers WHERE tenant_id = $1 AND id = $2::int',
+          [tenantId, Number(req.user!.teacherId)]
+        ).catch(() => ({ rows: [] as any[] }));
+        const taught = Array.isArray(teacherRow.rows[0]?.subjects_taught) ? teacherRow.rows[0].subjects_taught.map((s: string) => normalizeSubject(s)) : [];
+        if (taught.length > 0 && !taught.includes(subject)) {
+          return res.status(403).json({ error: 'You can only publish for your assigned subject(s).' });
+        }
+      }
+
+      const n = await getTeacherQuizQuestionCount(tenantId, quizId);
+      if (n < 1) {
+        return res.status(400).json({ error: 'Add at least one question before publishing.' });
+      }
+
+      const wasPublished = Boolean(meta.is_published);
+      await query(
+        `UPDATE learning_teacher_quizzes
+         SET title = $1, class_id = $2, subject = $3, due_date = $4, is_published = true
+         WHERE id = $5 AND tenant_id = $6`,
+        [title, classId, subject, dueDate, quizId, tenantId]
+      );
+
+      try {
+        const io = getIO();
+        io.to(`tenant:${tenantId}`).emit('tenant-data-changed', {
+          tenantId,
+          entity: 'learning-teacher-quiz',
+          action: 'published',
+          classId,
+          quizId,
+          title,
+          at: Date.now(),
+        });
+      } catch {
+        /* ignore */
+      }
+
+      if (!wasPublished) {
+        await notifyAssessmentPublished(tenantId, classId, meta.teacher_name, title, subject, dueDate);
+      }
+
+      return res.json({ success: true, id: quizId, is_published: true });
+    } catch (error) {
+      console.error('Publish assessment error:', error);
+      return res.status(500).json({ error: 'Failed to publish assessment' });
+    }
+  }
+);
+
+router.get('/question-bank', authenticate, requireTenant, requireRole('teacher', 'staff', 'administrator', 'finance', 'super-admin'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const subjectFilter = req.query.subject ? normalizeSubject(String(req.query.subject)) : null;
+    const rows = await query(
+      `SELECT id, subject, question_type, question_text, option_a, option_b, option_c, option_d, correct_option, marks, created_at,
+              item_title
+       FROM learning_teacher_question_bank
+       WHERE tenant_id = $1 AND teacher_user_id = $2
+         AND ($3::text IS NULL OR subject = $3)
+       ORDER BY created_at DESC`,
+      [tenantId, req.user!.id, subjectFilter]
+    );
+    return res.json({
+      questions: rows.rows.map((r: any) => ({
+        id: Number(r.id),
+        subject: r.subject,
+        itemTitle: r.item_title || null,
+        questionType: r.question_type === 'true_false' ? 'true_false' : 'mcq',
+        questionText: r.question_text,
+        options: { a: r.option_a, b: r.option_b, c: r.option_c, d: r.option_d },
+        correctOption: r.correct_option,
+        marks: Number(r.marks || 1),
+        createdAt: r.created_at,
+      })),
+    });
+  } catch (error) {
+    console.error('Question bank list error:', error);
+    return res.status(500).json({ error: 'Failed to load question bank' });
+  }
+});
+
+router.post('/question-bank', authenticate, requireTenant, requireRole('teacher', 'staff', 'administrator', 'finance', 'super-admin'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const role = String(req.user!.role || '').toLowerCase();
+    if (role === 'staff' && !req.user!.teacherId) {
+      return res.status(403).json({ error: 'Teaching profile not linked to this staff account.' });
+    }
+    const subject = normalizeSubject(String(req.body?.subject || ''));
+    const parsed = normalizeTeacherQuizQuestionInput(req.body);
+    if (!subject || !parsed) {
+      return res.status(400).json({ error: 'subject and a valid question (MCQ or True/False) are required' });
+    }
+    if (actsAsInstructor(req.user)) {
+      const teacherRow = await query(
+        'SELECT subjects_taught FROM teachers WHERE tenant_id = $1 AND id = $2::int',
+        [tenantId, Number(req.user!.teacherId)]
+      ).catch(() => ({ rows: [] as any[] }));
+      const taught = Array.isArray(teacherRow.rows[0]?.subjects_taught) ? teacherRow.rows[0].subjects_taught.map((s: string) => normalizeSubject(s)) : [];
+      if (taught.length > 0 && !taught.includes(subject)) {
+        return res.status(403).json({ error: 'You can only save bank questions for subjects you teach.' });
+      }
+    }
+    const itemTitle = String(req.body?.item_title || req.body?.itemTitle || '').trim() || null;
+    const ins = await query(
+      `INSERT INTO learning_teacher_question_bank
+       (tenant_id, teacher_user_id, subject, question_type, question_text, option_a, option_b, option_c, option_d, correct_option, marks, item_title)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       RETURNING id`,
+      [
+        tenantId,
+        req.user!.id,
+        subject,
+        parsed.questionType,
+        parsed.questionText,
+        parsed.optionA,
+        parsed.optionB,
+        parsed.optionC,
+        parsed.optionD,
+        parsed.correctOption,
+        parsed.marks,
+        itemTitle,
+      ]
+    );
+    return res.status(201).json({ success: true, id: Number(ins.rows[0].id) });
+  } catch (error) {
+    console.error('Question bank create error:', error);
+    return res.status(500).json({ error: 'Failed to save question' });
+  }
+});
+
+router.put('/question-bank/:id', authenticate, requireTenant, requireRole('teacher', 'staff', 'administrator', 'finance', 'super-admin'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid id' });
+    const row = await query(
+      `SELECT id, teacher_user_id FROM learning_teacher_question_bank WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId]
+    );
+    if (!row.rows[0]) return res.status(404).json({ error: 'Not found' });
+    if (!isElevatedQuizUser(req.user) && Number(row.rows[0].teacher_user_id) !== Number(req.user!.id)) {
+      return res.status(403).json({ error: 'You can only edit your own bank questions.' });
+    }
+    const subject = normalizeSubject(String(req.body?.subject || ''));
+    const parsed = normalizeTeacherQuizQuestionInput(req.body);
+    if (!subject || !parsed) {
+      return res.status(400).json({ error: 'subject and a valid question are required' });
+    }
+    const itemTitle = String(req.body?.item_title || req.body?.itemTitle || '').trim() || null;
+    await query(
+      `UPDATE learning_teacher_question_bank
+       SET subject = $1, question_type = $2, question_text = $3, option_a = $4, option_b = $5, option_c = $6, option_d = $7, correct_option = $8, marks = $9, item_title = $10
+       WHERE id = $11 AND tenant_id = $12`,
+      [
+        subject,
+        parsed.questionType,
+        parsed.questionText,
+        parsed.optionA,
+        parsed.optionB,
+        parsed.optionC,
+        parsed.optionD,
+        parsed.correctOption,
+        parsed.marks,
+        itemTitle,
+        id,
+        tenantId,
+      ]
+    );
+    return res.json({ success: true, id });
+  } catch (error) {
+    console.error('Question bank update error:', error);
+    return res.status(500).json({ error: 'Failed to update question' });
+  }
+});
+
+router.delete('/question-bank/:id', authenticate, requireTenant, requireRole('teacher', 'staff', 'administrator', 'finance', 'super-admin'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid id' });
+    const row = await query(
+      `SELECT id, teacher_user_id FROM learning_teacher_question_bank WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId]
+    );
+    if (!row.rows[0]) return res.status(404).json({ error: 'Not found' });
+    if (!isElevatedQuizUser(req.user) && Number(row.rows[0].teacher_user_id) !== Number(req.user!.id)) {
+      return res.status(403).json({ error: 'You can only delete your own bank questions.' });
+    }
+    await query(`DELETE FROM learning_teacher_question_bank WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Question bank delete error:', error);
+    return res.status(500).json({ error: 'Failed to delete question' });
   }
 });
 
@@ -637,7 +1020,7 @@ router.get('/teacher-quizzes/:id/results', authenticate, requireTenant, requireR
     const quizId = Number(req.params.id);
     if (!Number.isFinite(quizId)) return res.status(400).json({ error: 'Invalid quiz id' });
     const quizRes = await query(
-      `SELECT q.id, q.title, q.subject, q.class_id, c.class_name, q.due_date, q.teacher_user_id
+      `SELECT q.id, q.title, q.subject, q.class_id, c.class_name, q.due_date, q.teacher_user_id, q.is_published
        FROM learning_teacher_quizzes q
        LEFT JOIN classes c ON c.id = q.class_id
        WHERE q.id = $1 AND q.tenant_id = $2`,
@@ -675,7 +1058,7 @@ router.get('/teacher-quizzes/:id/questions', authenticate, requireTenant, requir
     const quizId = Number(req.params.id);
     if (!Number.isFinite(quizId)) return res.status(400).json({ error: 'Invalid quiz id' });
     const quizRes = await query(
-      `SELECT q.id, q.title, q.subject, q.class_id, c.class_name, q.due_date, q.teacher_user_id
+      `SELECT q.id, q.title, q.subject, q.class_id, c.class_name, q.due_date, q.teacher_user_id, q.is_published
        FROM learning_teacher_quizzes q
        LEFT JOIN classes c ON c.id = q.class_id
        WHERE q.id = $1 AND q.tenant_id = $2`,
@@ -687,7 +1070,8 @@ router.get('/teacher-quizzes/:id/questions', authenticate, requireTenant, requir
       return res.status(403).json({ error: 'You can only view question sets you created.' });
     }
     const rows = await query(
-      `SELECT id, question_text, option_a, option_b, option_c, option_d, correct_option, marks
+      `SELECT id, question_text, option_a, option_b, option_c, option_d, correct_option, marks,
+              COALESCE(question_type, 'mcq') AS question_type
        FROM learning_teacher_quiz_questions
        WHERE teacher_quiz_id = $1 AND tenant_id = $2
        ORDER BY id ASC`,
@@ -701,11 +1085,13 @@ router.get('/teacher-quizzes/:id/questions', authenticate, requireTenant, requir
         class_id: Number(quiz.class_id),
         class_name: quiz.class_name,
         due_date: quiz.due_date,
+        is_published: Boolean(quiz.is_published),
       },
       questions: rows.rows.map((q: any, idx: number) => ({
         id: Number(q.id),
         index: idx + 1,
         questionText: q.question_text,
+        questionType: q.question_type === 'true_false' ? 'true_false' : 'mcq',
         options: { a: q.option_a, b: q.option_b, c: q.option_c, d: q.option_d },
         correctOption: q.correct_option,
         marks: Number(q.marks || 1),
@@ -725,13 +1111,11 @@ router.get('/teacher-quizzes/my', authenticate, requireTenant, requireRole('teac
     }
     const tenantId = req.user!.tenantId!;
     const rows = await query(
-      `SELECT q.id, q.title, q.subject, q.class_id, c.class_name, q.due_date, q.created_at,
-              COUNT(a.id)::int as submissions
+      `SELECT q.id, q.title, q.subject, q.class_id, c.class_name, q.due_date, q.created_at, q.is_published,
+              (SELECT COUNT(*)::int FROM learning_teacher_quiz_attempts a WHERE a.teacher_quiz_id = q.id) AS submissions
        FROM learning_teacher_quizzes q
        LEFT JOIN classes c ON c.id = q.class_id
-       LEFT JOIN learning_teacher_quiz_attempts a ON a.teacher_quiz_id = q.id
        WHERE q.tenant_id = $1 AND q.teacher_user_id = $2
-       GROUP BY q.id, c.class_name
        ORDER BY q.created_at DESC`,
       [tenantId, req.user!.id]
     );

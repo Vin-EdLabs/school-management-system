@@ -9,12 +9,15 @@ import { resolveLogoUrl } from '../../services/tenantService';
 import { Bell, Bot, User, Clock, Calendar, Moon, Sun } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import PwaInstallButton from '../common/PwaInstallButton';
+import { ModuleUserGuideDialog } from '../common/ModuleUserGuideDialog';
 
 interface MainHeaderProps {
   onAiAssistantClick?: () => void;
+  activeModule: string;
+  setActiveModule: (id: string) => void;
 }
 
-const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick }) => {
+const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModule, setActiveModule }) => {
   const { user } = useAuth();
   const { school } = useSchool();
   const { items, unreadCount, markRead, markAllRead } = useTeacherNotifications();
@@ -91,6 +94,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick }) => {
         </div>
 
         <div className="flex items-center gap-2">
+          <ModuleUserGuideDialog activeModule={activeModule} setActiveModule={setActiveModule} />
           <PwaInstallButton
             variant="ghost"
             size="icon"

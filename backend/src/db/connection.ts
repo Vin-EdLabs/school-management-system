@@ -751,6 +751,35 @@ const runMigrations = async () => {
       ADD COLUMN IF NOT EXISTS marks INTEGER NOT NULL DEFAULT 1
     `).catch(() => { });
     await client.query(`
+      ALTER TABLE learning_teacher_quiz_questions
+      ADD COLUMN IF NOT EXISTS question_type VARCHAR(20) NOT NULL DEFAULT 'mcq'
+    `).catch(() => { });
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS learning_teacher_question_bank (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        teacher_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        subject VARCHAR(50) NOT NULL,
+        question_type VARCHAR(20) NOT NULL DEFAULT 'mcq',
+        question_text TEXT NOT NULL,
+        option_a TEXT NOT NULL,
+        option_b TEXT NOT NULL,
+        option_c TEXT NOT NULL DEFAULT '',
+        option_d TEXT NOT NULL DEFAULT '',
+        correct_option VARCHAR(1) NOT NULL,
+        marks INTEGER NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `).catch(() => { });
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_learning_question_bank_teacher
+      ON learning_teacher_question_bank (tenant_id, teacher_user_id, subject)
+    `).catch(() => { });
+    await client.query(`
+      ALTER TABLE learning_teacher_question_bank
+      ADD COLUMN IF NOT EXISTS item_title VARCHAR(200)
+    `).catch(() => { });
+    await client.query(`
       CREATE TABLE IF NOT EXISTS quiz_sessions (
         id SERIAL PRIMARY KEY,
         tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -1246,6 +1275,20 @@ const runMigrations = async () => {
       CREATE UNIQUE INDEX IF NOT EXISTS idx_student_ledger_term_fee_once
       ON student_ledger (tenant_id, student_id, academic_year_id, term_id)
       WHERE entry_type = 'term_fee'
+    `).catch(() => { });
+
+    // Manual balance override / audit fields (append-only ledger adjustments)
+    await client.query(`ALTER TABLE student_ledger ADD COLUMN IF NOT EXISTS adjustment_category VARCHAR(120)`).catch(() => { });
+    await client.query(`ALTER TABLE student_ledger ADD COLUMN IF NOT EXISTS adjustment_notes TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE student_ledger ADD COLUMN IF NOT EXISTS supporting_document_url TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE student_ledger ADD COLUMN IF NOT EXISTS approved_by_user_id INTEGER`).catch(() => { });
+    await client.query(`ALTER TABLE student_ledger ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER`).catch(() => { });
+    await client.query(`ALTER TABLE student_ledger ADD COLUMN IF NOT EXISTS adjustment_amount NUMERIC(12, 2)`).catch(() => { });
+    await client.query(`ALTER TABLE student_ledger ADD COLUMN IF NOT EXISTS period_label VARCHAR(200)`).catch(() => { });
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_student_ledger_manual_adj
+      ON student_ledger (tenant_id, created_at DESC)
+      WHERE entry_type = 'manual_adjustment'
     `).catch(() => { });
 
     // Detect legacy schemas that do not have users.tenant_id

@@ -213,35 +213,24 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
         const { termName, yearName } = splitTermAndYear(String(term), fallbackYear);
 
         if (termName && yearName) {
-          const yearRes = await query(
-            `INSERT INTO academic_years (tenant_id, name, is_current)
-             VALUES ($1, $2, false)
-             ON CONFLICT (tenant_id, name) DO UPDATE SET name = EXCLUDED.name
-             RETURNING id`,
-            [tenantId, yearName]
+          // Resolve termId from the NEW academic_terms table
+          const termRes = await query(
+            `SELECT id FROM academic_terms 
+             WHERE tenant_id = $1 AND term_name = $2 AND year = $3
+             LIMIT 1`,
+            [tenantId, termName, yearName]
           );
-          const academicYearId = yearRes.rows[0]?.id;
+          const termId = termRes.rows[0]?.id;
 
-          if (academicYearId) {
-            const termRes = await query(
-              `INSERT INTO terms (tenant_id, academic_year_id, name, is_current)
-               VALUES ($1, $2, $3, false)
-               ON CONFLICT (tenant_id, academic_year_id, name) DO UPDATE SET name = EXCLUDED.name
-               RETURNING id`,
-              [tenantId, academicYearId, termName]
+          if (termId) {
+            await query(
+              `INSERT INTO ledger_fee_structures (tenant_id, class_id, academic_year_id, term_id, tuition_fee, pta_fee, exam_fee, total)
+               VALUES ($1, $2, 1, $3, $4, 0, 0, $4)
+               ON CONFLICT (tenant_id, class_id, academic_year_id, term_id)
+               DO UPDATE SET tuition_fee = EXCLUDED.tuition_fee, total = EXCLUDED.total`,
+              [tenantId, classIdNum, termId, amountNum]
             );
-            const termId = termRes.rows[0]?.id;
-
-            if (termId) {
-              await query(
-                `INSERT INTO ledger_fee_structures (tenant_id, class_id, academic_year_id, term_id, tuition_fee, pta_fee, exam_fee, total)
-                 VALUES ($1, $2, $3, $4, $5, 0, 0, $5)
-                 ON CONFLICT (tenant_id, class_id, academic_year_id, term_id)
-                 DO UPDATE SET tuition_fee = EXCLUDED.tuition_fee, total = EXCLUDED.total`,
-                [tenantId, classIdNum, academicYearId, termId, amountNum]
-              );
-              await postFeesForClass(tenantId, classIdNum, academicYearId, termId);
-            }
+            await postFeesForClass(tenantId, classIdNum, 1, termId);
           }
         }
       }
@@ -345,45 +334,36 @@ router.put('/:id', requireRole('super-admin', 'administrator', 'finance'), async
         const fallbackYear = settingsRes.rows[0]?.current_year ? String(settingsRes.rows[0].current_year) : undefined;
         const { termName, yearName } = splitTermAndYear(termStr, fallbackYear);
         if (termName && yearName) {
-          const yearRes = await query(
-            `INSERT INTO academic_years (tenant_id, name, is_current)
-             VALUES ($1, $2, false)
-             ON CONFLICT (tenant_id, name) DO UPDATE SET name = EXCLUDED.name
-             RETURNING id`,
-            [tenantId, yearName]
+          // Resolve termId from the NEW academic_terms table
+          const termRes = await query(
+            `SELECT id FROM academic_terms 
+             WHERE tenant_id = $1 AND term_name = $2 AND year = $3
+             LIMIT 1`,
+            [tenantId, termName, yearName]
           );
-          const academicYearId = yearRes.rows[0]?.id;
-          if (academicYearId) {
-            const termRes = await query(
-              `INSERT INTO terms (tenant_id, academic_year_id, name, is_current)
-               VALUES ($1, $2, $3, false)
-               ON CONFLICT (tenant_id, academic_year_id, name) DO UPDATE SET name = EXCLUDED.name
-               RETURNING id`,
-              [tenantId, academicYearId, termName]
+          const termId = termRes.rows[0]?.id;
+
+          if (termId) {
+            await query(
+              `INSERT INTO ledger_fee_structures (tenant_id, class_id, academic_year_id, term_id, tuition_fee, pta_fee, exam_fee, total)
+               VALUES ($1, $2, 1, $3, $4, 0, 0, $4)
+               ON CONFLICT (tenant_id, class_id, academic_year_id, term_id)
+               DO UPDATE SET tuition_fee = EXCLUDED.tuition_fee, total = EXCLUDED.total`,
+              [tenantId, classIdNum, termId, amountNum]
             );
-            const termId = termRes.rows[0]?.id;
-            if (termId) {
-              await query(
-                `INSERT INTO ledger_fee_structures (tenant_id, class_id, academic_year_id, term_id, tuition_fee, pta_fee, exam_fee, total)
-                 VALUES ($1, $2, $3, $4, $5, 0, 0, $5)
-                 ON CONFLICT (tenant_id, class_id, academic_year_id, term_id)
-                 DO UPDATE SET tuition_fee = EXCLUDED.tuition_fee, total = EXCLUDED.total`,
-                [tenantId, classIdNum, academicYearId, termId, amountNum]
-              );
-              await query(
-                `UPDATE student_ledger AS sl
-                 SET debit = ${LEDGER_DEBIT_FROM_STANDARD_FEE}
-                 FROM students AS s
-                 WHERE sl.student_id = s.id
-                   AND sl.tenant_id = $1
-                   AND sl.term_id = $2
-                   AND sl.entry_type = 'term_fee'
-                   AND s.tenant_id = $1
-                   AND s.class_assigned_id = $3`,
-                [tenantId, termId, classIdNum, amountNum]
-              );
-              await postFeesForClass(tenantId, classIdNum, academicYearId, termId);
-            }
+            await query(
+              `UPDATE student_ledger AS sl
+               SET debit = ${LEDGER_DEBIT_FROM_STANDARD_FEE}
+               FROM students AS s
+               WHERE sl.student_id = s.id
+                 AND sl.tenant_id = $1
+                 AND sl.term_id = $2
+                 AND sl.entry_type = 'term_fee'
+                 AND s.tenant_id = $1
+                 AND s.class_assigned_id = $3`,
+              [tenantId, termId, classIdNum, amountNum]
+            );
+            await postFeesForClass(tenantId, classIdNum, 1, termId);
           }
         }
       }

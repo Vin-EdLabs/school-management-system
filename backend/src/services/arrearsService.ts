@@ -86,8 +86,9 @@ export async function refreshArrearsForTenant(tenantId: number, overrideTerm?: s
          AND NOT EXISTS (
            SELECT 1 FROM student_ledger sl 
            JOIN terms t ON sl.term_id = t.id
+           JOIN academic_years ay ON t.academic_year_id = ay.id
            WHERE sl.student_id = $1 AND sl.tenant_id = $2
-             AND (t.name = fs.term OR (t.name || ' ' || t.academic_year_name) = fs.term)
+             AND (t.name = fs.term OR (t.name || ' ' || ay.name) = fs.term)
          )
        UNION ALL
        SELECT term, -COALESCE(amount, 0) as amount, 'payment' as type 
@@ -97,8 +98,9 @@ export async function refreshArrearsForTenant(tenantId: number, overrideTerm?: s
          AND NOT EXISTS (
            SELECT 1 FROM student_ledger sl 
            JOIN terms t ON sl.term_id = t.id
+           JOIN academic_years ay ON t.academic_year_id = ay.id
            WHERE sl.student_id = $1 AND sl.tenant_id = $2
-             AND (t.name = term OR (t.name || ' ' || t.academic_year_name) = term)
+             AND (t.name = term OR (t.name || ' ' || ay.name) = term)
          )`,
       [studentId, tenantId, fullTerm, current_term, termOnly]
     );

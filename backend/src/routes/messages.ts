@@ -139,6 +139,7 @@ router.get('/', authenticateParent, async (req: ParentRequest, res) => {
 router.get('/:id', authenticateParent, async (req: ParentRequest, res) => {
   try {
     const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid message ID' });
     const msg = await query(
       `SELECT m.*, s.first_name, s.last_name, c.class_name
        FROM parent_messages m
@@ -163,6 +164,7 @@ router.get('/:id', authenticateParent, async (req: ParentRequest, res) => {
 router.post('/:id/reply', authenticateParent, upload.single('attachment'), async (req: ParentRequest, res) => {
   try {
     const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid message ID' });
     const replyText = String(req.body?.reply_text || '').trim();
     if (!replyText) return res.status(400).json({ error: 'reply_text is required' });
     const msg = await query(
@@ -191,6 +193,7 @@ router.post('/:id/reply', authenticateParent, upload.single('attachment'), async
 router.put('/:id/read', authenticateParent, async (req: ParentRequest, res) => {
   try {
     const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid message ID' });
     await query(
       `UPDATE message_replies r
        SET is_read = true
@@ -233,6 +236,7 @@ router.get('/admin/:id', authenticate, requireTenant, setTenantContext, async (r
   try {
     const tenantId = req.user!.tenantId!;
     const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid message ID' });
     const msg = await query(
       `SELECT m.*, s.first_name, s.last_name, s.student_id as admission_number, c.class_name
        FROM parent_messages m
@@ -261,6 +265,7 @@ router.post('/admin/:id/reply', authenticate, requireTenant, setTenantContext, u
   try {
     const tenantId = req.user!.tenantId!;
     const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid message ID' });
     const replyText = String(req.body?.reply_text || '').trim();
     if (!replyText) return res.status(400).json({ error: 'reply_text is required' });
     const msg = await query(
@@ -302,6 +307,7 @@ router.put('/admin/:id/status', authenticate, requireTenant, setTenantContext, a
   try {
     const tenantId = req.user!.tenantId!;
     const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid message ID' });
     const status = String(req.body?.status || '').toLowerCase();
     if (!['pending', 'in_review', 'resolved', 'urgent'].includes(status)) {
       return res.status(400).json({ error: 'Invalid status' });

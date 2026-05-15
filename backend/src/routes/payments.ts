@@ -418,22 +418,40 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
 
     // Resolve term and academic year IDs for ledger matching
     let termId = null;
-    let academicYearId = null;
-    if (termStr && classId) {
+    let academicYearId = 1; // Default fallback for now if no hard link exists
+
+    if (termStr) {
+      // 1. Try to find the term by name/year string in academic_terms
       const termLookup = await query(
-        `SELECT id, academic_year_id FROM terms 
-         WHERE tenant_id = $1 AND (name = $2 OR (name || ' ' || (SELECT name FROM academic_years WHERE id = academic_year_id)) = $2)
+        `SELECT id FROM academic_terms 
+         WHERE tenant_id = $1 AND (
+           (term_name || ' ' || year) = $2 
+           OR term_name = $2 
+           OR term_name = $3
+         )
          LIMIT 1`,
-        [tenantId, termToStore || termStr]
+        [tenantId, termToStore || termStr, termStr.split(' ')[0]]
       );
+
       if (termLookup.rows.length > 0) {
         termId = termLookup.rows[0].id;
-        academicYearId = termLookup.rows[0].academic_year_id;
+      } else {
+        // 2. Fallback: If we can't find it by string, use the current active term from settings
+        const activeTermLookup = await query(
+          `SELECT t.id FROM academic_terms t
+           JOIN school_settings s ON (s.current_term = (t.term_name || ' ' || t.year) OR s.current_term = t.term_name)
+           WHERE t.tenant_id = $1 AND s.tenant_id = $1
+           LIMIT 1`,
+          [tenantId]
+        );
+        if (activeTermLookup.rows.length > 0) {
+          termId = activeTermLookup.rows[0].id;
+        }
       }
     }
 
     // If we have term context, post to student_ledger
-    if (termId && academicYearId) {
+    if (termId) {
       try {
         await query(
           `INSERT INTO student_ledger (tenant_id, student_id, academic_year_id, term_id, description, debit, credit, entry_type)

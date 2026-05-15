@@ -122,21 +122,21 @@ export async function refreshArrearsForTenant(tenantId: number, overrideTerm?: s
       // Skip if term ended before admission date
       // UNLESS the student has explicitly made a payment for this term
       if (admissionDate && allTerms.length > 0 && !termsWithPayments.has(termStr)) {
-        const termData = allTerms.find((t: any) => 
+        const termData = allTerms.find((t: any) =>
           (t.term_name === termStr || `${t.term_name} ${t.year}` === termStr)
         );
         if (termData && termData.end_date) {
           const termEndDate = new Date(termData.end_date);
           if (termEndDate < admissionDate) {
             console.log(`[arrears] Skipping ${termStr} (ended ${termEndDate.toISOString()} before admission ${admissionDate.toISOString()})`);
-            continue; 
+            continue;
           }
         }
       }
 
       // Include only if Year is older, OR if same year but Term Number is older than CURRENT processing term
       const isHistorical = year < currentYearNum || (year === currentYearNum && rowTermNum < currentTermNum);
-      
+
       if (isHistorical) {
         const amt = parseFloat(row.amount) || 0;
         legacyArrears += amt;
@@ -188,7 +188,7 @@ export async function refreshArrearsForTenant(tenantId: number, overrideTerm?: s
       [tenantId, studentId]
     );
     const useLedgerOnly = ledgerHistRes.rows.length > 0;
-    const totalArrears = useLedgerOnly ? ledgerArrears : legacyArrears;
+    const totalArrears = legacyArrears + ledgerArrears;
 
     // 3. Upsert into term_arrears
     if (totalArrears !== 0) {

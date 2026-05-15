@@ -73,80 +73,7 @@ export async function refreshArrearsForTenant(tenantId: number, overrideTerm?: s
       continue;
     }
 
-    // A. Calculate Legacy Arrears (from fee_structures and payments)
-    // ONLY include terms that are NOT in the student_ledger already to prevent double counting
-    const legacyResult = await query(
-      `SELECT fs.term, 
-       ${legacyFeeAmountSql} as amount, 
-       'fee' as type 
-       FROM fee_structures fs
-       JOIN students s ON s.id = $1
-       WHERE fs.tenant_id = $2 AND fs.class_id = s.class_assigned_id
-         AND fs.term NOT IN ($3, $4, $5)
-         AND NOT EXISTS (
-           SELECT 1 FROM student_ledger sl 
-           JOIN terms t ON sl.term_id = t.id
-           JOIN academic_years ay ON t.academic_year_id = ay.id
-           WHERE sl.student_id = $1 AND sl.tenant_id = $2
-             AND sl.entry_type = 'term_fee'
-             AND (t.name = fs.term OR (t.name || ' ' || ay.name) = fs.term)
-         )
-       UNION ALL
-       SELECT p.term, -COALESCE(p.amount, 0) as amount, 'payment' as type 
-       FROM payments p
-       WHERE p.tenant_id = $2 AND p.student_id = $1
-         AND p.term NOT IN ($3, $4, $5)
-         AND NOT EXISTS (
-           SELECT 1 FROM student_ledger sl 
-           JOIN terms t ON sl.term_id = t.id
-           JOIN academic_years ay ON t.academic_year_id = ay.id
-           WHERE sl.student_id = $1 AND sl.tenant_id = $2
-             AND sl.entry_type = 'payment'
-             AND (t.name = p.term OR (t.name || ' ' || ay.name) = p.term)
-         )`,
-      [studentId, tenantId, fullTerm, current_term, termOnly]
-    );
-
-    // Identify which terms have payments (signaling the student is being billed for them)
-    const termsWithPayments = new Set(
-      legacyResult.rows.filter(r => r.type === 'payment').map(r => r.term)
-    );
-
-    let legacyArrears = 0;
-    const admissionDate = studentRow.date_of_admission ? new Date(studentRow.date_of_admission) : null;
-
-    for (const row of legacyResult.rows) {
-      const termStr = (row.term || '').trim();
-      const match = termStr.match(/\b(20\d{2})\b/);
-      const year = match ? parseInt(match[1], 10) : currentYearNum;
-      const rowTermNum = parseInt(termStr.match(/Term\s*(\d)/i)?.[1] || '0', 10);
-
-      // Skip if term ended before admission date
-      // UNLESS the student has explicitly made a payment for this term
-      if (admissionDate && allTerms.length > 0 && !termsWithPayments.has(termStr)) {
-        const termData = allTerms.find((t: any) =>
-          (t.term_name === termStr || `${t.term_name} ${t.year}` === termStr)
-        );
-        if (termData && termData.end_date) {
-          const termEndDate = new Date(termData.end_date);
-          if (termEndDate < admissionDate) {
-            console.log(`[arrears] Skipping ${termStr} (ended ${termEndDate.toISOString()} before admission ${admissionDate.toISOString()})`);
-            continue;
-          }
-        }
-      }
-
-      // Include only if Year is older, OR if same year but Term Number is older than CURRENT processing term
-      const isHistorical = year < currentYearNum || (year === currentYearNum && rowTermNum < currentTermNum);
-
-      if (isHistorical) {
-        const amt = parseFloat(row.amount) || 0;
-        legacyArrears += amt;
-        console.log(`[arrears] student=${studentId} term=${termStr} type=${row.type} amount=${amt} -> Running total: ${legacyArrears}`);
-      } else {
-        console.log(`[arrears] student=${studentId} term=${termStr} is current/future (skipped)`);
-      }
-    }
+    const legacyArrears = 0;
 
     // B. Calculate Ledger Arrears (from student_ledger)
     // ONLY include terms that are strictly BEFORE the current one
@@ -157,25 +84,16 @@ export async function refreshArrearsForTenant(tenantId: number, overrideTerm?: s
        LEFT JOIN academic_terms t ON l.term_id = t.id
        WHERE l.tenant_id = $1 AND l.student_id = $2
          AND (
+           -- Scenario A: Older Academic Year
            (
-             CASE
-               WHEN trim(COALESCE(t.year::text, '')) ~ '^[0-9]{4}'
-                 THEN substr(trim(t.year::text), 1, 4)::integer
-               ELSE 0
-             END
-           ) < $3
-           OR (
-             (
-               CASE
-                 WHEN trim(COALESCE(t.year::text, '')) ~ '^[0-9]{4}'
-                   THEN substr(trim(t.year::text), 1, 4)::integer
-                 ELSE 0
-               END
-             ) = $3
-             AND COALESCE(
-               NULLIF(regexp_replace(trim(COALESCE(t.term_name, '')), '[^0-9]', '', 'g'), '')::integer,
-               0
-             ) < $4
+             CASE WHEN t.year ~ '^[0-9]{4}' THEN substr(t.year, 1, 4)::integer ELSE 0 END < $3
+           )
+           OR 
+           -- Scenario B: Same Year, but Older Term Number (e.g. Term 1 < Term 2)
+           (
+             (CASE WHEN t.year ~ '^[0-9]{4}' THEN substr(t.year, 1, 4)::integer ELSE 0 END = $3)
+             AND 
+             COALESCE(NULLIF(regexp_replace(t.term_name, '[^0-9]', '', 'g'), '')::integer, 0) < $4
            )
          )`,
       [tenantId, studentId, currentYearNum, currentTermNum]

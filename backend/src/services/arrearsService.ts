@@ -74,19 +74,32 @@ export async function refreshArrearsForTenant(tenantId: number, overrideTerm?: s
     }
 
     // A. Calculate Legacy Arrears (from fee_structures and payments)
+    // ONLY include terms that are NOT in the student_ledger already to prevent double counting
     const legacyResult = await query(
-      `SELECT term, 
+      `SELECT fs.term, 
        ${legacyFeeAmountSql} as amount, 
        'fee' as type 
        FROM fee_structures fs
        JOIN students s ON s.id = $1
        WHERE fs.tenant_id = $2 AND fs.class_id = s.class_assigned_id
          AND fs.term NOT IN ($3, $4, $5)
+         AND NOT EXISTS (
+           SELECT 1 FROM student_ledger sl 
+           JOIN terms t ON sl.term_id = t.id
+           WHERE sl.student_id = $1 AND sl.tenant_id = $2
+             AND (t.name = fs.term OR (t.name || ' ' || t.academic_year_name) = fs.term)
+         )
        UNION ALL
        SELECT term, -COALESCE(amount, 0) as amount, 'payment' as type 
        FROM payments
        WHERE tenant_id = $2 AND student_id = $1
-         AND term NOT IN ($3, $4, $5)`,
+         AND term NOT IN ($3, $4, $5)
+         AND NOT EXISTS (
+           SELECT 1 FROM student_ledger sl 
+           JOIN terms t ON sl.term_id = t.id
+           WHERE sl.student_id = $1 AND sl.tenant_id = $2
+             AND (t.name = term OR (t.name || ' ' || t.academic_year_name) = term)
+         )`,
       [studentId, tenantId, fullTerm, current_term, termOnly]
     );
 

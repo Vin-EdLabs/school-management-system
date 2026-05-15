@@ -451,7 +451,50 @@ router.delete('/:id', requireRole('super-admin', 'administrator', 'finance'), as
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Fee structure not found' });
     }
-    const deleted = result.rows[0] as Record<string, unknown>;
+    const deleted = result.rows[0] as Record<string, any>;
+
+    // Cleanup orphaned bills in student_ledger if they haven't been paid yet
+    try {
+      const { termName, yearName } = splitTermAndYear(String(deleted.term));
+      if (termName && yearName) {
+        // Find the ledger term ID
+        const termLookup = await query(
+          `SELECT t.id FROM terms t 
+           JOIN academic_years ay ON t.academic_year_id = ay.id
+           WHERE t.tenant_id = $1 AND ay.name = $2 AND t.name = $3`,
+          [tenantId, yearName, termName]
+        );
+        const ledgerTermId = termLookup.rows[0]?.id;
+
+        if (ledgerTermId) {
+          // Delete unpaid ledger entries for this class and term
+          await query(
+            `DELETE FROM student_ledger sl
+             USING students s
+             WHERE sl.student_id = s.id
+               AND sl.tenant_id = $1
+               AND sl.term_id = $2
+               AND sl.entry_type = 'term_fee'
+               AND sl.credit = 0
+               AND s.class_assigned_id = $3`,
+            [tenantId, ledgerTermId, deleted.class_id]
+          );
+
+          // ALSO cleanup the ledger fee structure itself
+          await query(
+            `DELETE FROM ledger_fee_structures 
+             WHERE tenant_id = $1 AND term_id = $2 AND class_id = $3`,
+            [tenantId, ledgerTermId, deleted.class_id]
+          );
+          
+          console.log(`[fees] Cleaned up orphaned ledger entries for class ${deleted.class_id}, term ${ledgerTermId}`);
+        }
+      }
+    } catch (cleanupError) {
+      console.error('[fees] Orphaned ledger cleanup failed:', cleanupError);
+      // Don't fail the whole request if cleanup fails, but log it
+    }
+
     await writeAuditLog({
       tenantId,
       userId: req.user!.id,

@@ -88,6 +88,7 @@ export async function refreshArrearsForTenant(tenantId: number, overrideTerm?: s
            JOIN terms t ON sl.term_id = t.id
            JOIN academic_years ay ON t.academic_year_id = ay.id
            WHERE sl.student_id = $1 AND sl.tenant_id = $2
+             AND sl.entry_type = 'term_fee'
              AND (t.name = fs.term OR (t.name || ' ' || ay.name) = fs.term)
          )
        UNION ALL
@@ -100,6 +101,7 @@ export async function refreshArrearsForTenant(tenantId: number, overrideTerm?: s
            JOIN terms t ON sl.term_id = t.id
            JOIN academic_years ay ON t.academic_year_id = ay.id
            WHERE sl.student_id = $1 AND sl.tenant_id = $2
+             AND sl.entry_type = 'payment'
              AND (t.name = p.term OR (t.name || ' ' || ay.name) = p.term)
          )`,
       [studentId, tenantId, fullTerm, current_term, termOnly]

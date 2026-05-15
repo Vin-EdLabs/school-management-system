@@ -409,6 +409,49 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
       : 'Student';
     const schoolStudentCode = studentNameRes.rows[0]?.school_student_code || '';
 
+    // Get student's class and current academic period IDs for ledger entry
+    const studentInfo = await query(
+      'SELECT class_assigned_id FROM students WHERE id = $1 AND tenant_id = $2',
+      [student_id, tenantId]
+    );
+    const classId = studentInfo.rows[0]?.class_assigned_id;
+
+    // Resolve term and academic year IDs for ledger matching
+    let termId = null;
+    let academicYearId = null;
+    if (termStr && classId) {
+      const termLookup = await query(
+        `SELECT id, academic_year_id FROM terms 
+         WHERE tenant_id = $1 AND (name = $2 OR (name || ' ' || (SELECT name FROM academic_years WHERE id = academic_year_id)) = $2)
+         LIMIT 1`,
+        [tenantId, termToStore || termStr]
+      );
+      if (termLookup.rows.length > 0) {
+        termId = termLookup.rows[0].id;
+        academicYearId = termLookup.rows[0].academic_year_id;
+      }
+    }
+
+    // If we have term context, post to student_ledger
+    if (termId && academicYearId) {
+      try {
+        await query(
+          `INSERT INTO student_ledger (tenant_id, student_id, academic_year_id, term_id, description, debit, credit, entry_type)
+           VALUES ($1, $2, $3, $4, $5, 0, $6, 'payment')`,
+          [
+            tenantId,
+            student_id,
+            academicYearId,
+            termId,
+            `Payment - ${receiptNumber}${notes ? ': ' + notes : ''}`,
+            paymentAmount
+          ]
+        );
+      } catch (ledgerErr) {
+        console.error('[payments] Failed to post to ledger:', ledgerErr);
+      }
+    }
+
     await writeAuditLog({
       tenantId,
       userId: req.user!.id,

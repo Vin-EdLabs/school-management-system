@@ -27,6 +27,7 @@ const SetFeeStructure = () => {
   });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ amount: '', dueDate: '', description: '' });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({
@@ -58,9 +59,11 @@ const SetFeeStructure = () => {
 
     const className = classes.find(c => c.id === formData.classId)?.className || '';
     
+    setIsSubmitting(true);
     try {
       await addFeeStructure({
         classId: parseInt(formData.classId),
+        className,
         term: currentTerm,
         amount: parseFloat(formData.amount),
         dueDate: formData.dueDate,
@@ -84,6 +87,8 @@ const SetFeeStructure = () => {
         description: "Failed to set fee structure",
         variant: "destructive"
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -98,6 +103,7 @@ const SetFeeStructure = () => {
 
   const handleEditSave = async () => {
     if (!editingId) return;
+    setIsSubmitting(true);
     try {
       await updateFeeStructure(editingId, {
         amount: parseFloat(editForm.amount),
@@ -108,16 +114,21 @@ const SetFeeStructure = () => {
       setEditingId(null);
     } catch {
       toast({ title: 'Error', description: 'Failed to update fee structure', variant: 'destructive' });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleDelete = async (fee: { id: string; className: string }) => {
     if (!confirm(`Delete fee structure for ${fee.className}?`)) return;
+    setIsSubmitting(true);
     try {
       await deleteFeeStructure(fee.id);
       toast({ title: 'Fee structure deleted' });
     } catch (err: any) {
       toast({ title: 'Cannot delete', description: err?.message || 'Failed to delete', variant: 'destructive' });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -196,9 +207,21 @@ const SetFeeStructure = () => {
               />
             </div>
 
-            <Button type="submit" className="w-full md:w-auto">
-              <Save className="w-4 h-4 mr-2" />
-              Set Fee Structure
+            <Button type="submit" className="w-full md:w-auto" disabled={isSubmitting}>
+              {isSubmitting ? (
+                <span className="flex items-center">
+                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Processing...
+                </span>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Set Fee Structure
+                </>
+              )}
             </Button>
           </form>
         </CardContent>
@@ -224,10 +247,10 @@ const SetFeeStructure = () => {
                     <p className="font-bold text-lg">GHS {fee.amount}</p>
                     {fee.dueDate && <p className="text-sm text-gray-500">Due: {fee.dueDate}</p>}
                   </div>
-                  <Button variant="ghost" size="sm" onClick={() => handleEdit(fee)}>
+                  <Button variant="ghost" size="sm" onClick={() => handleEdit(fee)} disabled={isSubmitting}>
                     <Pencil className="w-4 h-4" />
                   </Button>
-                  <Button variant="ghost" size="sm" className="text-red-600" onClick={() => handleDelete(fee)}>
+                  <Button variant="ghost" size="sm" className="text-red-600" onClick={() => handleDelete(fee)} disabled={isSubmitting}>
                     <Trash2 className="w-4 h-4" />
                   </Button>
                 </div>
@@ -273,8 +296,10 @@ const SetFeeStructure = () => {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingId(null)}>Cancel</Button>
-            <Button onClick={handleEditSave}>Save</Button>
+            <Button variant="outline" onClick={() => setEditingId(null)} disabled={isSubmitting}>Cancel</Button>
+            <Button onClick={handleEditSave} disabled={isSubmitting}>
+              {isSubmitting ? 'Saving...' : 'Save Changes'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

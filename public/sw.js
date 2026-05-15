@@ -54,9 +54,22 @@ self.addEventListener('fetch', (event) => {
         .then((response) => response.json())
         .then((data) => {
           const origin = self.location.origin;
+          // Use the API origin for assets if they are relative
+          const apiOrigin = apiBase.replace(/\/api$/, '');
+
           if (data.start_url && data.start_url.startsWith('/')) {
             data.start_url = origin + data.start_url;
           }
+
+          if (Array.isArray(data.icons)) {
+            data.icons = data.icons.map(icon => {
+              if (icon.src && icon.src.startsWith('/') && !icon.src.startsWith('//')) {
+                icon.src = apiOrigin + icon.src;
+              }
+              return icon;
+            });
+          }
+
           return new Response(JSON.stringify(data), {
             headers: { 'Content-Type': 'application/manifest+json' },
           });

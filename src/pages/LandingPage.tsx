@@ -157,45 +157,43 @@ const LandingPage = () => {
       <footer className="relative border-t border-slate-200 bg-white py-12">
         <div className="container mx-auto px-4 max-w-6xl">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-8">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-6 sm:gap-10 flex-wrap">
               <a
                 href="mailto:scholarnerve@gmail.com"
-                className="flex items-center gap-2 text-slate-600 hover:text-emerald-600 transition-colors"
+                className="flex items-center gap-3 text-slate-600 hover:text-emerald-600 transition-colors"
               >
-                <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0 shadow-sm">
                   <Mail className="w-5 h-5 text-emerald-600" />
                 </div>
                 <div className="text-left">
-                  <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Email</p>
-                  <p className="font-medium text-slate-800">scholarnerve@gmail.com</p>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">Email</p>
+                  <p className="font-semibold text-slate-800 text-sm md:text-base">scholarnerve@gmail.com</p>
                 </div>
               </a>
-              <div className="flex flex-col gap-4">
-                <a
-                  href="tel:+233531932399"
-                  className="flex items-center gap-2 text-slate-600 hover:text-emerald-600 transition-colors"
-                >
-                  <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
-                    <Phone className="w-5 h-5 text-emerald-600" />
-                  </div>
-                  <div className="text-left">
-                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Support</p>
-                    <p className="font-medium text-slate-800">+233 53 193 2399</p>
-                  </div>
-                </a>
-                <a
-                  href="tel:+233557609106"
-                  className="flex items-center gap-2 text-slate-600 hover:text-emerald-600 transition-colors"
-                >
-                  <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
-                    <Phone className="w-5 h-5 text-emerald-600" />
-                  </div>
-                  <div className="text-left">
-                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Direct</p>
-                    <p className="font-medium text-slate-800">0557609106</p>
-                  </div>
-                </a>
-              </div>
+              <a
+                href="tel:+233531932399"
+                className="flex items-center gap-3 text-slate-600 hover:text-emerald-600 transition-colors"
+              >
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0 shadow-sm">
+                  <Phone className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div className="text-left">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">Support</p>
+                  <p className="font-semibold text-slate-800 text-sm md:text-base">+233 53 193 2399</p>
+                </div>
+              </a>
+              <a
+                href="tel:+233557609106"
+                className="flex items-center gap-3 text-slate-600 hover:text-emerald-600 transition-colors"
+              >
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0 shadow-sm">
+                  <Phone className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div className="text-left">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">Direct</p>
+                  <p className="font-semibold text-slate-800 text-sm md:text-base">+233 55 760 9106</p>
+                </div>
+              </a>
             </div>
             <div className="text-center md:text-right">
               <p className="text-slate-500 text-sm">

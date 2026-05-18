@@ -57,7 +57,7 @@ initSocket(httpServer);
 
 // Middleware
 app.use(cors({
-  origin: ['https://scholarnerve.onrender.com', 'http://localhost:8080', 'http://localhost:5173'],
+  origin: ['https://www.scholarnerve.com', 'https://scholarnerve.com', 'https://scholarnerve.onrender.com', 'http://localhost:8080', 'http://localhost:5173'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: [
@@ -80,7 +80,7 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'TECHNERVE School Management API' });
+  res.json({ status: 'ok', message: 'SCHOLARNERVE School Management API' });
 });
 
 // Public tenant resolution (no auth)

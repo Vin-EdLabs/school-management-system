@@ -166,7 +166,7 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
             <div class="footer">
               <p class="thanks">${receiptSettings?.receipt_footer || 'THANK YOU!'}</p>
               ${receiptSettings?.contact_phone ? `<p style="font-weight:bold; margin-top:5pt;">School Contact: ${receiptSettings.contact_phone}</p>` : ''}
-              <p>Generated via Technerve SMS | ${new Date().toLocaleString()}</p>
+              <p>Generated via Scholarnerve | ${new Date().toLocaleString()}</p>
             </div>
           </div>
         </body>
@@ -214,8 +214,8 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
           </div>
         </CardHeader>
         <CardContent className="p-6 bg-slate-100/50">
-          <div 
-            id="receipt-content" 
+          <div
+            id="receipt-content"
             className="bg-white p-6 shadow-sm mx-auto border border-slate-200 text-black"
             style={{ width: '80mm', minHeight: '120mm' }}
           >
@@ -267,44 +267,44 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
             </div>
 
             <div className="space-y-1 text-[10px] mb-4">
-               <div className="flex justify-between border-b border-slate-200 pb-1 mb-1 font-black text-slate-800 text-[8px] uppercase">
-                 <span>Breakdown</span>
-                 <span>Amount</span>
-               </div>
-               {receiptData.currentTermFee !== undefined && (
-                 <div className="flex justify-between text-slate-700">
-                   <span className="font-medium">Current Fee:</span>
-                   <span className="font-bold">{receiptData.currentTermFee.toFixed(2)}</span>
-                 </div>
-               )}
-               {receiptData.arrears !== undefined && receiptData.arrears > 0 && (
-                 <div className="flex justify-between text-slate-700">
-                   <span className="font-medium">Old Arrears:</span>
-                   <span className="font-bold">{receiptData.arrears.toFixed(2)}</span>
-                 </div>
-               )}
-               <div className="flex justify-between pt-2 border-t border-slate-300 font-black text-sm text-slate-950">
-                 <span>Total Due:</span>
-                 <span>{(receiptData.totalAmountDue || (receiptData.amount || 0)).toFixed(2)}</span>
-               </div>
-               <div className="flex justify-between font-bold pt-1 text-slate-800">
-                 <span>Balance:</span>
-                 <span>{(receiptData.remainingBalance || 0).toFixed(2)}</span>
-               </div>
+              <div className="flex justify-between border-b border-slate-200 pb-1 mb-1 font-black text-slate-800 text-[8px] uppercase">
+                <span>Breakdown</span>
+                <span>Amount</span>
+              </div>
+              {receiptData.currentTermFee !== undefined && (
+                <div className="flex justify-between text-slate-700">
+                  <span className="font-medium">Current Fee:</span>
+                  <span className="font-bold">{receiptData.currentTermFee.toFixed(2)}</span>
+                </div>
+              )}
+              {receiptData.arrears !== undefined && receiptData.arrears > 0 && (
+                <div className="flex justify-between text-slate-700">
+                  <span className="font-medium">Old Arrears:</span>
+                  <span className="font-bold">{receiptData.arrears.toFixed(2)}</span>
+                </div>
+              )}
+              <div className="flex justify-between pt-2 border-t border-slate-300 font-black text-sm text-slate-950">
+                <span>Total Due:</span>
+                <span>{(receiptData.totalAmountDue || (receiptData.amount || 0)).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between font-bold pt-1 text-slate-800">
+                <span>Balance:</span>
+                <span>{(receiptData.remainingBalance || 0).toFixed(2)}</span>
+              </div>
             </div>
 
             {receiptData.notes && (
               <div className="text-[8px] font-medium italic text-slate-700 border-t border-dashed border-slate-300 pt-2 mb-4">
-                 Note: {receiptData.notes}
+                Note: {receiptData.notes}
               </div>
             )}
 
             <div className="text-center pt-4 border-t border-dashed border-slate-300">
-               <p className="text-[9px] font-black uppercase text-slate-900">{receiptSettings?.receipt_footer || 'Thank You!'}</p>
-               {receiptSettings?.contact_phone && (
-                 <p className="text-[8px] font-black text-slate-700 mt-1 uppercase">Contact: {receiptSettings.contact_phone}</p>
-               )}
-               <p className="text-[7px] text-slate-500 mt-2 italic font-bold">Generated via Technerve SMS | {new Date().toLocaleString()}</p>
+              <p className="text-[9px] font-black uppercase text-slate-900">{receiptSettings?.receipt_footer || 'Thank You!'}</p>
+              {receiptSettings?.contact_phone && (
+                <p className="text-[8px] font-black text-slate-700 mt-1 uppercase">Contact: {receiptSettings.contact_phone}</p>
+              )}
+              <p className="text-[7px] text-slate-500 mt-2 italic font-bold">Generated via Scholarnerve | {new Date().toLocaleString()}</p>
             </div>
           </div>
 
@@ -317,8 +317,8 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
               <Download className="w-4 h-4" />
               <span>Download Receipt</span>
             </Button>
-            <Button 
-              onClick={handlePrint} 
+            <Button
+              onClick={handlePrint}
               className="w-full py-6 rounded-xl bg-slate-900 hover:bg-black text-white font-bold flex items-center justify-center space-x-2 shadow-lg shadow-slate-200 transition-all active:scale-95"
             >
               <Printer className="w-4 h-4" />

@@ -209,7 +209,7 @@ const LoginPage = () => {
       </div>
 
       <div className="pointer-events-none absolute bottom-1 left-0 right-0 text-center md:bottom-5">
-        <p className="text-[9px] font-bold uppercase tracking-[0.28em] text-slate-300 md:text-[10px] md:tracking-[0.35em]">Powered by Technerve</p>
+        <p className="text-[9px] font-bold uppercase tracking-[0.28em] text-slate-300 md:text-[10px] md:tracking-[0.35em]">Powered by Scholarnerve</p>
       </div>
     </div>
   );

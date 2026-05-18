@@ -125,44 +125,44 @@ const MenuSection: React.FC<{
           {items.map((item) => {
             const unread = itemCounts?.[item.id] ?? 0;
             return (
-            <SidebarMenuItem key={item.id} className="flex justify-center">
-              <SidebarMenuButton
-                isActive={activeModule === item.id}
-                onClick={() => {
-                  setActiveModule(item.id);
-                  if (isMobile) setOpenMobile(false);
-                }}
-                tooltip={item.label}
-                className={cn(
-                  "relative rounded-xl mx-auto w-[calc(100%-12px)] h-9 text-sidebar-foreground/70 transition-all duration-300 group-data-[collapsible=icon]:w-9 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:mx-0",
-                  activeModule === item.id 
-                    ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-lg shadow-sidebar-primary/20" 
-                    : "hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                )}
-              >
-                <span className="relative inline-flex shrink-0">
-                  <item.icon className="h-[1.1rem] w-[1.1rem] opacity-80 group-data-[active=true]:opacity-100 transition-all duration-300 group-hover/menu-item:scale-110" />
-                  {unread > 0 && (
-                    <span className="absolute -right-1.5 -top-1 flex h-[15px] min-w-[15px] items-center justify-center rounded-full bg-destructive px-0.5 text-[9px] font-bold leading-none text-destructive-foreground ring-2 ring-sidebar">
-                      {unread > 99 ? '99' : unread}
-                    </span>
+              <SidebarMenuItem key={item.id} className="flex justify-center">
+                <SidebarMenuButton
+                  isActive={activeModule === item.id}
+                  onClick={() => {
+                    setActiveModule(item.id);
+                    if (isMobile) setOpenMobile(false);
+                  }}
+                  tooltip={item.label}
+                  className={cn(
+                    "relative rounded-xl mx-auto w-[calc(100%-12px)] h-9 text-sidebar-foreground/70 transition-all duration-300 group-data-[collapsible=icon]:w-9 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:mx-0",
+                    activeModule === item.id
+                      ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-lg shadow-sidebar-primary/20"
+                      : "hover:bg-sidebar-accent hover:text-sidebar-foreground"
                   )}
-                </span>
-                <span className="font-bold text-sm group-data-[collapsible=icon]:hidden ml-3 flex min-w-0 flex-1 items-center gap-1.5 text-left">
-                  <span className="truncate">{item.label}</span>
-                  {unread > 0 && (
-                    <span className="shrink-0 rounded-full bg-destructive px-1.5 py-0 text-[10px] font-bold leading-5 text-destructive-foreground">
-                      {unread > 99 ? '99+' : unread}
-                    </span>
+                >
+                  <span className="relative inline-flex shrink-0">
+                    <item.icon className="h-[1.1rem] w-[1.1rem] opacity-80 group-data-[active=true]:opacity-100 transition-all duration-300 group-hover/menu-item:scale-110" />
+                    {unread > 0 && (
+                      <span className="absolute -right-1.5 -top-1 flex h-[15px] min-w-[15px] items-center justify-center rounded-full bg-destructive px-0.5 text-[9px] font-bold leading-none text-destructive-foreground ring-2 ring-sidebar">
+                        {unread > 99 ? '99' : unread}
+                      </span>
+                    )}
+                  </span>
+                  <span className="font-bold text-sm group-data-[collapsible=icon]:hidden ml-3 flex min-w-0 flex-1 items-center gap-1.5 text-left">
+                    <span className="truncate">{item.label}</span>
+                    {unread > 0 && (
+                      <span className="shrink-0 rounded-full bg-destructive px-1.5 py-0 text-[10px] font-bold leading-5 text-destructive-foreground">
+                        {unread > 99 ? '99+' : unread}
+                      </span>
+                    )}
+                  </span>
+                  {item.badge && !(activeModule === item.id) && (
+                    <Badge variant="secondary" className="ml-auto text-[9px] px-1.5 py-0 bg-sidebar-primary/20 text-sidebar-primary border-0 group-data-[collapsible=icon]:hidden">
+                      {item.badge}
+                    </Badge>
                   )}
-                </span>
-                {item.badge && !(activeModule === item.id) && (
-                  <Badge variant="secondary" className="ml-auto text-[9px] px-1.5 py-0 bg-sidebar-primary/20 text-sidebar-primary border-0 group-data-[collapsible=icon]:hidden">
-                    {item.badge}
-                  </Badge>
-                )}
-              </SidebarMenuButton>
-            </SidebarMenuItem>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             );
           })}
         </SidebarMenu>
@@ -230,24 +230,24 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
       className="border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl overflow-hidden print:hidden"
     >
       <SidebarHeader className="h-20 flex items-center justify-center border-b border-sidebar-border mb-4 px-2 overflow-hidden">
-         <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-xl shadow-indigo-500/20 shrink-0 overflow-hidden">
-           {school?.logo_url ? (
-             <img 
-               src={resolveLogoUrl(school.logo_url) || ''} 
-               alt={school.name} 
-               className="w-full h-full object-cover"
-               onError={(e) => {
-                 (e.target as HTMLImageElement).style.display = 'none';
-                 (e.target as HTMLImageElement).parentElement?.querySelector('.fallback-icon')?.classList.remove('hidden');
-               }}
-             />
-           ) : null}
-           <GraduationCap className={cn("w-6 h-6 text-white fallback-icon", school?.logo_url ? "hidden" : "")} />
-         </div>
-         <div className="ml-3 overflow-hidden transition-all duration-300 group-data-[collapsible=icon]:hidden group-data-[collapsible=icon]:w-0 group-data-[collapsible=icon]:opacity-0">
-             <h2 className="text-sm font-black text-sidebar-foreground uppercase tracking-tighter truncate">{school?.name || 'EDUNERVE'}</h2>
-             <p className="text-[9px] text-sidebar-foreground/50 font-bold tracking-widest uppercase truncate opacity-70">Management System</p>
-         </div>
+        <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-xl shadow-indigo-500/20 shrink-0 overflow-hidden">
+          {school?.logo_url ? (
+            <img
+              src={resolveLogoUrl(school.logo_url) || ''}
+              alt={school.name}
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = 'none';
+                (e.target as HTMLImageElement).parentElement?.querySelector('.fallback-icon')?.classList.remove('hidden');
+              }}
+            />
+          ) : null}
+          <GraduationCap className={cn("w-6 h-6 text-white fallback-icon", school?.logo_url ? "hidden" : "")} />
+        </div>
+        <div className="ml-3 overflow-hidden transition-all duration-300 group-data-[collapsible=icon]:hidden group-data-[collapsible=icon]:w-0 group-data-[collapsible=icon]:opacity-0">
+          <h2 className="text-sm font-black text-sidebar-foreground uppercase tracking-tighter truncate">{school?.name || 'EDUNERVE'}</h2>
+          <p className="text-[9px] text-sidebar-foreground/50 font-bold tracking-widest uppercase truncate opacity-70">Management System</p>
+        </div>
       </SidebarHeader>
 
       <SidebarContent className="flex-1 min-h-0 overflow-y-auto scrollbar-hide overscroll-contain px-1 py-4 gap-4 bg-transparent outline-none border-none">
@@ -290,12 +290,12 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-        
+
         <div className="px-2 group-data-[collapsible=icon]:hidden">
           <div className="p-3 bg-sidebar-accent/30 rounded-2xl border border-sidebar-border">
             <p className="text-[10px] text-sidebar-foreground/50 text-center font-medium leading-tight">
               Crafted with Excellence by <br />
-              <span className="font-black text-sidebar-foreground uppercase tracking-widest text-[9px]">Technerve</span>
+              <span className="font-black text-sidebar-foreground uppercase tracking-widest text-[9px]">Scholarnerve</span>
             </p>
           </div>
         </div>

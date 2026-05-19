@@ -19,7 +19,7 @@ import LandingPage from "./pages/LandingPage";
 import RegisterSchool from "./pages/RegisterSchool";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import { ParentPortalRoute } from "./pages/ParentPortal";
-import { detectTenantSlugFromHost } from "./utils/tenantHost";
+import { detectTenantSlugFromHost, getSubdomainUrl } from "./utils/tenantHost";
 import { PwaUpdateManager } from "@/components/pwa/PwaUpdateManager";
 import { BrandedLoadingScreen } from "@/components/common/BrandedLoading";
 
@@ -29,12 +29,48 @@ const queryClient = new QueryClient();
 
 const HostAwareLanding = () => {
   const slug = detectTenantSlugFromHost();
-  if (slug) return <Navigate to={`/sch/${slug}`} replace />;
+  if (slug) return <Navigate to="/" replace />; // Keep URL clean, let the root route render it
   return <LandingPage />;
 };
 
+const LegacySubdomainRedirect = () => {
+  const { slug } = useParams<{ slug?: string }>();
+  
+  React.useEffect(() => {
+    if (slug) {
+      const targetBase = getSubdomainUrl(slug);
+      const restOfPath = window.location.pathname.replace(new RegExp(`^/sch/${slug}`), '');
+      window.location.replace(`${targetBase}${restOfPath}${window.location.search}${window.location.hash}`);
+    }
+  }, [slug]);
+
+  return <BrandedLoadingScreen label="Redirecting to your portal..." />;
+};
+
+const LegacyPortalRedirect = () => {
+  const { tenantId } = useParams<{ tenantId?: string }>();
+  
+  React.useEffect(() => {
+    // If tenantId is numeric, we can't redirect directly to subdomain without fetching the slug, 
+    // so we let the old path handle it. If it's a string (slug), we redirect.
+    if (tenantId && isNaN(Number(tenantId))) {
+      const targetBase = getSubdomainUrl(tenantId);
+      const restOfPath = window.location.pathname.replace(new RegExp(`^/portal/${tenantId}`), '/portal');
+      window.location.replace(`${targetBase}${restOfPath}${window.location.search}${window.location.hash}`);
+    }
+  }, [tenantId]);
+
+  // If it's a numeric ID, render the normal route
+  if (tenantId && !isNaN(Number(tenantId))) {
+    return <ParentPortalRoute />;
+  }
+
+  return <BrandedLoadingScreen label="Redirecting to parent portal..." tone="dark" />;
+};
+
 const IndexWithSchool = () => {
-  const { schoolId, slug } = useParams<{ schoolId?: string; slug?: string }>();
+  const { schoolId, slug: routeSlug } = useParams<{ schoolId?: string; slug?: string }>();
+  const slug = routeSlug || detectTenantSlugFromHost();
   const [resolvedId, setResolvedId] = React.useState<number | null>(() => {
     const id = schoolId ? parseInt(schoolId, 10) : null;
     return id && !isNaN(id) ? id : null;
@@ -141,33 +177,57 @@ const IndexWithSchool = () => {
   );
 };
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <ThemeProvider>
-      <AuthProvider>
-        <SocketProvider>
-          <TeacherNotificationProvider>
-          <TooltipProvider>
-            <PwaUpdateManager />
-            <Toaster />
-            <Sonner />
-            <BrowserRouter>
-              <Routes>
-                <Route path="/" element={<HostAwareLanding />} />
-                <Route path="/register-school" element={<RegisterSchool />} />
-                <Route path="/super-admin" element={<SuperAdminDashboard />} />
-                <Route path="/school/:schoolId/*" element={<IndexWithSchool />} />
-                <Route path="/sch/:slug/*" element={<IndexWithSchool />} />
-                <Route path="/portal/:tenantId" element={<ParentPortalRoute />} />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
-            </BrowserRouter>
-          </TooltipProvider>
-          </TeacherNotificationProvider>
-        </SocketProvider>
-      </AuthProvider>
-    </ThemeProvider>
-  </QueryClientProvider>
-);
+const App = () => {
+  const subdomainSlug = detectTenantSlugFromHost();
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <AuthProvider>
+          <SocketProvider>
+            <TeacherNotificationProvider>
+            <TooltipProvider>
+              <PwaUpdateManager />
+              <Toaster />
+              <Sonner />
+              <BrowserRouter>
+                <Routes>
+                  {subdomainSlug ? (
+                    // --- WILDCARD SUBDOMAIN ROUTING (Clean URL bar, e.g. rosa.localhost:8080) ---
+                    <>
+                      {/* Render Parent Portal directly on subdomain /portal path */}
+                      <Route path="/portal" element={<ParentPortalRoute />} />
+                      <Route path="/portal/*" element={<ParentPortalRoute />} />
+                      
+                      {/* Standard Shared Dashboard Routes */}
+                      <Route path="/register-school" element={<RegisterSchool />} />
+                      <Route path="/super-admin" element={<SuperAdminDashboard />} />
+                      
+                      {/* School Portal Dashboard mounts directly at root and handles all sub-navigation (e.g. /teachers) */}
+                      <Route path="/" element={<IndexWithSchool />} />
+                      <Route path="/*" element={<IndexWithSchool />} />
+                    </>
+                  ) : (
+                    // --- APEX DOMAIN / STATIC SUBDOMAIN ROUTING ---
+                    <>
+                      <Route path="/" element={<LandingPage />} />
+                      <Route path="/register-school" element={<RegisterSchool />} />
+                      <Route path="/super-admin" element={<SuperAdminDashboard />} />
+                      <Route path="/school/:schoolId/*" element={<IndexWithSchool />} />
+                      <Route path="/sch/:slug/*" element={<LegacySubdomainRedirect />} />
+                      <Route path="/portal/:tenantId" element={<LegacyPortalRedirect />} />
+                      <Route path="*" element={<Navigate to="/" replace />} />
+                    </>
+                  )}
+                </Routes>
+              </BrowserRouter>
+            </TooltipProvider>
+            </TeacherNotificationProvider>
+          </SocketProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
+  );
+};
 
 export default App;

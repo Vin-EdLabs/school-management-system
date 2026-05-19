@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { apiService } from '../../services/api';
 import { toast } from '@/hooks/use-toast';
-import { Building, PlusCircle } from 'lucide-react';
+import { Building, PlusCircle, Pencil, Check, X } from 'lucide-react';
 
 const SchoolManager = () => {
   const [schools, setSchools] = useState<any[]>([]);
@@ -17,6 +17,9 @@ const SchoolManager = () => {
     adminPassword: '',
     adminEmail: '',
   });
+
+  const [editingSchoolId, setEditingSchoolId] = useState<number | null>(null);
+  const [editingSubdomain, setEditingSubdomain] = useState('');
 
   const getSubdomainUrl = (slug: string) => {
     const hostname = window.location.hostname.toLowerCase();
@@ -93,6 +96,28 @@ const SchoolManager = () => {
     }
   };
 
+  const handleUpdateSubdomain = async (id: number) => {
+    try {
+      await apiService.put(`/schools/${id}`, { 
+        subdomain: editingSubdomain || null,
+        slug: editingSubdomain || null 
+      });
+      toast({
+        title: 'Success',
+        description: 'School subdomain updated.',
+      });
+      setEditingSchoolId(null);
+      fetchSchools();
+    } catch (error: any) {
+      console.error('Failed to update subdomain:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update subdomain.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Card>
@@ -116,18 +141,45 @@ const SchoolManager = () => {
                     <div className="flex justify-between items-start">
                       <div>
                         <span className="font-bold text-foreground text-lg block">{school.name}</span>
-                        <p className="text-xs text-muted-foreground font-mono mt-1 opacity-70">
-                          SUBDOMAIN: {school.subdomain || 'N/A'}
-                        </p>
+                        {editingSchoolId === school.id ? (
+                          <div className="flex items-center gap-2 mt-2">
+                            <Input 
+                              value={editingSubdomain}
+                              onChange={(e) => setEditingSubdomain(e.target.value)}
+                              placeholder="new-subdomain"
+                              className="h-8 text-xs font-mono"
+                            />
+                            <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600 hover:bg-green-500/10" onClick={() => handleUpdateSubdomain(school.id)}>
+                              <Check className="w-4 h-4" />
+                            </Button>
+                            <Button size="icon" variant="ghost" className="h-8 w-8 text-red-600 hover:bg-red-500/10" onClick={() => setEditingSchoolId(null)}>
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 mt-1">
+                            <p className="text-xs text-muted-foreground font-mono opacity-70">
+                              SUBDOMAIN: {school.subdomain || 'N/A'}
+                            </p>
+                            <button 
+                              onClick={() => { setEditingSchoolId(school.id); setEditingSubdomain(school.subdomain || ''); }}
+                              className="text-muted-foreground hover:text-blue-500 transition-colors"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
                       </div>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 rounded-lg"
-                        onClick={() => window.open(loginUrl, '_blank')}
-                      >
-                        Open
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 rounded-lg"
+                          onClick={() => window.open(loginUrl, '_blank')}
+                        >
+                          Open
+                        </Button>
+                      </div>
                     </div>
                     <div className="bg-background/50 p-2 rounded-lg border border-border/50">
                       <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">

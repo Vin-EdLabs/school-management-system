@@ -420,16 +420,49 @@ const SuperAdminDashboard = () => {
     }
   };
 
+  const getSubdomainUrl = (slug: string) => {
+    const hostname = window.location.hostname.toLowerCase();
+    const protocol = window.location.protocol; // http: or https:
+    
+    // Local development options (e.g., localhost:8080 or lvh.me:8080)
+    if (hostname.includes('localhost') || hostname === '127.0.0.1' || hostname === '::1') {
+      const port = window.location.port ? `:${window.location.port}` : '';
+      return `${protocol}//${slug}.localhost${port}`;
+    }
+    
+    if (hostname.endsWith('.lvh.me')) {
+      const port = window.location.port ? `:${window.location.port}` : '';
+      return `${protocol}//${slug}.lvh.me${port}`;
+    }
+
+    // Render domain resolution: tenant.scholarnerve.onrender.com
+    if (hostname.endsWith('.onrender.com')) {
+      const baseDomain = hostname.replace(/^[a-z0-9-]+\./, ''); // Strip any existing subdomain
+      return `${protocol}//${slug}.${baseDomain}`;
+    }
+
+    // Production apex custom domain: tenant.scholarnerve.com
+    const baseDomain = hostname.includes('scholarnerve.com') ? 'scholarnerve.com' : hostname.replace(/^[a-z0-9-]+\./, '');
+    return `${protocol}//${slug}.${baseDomain}`;
+  };
+
   const openSchool = (school: School | { id: number; slug?: string }) => {
     apiService.setTenantContext(school.id);
     localStorage.setItem('currentSchoolId', school.id.toString());
-    const path = school.slug ? `/sch/${school.slug}` : `/school/${school.id}`;
-    navigate(path);
+    if (school.slug) {
+      const url = getSubdomainUrl(school.slug);
+      window.open(url, '_blank');
+    } else {
+      const path = `/school/${school.id}`;
+      navigate(path);
+    }
   };
 
   const loginUrl = (school: School | { id: number; slug?: string }) => {
-    const path = school.slug ? `/sch/${school.slug}` : `/school/${school.id}`;
-    return `${window.location.origin}${path}`;
+    if (school.slug) {
+      return getSubdomainUrl(school.slug);
+    }
+    return `${window.location.origin}/school/${school.id}`;
   };
 
   const formatDate = (d: string) => new Date(d).toLocaleString();

@@ -57,7 +57,28 @@ initSocket(httpServer);
 
 // Middleware
 app.use(cors({
-  origin: ['https://www.scholarnerve.com', 'https://scholarnerve.com', 'https://scholarnerve.onrender.com', 'http://localhost:8080', 'http://localhost:5173'],
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps, curl, or direct server-to-server)
+    if (!origin) {
+      return callback(null, true);
+    }
+    
+    // Whitelist patterns for matching root and subdomains dynamically
+    const allowedPatterns = [
+      /^https:\/\/([a-z0-9-]+\.)?scholarnerve\.com$/,
+      /^https:\/\/([a-z0-9-]+\.)?scholarnerve\.onrender\.com$/,
+      /^http:\/\/([a-z0-9-]+\.)?localhost:(8080|5173)$/,
+      /^http:\/\/localhost:(8080|5173)$/
+    ];
+    
+    const isAllowed = allowedPatterns.some(pattern => pattern.test(origin));
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      console.warn(`[CORS Blocked] Origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: [

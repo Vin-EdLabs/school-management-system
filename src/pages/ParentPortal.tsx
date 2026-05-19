@@ -2532,7 +2532,10 @@ export const ParentPortalRoute: React.FC = () => {
       setLoading(true);
       try {
         let fetchUrl = '';
-        if (slug) {
+        const hostSlug = detectTenantSlugFromHost();
+        if (hostSlug) {
+          fetchUrl = `${API}/tenant/by-slug/${hostSlug}`;
+        } else if (slug) {
           fetchUrl = `${API}/tenant/by-slug/${slug}`;
         } else if (tenantIdParam) {
           // If it's a number, try by ID; otherwise, try as a slug

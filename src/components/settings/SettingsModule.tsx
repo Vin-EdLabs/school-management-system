@@ -83,6 +83,32 @@ const SettingsModule = () => {
   const isSuperAdmin = hasAccess('schools');
   const hasSettingsFull = hasAccess('settings-full');
 
+  const getParentPortalUrl = () => {
+    if (!school?.slug) {
+      return `${window.location.origin}/portal/${school?.id || ''}`;
+    }
+    const hostname = window.location.hostname.toLowerCase();
+    const protocol = window.location.protocol;
+    
+    if (hostname.includes('localhost') || hostname === '127.0.0.1' || hostname === '::1') {
+      const port = window.location.port ? `:${window.location.port}` : '';
+      return `${protocol}//${school.slug}.localhost${port}/portal`;
+    }
+    
+    if (hostname.endsWith('.lvh.me')) {
+      const port = window.location.port ? `:${window.location.port}` : '';
+      return `${protocol}//${school.slug}.lvh.me${port}/portal`;
+    }
+
+    if (hostname.endsWith('.onrender.com')) {
+      const baseDomain = hostname.replace(/^[a-z0-9-]+\./, '');
+      return `${protocol}//${school.slug}.${baseDomain}/portal`;
+    }
+
+    const baseDomain = hostname.includes('scholarnerve.com') ? 'scholarnerve.com' : hostname.replace(/^[a-z0-9-]+\./, '');
+    return `${protocol}//${school.slug}.${baseDomain}/portal`;
+  };
+
   const loadSettings = useCallback(async () => {
     if (!hasSettingsFull) return;
     try {
@@ -627,12 +653,12 @@ const SettingsModule = () => {
               
               <div className="flex items-center gap-2 bg-background/50 border border-purple-500/20 rounded-xl p-3 shadow-inner group">
                 <code className="text-xs text-purple-600 dark:text-purple-400 flex-1 truncate font-mono select-all">
-                  {window.location.origin}/portal/{school.slug || school.id}
+                  {getParentPortalUrl()}
                 </code>
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => {
-                      const url = `${window.location.origin}/portal/${school.slug || school.id}`;
+                      const url = getParentPortalUrl();
                       navigator.clipboard.writeText(url);
                       toast({ title: 'Link Copied', description: 'The branded parent portal link is now in your clipboard.' });
                     }}
@@ -642,7 +668,7 @@ const SettingsModule = () => {
                     <Copy className="w-4 h-4" />
                   </button>
                   <a
-                    href={`/portal/${school.slug || school.id}`}
+                    href={getParentPortalUrl()}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="p-2 text-purple-500 hover:text-purple-700 hover:bg-purple-500/10 rounded-lg transition-all"

@@ -18,6 +18,32 @@ const SchoolManager = () => {
     adminEmail: '',
   });
 
+  const getSubdomainUrl = (slug: string) => {
+    const hostname = window.location.hostname.toLowerCase();
+    const protocol = window.location.protocol; // http: or https:
+    
+    // Local development options (e.g., localhost:8080 or lvh.me:8080)
+    if (hostname.includes('localhost') || hostname === '127.0.0.1' || hostname === '::1') {
+      const port = window.location.port ? `:${window.location.port}` : '';
+      return `${protocol}//${slug}.localhost${port}`;
+    }
+    
+    if (hostname.endsWith('.lvh.me')) {
+      const port = window.location.port ? `:${window.location.port}` : '';
+      return `${protocol}//${slug}.lvh.me${port}`;
+    }
+
+    // Render domain resolution: tenant.scholarnerve.onrender.com
+    if (hostname.endsWith('.onrender.com')) {
+      const baseDomain = hostname.replace(/^[a-z0-9-]+\./, ''); // Strip any existing subdomain
+      return `${protocol}//${slug}.${baseDomain}`;
+    }
+
+    // Production apex custom domain: tenant.scholarnerve.com
+    const baseDomain = hostname.includes('scholarnerve.com') ? 'scholarnerve.com' : hostname.replace(/^[a-z0-9-]+\./, '');
+    return `${protocol}//${slug}.${baseDomain}`;
+  };
+
   useEffect(() => {
     fetchSchools();
   }, []);
@@ -81,10 +107,9 @@ const SchoolManager = () => {
             <h3 className="font-medium">Existing Schools</h3>
             <ul className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {schools.map((school) => {
-                const isSubdomain = !!school.subdomain;
-                const loginSlug = school.subdomain || school.id;
-                const urlPrefix = isSubdomain ? 'sch' : 'school';
-                const loginUrl = `${window.location.origin}/${urlPrefix}/${loginSlug}`;
+                const loginUrl = school.subdomain 
+                  ? getSubdomainUrl(school.subdomain) 
+                  : `${window.location.origin}/school/${school.id}`;
                 
                 return (
                   <li key={school.id} className="flex flex-col gap-3 p-4 bg-muted/30 border border-border rounded-xl hover:border-blue-500/30 transition-all group shadow-sm">
@@ -99,7 +124,7 @@ const SchoolManager = () => {
                         size="sm"
                         variant="ghost"
                         className="text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 rounded-lg"
-                        onClick={() => window.open(`/${urlPrefix}/${loginSlug}`, '_blank')}
+                        onClick={() => window.open(loginUrl, '_blank')}
                       >
                         Open
                       </Button>

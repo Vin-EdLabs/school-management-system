@@ -15,10 +15,58 @@ interface AddStudentFormProps {
   onSuccess?: () => void;
 }
 
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api').replace('/api', '');
+
+function resolveMediaUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (url.startsWith('http') || url.startsWith('data:')) return url;
+  return `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
+}
+
 const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
-  const { addStudent, classes } = useData();
+  const { addStudent, classes, students } = useData();
   const [passportPhoto, setPassportPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [siblingSearch, setSiblingSearch] = useState('');
+  const [selectedSiblings, setSelectedSiblings] = useState<any[]>([]);
+  const [previewPhoto, setPreviewPhoto] = useState<{ url: string; name: string } | null>(null);
+
+  const matchingStudents = useMemo(() => {
+    if (!siblingSearch.trim()) return [];
+    const query = siblingSearch.toLowerCase();
+    return students.filter(s => {
+      if (selectedSiblings.some(sel => sel.id === s.id)) return false;
+      return (
+        s.firstName.toLowerCase().includes(query) ||
+        s.lastName.toLowerCase().includes(query) ||
+        s.admissionNumber.toLowerCase().includes(query)
+      );
+    }).slice(0, 5);
+  }, [siblingSearch, students, selectedSiblings]);
+
+  const addSibling = (sib: any) => {
+    const newSiblings = [...selectedSiblings, sib];
+    setSelectedSiblings(newSiblings);
+    const names = newSiblings.map(s => `${s.firstName} ${s.lastName} (${s.admissionNumber})`).join(', ');
+    setFormData(prev => ({
+      ...prev,
+      namesOfSiblings: names,
+      numberOfSiblings: Math.max(prev.numberOfSiblings, newSiblings.length)
+    }));
+    setSiblingSearch('');
+  };
+
+  const removeSibling = (sibId: string) => {
+    const newSiblings = selectedSiblings.filter(s => s.id !== sibId);
+    setSelectedSiblings(newSiblings);
+    const names = newSiblings.map(s => `${s.firstName} ${s.lastName} (${s.admissionNumber})`).join(', ');
+    setFormData(prev => ({
+      ...prev,
+      namesOfSiblings: names,
+      numberOfSiblings: Math.max(0, prev.numberOfSiblings - 1)
+    }));
+  };
+
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -146,6 +194,7 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
         discountValue: 0,
         beneficiaryNotes: ''
       });
+      setSelectedSiblings([]);
       clearPhoto();
 
       if (onSuccess) onSuccess();
@@ -381,26 +430,130 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
             </div>
 
             {/* Family & Admission Information */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2.5">
-                <Label htmlFor="numberOfSiblings" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Sibling Count</Label>
-                <Input
-                  id="numberOfSiblings"
-                  type="number"
-                  min="0"
-                  value={formData.numberOfSiblings}
-                  onChange={(e) => handleInputChange('numberOfSiblings', parseInt(e.target.value) || 0)}
-                  className="h-12 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl"
-                />
+            <div className="bg-slate-50/30 dark:bg-slate-800/20 p-6 rounded-[1.5rem] border border-slate-200/50 dark:border-slate-700/50 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2.5">
+                  <Label htmlFor="numberOfSiblings" className="text-sm font-medium text-slate-700 dark:text-slate-300 ml-1">Total Sibling Count</Label>
+                  <Input
+                    id="numberOfSiblings"
+                    type="number"
+                    min="0"
+                    value={formData.numberOfSiblings}
+                    onChange={(e) => handleInputChange('numberOfSiblings', parseInt(e.target.value) || 0)}
+                    className="h-12 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl"
+                  />
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 ml-1">Includes both inside and outside school siblings.</p>
+                </div>
+                
+                <div className="space-y-2.5 relative">
+                  <Label className="text-sm font-medium text-slate-700 dark:text-slate-300 ml-1">Search & Link Internal Siblings</Label>
+                  <div className="relative">
+                    <Input
+                      type="text"
+                      placeholder="Type sibling name or admission number..."
+                      value={siblingSearch}
+                      onChange={(e) => setSiblingSearch(e.target.value)}
+                      className="h-12 bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-700 rounded-xl pr-10"
+                    />
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                      <UserPlus className="w-4 h-4" />
+                    </div>
+                  </div>
+
+                  {matchingStudents.length > 0 && (
+                    <div className="absolute z-20 left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto">
+                      <div className="p-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+                        <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Select Student to Link</span>
+                      </div>
+                      {matchingStudents.map(student => (
+                        <button
+                          key={student.id}
+                          type="button"
+                          onClick={() => addSibling(student)}
+                          className="w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors flex items-center justify-between border-b border-slate-50 dark:border-slate-800/30 last:border-0"
+                        >
+                          <div className="flex items-center gap-3">
+                            {student.passportPhotoUrl ? (
+                              <img
+                                src={resolveMediaUrl(student.passportPhotoUrl) || ''}
+                                alt={`${student.firstName} ${student.lastName}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const photoUrl = resolveMediaUrl(student.passportPhotoUrl);
+                                  if (photoUrl) {
+                                    setPreviewPhoto({ url: photoUrl, name: `${student.firstName} ${student.lastName}` });
+                                  }
+                                }}
+                                className="w-8 h-8 rounded-lg object-cover border border-slate-200 dark:border-slate-800 hover:scale-110 active:scale-95 transition-all cursor-zoom-in shrink-0"
+                              />
+                            ) : (
+                              <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center font-bold text-xs text-indigo-600 dark:text-indigo-400 uppercase shrink-0">
+                                {student.firstName[0]}{student.lastName[0]}
+                              </div>
+                            )}
+                            <div>
+                              <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{student.firstName} {student.lastName}</p>
+                              <p className="text-[10px] text-slate-500">{student.classAssigned || 'No Class'} • {student.admissionNumber}</p>
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 px-2.5 py-1 rounded-md">Link</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
+
+              {selectedSiblings.length > 0 && (
+                <div className="space-y-3 pt-2">
+                  <Label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Linked Internal Siblings ({selectedSiblings.length})</Label>
+                  <div className="flex flex-wrap gap-2.5">
+                    {selectedSiblings.map(s => (
+                      <div
+                        key={s.id}
+                        className="flex items-center gap-2 bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50 pl-2 pr-2 py-1.5 rounded-xl text-xs font-medium text-slate-800 dark:text-slate-200 shadow-sm animate-in zoom-in-95 duration-200"
+                      >
+                        {s.passportPhotoUrl ? (
+                          <img
+                            src={resolveMediaUrl(s.passportPhotoUrl) || ''}
+                            alt={`${s.firstName} ${s.lastName}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const photoUrl = resolveMediaUrl(s.passportPhotoUrl);
+                              if (photoUrl) {
+                                setPreviewPhoto({ url: photoUrl, name: `${s.firstName} ${s.lastName}` });
+                              }
+                            }}
+                            className="w-6 h-6 rounded-md object-cover border border-indigo-200/50 dark:border-indigo-900/50 hover:scale-110 active:scale-95 transition-all cursor-zoom-in shrink-0"
+                          />
+                        ) : (
+                          <div className="w-6 h-6 rounded-md bg-indigo-500/10 flex items-center justify-center font-bold text-[9px] text-indigo-600 dark:text-indigo-400 uppercase shrink-0">
+                            {s.firstName[0]}{s.lastName[0]}
+                          </div>
+                        )}
+                        <span>{s.firstName} {s.lastName}</span>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded-md">{s.classAssigned}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeSibling(s.id)}
+                          className="w-5 h-5 rounded-lg hover:bg-red-500/10 hover:text-red-500 flex items-center justify-center transition-colors text-slate-400 ml-1"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-2.5">
-                <Label htmlFor="namesOfSiblings" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Internal Siblings</Label>
+                <Label htmlFor="namesOfSiblings" className="text-sm font-medium text-slate-700 dark:text-slate-300 ml-1">Linked Siblings Details (System Value)</Label>
                 <Input
                   id="namesOfSiblings"
                   value={formData.namesOfSiblings}
                   onChange={(e) => handleInputChange('namesOfSiblings', e.target.value)}
-                  placeholder="List linked identities"
-                  className="h-12 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl"
+                  placeholder="Linked siblings list will populate here automatically..."
+                  className="h-12 bg-slate-50/50 dark:bg-slate-800/30 border-slate-200 dark:border-slate-700 rounded-xl text-slate-500"
                 />
               </div>
             </div>
@@ -569,6 +722,38 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
           </div>
         </form>
       </CardContent>
+
+      {/* Floating Lightbox Image Preview Modal */}
+      {previewPhoto && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => setPreviewPhoto(null)}
+        >
+          <div 
+            className="relative max-w-sm w-full p-4 mx-auto animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setPreviewPhoto(null)}
+              className="absolute top-6 right-6 bg-slate-900/80 hover:bg-slate-800/80 hover:scale-110 text-white rounded-full p-2.5 transition-all shadow-lg z-10"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-3 overflow-hidden border border-slate-200/20 shadow-2xl">
+              <img
+                src={previewPhoto.url}
+                alt={previewPhoto.name}
+                className="w-full h-80 object-cover rounded-[1.5rem] shadow-sm"
+              />
+              <div className="mt-3 text-center pb-2">
+                <p className="font-extrabold text-slate-900 dark:text-white text-base">{previewPhoto.name}</p>
+                <p className="text-[10px] text-indigo-500 dark:text-indigo-400 font-bold uppercase tracking-wider mt-0.5">Sibling Passport Preview</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </Card>
   );
 };

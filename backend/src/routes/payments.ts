@@ -78,7 +78,7 @@ async function getStudentFeeBalance(
      WHERE tenant_id = $1 AND student_id = $2 AND (current_term = $3 OR $3 LIKE current_term || '%' OR current_term LIKE $3 || '%')`,
     [tenantId, studentId, termMatch]
   );
-  const arrears = parseFloat(arrearsRes.rows[0]?.total || '0');
+  const arrears = Math.max(0, parseFloat(arrearsRes.rows[0]?.total || '0'));
 
   return calculateFeeBalance(totalFees, totalPaid, arrears);
 }

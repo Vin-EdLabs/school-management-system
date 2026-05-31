@@ -12,9 +12,39 @@ async function readResponseJson<T>(response: Response): Promise<T> {
   }
 }
 
+function stableStringify(value: unknown): string {
+  if (value == null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  return `{${Object.keys(value as Record<string, unknown>)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableStringify((value as Record<string, unknown>)[key])}`)
+    .join(',')}}`;
+}
+
+function hashRequestKey(input: string): string {
+  let hash = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    hash = (hash * 31 + input.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
+function formDataFingerprint(formData: FormData): string {
+  const parts: string[] = [];
+  formData.forEach((value, key) => {
+    if (value instanceof File) {
+      parts.push(`${key}=file:${value.name}:${value.size}:${value.type}:${value.lastModified}`);
+    } else {
+      parts.push(`${key}=${String(value)}`);
+    }
+  });
+  return parts.sort().join('&');
+}
+
 export class ApiService {
   private baseURL: string;
   private tenantId: number | null = null;
+  private inFlightMutations = new Map<string, Promise<unknown>>();
 
   constructor(baseURL: string = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api') {
     this.baseURL = baseURL;
@@ -61,6 +91,22 @@ export class ApiService {
     return headers;
   }
 
+  private mutationKey(method: string, endpoint: string, data: unknown): string {
+    const tenant = this.tenantId ?? detectTenantSlugFromHost() ?? 'public';
+    const payload = data instanceof FormData ? formDataFingerprint(data) : stableStringify(data);
+    return `${method}:${tenant}:${endpoint}:${hashRequestKey(payload)}`;
+  }
+
+  private withMutationGuard<T>(key: string, run: () => Promise<T>): Promise<T> {
+    const existing = this.inFlightMutations.get(key);
+    if (existing) return existing as Promise<T>;
+    const promise = run().finally(() => {
+      this.inFlightMutations.delete(key);
+    });
+    this.inFlightMutations.set(key, promise);
+    return promise;
+  }
+
   async get<T>(endpoint: string): Promise<T> {
     const response = await fetch(this.buildURL(endpoint), {
       headers: this.getAuthHeaders(),
@@ -85,58 +131,71 @@ export class ApiService {
   }
 
   async postPublic<T>(endpoint: string, data: any): Promise<T> {
-    const response = await fetch(`${this.baseURL}${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
+    const key = this.mutationKey('POST_PUBLIC', endpoint, data);
+    return this.withMutationGuard(key, async () => {
+      const response = await fetch(`${this.baseURL}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Idempotency-Key': key },
+        body: JSON.stringify(data),
+      });
+      const payload = await readResponseJson<any>(response);
+      if (!response.ok) {
+        throw new Error(payload.error || `Request failed (${response.status})`);
+      }
+      return payload as T;
     });
-    const payload = await readResponseJson<any>(response);
-    if (!response.ok) {
-      throw new Error(payload.error || `Request failed (${response.status})`);
-    }
-    return payload as T;
   }
 
   async post<T>(endpoint: string, data: any): Promise<T> {
-    const response = await fetch(this.buildURL(endpoint), {
-      method: 'POST',
-      headers: this.getAuthHeaders(),
-      body: JSON.stringify(data),
+    const key = this.mutationKey('POST', endpoint, data);
+    return this.withMutationGuard(key, async () => {
+      const headers = { ...this.getAuthHeaders(), 'X-Idempotency-Key': key };
+      const response = await fetch(this.buildURL(endpoint), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(data),
+      });
+      const payload = await readResponseJson<any>(response);
+      if (!response.ok) {
+        let msg = payload.error || `Request failed (${response.status})`;
+        if (payload.hint) msg += ` ${payload.hint}`;
+        if (payload.detail) msg += ` (${payload.detail})`;
+        throw new Error(msg);
+      }
+      return payload as T;
     });
-    const payload = await readResponseJson<any>(response);
-    if (!response.ok) {
-      let msg = payload.error || `Request failed (${response.status})`;
-      if (payload.hint) msg += ` ${payload.hint}`;
-      if (payload.detail) msg += ` (${payload.detail})`;
-      throw new Error(msg);
-    }
-    return payload as T;
   }
 
   async patch<T>(endpoint: string, data: any): Promise<T> {
-    const response = await fetch(this.buildURL(endpoint), {
-      method: 'PATCH',
-      headers: this.getAuthHeaders(),
-      body: JSON.stringify(data),
+    const key = this.mutationKey('PATCH', endpoint, data);
+    return this.withMutationGuard(key, async () => {
+      const response = await fetch(this.buildURL(endpoint), {
+        method: 'PATCH',
+        headers: { ...this.getAuthHeaders(), 'X-Idempotency-Key': key },
+        body: JSON.stringify(data),
+      });
+      const payload = await readResponseJson<any>(response);
+      if (!response.ok) {
+        throw new Error(payload.error || `Request failed (${response.status})`);
+      }
+      return payload as T;
     });
-    const payload = await readResponseJson<any>(response);
-    if (!response.ok) {
-      throw new Error(payload.error || `Request failed (${response.status})`);
-    }
-    return payload as T;
   }
 
   async put<T>(endpoint: string, data: any): Promise<T> {
-    const response = await fetch(this.buildURL(endpoint), {
-      method: 'PUT',
-      headers: this.getAuthHeaders(),
-      body: JSON.stringify(data),
+    const key = this.mutationKey('PUT', endpoint, data);
+    return this.withMutationGuard(key, async () => {
+      const response = await fetch(this.buildURL(endpoint), {
+        method: 'PUT',
+        headers: { ...this.getAuthHeaders(), 'X-Idempotency-Key': key },
+        body: JSON.stringify(data),
+      });
+      const payload = await readResponseJson<any>(response);
+      if (!response.ok) {
+        throw new Error(payload.error || `Request failed (${response.status})`);
+      }
+      return payload as T;
     });
-    const payload = await readResponseJson<any>(response);
-    if (!response.ok) {
-      throw new Error(payload.error || `Request failed (${response.status})`);
-    }
-    return payload as T;
   }
 
   async delete<T>(endpoint: string): Promise<T> {
@@ -157,16 +216,20 @@ export class ApiService {
     const token = localStorage.getItem('authToken');
     const headers: HeadersInit = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    const response = await fetch(this.buildURL(`/students/${studentId}/photo`), {
-      method: 'POST',
-      headers,
-      body: formData,
+    const endpoint = `/students/${studentId}/photo`;
+    const key = this.mutationKey('POST_FORM', endpoint, formData);
+    return this.withMutationGuard(key, async () => {
+      const response = await fetch(this.buildURL(endpoint), {
+        method: 'POST',
+        headers: { ...headers, 'X-Idempotency-Key': key },
+        body: formData,
+      });
+      if (!response.ok) {
+        const error = await readResponseJson<{ error?: string }>(response).catch(() => ({ error: 'Upload failed' }));
+        throw new Error(error.error || `HTTP error! status: ${response.status}`);
+      }
+      return readResponseJson(response);
     });
-    if (!response.ok) {
-      const error = await readResponseJson<{ error?: string }>(response).catch(() => ({ error: 'Upload failed' }));
-      throw new Error(error.error || `HTTP error! status: ${response.status}`);
-    }
-    return readResponseJson(response);
   }
 
   async uploadFile<T>(endpoint: string, file: File, fieldName: string = 'file'): Promise<T> {
@@ -179,17 +242,20 @@ export class ApiService {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const response = await fetch(this.buildURL(endpoint), {
-      method: 'POST',
-      headers,
-      body: formData,
+    const key = this.mutationKey('POST_FORM', endpoint, formData);
+    return this.withMutationGuard(key, async () => {
+      const response = await fetch(this.buildURL(endpoint), {
+        method: 'POST',
+        headers: { ...headers, 'X-Idempotency-Key': key },
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        const error = await readResponseJson<{ error?: string }>(response).catch(() => ({ error: 'Upload failed' }));
+        throw new Error(error.error || `HTTP error! status: ${response.status}`);
+      }
+      return readResponseJson<T>(response);
     });
-    
-    if (!response.ok) {
-      const error = await readResponseJson<{ error?: string }>(response).catch(() => ({ error: 'Upload failed' }));
-      throw new Error(error.error || `HTTP error! status: ${response.status}`);
-    }
-    return readResponseJson<T>(response);
   }
 
   async postForm<T>(endpoint: string, formData: FormData): Promise<T> {
@@ -198,16 +264,19 @@ export class ApiService {
     if (token) headers['Authorization'] = `Bearer ${token}`;
     if (this.tenantId !== null) headers['X-Tenant-Id'] = this.tenantId.toString();
 
-    const response = await fetch(this.buildURL(endpoint), {
-      method: 'POST',
-      headers,
-      body: formData,
+    const key = this.mutationKey('POST_FORM', endpoint, formData);
+    return this.withMutationGuard(key, async () => {
+      const response = await fetch(this.buildURL(endpoint), {
+        method: 'POST',
+        headers: { ...headers, 'X-Idempotency-Key': key },
+        body: formData,
+      });
+      if (!response.ok) {
+        const error = await readResponseJson<{ error?: string }>(response).catch(() => ({ error: 'Request failed' }));
+        throw new Error(error.error || `HTTP error! status: ${response.status}`);
+      }
+      return readResponseJson<T>(response);
     });
-    if (!response.ok) {
-      const error = await readResponseJson<{ error?: string }>(response).catch(() => ({ error: 'Request failed' }));
-      throw new Error(error.error || `HTTP error! status: ${response.status}`);
-    }
-    return readResponseJson<T>(response);
   }
 }
 

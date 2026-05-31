@@ -4,6 +4,7 @@ import { MessageSquare, RefreshCw, Send, CheckCheck, Paperclip, X } from 'lucide
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { formatDisplayDate } from '@/utils/dateFormat';
 
 const ParentDeskAdminModule: React.FC = () => {
   const [messages, setMessages] = useState<any[]>([]);
@@ -151,7 +152,7 @@ const ParentDeskAdminModule: React.FC = () => {
                     {m.subject}
                   </p>
                   <span className="text-[9px] text-muted-foreground font-medium">
-                    {new Date(m.created_at).toLocaleDateString()}
+                    {formatDisplayDate(m.created_at)}
                   </span>
                 </div>
                 <p className="text-[11px] text-muted-foreground mb-2 truncate font-medium">

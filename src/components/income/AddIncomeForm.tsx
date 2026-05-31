@@ -161,10 +161,13 @@ const AddIncomeForm = () => {
             />
           </div>
 
-          <Button type="submit" className="w-full md:w-auto">
-            <Save className="w-4 h-4 mr-2" />
-            Add Income
-          </Button>
+          <div className="form-action-bar flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-muted-foreground">Fill in source and amount to save.</p>
+            <Button type="submit" variant="primaryAction" className="min-h-10 w-full sm:w-auto">
+              <Save className="w-4 h-4 mr-2" />
+              Add Income
+            </Button>
+          </div>
         </form>
       </CardContent>
     </Card>

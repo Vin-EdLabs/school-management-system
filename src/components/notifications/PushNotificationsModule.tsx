@@ -534,7 +534,7 @@ const PushNotificationsModule: React.FC = () => {
               </div>
             </div>
 
-            <Button type="submit" className="w-full sm:w-auto min-w-[220px] h-12 text-base" size="lg" disabled={sending || dataLoading}>
+            <Button type="submit" variant="primaryAction" className="w-full sm:w-auto min-w-[220px] h-12 text-base" size="lg" disabled={sending || dataLoading}>
               {sending ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
               {sending
                 ? 'Sending…'

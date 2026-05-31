@@ -9,6 +9,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogBody,
   DialogFooter,
 } from '@/components/ui/dialog';
 import { useData } from '../../contexts/DataContext';
@@ -140,20 +141,20 @@ const SetFeeStructure = () => {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
+      <Card className="border-border bg-card text-card-foreground shadow-sm">
+        <CardHeader className="border-b border-border/70 bg-muted/30">
+          <CardTitle className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center space-x-2">
               <DollarSign className="w-5 h-5" />
               <span>Set Fee Structure</span>
             </div>
-            <div className="text-sm text-gray-600 font-normal">
+            <div className="text-sm text-muted-foreground font-normal">
               Active Term: <span className="font-semibold">{currentTerm}</span> ({currentYear})
             </div>
           </CardTitle>
-          <p className="text-sm text-gray-500">Fees are automatically tied to the current active term. Set the active term in Settings.</p>
+          <p className="text-sm text-muted-foreground">Fees are automatically tied to the current active term. Set the active term in Settings.</p>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -207,7 +208,8 @@ const SetFeeStructure = () => {
               />
             </div>
 
-            <Button type="submit" className="w-full md:w-auto" disabled={isSubmitting}>
+            <div className="form-action-bar flex justify-end">
+              <Button type="submit" variant="primaryAction" className="w-full md:w-auto" disabled={isSubmitting}>
               {isSubmitting ? (
                 <span className="flex items-center">
                   <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -223,52 +225,53 @@ const SetFeeStructure = () => {
                 </>
               )}
             </Button>
+            </div>
           </form>
         </CardContent>
       </Card>
 
       {/* Current Fee Structures - Active Term Only */}
-      <Card>
-        <CardHeader>
+      <Card className="border-border bg-card text-card-foreground shadow-sm">
+        <CardHeader className="border-b border-border/70 bg-muted/30">
           <CardTitle>Fee Structures - {currentTerm}</CardTitle>
-          <p className="text-sm text-gray-500">Only structures for the active term are shown</p>
+          <p className="text-sm text-muted-foreground">Only structures for the active term are shown</p>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-6">
           <div className="space-y-3">
             {currentTermFees.map((fee) => (
-              <div key={fee.id} className="flex items-center justify-between p-3 border rounded-lg">
+              <div key={fee.id} className="flex flex-col gap-3 rounded-lg border border-border bg-card p-3 text-card-foreground shadow-sm sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="font-medium">{fee.className}</p>
-                  <p className="text-sm text-gray-500">{fee.term || `${currentTerm} (legacy)`}</p>
-                  {fee.description && <p className="text-sm text-gray-600">{fee.description}</p>}
+                  <p className="font-medium text-foreground">{fee.className}</p>
+                  <p className="text-sm text-muted-foreground">{fee.term || `${currentTerm} (legacy)`}</p>
+                  {fee.description && <p className="text-sm text-muted-foreground">{fee.description}</p>}
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="text-right">
-                    <p className="font-bold text-lg">GHS {fee.amount}</p>
-                    {fee.dueDate && <p className="text-sm text-gray-500">Due: {fee.dueDate}</p>}
+                <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
+                  <div className="text-left sm:text-right">
+                    <p className="font-bold text-lg text-foreground">GHS {fee.amount}</p>
+                    {fee.dueDate && <p className="text-sm text-muted-foreground">Due: {fee.dueDate}</p>}
                   </div>
-                  <Button variant="ghost" size="sm" onClick={() => handleEdit(fee)} disabled={isSubmitting}>
+                  <Button variant="outline" size="sm" onClick={() => handleEdit(fee)} disabled={isSubmitting} className="min-h-9 min-w-9">
                     <Pencil className="w-4 h-4" />
                   </Button>
-                  <Button variant="ghost" size="sm" className="text-red-600" onClick={() => handleDelete(fee)} disabled={isSubmitting}>
+                  <Button variant="outline" size="sm" className="min-h-9 min-w-9 border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/40" onClick={() => handleDelete(fee)} disabled={isSubmitting}>
                     <Trash2 className="w-4 h-4" />
                   </Button>
                 </div>
               </div>
             ))}
             {currentTermFees.length === 0 && (
-              <p className="text-center py-8 text-gray-500">No fee structures for {currentTerm}. Add one above.</p>
+              <p className="text-center py-8 text-muted-foreground">No fee structures for {currentTerm}. Add one above.</p>
             )}
           </div>
         </CardContent>
       </Card>
 
       <Dialog open={!!editingId} onOpenChange={() => setEditingId(null)}>
-        <DialogContent>
-          <DialogHeader>
+        <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
+          <DialogHeader className="shrink-0 border-b border-border/70 px-6 py-4">
             <DialogTitle>Edit Fee Structure</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <DialogBody className="space-y-4 px-6 py-4">
             <div>
               <Label>Amount (GHS)</Label>
               <Input
@@ -294,10 +297,10 @@ const SetFeeStructure = () => {
                 placeholder="e.g., Tuition fees"
               />
             </div>
-          </div>
-          <DialogFooter>
+          </DialogBody>
+          <DialogFooter className="form-action-bar shrink-0 gap-2 px-6 py-4">
             <Button variant="outline" onClick={() => setEditingId(null)} disabled={isSubmitting}>Cancel</Button>
-            <Button onClick={handleEditSave} disabled={isSubmitting}>
+            <Button variant="primaryAction" onClick={handleEditSave} disabled={isSubmitting}>
               {isSubmitting ? 'Saving...' : 'Save Changes'}
             </Button>
           </DialogFooter>

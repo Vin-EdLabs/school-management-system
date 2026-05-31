@@ -10,6 +10,7 @@ import { Bell, Bot, User, Clock, Calendar, Moon, Sun } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import PwaInstallButton from '../common/PwaInstallButton';
 import { ModuleUserGuideDialog } from '../common/ModuleUserGuideDialog';
+import { formatDisplayDate } from '../../utils/dateFormat';
 
 interface MainHeaderProps {
   onAiAssistantClick?: () => void;
@@ -42,12 +43,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
   };
 
   const formatDate = (date: Date) => {
-    return date.toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
+    return formatDisplayDate(date);
   };
 
   const formatTime = (date: Date) => {

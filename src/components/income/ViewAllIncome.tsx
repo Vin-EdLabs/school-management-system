@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
+import { formatDisplayDate } from '../../utils/dateFormat';
 import { Search } from 'lucide-react';
 
 interface Income {
@@ -111,7 +112,7 @@ const ViewAllIncome: React.FC = () => {
                       <Badge variant="secondary">{item.paymentMethod}</Badge>
                     </TableCell>
                     <TableCell>{item.receivedBy}</TableCell>
-                    <TableCell>{new Date(item.date).toLocaleDateString()}</TableCell>
+                    <TableCell>{formatDisplayDate(item.date)}</TableCell>
                     <TableCell className="max-w-xs truncate">
                       {item.notes || '-'}
                     </TableCell>

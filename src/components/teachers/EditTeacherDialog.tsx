@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -167,11 +167,12 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90dvh]">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[90dvh] max-w-2xl flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="shrink-0 border-b border-border/70 px-6 py-4">
           <DialogTitle>Edit Teacher Details</DialogTitle>
         </DialogHeader>
 
+        <DialogBody className="px-6 py-4">
         <div className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -340,20 +341,21 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
                 <Button type="button" variant="outline" disabled={confirming} onClick={() => { setShowPassword(false); setPassword(''); }}>
                   Cancel
                 </Button>
-                <Button type="button" disabled={confirming} onClick={() => void confirmPasswordAndUpdate()}>
+                <Button type="button" variant="primaryAction" disabled={confirming} onClick={() => void confirmPasswordAndUpdate()}>
                   {confirming ? 'Checking…' : 'Confirm'}
                 </Button>
               </div>
             </div>
           )}
-
-          {!showPassword && (
-            <div className="flex justify-end space-x-2 pt-4">
-              <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-              <Button type="button" onClick={() => void handleUpdateClick()}>Update Teacher</Button>
-            </div>
-          )}
         </div>
+        </DialogBody>
+
+        {!showPassword && (
+          <DialogFooter className="form-action-bar shrink-0 gap-2 px-6 py-4">
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="button" variant="primaryAction" onClick={() => void handleUpdateClick()}>Update Teacher</Button>
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   );

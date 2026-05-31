@@ -383,43 +383,43 @@ const PayrollModule = () => {
     <div className="p-4 md:p-8 space-y-6 max-w-[1600px] mx-auto animate-in fade-in duration-300">
       <div className="sticky top-0 z-20 -mx-4 md:-mx-8 px-4 md:px-8 py-3 bg-background/95 backdrop-blur border-b border-border mb-2">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <div>
+        <div>
             <h1 className="text-2xl font-semibold tracking-tight text-foreground">Payroll</h1>
             <p className="text-sm text-muted-foreground mt-0.5">Salaries, SSNIT, payslips, and finance-linked payments</p>
-          </div>
+        </div>
           <div className="flex flex-wrap items-center gap-2">
             <Select value={String(month)} onValueChange={(v) => setMonth(parseInt(v, 10))}>
               <SelectTrigger className="w-[160px] bg-background border-border">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
                 {MONTH_NAMES.map((m, i) => (
                   <SelectItem key={i} value={String(i + 1)}>
                     {m}
                   </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              ))}
+            </SelectContent>
+          </Select>
             <Select value={String(year)} onValueChange={(v) => setYear(parseInt(v, 10))}>
               <SelectTrigger className="w-[100px] bg-background border-border">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {years.map((y) => (
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {years.map((y) => (
                   <SelectItem key={y} value={String(y)}>
                     {y}
                   </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              ))}
+            </SelectContent>
+          </Select>
             <Button variant="outline" size="sm" onClick={prepareMonth} className="border-border">
               <RefreshCw className="w-4 h-4 mr-1" />
               Prepare month
             </Button>
-            <Button onClick={() => setAddStaffOpen(true)} variant="outline" size="sm" className="border-border">
+            <Button onClick={() => setAddStaffOpen(true)} variant="primaryAction" size="sm" className="h-9">
               <Plus className="w-4 h-4 mr-1" />
               Add staff
-            </Button>
+          </Button>
           </div>
         </div>
       </div>
@@ -433,33 +433,33 @@ const PayrollModule = () => {
 
         <TabsContent value="overview" className="space-y-6 mt-0">
           <div className="flex items-start gap-3 p-4 rounded-xl bg-muted/40 border border-border">
-            <Info className="w-5 h-5 text-muted-foreground shrink-0 mt-0.5" />
+        <Info className="w-5 h-5 text-muted-foreground shrink-0 mt-0.5" />
             <div className="text-sm text-muted-foreground leading-relaxed">
               <strong className="text-foreground font-medium">Teachers</strong> are included from the Teachers module.{' '}
               <strong className="text-foreground font-medium">SSNIT</strong> is calculated on gross salary when enabled per staff. Recording a payment creates a{' '}
               <strong className="text-foreground font-medium">Payroll</strong> expense and updates this register.
-            </div>
-          </div>
+        </div>
+      </div>
 
-          {data && (
+      {data && (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4">
               <Card className="border-border shadow-sm">
                 <CardContent className="p-4 flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
-                    <Users className="w-5 h-5 text-muted-foreground" />
-                  </div>
-                  <div>
+                <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
+                  <Users className="w-5 h-5 text-muted-foreground" />
+                </div>
+                <div>
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total staff</p>
                     <p className="text-xl font-bold">{data.summary?.totalStaff ?? 0}</p>
-                  </div>
-                </CardContent>
-              </Card>
+              </div>
+            </CardContent>
+          </Card>
               <Card className="border-border shadow-sm">
                 <CardContent className="p-4 flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-                    <DollarSign className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                  </div>
-                  <div>
+                <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                  <DollarSign className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div>
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total gross</p>
                     <p className="text-xl font-bold">{formatMoney(cur, data.summary?.totalGross ?? 0)}</p>
                   </div>
@@ -480,37 +480,37 @@ const PayrollModule = () => {
                 <CardContent className="p-4 flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-teal-500/10 flex items-center justify-center">
                     <Banknote className="w-5 h-5 text-teal-600 dark:text-teal-400" />
-                  </div>
+                </div>
                   <div>
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Net paid out</p>
                     <p className="text-xl font-bold">{formatMoney(cur, data.summary?.totalNetPaid ?? 0)}</p>
-                  </div>
-                </CardContent>
-              </Card>
+              </div>
+            </CardContent>
+          </Card>
               <Card className="border-border shadow-sm">
                 <CardContent className="p-4 flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-teal-500/10 flex items-center justify-center">
-                    <CheckCircle className="w-5 h-5 text-teal-600 dark:text-teal-400" />
-                  </div>
-                  <div>
+                <div className="w-10 h-10 rounded-lg bg-teal-500/10 flex items-center justify-center">
+                  <CheckCircle className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+                </div>
+                <div>
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Paid staff</p>
                     <p className="text-xl font-bold">{data.summary?.paidCount ?? 0}</p>
-                  </div>
-                </CardContent>
-              </Card>
+              </div>
+            </CardContent>
+          </Card>
               <Card className="border-border shadow-sm">
                 <CardContent className="p-4 flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center">
-                    <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-                  </div>
-                  <div>
+                <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                  <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div>
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Unpaid staff</p>
                     <p className="text-xl font-bold">{data.summary?.unpaidCount ?? 0}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
           <Card className="border-border shadow-sm overflow-hidden">
             <CardHeader className="pb-2 border-b border-border bg-muted/20">
@@ -522,19 +522,19 @@ const PayrollModule = () => {
                   Default SSNIT {data.settings.defaultSsnitPercent}% · {cur}
                 </p>
               )}
-            </CardHeader>
+        </CardHeader>
             <CardContent className="p-0">
-              {loading ? (
+          {loading ? (
                 <div className="py-16 text-center text-muted-foreground text-sm">Loading…</div>
-              ) : !data?.payroll?.length ? (
+          ) : !data?.payroll?.length ? (
                 <div className="py-16 text-center px-4">
                   <Wallet className="w-12 h-12 text-muted-foreground/25 mx-auto mb-3" />
-                  <p className="text-muted-foreground">No staff on payroll for this month.</p>
-                </div>
-              ) : (
+              <p className="text-muted-foreground">No staff on payroll for this month.</p>
+            </div>
+          ) : (
                 <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
+              <Table>
+                <TableHeader>
                       <TableRow className="hover:bg-transparent border-border bg-muted/40">
                         <TableHead className="font-semibold whitespace-nowrap min-w-[140px]">Name</TableHead>
                         <TableHead className="font-semibold whitespace-nowrap">Role</TableHead>
@@ -545,9 +545,9 @@ const PayrollModule = () => {
                         <TableHead className="text-right font-semibold whitespace-nowrap">Net</TableHead>
                         <TableHead className="font-semibold whitespace-nowrap">Status</TableHead>
                         <TableHead className="w-[120px]" />
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                       {data.payroll.map((p) => (
                         <TableRow
                           key={`${p.payeeType}-${p.id}`}
@@ -559,7 +559,7 @@ const PayrollModule = () => {
                             <div className="text-xs text-muted-foreground font-mono">{p.staffId || '—'}</div>
                           </TableCell>
                           <TableCell className="text-muted-foreground text-sm max-w-[120px] truncate">{p.role || '—'}</TableCell>
-                          <TableCell>
+                      <TableCell>
                             <Badge variant="outline" className="text-xs font-normal">
                               {p.ssnitEnabled ? 'On' : 'Off'}
                             </Badge>
@@ -573,39 +573,39 @@ const PayrollModule = () => {
                             {formatMoney(cur, p.netSalary)}
                           </TableCell>
                           <TableCell onClick={(e) => e.stopPropagation()}>
-                            <Badge
-                              variant="outline"
-                              className={
-                                p.status === 'Paid'
+                        <Badge
+                          variant="outline"
+                          className={
+                            p.status === 'Paid'
                                   ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
-                                  : p.status === 'Partially Paid'
+                              : p.status === 'Partially Paid'
                                     ? 'border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300'
                                     : 'border-border bg-muted/50 text-muted-foreground'
-                              }
-                            >
-                              {p.status}
-                            </Badge>
-                          </TableCell>
+                          }
+                        >
+                          {p.status}
+                        </Badge>
+                      </TableCell>
                           <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                             <div className="flex justify-end gap-1">
                               <Button size="sm" variant="ghost" className="h-8 px-2" onClick={() => openDetail(p)} title="Details">
-                                <Pencil className="w-4 h-4" />
-                              </Button>
-                              {p.status !== 'Paid' && (
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+                        {p.status !== 'Paid' && (
                                 <Button size="sm" variant="secondary" className="h-8" onClick={() => openPayDialog(p)}>
                                   Pay
-                                </Button>
-                              )}
+                          </Button>
+                        )}
                             </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
         </TabsContent>
 
         <TabsContent value="history" className="space-y-4 mt-0">
@@ -800,7 +800,7 @@ const PayrollModule = () => {
                       placeholder="e.g. Headteacher / Finance Officer"
                     />
                   </div>
-                  <Button onClick={saveSettings} className="bg-slate-800 hover:bg-slate-700">
+                  <Button onClick={saveSettings} variant="primaryAction">
                     Save settings
                   </Button>
                 </>
@@ -849,7 +849,7 @@ const PayrollModule = () => {
             <Button variant="outline" onClick={() => setAddStaffOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleAddStaff}>Add</Button>
+            <Button onClick={handleAddStaff} variant="primaryAction">Add</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -884,7 +884,7 @@ const PayrollModule = () => {
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleEditSubmit}>Save</Button>
+            <Button onClick={handleEditSubmit} variant="primaryAction">Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

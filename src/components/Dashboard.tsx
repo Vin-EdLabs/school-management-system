@@ -17,6 +17,7 @@ import SettingsModule from './settings/SettingsModule';
 import UsersModule from './users/UsersModule';
 import AuditModule from './audit/AuditModule';
 import PrintFeeStatusModule from './fees/PrintFeeStatusModule';
+import TransactionsPage from './finance/TransactionsPage';
 import ManualAdjustmentsReport from './finance/ManualAdjustmentsReport';
 import TeacherDashboard from './teacher/TeacherDashboard';
 import TeacherClassesModule from './teacher/TeacherClassesModule';
@@ -43,6 +44,9 @@ const Dashboard = () => {
   const { workspaceReady } = useData();
   useStaffPushSync();
   const [activeModule, setActiveModule] = useState(() => {
+    if (window.location.pathname.includes('/finance/transactions')) {
+      return 'transactions';
+    }
     // Set default module based on user role
     if (user?.role === 'finance') {
       return 'financial-dashboard';
@@ -115,6 +119,8 @@ const Dashboard = () => {
         return <AdvancedReports />;
       case 'print-fee-status':
         return <PrintFeeStatusModule />;
+      case 'transactions':
+        return <TransactionsPage onNavigate={setActiveModule} />;
       case 'manual-adjustments':
         return <ManualAdjustmentsReport />;
       case 'users':

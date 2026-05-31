@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { User, Calendar, Phone, MapPin, School, Users, FileText, CreditCard, GraduationCap as ScholarshipIcon } from 'lucide-react';
 import { resolveLogoUrl } from '../../services/tenantService';
+import { formatDisplayDate } from '../../utils/dateFormat';
 
 interface Student {
   id: string;
@@ -178,7 +179,7 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
                       <label className="text-sm font-medium text-gray-500">Date of Birth</label>
                       <div className="flex items-center space-x-2">
                         <Calendar className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm">{new Date(student.dateOfBirth).toLocaleDateString()}</span>
+                        <span className="text-sm">{formatDisplayDate(student.dateOfBirth)}</span>
                       </div>
                     </div>
                     <div>
@@ -207,7 +208,7 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
                     <label className="text-sm font-medium text-gray-500">Date of Admission</label>
                     <div className="flex items-center space-x-2">
                       <Calendar className="w-4 h-4 text-gray-400" />
-                      <span className="text-sm">{new Date(student.dateOfAdmission).toLocaleDateString()}</span>
+                      <span className="text-sm">{formatDisplayDate(student.dateOfAdmission)}</span>
                     </div>
                   </div>
                   <div>
@@ -329,7 +330,7 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
                     <TableBody>
                       {paymentsWithBalance.map((p) => (
                         <TableRow key={p.id}>
-                          <TableCell>{new Date(p.date).toLocaleDateString()}</TableCell>
+                          <TableCell>{formatDisplayDate(p.date)}</TableCell>
                           <TableCell className="font-medium text-green-600">GHS {p.amount.toLocaleString()}</TableCell>
                           <TableCell>{p.paymentMethod}</TableCell>
                           <TableCell className="font-mono text-sm">{p.receiptNumber || '-'}</TableCell>

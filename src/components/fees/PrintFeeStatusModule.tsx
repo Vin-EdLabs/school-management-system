@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useSchool } from '../../contexts/SchoolContext';
 import { useSocket } from '../../contexts/SocketContext';
 import { apiService } from '../../services/api';
+import { formatDisplayDate } from '../../utils/dateFormat';
 import { Printer, FileText, Users, GraduationCap, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 
 /** One row from the fee status report (server-calculated). */
@@ -193,7 +194,7 @@ const PrintFeeStatusModule = () => {
         </div>
         <div class="report-info">
           <p><strong>Class:</strong> ${selectedClassName} &nbsp;|&nbsp; <strong>Academic Period:</strong> ${periodLabel}</p>
-          <p><strong>Report Date:</strong> ${new Date().toLocaleDateString()} &nbsp;|&nbsp; <strong>Students:</strong> ${studentsToShow.length}
+          <p><strong>Report Date:</strong> ${formatDisplayDate(new Date())} &nbsp;|&nbsp; <strong>Students:</strong> ${studentsToShow.length}
             ${summary != null ? ` &nbsp;|&nbsp; <strong>Total Balance:</strong> GHS ${summary.totalBalance.toLocaleString()}</p>` : '</p>'}
         </div>
         <table>

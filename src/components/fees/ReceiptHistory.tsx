@@ -9,6 +9,7 @@ import { useData } from '../../contexts/DataContext';
 import { Search, Receipt, Eye } from 'lucide-react';
 import ReceiptPrinter from '../common/ReceiptPrinter';
 import { receiptAmountsForPayment } from '../../utils/feeCalculations';
+import { formatDisplayDate } from '../../utils/dateFormat';
 
 const ReceiptHistory = () => {
   const { payments, students, feeStructures, arrearsBalances } = useData();
@@ -122,7 +123,7 @@ const ReceiptHistory = () => {
                               GHS {payment.amount.toFixed(2)}
                             </span>
                           </TableCell>
-                          <TableCell className="text-foreground">{new Date(payment.date).toLocaleDateString()}</TableCell>
+                          <TableCell className="text-foreground">{formatDisplayDate(payment.date)}</TableCell>
                           <TableCell>
                             <Badge variant="secondary">{payment.paymentMethod}</Badge>
                           </TableCell>

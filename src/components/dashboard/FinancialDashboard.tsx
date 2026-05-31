@@ -10,6 +10,7 @@ import {
   dateMatchesAcademicYearSetting,
   getDashboardCalendarYearForMonthlyChart,
 } from '../../utils/feeCalculations';
+import { formatDisplayDate } from '../../utils/dateFormat';
 import FinancialSummary from './FinancialSummary';
 import OutstandingFees from '../fees/OutstandingFees';
 import {
@@ -186,7 +187,7 @@ const FinancialDashboard = () => {
           const student = students.find((s) => s.id === payment.studentId);
           return {
             text: `GHS ${payment.amount.toLocaleString()} fee — ${student?.firstName} ${student?.lastName}`,
-            time: new Date(payment.date).toLocaleDateString(),
+            time: formatDisplayDate(payment.date),
             type: 'payment' as const,
             amount: payment.amount,
           };
@@ -196,13 +197,13 @@ const FinancialDashboard = () => {
           .slice(-3)
           .map((inc) => ({
             text: `GHS ${inc.amount.toLocaleString()} income — ${inc.source}`,
-            time: new Date(inc.date).toLocaleDateString(),
+            time: formatDisplayDate(inc.date),
             type: 'income' as const,
             amount: inc.amount,
           })),
         ...expenses.slice(-3).map((expense) => ({
           text: `GHS ${expense.amount.toLocaleString()} — ${expense.title}`,
-          time: new Date(expense.paymentDate).toLocaleDateString(),
+          time: formatDisplayDate(expense.paymentDate),
           type: 'expense' as const,
           amount: expense.amount,
         })),

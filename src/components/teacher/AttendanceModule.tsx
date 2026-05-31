@@ -14,6 +14,7 @@ import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiService } from '../../services/api';
 import { useSchool } from '../../contexts/SchoolContext';
+import { formatDisplayDate } from '../../utils/dateFormat';
 
 interface AttendanceHistoryEntry {
   date: string;
@@ -347,7 +348,8 @@ const AttendanceModule = () => {
               <div className="sm:hidden sticky top-0 z-20 -mx-4 px-4 py-2 border-b border-slate-200 bg-white/95 dark:bg-slate-950/95 backdrop-blur-md shadow-sm">
                 <Button
                   type="button"
-                  className="w-full h-12 text-base font-semibold touch-manipulation bg-emerald-600 hover:bg-emerald-700 text-white border-2 border-emerald-800 shadow-md disabled:opacity-60"
+                  variant="primaryAction"
+                  className="w-full h-12 text-base font-semibold touch-manipulation disabled:opacity-60"
                   onClick={handleSaveAttendance}
                   disabled={saving}
                 >
@@ -402,12 +404,11 @@ const AttendanceModule = () => {
                     <span className="text-base leading-snug min-w-0">
                       <span className="block sm:inline">Student attendance</span>
                       <span className="block sm:inline sm:ml-2 text-sm font-normal text-muted-foreground">
-                        <span className="sm:hidden">{new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
-                        <span className="hidden sm:inline">— {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                        <span>— {formatDisplayDate(selectedDate)}</span>
                       </span>
                     </span>
                     {!isAdminViewer && (
-                      <Button onClick={handleSaveAttendance} disabled={saving} size="sm" className="hidden sm:inline-flex shrink-0 touch-manipulation">
+                      <Button onClick={handleSaveAttendance} disabled={saving} size="sm" variant="primaryAction" className="hidden sm:inline-flex shrink-0 touch-manipulation">
                         <Save className="w-4 h-4 mr-2" />
                         {saving ? 'Saving…' : 'Save'}
                       </Button>
@@ -531,9 +532,7 @@ const AttendanceModule = () => {
                       const pct = Number(entry.total) > 0
                         ? Math.round((Number(entry.present_count) / Number(entry.total)) * 100)
                         : 0;
-                      const formatted = new Date(entry.date + 'T00:00:00').toLocaleDateString('en-US', {
-                        weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
-                      });
+                      const formatted = formatDisplayDate(entry.date);
                       return (
                         <div
                           key={entry.date}
@@ -679,9 +678,7 @@ const AttendanceModule = () => {
                             so records from previous classes remain visible and clearly labelled */}
                         <div className="border rounded-lg divide-y max-h-80 overflow-y-auto">
                           {trackerRecords.map((r, idx) => {
-                            const formatted = new Date(r.date + 'T00:00:00').toLocaleDateString('en-US', {
-                              weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
-                            });
+                            const formatted = formatDisplayDate(r.date);
                             return (
                               <div key={`${r.date}-${r.class_id}-${idx}`} className="flex items-center justify-between px-4 py-2.5">
                                 <div className="flex items-center gap-2 min-w-0">

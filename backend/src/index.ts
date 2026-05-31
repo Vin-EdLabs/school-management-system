@@ -35,6 +35,7 @@ import messagesRoutes from './routes/messages.js';
 import studentLearningRoutes from './routes/student.js';
 import { initSocket } from './socket.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { idempotencyGuard } from './middleware/idempotency.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -68,7 +69,10 @@ app.use(cors({
       /^https:\/\/([a-z0-9-]+\.)?scholarnerve\.com$/,
       /^https:\/\/([a-z0-9-]+\.)?scholarnerve\.onrender\.com$/,
       /^http:\/\/([a-z0-9-]+\.)?localhost:(8080|5173)$/,
-      /^http:\/\/localhost:(8080|5173)$/
+      /^http:\/\/localhost:(8080|5173)$/,
+      /^http:\/\/([a-z0-9-]+\.)?127\.0\.0\.1:(8080|5173)$/,
+      /^http:\/\/127\.0\.0\.1:(8080|5173)$/,
+      /^http:\/\/([a-z0-9-]+\.)?lvh\.me:(8080|5173)$/,
     ];
     
     const isAllowed = allowedPatterns.some(pattern => pattern.test(origin));
@@ -88,13 +92,17 @@ app.use(cors({
     'Accept',
     'x-tenant-id',
     'X-Tenant-Id',
+    'x-tenant-slug',
+    'X-Tenant-Slug',
     'X-Forwarded-For',
     'X-Real-Ip',
     'CF-Connecting-IP',
+    'X-Idempotency-Key',
   ],
 }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use('/api', idempotencyGuard);
 
 // Serve uploaded files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));

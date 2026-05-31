@@ -1,4 +1,6 @@
 
+import { formatDisplayDate } from '../utils/dateFormat';
+
 export interface ReportData {
   financial: {
     totalFees: number;
@@ -97,7 +99,7 @@ export class ReportService {
             
             // Standardize output format
             if (value instanceof Date) {
-              value = value.toLocaleDateString();
+              value = formatDisplayDate(value);
             } else if (typeof value === 'object') {
               try {
                 value = JSON.stringify(value);

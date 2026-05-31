@@ -184,7 +184,7 @@ const UsersModule = () => {
         </div>
         <Button
           onClick={() => setCreateOpen(true)}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-md"
+          variant="primaryAction"
         >
           <UserPlus className="w-4 h-4 mr-2" />
           Create User
@@ -357,7 +357,7 @@ const UsersModule = () => {
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-              <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700">Create User</Button>
+              <Button type="submit" variant="primaryAction">Create User</Button>
             </DialogFooter>
           </form>
         </DialogContent>

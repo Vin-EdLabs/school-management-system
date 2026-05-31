@@ -13,12 +13,20 @@ import { getFcmToken, removeFcmToken } from '@/services/firebase';
 import StudentLearningMode from '@/components/parent/StudentLearningMode';
 import { BrandedLoading, BrandedLoadingScreen } from '@/components/common/BrandedLoading';
 import { getFriendlyLoginMessage } from '@/utils/loginErrors';
+import { formatDisplayDate } from '@/utils/dateFormat';
 
-const API_ROOT = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api').replace('/api', '');
+function resolveApiBase(): string {
+  if (import.meta.env.VITE_API_BASE_URL) return import.meta.env.VITE_API_BASE_URL;
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1') return 'http://localhost:3001/api';
+    return 'https://scholarnerveserver.onrender.com/api';
+  }
+  return 'https://scholarnerveserver.onrender.com/api';
+}
 
-// ── API base ──────────────────────────────────────────────────────────────────
-
-const API = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+const API = resolveApiBase();
+const API_ROOT = API.replace(/\/api\/?$/, '');
 const FIREBASE_WEB_PUSH_VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY || '';
 const MESSAGE_TYPE_LABEL: Record<'absence' | 'fee' | 'academic' | 'teacher' | 'late' | 'general', string> = {
   absence: 'Absence Notice',
@@ -42,32 +50,62 @@ async function parseParentResponse(res: Response): Promise<Record<string, unknow
   }
 }
 
+const parentInFlight = new Map<string, Promise<Record<string, unknown>>>();
+
+function parentRequestKey(method: string, path: string, body: unknown): string {
+  const raw = typeof body === 'string' ? body : body instanceof FormData ? 'form-data' : JSON.stringify(body ?? '');
+  let hash = 0;
+  for (let i = 0; i < raw.length; i += 1) hash = (hash * 31 + raw.charCodeAt(i)) | 0;
+  return `${method}:${path}:${Math.abs(hash).toString(36)}`;
+}
+
 async function parentFetch(path: string, opts: RequestInit = {}, token?: string) {
+  const method = String(opts.method || 'GET').toUpperCase();
+  const key = parentRequestKey(method, path, opts.body);
+  if (method !== 'GET' && parentInFlight.has(key)) {
+    return parentInFlight.get(key)!;
+  }
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   const slug = detectTenantSlugFromHost();
   if (slug) headers['X-Tenant-Slug'] = slug;
-  const res = await fetch(`${API}${path}`, { ...opts, headers });
-  const data = await parseParentResponse(res);
-  if (!res.ok) {
-    const err = data.error;
-    throw new Error(typeof err === 'string' && err.trim() ? err : `Request failed (HTTP ${res.status})`);
+  if (method !== 'GET') headers['X-Idempotency-Key'] = key;
+  const request = (async () => {
+    const res = await fetch(`${API}${path}`, { ...opts, headers });
+    const data = await parseParentResponse(res);
+    if (!res.ok) {
+      const err = data.error;
+      throw new Error(typeof err === 'string' && err.trim() ? err : `Request failed (HTTP ${res.status})`);
+    }
+    return data;
+  })();
+  if (method !== 'GET') {
+    parentInFlight.set(key, request);
+    request.finally(() => parentInFlight.delete(key));
   }
-  return data;
+  return request;
 }
 
 async function parentFetchForm(path: string, formData: FormData, token?: string) {
+  const key = parentRequestKey('POST_FORM', path, 'form-data');
+  if (parentInFlight.has(key)) return parentInFlight.get(key)!;
   const headers: Record<string, string> = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
   const slug = detectTenantSlugFromHost();
   if (slug) headers['X-Tenant-Slug'] = slug;
-  const res = await fetch(`${API}${path}`, { method: 'POST', body: formData, headers });
-  const data = await parseParentResponse(res);
-  if (!res.ok) {
-    const err = data.error;
-    throw new Error(typeof err === 'string' && err.trim() ? err : `Request failed (HTTP ${res.status})`);
-  }
-  return data;
+  headers['X-Idempotency-Key'] = key;
+  const request = (async () => {
+    const res = await fetch(`${API}${path}`, { method: 'POST', body: formData, headers });
+    const data = await parseParentResponse(res);
+    if (!res.ok) {
+      const err = data.error;
+      throw new Error(typeof err === 'string' && err.trim() ? err : `Request failed (HTTP ${res.status})`);
+    }
+    return data;
+  })();
+  parentInFlight.set(key, request);
+  request.finally(() => parentInFlight.delete(key));
+  return request;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -95,8 +133,7 @@ const positionLabel = (n: number) => {
   return `${n}th`;
 };
 
-const fmtDate = (d: string) =>
-  new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+const fmtDate = (d: string) => formatDisplayDate(d);
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -231,7 +268,6 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   const [loginError, setLoginError] = useState('');
 
   // Password change form
-  const [pwCurrent, setPwCurrent] = useState('');
   const [pwNew, setPwNew] = useState('');
   const [pwConfirm, setPwConfirm] = useState('');
   const [showPwNew, setShowPwNew] = useState(false);
@@ -382,6 +418,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (pwLoading) return;
     setPwError('');
     setPwSuccess('');
     if (pwNew !== pwConfirm) { setPwError('Passwords do not match'); return; }
@@ -390,7 +427,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     try {
       await parentFetch('/parent/change-password', {
         method: 'POST',
-        body: JSON.stringify({ currentPassword: pwCurrent, newPassword: pwNew }),
+        body: JSON.stringify({ newPassword: pwNew }),
       }, token!);
       setPwSuccess('Password changed successfully!');
       setMustChangePassword(false);
@@ -399,7 +436,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         setStudent(updated);
         localStorage.setItem(`parent_student_${tenantId}`, JSON.stringify(updated));
       }
-      setPwCurrent(''); setPwNew(''); setPwConfirm('');
+      setPwNew(''); setPwConfirm('');
     } catch (err: any) {
       setPwError(err.message || 'Failed to change password');
     } finally {
@@ -935,7 +972,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                 </div>
                 <div>
                   <h1 className="text-2xl font-bold text-white">{schoolName || 'School'}</h1>
-                  <p className="text-purple-300 text-sm font-medium mt-0.5">ScholarNerve Parent Portal</p>
+                  <p className="text-purple-300 text-sm font-medium mt-0.5">Parent Portal</p>
                 </div>
               </div>
             ) : (
@@ -943,7 +980,8 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                 <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl shadow-purple-500/30">
                   <GraduationCap className="w-9 h-9 text-white" />
                 </div>
-                <h1 className="text-2xl font-bold text-white">{schoolName || 'School'} — ScholarNerve Parent Portal</h1>
+                <h1 className="text-2xl font-bold text-white">{schoolName || 'School'}</h1>
+                <p className="text-purple-300 text-sm font-medium mt-1">Parent Portal</p>
               </>
             )}
             <p className="text-slate-400 text-sm mt-3">
@@ -1050,7 +1088,6 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
           <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 shadow-2xl">
             <form onSubmit={handleChangePassword} className="space-y-4">
               {[
-                { label: 'Current Password (your Student ID)', val: pwCurrent, set: setPwCurrent, auto: 'current-password' },
                 { label: 'New Password', val: pwNew, set: setPwNew, auto: 'new-password' },
                 { label: 'Confirm New Password', val: pwConfirm, set: setPwConfirm, auto: 'new-password' },
               ].map(({ label, val, set, auto }) => (
@@ -2006,7 +2043,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                         <p className="font-semibold text-slate-800 text-sm truncate">{m.subject}</p>
                         <p className="text-xs text-slate-500 mt-0.5 truncate">{m.first_name} {m.last_name} • {m.class_name || 'No class'}</p>
                       </div>
-                      <span className="text-[11px] text-slate-400 shrink-0">{new Date(m.created_at).toLocaleDateString()}</span>
+                      <span className="text-[11px] text-slate-400 shrink-0">{formatDisplayDate(m.created_at)}</span>
                     </div>
                     <p className="text-xs text-slate-600 mt-2 line-clamp-2">{m.message}</p>
                     <div className="mt-2 flex items-center justify-between">
@@ -2037,7 +2074,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
       {/* Footer */}
       <footer className="border-t border-gray-200 mt-10 py-4 text-center text-xs text-gray-400">
-        {student.school_name} · ScholarNerve Parent Portal · Secure & Private
+        {student.school_name} · Parent Portal · Secure & Private
       </footer>
 
       {/* Mobile bottom navigation */}

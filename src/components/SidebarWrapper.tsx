@@ -36,7 +36,7 @@ const SidebarWrapper: React.FC<SidebarWrapperProps> = ({
             </div>
           </header>
 
-          <main className="flex-1 overflow-x-hidden overflow-y-auto min-w-0 overscroll-y-contain pb-[max(0.75rem,env(safe-area-inset-bottom))] [-webkit-overflow-scrolling:touch]">
+          <main className="flex-1 overflow-x-hidden overflow-y-auto min-w-0 overscroll-y-contain pb-[max(1.5rem,env(safe-area-inset-bottom))] [-webkit-overflow-scrolling:touch]">
             {children}
           </main>
         </SidebarInset>

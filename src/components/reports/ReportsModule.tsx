@@ -8,6 +8,7 @@ import { BarChart3, Download, FileText, Calculator, DollarSign, TrendingUp, Tren
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 import { reportService } from '../../services';
 import { getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
+import { formatDisplayDate } from '../../utils/dateFormat';
 
 const ReportsModule = () => {
   const { students, payments, income, expenses, feeStructures, classes } = useData();
@@ -495,7 +496,7 @@ const ReportsModule = () => {
                     .map((transaction, index) => (
                       <tr key={index} className="border-b border-border hover:bg-muted/30 transition-colors">
                         <td className="p-3 text-muted-foreground">
-                          {new Date(transaction.date).toLocaleDateString()}
+                          {formatDisplayDate(transaction.date)}
                         </td>
                         <td className="p-3">
                           <span className={`px-3 py-1 rounded-full text-xs font-medium ${

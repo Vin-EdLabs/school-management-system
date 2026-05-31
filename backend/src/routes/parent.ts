@@ -164,19 +164,25 @@ router.post('/refresh', authenticateParent, async (req: ParentRequest, res) => {
 router.post('/change-password', authenticateParent, async (req: ParentRequest, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
-    if (!currentPassword || !newPassword) {
-      return res.status(400).json({ error: 'currentPassword and newPassword are required' });
+    if (!newPassword) {
+      return res.status(400).json({ error: 'newPassword is required' });
     }
     if (newPassword.length < 6) {
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
 
     const row = await query(
-      'SELECT password_hash FROM parent_portal_accounts WHERE id = $1',
+      'SELECT password_hash, must_change_password FROM parent_portal_accounts WHERE id = $1',
       [req.parent!.accountId]
     );
-    const valid = await bcrypt.compare(currentPassword, row.rows[0].password_hash);
-    if (!valid) return res.status(401).json({ error: 'Current password is incorrect' });
+    const mustChange = !!row.rows[0]?.must_change_password;
+    if (!mustChange) {
+      if (!currentPassword) {
+        return res.status(400).json({ error: 'currentPassword is required' });
+      }
+      const valid = await bcrypt.compare(currentPassword, row.rows[0].password_hash);
+      if (!valid) return res.status(401).json({ error: 'Current password is incorrect' });
+    }
 
     const hash = await bcrypt.hash(newPassword, 10);
     await query(

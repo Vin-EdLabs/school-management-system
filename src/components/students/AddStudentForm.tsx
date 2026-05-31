@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useData } from '../../contexts/DataContext';
 import { apiService } from '../../services/api';
 import { toast } from '@/hooks/use-toast';
-import { Save, UserPlus, Camera, X, GraduationCap as ScholarshipIcon } from 'lucide-react';
+import { Loader2, Save, UserPlus, Camera, X, GraduationCap as ScholarshipIcon } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 
 interface AddStudentFormProps {
@@ -30,6 +30,7 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
   const [siblingSearch, setSiblingSearch] = useState('');
   const [selectedSiblings, setSelectedSiblings] = useState<any[]>([]);
   const [previewPhoto, setPreviewPhoto] = useState<{ url: string; name: string } | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const matchingStudents = useMemo(() => {
     if (!siblingSearch.trim()) return [];
@@ -132,6 +133,7 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
 
     if (
       !formData.firstName || 
@@ -156,6 +158,7 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
     const classObj = classes.find(c => c.className === formData.classAssigned);
     const classAssignedId = classObj ? parseInt(classObj.id, 10) : undefined;
 
+    setIsSubmitting(true);
     try {
       const created = await addStudent({
         ...formData,
@@ -204,11 +207,13 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
         description: "Failed to add student. Please try again.",
         variant: "destructive"
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <Card className="border-slate-200 dark:border-slate-800 shadow-xl bg-white dark:bg-slate-900/50 rounded-[2rem] overflow-hidden animate-in fade-in duration-500">
+    <Card className="border-slate-200 dark:border-slate-800 shadow-xl bg-white dark:bg-slate-900/50 rounded-[2rem] overflow-visible animate-in fade-in duration-500">
       <CardHeader className="bg-slate-50/50 dark:bg-slate-800/30 border-b border-slate-200/50 dark:border-slate-800/50 px-8 py-6">
         <CardTitle className="flex items-center gap-3 text-slate-900 dark:text-white font-black font-outfit text-xl tracking-tight">
           <div className="w-10 h-10 rounded-xl bg-indigo-500/10 flex items-center justify-center">
@@ -714,10 +719,18 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
             </div>
           </div>
 
-          <div className="flex justify-end pt-4">
-            <Button type="submit" className="h-12 px-8 bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90 rounded-xl text-sm font-semibold shadow-lg">
-              <Save className="mr-2 h-4 w-4" />
-              Save student
+          <div className="form-action-bar flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-muted-foreground">
+              Review the required student details before saving.
+            </p>
+            <Button
+              type="submit"
+              variant="primaryAction"
+              disabled={isSubmitting}
+              className="h-12 w-full rounded-xl px-8 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
+            >
+              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              {isSubmitting ? 'Processing...' : 'Save student'}
             </Button>
           </div>
         </form>

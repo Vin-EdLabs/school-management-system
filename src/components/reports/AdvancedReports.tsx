@@ -16,6 +16,7 @@ import { apiService } from '@/services/api';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSchool } from '@/contexts/SchoolContext';
 import { BrandedLoading } from '@/components/common/BrandedLoading';
+import { formatDisplayDate } from '@/utils/dateFormat';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -291,7 +292,7 @@ const AdvancedReports = () => {
         attendanceRes
           .map((a) => ({
             ...a,
-            date: new Date(a.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
+            date: formatDisplayDate(a.date),
             rate: a.total > 0 ? (a.present / a.total) * 100 : 0,
           }))
           .reverse()

@@ -30,6 +30,7 @@ import ManualBalanceOverrideDialog, { type FeeBreakdownForOverride } from './Man
 import { useData } from '../../contexts/DataContext';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
 import { calculateStudentFeesSync, getActiveAcademicTerm } from '../../utils/feeCalculations';
+import { formatDisplayDate, formatDisplayDateTime, formatDisplayTime } from '../../utils/dateFormat';
 
 type AdjRow = {
   id: number;
@@ -94,11 +95,10 @@ function docUrl(url: string | null | undefined): string | null {
 }
 
 function splitDateTime(iso: string): { dateLine: string; timeLine: string; isoLocal: string } {
-  const d = new Date(iso);
   return {
-    dateLine: d.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
-    timeLine: d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-    isoLocal: d.toLocaleString(),
+    dateLine: formatDisplayDate(iso),
+    timeLine: formatDisplayTime(iso),
+    isoLocal: formatDisplayDateTime(iso),
   };
 }
 
@@ -289,7 +289,7 @@ const ManualAdjustmentsReport: React.FC = () => {
                 }}
               />
             </div>
-            <Button type="button" className="gap-2 sm:mb-0.5" onClick={() => void runStudentSearch()} disabled={searching}>
+            <Button type="button" variant="primaryAction" className="gap-2 sm:mb-0.5" onClick={() => void runStudentSearch()} disabled={searching}>
               {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
               Search
             </Button>
@@ -530,7 +530,7 @@ const ManualAdjustmentsReport: React.FC = () => {
               <Input inputMode="numeric" placeholder="Optional" value={filterRecordedByUserId} onChange={(e) => setFilterRecordedByUserId(e.target.value)} />
             </div>
           </div>
-          <Button type="button" onClick={() => void runReport()} disabled={loading} className="w-fit gap-2">
+          <Button type="button" variant="primaryAction" onClick={() => void runReport()} disabled={loading} className="w-fit gap-2">
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             Run report
           </Button>
@@ -559,11 +559,7 @@ const ManualAdjustmentsReport: React.FC = () => {
                 {rows.map((r) => {
                   const adj = rowAdjustment(r);
                   const when = splitDateTime(r.created_at);
-                  const shortDate = new Date(r.created_at).toLocaleDateString(undefined, {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric',
-                  });
+                  const shortDate = formatDisplayDate(r.created_at);
                   return (
                     <TableRow
                       key={r.id}

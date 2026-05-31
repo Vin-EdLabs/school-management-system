@@ -23,6 +23,7 @@ import {
   Pencil,
   AlertCircle,
 } from 'lucide-react';
+import { formatDisplayDate } from '../../utils/dateFormat';
 import { apiService } from '../../services/api';
 import { resolveLogoUrl } from '../../services/tenantService';
 import type { Student, FeeStructure } from '../../contexts/DataContext';
@@ -339,7 +340,7 @@ const StudentQuickViewSheet: React.FC<StudentQuickViewSheetProps> = ({
               </h3>
               <div className="rounded-lg border bg-card/50 p-3 text-xs text-muted-foreground shadow-sm space-y-1">
                 <p>Previous school: {student.previousSchool || '—'}</p>
-                <p>Admission date: {student.dateOfAdmission ? new Date(student.dateOfAdmission).toLocaleDateString() : '—'}</p>
+                <p>Admission date: {formatDisplayDate(student.dateOfAdmission, '—')}</p>
               </div>
             </section>
           </div>

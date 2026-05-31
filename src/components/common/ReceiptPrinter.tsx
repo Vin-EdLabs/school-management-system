@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Download, Printer } from 'lucide-react';
 import { apiService } from '../../services/api';
 import { resolveLogoUrl } from '../../services/tenantService';
+import { formatDisplayDate } from '../../utils/dateFormat';
 
 interface ReceiptData {
   studentName: string;
@@ -126,7 +127,7 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
             <div class="receipt-meta">
               <h2>Official Receipt</h2>
               <p>#${receiptData.receiptNumber}</p>
-              <div class="date">Date: ${new Date(receiptData.date).toLocaleDateString('en-GB')} | ${currentTime}</div>
+              <div class="date">Date: ${formatDisplayDate(receiptData.date)} | ${currentTime}</div>
               <div class="status-badge">${statusLabel}</div>
             </div>
             <div class="section">
@@ -236,7 +237,7 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
             <div className="text-center mb-4">
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-800">Official Receipt</p>
               <p className="text-lg font-black leading-none mt-1 text-slate-950">#{receiptData.receiptNumber}</p>
-              <p className="text-[8px] text-slate-600 mt-1 uppercase font-bold">Date: {new Date(receiptData.date).toLocaleDateString('en-GB')} | {currentTime}</p>
+              <p className="text-[8px] text-slate-600 mt-1 uppercase font-bold">Date: {formatDisplayDate(receiptData.date)} | {currentTime}</p>
               <div className="inline-block mt-3 px-3 py-1 border border-slate-900 rounded text-[9px] font-black text-slate-900 uppercase">
                 {statusLabel}
               </div>

@@ -16,6 +16,7 @@ import { apiService } from '../../services/api';
 import { useSchool } from '../../contexts/SchoolContext';
 import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatDisplayDate, formatDisplayDateTime } from '../../utils/dateFormat';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -118,7 +119,7 @@ const relativeTime = (isoString: string | null): string => {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   if (days < 7) return `${days}d ago`;
-  return new Date(isoString).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  return formatDisplayDate(isoString);
 };
 
 const resolvePhotoUrl = (photoUrl?: string | null) => {
@@ -512,6 +513,7 @@ const GradesModule = () => {
           ) : (
             <Button
               className="min-h-[48px] w-full sm:w-auto touch-manipulation hidden sm:inline-flex"
+              variant="primaryAction"
               onClick={() => setIsAddOpen(true)}
               disabled={!selectedClassId}
             >
@@ -602,7 +604,8 @@ const GradesModule = () => {
                   </Button>
                   <Button
                     type="button"
-                    className="h-12 text-sm font-semibold touch-manipulation bg-purple-600 hover:bg-purple-700 text-white border-2 border-purple-700 shadow-sm"
+                    variant="primaryAction"
+                    className="h-12 text-sm font-semibold touch-manipulation"
                     onClick={handleBulkSave}
                     disabled={bulkSaving}
                   >
@@ -711,7 +714,7 @@ const GradesModule = () => {
                               <Button size="sm" variant="outline" onClick={cancelBulkEdit} className="gap-1.5 border-slate-400 text-slate-900 dark:text-slate-100">
                                 <X className="w-3.5 h-3.5" /> Cancel
                               </Button>
-                              <Button size="sm" onClick={handleBulkSave} disabled={bulkSaving} className="gap-1.5 bg-purple-600 hover:bg-purple-700 text-white">
+                              <Button size="sm" variant="primaryAction" onClick={handleBulkSave} disabled={bulkSaving} className="gap-1.5">
                                 <Save className="w-3.5 h-3.5" />
                                 {bulkSaving ? 'Saving…' : 'Save All'}
                               </Button>
@@ -989,7 +992,7 @@ const GradesModule = () => {
                         <CheckCircle2 className="w-3 h-3" />
                         Released by <strong className="ml-0.5">{termReport.releasedByName}</strong>
                         {termReport.releasedAt && (
-                          <> · {new Date(termReport.releasedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</>
+                          <> · {formatDisplayDateTime(termReport.releasedAt)}</>
                         )}
                       </p>
                     )}
@@ -1194,8 +1197,9 @@ const GradesModule = () => {
 
             <Button
               type="button"
+              variant="primaryAction"
               onClick={handleAddAssignment}
-              className="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold border-2 border-purple-800 shadow-sm h-11"
+              className="w-full h-11 font-semibold"
             >
               Add Assessment
             </Button>

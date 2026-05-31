@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
+import { formatDisplayDate } from '../../utils/dateFormat';
 import { Search, TrendingDown } from 'lucide-react';
 
 const ViewAllExpenses = () => {
@@ -126,7 +127,7 @@ const ViewAllExpenses = () => {
                       <Badge variant="secondary">{expense.paymentMethod}</Badge>
                     </TableCell>
                     <TableCell>
-                      {new Date(expense.paymentDate).toLocaleDateString()}
+                      {formatDisplayDate(expense.paymentDate)}
                     </TableCell>
                     <TableCell className="max-w-xs truncate">
                       {expense.purpose || '-'}

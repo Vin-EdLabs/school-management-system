@@ -384,22 +384,36 @@ export const postFeesForNewTermWithArrears = async (
 
     const newAyId = termMap[nextTermId].academic_year_id;
 
-    // ── STEP 1: Read the global running balance per student ──────────────────
-    // SUM(debit) - SUM(credit) across ALL terms.
-    // This represents the true outstanding amount to carry forward.
-    const prevBalances = await client.query(
-      `SELECT student_id,
-              (COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0))::numeric AS balance
-       FROM student_ledger
-       WHERE tenant_id = $1
-       GROUP BY student_id
-       HAVING (COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0)) > 0`,
-      [tid]
+    // ── STEP 1: Unpaid balances from all terms strictly BEFORE the new term ──
+    const { getLedgerUnpaidBeforeTerm, getLegacyUnpaidBeforeActiveTerm } = await import(
+      './arrearsService.js'
     );
+    const ledgerUnpaid = await getLedgerUnpaidBeforeTerm(tid, nextTermId, newAyId);
+
+    const nextAyResForLegacy = await client.query('SELECT name FROM academic_years WHERE id = $1', [
+      newAyId,
+    ]);
+    const nextAyNameForLegacy = nextAyResForLegacy.rows[0]?.name || '';
+    const newTermNameForLegacy = termMap[nextTermId].name;
+    const legacyUnpaid = await getLegacyUnpaidBeforeActiveTerm(
+      tid,
+      newTermNameForLegacy,
+      nextAyNameForLegacy
+    );
+
+    const unpaidByStudent = new Map<number, number>();
+    for (const [studentId, balance] of ledgerUnpaid.entries()) {
+      unpaidByStudent.set(studentId, Math.max(0, balance));
+    }
+    for (const [studentId, balance] of legacyUnpaid.entries()) {
+      if (!unpaidByStudent.has(studentId)) {
+        unpaidByStudent.set(studentId, Math.max(0, balance));
+      }
+    }
 
     console.log(
       `[switchTerm] prev_term=${prevTermId} next_term=${nextTermId} ` +
-      `students_with_balance=${prevBalances.rows.length}`
+      `students_with_balance=${unpaidByStudent.size}`
     );
 
     const fullWaiverRes = await client.query(
@@ -420,6 +434,15 @@ export const postFeesForNewTermWithArrears = async (
     );
     const alreadyHasArrears = new Set(existingArrearsRes.rows.map((r: any) => Number(r.student_id)));
 
+    const existingCarryForwardRes = await client.query(
+      `SELECT student_id FROM student_ledger
+       WHERE tenant_id = $1 AND term_id = $2 AND entry_type = 'carry_forward_credit'`,
+      [tid, prevTermId]
+    );
+    const alreadyHasCarryForward = new Set(
+      existingCarryForwardRes.rows.map((r: any) => Number(r.student_id))
+    );
+
     // ── STEP 3: Insert arrears rows ───────────────────────────────────────────
     let arrearsInserted = 0;
     const prevTerm = termMap[prevTermId];
@@ -437,14 +460,13 @@ export const postFeesForNewTermWithArrears = async (
     const fullPrevTermName = (prevAyName && !prevTerm.name.includes(prevAyName)) 
       ? `${prevTerm.name} ${prevAyName}`.trim() 
       : prevTerm.name;
-    for (const row of prevBalances.rows) {
-      const balance = parseFloat(row.balance);
-      const studentId = Number(row.student_id);
+    for (const [studentIdRaw, balanceRaw] of unpaidByStudent.entries()) {
+      const balance = Math.max(0, balanceRaw);
+      const studentId = Number(studentIdRaw);
       if (balance <= 0) continue;
       if (fullWaiverStudentIds.has(studentId)) continue;
 
-      // 3.1 Update term_arrears (simple view used by Student Balances / receipts)
-      // This ensures the "Arrears" label in UI is accurate
+      // 3.1 Update term_arrears (used by Student Balances / receipts)
       await client.query(
         `INSERT INTO term_arrears (tenant_id, student_id, current_term, from_term, amount)
          VALUES ($1, $2, $3, $4, $5)
@@ -452,29 +474,53 @@ export const postFeesForNewTermWithArrears = async (
          DO UPDATE SET amount = EXCLUDED.amount, from_term = EXCLUDED.from_term`,
         [tid, studentId, fullNextTermName, fullPrevTermName, balance]
       );
+
+      // 3.2 Close previous-term balance in the ledger (idempotent)
+      if (!alreadyHasCarryForward.has(studentId)) {
+        await client.query(
+          `INSERT INTO term_outstanding_balances
+             (tenant_id, term_id, student_id, outstanding_balance, calculated_at)
+           VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+           ON CONFLICT (tenant_id, term_id, student_id)
+           DO UPDATE SET outstanding_balance = $4, calculated_at = CURRENT_TIMESTAMP`,
+          [tid, prevTermId, studentId, balance]
+        );
+        await client.query(
+          `INSERT INTO student_ledger
+             (tenant_id, student_id, academic_year_id, term_id, description, entry_type, debit, credit)
+           VALUES ($1, $2, $3, $4, $5, 'carry_forward_credit', 0, $6)`,
+          [
+            tid,
+            studentId,
+            prevTerm.academic_year_id,
+            prevTermId,
+            `Balance carried forward to ${fullNextTermName}`,
+            balance,
+          ]
+        );
+        alreadyHasCarryForward.add(studentId);
+      }
+
       if (alreadyHasArrears.has(studentId)) continue;
 
-      // 3.2 Persist in term_outstanding_balances (snapshot)
-      await client.query(
-        `INSERT INTO term_outstanding_balances
-           (tenant_id, term_id, student_id, outstanding_balance, calculated_at)
-         VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
-         ON CONFLICT (tenant_id, term_id, student_id)
-         DO UPDATE SET outstanding_balance = $4, calculated_at = CURRENT_TIMESTAMP`,
-        [tid, prevTermId, studentId, balance]
-      );
-
-      // 3.3 Real ledger row — MEMO ONLY (amount 0) to avoid double-counting in running balance
+      // 3.3 Real arrears debit in the new term (added to current term fees)
       await client.query(
         `INSERT INTO student_ledger
            (tenant_id, student_id, academic_year_id, term_id, description, entry_type, debit, credit)
-         VALUES ($1, $2, $3, $4, $5, 'arrears', 0, 0)`,
-        [tid, studentId, newAyId, nextTermId, `Arrears brought forward from ${fullPrevTermName}: GHS ${balance.toFixed(2)}`]
+         VALUES ($1, $2, $3, $4, $5, 'arrears', $6, 0)`,
+        [
+          tid,
+          studentId,
+          newAyId,
+          nextTermId,
+          `Arrears brought forward from ${fullPrevTermName}`,
+          balance,
+        ]
       );
 
       arrearsInserted++;
       alreadyHasArrears.add(studentId);
-      console.log(`[switchTerm] arrears memo student=${studentId} amount=${balance} -> term ${nextTermId}`);
+      console.log(`[switchTerm] arrears student=${studentId} amount=${balance} -> term ${nextTermId}`);
     }
 
     // ── STEP 4: Post new term fees (skip students already billed) ─────────────
@@ -562,6 +608,10 @@ export const backfillArrearsForCurrentTerm = async (tenantId: number) => {
 
     const newTermId = newLedgerTerm.termId;
     const newAyId = newLedgerTerm.academicYearId;
+    const fullCurrentTerm =
+      currentYear && !String(currentTerm).includes(String(currentYear))
+        ? `${currentTerm} ${currentYear}`.trim()
+        : String(currentTerm);
 
     // Previous term = chronologically last term before current (same or any earlier academic year) that has term_fee entries
     const prevTermResult = await client.query(
@@ -628,6 +678,13 @@ export const backfillArrearsForCurrentTerm = async (tenantId: number) => {
            VALUES ($1, $2, $3, $4, 'Arrears from previous term (migrated)', 'arrears', $5, 0)`,
           [tenantId, s.id, newAyId, newTermId, unpaid]
         );
+        await client.query(
+          `INSERT INTO term_arrears (tenant_id, student_id, current_term, from_term, amount)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (tenant_id, student_id, current_term)
+           DO UPDATE SET amount = EXCLUDED.amount, from_term = EXCLUDED.from_term`,
+          [tenantId, s.id, fullCurrentTerm, prevTermLabel, unpaid]
+        );
         inserted++;
         alreadyHas.add(s.id);
       }
@@ -687,6 +744,13 @@ export const backfillArrearsForCurrentTerm = async (tenantId: number) => {
           `INSERT INTO student_ledger (tenant_id, student_id, academic_year_id, term_id, description, entry_type, debit, credit)
            VALUES ($1, $2, $3, $4, 'Arrears from previous term', 'arrears', $5, 0)`,
           [tenantId, studentId, newAyId, newTermId, balance]
+        );
+        await client.query(
+          `INSERT INTO term_arrears (tenant_id, student_id, current_term, amount)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (tenant_id, student_id, current_term)
+           DO UPDATE SET amount = EXCLUDED.amount`,
+          [tenantId, studentId, fullCurrentTerm, balance]
         );
         arrearsInserted++;
         alreadyHasArrears.add(studentId);

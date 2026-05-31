@@ -12,6 +12,7 @@ select {
 .modal {
   max-height: 90dvh;
   overflow-y: auto;
+  overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -22,6 +23,22 @@ select {
   }
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
+  }
+
+  .form-action-bar {
+    position: sticky;
+    bottom: max(0px, env(safe-area-inset-bottom));
+    z-index: 20;
+    margin-top: 1rem;
+    border-top: 1px solid hsl(var(--border));
+    background: hsl(var(--card) / 0.96);
+    padding-top: 0.75rem;
+    box-shadow: 0 -10px 30px rgb(15 23 42 / 0.08);
+    backdrop-filter: blur(12px);
+  }
+
+  .dark .form-action-bar {
+    box-shadow: 0 -10px 30px rgb(0 0 0 / 0.3);
   }
 }
 

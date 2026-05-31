@@ -25,9 +25,24 @@ router.get('/manifest', async (req: TenantRequest, res) => {
       if (logo.startsWith('data:') || logo.startsWith('http')) return logo;
       return `${origin}${logo.startsWith('/') ? '' : '/'}${logo}`;
     })();
-    const icon192 = absLogo || `/school-assets/${subdomain}/logo-192.png`;
-    const icon512 = absLogo || `/school-assets/${subdomain}/logo-512.png`;
-    const logoMime = logo?.startsWith('data:') ? logo.split(';')[0].split(':')[1] : 'image/png';
+    const fallbackIcon192 = `${origin}/android-chrome-192x192.png`;
+    const fallbackIcon512 = `${origin}/android-chrome-512x512.png`;
+    const logoMime = (() => {
+      if (logo?.startsWith('data:')) return logo.split(';')[0].split(':')[1] || 'image/png';
+      const lower = logo.toLowerCase();
+      if (lower.endsWith('.svg')) return 'image/svg+xml';
+      if (lower.endsWith('.webp')) return 'image/webp';
+      if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+      return 'image/png';
+    })();
+    const tenantIcons = absLogo
+      ? [
+          { src: absLogo, sizes: '192x192', type: logoMime, purpose: 'any' },
+          { src: absLogo, sizes: '192x192', type: logoMime, purpose: 'maskable' },
+          { src: absLogo, sizes: '512x512', type: logoMime, purpose: 'any' },
+          { src: absLogo, sizes: '512x512', type: logoMime, purpose: 'maskable' },
+        ]
+      : [];
 
     let startUrl = '/';
     if (tenantId > 0) {
@@ -57,11 +72,13 @@ router.get('/manifest', async (req: TenantRequest, res) => {
         background_color: primary,
         theme_color: secondary,
         categories: ['education', 'productivity'],
+        prefer_related_applications: false,
         icons: [
-          { src: icon192, sizes: '192x192', type: logoMime, purpose: 'any' },
-          { src: icon192, sizes: '192x192', type: logoMime, purpose: 'maskable' },
-          { src: icon512, sizes: '512x512', type: logoMime, purpose: 'any' },
-          { src: icon512, sizes: '512x512', type: logoMime, purpose: 'maskable' }
+          ...tenantIcons,
+          { src: fallbackIcon192, sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: fallbackIcon192, sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+          { src: fallbackIcon512, sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: fallbackIcon512, sizes: '512x512', type: 'image/png', purpose: 'maskable' }
         ],
         shortcuts: [
           {

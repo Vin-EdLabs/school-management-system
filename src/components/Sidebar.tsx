@@ -19,6 +19,7 @@ import {
   Settings,
   Shield,
   FileText,
+  ReceiptText,
   UserCheck,
   Search,
   Award,
@@ -79,6 +80,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
     ...(hasAccess('fees') ? [{ id: 'fees', label: 'Fees', icon: DollarSign }] : []),
     ...(hasAccess('income') ? [{ id: 'income', label: 'Income', icon: TrendingUp }] : []),
     ...(hasAccess('expenses') ? [{ id: 'expenses', label: 'Expenses', icon: TrendingDown }] : []),
+    ...(hasAccess('transactions') ? [{ id: 'transactions', label: 'Transactions', icon: ReceiptText }] : []),
     ...(hasAccess('payroll') ? [{ id: 'payroll', label: 'Payroll', icon: Wallet }] : []),
     ...(hasAccess('reports') ? [{ id: 'reports', label: 'Reports', icon: BarChart3 }] : []),
     ...(hasAccess('print-fee-status') ? [{ id: 'print-fee-status', label: 'Fee Status', icon: FileText }] : []),
@@ -130,6 +132,13 @@ const MenuSection: React.FC<{
                   isActive={activeModule === item.id}
                   onClick={() => {
                     setActiveModule(item.id);
+                    if (item.id === 'transactions') {
+                      const schoolMatch = window.location.pathname.match(/^\/school\/[^/]+/);
+                      window.history.pushState({}, '', `${schoolMatch?.[0] || ''}/finance/transactions`);
+                    } else if (window.location.pathname.endsWith('/finance/transactions')) {
+                      const base = window.location.pathname.replace(/\/finance\/transactions\/?$/, '') || '/';
+                      window.history.pushState({}, '', base);
+                    }
                     if (isMobile) setOpenMobile(false);
                   }}
                   tooltip={item.label}

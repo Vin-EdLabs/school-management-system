@@ -1,3 +1,5 @@
+import { formatDisplayDate } from './dateFormat';
+
 
 import { apiService } from '../services/api';
 
@@ -325,7 +327,10 @@ export const calculateStudentFeesSync = (
   const baseTermFee = matchingFees.reduce((sum: number, f: any) => sum + (parseFloat(f.amount) || 0), 0);
   const { currentTermFee } = applyBeneficiaryToBaseFee(baseTermFee, studentBeneficiaryInfo);
 
-  const previousArrears = (arrearsBalances && arrearsBalances[studentId]) ? arrearsBalances[studentId] : 0;
+  const previousArrears = Math.max(
+    0,
+    arrearsBalances && arrearsBalances[studentId] ? arrearsBalances[studentId] : 0
+  );
   const totalPaid = (payments || [])
     .filter((p: any) => {
       const matchById = String(p.studentId) === String(studentId) || String(p.studentIdNum) === String(studentId);
@@ -464,7 +469,7 @@ export const getReceiptHeader = (term?: string) => {
     schoolEmail: schoolSettings.email,
     term: activeTerm,
     year: activeYear,
-    generatedDate: new Date().toLocaleDateString(),
+    generatedDate: formatDisplayDate(new Date()),
     generatedTime: new Date().toLocaleTimeString()
   };
 };

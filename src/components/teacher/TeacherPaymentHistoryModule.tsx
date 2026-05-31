@@ -19,6 +19,7 @@ import {
   formatTeacherMoney,
   salaryStatusBadgeClass,
 } from './teacherSalaryPortal';
+import { formatDisplayDate } from '../../utils/dateFormat';
 
 const TeacherPaymentHistoryModule = () => {
   const { schoolId } = useSchool();
@@ -154,7 +155,7 @@ const TeacherPaymentHistoryModule = () => {
                   <Badge className={salaryStatusBadgeClass(snap.status)}>{snap.status}</Badge>
                 </div>
                 {snap.paidDate && (
-                  <p className="text-xs text-muted-foreground">Last recorded: {new Date(snap.paidDate).toLocaleDateString(undefined, { dateStyle: 'medium' })}</p>
+                  <p className="text-xs text-muted-foreground">Last recorded: {formatDisplayDate(snap.paidDate)}</p>
                 )}
               </>
             )}
@@ -228,7 +229,7 @@ const TeacherPaymentHistoryModule = () => {
                       <p className="text-xs text-amber-700 dark:text-amber-300">Balance: {formatTeacherMoney(cur, p.balanceOwing)}</p>
                     )}
                     <p className="text-xs text-muted-foreground">
-                      {p.paidDate ? new Date(p.paidDate).toLocaleDateString(undefined, { dateStyle: 'medium' }) : '—'}
+                      {formatDisplayDate(p.paidDate, '—')}
                       {p.paymentMethod ? ` · ${p.paymentMethod}` : ''}
                     </p>
                   </div>
@@ -272,7 +273,7 @@ const TeacherPaymentHistoryModule = () => {
                           {p.paymentMethod || '—'}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-                          {p.paidDate ? new Date(p.paidDate).toLocaleDateString(undefined, { dateStyle: 'medium' }) : '—'}
+                          {formatDisplayDate(p.paidDate, '—')}
                         </TableCell>
                         <TableCell>
                           <Badge className={salaryStatusBadgeClass(p.status)}>{p.status}</Badge>

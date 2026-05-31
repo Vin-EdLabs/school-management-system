@@ -9,6 +9,8 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogBody,
+  DialogFooter,
 } from '@/components/ui/dialog';
 import { useData } from '../../contexts/DataContext';
 import { apiService } from '../../services/api';
@@ -112,13 +114,13 @@ const AssignClassToTeacher = () => {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
+      <Card className="border-border bg-card text-card-foreground shadow-sm">
+        <CardHeader className="border-b border-border/70 bg-muted/30">
           <CardTitle className="flex items-center space-x-2">
             <Users className="w-5 h-5" />
             <span>Assign Teachers to Class</span>
           </CardTitle>
-          <p className="text-sm text-slate-500 mt-1">
+          <p className="text-sm text-muted-foreground mt-1">
             Assign multiple teachers to one class. Set one as the main teacher.
           </p>
         </CardHeader>
@@ -141,33 +143,33 @@ const AssignClassToTeacher = () => {
             </div>
 
             {selectedClassId && (
-              <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
-                <div className="flex items-center justify-between mb-4">
-                  <h4 className="font-medium text-slate-800">
+              <div className="rounded-lg border border-border bg-muted/30 p-4 text-foreground">
+                <div className="flex flex-col gap-3 mb-4 sm:flex-row sm:items-center sm:justify-between">
+                  <h4 className="font-medium text-foreground">
                     Teachers for {selectedClass?.className || 'Class'}
                   </h4>
-                  <Button size="sm" onClick={() => setAddTeacherOpen(true)} disabled={availableTeachers.length === 0}>
+                  <Button size="sm" variant="primaryAction" onClick={() => setAddTeacherOpen(true)} disabled={availableTeachers.length === 0} className="w-full sm:w-auto">
                     <Plus className="w-4 h-4 mr-2" />
                     Add Teacher
                   </Button>
                 </div>
 
                 {loading ? (
-                  <p className="text-sm text-slate-500">Loading...</p>
+                  <p className="text-sm text-muted-foreground">Loading...</p>
                 ) : classTeachers.length === 0 ? (
-                  <p className="text-sm text-slate-500">No teachers assigned yet. Click &quot;Add Teacher&quot; to assign.</p>
+                  <p className="text-sm text-muted-foreground">No teachers assigned yet. Click &quot;Add Teacher&quot; to assign.</p>
                 ) : (
                   <div className="space-y-2">
                     {classTeachers.map((ct) => (
                       <div
                         key={ct.id}
-                        className="flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-white"
+                        className="flex flex-col gap-3 rounded-lg border border-border bg-card p-3 text-card-foreground shadow-sm sm:flex-row sm:items-center sm:justify-between"
                       >
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{ct.full_name}</span>
-                          <span className="text-slate-500 text-sm font-mono">{ct.staff_id}</span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium text-foreground">{ct.full_name}</span>
+                          <span className="text-muted-foreground text-sm font-mono">{ct.staff_id}</span>
                           {ct.is_main && (
-                            <Badge variant="default" className="bg-amber-600">Main</Badge>
+                            <Badge variant="default" className="bg-amber-600 text-white">Main</Badge>
                           )}
                         </div>
                         <div className="flex items-center gap-2">
@@ -183,8 +185,8 @@ const AssignClassToTeacher = () => {
                           )}
                           <Button
                             size="sm"
-                            variant="ghost"
-                            className="text-red-600 hover:text-red-700"
+                            variant="outline"
+                            className="min-h-9 min-w-9 border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/40"
                             onClick={() => handleRemoveTeacher(ct.teacher_id)}
                             title="Remove from class"
                           >
@@ -203,11 +205,11 @@ const AssignClassToTeacher = () => {
 
       {/* Add Teacher Dialog */}
       <Dialog open={addTeacherOpen} onOpenChange={setAddTeacherOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
+          <DialogHeader className="shrink-0 border-b border-border/70 px-6 py-4">
             <DialogTitle>Add Teacher to {selectedClass?.className}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <DialogBody className="space-y-4 px-6 py-4">
             <div>
               <Label>Teacher</Label>
               <Select value={teacherToAdd} onValueChange={setTeacherToAdd}>
@@ -229,21 +231,21 @@ const AssignClassToTeacher = () => {
                 id="addAsMain"
                 checked={addAsMain}
                 onChange={(e) => setAddAsMain(e.target.checked)}
-                className="rounded border-slate-300"
+                className="rounded border-slate-300 dark:border-slate-600"
               />
               <Label htmlFor="addAsMain">Set as main teacher</Label>
             </div>
-          </div>
-          <div className="flex justify-end gap-2">
+          </DialogBody>
+          <DialogFooter className="form-action-bar shrink-0 gap-2 px-6 py-4">
             <Button variant="outline" onClick={() => setAddTeacherOpen(false)}>Cancel</Button>
-            <Button onClick={handleAddTeacher} disabled={!teacherToAdd}>Add Teacher</Button>
-          </div>
+            <Button variant="primaryAction" onClick={handleAddTeacher} disabled={!teacherToAdd}>Add Teacher</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Overview: Classes and their Teachers */}
-      <Card>
-        <CardHeader>
+      <Card className="border-border bg-card text-card-foreground shadow-sm">
+        <CardHeader className="border-b border-border/70 bg-muted/30">
           <CardTitle className="flex items-center space-x-2">
             <School className="w-5 h-5" />
             <span>All Classes — Teachers Overview</span>
@@ -263,16 +265,16 @@ const AssignClassToTeacher = () => {
                     .includes(nameNorm)
                 );
               return (
-                <div key={cls.id} className="flex items-center justify-between p-3 border rounded-lg">
+                <div key={cls.id} className="flex flex-col gap-3 rounded-lg border border-border bg-card p-3 text-card-foreground sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <p className="font-medium">{cls.className}</p>
-                    <p className="text-sm text-gray-500">
+                    <p className="font-medium text-foreground">{cls.className}</p>
+                    <p className="text-sm text-muted-foreground">
                       Level: {cls.level} {cls.stream ? `- ${cls.stream}` : ''}
                     </p>
                   </div>
                   <div>
                     {mainTeacher ? (
-                      <Badge variant="default">
+                      <Badge variant="default" className="bg-blue-600 text-white dark:bg-blue-500">
                         {mainTeacher.fullName}
                         {String(mainTeacher.id) === String(cls.assignedTeacherId) ? ' (Main)' : ''}
                       </Badge>

@@ -7,6 +7,7 @@ import { apiService } from '../../services/api';
 import { useSchool } from '../../contexts/SchoolContext';
 import { useData } from '../../contexts/DataContext';
 import { type TeacherMySalaryResponse, formatTeacherMoney, salaryStatusBadgeClass } from './teacherSalaryPortal';
+import { formatDisplayDate } from '../../utils/dateFormat';
 
 interface TeacherProfile {
   id: number;
@@ -118,8 +119,7 @@ const TeacherDashboard = () => {
           </div>
         </div>
         <div className="text-left sm:text-right text-xs sm:text-sm text-gray-500 shrink-0 pl-14 sm:pl-0">
-          <p className="sm:hidden">{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</p>
-          <p className="hidden sm:block">{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+          <p>{formatDisplayDate(new Date())}</p>
         </div>
       </div>
 

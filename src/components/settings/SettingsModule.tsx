@@ -4,27 +4,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Separator } from '@/components/ui/separator';
 import { useAuth } from '../../contexts/AuthContext';
-import { useData } from '../../contexts/DataContext';
 import { useSchool } from '../../contexts/SchoolContext';
+import { useData } from '../../contexts/DataContext';
 import { apiService } from '../../services/api';
 import { toast } from '@/hooks/use-toast';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-  DialogTrigger
-} from '@/components/ui/dialog';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { reportService } from '../../services/reportService';
-import {
-  Settings, Key, Building, Download, Upload, RefreshCw, Receipt,
-  GraduationCap, Copy, ExternalLink, AlertTriangle, ShieldAlert,
-  FileJson, FileSpreadsheet, Lock, UserPlus
+  Settings, Key, Building, Download, Receipt,
+  GraduationCap, Copy, ExternalLink, ShieldAlert, RefreshCw,
 } from 'lucide-react';
 import AcademicTermManager from './AcademicTermManager';
 import SchoolManager from './SchoolManager';
@@ -49,13 +36,11 @@ interface AcademicSettings {
 const SettingsModule = () => {
   const { user, hasAccess, changePassword } = useAuth();
   const { school } = useSchool();
-  const { students, teachers, classes, payments, income, expenses } = useData();
+  const { refresh: refreshData } = useData();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [resetPassword, setResetPassword] = useState('');
-  const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
-  const [isResetting, setIsResetting] = useState(false);
+  const [isSyncingArrears, setIsSyncingArrears] = useState(false);
 
   const [schoolInfo, setSchoolInfo] = useState<SchoolSettings>({
     name: 'School',
@@ -227,19 +212,21 @@ const SettingsModule = () => {
     }
   };
 
-  const handleExportJSON = () => {
+  const handleExportJSON = async () => {
     try {
-      const exportData = {
-        version: '1.2',
-        timestamp: new Date().toISOString(),
-        students, teachers, classes, payments, income, expenses,
-      };
+      if (!school?.id) {
+        toast({ title: "Backup Failed", description: "School context is not ready.", variant: "destructive" });
+        return;
+      }
+
+      const exportData = await apiService.get<any>(`/schools/${school.id}/backup`);
 
       const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `school_backup_${new Date().toISOString().split('T')[0]}.json`;
+      const safeName = (school.name || 'school').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      link.download = `${safeName || 'school'}_backup_${new Date().toISOString().split('T')[0]}.json`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -258,60 +245,40 @@ const SettingsModule = () => {
     }
   };
 
-  const handleExportExcel = async () => {
+  const handleSyncArrears = async () => {
+    if (isSyncingArrears) return;
+
+    setIsSyncingArrears(true);
     try {
-      toast({ title: "Preparing Export", description: "Consolidating all school data for Excel..." });
+      const backfill = await apiService.post<{
+        message?: string;
+        arrearsRowsInserted?: number;
+        studentsProcessed?: number;
+      }>('/finance/backfill-arrears', {});
 
-      const flatData = [
-        ...students.map((s: any) => ({ Type: 'Student', ID: s.studentId, Name: `${s.firstName} ${s.lastName}`, Class: s.classAssigned })),
-        ...teachers.map((t: any) => ({ Type: 'Teacher', ID: t.staffId, Name: t.fullName, Role: 'Teacher' })),
-        ...payments.map((p: any) => ({ Type: 'Payment', Date: p.paymentDate, Amount: p.amount, Method: p.paymentMethod })),
-        ...income.map((i: any) => ({ Type: 'Income', Date: i.incomeDate, Source: i.source, Amount: i.amount })),
-        ...expenses.map((e: any) => ({ Type: 'Expense', Date: e.paymentDate, Title: e.title, Amount: e.amount }))
-      ];
+      const sync = await apiService.post<{
+        message?: string;
+        studentsUpdated?: number;
+        currentTerm?: string;
+      }>('/settings/sync-arrears', {});
 
-      await reportService.exportToExcel(flatData, `school_summary_${new Date().toISOString().split('T')[0]}`, 'All Data');
+      await refreshData();
 
+      const count = sync.studentsUpdated ?? backfill.arrearsRowsInserted ?? backfill.studentsProcessed ?? 0;
       toast({
-        title: "Excel Export Ready",
-        description: "Summary data exported successfully.",
+        title: 'Arrears Updated',
+        description: `Arrears have been recalculated for ${sync.currentTerm || 'the active term'}${count ? ` (${count} student${count === 1 ? '' : 's'})` : ''}.`,
       });
     } catch (err: any) {
       toast({
-        title: "Export Failed",
-        description: err?.message || "Could not generate Excel file.",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const handleResetData = async () => {
-    if (!resetPassword) {
-      toast({ title: "Verification Required", description: "Please enter your password to confirm.", variant: "destructive" });
-      return;
-    }
-
-    setIsResetting(true);
-    try {
-      await apiService.post('/settings/reset-data', { password: resetPassword });
-      toast({
-        title: "System Reset Complete",
-        description: "All records have been permanently cleared.",
-      });
-      setIsResetDialogOpen(false);
-      setResetPassword('');
-      setTimeout(() => window.location.reload(), 1500);
-    } catch (err: any) {
-      toast({
-        title: "Reset Failed",
-        description: err?.message || "Invalid password or server error.",
-        variant: "destructive"
+        title: 'Arrears Sync Failed',
+        description: err?.message || 'Could not recalculate arrears. Please try again.',
+        variant: 'destructive',
       });
     } finally {
-      setIsResetting(false);
+      setIsSyncingArrears(false);
     }
   };
-
 
   if (!hasSettingsFull && !hasAccess('settings-password-only')) {
     return null;
@@ -377,7 +344,7 @@ const SettingsModule = () => {
                   minLength={user?.role === 'teacher' || user?.role === 'staff' ? 5 : 6}
                 />
               </div>
-              <Button type="submit" className="w-full" disabled={!currentPassword || !newPassword || !confirmPassword}>
+              <Button type="submit" variant="primaryAction" className="w-full" disabled={!currentPassword || !newPassword || !confirmPassword}>
                 Update Password
               </Button>
             </form>
@@ -389,15 +356,15 @@ const SettingsModule = () => {
 
   // Super-admin / Primary admin settings view
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 md:p-5 space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-gray-500 to-gray-600 rounded-lg flex items-center justify-center">
-            <Settings className="w-6 h-6 text-white" />
+          <div className="w-9 h-9 bg-gradient-to-br from-gray-500 to-gray-600 rounded-lg flex items-center justify-center">
+            <Settings className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-foreground">System Settings</h1>
-            <p className="text-muted-foreground">Configure system settings and preferences</p>
+            <h1 className="text-2xl font-bold text-foreground">System Settings</h1>
+            <p className="text-sm text-muted-foreground">Configure system settings and preferences</p>
           </div>
         </div>
       </div>
@@ -407,16 +374,16 @@ const SettingsModule = () => {
 
       {hasSettingsFull && <AcademicTermManager />}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Key className="w-5 h-5" />
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
+        <Card className="shadow-sm">
+          <CardHeader className="px-4 py-3">
+            <CardTitle className="flex items-center space-x-2 text-base">
+              <Key className="w-4 h-4" />
               <span>Change Password</span>
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <form onSubmit={handlePasswordChange} className="space-y-4">
+          <CardContent className="px-4 pb-4">
+            <form onSubmit={handlePasswordChange} className="space-y-3">
               <div className="space-y-2">
                 <Label htmlFor="currentPasswordFull">Current Password</Label>
                 <Input
@@ -452,7 +419,7 @@ const SettingsModule = () => {
                   minLength={user?.role === 'teacher' || user?.role === 'staff' ? 5 : 6}
                 />
               </div>
-              <Button type="submit" className="w-full" disabled={!currentPassword || !newPassword || !confirmPassword}>
+              <Button type="submit" variant="primaryAction" className="w-full" disabled={!currentPassword || !newPassword || !confirmPassword}>
                 Update Password
               </Button>
             </form>
@@ -460,15 +427,16 @@ const SettingsModule = () => {
         </Card>
 
         {hasSettingsFull && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Building className="w-5 h-5" />
+          <Card className="xl:col-span-2 shadow-sm">
+            <CardHeader className="px-4 py-3">
+              <CardTitle className="flex items-center space-x-2 text-base">
+                <Building className="w-4 h-4" />
                 <span>School Information</span>
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSchoolInfoUpdate} className="space-y-4">
+            <CardContent className="px-4 pb-4">
+              <form onSubmit={handleSchoolInfoUpdate} className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label htmlFor="schoolName">School Name</Label>
                   <Input
@@ -528,7 +496,7 @@ const SettingsModule = () => {
                     placeholder="Mon-Fri • 7:00am - 4:00pm"
                   />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="physicalAddress">Physical Address (Parent Desk)</Label>
                   <Input
                     id="physicalAddress"
@@ -537,7 +505,8 @@ const SettingsModule = () => {
                     placeholder="School location for Parent Desk"
                   />
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>Primary Color (Login & Branding)</Label>
                     <div className="flex gap-2">
@@ -553,7 +522,7 @@ const SettingsModule = () => {
                     </div>
                   </div>
                 </div>
-                <Button type="submit" className="w-full">
+                <Button type="submit" variant="primaryAction" className="w-full h-9">
                   Update School Information
                 </Button>
               </form>
@@ -562,15 +531,15 @@ const SettingsModule = () => {
         )}
 
         {hasSettingsFull && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Receipt className="w-5 h-5" />
+          <Card className="shadow-sm">
+            <CardHeader className="px-4 py-3">
+              <CardTitle className="flex items-center space-x-2 text-base">
+                <Receipt className="w-4 h-4" />
                 <span>Receipt Customization</span>
               </CardTitle>
-              <p className="text-sm text-muted-foreground">Customize how receipts appear when printing</p>
+              <p className="text-xs text-muted-foreground">Customize printed receipts</p>
             </CardHeader>
-            <CardContent>
+            <CardContent className="px-4 pb-4">
               <form onSubmit={async (e) => {
                 e.preventDefault();
                 try {
@@ -585,7 +554,7 @@ const SettingsModule = () => {
                 } catch (err: any) {
                   toast({ title: 'Error', description: err?.message, variant: 'destructive' });
                 }
-              }} className="space-y-4">
+              }} className="space-y-3">
                 <div className="space-y-2">
                   <Label>Receipt Number Prefix</Label>
                   <Input
@@ -628,30 +597,59 @@ const SettingsModule = () => {
                     placeholder="Bank: XYZ, Account: 1234567890"
                   />
                 </div>
-                <Button type="submit" className="w-full">Save Receipt Settings</Button>
+                <Button type="submit" variant="primaryAction" className="w-full h-9">Save Receipt Settings</Button>
               </form>
+            </CardContent>
+          </Card>
+        )}
+
+        {hasSettingsFull && (
+          <Card className="shadow-sm border-amber-500/20 bg-amber-500/5 dark:bg-amber-500/10">
+            <CardHeader className="px-4 py-3">
+              <CardTitle className="flex items-center space-x-2 text-base">
+                <RefreshCw className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                <span>Arrears Sync</span>
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Term changes now calculate previous-term arrears automatically. Use this button for manual refresh if needed.
+              </p>
+            </CardHeader>
+            <CardContent className="px-4 pb-4">
+              <Button
+                type="button"
+                variant="primaryAction"
+                className="w-full h-9"
+                onClick={handleSyncArrears}
+                disabled={isSyncingArrears}
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${isSyncingArrears ? 'animate-spin' : ''}`} />
+                {isSyncingArrears ? 'Syncing Arrears...' : 'Sync Arrears Now'}
+              </Button>
+              <p className="mt-3 text-[11px] text-muted-foreground">
+                This recalculates old balances and adds them to the active term fee balance.
+              </p>
             </CardContent>
           </Card>
         )}
 
         {/* Parent Portal Link */}
         {hasSettingsFull && school?.id && (
-          <Card className="border-purple-500/20 bg-purple-500/5 dark:bg-purple-500/10 backdrop-blur-sm overflow-hidden">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center space-x-2 text-purple-600 dark:text-purple-400 font-bold">
-                <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
-                  <GraduationCap className="w-5 h-5" />
+          <Card className="border-purple-500/20 bg-purple-500/5 dark:bg-purple-500/10 backdrop-blur-sm overflow-hidden shadow-sm">
+            <CardHeader className="px-4 py-3">
+              <CardTitle className="flex items-center space-x-2 text-purple-600 dark:text-purple-400 font-bold text-base">
+                <div className="w-7 h-7 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                  <GraduationCap className="w-4 h-4" />
                 </div>
                 <span>Parent Portal Gateway</span>
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground leading-relaxed">
+            <CardContent className="px-4 pb-4 space-y-3">
+              <p className="text-xs text-muted-foreground leading-relaxed">
                 Share this secure link with parents to provide real-time access to grades, attendance, and financial records. 
                 Parents log in using the <span className="text-foreground font-bold">Student ID</span> as both username and initial password.
               </p>
               
-              <div className="flex items-center gap-2 bg-background/50 border border-purple-500/20 rounded-xl p-3 shadow-inner group">
+              <div className="flex items-center gap-2 bg-background/50 border border-purple-500/20 rounded-xl p-2.5 shadow-inner group">
                 <code className="text-xs text-purple-600 dark:text-purple-400 flex-1 truncate font-mono select-all">
                   {getParentPortalUrl()}
                 </code>
@@ -689,204 +687,22 @@ const SettingsModule = () => {
           </Card>
         )}
 
-        <Card className="border-red-500/20 shadow-xl overflow-hidden mt-6">
-          <div className="h-1 bg-red-500" />
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-3 text-red-600 dark:text-red-400">
-              <Download className="w-5 h-5" />
-              <span>Data Management</span>
+        <Card className="shadow-sm">
+          <CardHeader className="px-4 py-3">
+            <CardTitle className="flex items-center space-x-2 text-base">
+              <Download className="w-4 h-4" />
+              <span>School Backup</span>
             </CardTitle>
+            <p className="text-xs text-muted-foreground">Create a read-only backup of this school's current data.</p>
           </CardHeader>
-          <CardContent className="space-y-8">
-            {/* Arrears Sync Section */}
-            <div className="p-4 rounded-xl border-2 border-amber-500/20 bg-amber-500/5">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="space-y-1">
-                  <h4 className="font-bold text-amber-700 dark:text-amber-400 flex items-center gap-2">
-                    <RefreshCw className="w-5 h-5" />
-                    Synchronize Arrears
-                  </h4>
-                  <p className="text-sm text-amber-600/80 dark:text-amber-400/80">
-                    Recalculate all student balances and arrears based on their admission dates and fee structures.
-                  </p>
-                </div>
-                <Button 
-                  variant="outline" 
-                  className="border-amber-500/50 hover:bg-amber-500/10 text-amber-700 dark:text-amber-400"
-                  onClick={async () => {
-                    try {
-                      toast({ title: 'Synchronizing...', description: 'Recalculating arrears for all students...' });
-                      const res = await apiService.post<any>('/settings/sync-arrears', {});
-                      toast({ 
-                        title: 'Sync Complete', 
-                        description: `${res.studentsUpdated} student records updated for ${res.currentTerm}.` 
-                      });
-                    } catch (err: any) {
-                      toast({ title: 'Sync Failed', description: err.message, variant: 'destructive' });
-                    }
-                  }}
-                >
-                  Sync Arrears Now
-                </Button>
-              </div>
-            </div>
-
-            {/* Export Section */}
-            <div className="space-y-4">
-              <div>
-                <h4 className="font-bold text-foreground mb-1">Export System Data</h4>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Archive all academic, financial, and personnel records for backup or migration.
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="p-4 rounded-xl border-2 border-border bg-muted/50 hover:bg-muted transition-all cursor-pointer group" onClick={handleExportJSON}>
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-background rounded-lg shadow-sm flex items-center justify-center text-blue-600">
-                        <FileJson className="w-5 h-5" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-bold text-sm text-foreground">JSON Archive</p>
-                        <p className="text-xs text-muted-foreground">Full system backup</p>
-                      </div>
-                      <Download className="w-4 h-4 text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </div>
-                  </div>
-
-                  <div className="p-4 rounded-xl border-2 border-border bg-muted/50 hover:bg-muted transition-all cursor-pointer group" onClick={handleExportExcel}>
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-background rounded-lg shadow-sm flex items-center justify-center text-emerald-600">
-                        <FileSpreadsheet className="w-5 h-5" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-bold text-sm text-foreground">Excel Spreadsheets</p>
-                        <p className="text-xs text-muted-foreground">Summarized records</p>
-                      </div>
-                      <Download className="w-4 h-4 text-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <Separator className="bg-border" />
-
-              {/* Import Section */}
-              <div>
-                <h4 className="font-bold text-foreground mb-1">Import System Data</h4>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Quickly upload large volumes of student and teacher data using Excel or CSV templates.
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="p-4 rounded-xl border-2 border-border bg-muted/50 hover:bg-muted transition-all cursor-pointer group relative overflow-hidden">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-background rounded-lg shadow-sm flex items-center justify-center text-blue-600">
-                        <Upload className="w-5 h-5" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-bold text-sm text-foreground">Import Students</p>
-                        <p className="text-xs text-muted-foreground">Excel / CSV Support</p>
-                      </div>
-                    </div>
-                    <Input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept=".csv,.xlsx,.xls" onChange={() => toast({ title: "Importing...", description: "Processing student data file..." })} />
-                  </div>
-
-                  <div className="p-4 rounded-xl border-2 border-border bg-muted/50 hover:bg-muted transition-all cursor-pointer group relative overflow-hidden">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-background rounded-lg shadow-sm flex items-center justify-center text-emerald-600">
-                        <UserPlus className="w-5 h-5" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-bold text-sm text-foreground">Import Teachers</p>
-                        <p className="text-xs text-muted-foreground">Bulk staff onboarding</p>
-                      </div>
-                    </div>
-                    <Input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept=".csv,.xlsx,.xls" onChange={() => toast({ title: "Importing...", description: "Processing staff data file..." })} />
-                  </div>
-                </div>
-              </div>
-
-              <Separator className="bg-border" />
-
-              {/* Reset Section */}
-              <div className="p-6 rounded-2xl border-2 border-red-500/20 bg-red-500/5">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                  <div className="flex-1 space-y-2">
-                    <h4 className="text-lg font-bold text-red-600 dark:text-red-400 flex items-center gap-2">
-                      <AlertTriangle className="w-5 h-5" />
-                      Reset Everything
-                    </h4>
-                    <p className="text-sm text-red-600 dark:text-red-400 max-w-xl">
-                      Permanently wipe all records and start from scratch.
-                      <strong className="block mt-1 font-bold">This action is irreversible.</strong>
-                    </p>
-                  </div>
-
-                  <Dialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
-                    <DialogTrigger asChild>
-                      <Button variant="destructive" className="h-12 px-8 rounded-xl font-bold shadow-lg shadow-red-100">
-                        <RefreshCw className="w-4 h-4 mr-2" />
-                        Reset All Data
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-md border-border shadow-2xl bg-card">
-                      <DialogHeader>
-                        <div className="w-12 h-12 bg-red-500/20 rounded-full flex items-center justify-center text-red-600 mx-auto mb-4">
-                          <ShieldAlert className="w-6 h-6" />
-                        </div>
-                        <DialogTitle className="text-center text-2xl font-bold text-foreground">Are you absolutely sure?</DialogTitle>
-                        <DialogDescription className="text-center space-y-4 pt-2">
-                          <Alert variant="destructive" className="bg-red-500/10 border-red-500/20">
-                            <AlertTitle className="flex items-center gap-2 text-red-600 font-bold">
-                              <AlertTriangle className="h-4 w-4" />
-                              Security Authentication Required
-                            </AlertTitle>
-                            <AlertDescription className="text-red-600/90 dark:text-red-400/90">
-                              All student files, financial records, and settings will be permanently erased.
-                            </AlertDescription>
-                          </Alert>
-                          <p className="text-muted-foreground font-medium">To authorize this reset, enter your administrator password.</p>
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div className="space-y-4 py-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="reset-auth">Admin Password</Label>
-                          <div className="relative">
-                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                            <Input
-                              id="reset-auth"
-                              type="password"
-                              placeholder="••••••••"
-                              className="pl-10 h-11 border-2 border-border bg-muted/50 focus:border-red-500 rounded-xl"
-                              value={resetPassword}
-                              onChange={(e) => setResetPassword(e.target.value)}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                      <DialogFooter className="flex flex-col sm:flex-row gap-3">
-                        <Button variant="outline" className="flex-1 h-12 rounded-xl" onClick={() => setIsResetDialogOpen(false)}>
-                          Cancel
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          className="flex-1 h-12 rounded-xl font-bold"
-                          onClick={handleResetData}
-                          disabled={isResetting || !resetPassword}
-                        >
-                          {isResetting ? (
-                            <>
-                              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                              Deleting...
-                            </>
-                          ) : (
-                            'Yes, Authenticate & Reset'
-                          )}
-                        </Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-              </div>
-            </div>
+          <CardContent className="px-4 pb-4">
+            <Button variant="outline" className="w-full h-9" onClick={handleExportJSON}>
+              <Download className="w-4 h-4 mr-2" />
+              Create Backup
+            </Button>
+            <p className="mt-3 text-[11px] text-muted-foreground">
+              Import, restore, and reset actions are managed by Super Admin only.
+            </p>
           </CardContent>
         </Card>
       </div>

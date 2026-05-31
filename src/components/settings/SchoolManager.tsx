@@ -119,28 +119,28 @@ const SchoolManager = () => {
   };
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Building className="w-5 h-5" />
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
+      <Card className="xl:col-span-2 shadow-sm">
+        <CardHeader className="px-4 py-3">
+          <CardTitle className="flex items-center space-x-2 text-base">
+            <Building className="w-4 h-4" />
             <span>Manage Schools</span>
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <h3 className="font-medium">Existing Schools</h3>
-            <ul className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <CardContent className="px-4 pb-4">
+          <div className="space-y-3">
+            <h3 className="text-sm font-medium">Existing Schools</h3>
+            <ul className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {schools.map((school) => {
                 const loginUrl = school.subdomain 
                   ? getSubdomainUrl(school.subdomain) 
                   : `${window.location.origin}/school/${school.id}`;
                 
                 return (
-                  <li key={school.id} className="flex flex-col gap-3 p-4 bg-muted/30 border border-border rounded-xl hover:border-blue-500/30 transition-all group shadow-sm">
+                  <li key={school.id} className="flex flex-col gap-2.5 p-3 bg-muted/30 border border-border rounded-xl hover:border-blue-500/30 transition-all group shadow-sm">
                     <div className="flex justify-between items-start">
                       <div>
-                        <span className="font-bold text-foreground text-lg block">{school.name}</span>
+                        <span className="font-bold text-foreground text-sm block">{school.name}</span>
                         {editingSchoolId === school.id ? (
                           <div className="flex items-center gap-2 mt-2">
                             <Input 
@@ -174,7 +174,7 @@ const SchoolManager = () => {
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 rounded-lg"
+                          className="h-8 px-2 text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 rounded-lg"
                           onClick={() => window.open(loginUrl, '_blank')}
                         >
                           Open
@@ -202,45 +202,45 @@ const SchoolManager = () => {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <PlusCircle className="w-5 h-5" />
+      <Card className="shadow-sm">
+        <CardHeader className="px-4 py-3">
+          <CardTitle className="flex items-center space-x-2 text-base">
+            <PlusCircle className="w-4 h-4" />
             <span>Create New School</span>
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleCreateSchool} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <CardContent className="px-4 pb-4">
+          <form onSubmit={handleCreateSchool} className="space-y-4">
+            <div className="grid grid-cols-1 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="name" className="text-sm font-semibold">School Name</Label>
-                <Input id="name" name="name" value={newSchool.name} onChange={handleInputChange} placeholder="St. Marys Academy" className="bg-background border-border" required />
+                <Input id="name" name="name" value={newSchool.name} onChange={handleInputChange} placeholder="St. Marys Academy" className="h-9 bg-background border-border" required />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="subdomain" className="text-sm font-semibold">Subdomain (Slug)</Label>
-                <Input id="subdomain" name="subdomain" value={newSchool.subdomain} onChange={handleInputChange} placeholder="st-marys" className="bg-background border-border" />
+                <Input id="subdomain" name="subdomain" value={newSchool.subdomain} onChange={handleInputChange} placeholder="st-marys" className="h-9 bg-background border-border" />
               </div>
             </div>
 
-            <div className="space-y-4 pt-4 border-t border-border">
-              <h4 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Admin Credentials</h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="space-y-3 pt-3 border-t border-border">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Admin Credentials</h4>
+              <div className="grid grid-cols-1 gap-3">
                 <div className="space-y-2">
                   <Label htmlFor="adminUsername" className="text-sm font-semibold">Username</Label>
-                  <Input id="adminUsername" name="adminUsername" value={newSchool.adminUsername} onChange={handleInputChange} placeholder="admin_stmarys" className="bg-background border-border" required />
+                  <Input id="adminUsername" name="adminUsername" value={newSchool.adminUsername} onChange={handleInputChange} placeholder="admin_stmarys" className="h-9 bg-background border-border" required />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="adminEmail" className="text-sm font-semibold">Email</Label>
-                  <Input id="adminEmail" name="adminEmail" type="email" value={newSchool.adminEmail} onChange={handleInputChange} placeholder="admin@school.com" className="bg-background border-border" />
+                  <Input id="adminEmail" name="adminEmail" type="email" value={newSchool.adminEmail} onChange={handleInputChange} placeholder="admin@school.com" className="h-9 bg-background border-border" />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="adminPassword" className="text-sm font-semibold">Password</Label>
-                  <Input id="adminPassword" name="adminPassword" type="password" value={newSchool.adminPassword} onChange={handleInputChange} placeholder="••••••••" className="bg-background border-border" required />
+                  <Input id="adminPassword" name="adminPassword" type="password" value={newSchool.adminPassword} onChange={handleInputChange} placeholder="••••••••" className="h-9 bg-background border-border" required />
                 </div>
               </div>
             </div>
 
-            <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold h-12 rounded-xl shadow-lg shadow-blue-500/20">
+            <Button type="submit" variant="primaryAction" className="w-full h-9 rounded-xl">
               Create School Record
             </Button>
           </form>

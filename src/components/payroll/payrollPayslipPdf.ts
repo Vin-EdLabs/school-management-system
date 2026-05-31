@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import { formatMoney, MONTH_NAMES } from './payrollUtils';
+import { formatDisplayDate } from '../../utils/dateFormat';
 
 export type PayslipInput = {
   schoolName: string;
@@ -61,7 +62,7 @@ export function downloadPayrollPayslipPdf(data: PayslipInput, filename: string) 
     ['Allowances', formatMoney(data.currency, data.allowances)],
     ['Net salary', formatMoney(data.currency, data.netSalary)],
     ['Payment status', data.status],
-    ['Payment date', data.paidDate ? new Date(data.paidDate).toLocaleDateString() : '—'],
+    ['Payment date', formatDisplayDate(data.paidDate, '—')],
   ];
 
   doc.setFontSize(10);
@@ -124,7 +125,7 @@ export function printPayslipHtml(data: PayslipInput): void {
       <tr><th>Allowances</th><td>${escapeHtml(formatMoney(data.currency, data.allowances))}</td></tr>
       <tr><th>Net salary</th><td><strong>${escapeHtml(formatMoney(data.currency, data.netSalary))}</strong></td></tr>
       <tr><th>Payment status</th><td>${escapeHtml(data.status)}</td></tr>
-      <tr><th>Payment date</th><td>${escapeHtml(data.paidDate ? new Date(data.paidDate).toLocaleDateString() : '—')}</td></tr>
+      <tr><th>Payment date</th><td>${escapeHtml(formatDisplayDate(data.paidDate, '—'))}</td></tr>
     </table>
     <div class="footer">${escapeHtml(data.footerText)}</div>
     <div class="sig">${escapeHtml(data.signatureText || 'Authorized signatory')}<div class="line"></div></div>

@@ -9,6 +9,7 @@ import { useData } from '../../contexts/DataContext';
 import { Search, AlertCircle, CreditCard, TrendingUp } from 'lucide-react';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
 import { getActiveAcademicTerm, calculateStudentFeesSync, calculateStudentFeeStatusSync } from '../../utils/feeCalculations';
+import { formatDisplayDate } from '../../utils/dateFormat';
 
 const StudentBalances = () => {
   const { students, payments, feeStructures, classes, arrearsBalances } = useData();
@@ -330,7 +331,7 @@ const StudentBalances = () => {
               <div>
                 <p className="font-medium text-foreground">Academic Period: {currentTerm}</p>
                 <p className="text-muted-foreground">
-                  Generated: {new Date().toLocaleDateString()}
+                  Generated: {formatDisplayDate(new Date())}
                 </p>
               </div>
             </div>

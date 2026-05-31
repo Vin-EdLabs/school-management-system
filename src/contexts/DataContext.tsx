@@ -80,6 +80,7 @@ interface Payment {
   studentIdNum?: number;
   amount: number;
   date: string;
+  recordedAt?: string;
   paymentMethod: string;
   term: string;
   notes: string;
@@ -99,6 +100,7 @@ interface Income {
   source: string;
   amount: number;
   date: string;
+  recordedAt?: string;
   paymentMethod: string;
   receivedBy: string;
   notes: string;
@@ -113,6 +115,7 @@ interface Expense {
   amount: number;
   payeeName: string;
   paymentDate: string;
+  recordedAt?: string;
   paymentMethod: string;
   purpose: string;
   notes: string;
@@ -397,6 +400,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         studentIdNum: p.student_id ?? p.studentId,
         amount: parseFloat(p.amount ?? 0),
         date: formatDateForInput(p.payment_date ?? p.date),
+        recordedAt: p.created_at ?? p.recorded_at ?? p.payment_date ?? p.date,
         paymentMethod: p.payment_method ?? p.paymentMethod ?? '',
         term: p.term ?? '',
         notes: p.notes ?? '',
@@ -408,6 +412,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         source: i.source,
         amount: parseFloat(i.amount),
         date: formatDateForInput(i.income_date),
+        recordedAt: i.created_at ?? i.recorded_at ?? i.income_date,
         paymentMethod: i.payment_method || '',
         receivedBy: i.received_by || '',
         notes: i.notes || '',
@@ -422,6 +427,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         amount: parseFloat(e.amount),
         payeeName: e.payee_name || '',
         paymentDate: formatDateForInput(e.payment_date),
+        recordedAt: e.created_at ?? e.recorded_at ?? e.payment_date,
         paymentMethod: e.payment_method || '',
         purpose: e.purpose || '',
         notes: e.notes || '',

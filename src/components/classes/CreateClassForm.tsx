@@ -291,8 +291,8 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
             </Select>
           </div>
 
-          <div className="flex justify-end space-x-4">
-            <Button type="submit" className="bg-gradient-to-r from-purple-500 to-pink-600">
+          <div className="form-action-bar flex justify-end">
+            <Button type="submit" variant="primaryAction" className="min-h-10 w-full sm:w-auto">
               <Save className="w-4 h-4 mr-2" />
               Create Class
             </Button>

@@ -48,7 +48,7 @@ router.get('/arrears-balances', async (req: AuthRequest, res) => {
 
     const arrearsBalances: Record<string, number> = {};
     for (const row of arrearsResult.rows) {
-      arrearsBalances[String(row.student_id)] = parseFloat(row.arrears) || 0;
+      arrearsBalances[String(row.student_id)] = Math.max(0, parseFloat(row.arrears) || 0);
     }
     return res.json(arrearsBalances);
   } catch (e) {
@@ -122,7 +122,7 @@ async function computeStudentBalance(
      WHERE tenant_id = $1 AND student_id = $2 AND (current_term = $3 OR current_term = $4)`,
     [tenantId, studentId, termMatch, term]
   );
-  const arrears = parseFloat(arrearsRes.rows[0]?.total || '0');
+  const arrears = Math.max(0, parseFloat(arrearsRes.rows[0]?.total || '0'));
 
   const balance = calculateFeeBalance(totalFees, totalPaid, arrears);
   return {

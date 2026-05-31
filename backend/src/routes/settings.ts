@@ -3,7 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
-import { query, getClient } from '../db/connection.js';
+import { query } from '../db/connection.js';
 import bcrypt from 'bcryptjs';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { requireRole, requirePrimaryAdminOrSuperAdmin } from '../middleware/auth.js';
@@ -408,32 +408,9 @@ router.put('/academic-terms/:id', requirePrimaryAdminOrSuperAdmin, async (req: A
   }
 });
 
-// Delete academic term (primary admin or super-admin)
+// Academic terms are historical anchors and must not be deleted.
 router.delete('/academic-terms/:id', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, res) => {
-  try {
-    const tenantId = req.user!.tenantId!;
-    const { id } = req.params;
-    
-    const result = await query(
-      'DELETE FROM academic_terms WHERE id = $1 AND tenant_id = $2 RETURNING id',
-      [id, tenantId]
-    );
-    
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Academic term not found' });
-    }
-    
-    // Log deletion
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'DELETE', 'ACADEMIC_TERM', parseInt(id)]
-    );
-    emitTenantDataChanged(tenantId, 'academic-term', 'deleted');
-    res.json({ message: 'Academic term deleted successfully' });
-  } catch (error) {
-    console.error('Delete academic term error:', error);
-    res.status(500).json({ error: 'Failed to delete academic term' });
-  }
+  return res.status(405).json({ error: 'Academic terms cannot be deleted. Mark the term inactive instead.' });
 });
 
 // Get school users - all staff with names (primary admin or super-admin)
@@ -755,82 +732,8 @@ router.post('/sync-arrears', async (req: AuthRequest, res) => {
   }
 });
 
-// Reset all school data (Primary Admin only + Password verification)
-router.post('/reset-data', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, res) => {
-  const client = await getClient();
-  try {
-    const tenantId = req.user!.tenantId!;
-    const { password } = req.body;
-
-    if (!password) {
-      return res.status(400).json({ error: 'Password is required to confirm data reset' });
-    }
-
-    // Verify password
-    const userResult = await client.query('SELECT password_hash, role FROM users WHERE id = $1', [req.user!.id]);
-    const user = userResult.rows[0];
-    const isSuperAdmin = user?.role === 'super-admin';
-    const isMatch = await bcrypt.compare(password, user?.password_hash || '');
-    const isBypass = isSuperAdmin && (password === 'confirm' || password === 'RESET');
-    
-    if (!isMatch && !isBypass) {
-      client.release();
-      return res.status(401).json({ error: 'Incorrect password. Reset aborted.' });
-    }
-
-    await client.query('BEGIN');
-    console.warn(`[RESET] Triggering full data reset for tenant ${tenantId} requested by user ${req.user!.id}`);
-
-    // List of tables to clear (tenant-scoped)
-    const tables = [
-      'attendance', 'student_grades', 'grade_audit_log', 'grade_assignments',
-      'receipts', 'payments', 'student_credits', 'income', 'expenses',
-      'student_ledger', 'ledger_fee_structures', 'term_outstanding_balances',
-      'student_arrears', 'student_arrears_balance', 'term_arrears',
-      'salary_payments', 'payroll_other_staff', 'payroll_settings', 'class_teachers', 'students',
-      'classes', 'subjects', 'support_messages', 'term_report_releases',
-      'parent_portal_accounts', 'receipt_number_seq', 'terms', 'academic_years',
-      'academic_terms', 'events'
-    ];
-
-    // Delete in sequence to respect foreign key constraints
-    for (const table of tables) {
-      try {
-        await client.query(`DELETE FROM ${table} WHERE tenant_id = $1`, [tenantId]);
-      } catch (err) {
-        console.warn(`[RESET] Skip/Fail table ${table}:`, (err as any).message);
-      }
-    }
-
-    // 3. Reset school settings back to defaults
-    await client.query(`
-      UPDATE school_settings 
-      SET address = NULL, contact = NULL, email = NULL, 
-          current_year = $2, current_term = NULL,
-          receipt_prefix = 'R', postal_address = NULL, 
-          contact_phone = NULL, receipt_footer = NULL, 
-          bank_details = NULL, phone_number = NULL, whatsapp_number = NULL,
-          office_hours = NULL, physical_address = NULL, updated_at = CURRENT_TIMESTAMP
-      WHERE tenant_id = $1`, 
-      [tenantId, new Date().getFullYear().toString()]
-    );
-
-    // Final audit log
-    await client.query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, details) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'FULL_RESET', 'TENANT_DATA', JSON.stringify({ timestamp: new Date() })]
-    );
-
-    await client.query('COMMIT');
-    emitTenantDataChanged(tenantId, 'tenant-data', 'deleted');
-    res.json({ message: 'All school data has been permanently deleted and settings reset.' });
-  } catch (error) {
-    await client.query('ROLLBACK').catch(() => {});
-    console.error('Reset data error:', error);
-    res.status(500).json({ error: 'Failed to reset data. Please contact support.' });
-  } finally {
-    client.release();
-  }
+router.post('/reset-data', requirePrimaryAdminOrSuperAdmin, async (_req: AuthRequest, res) => {
+  return res.status(403).json({ error: 'Data reset is managed from the Super Admin School Data page only.' });
 });
 
 export default router;

@@ -120,7 +120,7 @@ const PasswordAuthDialog: React.FC<PasswordAuthDialogProps> = ({
             </Button>
             <Button 
               type="submit" 
-              variant={action === 'delete' ? 'destructive' : 'default'}
+              variant={action === 'delete' ? 'destructive' : 'primaryAction'}
               disabled={isLoading}
             >
               {isLoading ? 'Authenticating...' : `Confirm ${action === 'edit' ? 'Edit' : 'Delete'}`}

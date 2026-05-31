@@ -63,6 +63,9 @@ import {
   UserPlus,
   Globe,
   FileText,
+  Download,
+  Upload,
+  RefreshCw,
   Sun,
   Moon,
   CheckCircle,
@@ -118,7 +121,7 @@ interface AuditLog {
   created_at: string;
 }
 
-type Section = 'schools' | 'registrations' | 'audit' | 'super-admins' | 'support-chat';
+type Section = 'schools' | 'registrations' | 'audit' | 'super-admins' | 'support-chat' | 'school-data';
 
 const SuperAdminDashboard = () => {
   const navigate = useNavigate();
@@ -158,6 +161,9 @@ const SuperAdminDashboard = () => {
   const [noteReg, setNoteReg] = useState<Registration | null>(null);
   const [internalNote, setInternalNote] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedDataSchoolId, setSelectedDataSchoolId] = useState('');
+  const [resetConfirm, setResetConfirm] = useState('');
+  const [dataActionLoading, setDataActionLoading] = useState(false);
 
   useEffect(() => {
     if (user?.role === 'super-admin') loadData();
@@ -465,6 +471,59 @@ const SuperAdminDashboard = () => {
     return `${window.location.origin}/school/${school.id}`;
   };
 
+  const selectedDataSchool = schools.find((s) => String(s.id) === selectedDataSchoolId) || schools[0] || null;
+
+  const downloadJson = (payload: unknown, filename: string) => {
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleSuperAdminBackup = async () => {
+    if (!selectedDataSchool) {
+      toast({ title: 'Select a school first', variant: 'destructive' });
+      return;
+    }
+    setDataActionLoading(true);
+    try {
+      const backup = await apiService.get<any>(`/schools/${selectedDataSchool.id}/backup`);
+      const safeName = selectedDataSchool.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      downloadJson(backup, `${safeName || 'school'}_backup_${new Date().toISOString().split('T')[0]}.json`);
+      toast({ title: 'Backup created', description: `${selectedDataSchool.name} backup downloaded.` });
+    } catch (err: any) {
+      toast({ title: 'Backup failed', description: err?.message || 'Could not create backup', variant: 'destructive' });
+    } finally {
+      setDataActionLoading(false);
+    }
+  };
+
+  const handleSuperAdminResetData = async () => {
+    if (!selectedDataSchool) {
+      toast({ title: 'Select a school first', variant: 'destructive' });
+      return;
+    }
+    if (resetConfirm !== 'RESET') {
+      toast({ title: 'Confirmation required', description: 'Type RESET to continue.', variant: 'destructive' });
+      return;
+    }
+    setDataActionLoading(true);
+    try {
+      await apiService.post(`/schools/${selectedDataSchool.id}/reset-data`, { confirm: 'RESET' });
+      toast({ title: 'School data reset', description: `${selectedDataSchool.name} has been reset.` });
+      setResetConfirm('');
+    } catch (err: any) {
+      toast({ title: 'Reset failed', description: err?.message || 'Could not reset school data', variant: 'destructive' });
+    } finally {
+      setDataActionLoading(false);
+    }
+  };
+
   const formatDate = (d: string) => new Date(d).toLocaleString();
 
   if (authLoading) return <BrandedLoadingScreen label="Loading…" />;
@@ -472,6 +531,7 @@ const SuperAdminDashboard = () => {
 
   const mainItems = [
     { id: 'schools' as Section, label: 'Schools', icon: Building2 },
+    { id: 'school-data' as Section, label: 'School Data', icon: FileText },
     { id: 'registrations' as Section, label: 'Registration Requests', icon: ClipboardList },
     { id: 'support-chat' as Section, label: 'Support Chat', icon: MessageCircle },
   ];
@@ -586,6 +646,7 @@ const SuperAdminDashboard = () => {
             <Separator orientation="vertical" className="h-6 bg-slate-200 dark:bg-slate-700" />
             <h2 className="font-bold text-slate-900 dark:text-white text-lg">
               {section === 'schools' && 'Schools'}
+              {section === 'school-data' && 'School Data Management'}
               {section === 'registrations' && 'Registration Requests'}
               {section === 'super-admins' && 'Super Admins'}
               {section === 'audit' && 'Audit Logs'}
@@ -887,6 +948,123 @@ const SuperAdminDashboard = () => {
                       )}
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {section === 'school-data' && (
+              <div className="space-y-6 animate-in fade-in duration-700">
+                <div className="flex flex-col gap-2 border-b border-slate-200 dark:border-slate-800 pb-6">
+                  <h3 className="text-2xl font-black text-slate-900 dark:text-white font-outfit tracking-tight">School Data Management</h3>
+                  <p className="text-sm text-slate-500 font-medium">
+                    Select one school, create full backups, validate import files, or reset that school's operational data.
+                  </p>
+                </div>
+
+                <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+                  <CardHeader>
+                    <CardTitle className="text-lg font-black font-outfit">Target School</CardTitle>
+                  </CardHeader>
+                  <CardContent className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-4 items-end">
+                    <div className="space-y-2">
+                      <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">School</Label>
+                      <select
+                        value={selectedDataSchool?.id ? String(selectedDataSchool.id) : ''}
+                        onChange={(e) => setSelectedDataSchoolId(e.target.value)}
+                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                      >
+                        {schools.map((school) => (
+                          <option key={school.id} value={school.id}>
+                            #{school.id} - {school.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    {selectedDataSchool && (
+                      <Badge className={cn(
+                        'w-fit font-black text-[10px] uppercase tracking-wider px-3 py-1',
+                        selectedDataSchool.is_active ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' : 'bg-red-500/10 text-red-600 border border-red-500/20'
+                      )}>
+                        {selectedDataSchool.is_active ? 'Active' : 'Offline'}
+                      </Badge>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base font-black font-outfit">
+                        <Download className="w-4 h-4 text-blue-500" />
+                        Full Backup
+                      </CardTitle>
+                      <p className="text-xs text-slate-500">Download a tenant-scoped JSON backup for the selected school.</p>
+                    </CardHeader>
+                    <CardContent>
+                      <Button onClick={handleSuperAdminBackup} disabled={!selectedDataSchool || dataActionLoading} className="w-full h-10 rounded-xl font-bold text-xs uppercase tracking-widest">
+                        {dataActionLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+                        Create Backup
+                      </Button>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base font-black font-outfit">
+                        <Upload className="w-4 h-4 text-amber-500" />
+                        Import Data
+                      </CardTitle>
+                      <p className="text-xs text-slate-500">Super Admin only. Select a file for validation before any restore workflow.</p>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="relative">
+                        <Input
+                          type="file"
+                          accept=".json,.csv,.xlsx,.xls"
+                          disabled={!selectedDataSchool}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            toast({
+                              title: 'Import file selected',
+                              description: `${file.name} is ready for review. Restore/import processing requires a controlled backend workflow.`,
+                            });
+                            e.target.value = '';
+                          }}
+                          className="h-10 rounded-xl"
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-red-200 dark:border-red-900/60 bg-red-50/60 dark:bg-red-950/20 shadow-sm">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base font-black font-outfit text-red-700 dark:text-red-300">
+                        <Trash2 className="w-4 h-4" />
+                        Reset School Data
+                      </CardTitle>
+                      <p className="text-xs text-red-600/80 dark:text-red-300/80">
+                        Clears operational records for the selected school. Users and school identity remain.
+                      </p>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <Input
+                        value={resetConfirm}
+                        onChange={(e) => setResetConfirm(e.target.value)}
+                        placeholder="Type RESET to confirm"
+                        className="h-10 rounded-xl bg-white dark:bg-slate-950"
+                      />
+                      <Button
+                        variant="destructive"
+                        onClick={handleSuperAdminResetData}
+                        disabled={!selectedDataSchool || dataActionLoading || resetConfirm !== 'RESET'}
+                        className="w-full h-10 rounded-xl font-bold text-xs uppercase tracking-widest"
+                      >
+                        {dataActionLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
+                        Reset Selected School
+                      </Button>
+                    </CardContent>
+                  </Card>
                 </div>
               </div>
             )}

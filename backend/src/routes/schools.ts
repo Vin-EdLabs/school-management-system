@@ -4,7 +4,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { query } from '../db/connection.js';
+import { getClient, query } from '../db/connection.js';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth.js';
 import { getIO } from '../socket.js';
 
@@ -13,6 +13,53 @@ const __dirname = path.dirname(__filename);
 const uploadsDir = path.join(__dirname, '../../uploads');
 
 const router = express.Router();
+
+const SCHOOL_BACKUP_TABLES = [
+  'school_settings',
+  'academic_terms',
+  'academic_years',
+  'terms',
+  'classes',
+  'subjects',
+  'students',
+  'teachers',
+  'fees',
+  'fee_structures',
+  'payments',
+  'receipts',
+  'income',
+  'expenses',
+  'student_ledger',
+  'ledger_fee_structures',
+  'student_credits',
+  'student_arrears',
+  'student_arrears_balance',
+  'term_arrears',
+  'term_outstanding_balances',
+  'attendance',
+  'grade_assignments',
+  'student_grades',
+  'grade_audit_log',
+  'salary_payments',
+  'payroll_other_staff',
+  'payroll_settings',
+  'class_teachers',
+  'parent_portal_accounts',
+  'support_messages',
+  'term_report_releases',
+  'events',
+];
+
+const SCHOOL_RESET_TABLES = [
+  'attendance', 'student_grades', 'grade_audit_log', 'grade_assignments',
+  'receipts', 'payments', 'student_credits', 'income', 'expenses',
+  'student_ledger', 'ledger_fee_structures', 'term_outstanding_balances',
+  'student_arrears', 'student_arrears_balance', 'term_arrears',
+  'salary_payments', 'payroll_other_staff', 'payroll_settings', 'class_teachers', 'students',
+  'classes', 'subjects', 'support_messages', 'term_report_releases',
+  'parent_portal_accounts', 'receipt_number_seq', 'terms', 'academic_years',
+  'academic_terms', 'events'
+];
 
 const emitSystemDataChanged = (entity: string, action: 'created' | 'updated' | 'deleted', tenantId?: number) => {
   try {
@@ -115,6 +162,100 @@ router.post('/super-admins/:userId/reset-password', requireRole('super-admin'), 
   } catch (error) {
     console.error('Reset super admin password error:', error);
     res.status(500).json({ error: 'Failed to reset password' });
+  }
+});
+
+// Create a tenant-scoped backup. Super admins can back up any school; school admins can back up only their school.
+router.get('/:id/backup', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = parseInt(req.params.id, 10);
+    if (!tenantId) return res.status(400).json({ error: 'Invalid school id' });
+    if (req.user?.role !== 'super-admin' && req.user?.tenantId !== tenantId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const tenant = await query(
+      `SELECT id, name, slug, subdomain, logo_url, primary_color, secondary_color,
+              subscription_status, is_active, created_at, updated_at
+       FROM tenants WHERE id = $1`,
+      [tenantId]
+    );
+    if (tenant.rows.length === 0) return res.status(404).json({ error: 'School not found' });
+
+    const data: Record<string, unknown[]> = {};
+    for (const table of SCHOOL_BACKUP_TABLES) {
+      try {
+        const result = await query(`SELECT * FROM ${table} WHERE tenant_id = $1`, [tenantId]);
+        data[table] = result.rows;
+      } catch (err: any) {
+        console.warn(`[backup] Skipped ${table}:`, err?.message || err);
+      }
+    }
+
+    await query(
+      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, details) VALUES ($1, $2, $3, $4, $5)',
+      [tenantId, req.user!.id, 'BACKUP_EXPORT', 'TENANT_DATA', JSON.stringify({ requested_by: req.user!.username, timestamp: new Date() })]
+    );
+
+    res.json({
+      version: '1.0',
+      generatedAt: new Date().toISOString(),
+      school: tenant.rows[0],
+      data,
+    });
+  } catch (error) {
+    console.error('School backup error:', error);
+    res.status(500).json({ error: 'Failed to create school backup' });
+  }
+});
+
+// Reset one school's data. Only super admins can run this from the Super Admin page.
+router.post('/:id/reset-data', requireRole('super-admin'), async (req: AuthRequest, res) => {
+  const client = await getClient();
+  try {
+    const tenantId = parseInt(req.params.id, 10);
+    const { confirm } = req.body || {};
+    if (!tenantId) return res.status(400).json({ error: 'Invalid school id' });
+    if (confirm !== 'RESET') return res.status(400).json({ error: 'Type RESET to confirm this action' });
+
+    const tenant = await client.query('SELECT id, name FROM tenants WHERE id = $1', [tenantId]);
+    if (tenant.rows.length === 0) return res.status(404).json({ error: 'School not found' });
+
+    await client.query('BEGIN');
+    for (const table of SCHOOL_RESET_TABLES) {
+      try {
+        await client.query(`DELETE FROM ${table} WHERE tenant_id = $1`, [tenantId]);
+      } catch (err: any) {
+        console.warn(`[super-admin reset] Skip/Fail table ${table}:`, err?.message || err);
+      }
+    }
+
+    await client.query(
+      `UPDATE school_settings 
+       SET address = NULL, contact = NULL, email = NULL,
+           current_year = $2, current_term = NULL,
+           receipt_prefix = 'R', postal_address = NULL,
+           contact_phone = NULL, receipt_footer = NULL,
+           bank_details = NULL, phone_number = NULL, whatsapp_number = NULL,
+           office_hours = NULL, physical_address = NULL, updated_at = CURRENT_TIMESTAMP
+       WHERE tenant_id = $1`,
+      [tenantId, new Date().getFullYear().toString()]
+    );
+
+    await client.query(
+      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, details) VALUES ($1, $2, $3, $4, $5)',
+      [tenantId, req.user!.id, 'FULL_RESET', 'TENANT_DATA', JSON.stringify({ requested_by: req.user!.username, timestamp: new Date() })]
+    );
+
+    await client.query('COMMIT');
+    emitSystemDataChanged('tenant-data', 'deleted', tenantId);
+    res.json({ message: `${tenant.rows[0].name} data reset successfully` });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    console.error('Super admin school reset error:', error);
+    res.status(500).json({ error: 'Failed to reset school data' });
+  } finally {
+    client.release();
   }
 });
 

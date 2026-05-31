@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -271,12 +271,13 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[80dvh]">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[90dvh] max-w-2xl flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="shrink-0 border-b border-border/70 px-6 py-4">
           <DialogTitle>Edit Student Information</DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <DialogBody className="space-y-6 px-6 py-4">
           {/* Passport Photo */}
           <div className="space-y-3">
             <h3 className="font-semibold text-lg">Passport Photo</h3>
@@ -739,18 +740,19 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
           {showPassword && (
             <div className="border-t pt-4 space-y-4">
               <Label>Enter your password to confirm this update</Label>
-              <div className="flex gap-2">
-                <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Your password" required className="flex-1" />
+              <div className="flex flex-wrap gap-2">
+                <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Your password" required className="flex-1 min-w-[12rem]" />
                 <Button type="button" variant="outline" onClick={() => { setShowPassword(false); setPassword(''); }}>Cancel</Button>
-                <Button type="button" onClick={handlePasswordConfirmAndUpdate}>Confirm</Button>
+                <Button type="button" variant="primaryAction" onClick={handlePasswordConfirmAndUpdate}>Confirm</Button>
               </div>
             </div>
           )}
+          </DialogBody>
 
           {!showPassword && (
-            <DialogFooter className="pt-6 border-t border-slate-100">
+            <DialogFooter className="form-action-bar shrink-0 gap-2 border-t border-border/70 px-6 py-4">
               <Button type="button" variant="outline" onClick={onClose} disabled={photoUploading}>Cancel</Button>
-              <Button type="submit" disabled={photoUploading}>
+              <Button type="submit" variant="primaryAction" disabled={photoUploading}>
                 {photoUploading ? 'Saving…' : 'Update Student'}
               </Button>
             </DialogFooter>

@@ -365,7 +365,7 @@ const RecordPayment = () => {
               />
             </div>
 
-            <Button type="submit" className="w-full md:w-auto" disabled={!formData.studentId}>
+            <Button type="submit" variant="primaryAction" className="w-full md:w-auto" disabled={!formData.studentId}>
               Record Payment & Generate Receipt
             </Button>
           </form>

@@ -853,9 +853,9 @@ const LandingPage = () => {
                 <IconCall className="h-4 w-4" />
                 WhatsApp: 053 193 2399
               </a>
-              <a href="tel:+233506741322/tel:+233 55 760 9106" className="flex items-center gap-2 hover:text-white">
+              <a href="tel:+233506741322/tel:+233557609106" className="flex items-center gap-2 hover:text-white">
                 <IconCall className="h-4 w-4" />
-                Call: 050 674 1322
+                Call: 050 674 1322/055 760 9106
               </a>
             </div>
           </div>

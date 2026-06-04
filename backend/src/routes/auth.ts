@@ -16,10 +16,17 @@ const normalizeRole = (role: string | null | undefined): string => {
   return r;
 };
 
+const isSuperAdminUser = (role: string | null | undefined, tenantId: number | null | undefined) =>
+  normalizeRole(role) === 'super-admin' && (tenantId == null || Number.isNaN(Number(tenantId)));
+
+const nextDayLockSql = `
+  date_trunc('day', NOW() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' + interval '1 day'
+`;
+
 // Login - tenant-aware, blocks inactive schools
 router.post('/login', async (req, res) => {
   try {
-    const { username, password, tenantId: rawTenantId } = req.body;
+    const { username, password, tenantId: rawTenantId, role: requestedRole } = req.body;
     const tenantId = rawTenantId !== undefined && rawTenantId !== null && rawTenantId !== ''
       ? parseInt(String(rawTenantId), 10) : null;
     const hasTenantId = tenantId !== null && !isNaN(tenantId);
@@ -46,7 +53,7 @@ router.post('/login', async (req, res) => {
       {
         sql: `
           SELECT u.id, u.tenant_id, u.username, u.password_hash, u.role, u.teacher_id, u.other_staff_id, u.is_primary_admin,
-                 COALESCE(t.full_name, s.full_name, u.username) as full_name
+                 COALESCE(t.full_name, s.full_name, u.full_name, u.username) as full_name
           FROM users u
           LEFT JOIN teachers t ON u.teacher_id::text = t.id::text AND t.tenant_id = u.tenant_id
           LEFT JOIN payroll_other_staff s ON u.other_staff_id = s.id AND s.tenant_id = u.tenant_id
@@ -60,7 +67,7 @@ router.post('/login', async (req, res) => {
           SELECT u.id, u.tenant_id, u.username, u.password_hash, u.role, u.teacher_id, u.other_staff_id, u.is_primary_admin,
                  u.username as full_name
           FROM users u
-          WHERE u.username = $1
+          WHERE u.username = $1 AND COALESCE(u.is_active, true) = true
           ${hasTenantId ? 'AND (u.tenant_id = $2 OR u.tenant_id IS NULL)' : ''}
         `,
         params: hasTenantId ? [username, tenantId] : [username]
@@ -70,7 +77,7 @@ router.post('/login', async (req, res) => {
           SELECT u.id, NULL::integer as tenant_id, u.username, u.password_hash, u.role,
                  NULL::text as teacher_id, false as is_primary_admin, u.username as full_name
           FROM users u
-          WHERE u.username = $1
+          WHERE u.username = $1 AND COALESCE(u.is_active, true) = true
         `,
         params: [username]
       }
@@ -87,16 +94,67 @@ router.post('/login', async (req, res) => {
     }
     
     if (result.rows.length === 0) {
+      const inactiveAttempts: Array<{ sql: string; params: any[] }> = [
+        {
+          sql: `
+            SELECT u.id, u.tenant_id, u.username, u.role
+            FROM users u
+            WHERE (u.username = $1 OR u.email = $1) AND COALESCE(u.is_active, true) = false
+            ${hasTenantId ? 'AND (u.tenant_id = $2 OR u.tenant_id IS NULL)' : 'AND u.tenant_id IS NULL'}
+            LIMIT 1
+          `,
+          params: hasTenantId ? [username, tenantId] : [username],
+        },
+        {
+          sql: `
+            SELECT u.id, u.tenant_id, u.username, u.role
+            FROM users u
+            WHERE u.username = $1 AND COALESCE(u.is_active, true) = false
+            ${hasTenantId ? 'AND (u.tenant_id = $2 OR u.tenant_id IS NULL)' : ''}
+            LIMIT 1
+          `,
+          params: hasTenantId ? [username, tenantId] : [username],
+        },
+      ];
+
+      for (const attempt of inactiveAttempts) {
+        try {
+          const inactiveResult = await query(attempt.sql, attempt.params);
+          if (inactiveResult.rows.length > 0) {
+            const inactiveUser = inactiveResult.rows[0];
+            await writeAuditLog({
+              tenantId: inactiveUser.tenant_id ?? (hasTenantId ? tenantId : null),
+              userId: inactiveUser.id,
+              userRole: normalizeRole(inactiveUser.role),
+              action: 'LOGIN_BLOCKED',
+              entityType: 'USER',
+              module: 'security',
+              status: 'failed',
+              summary: 'Login blocked — account deactivated',
+              details: { username: inactiveUser.username },
+              ipAddress: getClientIp(req),
+              userAgent: req.get('user-agent') || null,
+            });
+            return res.status(403).json({
+              error: 'Your account has been deactivated. Please contact your school administrator for help.',
+            });
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      const superAdminAttempt = normalizeRole(requestedRole) === 'super-admin' && !hasTenantId;
       await writeAuditLog({
         tenantId: hasTenantId ? tenantId : null,
         userId: null,
         userRole: null,
-        action: 'FAILED_LOGIN',
+        action: superAdminAttempt ? 'SUPER_ADMIN_FAILED_LOGIN' : 'FAILED_LOGIN',
         entityType: 'USER',
-        module: 'security',
+        module: superAdminAttempt ? 'superadmin' : 'security',
         status: 'failed',
-        summary: `Failed login — unknown username`,
-        details: { username: String(username).slice(0, 120) },
+        summary: superAdminAttempt ? `Super Admin failed login — unknown username` : `Failed login — unknown username`,
+        details: { username: String(username).slice(0, 120), reason: 'unknown_username' },
         ipAddress: getClientIp(req),
         userAgent: req.get('user-agent') || null,
       });
@@ -112,44 +170,56 @@ router.post('/login', async (req, res) => {
     const lockRow = lockRes.rows[0] || {};
     const lockedUntil = lockRow.locked_until ? new Date(lockRow.locked_until) : null;
     if (lockedUntil && lockedUntil.getTime() > Date.now()) {
+      const superAdmin = isSuperAdminUser(user.role, user.tenant_id);
       await writeAuditLog({
         tenantId: user.tenant_id,
         userId: user.id,
         userRole: normalizeRole(user.role),
-        action: 'LOGIN_BLOCKED',
+        action: superAdmin ? 'SUPER_ADMIN_LOGIN_BLOCKED' : 'LOGIN_BLOCKED',
         entityType: 'USER',
-        module: 'security',
+        module: superAdmin ? 'superadmin' : 'security',
         status: 'failed',
-        summary: 'Login blocked — account temporarily locked',
-        details: { lockedUntil: lockedUntil.toISOString() },
+        summary: superAdmin ? `Super Admin login blocked — ${user.username}` : 'Login blocked — account temporarily locked',
+        details: { username: user.username, lockedUntil: lockedUntil.toISOString() },
         ipAddress: getClientIp(req),
         userAgent: req.get('user-agent') || null,
       });
       return res.status(423).json({
-        error: 'Account temporarily locked after multiple failed attempts. Try again later or contact an administrator.',
+        error: isSuperAdminUser(user.role, user.tenant_id)
+          ? 'This Super Admin username is locked until tomorrow after 3 failed attempts.'
+          : 'Account temporarily locked after multiple failed attempts. Try again later or contact an administrator.',
       });
     }
 
     const isValidPassword = await bcrypt.compare(password, user.password_hash);
 
     if (!isValidPassword) {
+      const superAdmin = isSuperAdminUser(user.role, user.tenant_id);
       await query(
-        `UPDATE users SET
-           failed_login_attempts = failed_login_attempts + 1,
-           locked_until = CASE WHEN failed_login_attempts + 1 >= 5 THEN NOW() + interval '15 minutes' ELSE locked_until END
-         WHERE id = $1`,
+        superAdmin
+          ? `UPDATE users SET
+               failed_login_attempts = failed_login_attempts + 1,
+               locked_until = CASE WHEN failed_login_attempts + 1 >= 3 THEN ${nextDayLockSql} ELSE locked_until END
+             WHERE id = $1`
+          : `UPDATE users SET
+               failed_login_attempts = failed_login_attempts + 1,
+               locked_until = CASE WHEN failed_login_attempts + 1 >= 5 THEN NOW() + interval '15 minutes' ELSE locked_until END
+             WHERE id = $1`,
         [user.id]
       ).catch(() => {});
       await writeAuditLog({
         tenantId: user.tenant_id,
         userId: user.id,
         userRole: normalizeRole(user.role),
-        action: 'FAILED_LOGIN',
+        action: superAdmin ? 'SUPER_ADMIN_FAILED_LOGIN' : 'FAILED_LOGIN',
         entityType: 'USER',
-        module: 'security',
+        module: superAdmin ? 'superadmin' : 'security',
         status: 'failed',
-        summary: `Failed login — wrong password`,
-        details: { username: user.username },
+        summary: superAdmin ? `Super Admin failed login — ${user.username}` : `Failed login — wrong password`,
+        details: {
+          username: user.username,
+          lockPolicy: superAdmin ? '3 failed attempts locks until the next day' : '5 failed attempts locks for 15 minutes',
+        },
         ipAddress: getClientIp(req),
         userAgent: req.get('user-agent') || null,
       });
@@ -164,15 +234,16 @@ router.post('/login', async (req, res) => {
       { expiresIn: '7d' }
     );
 
+    const superAdmin = isSuperAdminUser(user.role, user.tenant_id);
     await writeAuditLog({
       tenantId: user.tenant_id,
       userId: user.id,
       userRole: normalizeRole(user.role),
-      action: 'LOGIN',
+      action: superAdmin ? 'SUPER_ADMIN_LOGIN' : 'LOGIN',
       entityType: 'USER',
-      module: 'security',
+      module: superAdmin ? 'superadmin' : 'security',
       status: 'success',
-      summary: `Successful login — ${user.username}`,
+      summary: superAdmin ? `Super Admin login — ${user.username}` : `Successful login — ${user.username}`,
       details: { username: user.username, role: normalizeRole(user.role) },
       ipAddress: getClientIp(req),
       userAgent: req.get('user-agent') || null,
@@ -302,7 +373,7 @@ router.get('/me', authenticate, async (req: AuthRequest, res) => {
   try {
     const result = await query(
       `SELECT u.id, u.username, u.role, u.tenant_id, u.teacher_id, u.other_staff_id, u.is_primary_admin,
-              COALESCE(t.full_name, s.full_name, u.username) as full_name
+              COALESCE(t.full_name, s.full_name, u.full_name, u.username) as full_name
        FROM users u
        LEFT JOIN teachers t ON u.teacher_id::text = t.id::text AND t.tenant_id = u.tenant_id
        LEFT JOIN payroll_other_staff s ON u.other_staff_id = s.id AND s.tenant_id = u.tenant_id

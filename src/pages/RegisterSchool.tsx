@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { GraduationCap, ArrowLeft, MapPin, Users, Calendar, Building2, Phone, Mail, User, Loader2, CheckCircle } from 'lucide-react';
+import { ArrowLeft, MapPin, Users, Calendar, Building2, Phone, Mail, User, Loader2, CheckCircle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
 const RegisterSchool = () => {
@@ -58,38 +58,38 @@ const RegisterSchool = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 overflow-hidden">
-      {/* Warm accent gradients - same as landing page */}
-      <div className="fixed inset-0 bg-[radial-gradient(ellipse_100%_60%_at_30%_0%,rgba(34,197,94,0.12),transparent_50%)] pointer-events-none" />
-      <div className="fixed inset-0 bg-[radial-gradient(ellipse_80%_50%_at_80%_20%,rgba(251,146,60,0.1),transparent_50%)] pointer-events-none" />
-      <div className="fixed inset-0 bg-[radial-gradient(ellipse_60%_80%_at_50%_100%,rgba(34,197,94,0.08),transparent_50%)] pointer-events-none" />
+    <div className="scholar-landing min-h-screen overflow-hidden bg-[var(--surface-2)] text-[var(--ink)]">
+      <div className="fixed inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_0%,rgba(13,158,117,0.16),transparent_60%)] pointer-events-none" />
+      <div className="fixed inset-0 bg-[linear-gradient(rgba(13,158,117,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(13,158,117,0.035)_1px,transparent_1px)] bg-[size:48px_48px] [mask-image:radial-gradient(circle_at_top,black,transparent_72%)] pointer-events-none" />
 
-      <header className="fixed top-0 left-0 right-0 z-50 border-b border-slate-200/80 bg-white/80 backdrop-blur-md shadow-sm">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center max-w-6xl">
+      <header className="fixed left-0 right-0 top-0 z-50 border-b border-[var(--sn-border)] bg-white/90 backdrop-blur-[20px]">
+        <div className="mx-auto flex h-16 max-w-[1100px] items-center justify-between px-5">
           <Link to="/" className="flex items-center gap-3 group">
-            <div className="w-11 h-11 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/30">
-              <GraduationCap className="w-6 h-6 text-white" />
-            </div>
-            <span className="font-bold text-xl tracking-tight text-slate-800">SCHOLARNERVE</span>
+            <span className="flex h-10 w-10 overflow-hidden rounded-[13px] bg-white shadow-lg shadow-emerald-950/15 ring-1 ring-[var(--sn-border)]">
+              <img src="/android-chrome-192x192.png" alt="ScholarNerve" className="h-full w-full object-cover" />
+            </span>
+            <span className="scholar-display text-xl font-bold tracking-tight text-[var(--ink)]">ScholarNerve</span>
           </Link>
           <nav className="flex items-center gap-2">
             <Link to="/">
-              <Button variant="outline" className="border-slate-300 text-slate-700 hover:bg-slate-100">Back to Home</Button>
+              <Button variant="outline" className="rounded-full border-[var(--sn-border-strong)] bg-white text-[var(--ink-muted)] hover:bg-[var(--brand-light)] hover:text-[var(--brand-dark)] dark:bg-white dark:text-slate-950 dark:hover:bg-emerald-50">
+                Back to Home
+              </Button>
             </Link>
           </nav>
         </div>
       </header>
 
-      <main className="relative container mx-auto px-4 pt-20 pb-12 max-w-6xl">
+      <main className="relative container mx-auto max-w-6xl px-4 pb-12 pt-28">
         {submitted ? (
           <div className="min-h-[60dvh] flex items-center justify-center">
             <div className="text-center max-w-md mx-auto animate-in fade-in-0 zoom-in-95 duration-500">
               <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-emerald-100 flex items-center justify-center">
                 <CheckCircle className="w-12 h-12 text-emerald-600" />
               </div>
-              <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-2">Thank you!</h2>
-              <p className="text-lg text-slate-600 mb-1">Your registration has been submitted successfully.</p>
-              <p className="text-slate-500 text-sm mb-8">
+              <h2 className="scholar-display text-2xl font-bold text-[var(--ink)] md:text-3xl">Thank you!</h2>
+              <p className="mb-1 mt-2 text-lg text-[var(--ink-muted)]">Your registration has been submitted successfully.</p>
+              <p className="mb-8 text-sm text-[var(--ink-subtle)]">
                 SCHOLARNERVE will review your application and contact you within 24 hours. Check your email for next steps.
               </p>
               <Link to="/">
@@ -102,26 +102,26 @@ const RegisterSchool = () => {
         ) : (
           <div className="grid lg:grid-cols-2 gap-12 items-start">
             <div>
-              <Link to="/" className="inline-flex items-center gap-2 text-slate-600 hover:text-emerald-600 mb-8 transition-colors">
+              <Link to="/" className="mb-8 inline-flex items-center gap-2 text-sm font-medium text-[var(--ink-muted)] transition-colors hover:text-[var(--brand)]">
                 <ArrowLeft className="w-4 h-4" />
                 Back to Home
               </Link>
-              <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-4 text-slate-900">
+              <h1 className="scholar-display mb-4 text-4xl font-extrabold tracking-tight text-[var(--ink)] md:text-5xl">
                 Register Your School
-                <span className="block text-emerald-600">Join SCHOLARNERVE</span>
+                <span className="block text-[var(--brand)]">Join ScholarNerve</span>
               </h1>
-              <p className="text-lg text-slate-600 mb-4 leading-relaxed">
+              <p className="mb-5 text-lg leading-relaxed text-[var(--ink-muted)]">
                 Complete the form below to request access. Our team will review your application and set up your school within 24 hours.
               </p>
-              <div className="mb-6 p-4 rounded-xl bg-slate-100/80 border border-slate-200/60">
-                <p className="text-sm font-semibold text-slate-800 mb-2">SCHOLARNERVE School Management System</p>
-                <p className="text-slate-600 text-sm leading-relaxed">
+              <div className="mb-6 rounded-2xl border border-[var(--sn-border)] bg-white/80 p-5 shadow-sm backdrop-blur">
+                <p className="mb-2 text-sm font-bold text-[var(--ink)]">ScholarNerve School Management System</p>
+                <p className="text-sm leading-relaxed text-[var(--ink-muted)]">
                   A complete platform for schools to manage students, teachers, classes, fees, and finances in one place.
                   Includes enrollment, attendance, fee collection, receipts, payroll, reports, and custom branding.
                   Your school gets a secure, isolated environment with real-time dashboards and dedicated support.
                 </p>
               </div>
-              <ul className="space-y-3 text-slate-600">
+              <ul className="space-y-3 text-[var(--ink-muted)]">
                 <li className="flex items-start gap-2">
                   <span className="text-emerald-500 mt-0.5">✓</span>
                   <span>Quick setup — we handle everything</span>
@@ -135,59 +135,62 @@ const RegisterSchool = () => {
                   <span>Secure, isolated data for your school</span>
                 </li>
               </ul>
-              <div className="mt-10 rounded-2xl overflow-hidden shadow-xl shadow-slate-200/80 ring-1 ring-slate-200/50 hidden lg:block">
-                <img
-                  src="https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=600&q=80"
-                  alt="School"
-                  className="w-full h-64 object-cover"
-                />
+              <div className="mt-10 hidden overflow-hidden rounded-[28px] border border-[var(--sn-border)] bg-[var(--ink)] p-7 text-white shadow-2xl shadow-emerald-950/10 lg:block">
+                <p className="text-xs font-bold uppercase tracking-[0.22em] text-[var(--brand-light)]">Onboarding checklist</p>
+                <div className="mt-5 space-y-3">
+                  {['We verify your school details', 'We set up your secure portal', 'Your admin receives access', 'Teachers and parents can join'].map((item) => (
+                    <div key={item} className="rounded-2xl border border-white/10 bg-white/[0.07] px-4 py-3 text-sm text-white/75">
+                      {item}
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-200/80 bg-white shadow-xl shadow-slate-200/30 p-8 md:p-10">
+            <div className="rounded-[28px] border border-[var(--sn-border)] bg-white p-6 shadow-[0_24px_70px_rgba(8,80,65,0.12)] md:p-10">
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div>
-                  <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                  <h3 className="mb-4 flex items-center gap-2 font-semibold text-[var(--ink)]">
                     <Building2 className="w-4 h-4 text-emerald-600" />
                     School Information
                   </h3>
                   <div className="space-y-4">
                     <div>
-                      <Label htmlFor="schoolName" className="text-slate-700">School Name *</Label>
+                      <Label htmlFor="schoolName" className="text-[var(--ink-muted)]">School Name *</Label>
                       <Input
                         id="schoolName"
                         value={formData.schoolName}
                         onChange={(e) => setFormData({ ...formData, schoolName: e.target.value })}
-                        className="mt-1.5 bg-slate-50 border-slate-200 text-slate-900"
+                        className="mt-1.5 border-emerald-100 bg-white text-slate-950 shadow-sm placeholder:text-slate-400 focus:border-emerald-400 focus:ring-emerald-500/30 dark:border-emerald-100 dark:bg-white dark:text-slate-950"
                         placeholder="e.g. St. Mary's Academy"
                         required
                       />
                     </div>
                     <div>
-                      <Label htmlFor="schoolAddress" className="text-slate-700 flex items-center gap-2">
+                      <Label htmlFor="schoolAddress" className="flex items-center gap-2 text-[var(--ink-muted)]">
                         <MapPin className="w-3.5 h-3.5" /> School Address
                       </Label>
                       <Input
                         id="schoolAddress"
                         value={formData.schoolAddress}
                         onChange={(e) => setFormData({ ...formData, schoolAddress: e.target.value })}
-                        className="mt-1.5 bg-slate-50 border-slate-200 text-slate-900"
+                        className="mt-1.5 border-emerald-100 bg-white text-slate-950 shadow-sm placeholder:text-slate-400 focus:border-emerald-400 focus:ring-emerald-500/30 dark:border-emerald-100 dark:bg-white dark:text-slate-950"
                         placeholder="Street, city, region"
                       />
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <Label htmlFor="location" className="text-slate-700">Location / Region</Label>
+                        <Label htmlFor="location" className="text-[var(--ink-muted)]">Location / Region</Label>
                         <Input
                           id="location"
                           value={formData.location}
                           onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                          className="mt-1.5 bg-slate-50 border-slate-200 text-slate-900"
+                          className="mt-1.5 border-emerald-100 bg-white text-slate-950 shadow-sm placeholder:text-slate-400 focus:border-emerald-400 focus:ring-emerald-500/30 dark:border-emerald-100 dark:bg-white dark:text-slate-950"
                           placeholder="e.g. Accra"
                         />
                       </div>
                       <div>
-                        <Label htmlFor="studentCount" className="text-slate-700 flex items-center gap-2">
+                        <Label htmlFor="studentCount" className="flex items-center gap-2 text-[var(--ink-muted)]">
                           <Users className="w-3.5 h-3.5" /> Approx. Students
                         </Label>
                         <Input
@@ -196,13 +199,13 @@ const RegisterSchool = () => {
                           min="1"
                           value={formData.studentCount}
                           onChange={(e) => setFormData({ ...formData, studentCount: e.target.value })}
-                          className="mt-1.5 bg-slate-50 border-slate-200 text-slate-900"
+                          className="mt-1.5 border-emerald-100 bg-white text-slate-950 shadow-sm placeholder:text-slate-400 focus:border-emerald-400 focus:ring-emerald-500/30 dark:border-emerald-100 dark:bg-white dark:text-slate-950"
                           placeholder="e.g. 250"
                         />
                       </div>
                     </div>
                     <div>
-                      <Label htmlFor="preferredStart" className="text-slate-700 flex items-center gap-2">
+                      <Label htmlFor="preferredStart" className="flex items-center gap-2 text-[var(--ink-muted)]">
                         <Calendar className="w-3.5 h-3.5" /> Preferred Start Date
                       </Label>
                       <Input
@@ -210,7 +213,7 @@ const RegisterSchool = () => {
                         type="text"
                         value={formData.preferredStart}
                         onChange={(e) => setFormData({ ...formData, preferredStart: e.target.value })}
-                        className="mt-1.5 bg-slate-50 border-slate-200 text-slate-900"
+                        className="mt-1.5 border-emerald-100 bg-white text-slate-950 shadow-sm placeholder:text-slate-400 focus:border-emerald-400 focus:ring-emerald-500/30 dark:border-emerald-100 dark:bg-white dark:text-slate-950"
                         placeholder="e.g. Next term / ASAP"
                       />
                     </div>
@@ -218,54 +221,54 @@ const RegisterSchool = () => {
                 </div>
 
                 <div>
-                  <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                  <h3 className="mb-4 flex items-center gap-2 font-semibold text-[var(--ink)]">
                     <User className="w-4 h-4 text-emerald-600" />
                     Primary Contact (Administrator)
                   </h3>
                   <div className="space-y-4">
                     <div>
-                      <Label htmlFor="adminName" className="text-slate-700">Full Name *</Label>
+                      <Label htmlFor="adminName" className="text-[var(--ink-muted)]">Full Name *</Label>
                       <Input
                         id="adminName"
                         value={formData.adminName}
                         onChange={(e) => setFormData({ ...formData, adminName: e.target.value })}
-                        className="mt-1.5 bg-slate-50 border-slate-200 text-slate-900"
+                        className="mt-1.5 border-emerald-100 bg-white text-slate-950 shadow-sm placeholder:text-slate-400 focus:border-emerald-400 focus:ring-emerald-500/30 dark:border-emerald-100 dark:bg-white dark:text-slate-950"
                         placeholder="John Doe"
                         required
                       />
                     </div>
                     <div>
-                      <Label htmlFor="email" className="text-slate-700 flex items-center gap-2">
+                      <Label htmlFor="email" className="flex items-center gap-2 text-[var(--ink-muted)]">
                         <Mail className="w-3.5 h-3.5" /> Email *</Label>
                       <Input
                         id="email"
                         type="email"
                         value={formData.email}
                         onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        className="mt-1.5 bg-slate-50 border-slate-200 text-slate-900"
+                        className="mt-1.5 border-emerald-100 bg-white text-slate-950 shadow-sm placeholder:text-slate-400 focus:border-emerald-400 focus:ring-emerald-500/30 dark:border-emerald-100 dark:bg-white dark:text-slate-950"
                         placeholder="admin@school.com"
                         required
                       />
                     </div>
                     <div>
-                      <Label htmlFor="phone" className="text-slate-700 flex items-center gap-2">
+                      <Label htmlFor="phone" className="flex items-center gap-2 text-[var(--ink-muted)]">
                         <Phone className="w-3.5 h-3.5" /> Phone
                       </Label>
                       <Input
                         id="phone"
                         value={formData.phone}
                         onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                        className="mt-1.5 bg-slate-50 border-slate-200 text-slate-900"
+                        className="mt-1.5 border-emerald-100 bg-white text-slate-950 shadow-sm placeholder:text-slate-400 focus:border-emerald-400 focus:ring-emerald-500/30 dark:border-emerald-100 dark:bg-white dark:text-slate-950"
                         placeholder="+233 ..."
                       />
                     </div>
                     <div>
-                      <Label htmlFor="message" className="text-slate-700">Additional Information</Label>
+                      <Label htmlFor="message" className="text-[var(--ink-muted)]">Additional Information</Label>
                       <textarea
                         id="message"
                         value={formData.message}
                         onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                        className="mt-1.5 w-full min-h-[80px] rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                        className="mt-1.5 min-h-[96px] w-full rounded-md border border-emerald-100 bg-white px-3 py-2 text-slate-950 shadow-sm placeholder:text-slate-400 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 dark:border-emerald-100 dark:bg-white dark:text-slate-950"
                         placeholder="Any other details, questions, or special requirements..."
                         rows={3}
                       />
@@ -276,7 +279,7 @@ const RegisterSchool = () => {
                 <div className="flex flex-col sm:flex-row gap-3 pt-4">
                   <Button
                     type="submit"
-                    className="flex-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-500/30 border-0"
+                    className="h-12 flex-1 rounded-full border-0 bg-[var(--brand)] text-white shadow-lg shadow-emerald-500/25 hover:bg-[var(--brand-dark)]"
                     disabled={submitting}
                   >
                     {submitting ? (
@@ -288,7 +291,12 @@ const RegisterSchool = () => {
                       'Submit Registration Request'
                     )}
                   </Button>
-                  <Button type="button" variant="outline" onClick={() => navigate('/')} className="border-slate-300">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => navigate('/')}
+                    className="h-12 rounded-full border-[var(--sn-border-strong)] bg-white px-7 text-[var(--ink-muted)] hover:bg-[var(--brand-light)] hover:text-[var(--brand-dark)] dark:bg-white dark:text-slate-950 dark:hover:bg-emerald-50"
+                  >
                     Cancel
                   </Button>
                 </div>
@@ -298,9 +306,10 @@ const RegisterSchool = () => {
         )}
       </main>
 
-      <footer className="relative border-t border-slate-200 bg-white py-6 mt-16">
-        <div className="container mx-auto px-4 max-w-6xl text-center text-slate-500 text-sm">
-          © {new Date().getFullYear()} SCHOLARNERVE. All rights reserved.
+      <footer className="relative mt-16 border-t border-[var(--sn-border)] bg-white py-6">
+        <div className="container mx-auto flex max-w-6xl items-center justify-center gap-2 px-4 text-center text-sm text-[var(--ink-subtle)]">
+          <img src="/android-chrome-192x192.png" alt="" className="h-6 w-6 rounded-md" />
+          © {new Date().getFullYear()} ScholarNerve. All rights reserved.
         </div>
       </footer>
     </div>

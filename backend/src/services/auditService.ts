@@ -14,6 +14,8 @@ export type AuditLogInput = {
   status?: AuditStatus;
   summary?: string | null;
   details?: Record<string, unknown> | null;
+  beforeValues?: Record<string, unknown> | null;
+  afterValues?: Record<string, unknown> | null;
   ipAddress?: string | null;
   userAgent?: string | null;
 };
@@ -26,8 +28,8 @@ export async function writeAuditLog(row: AuditLogInput): Promise<void> {
     await query(
       `INSERT INTO audit_logs (
         tenant_id, user_id, user_role, action, entity_type, entity_id,
-        module, status, summary, details, ip_address, user_agent
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12)`,
+        module, status, summary, details, before_values, after_values, ip_address, user_agent
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13, $14)`,
       [
         row.tenantId,
         row.userId,
@@ -39,6 +41,8 @@ export async function writeAuditLog(row: AuditLogInput): Promise<void> {
         row.status ?? 'success',
         row.summary ?? null,
         row.details != null ? JSON.stringify(row.details) : null,
+        row.beforeValues != null ? JSON.stringify(row.beforeValues) : null,
+        row.afterValues != null ? JSON.stringify(row.afterValues) : null,
         row.ipAddress ?? null,
         row.userAgent ?? null,
       ]

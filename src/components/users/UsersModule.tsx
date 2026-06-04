@@ -87,6 +87,7 @@ const UsersModule = () => {
   const [selectedUser, setSelectedUser] = useState<SchoolUser | null>(null);
   const [newUser, setNewUser] = useState({
     username: '',
+    fullName: '',
     password: '',
     email: '',
     role: 'administrator' as 'administrator' | 'finance' | 'teacher' | 'staff',
@@ -120,6 +121,10 @@ const UsersModule = () => {
       toast({ title: 'Error', description: 'Username and password required', variant: 'destructive' });
       return;
     }
+    if ((newUser.role === 'administrator' || newUser.role === 'finance') && !newUser.fullName.trim()) {
+      toast({ title: 'Error', description: 'Full name is required for Administrator and Finance users', variant: 'destructive' });
+      return;
+    }
     const minLength = newUser.role === 'teacher' || newUser.role === 'staff' ? 5 : 6;
     if (newUser.password.length < minLength) {
       toast({ title: 'Error', description: `Password must be at least ${minLength} characters`, variant: 'destructive' });
@@ -128,16 +133,30 @@ const UsersModule = () => {
     try {
       await apiService.post('/settings/users', {
         username: newUser.username,
+        fullName: newUser.fullName,
         password: newUser.password,
         email: newUser.email || undefined,
         role: newUser.role,
       });
       toast({ title: 'User Created', description: `${newUser.username} has been added` });
-      setNewUser({ username: '', password: '', email: '', role: 'administrator' });
+      setNewUser({ username: '', fullName: '', password: '', email: '', role: 'administrator' });
       setCreateOpen(false);
       loadUsers();
     } catch (e: any) {
       toast({ title: 'Error', description: e?.message || 'Failed to create user', variant: 'destructive' });
+    }
+  };
+
+  const updateUser = async (user: SchoolUser, patch: Partial<{ role: string; isActive: boolean; fullName: string; email: string }>) => {
+    try {
+      await apiService.patch(`/settings/users/${user.id}`, patch);
+      toast({
+        title: 'User Updated',
+        description: `${displayName(user)} has been updated`,
+      });
+      await loadUsers();
+    } catch (e: any) {
+      toast({ title: 'Error', description: e?.message || 'Failed to update user', variant: 'destructive' });
     }
   };
 
@@ -234,7 +253,7 @@ const UsersModule = () => {
                   {users.map((u) => {
                     const RoleIcon = roleIcons[u.role] || UserCheck;
                     return (
-                      <TableRow key={u.id} className="hover:bg-muted/30 border-border">
+                      <TableRow key={u.id} className={!u.is_active ? 'opacity-65 hover:bg-muted/30 border-border' : 'hover:bg-muted/30 border-border'}>
                         <TableCell>
                           <div className="flex items-center gap-3">
                             <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
@@ -267,9 +286,24 @@ const UsersModule = () => {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className={roleColors[u.role] || 'bg-slate-100 text-slate-700'}>
-                            {roleLabels[u.role] || u.role}
-                          </Badge>
+                          {!u.is_primary_admin && (u.role === 'administrator' || u.role === 'finance') ? (
+                            <Select
+                              value={u.role}
+                              onValueChange={(role) => updateUser(u, { role })}
+                            >
+                              <SelectTrigger className="h-9 min-w-[145px]">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="administrator">Administrator</SelectItem>
+                                <SelectItem value="finance">Finance</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <Badge variant="outline" className={roleColors[u.role] || 'bg-slate-100 text-slate-700'}>
+                              {roleLabels[u.role] || u.role}
+                            </Badge>
+                          )}
                         </TableCell>
                         <TableCell className="text-muted-foreground text-sm">{u.email || '—'}</TableCell>
                         <TableCell>
@@ -278,15 +312,26 @@ const UsersModule = () => {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => openResetDialog(u)}
-                            className="border-border hover:bg-muted"
-                          >
-                            <KeyRound className="w-4 h-4 mr-1.5" />
-                            Reset Password
-                          </Button>
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openResetDialog(u)}
+                              className="border-border hover:bg-muted"
+                            >
+                              <KeyRound className="w-4 h-4 mr-1.5" />
+                              Reset
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant={u.is_active ? 'destructive' : 'outline'}
+                              disabled={u.is_primary_admin}
+                              onClick={() => updateUser(u, { isActive: !u.is_active })}
+                              title={u.is_primary_admin ? 'Primary admin cannot be deactivated' : undefined}
+                            >
+                              {u.is_active ? 'Deactivate' : 'Activate'}
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -318,6 +363,19 @@ const UsersModule = () => {
                 required
               />
             </div>
+            {(newUser.role === 'administrator' || newUser.role === 'finance') && (
+              <div>
+                <Label>Full Name *</Label>
+                <Input
+                  value={newUser.fullName}
+                  onChange={(e) => setNewUser({ ...newUser, fullName: e.target.value })}
+                  placeholder="e.g. Barbara Acquah"
+                  className="mt-1"
+                  required
+                />
+                <p className="text-xs text-muted-foreground mt-1">This name appears in the system header and audit records.</p>
+              </div>
+            )}
             <div>
               <Label>Password * (min {newUser.role === 'teacher' || newUser.role === 'staff' ? 5 : 6} characters)</Label>
               <Input

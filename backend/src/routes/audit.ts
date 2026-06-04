@@ -137,6 +137,172 @@ router.get('/all', authenticate, requireRole('super-admin'), async (req: AuthReq
   }
 });
 
+router.post('/super-admin/portal-visit', async (req, res) => {
+  try {
+    const { path, visitorId } = req.body || {};
+    await writeAuditLog({
+      tenantId: null,
+      userId: null,
+      userRole: 'anonymous',
+      action: 'SUPER_ADMIN_PORTAL_VISIT',
+      entityType: 'SUPER_ADMIN_PORTAL',
+      module: 'superadmin',
+      status: 'success',
+      summary: 'Super Admin portal visited',
+      details: {
+        path: typeof path === 'string' ? path.slice(0, 300) : '/super-admin',
+        visitorId: typeof visitorId === 'string' ? visitorId.slice(0, 120) : null,
+      },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') || null,
+    });
+    res.status(201).json({ ok: true });
+  } catch (error) {
+    console.error('Super admin visit audit error:', error);
+    res.status(500).json({ error: 'Failed to record portal visit' });
+  }
+});
+
+router.get('/super-admin', authenticate, requireRole('super-admin'), async (req: AuthRequest, res) => {
+  try {
+    const { action, status, search, limit = '500', offset = '0' } = req.query;
+    const params: any[] = [];
+    let queryText = `
+      SELECT al.*, u.username, ${AUDIT_USER_FULL_NAME_SQL}, NULL::text as tenant_name
+      FROM audit_logs al
+      ${AUDIT_USER_JOINS}
+      WHERE al.module = 'superadmin'
+    `;
+
+    if (action && String(action).trim()) {
+      queryText += ` AND al.action = $${params.length + 1}`;
+      params.push(String(action).trim());
+    }
+    if (status && String(status).trim()) {
+      queryText += ` AND al.status = $${params.length + 1}`;
+      params.push(String(status).trim().toLowerCase());
+    }
+    if (search && String(search).trim()) {
+      const s = `%${String(search).trim()}%`;
+      queryText += ` AND (
+        COALESCE(al.summary, '') ILIKE $${params.length + 1}
+        OR COALESCE(u.username, '') ILIKE $${params.length + 1}
+        OR COALESCE(al.details::text, '') ILIKE $${params.length + 1}
+        OR COALESCE(al.ip_address, '') ILIKE $${params.length + 1}
+      )`;
+      params.push(s);
+    }
+
+    const lim = Math.min(Math.max(parseInt(String(limit), 10) || 100, 1), 1000);
+    const off = Math.max(parseInt(String(offset), 10) || 0, 0);
+    queryText += ` ORDER BY al.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    params.push(lim, off);
+
+    const result = await query(queryText, params);
+    res.json((result.rows as Record<string, unknown>[]).map((r) => enrichAuditLogRow(r)));
+  } catch (error) {
+    console.error('Get super admin audit logs error:', error);
+    res.status(500).json({ error: 'Failed to fetch super admin audit logs' });
+  }
+});
+
+router.get('/super-admin/tracker/users', authenticate, requireRole('super-admin'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = parseInt(String(req.query.tenantId || ''), 10);
+    if (!Number.isFinite(tenantId)) {
+      return res.status(400).json({ error: 'Valid tenantId is required' });
+    }
+
+    const result = await query(
+      `SELECT
+         u.id,
+         u.username,
+         u.email,
+         u.role,
+         u.full_name,
+         COALESCE(NULLIF(TRIM(tch.full_name), ''), NULLIF(TRIM(stf.full_name), ''), NULLIF(TRIM(u.full_name), ''), u.username) AS display_name,
+         COUNT(al.id)::int AS activity_count,
+         MAX(al.created_at) AS last_activity_at,
+         COUNT(al.id) FILTER (WHERE al.module = 'finance' OR al.entity_type IN ('PAYMENT','EXPENSE','INCOME','SALARY_PAYMENT','PAYROLL','FEE_STRUCTURE'))::int AS finance_activity_count
+       FROM users u
+       LEFT JOIN teachers tch ON TRIM(COALESCE(u.teacher_id::text, '')) <> ''
+         AND tch.id::text = TRIM(u.teacher_id::text)
+         AND tch.tenant_id = u.tenant_id
+       LEFT JOIN payroll_other_staff stf ON u.other_staff_id IS NOT NULL
+         AND stf.id = u.other_staff_id
+         AND stf.tenant_id = u.tenant_id
+       LEFT JOIN audit_logs al ON al.user_id = u.id AND al.tenant_id = u.tenant_id
+       WHERE u.tenant_id = $1
+       GROUP BY u.id, tch.full_name, stf.full_name
+       ORDER BY last_activity_at DESC NULLS LAST, display_name ASC`,
+      [tenantId]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Get tracker users error:', error);
+    res.status(500).json({ error: 'Failed to fetch tracker users' });
+  }
+});
+
+router.get('/super-admin/tracker/timeline', authenticate, requireRole('super-admin'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = parseInt(String(req.query.tenantId || ''), 10);
+    const userId = parseInt(String(req.query.userId || ''), 10);
+    if (!Number.isFinite(tenantId) || !Number.isFinite(userId)) {
+      return res.status(400).json({ error: 'Valid tenantId and userId are required' });
+    }
+
+    const params: any[] = [tenantId, userId];
+    let where = `WHERE al.tenant_id = $1 AND al.user_id = $2`;
+    const { module, action, startDate, endDate, search, order = 'desc', limit = '300', offset = '0' } = req.query;
+
+    if (module && String(module).trim()) {
+      where += ` AND COALESCE(NULLIF(TRIM(al.module), ''), '') = $${params.length + 1}`;
+      params.push(String(module).trim());
+    }
+    if (action && String(action).trim()) {
+      where += ` AND al.action = $${params.length + 1}`;
+      params.push(String(action).trim());
+    }
+    if (startDate && endDate) {
+      where += ` AND al.created_at >= $${params.length + 1}::date AND al.created_at < ($${params.length + 2}::date + interval '1 day')`;
+      params.push(startDate, endDate);
+    }
+    if (search && String(search).trim()) {
+      const s = `%${String(search).trim()}%`;
+      where += ` AND (
+        COALESCE(al.summary, '') ILIKE $${params.length + 1}
+        OR COALESCE(al.details::text, '') ILIKE $${params.length + 1}
+        OR COALESCE(al.entity_type, '') ILIKE $${params.length + 1}
+        OR COALESCE(al.action, '') ILIKE $${params.length + 1}
+      )`;
+      params.push(s);
+    }
+
+    const lim = Math.min(Math.max(parseInt(String(limit), 10) || 100, 1), 1000);
+    const off = Math.max(parseInt(String(offset), 10) || 0, 0);
+    const sort = String(order).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+    const listParams = [...params, lim, off];
+
+    const result = await query(
+      `SELECT al.*, u.username, ${AUDIT_USER_FULL_NAME_SQL}, ten.name AS tenant_name
+       FROM audit_logs al
+       ${AUDIT_USER_JOINS}
+       LEFT JOIN tenants ten ON al.tenant_id = ten.id
+       ${where}
+       ORDER BY al.created_at ${sort}
+       LIMIT $${listParams.length - 1} OFFSET $${listParams.length}`,
+      listParams
+    );
+
+    res.json((result.rows as Record<string, unknown>[]).map((r) => enrichAuditLogRow(r)));
+  } catch (error) {
+    console.error('Get tracker timeline error:', error);
+    res.status(500).json({ error: 'Failed to fetch tracker timeline' });
+  }
+});
+
 router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);

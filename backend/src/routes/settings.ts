@@ -420,8 +420,8 @@ router.get('/users', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, r
     if (!tenantId) return res.status(400).json({ error: 'Tenant context required' });
 
     const result = await query(
-      `SELECT u.id, u.username, u.email, u.role, u.teacher_id, u.other_staff_id, u.is_active, u.is_primary_admin, u.created_at,
-        COALESCE(t.full_name, s.full_name, u.username) as full_name,
+      `SELECT u.id, u.username, COALESCE(u.email, t.email) as email, u.role, u.teacher_id, u.other_staff_id, u.is_active, u.is_primary_admin, u.created_at,
+        COALESCE(t.full_name, s.full_name, u.full_name, u.username) as full_name,
         COALESCE(t.staff_id, s.staff_id) as staff_id
        FROM users u
        LEFT JOIN teachers t ON u.teacher_id::text = t.id::text AND t.tenant_id = u.tenant_id
@@ -429,7 +429,7 @@ router.get('/users', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, r
        WHERE u.tenant_id = $1
        ORDER BY 
          CASE u.role WHEN 'super-admin' THEN 0 WHEN 'administrator' THEN 1 WHEN 'finance' THEN 2 WHEN 'teacher' THEN 3 WHEN 'staff' THEN 4 ELSE 5 END,
-         COALESCE(t.full_name, s.full_name, u.username)`,
+        COALESCE(t.full_name, s.full_name, u.full_name, u.username)`,
       [tenantId]
     );
     res.json(result.rows);
@@ -486,7 +486,7 @@ router.post('/users', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, 
     const tenantId = req.user!.tenantId!;
     if (!tenantId) return res.status(400).json({ error: 'Tenant context required' });
 
-    const { username, password, email, role, teacherId } = req.body;
+    const { username, password, email, role, teacherId, fullName } = req.body;
     if (!username || !password || !role) {
       return res.status(400).json({ error: 'Username, password, and role are required' });
     }
@@ -497,11 +497,14 @@ router.post('/users', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, 
     if (password.length < minLength) {
       return res.status(400).json({ error: `Password must be at least ${minLength} characters` });
     }
+    if ((role === 'administrator' || role === 'finance') && !String(fullName || '').trim()) {
+      return res.status(400).json({ error: 'Full name is required for Administrator and Finance users' });
+    }
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const result = await query(
-      'INSERT INTO users (tenant_id, username, email, password_hash, role, teacher_id, other_staff_id, is_primary_admin) VALUES ($1, $2, $3, $4, $5, $6, $7, false) RETURNING id, username, email, role',
-      [tenantId, username, email || null, hashedPassword, role, teacherId || null, req.body.otherStaffId || null]
+      'INSERT INTO users (tenant_id, username, full_name, email, password_hash, role, teacher_id, other_staff_id, is_primary_admin) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false) RETURNING id, username, full_name, email, role, is_active, is_primary_admin',
+      [tenantId, username, String(fullName || '').trim() || null, email || null, hashedPassword, role, teacherId || null, req.body.otherStaffId || null]
     );
 
     await query(
@@ -514,6 +517,83 @@ router.post('/users', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, 
     console.error('Create school user error:', error);
     if (error.code === '23505') return res.status(409).json({ error: 'Username already exists' });
     res.status(500).json({ error: 'Failed to create user' });
+  }
+});
+
+// Update editable school user details (primary admin or super-admin)
+router.patch('/users/:id', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    if (!tenantId) return res.status(400).json({ error: 'Tenant context required' });
+    const { id } = req.params;
+    const { role, isActive, fullName, email } = req.body;
+
+    const userCheck = await query(
+      'SELECT id, role, is_primary_admin FROM users WHERE id = $1 AND tenant_id = $2',
+      [id, tenantId]
+    );
+    if (userCheck.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+
+    const target = userCheck.rows[0];
+    const changingRole = role !== undefined && role !== target.role;
+    const changingStatus = isActive !== undefined;
+
+    if (target.is_primary_admin && (changingRole || changingStatus)) {
+      return res.status(400).json({ error: 'The primary Scholarnerve admin role/status cannot be changed' });
+    }
+
+    const updates: string[] = [];
+    const values: any[] = [];
+    let i = 1;
+
+    if (role !== undefined) {
+      if (!['administrator', 'finance'].includes(role)) {
+        return res.status(400).json({ error: 'Only Administrator and Finance roles can be changed here' });
+      }
+      if (!['administrator', 'finance'].includes(target.role)) {
+        return res.status(400).json({ error: 'Only Administrator and Finance users can have their role changed' });
+      }
+      updates.push(`role = $${i++}`);
+      values.push(role);
+    }
+
+    if (isActive !== undefined) {
+      updates.push(`is_active = $${i++}`);
+      values.push(Boolean(isActive));
+    }
+
+    if (fullName !== undefined) {
+      updates.push(`full_name = $${i++}`);
+      values.push(String(fullName || '').trim() || null);
+    }
+
+    if (email !== undefined) {
+      updates.push(`email = $${i++}`);
+      values.push(String(email || '').trim() || null);
+    }
+
+    if (updates.length === 0) return res.status(400).json({ error: 'No valid user fields to update' });
+
+    updates.push('updated_at = CURRENT_TIMESTAMP');
+    values.push(id, tenantId);
+
+    const result = await query(
+      `UPDATE users SET ${updates.join(', ')}
+       WHERE id = $${i++} AND tenant_id = $${i}
+       RETURNING id, username, full_name, email, role, is_active, is_primary_admin`,
+      values
+    );
+
+    await query(
+      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id, details) VALUES ($1, $2, $3, $4, $5, $6)',
+      [tenantId, req.user!.id, 'UPDATE_USER', 'USER', parseInt(id), JSON.stringify({ role, isActive })]
+    ).catch(() => {});
+    emitTenantDataChanged(tenantId, 'user', 'updated');
+    res.json(result.rows[0]);
+  } catch (error: any) {
+    console.error('Update school user error:', error);
+    if (error.code === '23505') return res.status(409).json({ error: 'Username or email already exists' });
+    res.status(500).json({ error: 'Failed to update user' });
   }
 });
 

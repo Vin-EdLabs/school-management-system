@@ -277,8 +277,9 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
     const passwordHash = await bcrypt.hash(loginPin, 10);
     
     await query(
-      `INSERT INTO users (tenant_id, username, password_hash, role, teacher_id) VALUES ($1, $2, $3, 'teacher', $4)`,
-      [tenantId, staffId, passwordHash, String(teacherId)]
+      `INSERT INTO users (tenant_id, username, full_name, email, password_hash, role, teacher_id)
+       VALUES ($1, $2, $3, $4, $5, 'teacher', $6)`,
+      [tenantId, staffId, teacherData.full_name, teacherData.email || null, passwordHash, String(teacherId)]
     );
     
     await query(
@@ -342,6 +343,13 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Teacher not found' });
     }
+
+    await query(
+      `UPDATE users
+       SET full_name = $1, email = $2, updated_at = CURRENT_TIMESTAMP
+       WHERE tenant_id = $3 AND teacher_id::text = $4::text`,
+      [result.rows[0].full_name, result.rows[0].email || null, tenantId, id]
+    ).catch(() => {});
     
     // Log update
     await query(

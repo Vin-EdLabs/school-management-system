@@ -1,208 +1,919 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { GraduationCap, Shield, BarChart3, Users, Zap, CheckCircle, ArrowRight, Mail, Phone, Award, UserCircle, BookOpen } from 'lucide-react';
+
+type IconProps = {
+  className?: string;
+};
+
+type PublicStats = {
+  schools: number;
+  students: number;
+  teachersAndStaff: number;
+  feesProcessed: number;
+};
+
+type LegalDocKey = 'privacy' | 'terms';
+
+type LegalSection = {
+  title: string;
+  body?: string;
+  items?: string[];
+};
+
+type LegalDocument = {
+  title: string;
+  eyebrow: string;
+  effectiveDate: string;
+  intro: string[];
+  sections: LegalSection[];
+};
+
+const defaultStats: PublicStats = {
+  schools: 0,
+  students: 0,
+  teachersAndStaff: 0,
+  feesProcessed: 0,
+};
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+
+const formatCount = (value: number) => {
+  if (!value) return 'Live';
+  if (value >= 1000) return `${(value / 1000).toFixed(value >= 10000 ? 0 : 1)}k`;
+  return value.toLocaleString();
+};
+
+const formatMoney = (value: number) => {
+  if (!value) return 'Tracked';
+  if (value >= 1000000) return `GHS ${(value / 1000000).toFixed(1)}m`;
+  if (value >= 1000) return `GHS ${(value / 1000).toFixed(0)}k`;
+  return `GHS ${value.toLocaleString()}`;
+};
+
+const BrandMark = ({ className = '' }: IconProps) => (
+  <img
+    src="/android-chrome-192x192.png"
+    alt="ScholarNerve"
+    className={`object-cover ${className}`}
+  />
+);
+
+const IconStudent = ({ className = '' }: IconProps) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M4 8.5 12 4l8 4.5-8 4.5L4 8.5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+    <path d="M7 11v4.2c0 1.5 2.2 2.8 5 2.8s5-1.3 5-2.8V11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+  </svg>
+);
+
+const IconChart = ({ className = '' }: IconProps) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M4 19V5M4 19h16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    <path d="M8 16v-5M12 16V8M16 16v-7" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+  </svg>
+);
+
+const IconWallet = ({ className = '' }: IconProps) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M4.5 7.5h13A2.5 2.5 0 0 1 20 10v6.5A2.5 2.5 0 0 1 17.5 19h-13A2.5 2.5 0 0 1 2 16.5V10a2.5 2.5 0 0 1 2.5-2.5Z" stroke="currentColor" strokeWidth="1.8" />
+    <path d="M5 7.5 15.2 4.8A2.2 2.2 0 0 1 18 6.9v.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    <path d="M16.5 13h.01" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+  </svg>
+);
+
+const IconClock = ({ className = '' }: IconProps) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.8" />
+    <path d="M12 7.5V12l3 2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const IconGrade = ({ className = '' }: IconProps) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M7 3.8h10A2.2 2.2 0 0 1 19.2 6v12A2.2 2.2 0 0 1 17 20.2H7A2.2 2.2 0 0 1 4.8 18V6A2.2 2.2 0 0 1 7 3.8Z" stroke="currentColor" strokeWidth="1.8" />
+    <path d="M8 9h8M8 13h5M8 17h7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+  </svg>
+);
+
+const IconPhone = ({ className = '' }: IconProps) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M9 3.5h6A2.5 2.5 0 0 1 17.5 6v12A2.5 2.5 0 0 1 15 20.5H9A2.5 2.5 0 0 1 6.5 18V6A2.5 2.5 0 0 1 9 3.5Z" stroke="currentColor" strokeWidth="1.8" />
+    <path d="M10.5 17.5h3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+  </svg>
+);
+
+const IconShield = ({ className = '' }: IconProps) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M12 3.8 19 6.6v5.2c0 4.2-2.8 7.4-7 8.4-4.2-1-7-4.2-7-8.4V6.6l7-2.8Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+    <path d="m9 12 2 2 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const IconMail = ({ className = '' }: IconProps) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M4.5 6.5h15v11h-15v-11Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+    <path d="m5 7 7 5.5L19 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const IconCall = ({ className = '' }: IconProps) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M7.5 4.8 9.8 4l2 4.5-1.5 1.1c.9 1.9 2.3 3.3 4.1 4.1l1.1-1.5 4.5 2-0.8 2.3c-.3.9-1.2 1.5-2.2 1.4C10.7 17.5 6.5 13.3 6.1 7c-.1-1 .5-1.9 1.4-2.2Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+  </svg>
+);
+
+const SectionLabel = ({ children }: { children: React.ReactNode }) => (
+  <p className="mb-3 text-xs font-bold uppercase tracking-[0.24em] text-[var(--brand)]">{children}</p>
+);
+
+const CheckItem = ({ children }: { children: React.ReactNode }) => (
+  <li className="flex items-start gap-3 text-sm text-[var(--ink-muted)]">
+    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--brand-light)] text-[var(--brand)]">
+      <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+        <path d="m2.5 6.1 2.1 2.1 4.9-5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </span>
+    {children}
+  </li>
+);
+
+const legalDocuments: Record<LegalDocKey, LegalDocument> = {
+  privacy: {
+    title: 'Privacy Policy',
+    eyebrow: 'ScholarNerve Legal',
+    effectiveDate: 'June 2026',
+    intro: [
+      'ScholarNerve ("ScholarNerve", "we", "our", or "us") provides a cloud-based school management platform designed for educational institutions to manage academic, administrative, and operational activities.',
+      'This Privacy Policy explains how we collect, use, store, and protect information when schools, teachers, parents, students, and authorized users access our services.',
+      'By accessing or using ScholarNerve, you acknowledge that you have read and understood this Policy.',
+    ],
+    sections: [
+      {
+        title: '1. Information We Collect',
+        body: 'We collect information necessary to operate, secure, and improve the platform, including:',
+        items: [
+          'Student information: name, student ID, academic records, attendance, and class details.',
+          'Parent or guardian information: contact details and relationship data.',
+          'Staff information: teacher, administrator, and school staff profiles.',
+          'Institutional data: school records, timetables, grading structures, and related academic data.',
+          'Usage data: log data, device information, IP address, and system interactions.',
+          'Transactional data: fee records and payment history where enabled by the institution.',
+        ],
+      },
+      {
+        title: '2. Purpose of Processing',
+        body: 'We process personal data strictly to deliver core platform functionality, support academic and administrative workflows, facilitate communication between authorized users, generate institutional reporting, and maintain system security and performance. We do not sell, lease, or monetize personal data.',
+      },
+      {
+        title: '3. Data Access and Disclosure',
+        body: 'Access to data is strictly controlled and limited to designated school administrators, authorized teaching staff, students, and parents as permitted by the institution. We may disclose information only where required by applicable law, regulation, or valid legal process.',
+      },
+      {
+        title: '4. Data Security',
+        body: 'We implement safeguards designed to protect information against unauthorized access, alteration, disclosure, or destruction, including role-based access control, secure authentication, encrypted communication channels where applicable, and ongoing system monitoring. No digital system can guarantee absolute security.',
+      },
+      {
+        title: '5. Data Retention',
+        body: 'Data is retained for as long as the institution maintains an active ScholarNerve account. Upon termination or formal request by the institution, data may be deleted or exported, subject to legal or contractual obligations.',
+      },
+      {
+        title: '6. Data Rights',
+        body: 'Subject to institutional control and applicable law, users may request access, correction, deletion, or export of data through their designated school administrator.',
+      },
+      {
+        title: '7. Changes to This Policy',
+        body: 'We may revise this Privacy Policy from time to time to reflect changes in technology, legal requirements, or service improvements. Updates will be published with a revised effective date.',
+      },
+      {
+        title: '8. Contact',
+        body: 'For privacy inquiries, contact ScholarNerve at scholarnerve@gmail.com or visit https://scholarnerve.com/.',
+      },
+    ],
+  },
+  terms: {
+    title: 'Terms of Service',
+    eyebrow: 'ScholarNerve Legal',
+    effectiveDate: 'June 2026',
+    intro: [
+      'These Terms of Service ("Terms") govern access to and use of the ScholarNerve platform and related services.',
+      'By accessing or using ScholarNerve, you agree to be bound by these Terms.',
+    ],
+    sections: [
+      {
+        title: '1. Service Overview',
+        body: 'ScholarNerve is a software-as-a-service platform designed to support educational institutions in managing academic, administrative, finance, and communication processes. Access is provided exclusively to authorized institutions and their designated users.',
+      },
+      {
+        title: '2. Account Access and Responsibility',
+        body: 'User accounts are provisioned and managed by the educational institution. Each institution is responsible for managing permissions, maintaining secure account practices, and ensuring appropriate platform use. Users are responsible for keeping credentials confidential.',
+      },
+      {
+        title: '3. Acceptable Use',
+        body: 'Users agree not to:',
+        items: [
+          'Interfere with or disrupt system integrity or performance.',
+          'Attempt unauthorized access to data or system components.',
+          'Misrepresent identity, academic records, or institutional information.',
+          'Use the platform for unlawful, abusive, or unauthorized purposes.',
+        ],
+      },
+      {
+        title: '4. Institutional Responsibility',
+        body: 'Each institution is responsible for the accuracy and legality of data entered into the system, compliance with applicable educational and data protection regulations, and internal governance of user roles and permissions. ScholarNerve acts as a data processor on behalf of institutions.',
+      },
+      {
+        title: '5. Availability of Service',
+        body: 'While we aim to maintain high availability and reliability, access to ScholarNerve may be interrupted due to maintenance, updates, or unforeseen technical issues. We do not guarantee uninterrupted or error-free operation.',
+      },
+      {
+        title: '6. Limitation of Liability',
+        body: 'To the maximum extent permitted by law, ScholarNerve shall not be liable for indirect, incidental, or consequential damages, data loss resulting from user or institutional actions, service interruptions beyond reasonable control, or decisions made based on system-generated data.',
+      },
+      {
+        title: '7. Termination',
+        body: 'We may suspend or terminate access if these Terms are violated, security risks or misuse are detected, or an institution requests account deactivation. Upon termination, data will be handled according to the Privacy Policy.',
+      },
+      {
+        title: '8. Amendments',
+        body: 'We may update or modify these Terms periodically. Continued use of the platform constitutes acceptance of any revised Terms.',
+      },
+      {
+        title: '9. Contact Information',
+        body: 'For terms or service inquiries, contact ScholarNerve at scholarnerve@gmail.com or visit https://scholarnerve.com/.',
+      },
+    ],
+  },
+};
 
 const LandingPage = () => {
-  return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 overflow-hidden">
-      {/* Warm accent gradients */}
-      <div className="fixed inset-0 bg-[radial-gradient(ellipse_100%_60%_at_30%_0%,rgba(34,197,94,0.12),transparent_50%)] pointer-events-none" />
-      <div className="fixed inset-0 bg-[radial-gradient(ellipse_80%_50%_at_80%_20%,rgba(251,146,60,0.1),transparent_50%)] pointer-events-none" />
-      <div className="fixed inset-0 bg-[radial-gradient(ellipse_60%_80%_at_50%_100%,rgba(34,197,94,0.08),transparent_50%)] pointer-events-none" />
+  const [stats, setStats] = useState<PublicStats>(defaultStats);
+  const [activeLegalDoc, setActiveLegalDoc] = useState<LegalDocKey | null>(null);
 
-      <header className="fixed top-0 left-0 right-0 z-50 border-b border-slate-200/80 bg-white/80 backdrop-blur-md shadow-sm">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center max-w-6xl">
-          <Link to="/" className="flex items-center gap-3 group">
-            <div className="w-11 h-11 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/30">
-              <GraduationCap className="w-6 h-6 text-white" />
-            </div>
-            <span className="font-bold text-xl tracking-tight text-slate-800">SCHOLARNERVE</span>
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch(`${API_BASE}/tenant/public-stats`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: Partial<PublicStats> | null) => {
+        if (cancelled || !data) return;
+        setStats({
+          schools: Number(data.schools ?? 0),
+          students: Number(data.students ?? 0),
+          teachersAndStaff: Number(data.teachersAndStaff ?? 0),
+          feesProcessed: Number(data.feesProcessed ?? 0),
+        });
+      })
+      .catch(() => {
+        // Public stats are nice-to-have; the landing page must still render without the API.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!activeLegalDoc) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setActiveLegalDoc(null);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [activeLegalDoc]);
+
+  useEffect(() => {
+    const visitorStorageKey = 'scholarnerve_landing_visitor_id';
+
+    try {
+      let visitorId = localStorage.getItem(visitorStorageKey);
+      if (visitorId) return;
+
+      visitorId =
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+      localStorage.setItem(visitorStorageKey, visitorId);
+      fetch(`${API_BASE}/visit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ visitorId, page: 'landing' }),
+      }).catch(() => {
+        // Visitor tracking should never interrupt the public landing page.
+      });
+    } catch {
+      // localStorage may be blocked; ignore visitor tracking in that browser.
+    }
+  }, []);
+
+  useEffect(() => {
+    const elements = Array.from(document.querySelectorAll<HTMLElement>('.scroll-reveal'));
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.15 }
+    );
+
+    elements.forEach((element) => observer.observe(element));
+    return () => observer.disconnect();
+  }, []);
+
+  const featureCards = [
+    {
+      span: 'md:col-span-5',
+      icon: IconStudent,
+      tag: 'Records',
+      title: 'Student Management',
+      desc: 'Enroll students, manage profiles, guardians, classes, and academic records from one clean workspace.',
+      visual: 'bars',
+    },
+    {
+      span: 'md:col-span-7',
+      icon: IconChart,
+      tag: 'Live intelligence',
+      title: 'Real-time Dashboards',
+      desc: 'School leaders see the state of students, attendance, fees, staff, and reports without spreadsheet chasing.',
+      dark: true,
+      visual: 'stats',
+    },
+    {
+      span: 'md:col-span-4',
+      icon: IconWallet,
+      tag: 'Finance',
+      title: 'Fees & Finance',
+      desc: 'Track collections, issue receipts, monitor balances, record income, and manage expenses.',
+      visual: 'chart',
+    },
+    {
+      span: 'md:col-span-4',
+      icon: IconClock,
+      tag: 'Daily ops',
+      title: 'Attendance',
+      desc: 'Teachers mark attendance quickly while administrators keep clean daily visibility.',
+    },
+    {
+      span: 'md:col-span-4',
+      icon: IconGrade,
+      tag: 'Academics',
+      title: 'Grading',
+      desc: 'Capture assessment scores, build report cards, and release term results to parents.',
+    },
+    {
+      span: 'md:col-span-7',
+      icon: IconPhone,
+      tag: 'Parent connection',
+      title: 'Parent PWA',
+      desc: 'Parents open a no-download portal for receipts, fee status, report cards, attendance alerts, and learning mode.',
+      visual: 'notifications',
+    },
+    {
+      span: 'md:col-span-5',
+      icon: IconShield,
+      tag: 'Trust',
+      title: 'Security & Privacy',
+      desc: 'Tenant-aware architecture keeps each school isolated, with role-based access and audit-ready activity logs.',
+    },
+  ];
+
+  return (
+    <div className="scholar-landing min-h-screen overflow-hidden">
+      <header className="fixed left-0 right-0 top-0 z-[100] h-16 border-b border-[var(--sn-border)] bg-white/90 backdrop-blur-[20px]">
+        <div className="mx-auto flex h-full max-w-[1100px] items-center justify-between px-5">
+          <Link to="/" className="flex items-center gap-3" aria-label="ScholarNerve home">
+            <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-[13px] bg-white shadow-lg shadow-emerald-950/20 ring-1 ring-[var(--sn-border)]">
+              <BrandMark className="h-full w-full" />
+            </span>
+            <span className="scholar-display text-xl font-bold text-[var(--ink)]">ScholarNerve</span>
           </Link>
-          <nav className="flex items-center gap-2">
-            <Link to="/register-school">
-              <Button className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-500/30 border-0 font-semibold px-6">
-                Register School
-              </Button>
-            </Link>
+
+          <nav className="hidden items-center gap-8 text-sm font-medium text-[var(--ink-muted)] md:flex">
+            <a className="transition-colors hover:text-[var(--brand)]" href="#features">Features</a>
+            <a className="transition-colors hover:text-[var(--brand)]" href="#portals">Portals</a>
+            <a className="transition-colors hover:text-[var(--brand)]" href="#about">About</a>
           </nav>
+
+          <Link
+            to="/register-school"
+            className="rounded-[var(--radius-pill)] bg-[var(--ink)] px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-slate-900/15 transition-all hover:-translate-y-0.5 hover:shadow-xl"
+          >
+            Register School →
+          </Link>
         </div>
       </header>
 
-      <main className="relative pt-20">
-        <section className="container mx-auto px-4 pt-12 pb-20 max-w-6xl">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <div>
-              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight mb-6 leading-[1.15] text-slate-900">
-                Everything your school needs
-                <span className="block text-emerald-600">in one place</span>
-              </h1>
-              <p className="text-lg text-slate-600 max-w-xl mb-6 leading-relaxed">
-                SCHOLARNERVE School Management System is a complete platform for schools. Manage students, teachers, classes, fees, and finances in one place—with enrollment, attendance, grading, fee collection, receipts, payroll, and reports.
-              </p>
-              <p className="text-slate-600 max-w-xl mb-8 leading-relaxed">
-                Dedicated <span className="font-medium text-slate-800">Teacher Portal</span> and <span className="font-medium text-slate-800">Parent Portal</span> keep everyone connected. Your school gets a secure, isolated environment with real-time dashboards, custom branding, and dedicated support.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4">
-                <Link to="/register-school">
-                  <Button size="lg" className="w-full sm:w-auto bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-8 py-6 text-lg h-auto rounded-xl shadow-xl shadow-emerald-500/30 border-0 group">
-                    Get Started
-                    <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
-                  </Button>
-                </Link>
-              </div>
+      <main className="pt-16">
+        <section className="scholar-hero-bg relative flex min-h-[calc(100vh-64px)] items-center px-5 pb-16 pt-16">
+          <div className="relative mx-auto w-full max-w-[1100px] text-center">
+            <div className="scholar-fade-up mx-auto mb-6 inline-flex items-center gap-2 rounded-[var(--radius-pill)] border border-[var(--sn-border)] bg-[var(--brand-light)] px-4 py-2 text-sm font-medium text-[var(--brand-dark)]">
+              <span className="scholar-pulse-dot h-2.5 w-2.5 rounded-full bg-[var(--brand)]" />
+              Africa&apos;s Complete School Platform
             </div>
-            <div className="relative">
-              <div className="rounded-2xl overflow-hidden shadow-2xl shadow-slate-200/80 ring-1 ring-slate-200/50">
-                <img
-                  src="https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=800&q=80"
-                  alt="Students in classroom"
-                  className="w-full h-[320px] md:h-[400px] object-cover"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-900/20 to-transparent pointer-events-none" />
-              </div>
-              <div className="absolute -bottom-4 -left-4 bg-white rounded-xl shadow-xl p-4 border border-slate-100">
-                <p className="text-sm font-semibold text-slate-800">500+ Schools</p>
-                <p className="text-xs text-slate-500">Trust SCHOLARNERVE daily</p>
-              </div>
-            </div>
-          </div>
-        </section>
 
-        {/* System overview */}
-        <section className="py-16 relative">
-          <div className="container mx-auto px-4 max-w-6xl">
-            <div className="rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200/60 p-8 md:p-10 shadow-sm">
-              <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-4">
-                SCHOLARNERVE School Management System
-              </h2>
-              <p className="text-slate-600 leading-relaxed mb-4">
-                A complete platform for schools to manage students, teachers, classes, fees, and finances in one place. Includes enrollment, attendance, <strong>grading</strong>, fee collection, receipts, payroll, reports, and custom branding.
-              </p>
-              <p className="text-slate-600 leading-relaxed">
-                Dedicated <strong>Teacher Portal</strong> for classes, grades, and attendance—and <strong>Parent Portal</strong> for fee status and student progress. Your school gets a secure, isolated environment with real-time dashboards and dedicated support.
-              </p>
-            </div>
-          </div>
-        </section>
+            <h1
+              className="scholar-display scholar-fade-up mx-auto max-w-4xl font-extrabold leading-[0.95] text-[var(--ink)]"
+              style={{ animationDelay: '0.1s', fontSize: 'clamp(2.8rem, 5vw, 4.8rem)' }}
+            >
+              Run your school{' '}
+              <span className="relative inline-block text-[var(--brand)]">
+                smarter
+                <span className="absolute -bottom-1 left-1/2 h-1 w-[92%] -translate-x-1/2 rounded-full bg-[var(--brand)]/20" />
+              </span>{' '}
+              — not harder.
+            </h1>
 
-        {/* Features with imagery */}
-        <section className="border-y border-slate-200/80 bg-white py-24 relative">
-          <div className="container mx-auto px-4 max-w-6xl">
-            <h2 className="text-3xl md:text-4xl font-bold text-center mb-4 text-slate-900">
-              Everything you need
-            </h2>
-            <p className="text-slate-600 text-center max-w-2xl mx-auto mb-16">
-              One platform to run your school—admin, teachers, and parents all stay connected.
+            <p
+              className="scholar-fade-up mx-auto mt-6 max-w-[560px] text-[1.1rem] font-light leading-8 text-[var(--ink-muted)]"
+              style={{ animationDelay: '0.2s' }}
+            >
+              ScholarNerve is a school management system for JHS and primary schools in Ghana 
+              covering student records, fee collection, attendance tracking, grading, report cards,
+              and parent communication in one secure platform.
             </p>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {[
-                { icon: Users, title: 'Student Management', desc: 'Enrollment, records, and progress tracking all in one place', img: 'https://images.unsplash.com/photo-1509062522246-3755977927d7?w=400&q=80' },
-                { icon: GraduationCap, title: 'Teacher Portal', desc: 'Dedicated portal for teachers—classes, attendance, grades, and payment history', img: 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=400&q=80' },
-                { icon: UserCircle, title: 'Parent Portal', desc: 'Parents view fee status, receipts, and student progress anytime', img: 'https://images.unsplash.com/photo-1587654780291-39c9404d746b?w=400&q=80' },
-                { icon: Award, title: 'Grading & Reports', desc: 'Record grades, generate report cards, and track academic progress', img: 'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=400&q=80' },
-                { icon: BarChart3, title: 'Fees & Finance', desc: 'Fee structures, payments, receipts, payroll, and financial reports', img: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=400&q=80' },
-                { icon: Shield, title: 'Secure & Private', desc: "Each school's data is completely isolated and encrypted", img: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=400&q=80' },
-                { icon: Zap, title: 'Real-time Dashboards', desc: 'Live insights at a glance—enrollment, fees, attendance', img: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&q=80' },
-                { icon: CheckCircle, title: 'Custom Branding', desc: 'Your logo, colors, and identity across the platform', img: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&q=80' },
-                { icon: BookOpen, title: 'Classes & Timetables', desc: 'Manage classes, assign teachers, track timetables', img: 'https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=400&q=80' },
-              ].map(({ icon: Icon, title, desc, img }) => (
-                <div
-                  key={title}
-                  className="group rounded-2xl overflow-hidden bg-slate-50 border border-slate-200/80 hover:border-emerald-300 hover:shadow-xl hover:shadow-emerald-500/10 transition-all duration-300"
-                >
-                  <div className="h-40 overflow-hidden">
-                    <img src={img} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+
+            <div
+              className="scholar-fade-up mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row"
+              style={{ animationDelay: '0.3s' }}
+            >
+              <Link
+                to="/register-school"
+                className="rounded-[var(--radius-pill)] bg-[var(--brand)] px-7 py-3.5 font-medium text-white shadow-[0_4px_20px_rgba(13,158,117,0.3)] transition-all hover:-translate-y-1 hover:shadow-[0_14px_34px_rgba(13,158,117,0.38)]"
+              >
+                Register Your School →
+              </Link>
+              <a
+                href="#features"
+                className="rounded-[var(--radius-pill)] border border-[var(--sn-border-strong)] px-7 py-3.5 font-medium text-[var(--ink-muted)] transition-all hover:-translate-y-1 hover:border-[var(--brand)] hover:text-[var(--brand)]"
+              >
+                ▷ See how it works
+              </a>
+            </div>
+
+            <div
+              className="scholar-fade-up mt-7 flex items-center justify-center gap-3 text-sm text-[var(--ink-muted)]"
+              style={{ animationDelay: '0.4s' }}
+            >
+              <div className="flex -space-x-2">
+                {['SN', 'GH', 'PW', 'ED'].map((initials, index) => (
+                  <span
+                    key={initials}
+                    className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white text-[10px] font-bold text-white shadow-sm"
+                    style={{ backgroundColor: ['#0D9E75', '#085041', '#1D9E75', '#63C5A3'][index] }}
+                  >
+                    {initials}
+                  </span>
+                ))}
+              </div>
+              <span>
+                Trusted by Light Preparatory, Victory International, and Rosa Gardens School Accra
+              </span>
+            </div>
+
+            <div
+              className="scholar-fade-up mx-auto mt-12 max-w-[1040px] rounded-[28px] border border-[var(--sn-border)] bg-[linear-gradient(180deg,#ffffff,#f3fbf7)] p-3 text-left shadow-[0_34px_90px_rgba(8,80,65,0.16),0_10px_26px_rgba(15,26,20,0.08)]"
+              style={{ animationDelay: '0.5s', animationDuration: '0.8s' }}
+            >
+              <div className="overflow-hidden rounded-[22px] border border-emerald-950/10 bg-white">
+                <div className="flex items-center gap-3 bg-[var(--surface-2)] px-4 py-3">
+                  <div className="flex gap-1.5">
+                    <span className="h-3 w-3 rounded-full bg-[#FF5F57]" />
+                    <span className="h-3 w-3 rounded-full bg-[#FFBD2E]" />
+                    <span className="h-3 w-3 rounded-full bg-[#28C840]" />
                   </div>
-                  <div className="p-6">
-                    <div className="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center mb-4">
-                      <Icon className="w-6 h-6 text-emerald-600" />
+                  <div className="mx-auto flex w-full max-w-[430px] items-center gap-2 rounded-[var(--radius-pill)] bg-white px-4 py-1.5 text-xs text-[var(--ink-subtle)] shadow-inner">
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                      <path d="m14.2 14.2 3 3M8.8 15.4a6.6 6.6 0 1 1 0-13.2 6.6 6.6 0 0 1 0 13.2Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                    </svg>
+                    <span className="truncate">school.scholarnerve.com</span>
+                  </div>
+                </div>
+
+                <div className="relative bg-[var(--surface-3)] p-4 md:p-6">
+                  <img
+                    src="/scholarnerve-dashboard-preview.png"
+                    alt="ScholarNerve dashboard preview"
+                    className="h-auto w-full rounded-[16px] border border-emerald-950/10 object-contain shadow-[0_18px_45px_rgba(15,26,20,0.16)]"
+                  />
+                  <div className="pointer-events-none absolute inset-x-6 bottom-3 h-14 rounded-full bg-[radial-gradient(ellipse_at_center,rgba(8,80,65,0.18),transparent_70%)] blur-2xl" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-white px-5 py-24">
+          <div className="mx-auto grid max-w-[1100px] items-center gap-10 lg:grid-cols-[0.82fr_1.18fr]">
+            <div className="scroll-reveal">
+              <SectionLabel>Financial Analytics</SectionLabel>
+              <h2 className="scholar-display text-4xl font-extrabold leading-tight text-[var(--ink)] md:text-5xl">
+                See every cedi moving through your school.
+              </h2>
+              <p className="mt-5 text-[var(--ink-muted)] leading-7">
+                Track fees collected, other income, expenses, net balances, and monthly trends from a polished finance view built for school administrators.
+              </p>
+              <div className="mt-7 grid gap-3 sm:grid-cols-2">
+                {['Fees collected', 'Other income', 'Expenses trend', 'Outstanding balances'].map((item) => (
+                  <div key={item} className="rounded-2xl border border-[var(--sn-border)] bg-[var(--surface-2)] px-4 py-3 text-sm font-medium text-[var(--ink-muted)]">
+                    <span className="mr-2 inline-block h-2 w-2 rounded-full bg-[var(--brand)]" />
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="scroll-reveal rounded-[28px] border border-[var(--brand-dark)]/20 bg-[var(--ink)] p-3 shadow-[0_30px_80px_rgba(8,80,65,0.24)]" style={{ '--reveal-delay': '120ms' } as React.CSSProperties}>
+              <div className="overflow-hidden rounded-[20px] border border-white/10 bg-[#030b16]">
+                <div className="flex items-center gap-3 border-b border-white/10 bg-white/[0.04] px-4 py-3">
+                  <div className="flex gap-1.5">
+                    <span className="h-3 w-3 rounded-full bg-[#FF5F57]" />
+                    <span className="h-3 w-3 rounded-full bg-[#FFBD2E]" />
+                    <span className="h-3 w-3 rounded-full bg-[#28C840]" />
+                  </div>
+                  <div className="mx-auto flex w-full max-w-[360px] items-center gap-2 rounded-full bg-white/[0.08] px-4 py-1.5 text-xs text-white/55">
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                      <path d="m14.2 14.2 3 3M8.8 15.4a6.6 6.6 0 1 1 0-13.2 6.6 6.6 0 0 1 0 13.2Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                    </svg>
+                    <span className="truncate">school.scholarnerve.com/financial</span>
+                  </div>
+                </div>
+                <img
+                  src="/scholarnerve-financial-preview-dark.png"
+                  alt="ScholarNerve dark financial dashboard preview"
+                  className="h-auto w-full object-cover"
+                />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="features" className="bg-[var(--surface-2)] px-5 py-24">
+          <div className="mx-auto max-w-[1100px]">
+            <div className="mx-auto max-w-2xl text-center">
+              <SectionLabel>Features</SectionLabel>
+              <h2 className="scholar-display text-4xl font-extrabold text-[var(--ink)] md:text-5xl">Everything your school needs, built in.</h2>
+              <p className="mt-4 text-[var(--ink-muted)]">
+                ScholarNerve brings admin, teachers, finance teams, and parents into one polished operating system.
+              </p>
+            </div>
+
+            <div className="mt-14 grid grid-cols-1 gap-4 md:grid-cols-12">
+              {featureCards.map((card, index) => {
+                const Icon = card.icon;
+                return (
+                  <div
+                    key={card.title}
+                    className={`scroll-reveal group rounded-[var(--radius)] border p-8 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_18px_45px_rgba(8,80,65,0.12)] ${card.span} ${
+                      card.dark
+                        ? 'border-transparent bg-[var(--ink)] text-white hover:border-[var(--brand)]'
+                        : 'border-[var(--sn-border)] bg-white text-[var(--ink)] hover:border-[var(--sn-border-strong)]'
+                    }`}
+                    style={{ '--reveal-delay': `${index * 80}ms` } as React.CSSProperties}
+                  >
+                    <div className={`mb-5 flex h-12 w-12 items-center justify-center rounded-2xl ${card.dark ? 'bg-[var(--brand)] text-white' : 'bg-[var(--brand-light)] text-[var(--brand)]'}`}>
+                      <Icon className="h-6 w-6" />
                     </div>
-                    <h3 className="font-semibold text-lg mb-2 text-slate-900">{title}</h3>
-                    <p className="text-slate-600 text-sm leading-relaxed">{desc}</p>
+                    <p className={`mb-2 text-xs font-bold uppercase tracking-[0.18em] ${card.dark ? 'text-[var(--brand-light)]' : 'text-[var(--brand)]'}`}>{card.tag}</p>
+                    <h3 className="scholar-display text-2xl font-bold">{card.title}</h3>
+                    <p className={`mt-3 text-sm leading-6 ${card.dark ? 'text-white/65' : 'text-[var(--ink-muted)]'}`}>{card.desc}</p>
+
+                    {card.visual === 'bars' && (
+                      <div className="mt-7 flex gap-2">
+                        {[30, 62, 45, 78, 52].map((height, i) => (
+                          <span key={height} className="flex-1 rounded-full bg-[var(--brand)]/20 p-1">
+                            <span className="block rounded-full bg-[var(--brand)]" style={{ height: `${height}px` }} />
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {card.visual === 'stats' && (
+                      <div className="mt-7 grid gap-3 sm:grid-cols-3">
+                        {[
+                          ['Students', formatCount(stats.students)],
+                          ['Attendance', 'Tracked'],
+                          ['Fees', formatMoney(stats.feesProcessed)],
+                        ].map(([label, value]) => (
+                          <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.08] p-4">
+                            <p className="text-xs text-white/45">{label}</p>
+                            <p className="scholar-display mt-1 text-xl font-bold text-white">{value}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {card.visual === 'chart' && (
+                      <div className="mt-8 flex h-24 items-end gap-2">
+                        {[35, 58, 44, 76, 62, 88, 54].map((height, i) => (
+                          <span
+                            key={`${height}-${i}`}
+                            className={`w-full rounded-t-xl ${i % 2 ? 'bg-[var(--surface-3)]' : 'bg-[var(--brand)]'}`}
+                            style={{ height: `${height}%` }}
+                          />
+                        ))}
+                      </div>
+                    )}
+                    {card.visual === 'notifications' && (
+                      <div className="mt-7 flex flex-wrap gap-2">
+                        {[
+                          ['Fee Receipt Issued', 'bg-emerald-500'],
+                          ['Term Report Ready', 'bg-purple-500'],
+                          ['1 Absence Recorded', 'bg-amber-500'],
+                        ].map(([label, dot]) => (
+                          <span key={label} className="rounded-[var(--radius-pill)] border border-[var(--sn-border)] bg-[var(--surface-2)] px-3 py-2 text-xs font-medium text-[var(--ink-muted)]">
+                            <span className={`mr-2 inline-block h-2 w-2 rounded-full ${dot}`} />
+                            {label}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
+        <section id="portals" className="bg-white px-5 py-24">
+          <div className="mx-auto max-w-[1100px]">
+            <div className="max-w-2xl">
+              <SectionLabel>Portals</SectionLabel>
+              <h2 className="scholar-display text-4xl font-extrabold text-[var(--ink)] md:text-5xl">One school. Three powerful views.</h2>
+              <p className="mt-4 text-[var(--ink-muted)]">
+                Every role sees exactly what they need, with clean tools for the way schools actually work.
+              </p>
+            </div>
+
+            <div className="mt-12 grid gap-5 md:grid-cols-3">
+              {[
+                {
+                  number: '01',
+                  label: 'Admin Portal',
+                  title: 'Admin Dashboard',
+                  features: ['Full school management', 'Fee collection & payroll', 'Staff management', 'Custom school branding', 'Real-time reports & exports'],
+                },
+                {
+                  number: '02',
+                  label: 'Teacher PWA',
+                  title: 'Teacher PWA',
+                  featured: true,
+                  features: ['Class & timetable management', 'Mark attendance fast', 'Enter & view grades', 'Works offline (PWA)', 'View assigned classes'],
+                },
+                {
+                  number: '03',
+                  label: 'Parent PWA',
+                  title: 'Parent PWA',
+                  features: ['Real-time fee status', 'View receipts & statements', 'Term report cards', 'Attendance notifications', 'Student learning mode'],
+                },
+              ].map((portal, index) => (
+                <div
+                  key={portal.title}
+                  className={`scroll-reveal relative overflow-hidden rounded-[var(--radius)] border bg-white transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_22px_50px_rgba(8,80,65,0.13)] ${
+                    portal.featured ? 'border-[var(--brand)] shadow-[0_18px_55px_rgba(13,158,117,0.12)]' : 'border-[var(--sn-border)]'
+                  }`}
+                  style={{ '--reveal-delay': `${index * 100}ms` } as React.CSSProperties}
+                >
+                  {portal.featured && (
+                    <span className="absolute right-5 top-5 z-10 rounded-[var(--radius-pill)] bg-[var(--brand)] px-3 py-1 text-xs font-bold text-white">
+                      Most Used
+                    </span>
+                  )}
+                  <div className={`p-7 ${portal.featured ? 'bg-[var(--brand-light)]' : 'bg-[var(--surface-2)]'}`}>
+                    <p className="scholar-display text-7xl font-extrabold leading-none text-[rgba(13,158,117,0.10)]">{portal.number}</p>
+                    <p className="mt-5 text-xs font-bold uppercase tracking-[0.22em] text-[var(--brand)]">{portal.label}</p>
+                    <h3 className="scholar-display mt-2 text-[1.3rem] font-bold text-[var(--ink)]">{portal.title}</h3>
+                  </div>
+                  <ul className="space-y-4 p-7">
+                    {portal.features.map((feature) => (
+                      <CheckItem key={feature}>{feature}</CheckItem>
+                    ))}
+                  </ul>
                 </div>
               ))}
             </div>
           </div>
         </section>
 
-        {/* CTA with image */}
-        <section className="py-24 relative">
-          <div className="container mx-auto px-4 max-w-6xl">
-            <div className="rounded-3xl overflow-hidden bg-gradient-to-br from-emerald-600 to-teal-700 p-12 md:p-16 relative">
-              <img
-                src="https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?w=1200&q=80"
-                alt=""
-                className="absolute inset-0 w-full h-full object-cover opacity-20"
-              />
-              <div className="relative text-center max-w-2xl mx-auto">
-                <h2 className="text-3xl md:text-4xl font-bold mb-4 text-white">
-                  Ready to get started?
-                </h2>
-                <p className="text-emerald-100 mb-8 text-lg">
-                  Register your school today. New schools are reviewed and receive access within 24 hours.
-                </p>
-                <Link to="/register-school">
-                  <Button size="lg" className="bg-white text-emerald-700 hover:bg-emerald-50 px-10 py-6 text-lg h-auto rounded-xl font-semibold shadow-xl">
-                    Register Your School
-                  </Button>
-                </Link>
-              </div>
+        <section className="bg-[var(--surface-2)] px-5 py-24">
+          <div className="mx-auto max-w-[1100px]">
+            <div className="mx-auto max-w-2xl text-center">
+              <SectionLabel>Testimonials</SectionLabel>
+              <h2 className="scholar-display text-4xl font-extrabold text-[var(--ink)] md:text-5xl">Schools already trust the ScholarNerve experience.</h2>
+              <p className="mt-4 text-[var(--ink-muted)]">
+                Real school workflows, premium support, and a platform designed around Ghanaian school operations.
+              </p>
+            </div>
+
+            <div className="mt-12 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+              {[
+                {
+                  school: 'Light Preparatory School',
+                  role: 'School Leadership',
+                  quote:
+                    'ScholarNerve has completely streamlined how we run Light Preparatory. Admissions, student records, fees, and daily administration are now managed in one reliable platform our team can fully depend on. It has brought real structure, clarity, and efficiency to our operations. Parents love the app.',
+                  image: '/light-preparatory-testimonial.png',
+                },
+                {
+                  school: 'Victory International',
+                  role: 'School Management Team',
+                  quote:
+                    'The parent and teacher portals make communication easier, while the dashboard keeps leadership informed without waiting for manual updates.',
+                  visual: 'gradient',
+                },
+                {
+                  school: 'Rosa Gardens School Accra',
+                  role: 'Administrator',
+                  quote:
+                    'ScholarNerve gives our team a cleaner way to manage reports, fees, student records, and daily school operations from one secure dashboard.',
+                  visual: 'lines',
+                },
+              ].map((item, index) => (
+                <article
+                  key={item.school}
+                  className="scroll-reveal overflow-hidden rounded-[28px] border border-[var(--sn-border)] bg-white shadow-[0_22px_60px_rgba(8,80,65,0.10)] transition-all duration-300 hover:-translate-y-1 hover:border-[var(--sn-border-strong)]"
+                  style={{ '--reveal-delay': `${index * 120}ms` } as React.CSSProperties}
+                >
+                  <div className="flex min-h-full flex-col">
+                    <div className="relative flex h-44 items-center justify-center overflow-hidden bg-[var(--brand-light)] p-2 sm:h-52">
+                      {'image' in item ? (
+                        <img src={item.image} alt={item.school} className="max-h-full w-full rounded-2xl object-contain" />
+                      ) : item.visual === 'gradient' ? (
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_25%_20%,rgba(225,245,238,0.95),transparent_34%),radial-gradient(circle_at_80%_18%,rgba(13,158,117,0.45),transparent_30%),linear-gradient(135deg,#085041,#0D9E75_45%,#E1F5EE)]" />
+                      ) : (
+                        <div className="absolute inset-0 bg-[linear-gradient(135deg,#f6faf8,#e1f5ee)]">
+                          <div className="absolute inset-0 opacity-80 [background-image:repeating-linear-gradient(135deg,rgba(13,158,117,0.0)_0px,rgba(13,158,117,0.0)_18px,rgba(13,158,117,0.28)_19px,rgba(13,158,117,0.28)_21px)]" />
+                          <div className="absolute -left-12 top-8 h-32 w-32 rounded-full bg-[var(--brand)]/20 blur-2xl" />
+                          <div className="absolute -right-10 bottom-5 h-36 w-36 rounded-full bg-[var(--brand-dark)]/15 blur-2xl" />
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-[var(--ink)]/25 to-transparent" />
+                    </div>
+                    <div className="flex flex-1 flex-col p-5 md:p-6">
+                      <div className="mb-4 flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--brand-light)] text-xl text-[var(--brand)] md:mb-5 md:h-11 md:w-11 md:rounded-2xl md:text-2xl">
+                        &ldquo;
+                      </div>
+                      <p className="text-sm font-light leading-6 text-[var(--ink-muted)] md:text-base md:leading-7">{item.quote}</p>
+                      <div className="mt-auto border-t border-[var(--sn-border)] pt-4 md:pt-5">
+                        <p className="scholar-display text-lg font-bold text-[var(--ink)]">{item.school}</p>
+                        <p className="mt-1 text-sm text-[var(--ink-subtle)]">{item.role}</p>
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="about" className="relative overflow-hidden bg-[var(--ink)] px-5 py-24 text-center">
+          <div className="absolute left-1/2 top-0 h-96 w-96 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--brand)]/20 blur-3xl" />
+          <div className="absolute bottom-0 right-0 h-80 w-80 translate-x-1/3 translate-y-1/3 rounded-full bg-[var(--brand)]/15 blur-3xl" />
+          <div className="scroll-reveal relative mx-auto max-w-[760px]">
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--brand)]">Get started in 24 hours</p>
+            <h2 className="scholar-display mt-4 font-extrabold leading-tight text-white" style={{ fontSize: 'clamp(2.2rem, 5vw, 3.5rem)' }}>
+              Your school deserves better tools.
+            </h2>
+            <p className="mx-auto mt-5 max-w-[620px] text-lg font-light leading-8 text-white/55">
+              Register today. We review every application and have your school set up and running within 24 hours.
+            </p>
+            <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+              <Link
+                to="/register-school"
+                className="rounded-[var(--radius-pill)] bg-white px-7 py-3.5 font-medium text-[var(--ink)] shadow-[0_18px_45px_rgba(255,255,255,0.12)] transition-all hover:-translate-y-1"
+              >
+                Register Your School →
+              </Link>
+              <a
+                href="tel:+233506741322"
+                className="rounded-[var(--radius-pill)] border border-white/30 px-7 py-3.5 font-medium text-white/80 transition-all hover:-translate-y-1 hover:border-white/60 hover:text-white"
+              >
+                Talk to us first
+              </a>
             </div>
           </div>
         </section>
       </main>
 
-      <footer className="relative border-t border-slate-200 bg-white py-12">
-        <div className="container mx-auto px-4 max-w-6xl">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-6 sm:gap-10 flex-wrap">
-              <a
-                href="mailto:scholarnerve@gmail.com"
-                className="flex items-center gap-3 text-slate-600 hover:text-emerald-600 transition-colors"
-              >
-                <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0 shadow-sm">
-                  <Mail className="w-5 h-5 text-emerald-600" />
-                </div>
-                <div className="text-left">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">Email</p>
-                  <p className="font-semibold text-slate-800 text-sm md:text-base">scholarnerve@gmail.com</p>
-                </div>
-              </a>
-              <a
-                href="tel:+233531932399"
-                className="flex items-center gap-3 text-slate-600 hover:text-emerald-600 transition-colors"
-              >
-                <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0 shadow-sm">
-                  <Phone className="w-5 h-5 text-emerald-600" />
-                </div>
-                <div className="text-left">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">Support</p>
-                  <p className="font-semibold text-slate-800 text-sm md:text-base">+233 53 193 2399</p>
-                </div>
-              </a>
-              <a
-                href="tel:+233557609106"
-                className="flex items-center gap-3 text-slate-600 hover:text-emerald-600 transition-colors"
-              >
-                <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0 shadow-sm">
-                  <Phone className="w-5 h-5 text-emerald-600" />
-                </div>
-                <div className="text-left">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">Direct</p>
-                  <p className="font-semibold text-slate-800 text-sm md:text-base">+233 55 760 9106</p>
-                </div>
-              </a>
-            </div>
-            <div className="text-center md:text-right">
-              <p className="text-slate-500 text-sm">
-                © {new Date().getFullYear()} SCHOLARNERVE. All rights reserved.
+      <footer className="bg-[var(--ink)] px-5 pb-8 pt-16 text-white">
+        <div className="mx-auto max-w-[1100px]">
+          <div className="grid gap-10 border-t border-white/[0.08] pt-10 sm:grid-cols-2 lg:grid-cols-3">
+            <div>
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-[13px] bg-white ring-1 ring-white/20">
+                  <BrandMark className="h-full w-full" />
+                </span>
+                <span className="scholar-display text-xl font-bold">ScholarNerve</span>
+              </div>
+              <p className="mt-4 max-w-xs text-sm leading-6 text-white/55">
+                Africa&apos;s complete school management platform, built for Ghana and beyond.
               </p>
+            </div>
+
+            <div>
+              <p className="mb-4 text-sm font-bold text-white">Legal</p>
+              <div className="space-y-3">
+                <button type="button" onClick={() => setActiveLegalDoc('privacy')} className="block text-left text-sm text-white/50 transition-colors hover:text-white">
+                  Privacy Policy
+                </button>
+                <button type="button" onClick={() => setActiveLegalDoc('terms')} className="block text-left text-sm text-white/50 transition-colors hover:text-white">
+                  Terms of Service
+                </button>
+              </div>
+            </div>
+            <div>
+              <p className="mb-4 text-sm font-bold text-white">Support</p>
+              <div className="space-y-3">
+                <a href="tel:+233506741322" className="block text-sm text-white/50 transition-colors hover:text-white">
+                  Contact Us
+                </a>
+                <a href="#" className="block text-sm text-white/50 transition-colors hover:text-white">
+                  Status
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-10 flex flex-col gap-4 border-t border-white/[0.08] pt-6 text-sm text-white/50 md:flex-row md:items-center md:justify-between">
+            <p>© {new Date().getFullYear()} ScholarNerve. All rights reserved.</p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
+              <a href="mailto:scholarnerve@gmail.com" className="flex items-center gap-2 hover:text-white">
+                <IconMail className="h-4 w-4" />
+                scholarnerve@gmail.com
+              </a>
+              <a href="https://wa.me/233531932399" target="_blank" rel="noreferrer" className="flex items-center gap-2 hover:text-white">
+                <IconCall className="h-4 w-4" />
+                WhatsApp: 053 193 2399
+              </a>
+              <a href="tel:+233506741322/tel:+233 55 760 9106" className="flex items-center gap-2 hover:text-white">
+                <IconCall className="h-4 w-4" />
+                Call: 050 674 1322
+              </a>
             </div>
           </div>
         </div>
       </footer>
+      {activeLegalDoc && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-[var(--ink)]/70 px-4 py-6 backdrop-blur-xl" role="dialog" aria-modal="true" aria-labelledby="legal-modal-title">
+          <div className="relative flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-[28px] border border-white/20 bg-white shadow-[0_34px_100px_rgba(0,0,0,0.35)]">
+            <div className="relative overflow-hidden bg-[var(--ink)] px-6 pb-8 pt-8 text-white md:px-8 md:pt-9">
+              <div className="absolute right-0 top-0 h-44 w-44 translate-x-1/3 -translate-y-1/3 rounded-full bg-[var(--brand)]/30 blur-3xl" />
+              <div className="relative flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--brand-light)]">{legalDocuments[activeLegalDoc].eyebrow}</p>
+                  <h2 id="legal-modal-title" className="scholar-display mt-3 pb-1 text-3xl font-extrabold leading-[1.12] md:text-4xl">
+                    {legalDocuments[activeLegalDoc].title}
+                  </h2>
+                  <p className="mt-2 text-sm text-white/55">Effective Date: {legalDocuments[activeLegalDoc].effectiveDate}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveLegalDoc(null)}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white transition-colors hover:bg-white/20"
+                  aria-label="Close legal document"
+                >
+                  X
+                </button>
+              </div>
+            </div>
+
+            <div className="overflow-y-auto px-6 py-6 md:px-8">
+              <div className="space-y-4 rounded-2xl border border-[var(--sn-border)] bg-[var(--surface-2)] p-5 text-sm leading-7 text-[var(--ink-muted)]">
+                {legalDocuments[activeLegalDoc].intro.map((paragraph) => (
+                  <p key={paragraph}>{paragraph}</p>
+                ))}
+              </div>
+
+              <div className="mt-6 space-y-5">
+                {legalDocuments[activeLegalDoc].sections.map((section) => (
+                  <section key={section.title} className="rounded-2xl border border-[var(--sn-border)] bg-white p-5">
+                    <h3 className="scholar-display text-xl font-bold text-[var(--ink)]">{section.title}</h3>
+                    {section.body && <p className="mt-3 text-sm leading-7 text-[var(--ink-muted)]">{section.body}</p>}
+                    {section.items && (
+                      <ul className="mt-4 space-y-2 text-sm leading-6 text-[var(--ink-muted)]">
+                        {section.items.map((item) => (
+                          <li key={item} className="flex gap-3">
+                            <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brand)]" />
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

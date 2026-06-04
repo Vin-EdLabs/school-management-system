@@ -287,7 +287,12 @@ const PayrollDetailModal: React.FC<Props> = ({
                     <p className="text-sm font-medium">Enable SSNIT</p>
                     <p className="text-xs text-muted-foreground">Uses default % on gross for this month</p>
                   </div>
-                  <Switch checked={ssnitOn} onCheckedChange={(v) => toggleSsnit(v)} disabled={!!fullyPaid} />
+                  <Switch
+                    checked={ssnitOn}
+                    onCheckedChange={(v) => toggleSsnit(v)}
+                    disabled={!!fullyPaid}
+                    className="data-[state=checked]:!bg-emerald-500 data-[state=unchecked]:!bg-red-500"
+                  />
                 </div>
 
                 <Separator />

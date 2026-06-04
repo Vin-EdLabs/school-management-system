@@ -132,11 +132,15 @@ export function enrichAuditLogRow(row: Record<string, unknown>): Record<string, 
       ? String(row.user_full_name).trim()
       : username;
   const details = parseAuditDetails(row.details);
+  const beforeValues = parseAuditDetails(row.before_values);
+  const afterValues = parseAuditDetails(row.after_values);
   const base: Record<string, unknown> = { ...row, details: details ?? row.details };
   const moduleRaw = row.module != null ? String(row.module).trim() : '';
   const summaryRaw = row.summary != null ? String(row.summary).trim() : '';
   return {
     ...base,
+    before_values: beforeValues ?? row.before_values,
+    after_values: afterValues ?? row.after_values,
     module: moduleRaw || inferAuditModule(row),
     summary: summaryRaw || inferAuditSummary(base, full),
   };

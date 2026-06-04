@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -14,6 +14,29 @@ const SuperAdminLoginForm = () => {
   const [password, setPassword] = useState('');
   const [formError, setFormError] = useState('');
   const { login } = useAuth();
+
+  useEffect(() => {
+    try {
+      const key = 'scholarnerve_superadmin_visitor_id';
+      let visitorId = localStorage.getItem(key);
+      if (!visitorId) {
+        visitorId =
+          typeof crypto !== 'undefined' && 'randomUUID' in crypto
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        localStorage.setItem(key, visitorId);
+      }
+
+      const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+      fetch(`${base}/audit/super-admin/portal-visit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ visitorId, path: window.location.pathname }),
+      }).catch(() => undefined);
+    } catch {
+      // Audit logging must not block access to the login screen.
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

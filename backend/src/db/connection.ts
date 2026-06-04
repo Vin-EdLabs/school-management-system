@@ -80,6 +80,17 @@ const runMigrations = async () => {
       )
     `);
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS visits (
+        id SERIAL PRIMARY KEY,
+        visitor_id VARCHAR(120) NOT NULL UNIQUE,
+        page VARCHAR(50) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_visits_visitor_id ON visits(visitor_id)`).catch(() => { });
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_visits_page ON visits(page)`).catch(() => { });
+
     // Create tenants (schools) table - multi-tenant SaaS
     await client.query(`
       CREATE TABLE IF NOT EXISTS tenants (
@@ -170,6 +181,7 @@ const runMigrations = async () => {
       )
     `);
     await client.query(`ALTER TABLE school_settings ALTER COLUMN logo_url TYPE TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS email VARCHAR(255)`).catch(() => { });
 
     // Create academic_terms table
     await client.query(`
@@ -432,6 +444,16 @@ const runMigrations = async () => {
     await client.query(`ALTER TABLE income ADD COLUMN IF NOT EXISTS tenant_id INTEGER`).catch(() => { });
     await client.query(`ALTER TABLE income ADD COLUMN IF NOT EXISTS income_date TIMESTAMP`).catch(() => { });
     await client.query(`UPDATE income SET income_date = created_at WHERE income_date IS NULL AND created_at IS NOT NULL`).catch(() => { });
+    // Legacy DBs may have an older income table without these columns (CREATE IF NOT EXISTS skips them)
+    await client.query(`ALTER TABLE income ADD COLUMN IF NOT EXISTS source VARCHAR(255)`).catch(() => { });
+    await client.query(`ALTER TABLE income ADD COLUMN IF NOT EXISTS amount DECIMAL(10, 2)`).catch(() => { });
+    await client.query(`ALTER TABLE income ADD COLUMN IF NOT EXISTS payment_method VARCHAR(100)`).catch(() => { });
+    await client.query(`ALTER TABLE income ADD COLUMN IF NOT EXISTS received_by VARCHAR(255)`).catch(() => { });
+    await client.query(`ALTER TABLE income ADD COLUMN IF NOT EXISTS notes TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE income ADD COLUMN IF NOT EXISTS description TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE income ADD COLUMN IF NOT EXISTS category VARCHAR(100)`).catch(() => { });
+    await client.query(`UPDATE income SET source = title WHERE source IS NULL AND title IS NOT NULL`).catch(() => { });
+    await client.query(`UPDATE income SET source = description WHERE source IS NULL AND description IS NOT NULL`).catch(() => { });
 
     // Create expenses table
     await client.query(`
@@ -920,6 +942,8 @@ const runMigrations = async () => {
         entity_type VARCHAR(100),
         entity_id INTEGER,
         details JSONB,
+        before_values JSONB,
+        after_values JSONB,
         ip_address VARCHAR(45),
         user_agent TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -941,6 +965,7 @@ const runMigrations = async () => {
       CREATE INDEX IF NOT EXISTS idx_expenses_tenant ON expenses(tenant_id);
       CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant ON audit_logs(tenant_id);
       CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_created ON audit_logs(tenant_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_user_created ON audit_logs(user_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_audit_logs_module ON audit_logs(tenant_id, module);
       CREATE INDEX IF NOT EXISTS idx_student_arrears_tenant ON student_arrears(tenant_id);
       CREATE INDEX IF NOT EXISTS idx_student_arrears_student ON student_arrears(student_id);
@@ -956,6 +981,8 @@ const runMigrations = async () => {
     await client.query(`ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS status VARCHAR(32) NOT NULL DEFAULT 'success'`).catch(() => { });
     await client.query(`ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS summary TEXT`).catch(() => { });
     await client.query(`ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS user_role VARCHAR(64)`).catch(() => { });
+    await client.query(`ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS before_values JSONB`).catch(() => { });
+    await client.query(`ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS after_values JSONB`).catch(() => { });
     await client.query(`UPDATE audit_logs SET status = 'success' WHERE status IS NULL`).catch(() => { });
 
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER NOT NULL DEFAULT 0`).catch(() => { });
@@ -992,6 +1019,7 @@ const runMigrations = async () => {
     await client.query(`ALTER TABLE school_registrations ADD COLUMN IF NOT EXISTS internal_note TEXT`).catch(() => { });
     await client.query(`ALTER TABLE school_registrations ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id) ON DELETE SET NULL`).catch(() => { });
     await client.query(`ALTER TABLE school_registrations ADD COLUMN IF NOT EXISTS generated_password VARCHAR(255)`).catch(() => { });
+    await client.query(`ALTER TABLE school_registrations ADD COLUMN IF NOT EXISTS generated_username VARCHAR(100)`).catch(() => { });
 
     // users: full_name and phone for super admins
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name VARCHAR(255)`).catch(() => { });

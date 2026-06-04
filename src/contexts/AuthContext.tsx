@@ -70,9 +70,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (username: string, password: string, role: UserRole, tenantId?: number): Promise<boolean> => {
     try {
-      const payload: { username: string; password: string; tenantId?: number } = {
+      const payload: { username: string; password: string; role?: UserRole; tenantId?: number } = {
         username,
         password,
+        role,
       };
       if (tenantId !== undefined && tenantId !== null && !isNaN(tenantId)) {
         payload.tenantId = Number(tenantId);

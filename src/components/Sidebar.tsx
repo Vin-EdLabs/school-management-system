@@ -143,10 +143,10 @@ const MenuSection: React.FC<{
                   }}
                   tooltip={item.label}
                   className={cn(
-                    "relative rounded-xl mx-auto w-[calc(100%-12px)] h-9 text-sidebar-foreground/70 transition-all duration-300 group-data-[collapsible=icon]:w-9 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:mx-0",
+                    "relative rounded-xl mx-auto w-[calc(100%-12px)] h-10 text-emerald-50/72 transition-all duration-300 group-data-[collapsible=icon]:w-9 group-data-[collapsible=icon]:h-9 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:mx-0 dark:h-9 dark:text-sidebar-foreground/70",
                     activeModule === item.id
-                      ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-lg shadow-sidebar-primary/20"
-                      : "hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                      ? "bg-gradient-to-r from-emerald-500 to-green-500 text-white shadow-lg shadow-emerald-400/25 ring-1 ring-white/15 before:absolute before:left-1 before:top-1/2 before:h-5 before:w-1 before:-translate-y-1/2 before:rounded-full before:bg-white/80 dark:bg-sidebar-primary dark:bg-none dark:text-sidebar-primary-foreground dark:shadow-sidebar-primary/20 dark:before:hidden"
+                      : "hover:bg-white/10 hover:text-white dark:hover:bg-sidebar-accent dark:hover:text-sidebar-foreground"
                   )}
                 >
                   <span className="relative inline-flex shrink-0">
@@ -157,7 +157,7 @@ const MenuSection: React.FC<{
                       </span>
                     )}
                   </span>
-                  <span className="font-bold text-sm group-data-[collapsible=icon]:hidden ml-3 flex min-w-0 flex-1 items-center gap-1.5 text-left">
+                  <span className="font-semibold text-sm group-data-[collapsible=icon]:hidden ml-3 flex min-w-0 flex-1 items-center gap-1.5 text-left">
                     <span className="truncate">{item.label}</span>
                     {unread > 0 && (
                       <span className="shrink-0 rounded-full bg-destructive px-1.5 py-0 text-[10px] font-bold leading-5 text-destructive-foreground">
@@ -166,7 +166,7 @@ const MenuSection: React.FC<{
                     )}
                   </span>
                   {item.badge && !(activeModule === item.id) && (
-                    <Badge variant="secondary" className="ml-auto text-[9px] px-1.5 py-0 bg-sidebar-primary/20 text-sidebar-primary border-0 group-data-[collapsible=icon]:hidden">
+                    <Badge variant="secondary" className="ml-auto text-[9px] px-1.5 py-0 bg-emerald-300/20 text-emerald-50 border-0 group-data-[collapsible=icon]:hidden dark:bg-sidebar-primary/20 dark:text-sidebar-primary">
                       {item.badge}
                     </Badge>
                   )}
@@ -236,10 +236,10 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
     <Sidebar
       variant="sidebar"
       collapsible="icon"
-      className="border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl overflow-hidden print:hidden"
+      className="border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl shadow-emerald-950/20 overflow-hidden print:hidden"
     >
-      <SidebarHeader className="h-20 flex items-center justify-center border-b border-sidebar-border mb-4 px-2 overflow-hidden">
-        <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-xl shadow-indigo-500/20 shrink-0 overflow-hidden">
+      <SidebarHeader className="min-h-24 flex items-center justify-center border-b border-white/10 mb-3 px-3 py-4 overflow-hidden bg-[radial-gradient(circle_at_top,rgba(34,197,94,0.22),transparent_65%)] dark:min-h-24 dark:border-sidebar-border dark:bg-none">
+        <div className="w-11 h-11 rounded-2xl bg-white/10 ring-1 ring-white/15 flex items-center justify-center shadow-xl shadow-emerald-950/25 shrink-0 overflow-hidden backdrop-blur dark:bg-gradient-to-br dark:from-indigo-500 dark:to-blue-600 dark:ring-0 dark:shadow-indigo-500/20">
           {school?.logo_url ? (
             <img
               src={resolveLogoUrl(school.logo_url) || ''}
@@ -253,13 +253,14 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
           ) : null}
           <GraduationCap className={cn("w-6 h-6 text-white fallback-icon", school?.logo_url ? "hidden" : "")} />
         </div>
-        <div className="ml-3 overflow-hidden transition-all duration-300 group-data-[collapsible=icon]:hidden group-data-[collapsible=icon]:w-0 group-data-[collapsible=icon]:opacity-0">
-          <h2 className="text-sm font-black text-sidebar-foreground uppercase tracking-tighter truncate">{school?.name || 'EDUNERVE'}</h2>
-          <p className="text-[9px] text-sidebar-foreground/50 font-bold tracking-widest uppercase truncate opacity-70">Management System</p>
+        <div className="ml-3 min-w-0 flex-1 overflow-visible transition-all duration-300 group-data-[collapsible=icon]:hidden group-data-[collapsible=icon]:w-0 group-data-[collapsible=icon]:opacity-0">
+          <h2 className="break-words text-sm font-black leading-tight text-white uppercase tracking-tight dark:text-sidebar-foreground">
+            {school?.name || 'EDUNERVE'}
+          </h2>
         </div>
       </SidebarHeader>
 
-      <SidebarContent className="flex-1 min-h-0 overflow-y-auto scrollbar-hide overscroll-contain px-1 py-4 gap-4 bg-transparent outline-none border-none">
+      <SidebarContent className="flex-1 min-h-0 overflow-y-auto scrollbar-hide overscroll-contain px-1 py-3 gap-3 bg-transparent outline-none border-none">
         <MenuSection items={menuItems.dashboard} label="Overview" activeModule={activeModule} setActiveModule={setActiveModule} />
         <MenuSection items={menuItems.academic} label="Academic Central" activeModule={activeModule} setActiveModule={setActiveModule} />
         <MenuSection items={menuItems.teaching} label="Teaching Room" activeModule={activeModule} setActiveModule={setActiveModule} />
@@ -283,7 +284,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
         <MenuSection items={menuItems.system} label="System" activeModule={activeModule} setActiveModule={setActiveModule} />
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-sidebar-border p-3 space-y-4 bg-sidebar-accent/50">
+      <SidebarFooter className="border-t border-white/10 p-3 space-y-4 bg-black/10 dark:border-sidebar-border dark:bg-sidebar-accent/50">
         <SidebarMenu>
           <SidebarMenuItem className="flex justify-center">
             <SidebarMenuButton

@@ -5,10 +5,40 @@
 import express from 'express';
 import { resolveTenantById, resolveTenantBySlug } from '../services/tenantResolver.js';
 import { resolveTenant, TenantRequest } from '../middleware/tenantResolver.js';
+import { query } from '../db/connection.js';
 
 const router = express.Router();
 
 router.use(resolveTenant);
+
+// Public aggregate stats for the marketing site. Keep this to non-sensitive counts only.
+router.get('/public-stats', async (_req, res) => {
+  try {
+    const [
+      schools,
+      students,
+      teachers,
+      staff,
+      payments,
+    ] = await Promise.all([
+      query(`SELECT COUNT(*)::int AS count FROM tenants WHERE is_active = true`).catch(() => ({ rows: [{ count: 0 }] })),
+      query(`SELECT COUNT(*)::int AS count FROM students`).catch(() => ({ rows: [{ count: 0 }] })),
+      query(`SELECT COUNT(*)::int AS count FROM teachers`).catch(() => ({ rows: [{ count: 0 }] })),
+      query(`SELECT COUNT(*)::int AS count FROM payroll_other_staff`).catch(() => ({ rows: [{ count: 0 }] })),
+      query(`SELECT COALESCE(SUM(amount), 0)::numeric AS total FROM payments`).catch(() => ({ rows: [{ total: 0 }] })),
+    ]);
+
+    res.json({
+      schools: Number(schools.rows[0]?.count ?? 0),
+      students: Number(students.rows[0]?.count ?? 0),
+      teachersAndStaff: Number(teachers.rows[0]?.count ?? 0) + Number(staff.rows[0]?.count ?? 0),
+      feesProcessed: Number(payments.rows[0]?.total ?? 0),
+    });
+  } catch (error) {
+    console.error('Public stats error:', error);
+    res.status(500).json({ error: 'Failed to load public stats' });
+  }
+});
 
 // Resolve tenant - returns tenant info for branding (public)
 router.get('/resolve', async (req: TenantRequest, res) => {

@@ -3,7 +3,7 @@ import {
   GraduationCap, LogOut, BookOpen, Trophy, CreditCard,
   CalendarCheck, Eye, EyeOff, Lock, ChevronRight, Medal,
   TrendingUp, CheckCircle2, XCircle, Clock, AlertTriangle,
-  BadgeCheck, Home, RefreshCw, Activity, Bell, Download, X,   MessageSquare, Send, Phone, Mail, Plus, Paperclip,
+  Home, RefreshCw, Activity, Bell, X, MessageSquare, Send, Phone, Mail, Plus, Paperclip,
 } from 'lucide-react';
 import ReceiptPrinter from '@/components/common/ReceiptPrinter';
 import { parseReceiptSnapshot, termsMatch } from '@/utils/feeCalculations';
@@ -883,7 +883,6 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   // Resolved school logo — from student record (richer) or prop fallback
   const resolvedLogo = resolveMediaUrl(student?.school_logo_url || schoolLogoUrl);
   const unreadNotifCount = appNotifications.filter(n => !n.read).length;
-  const premiumHeaderGradient = `linear-gradient(120deg, #0b1220 0%, ${brandPrimary} 52%, ${brandSecondary} 100%)`;
   const premiumLoginGradient = `linear-gradient(140deg, #050816 0%, #111a2f 38%, ${brandPrimary} 72%, ${brandSecondary} 100%)`;
 
   // Resolved student photo
@@ -1146,6 +1145,53 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     { key: 'attendance', icon: <CalendarCheck className="w-4 h-4" />, label: 'Attendance' },
     { key: 'desk', icon: <MessageSquare className="w-4 h-4" />, label: 'Parent Desk' },
   ];
+  const mobileTabs = tabs.filter((t) => t.key !== 'attendance');
+  const greeting = (() => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good Morning 👋';
+    if (hour < 17) return 'Good Afternoon 👋';
+    return 'Good Evening 👋';
+  })();
+  const studentFullName = `${student.first_name} ${student.last_name}`;
+  const scholarshipLabel = student.is_beneficiary
+    ? student.beneficiary_type || 'Full Scholarship'
+    : 'Private Student';
+  const quickActions: {
+    key: Tab;
+    label: string;
+    description: string;
+    icon: React.ReactNode;
+    tone: string;
+  }[] = [
+    {
+      key: 'grades',
+      label: 'Grades',
+      description: 'View academic performance',
+      icon: <BookOpen className="w-6 h-6" />,
+      tone: 'from-violet-500/20 to-purple-500/10 text-violet-600',
+    },
+    {
+      key: 'position',
+      label: 'Position',
+      description: 'Check class & general position',
+      icon: <Trophy className="w-6 h-6" />,
+      tone: 'from-fuchsia-500/20 to-violet-500/10 text-purple-600',
+    },
+    {
+      key: 'finance',
+      label: 'Finance',
+      description: 'View fees & payments',
+      icon: <CreditCard className="w-6 h-6" />,
+      tone: 'from-emerald-500/20 to-teal-500/10 text-emerald-600',
+    },
+    {
+      key: 'attendance',
+      label: 'Attendance',
+      description: 'Track attendance records',
+      icon: <CalendarCheck className="w-6 h-6" />,
+      tone: 'from-sky-500/20 to-indigo-500/10 text-blue-600',
+    },
+  ];
 
   const openStudentMode = () => {
     setStudentModeEntering(true);
@@ -1179,7 +1225,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen overflow-x-hidden bg-[#F8F7FF] bg-[radial-gradient(circle_at_top_left,rgba(192,132,252,0.34),transparent_32%),radial-gradient(circle_at_top_right,rgba(236,72,153,0.20),transparent_28%),linear-gradient(180deg,#FFFFFF_0%,#F8F7FF_45%,#F4EEFF_100%)] text-slate-950">
       {newQuizPopup && (
         <div className="fixed inset-0 z-[90] bg-slate-900/45 backdrop-blur-[1px] flex items-center justify-center p-4">
           <div className="w-full max-w-md rounded-2xl bg-white border shadow-2xl p-5">
@@ -1211,94 +1257,61 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
           </div>
         </div>
       )}
-      {/* ── Top nav ── */}
-      <header className="shadow-lg sticky top-0 z-30 border-b border-white/10" style={{ background: premiumHeaderGradient }}>
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            {/* School logo */}
-            <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 bg-white/10 flex items-center justify-center">
+      {/* ── Native mobile-inspired top bar ── */}
+      <header className="fixed inset-x-0 top-0 z-[100] border-b border-white/40 bg-white/85 shadow-sm backdrop-blur-2xl supports-[backdrop-filter]:bg-white/75">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-5 py-4 sm:px-6">
+          <button
+            onClick={() => setShowSwitcher(true)}
+            className="flex min-w-0 items-center gap-3 rounded-3xl text-left transition-transform active:scale-[0.98]"
+          >
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/70 bg-white/70 shadow-[0_12px_35px_rgba(139,92,246,0.18)] backdrop-blur-xl">
               {resolvedLogo
-                ? <img src={resolvedLogo} alt="" className="w-full h-full object-contain p-0.5" />
-                : <GraduationCap className="w-4 h-4 text-white" />}
+                ? <img src={resolvedLogo} alt="" className="h-full w-full object-contain p-1" />
+                : <GraduationCap className="h-5 w-5 text-violet-600" />}
             </div>
-            {/* Student profile switcher trigger */}
-            <button
-              onClick={() => setShowSwitcher(true)}
-              className="flex items-center gap-3 min-w-0 hover:bg-white/5 p-1 rounded-xl transition-colors text-left"
-            >
-              {/* Student photo thumbnail */}
-              <div
-                className={`w-8 h-8 rounded-full overflow-hidden shrink-0 border-2 border-purple-400/60 flex items-center justify-center text-xs font-bold text-white ${studentPhotoUrl ? 'bg-white' : 'bg-gradient-to-br from-purple-400 to-pink-400'}`}
-              >
-                {studentPhotoUrl
-                  ? <img src={studentPhotoUrl} alt="" className="w-full h-full object-cover" />
-                  : `${student.first_name[0]}${student.last_name[0]}`}
-              </div>
-              <div className="min-w-0 flex items-center gap-1.5">
-                <div className="min-w-0">
-                  <p className="text-white font-semibold text-sm truncate">
-                    {student.first_name} {student.last_name}
-                  </p>
-                  <p className="text-purple-300 text-[10px] truncate uppercase tracking-tight">
-                    {student.class_name}
-                  </p>
-                </div>
-                <ChevronRight className="w-3.5 h-3.5 text-white/40 shrink-0 rotate-90" />
-              </div>
-            </button>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleInstallApp}
-              className="relative flex items-center justify-center text-slate-300 hover:text-white text-xs px-2.5 py-1.5 rounded-lg hover:bg-white/10 transition-colors border border-white/20"
-              title="Install app"
-            >
-              <Download className="w-4 h-4" />
-            </button>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-slate-500">{greeting}</p>
+              <p className="truncate text-xl font-black tracking-tight text-slate-950">{studentFullName}</p>
+            </div>
+          </button>
+
+          <div className="flex shrink-0 items-center gap-3">
             <button
               ref={notifBellRef}
               type="button"
-              onClick={() => {
-                setShowNotifPanel((v) => !v);
-              }}
-              className="relative flex items-center justify-center text-slate-300 hover:text-white text-xs px-2.5 py-1.5 rounded-lg hover:bg-white/10 transition-colors"
+              onClick={() => setShowNotifPanel((v) => !v)}
+              className="relative flex h-12 w-12 items-center justify-center rounded-full border border-white/70 bg-white/65 text-slate-800 shadow-[0_14px_32px_rgba(15,23,42,0.10)] backdrop-blur-2xl transition-all hover:-translate-y-0.5 hover:bg-white/90 active:scale-95"
               title="Notifications"
             >
-              <Bell className="w-4 h-4" />
+              <Bell className="h-5 w-5" />
               {unreadNotifCount > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[10px] leading-4 font-bold">
+                <span className="absolute right-1.5 top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-black leading-none text-white ring-2 ring-white">
                   {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
                 </span>
               )}
             </button>
-            {student.must_change_password && (
-              <button
-                onClick={() => setMustChangePassword(true)}
-                className="hidden sm:flex items-center gap-1 bg-amber-500/20 border border-amber-400/30 text-amber-200 text-xs px-2.5 py-1.5 rounded-lg hover:bg-amber-500/30 transition-colors"
-              >
-                <AlertTriangle className="w-3 h-3" /> Change password
-              </button>
-            )}
             <button
+              type="button"
               onClick={handleLogout}
-              className="flex items-center gap-1.5 text-slate-300 hover:text-white text-xs px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors"
+              className="relative flex h-12 w-12 items-center justify-center rounded-full border border-white/70 bg-white/65 text-slate-800 shadow-[0_14px_32px_rgba(15,23,42,0.10)] backdrop-blur-2xl transition-all hover:-translate-y-0.5 hover:bg-white/90 hover:text-rose-600 active:scale-95"
+              title="Log out"
+              aria-label="Log out"
             >
-              <LogOut className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Log out</span>
+              <LogOut className="h-5 w-5" />
             </button>
           </div>
         </div>
 
         {/* Desktop tab bar */}
-        <div className="hidden sm:flex max-w-6xl mx-auto px-6 gap-0 overflow-x-auto scrollbar-none">
+        <div className="hidden max-w-6xl gap-2 overflow-x-auto px-6 pb-3 sm:mx-auto sm:flex scrollbar-none">
           {tabs.map(t => (
             <button
               key={t.key}
               onClick={() => handleTabChange(t.key)}
-              className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 whitespace-nowrap transition-colors ${
+              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold whitespace-nowrap transition-all ${
                 activeTab === t.key
-                  ? 'border-purple-400 text-white'
-                  : 'border-transparent text-slate-400 hover:text-slate-200'
+                  ? 'bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white shadow-lg shadow-violet-500/25'
+                  : 'bg-white/55 text-slate-500 hover:bg-white/80 hover:text-violet-700'
               }`}
             >
               <span className="inline-flex items-center gap-1.5">
@@ -1318,7 +1331,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       {showNotifPanel && (
         <div
           ref={notifPanelRef}
-          className="fixed z-[60] left-3 right-3 top-[4.25rem] sm:left-auto sm:right-6 sm:top-[4.5rem] sm:w-[min(100vw-2rem,22rem)] max-w-[22rem] sm:ml-auto sm:mr-0 max-h-[min(70dvh,28rem)] flex flex-col rounded-2xl border border-slate-200/90 bg-white/98 backdrop-blur-xl shadow-2xl ring-1 ring-black/5 animate-in fade-in slide-in-from-top-2 zoom-in-95 duration-200 origin-top"
+          className="fixed z-[110] left-3 right-3 top-[4.75rem] sm:left-auto sm:right-6 sm:top-[7rem] sm:w-[min(100vw-2rem,22rem)] max-w-[22rem] sm:ml-auto sm:mr-0 max-h-[min(70dvh,28rem)] flex flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl ring-1 ring-black/5 animate-in fade-in slide-in-from-top-2 zoom-in-95 duration-200 origin-top"
           role="dialog"
           aria-label="Notifications"
         >
@@ -1358,8 +1371,8 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                       }}
                       className={`w-full text-left rounded-xl border px-3 py-2.5 transition-all active:scale-[0.99] ${
                         n.read
-                          ? 'border-transparent bg-transparent hover:bg-slate-50'
-                          : 'border-indigo-200/80 bg-indigo-50/90 shadow-sm ring-1 ring-indigo-100'
+                          ? 'border-slate-100 bg-white hover:bg-slate-50'
+                          : 'border-indigo-200 bg-indigo-50 shadow-sm ring-1 ring-indigo-100'
                       }`}
                     >
                       <p className={`text-sm leading-snug ${n.read ? 'font-medium text-slate-700' : 'font-bold text-slate-900'}`}>{n.title}</p>
@@ -1375,7 +1388,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       )}
 
       {/* ── Content ── */}
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 pb-24 sm:pb-8">
+      <main className="relative z-10 max-w-6xl mx-auto px-5 sm:px-6 pt-24 pb-28 sm:pt-32 sm:pb-8">
 
         {/* Change password banner */}
         {!mustChangePassword && student.must_change_password && (
@@ -1395,116 +1408,105 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
         {/* ── Overview tab ── */}
         {activeTab === 'overview' && (
-          <div className="space-y-5">
-            <div className="flex justify-end">
-              <button
-                onClick={() => hardRefreshApp().catch(() => undefined)}
-                disabled={hardRefreshing}
-                className="inline-flex items-center gap-2 rounded-xl border border-purple-200 bg-white px-3.5 py-2 text-sm font-semibold text-purple-700 shadow-sm hover:bg-purple-50 disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                <RefreshCw className={`w-4 h-4 ${hardRefreshing ? 'animate-spin' : ''}`} />
-                {hardRefreshing ? 'Refreshing...' : 'Refresh App'}
-              </button>
-            </div>
-            {/* Student card */}
-            <div className="bg-gradient-to-br from-purple-600 to-pink-600 rounded-2xl p-5 text-white shadow-xl shadow-purple-200">
-              <div className="flex items-start gap-4">
-                {/* Passport photo — clickable */}
-                <button
-                  onClick={() => studentPhotoUrl && setLightboxUrl(studentPhotoUrl)}
-                  className={`shrink-0 relative group ${studentPhotoUrl ? 'cursor-pointer' : 'cursor-default'}`}
-                  title={studentPhotoUrl ? 'Click to view full photo' : undefined}
-                >
-                  <div className="w-20 h-24 rounded-xl overflow-hidden bg-white/20 border-2 border-white/30 flex items-center justify-center text-3xl font-bold shadow-lg">
-                    {studentPhotoUrl
-                      ? <img src={studentPhotoUrl} alt="" className="w-full h-full object-cover" />
-                      : `${student.first_name[0]}${student.last_name[0]}`}
-                  </div>
-                  {studentPhotoUrl && (
-                    <div className="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <Eye className="w-5 h-5 text-white" />
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-500">
+            {/* Student profile card */}
+            <section className="relative overflow-hidden rounded-[2rem] border border-white/70 bg-white/45 p-[1px] shadow-[0_24px_80px_rgba(139,92,246,0.22)] backdrop-blur-2xl">
+              <div className="absolute inset-0 bg-gradient-to-br from-violet-400/50 via-white/10 to-pink-400/45 opacity-80" />
+              <div className="relative rounded-[calc(2rem-1px)] border border-white/60 bg-white/58 p-4 backdrop-blur-2xl sm:p-5">
+                <div className="absolute -right-12 -top-12 h-36 w-36 rounded-full bg-fuchsia-300/30 blur-3xl" />
+                <div className="absolute -bottom-14 -left-10 h-32 w-32 rounded-full bg-violet-300/35 blur-3xl" />
+                <div className="relative flex items-start gap-4">
+                  <button
+                    onClick={() => studentPhotoUrl && setLightboxUrl(studentPhotoUrl)}
+                    className={`group shrink-0 ${studentPhotoUrl ? 'cursor-pointer' : 'cursor-default'}`}
+                    title={studentPhotoUrl ? 'Click to view full photo' : undefined}
+                  >
+                    <div className="h-36 w-28 overflow-hidden rounded-[1.6rem] border border-white/80 bg-gradient-to-br from-violet-200 to-pink-100 p-1 shadow-[0_18px_45px_rgba(139,92,246,0.25)]">
+                      <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-[1.25rem] bg-white/50 text-3xl font-black text-violet-600">
+                        {studentPhotoUrl
+                          ? <img src={studentPhotoUrl} alt="" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                          : `${student.first_name[0]}${student.last_name[0]}`}
+                      </div>
                     </div>
-                  )}
-                </button>
+                  </button>
 
-                <div className="flex-1 min-w-0">
-                  <h2 className="text-xl font-bold">{student.first_name} {student.last_name}</h2>
-                  <p className="text-purple-200 text-sm">Student ID: {student.admission_number}</p>
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    <span className="bg-white/20 text-xs px-2.5 py-1 rounded-full font-medium">{student.class_name || 'No class assigned'}</span>
-                    {student.gender && <span className="bg-white/20 text-xs px-2.5 py-1 rounded-full font-medium capitalize">{student.gender}</span>}
-                    {student.is_beneficiary && (
-                      <span className="bg-amber-400 text-amber-900 text-[10px] px-2.5 py-1 rounded-full font-bold flex items-center gap-1 shadow-sm border border-amber-300">
-                        <Medal className="w-3 h-3" /> {student.beneficiary_type || 'Beneficiary'}
+                  <div className="min-w-0 flex-1 pt-2">
+                    <h2 className="text-2xl font-black leading-tight tracking-tight text-slate-950">{studentFullName}</h2>
+                    <p className="mt-2 text-sm font-medium text-slate-500">Student ID: {student.admission_number}</p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <span className="inline-flex items-center gap-1 rounded-full border border-violet-100 bg-white/70 px-3 py-1.5 text-xs font-bold text-violet-700 shadow-sm">
+                        <Trophy className="h-3.5 w-3.5" /> Victory
                       </span>
-                    )}
+                      {student.gender && (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-slate-100 bg-white/70 px-3 py-1.5 text-xs font-bold capitalize text-slate-600 shadow-sm">
+                          {student.gender}
+                        </span>
+                      )}
+                      <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-gradient-to-r from-amber-100 to-yellow-200 px-3 py-1.5 text-xs font-black text-amber-900 shadow-sm">
+                        <Medal className="h-3.5 w-3.5" /> {scholarshipLabel}
+                      </span>
+                    </div>
                   </div>
-                  {!studentPhotoUrl && (
-                    <p className="text-purple-300 text-xs mt-2 italic">No photo uploaded yet</p>
-                  )}
                 </div>
-              </div>
-              <div className="mt-4 pt-4 border-t border-white/20 grid grid-cols-2 sm:grid-cols-3 gap-3 text-center">
-                <div>
-                  <p className="text-purple-200 text-xs">School</p>
-                  <p className="font-semibold text-sm mt-0.5">{student.school_name}</p>
-                </div>
-                <div>
-                  <p className="text-purple-200 text-xs">Current Term</p>
-                  <p className="font-semibold text-sm mt-0.5">{student.current_term}</p>
-                </div>
-                <div>
-                  <p className="text-purple-200 text-xs">Academic Year</p>
-                  <p className="font-semibold text-sm mt-0.5">{student.current_year}</p>
-                </div>
-              </div>
-            </div>
 
-            {/* Quick-access cards */}
-            <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-base font-bold text-slate-900">🎓 Student Learning</p>
-                  <p className="text-sm text-slate-500">Tap to let {student.first_name} study</p>
-                  <p className="text-xs text-orange-600 font-semibold mt-1">🔥 Daily practice mode</p>
+                <div className="relative mt-6 grid grid-cols-3 gap-2 border-t border-white/70 pt-4">
+                  {[
+                    { label: 'School', value: student.school_name || schoolName || 'Sacred Hearts School', icon: <Home className="h-3.5 w-3.5" /> },
+                    { label: 'Academic Year', value: student.current_year || '2026', icon: <CalendarCheck className="h-3.5 w-3.5" /> },
+                    { label: 'Current Term', value: student.current_term || 'Term 3 2026', icon: <CalendarCheck className="h-3.5 w-3.5" /> },
+                  ].map((item) => (
+                    <div key={item.label} className="rounded-2xl border border-white/70 bg-white/45 p-3 shadow-sm backdrop-blur-xl">
+                      <p className="flex items-center gap-1.5 text-[10px] font-bold text-violet-500">
+                        {item.icon}
+                        {item.label}
+                      </p>
+                      <p className="mt-2 line-clamp-2 text-xs font-black leading-tight text-slate-950 sm:text-sm">{item.value}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            {/* Continue Learning */}
+            <section className="relative overflow-hidden rounded-[2rem] border border-white/75 bg-white/62 p-3 shadow-[0_14px_38px_rgba(139,92,246,0.14)] backdrop-blur-2xl">
+              <div className="absolute -right-8 top-1/2 h-20 w-20 -translate-y-1/2 rounded-full border border-white/60" />
+              <div className="relative flex items-center gap-3">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[1.25rem] bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-[0_12px_28px_rgba(139,92,246,0.28)]">
+                  <GraduationCap className="h-6 w-6" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-base font-black tracking-tight text-slate-950">Continue Learning</p>
+                  <p className="mt-0.5 text-xs font-medium text-slate-500">Tap to let {student.first_name} study</p>
+                  <p className="mt-1 text-[11px] font-bold text-orange-500">🔥 Daily practice available</p>
                 </div>
                 <button
                   onClick={openStudentMode}
-                  className="shrink-0 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white px-4 py-2 text-sm font-semibold"
+                  className="shrink-0 rounded-2xl bg-gradient-to-r from-violet-600 via-purple-500 to-fuchsia-500 px-3 py-2 text-xs font-black text-white shadow-[0_12px_28px_rgba(139,92,246,0.30)] transition-all hover:-translate-y-0.5 active:scale-95"
                 >
-                  Enter Student Mode →
+                  Enter →
                 </button>
               </div>
-            </div>
+            </section>
 
-            {/* Quick-access cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {tabs.filter(t => t.key !== 'overview').map(t => (
+            {/* Quick Actions */}
+            <section className="grid grid-cols-2 gap-3">
+              {quickActions.map((action) => (
                 <button
-                  key={t.key}
-                  onClick={() => handleTabChange(t.key)}
-                  className="relative overflow-hidden bg-white border border-gray-200 rounded-2xl p-4 flex flex-col items-center gap-2 hover:border-purple-300 hover:shadow-lg hover:shadow-purple-100 transition-all group min-h-[115px]"
+                  key={action.key}
+                  onClick={() => handleTabChange(action.key)}
+                  className="group relative min-h-[126px] overflow-hidden rounded-[1.5rem] border border-white/70 bg-white/58 p-4 text-left shadow-[0_14px_38px_rgba(15,23,42,0.08)] backdrop-blur-2xl transition-all hover:-translate-y-0.5 hover:shadow-[0_20px_48px_rgba(139,92,246,0.18)] active:scale-[0.98]"
                 >
-                  <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-500 via-fuchsia-500 to-indigo-500 opacity-90" />
-                  <span className="relative w-10 h-10 bg-gradient-to-br from-purple-50 to-indigo-50 group-hover:from-purple-100 group-hover:to-indigo-100 rounded-xl flex items-center justify-center text-purple-600 transition-colors shadow-sm">
-                    {t.icon}
-                    {t.key === 'desk' && parentDeskUnread > 0 && (
-                      <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-0.5 text-[9px] font-bold text-white ring-2 ring-white">
-                        {parentDeskUnread > 9 ? '9' : parentDeskUnread}
-                      </span>
-                    )}
+                  <div className={`mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${action.tone} shadow-lg shadow-violet-500/10`}>
+                    {action.icon}
+                  </div>
+                  <p className="text-sm font-black text-slate-950">{action.label}</p>
+                  <p className="mt-1 max-w-[8.5rem] text-xs font-medium leading-snug text-slate-500">{action.description}</p>
+                  <span className="absolute right-4 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-white/80 text-violet-500 shadow-sm transition-transform group-hover:translate-x-0.5">
+                    <ChevronRight className="h-4 w-4" />
                   </span>
-                  <span className="text-sm font-semibold text-gray-700">{t.label}</span>
-                  <ChevronRight className="w-3.5 h-3.5 text-gray-300 group-hover:text-purple-500 transition-colors" />
                 </button>
               ))}
-            </div>
-
-            {/* Info note */}
-            <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-sm text-blue-700 flex items-start gap-2">
-              <BadgeCheck className="w-4 h-4 shrink-0 mt-0.5" />
-              <p>This portal shows your child's academic performance, attendance and fee balance. Data is updated in real time by the school.</p>
-            </div>
+            </section>
           </div>
         )}
 
@@ -2073,27 +2075,24 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-gray-200 mt-10 py-4 text-center text-xs text-gray-400">
+      <footer className="mt-10 hidden border-t border-white/50 py-4 text-center text-xs text-slate-400 sm:block">
         {student.school_name} · Parent Portal · Secure & Private
       </footer>
 
       {/* Mobile bottom navigation */}
-      <nav className="sm:hidden fixed bottom-3 left-3 right-3 z-40 border border-violet-200/70 bg-white/95 backdrop-blur px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] rounded-2xl shadow-xl">
-        <div
-          className="absolute inset-x-0 top-0 h-1 rounded-t-2xl"
-          style={{ background: `linear-gradient(90deg, ${brandPrimary}, ${brandSecondary})` }}
-        />
-        <div className="grid grid-cols-6 gap-1">
-          {tabs.map((t) => (
+      <nav className="sm:hidden fixed bottom-4 left-5 right-5 z-40 overflow-hidden rounded-[1.875rem] border border-white/75 bg-white/58 px-2.5 py-2.5 pb-[max(0.65rem,env(safe-area-inset-bottom))] shadow-[0_22px_65px_rgba(139,92,246,0.24)] backdrop-blur-2xl">
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-white/60 via-violet-100/20 to-white/60" />
+        <div className="relative grid grid-cols-5 gap-1">
+          {mobileTabs.map((t) => (
             <button
               key={t.key}
               onClick={() => handleTabChange(t.key)}
-              className={`flex flex-col items-center justify-center gap-1 rounded-lg py-2 text-[10px] font-medium transition-colors ${
+              className={`relative flex min-h-[58px] flex-col items-center justify-center gap-1 rounded-2xl px-1 py-2 text-[10px] font-bold transition-all active:scale-95 ${
                 activeTab === t.key
-                  ? 'text-white shadow-lg'
-                  : 'text-gray-500 hover:text-gray-700'
+                  ? 'text-white shadow-[0_12px_28px_rgba(139,92,246,0.35)]'
+                  : 'text-slate-500 hover:text-violet-700'
               }`}
-              style={activeTab === t.key ? { background: `linear-gradient(135deg, ${brandPrimary}, ${brandSecondary})` } : undefined}
+              style={activeTab === t.key ? { background: 'linear-gradient(135deg, #8B5CF6, #A855F7 55%, #EC4899)' } : undefined}
             >
               <span className="relative inline-flex">
                 {t.icon}

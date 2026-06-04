@@ -1,9 +1,57 @@
 import express from 'express';
-import { query } from '../db/connection.js';
+import { getClient, query } from '../db/connection.js';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth.js';
 import { getIO } from '../socket.js';
 
 const router = express.Router();
+
+const slugify = (value: string) =>
+  value
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '') || 'school';
+
+async function ensureRegistrationSchema(client: Awaited<ReturnType<typeof getClient>>) {
+  await client.query(`ALTER TABLE school_registrations ADD COLUMN IF NOT EXISTS internal_note TEXT`).catch(() => undefined);
+  await client.query(`ALTER TABLE school_registrations ADD COLUMN IF NOT EXISTS tenant_id INTEGER`).catch(() => undefined);
+  await client.query(`ALTER TABLE school_registrations ADD COLUMN IF NOT EXISTS generated_password VARCHAR(255)`).catch(() => undefined);
+  await client.query(`ALTER TABLE school_registrations ADD COLUMN IF NOT EXISTS generated_username VARCHAR(100)`).catch(() => undefined);
+  await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS email VARCHAR(255)`).catch(() => undefined);
+  await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS tenant_id INTEGER`).catch(() => undefined);
+  await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(255)`).catch(() => undefined);
+  await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name VARCHAR(255)`).catch(() => undefined);
+  await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_primary_admin BOOLEAN DEFAULT false`).catch(() => undefined);
+  await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true`).catch(() => undefined);
+}
+
+async function uniqueTenantSlug(client: Awaited<ReturnType<typeof getClient>>, schoolName: string) {
+  const base = slugify(schoolName);
+  let candidate = base;
+  let suffix = 2;
+
+  while (true) {
+    const existing = await client.query('SELECT id FROM tenants WHERE slug = $1 OR subdomain = $1 LIMIT 1', [candidate]);
+    if (existing.rows.length === 0) return candidate;
+    candidate = `${base}-${suffix}`;
+    suffix += 1;
+  }
+}
+
+async function uniqueAdminUsername(client: Awaited<ReturnType<typeof getClient>>, slug: string) {
+  const base = `${slug.replace(/-+/g, '_')}_admin`.slice(0, 80) || 'school_admin';
+  let candidate = base;
+  let suffix = 2;
+
+  while (true) {
+    const existing = await client.query('SELECT id FROM users WHERE username = $1 LIMIT 1', [candidate]);
+    if (existing.rows.length === 0) return candidate;
+    candidate = `${base}_${suffix}`.slice(0, 100);
+    suffix += 1;
+  }
+}
 
 const emitSystemDataChanged = (entity: string, action: 'created' | 'updated' | 'deleted', tenantId?: number) => {
   try {
@@ -58,7 +106,7 @@ router.get('/', authenticate, requireRole('super-admin'), async (req: AuthReques
 
 // Super-admin: Update registration status
 router.patch('/:id/status', authenticate, requireRole('super-admin'), async (req: AuthRequest, res) => {
-  const client = await (await import('../db/connection.js')).getClient();
+  const client = await getClient();
   try {
     const { id } = req.params;
     const { status } = req.body;
@@ -67,6 +115,7 @@ router.patch('/:id/status', authenticate, requireRole('super-admin'), async (req
       return res.status(400).json({ error: 'Invalid status' });
     }
 
+    await ensureRegistrationSchema(client);
     await client.query('BEGIN');
 
     // Fetch the registration details
@@ -82,10 +131,9 @@ router.patch('/:id/status', authenticate, requireRole('super-admin'), async (req
     if (status === 'approved' && !registration.tenant_id) {
       const { school_name, admin_name, email } = registration;
       
-      // Default credentials
-      const adminUsername = 'admin';
+      const slug = await uniqueTenantSlug(client, school_name);
+      const adminUsername = await uniqueAdminUsername(client, slug);
       const defaultPassword = 'password123'; // Simple default, can be changed later
-      const slug = school_name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
       
       const bcrypt = await import('bcryptjs');
       const hashedPassword = await bcrypt.default.hash(defaultPassword, 10);
@@ -133,14 +181,14 @@ router.patch('/:id/status', authenticate, requireRole('super-admin'), async (req
 
       // 3. Create default settings
       await client.query(
-        'INSERT INTO school_settings (tenant_id, school_name, email) VALUES ($1, $2, $3)',
+        'INSERT INTO school_settings (tenant_id, school_name, email) VALUES ($1, $2, $3) ON CONFLICT (tenant_id) DO NOTHING',
         [tenantId, school_name, email]
       );
 
       // 4. Update registration with created tenant and password
       const result = await client.query(
-        `UPDATE school_registrations SET status = $1, tenant_id = $2, generated_password = $3 WHERE id = $4 RETURNING *`,
-        [status, tenantId, defaultPassword, id]
+        `UPDATE school_registrations SET status = $1, tenant_id = $2, generated_password = $3, generated_username = $4 WHERE id = $5 RETURNING *`,
+        [status, tenantId, defaultPassword, adminUsername, id]
       );
 
       await client.query('COMMIT');
@@ -157,10 +205,13 @@ router.patch('/:id/status', authenticate, requireRole('super-admin'), async (req
     await client.query('COMMIT');
     emitSystemDataChanged('school-registration', 'updated', registration.tenant_id || undefined);
     res.json(result.rows[0]);
-  } catch (error) {
+  } catch (error: any) {
     await client.query('ROLLBACK');
     console.error('Update registration status error:', error);
-    res.status(500).json({ error: 'Failed to update status' });
+    if (error?.code === '23505') {
+      return res.status(409).json({ error: 'A school with these access details already exists. Try approving again or create the school manually.' });
+    }
+    res.status(500).json({ error: error?.message || 'Failed to update status' });
   } finally {
     client.release();
   }

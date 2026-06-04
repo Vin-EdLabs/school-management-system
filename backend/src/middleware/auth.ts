@@ -40,7 +40,7 @@ export const authenticate = async (
     const attempts: Array<{ sql: string; params: any[] }> = [
       {
         sql: `SELECT u.id, u.tenant_id, u.username, u.role, u.is_primary_admin, u.teacher_id, u.other_staff_id,
-                     COALESCE(t.full_name, s.full_name, u.username) as full_name
+                     COALESCE(t.full_name, s.full_name, u.full_name, u.username) as full_name
               FROM users u
               LEFT JOIN teachers t ON u.teacher_id::text = t.id::text AND t.tenant_id = u.tenant_id
               LEFT JOIN payroll_other_staff s ON u.other_staff_id = s.id AND s.tenant_id = u.tenant_id
@@ -51,7 +51,7 @@ export const authenticate = async (
         sql: `SELECT u.id, u.tenant_id, u.username, u.role, u.is_primary_admin, u.teacher_id,
                      NULL::integer as other_staff_id, u.username as full_name
               FROM users u
-              WHERE u.id = $1`,
+              WHERE u.id = $1 AND COALESCE(u.is_active, true) = true`,
         params: [decoded.userId]
       },
       {
@@ -59,7 +59,7 @@ export const authenticate = async (
                      false as is_primary_admin, NULL::text as teacher_id,
                      NULL::integer as other_staff_id, u.username as full_name
               FROM users u
-              WHERE u.id = $1`,
+              WHERE u.id = $1 AND COALESCE(u.is_active, true) = true`,
         params: [decoded.userId]
       }
     ];

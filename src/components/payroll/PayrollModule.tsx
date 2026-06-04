@@ -560,7 +560,14 @@ const PayrollModule = () => {
                           </TableCell>
                           <TableCell className="text-muted-foreground text-sm max-w-[120px] truncate">{p.role || '—'}</TableCell>
                       <TableCell>
-                            <Badge variant="outline" className="text-xs font-normal">
+                            <Badge
+                              variant="outline"
+                              className={
+                                p.ssnitEnabled
+                                  ? 'border-emerald-500/40 bg-emerald-500/10 text-xs font-normal text-emerald-700 dark:text-emerald-400'
+                                  : 'border-red-500/40 bg-red-500/10 text-xs font-normal text-red-700 dark:text-red-400'
+                              }
+                            >
                               {p.ssnitEnabled ? 'On' : 'Off'}
                             </Badge>
                           </TableCell>
@@ -780,6 +787,7 @@ const PayrollModule = () => {
                     <Switch
                       checked={!!settingsForm.autoGeneratePayroll}
                       onCheckedChange={(v) => setSettingsForm({ ...settingsForm, autoGeneratePayroll: v })}
+                      className="data-[state=checked]:!bg-emerald-500 data-[state=unchecked]:!bg-red-500"
                     />
                   </div>
                   <div>

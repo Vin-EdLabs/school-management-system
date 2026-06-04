@@ -27,6 +27,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
   const [notifOpen, setNotifOpen] = useState(false);
   const pwaLogo = resolveLogoUrl(school?.logo_url ?? null);
   const showStaffNotifications = user?.role === 'teacher' || user?.role === 'staff';
+  const displayName = user?.fullName?.trim() || user?.username || '';
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -59,15 +60,15 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
     <div className="flex items-center justify-between w-full h-full gap-2 sm:gap-4 md:gap-6 min-w-0">
       {/* Welcome Section */}
       <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
-        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0 shadow-sm">
+        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-[#146C43] to-[#22C55E] flex items-center justify-center shrink-0 shadow-sm shadow-emerald-500/20 dark:from-blue-500 dark:to-indigo-600 dark:shadow-sm">
           <User className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
         </div>
         <div className="min-w-0 flex-1">
           <h1 className="text-sm sm:text-lg font-semibold text-slate-900 dark:text-slate-100 truncate tracking-tight">
-            {getGreeting()}, <span className="text-indigo-600 dark:text-indigo-400">{user?.username}</span>
+            {getGreeting()}, <span className="text-emerald-700 dark:text-indigo-400">{displayName}</span>
           </h1>
           <div className="flex items-center gap-2">
-             <span className="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-950/50 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider rounded border border-indigo-100/50 dark:border-indigo-900 shadow-sm">
+             <span className="px-2 py-0.5 bg-emerald-50 dark:bg-indigo-950/50 text-[10px] font-bold text-emerald-700 dark:text-indigo-400 uppercase tracking-wider rounded border border-emerald-100/70 dark:border-indigo-900 shadow-sm">
               {user?.role?.replace('-', ' ')}
             </span>
           </div>
@@ -77,12 +78,12 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
       {/* Right Section: Time and Actions */}
       <div className="flex items-center gap-1 sm:gap-2 md:gap-4 shrink-0">
         <div className="hidden lg:flex items-center gap-3">
-          <div className="px-3 py-2 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-100 dark:border-slate-800 flex items-center gap-2 shadow-sm">
-            <Calendar className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
+          <div className="px-3 py-2 bg-white/85 dark:bg-slate-900/50 rounded-xl border border-slate-200/70 dark:border-slate-800 flex items-center gap-2 shadow-sm">
+            <Calendar className="w-4 h-4 text-emerald-600 dark:text-indigo-400" />
             <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{formatDate(currentTime)}</span>
           </div>
-          <div className="px-3 py-2 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-100 dark:border-slate-800 flex items-center gap-2 shadow-sm">
-            <Clock className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
+          <div className="px-3 py-2 bg-white/85 dark:bg-slate-900/50 rounded-xl border border-slate-200/70 dark:border-slate-800 flex items-center gap-2 shadow-sm">
+            <Clock className="w-4 h-4 text-emerald-600 dark:text-indigo-400" />
             <span className="text-sm font-mono font-medium text-slate-700 dark:text-slate-300 w-[90px] text-center">
               {formatTime(currentTime)}
             </span>
@@ -95,7 +96,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
             variant="ghost"
             size="icon"
             logoUrl={pwaLogo}
-            className="h-10 w-10 rounded-xl text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-indigo-950/50"
+            className="h-10 w-10 rounded-xl text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-indigo-950/50"
           />
           {showStaffNotifications && (
             <Popover open={notifOpen} onOpenChange={setNotifOpen}>
@@ -104,7 +105,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="relative h-10 w-10 shrink-0 rounded-xl text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-indigo-950/50 touch-manipulation"
+                  className="relative h-10 w-10 shrink-0 rounded-xl text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-indigo-950/50 touch-manipulation"
                   title="Notifications"
                 >
                   <Bell className="h-5 w-5" />
@@ -161,7 +162,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
             variant="ghost"
             size="icon"
             onClick={toggleTheme}
-            className="h-10 w-10 rounded-xl text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-indigo-950/50"
+            className="h-10 w-10 rounded-xl text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-indigo-950/50"
           >
             {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           </Button>

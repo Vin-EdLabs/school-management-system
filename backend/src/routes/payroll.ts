@@ -66,6 +66,40 @@ async function getPayrollSettingsRow(tenantId: number) {
   return r.rows[0] as Record<string, unknown>;
 }
 
+async function refreshOpenPayrollRowsForSsnitFlag(
+  tenantId: number,
+  payeeType: 'teacher' | 'staff',
+  payeeId: number,
+  monthlySalary: number,
+  ssnitEnabled: boolean
+) {
+  const settings = await getPayrollSettingsRow(tenantId);
+  const ssnitPct = parseFloat(String(settings.default_ssnit_percent ?? 5.5));
+  const rows = await query(
+    `SELECT id, amount, gross_salary, other_deductions, allowances, net_salary
+     FROM salary_payments
+     WHERE tenant_id = $1 AND payee_type = $2 AND payee_id = $3`,
+    [tenantId, payeeType, payeeId]
+  );
+
+  for (const row of rows.rows as Record<string, unknown>[]) {
+    const amountPaid = parseFloat(String(row.amount ?? 0));
+    const currentNet = parseFloat(String(row.net_salary ?? 0));
+    if (amountPaid >= currentNet - 0.01 && currentNet > 0) continue;
+
+    const gross = row.gross_salary != null ? parseFloat(String(row.gross_salary)) : monthlySalary;
+    const otherD = parseFloat(String(row.other_deductions ?? 0));
+    const allow = parseFloat(String(row.allowances ?? 0));
+    const calc = computePayrollLine(gross || monthlySalary, ssnitEnabled, ssnitPct, otherD, allow);
+    await query(
+      `UPDATE salary_payments
+       SET ssnit_percent = $1, ssnit_amount = $2, net_salary = $3, updated_at = CURRENT_TIMESTAMP
+       WHERE tenant_id = $4 AND id = $5`,
+      [ssnitPct, calc.ssnitAmount, calc.net, tenantId, row.id]
+    );
+  }
+}
+
 router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
@@ -214,9 +248,9 @@ router.get('/my-salary', async (req: AuthRequest, res) => {
         const otherD = parseFloat(p.other_deductions || 0);
         const allow = parseFloat(p.allowances || 0);
         const lineCalc = computePayrollLine(grossForRow, ssnitEnabled, ssnitPct, otherD, allow);
-        const netExpected = p.net_salary != null ? parseFloat(p.net_salary) : lineCalc.net;
+        const netExpected = ssnitEnabled && p.net_salary != null ? parseFloat(p.net_salary) : lineCalc.net;
         const paid = parseFloat(p.amount || 0);
-        const ssnitForRow = p.ssnit_amount != null ? parseFloat(p.ssnit_amount) : lineCalc.ssnitAmount;
+        const ssnitForRow = ssnitEnabled && p.ssnit_amount != null ? parseFloat(p.ssnit_amount) : lineCalc.ssnitAmount;
         const balance = Math.max(0, roundMoney(netExpected - paid));
         return {
           month: p.month,
@@ -537,8 +571,8 @@ router.get('/', async (req: AuthRequest, res) => {
       const allow = paidRow ? parseFloat(paidRow.allowances || 0) : 0;
       const pct = paidRow?.ssnit_percent != null ? parseFloat(paidRow.ssnit_percent) : ssnitPct;
       const calc = computePayrollLine(gross, base.ssnitEnabled, pct, otherD, allow);
-      const ssnitAmount = paidRow?.ssnit_amount != null ? parseFloat(paidRow.ssnit_amount) : calc.ssnitAmount;
-      const net = paidRow?.net_salary != null ? parseFloat(paidRow.net_salary) : calc.net;
+      const ssnitAmount = base.ssnitEnabled && paidRow?.ssnit_amount != null ? parseFloat(paidRow.ssnit_amount) : calc.ssnitAmount;
+      const net = base.ssnitEnabled && paidRow?.net_salary != null ? parseFloat(paidRow.net_salary) : calc.net;
       const amountPaid = paidRow ? parseFloat(paidRow.amount || 0) : 0;
       let status = 'Unpaid';
       if (amountPaid >= net - 0.01 && net > 0) status = 'Paid';
@@ -645,6 +679,13 @@ router.patch('/staff/:payeeType/:id', requireRole('super-admin', 'administrator'
         [Boolean(ssnit_enabled), tenantId, pid]
       );
       if (result.rows.length === 0) return res.status(404).json({ error: 'Teacher not found' });
+      await refreshOpenPayrollRowsForSsnitFlag(
+        tenantId,
+        'teacher',
+        pid,
+        parseFloat(String(result.rows[0].monthly_salary || 0)),
+        Boolean(ssnit_enabled)
+      );
       await writeAuditLog({
         tenantId,
         userId: req.user!.id,
@@ -671,6 +712,13 @@ router.patch('/staff/:payeeType/:id', requireRole('super-admin', 'administrator'
       );
       if (result.rows.length === 0) return res.status(404).json({ error: 'Staff not found' });
       const st = result.rows[0] as Record<string, unknown>;
+      await refreshOpenPayrollRowsForSsnitFlag(
+        tenantId,
+        'staff',
+        pid,
+        parseFloat(String(st.monthly_salary || 0)),
+        Boolean(ssnit_enabled)
+      );
       await writeAuditLog({
         tenantId,
         userId: req.user!.id,

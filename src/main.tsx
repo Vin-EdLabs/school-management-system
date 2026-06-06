@@ -20,9 +20,16 @@ function detectTenantIdFromPath(pathname: string = window.location.pathname): nu
   return null;
 }
 
-function detectPwaKind(pathname: string): 'parent' | 'school' {
-  if (/^\/portal\//i.test(pathname)) return 'parent';
-  if (/^\/school\//i.test(pathname) || /^\/sch\//i.test(pathname)) return 'school';
+function detectPwaKind(pathname: string): 'parent' | 'school' | 'super-admin' {
+  if (/^\/super-admin(\/|$)/i.test(pathname)) return 'super-admin';
+  if (/^\/portal(\/|$)/i.test(pathname)) return 'parent';
+  if (/^\/(school|sch)(\/|$)/i.test(pathname)) return 'school';
+  
+  // Root path `/` or other path on a tenant subdomain is the school portal
+  if (detectTenantSlugFromHost()) {
+    return 'school';
+  }
+  
   return 'parent';
 }
 
@@ -67,7 +74,13 @@ async function bootstrapTenantBrandingAndManifest() {
 
     if (tenant) {
       setCssBrandingVars(tenant);
-      const portalLabel = kind === 'school' ? 'School' : 'Parent Portal';
+      let portalLabel = 'Parent Portal';
+      if (kind === 'school') {
+        portalLabel = 'School';
+      } else if (kind === 'super-admin') {
+        portalLabel = 'Super Admin';
+      }
+
       document.title = `${tenant.name} — ${portalLabel}`;
       const resolved = resolveLogoUrl(tenant.logo_url as string | null);
       if (resolved) {

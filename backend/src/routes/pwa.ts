@@ -8,10 +8,17 @@ router.use(resolveTenant);
 router.get('/manifest', async (req: TenantRequest, res) => {
   try {
     const tenant = req.tenant;
-    const kind = String(req.query.kind || 'parent').toLowerCase() === 'school' ? 'school' : 'parent';
+    const kindQuery = String(req.query.kind || 'parent').toLowerCase();
+    const kind = kindQuery === 'school' ? 'school' : kindQuery === 'super-admin' ? 'super-admin' : 'parent';
     const baseName = tenant?.name || 'ScholarNerve';
-    const appName =
-      kind === 'school' ? `${baseName} — School` : `${baseName} — Parent Portal`;
+    
+    let appName = `${baseName} — Parent Portal`;
+    if (kind === 'school') {
+      appName = `${baseName} — School`;
+    } else if (kind === 'super-admin') {
+      appName = `${baseName} — Super Admin`;
+    }
+    
     const shortName = baseName.slice(0, 12);
     const primary = tenant?.primary_color || '#0f766e';
     const secondary = tenant?.secondary_color || primary;
@@ -25,8 +32,8 @@ router.get('/manifest', async (req: TenantRequest, res) => {
       if (logo.startsWith('data:') || logo.startsWith('http')) return logo;
       return `${origin}${logo.startsWith('/') ? '' : '/'}${logo}`;
     })();
-    const fallbackIcon192 = `${origin}/android-chrome-192x192.png`;
-    const fallbackIcon512 = `${origin}/android-chrome-512x512.png`;
+    const fallbackIcon192 = '/android-chrome-192x192.png';
+    const fallbackIcon512 = '/android-chrome-512x512.png';
     const logoMime = (() => {
       if (logo?.startsWith('data:')) return logo.split(';')[0].split(':')[1] || 'image/png';
       const lower = logo.toLowerCase();
@@ -45,17 +52,22 @@ router.get('/manifest', async (req: TenantRequest, res) => {
       : [];
 
     let startUrl = '/';
-    if (tenantId > 0) {
-      if (kind === 'school') {
-        const slug = tenant?.slug || tenant?.subdomain;
-        startUrl = slug ? `/sch/${String(slug).replace(/^\/+|\/+$/g, '')}` : `/school/${tenantId}`;
+    if (kind === 'super-admin') {
+      startUrl = '/super-admin';
+    } else if (tenantId > 0) {
+      if (req.query.slug) {
+        startUrl = kind === 'school' ? '/' : '/portal';
       } else {
-        startUrl = `/portal/${tenantId}`;
+        startUrl = kind === 'school' ? `/school/${tenantId}` : `/portal/${tenantId}`;
       }
     }
 
-    const description =
-      kind === 'school' ? `${baseName} staff and teacher portal` : `${baseName} parent portal`;
+    let description = `${baseName} parent portal`;
+    if (kind === 'school') {
+      description = `${baseName} staff and teacher portal`;
+    } else if (kind === 'super-admin') {
+      description = `${baseName} super admin dashboard`;
+    }
 
     return res
       .type('application/manifest+json')
@@ -82,8 +94,16 @@ router.get('/manifest', async (req: TenantRequest, res) => {
         ],
         shortcuts: [
           {
-            name: kind === 'school' ? 'Open school app' : 'Open parent portal',
-            short_name: kind === 'school' ? 'School' : 'Portal',
+            name: kind === 'school'
+              ? 'Open school app'
+              : kind === 'super-admin'
+                ? 'Open super admin'
+                : 'Open parent portal',
+            short_name: kind === 'school'
+              ? 'School'
+              : kind === 'super-admin'
+                ? 'Admin'
+                : 'Portal',
             url: startUrl,
           }
         ],

@@ -1,5 +1,5 @@
 /* ScholarNerve service worker — caching + push. Bump CACHE_VERSION on breaking cache changes. */
-const CACHE_VERSION = '2026-05-11-v6';
+const CACHE_VERSION = '2026-06-06-v7';
 const CACHE_NAME = `scholarnerve-app-${CACHE_VERSION}`;
 const APP_SHELL = ['/', '/index.html', '/site.webmanifest'];
 
@@ -64,7 +64,11 @@ self.addEventListener('fetch', (event) => {
           if (Array.isArray(data.icons)) {
             data.icons = data.icons.map(icon => {
               if (icon.src && icon.src.startsWith('/') && !icon.src.startsWith('//')) {
-                icon.src = apiOrigin + icon.src;
+                if (icon.src.startsWith('/uploads/')) {
+                  icon.src = apiOrigin + icon.src;
+                } else {
+                  icon.src = origin + icon.src;
+                }
               }
               return icon;
             });

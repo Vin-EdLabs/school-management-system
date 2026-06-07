@@ -20,9 +20,9 @@ function resolveApiBase(): string {
   if (typeof window !== 'undefined') {
     const host = window.location.hostname;
     if (host === 'localhost' || host === '127.0.0.1') return 'http://localhost:3001/api';
-    return 'https://scholarnerveserver.onrender.com/api';
+    return `${window.location.protocol}//${window.location.host}/api`;
   }
-  return 'https://scholarnerveserver.onrender.com/api';
+  return '/api';
 }
 
 const API = resolveApiBase();

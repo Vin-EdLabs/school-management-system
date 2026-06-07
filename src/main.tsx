@@ -5,7 +5,15 @@ import './index.css'
 import { detectTenantSlugFromHost } from './utils/tenantHost'
 import { resolveLogoUrl } from './services/tenantService'
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+const API_BASE = (() => {
+  if (import.meta.env.VITE_API_BASE_URL) return import.meta.env.VITE_API_BASE_URL;
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1') return 'http://localhost:3001/api';
+    return `${window.location.protocol}//${window.location.host}/api`;
+  }
+  return '/api';
+})();
 
 function detectSchSlugFromPath(pathname: string): string | null {
   const m = pathname.match(/^\/sch\/([^/]+)/i);

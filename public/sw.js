@@ -41,17 +41,22 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
 
   // Dynamic manifest from API (same-origin path proxied / built).
-  if (url.pathname === '/manifest.json') {
+  if (url.pathname === '/manifest.json' || url.pathname === '/site.webmanifest') {
     const apiBase =
-      self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1'
+      self.location.hostname === 'localhost' ||
+      self.location.hostname === '127.0.0.1' ||
+      self.location.hostname.endsWith('.lvh.me')
         ? 'http://localhost:3001/api'
-        : 'https://scholarnerveserver.onrender.com/api';
+        : `${self.location.origin}/api`;
     const qs = url.search || '';
     const apiUrl = `${apiBase}/pwa/manifest${qs}`;
 
     event.respondWith(
       fetch(apiUrl)
-        .then((response) => response.json())
+        .then((response) => {
+          if (!response.ok) throw new Error('API manifest failed');
+          return response.json();
+        })
         .then((data) => {
           const origin = self.location.origin;
           // Use the API origin for assets if they are relative
@@ -78,7 +83,7 @@ self.addEventListener('fetch', (event) => {
             headers: { 'Content-Type': 'application/manifest+json' },
           });
         })
-        .catch(() => fetch(event.request))
+        .catch(() => fetch('/site.webmanifest'))
     );
     return;
   }

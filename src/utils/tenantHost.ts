@@ -1,12 +1,16 @@
 export function detectTenantSlugFromHost(hostname: string = window.location.hostname): string | null {
-  const host = hostname.toLowerCase();
+  let host = hostname.toLowerCase();
   if (!host) return null;
   if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return null;
+
+  // Strip leading 'www.' if present, to handle 'www.tenant.scholarnerve.com' properly
+  if (host.startsWith('www.')) {
+    host = host.substring(4);
+  }
 
   // Exclude main application domains directly
   const excludedDomains = [
     'scholarnerve.com',
-    'www.scholarnerve.com',
     'scholarnerve.onrender.com',
     'school-management-system.onrender.com'
   ];

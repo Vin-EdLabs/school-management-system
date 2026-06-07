@@ -191,35 +191,32 @@ const App = () => {
               <Toaster />
               <Sonner />
               <BrowserRouter>
-                <Routes>
-                  {subdomainSlug ? (
-                    // --- WILDCARD SUBDOMAIN ROUTING (Clean URL bar, e.g. rosa.localhost:8080) ---
-                    <>
-                      {/* Render Parent Portal directly on subdomain /portal path */}
-                      <Route path="/portal" element={<ParentPortalRoute />} />
-                      <Route path="/portal/*" element={<ParentPortalRoute />} />
-                      
-                      {/* Standard Shared Dashboard Routes */}
-                      <Route path="/register-school" element={<RegisterSchool />} />
-                      <Route path="/super-admin" element={<SuperAdminDashboard />} />
-                      
-                      {/* School Portal Dashboard mounts directly at root and handles all sub-navigation (e.g. /teachers) */}
-                      <Route path="/" element={<IndexWithSchool />} />
-                      <Route path="/*" element={<IndexWithSchool />} />
-                    </>
-                  ) : (
-                    // --- APEX DOMAIN / STATIC SUBDOMAIN ROUTING ---
-                    <>
-                      <Route path="/" element={<LandingPage />} />
-                      <Route path="/register-school" element={<RegisterSchool />} />
-                      <Route path="/super-admin" element={<SuperAdminDashboard />} />
-                      <Route path="/school/:schoolId/*" element={<IndexWithSchool />} />
-                      <Route path="/sch/:slug/*" element={<LegacySubdomainRedirect />} />
-                      <Route path="/portal/:tenantId" element={<LegacyPortalRedirect />} />
-                      <Route path="*" element={<Navigate to="/" replace />} />
-                    </>
-                  )}
-                </Routes>
+                {subdomainSlug ? (
+                  <Routes>
+                    {/* --- WILDCARD SUBDOMAIN ROUTING (Clean URL bar, e.g. rosa.localhost:8080) --- */}
+                    <Route path="/portal" element={<ParentPortalRoute />} />
+                    <Route path="/portal/*" element={<ParentPortalRoute />} />
+                    
+                    {/* Standard Shared Dashboard Routes */}
+                    <Route path="/register-school" element={<RegisterSchool />} />
+                    <Route path="/super-admin" element={<SuperAdminDashboard />} />
+                    
+                    {/* School Portal Dashboard mounts directly at root and handles all sub-navigation (e.g. /teachers) */}
+                    <Route path="/" element={<IndexWithSchool />} />
+                    <Route path="/*" element={<IndexWithSchool />} />
+                  </Routes>
+                ) : (
+                  <Routes>
+                    {/* --- APEX DOMAIN / STATIC SUBDOMAIN ROUTING --- */}
+                    <Route path="/" element={<LandingPage />} />
+                    <Route path="/register-school" element={<RegisterSchool />} />
+                    <Route path="/super-admin" element={<SuperAdminDashboard />} />
+                    <Route path="/school/:schoolId/*" element={<IndexWithSchool />} />
+                    <Route path="/sch/:slug/*" element={<LegacySubdomainRedirect />} />
+                    <Route path="/portal/:tenantId" element={<LegacyPortalRedirect />} />
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                  </Routes>
+                )}
               </BrowserRouter>
             </TooltipProvider>
             </TeacherNotificationProvider>

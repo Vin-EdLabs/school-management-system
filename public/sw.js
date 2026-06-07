@@ -41,15 +41,18 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
 
   // Dynamic manifest from API (same-origin path proxied / built).
+  // Replace lines 46-70 with:
   if (url.pathname === '/manifest.json' || url.pathname === '/site.webmanifest') {
-    const apiBase =
-      self.location.hostname === 'localhost' ||
-      self.location.hostname === '127.0.0.1' ||
-      self.location.hostname.endsWith('.lvh.me')
-        ? 'http://localhost:3001/api'
-        : `${self.location.origin}/api`;
-    const qs = url.search || '';
-    const apiUrl = `${apiBase}/pwa/manifest${qs}`;
+    // Extract tenant from subdomain
+    const hostname = self.location.hostname;
+    const tenant = hostname.split('.')[0]; // Gets 'tenantname' from tenant.scholarnerve.com
+
+    const apiBase = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.lvh.me')
+      ? 'http://localhost:3001/api'
+      : `https://api.scholarnerve.com/api`; // Use your API domain, NOT the tenant subdomain
+
+    // Pass tenant to API
+    const apiUrl = `${apiBase}/pwa/manifest?tenant=${tenant}`;
 
     event.respondWith(
       fetch(apiUrl)
@@ -59,21 +62,17 @@ self.addEventListener('fetch', (event) => {
         })
         .then((data) => {
           const origin = self.location.origin;
-          // Use the API origin for assets if they are relative
-          const apiOrigin = apiBase.replace(/\/api$/, '');
 
-          if (data.start_url && data.start_url.startsWith('/')) {
-            data.start_url = origin + data.start_url;
-          }
+          // CRITICAL: Set start_url and scope to the tenant subdomain
+          data.start_url = `${origin}/portal/`;
+          data.scope = `${origin}/portal/`;
 
+          // Fix icon URLs
           if (Array.isArray(data.icons)) {
             data.icons = data.icons.map(icon => {
-              if (icon.src && icon.src.startsWith('/') && !icon.src.startsWith('//')) {
-                if (icon.src.startsWith('/uploads/')) {
-                  icon.src = apiOrigin + icon.src;
-                } else {
-                  icon.src = origin + icon.src;
-                }
+              if (icon.src && icon.src.startsWith('/')) {
+                // Icons should be served from CDN or API domain
+                icon.src = `https://cdn.scholarnerve.com${icon.src}`;
               }
               return icon;
             });
@@ -83,7 +82,7 @@ self.addEventListener('fetch', (event) => {
             headers: { 'Content-Type': 'application/manifest+json' },
           });
         })
-        .catch(() => fetch('/site.webmanifest'))
+        .catch(() => caches.match('/site.webmanifest'))
     );
     return;
   }

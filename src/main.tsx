@@ -32,12 +32,12 @@ function detectPwaKind(pathname: string): 'parent' | 'school' | 'super-admin' {
   if (/^\/super-admin(\/|$)/i.test(pathname)) return 'super-admin';
   if (/^\/portal(\/|$)/i.test(pathname)) return 'parent';
   if (/^\/(school|sch)(\/|$)/i.test(pathname)) return 'school';
-  
+
   // Root path `/` or other path on a tenant subdomain is the school portal
   if (detectTenantSlugFromHost()) {
     return 'school';
   }
-  
+
   return 'parent';
 }
 
@@ -106,12 +106,8 @@ async function bootstrapTenantBrandingAndManifest() {
     // Chrome/Android cannot generate a WebAPK from a blob: URL.
     // Use a relative path that the Service Worker intercepts.
     // This solves the 'Cross-Origin Manifest' security errors in Chrome.
-    const manifestParams = new URLSearchParams();
-    if (tenantId) manifestParams.set('tenantId', String(tenantId));
-    else if (slug) manifestParams.set('slug', slug);
-    manifestParams.set('kind', kind);
-    const manifestUrl = `/manifest.json?${manifestParams.toString()}`;
-    
+    const manifestUrl = `/manifest.json`; // Clean URL, SW handles everything
+
     let link = document.querySelector("link[rel='manifest']") as HTMLLinkElement | null;
     if (!link) {
       link = document.createElement('link');

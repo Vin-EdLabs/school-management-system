@@ -101,14 +101,51 @@ router.get('/manifest', async (req: TenantRequest, res) => {
       return 'image/png';
     })();
 
-    const tenantIcons = absLogo
-      ? [
-        { src: absLogo, sizes: '192x192', type: logoMime, purpose: 'any' },
-        { src: absLogo, sizes: '192x192', type: logoMime, purpose: 'maskable' },
-        { src: absLogo, sizes: '512x512', type: logoMime, purpose: 'any' },
-        { src: absLogo, sizes: '512x512', type: logoMime, purpose: 'maskable' },
-      ]
-      : [];
+    // Replace the tenantIcons section with this:
+    const tenantIcons = [];
+
+    if (absLogo) {
+      // Define required sizes for Android WebAPK
+      const iconSizes = [72, 96, 128, 144, 152, 192, 384, 512];
+
+      for (const size of iconSizes) {
+        // Generate resized version if you have an image API
+        const resizedLogo = absLogo.includes('cdn.scholarnerve.com')
+          ? `${absLogo}?w=${size}&h=${size}&fit=crop` // If you have image resizing
+          : absLogo;
+
+        tenantIcons.push(
+          {
+            src: resizedLogo,
+            sizes: `${size}x${size}`,
+            type: 'image/png', // Force PNG - Android struggles with SVG
+            purpose: 'any'
+          },
+          {
+            src: resizedLogo,
+            sizes: `${size}x${size}`,
+            type: 'image/png',
+            purpose: 'maskable'
+          }
+        );
+      }
+
+      // Also add a PNG fallback for the smallest size
+      tenantIcons.push({
+        src: absLogo,
+        sizes: '48x48',
+        type: 'image/png',
+        purpose: 'any'
+      });
+    } else {
+      // Fallback to default icons
+      tenantIcons.push(
+        { src: fallbackIcon192, sizes: '192x192', type: 'image/png', purpose: 'any' },
+        { src: fallbackIcon192, sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+        { src: fallbackIcon512, sizes: '512x512', type: 'image/png', purpose: 'any' },
+        { src: fallbackIcon512, sizes: '512x512', type: 'image/png', purpose: 'maskable' }
+      );
+    }
 
     let description = `${baseName} parent portal`;
     if (kind === 'school') {

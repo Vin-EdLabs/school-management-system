@@ -1,7 +1,14 @@
 /* ScholarNerve service worker — caching + push. Bump CACHE_VERSION on breaking cache changes. */
-const CACHE_VERSION = '2026-06-06-v7';
+const CACHE_VERSION = '2026-06-07-v11';
 const CACHE_NAME = `scholarnerve-app-${CACHE_VERSION}`;
 const APP_SHELL = ['/', '/index.html', '/site.webmanifest'];
+
+function getApiOrigin(hostname) {
+  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.lvh.me')) {
+    return 'http://localhost:3001';
+  }
+  return 'https://scholarnerve.com';
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -47,12 +54,10 @@ self.addEventListener('fetch', (event) => {
     const hostname = self.location.hostname;
     const tenant = hostname.split('.')[0]; // Gets 'tenantname' from tenant.scholarnerve.com
 
-    const apiBase = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.lvh.me')
-      ? 'http://localhost:3001/api'
-      : `https://api.scholarnerve.com/api`; // Use your API domain, NOT the tenant subdomain
+    const apiBase = `${getApiOrigin(hostname)}/api`;
 
-    // Pass tenant to API
-    const apiUrl = `${apiBase}/pwa/manifest?tenant=${tenant}`;
+    // Pass tenant to API as slug so it can be resolved by backend middleware
+    const apiUrl = `${apiBase}/pwa/manifest?slug=${tenant}`;
 
     event.respondWith(
       fetch(apiUrl)
@@ -163,8 +168,12 @@ self.addEventListener('push', (event) => {
   let icon = notif.icon || data.icon || payloadData.icon || '/android-chrome-192x192.png';
   let badge = notif.badge || data.badge || payloadData.badge || icon;
 
-  if (icon.startsWith('/')) icon = self.location.origin + icon;
-  if (badge.startsWith('/')) badge = self.location.origin + badge;
+  const apiOrigin = getApiOrigin(self.location.hostname);
+  if (icon.startsWith('/uploads/')) icon = apiOrigin + icon;
+  else if (icon.startsWith('/')) icon = self.location.origin + icon;
+
+  if (badge.startsWith('/uploads/')) badge = apiOrigin + badge;
+  else if (badge.startsWith('/')) badge = self.location.origin + badge;
 
   const url = payloadData.url || data.url || '/';
 

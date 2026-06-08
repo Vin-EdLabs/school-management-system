@@ -9,6 +9,7 @@ import ReceiptPrinter from '@/components/common/ReceiptPrinter';
 import { parseReceiptSnapshot, termsMatch } from '@/utils/feeCalculations';
 import { io, Socket } from 'socket.io-client';
 import { detectTenantSlugFromHost } from '@/utils/tenantHost';
+import { resolveLogoUrl } from '@/services/tenantService';
 import { getFcmToken, removeFcmToken } from '@/services/firebase';
 import StudentLearningMode from '@/components/parent/StudentLearningMode';
 import { BrandedLoading, BrandedLoadingScreen } from '@/components/common/BrandedLoading';
@@ -246,6 +247,8 @@ interface ParentPortalProps {
 const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoolLogoUrl, primaryColor, secondaryColor }) => {
   const brandPrimary = primaryColor || '#7c3aed';
   const brandSecondary = secondaryColor || '#db2777';
+  const resolveSchoolLogo = (url: string | null | undefined) =>
+    resolveLogoUrl(url ?? null, { tenantId, slug: detectTenantSlugFromHost() });
   const [token, setToken] = useState<string | null>(() =>
     localStorage.getItem(`parent_token_${tenantId}`)
   );
@@ -502,7 +505,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     setAppNotifications((prev) => [next, ...prev].slice(0, 30));
 
     if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-      const icon = resolveMediaUrl(student?.school_logo_url || schoolLogoUrl) || undefined;
+      const icon = resolveSchoolLogo(student?.school_logo_url || schoolLogoUrl) || undefined;
       try {
         new Notification(title, { body: message, icon, badge: icon });
       } catch {
@@ -881,7 +884,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   };
 
   // Resolved school logo — from student record (richer) or prop fallback
-  const resolvedLogo = resolveMediaUrl(student?.school_logo_url || schoolLogoUrl);
+  const resolvedLogo = resolveSchoolLogo(student?.school_logo_url || schoolLogoUrl);
   const unreadNotifCount = appNotifications.filter(n => !n.read).length;
   const premiumLoginGradient = `linear-gradient(140deg, #050816 0%, #111a2f 38%, ${brandPrimary} 72%, ${brandSecondary} 100%)`;
 
@@ -959,7 +962,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               <div className="flex flex-col items-center gap-3">
                 <div className="w-20 h-20 rounded-2xl overflow-hidden bg-white/10 border border-white/20 flex items-center justify-center shadow-xl shadow-purple-900/40">
                   <img
-                    src={resolveMediaUrl(schoolLogoUrl) || ''}
+                    src={resolveSchoolLogo(schoolLogoUrl) || ''}
                     alt={schoolName}
                     className="w-full h-full object-contain p-1"
                     onError={e => {
@@ -1523,7 +1526,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             </div>
 
             {dataLoading && !grades ? (
-              <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} />
+              <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} tenantId={tenantId} />
             ) : !grades?.grades?.length ? (
               <EmptyCard icon={<BookOpen className="w-10 h-10 text-gray-300" />} message="No grades recorded yet." />
             ) : (() => {
@@ -1606,7 +1609,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             </div>
 
             {dataLoading && !termReport ? (
-              <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} />
+              <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} tenantId={tenantId} />
             ) : !termReport?.report ? (
               <div className="bg-white border border-gray-200 rounded-xl p-8 text-center shadow-sm">
                 <Clock className="w-10 h-10 text-gray-300 mx-auto mb-3" />
@@ -1715,7 +1718,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             </div>
 
             {dataLoading && !finance ? (
-              <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} />
+              <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} tenantId={tenantId} />
             ) : !finance ? (
               <EmptyCard icon={<CreditCard className="w-10 h-10 text-gray-300" />} message="No finance data available." />
             ) : (
@@ -1909,7 +1912,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             </div>
 
             {dataLoading && !attendance ? (
-              <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} />
+              <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} tenantId={tenantId} />
             ) : !attendance ? (
               <EmptyCard icon={<CalendarCheck className="w-10 h-10 text-gray-300" />} message="No attendance records yet." />
             ) : (
@@ -2024,7 +2027,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             </div>
 
             {deskLoading ? (
-              <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} />
+              <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} tenantId={tenantId} />
             ) : deskMessages.length === 0 ? (
               <div className="bg-white border border-gray-200 rounded-xl p-8 text-center shadow-sm">
                 <MessageSquare className="w-10 h-10 text-purple-300 mx-auto mb-3" />
@@ -2537,9 +2540,15 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
 // ── Shared sub-components ─────────────────────────────────────────────────────
 
-const LoadingCard = ({ logoUrl }: { logoUrl?: string | null }) => (
+const LoadingCard = ({ logoUrl, tenantId }: { logoUrl?: string | null; tenantId?: number }) => (
   <div className="bg-white border border-gray-200 rounded-xl p-6 text-center shadow-sm">
-    <BrandedLoading logoUrl={logoUrl} label="Loading…" className="py-2" />
+    <BrandedLoading
+      logoUrl={logoUrl}
+      tenantId={tenantId}
+      slug={detectTenantSlugFromHost()}
+      label="Loading…"
+      className="py-2"
+    />
   </div>
 );
 
@@ -2609,6 +2618,8 @@ export const ParentPortalRoute: React.FC = () => {
     return (
       <BrandedLoadingScreen
         logoUrl={schoolLogoUrl}
+        tenantId={tenantId}
+        slug={slug || detectTenantSlugFromHost()}
         label="Opening parent portal…"
         tone="dark"
       />

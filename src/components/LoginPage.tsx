@@ -45,7 +45,7 @@ const LoginPage = () => {
   const primaryColor = tenant?.primary_color || '#2563eb';
   const secondaryColor = tenant?.secondary_color || '#7c3aed';
   const schoolName = tenant?.name || 'School';
-  const logoUrl = resolveLogoUrl(tenant?.logo_url || null);
+  const logoUrl = resolveLogoUrl(tenant?.logo_url || null, { tenantId: tenantId ?? null });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

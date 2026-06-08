@@ -28,7 +28,7 @@ export function detectTenantSlugFromHost(hostname: string = window.location.host
   }
 
   // Common subdomains that should never be treated as tenant slugs
-  const reservedSubdomains = ['www', 'api', 'app', 'admin', 'dev', 'staging', 'scholarnerve', 'portal'];
+  const reservedSubdomains = ['www', 'api', 'app', 'admin', 'dev', 'staging', 'scholarnerve', 'portal', 'school'];
   if (reservedSubdomains.includes(parts[0])) return null;
 
   // Production wildcard domains:
@@ -64,5 +64,44 @@ export function getSubdomainUrl(slug: string): string {
   // Production apex custom domain: tenant.scholarnerve.com
   const baseDomain = hostname.includes('scholarnerve.com') ? 'scholarnerve.com' : hostname.replace(/^[a-z0-9-]+\./, '');
   return `${protocol}//${slug}.${baseDomain}`;
+}
+
+/** School staff app URL — subdomain root when slug is known. */
+export function getTenantSchoolUrl(slug: string | null | undefined, schoolId?: number): string {
+  if (slug) {
+    const base = getSubdomainUrl(slug);
+    return base.endsWith('/') ? base : `${base}/`;
+  }
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  return `${origin}/school/${schoolId ?? ''}`;
+}
+
+/** Parent portal URL — clean /portal on tenant subdomain. */
+export function getTenantParentPortalUrl(slug: string | null | undefined, schoolId?: number): string {
+  if (typeof window !== 'undefined' && detectTenantSlugFromHost()) {
+    return `${window.location.origin}/portal`;
+  }
+  if (slug) {
+    return `${getSubdomainUrl(slug)}/portal`;
+  }
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  return `${origin}/portal/${schoolId ?? ''}`;
+}
+
+/** Strip legacy /school/:id and /portal/:id prefixes when already on a tenant subdomain. */
+export function normalizeLegacyPathOnSubdomain(pathname: string): string | null {
+  if (!detectTenantSlugFromHost()) return null;
+
+  const schoolMatch = pathname.match(/^\/school\/\d+(\/.*)?$/);
+  if (schoolMatch) {
+    return schoolMatch[1] || '/';
+  }
+
+  const portalMatch = pathname.match(/^\/portal\/\d+(\/.*)?$/);
+  if (portalMatch) {
+    return `/portal${portalMatch[1] || ''}`;
+  }
+
+  return null;
 }
 

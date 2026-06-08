@@ -134,7 +134,7 @@ const SupportModule = () => {
                 >
                   <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-xl border border-border bg-muted">
                     {conv.logo_url ? (
-                      <img src={resolveLogoUrl(conv.logo_url)!} alt="" className="h-full w-full object-cover" />
+                      <img src={resolveLogoUrl(conv.logo_url, { tenantId: conv.tenant_id })!} alt="" className="h-full w-full object-cover" />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center text-muted-foreground">
                         <Building2 className="h-5 w-5" />

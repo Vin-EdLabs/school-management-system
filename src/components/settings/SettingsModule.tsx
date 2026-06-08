@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import AcademicTermManager from './AcademicTermManager';
 import SchoolManager from './SchoolManager';
+import { getTenantParentPortalUrl } from '../../utils/tenantHost';
 
 interface SchoolSettings {
   name: string;
@@ -68,31 +69,8 @@ const SettingsModule = () => {
   const isSuperAdmin = hasAccess('schools');
   const hasSettingsFull = hasAccess('settings-full');
 
-  const getParentPortalUrl = () => {
-    if (!school?.slug) {
-      return `${window.location.origin}/portal/${school?.id || ''}`;
-    }
-    const hostname = window.location.hostname.toLowerCase();
-    const protocol = window.location.protocol;
-    
-    if (hostname.includes('localhost') || hostname === '127.0.0.1' || hostname === '::1') {
-      const port = window.location.port ? `:${window.location.port}` : '';
-      return `${protocol}//${school.slug}.localhost${port}/portal`;
-    }
-    
-    if (hostname.endsWith('.lvh.me')) {
-      const port = window.location.port ? `:${window.location.port}` : '';
-      return `${protocol}//${school.slug}.lvh.me${port}/portal`;
-    }
-
-    if (hostname.endsWith('.onrender.com')) {
-      const baseDomain = hostname.replace(/^[a-z0-9-]+\./, '');
-      return `${protocol}//${school.slug}.${baseDomain}/portal`;
-    }
-
-    const baseDomain = hostname.includes('scholarnerve.com') ? 'scholarnerve.com' : hostname.replace(/^[a-z0-9-]+\./, '');
-    return `${protocol}//${school.slug}.${baseDomain}/portal`;
-  };
+  const getParentPortalUrl = () =>
+    getTenantParentPortalUrl(school?.slug ?? null, school?.id);
 
   const loadSettings = useCallback(async () => {
     if (!hasSettingsFull) return;

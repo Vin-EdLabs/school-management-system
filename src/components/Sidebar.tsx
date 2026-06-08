@@ -242,7 +242,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
         <div className="w-11 h-11 rounded-2xl bg-white/10 ring-1 ring-white/15 flex items-center justify-center shadow-xl shadow-emerald-950/25 shrink-0 overflow-hidden backdrop-blur dark:bg-gradient-to-br dark:from-indigo-500 dark:to-blue-600 dark:ring-0 dark:shadow-indigo-500/20">
           {school?.logo_url ? (
             <img
-              src={resolveLogoUrl(school.logo_url) || ''}
+              src={resolveLogoUrl(school.logo_url, { tenantId: school.id, slug: school.slug }) || ''}
               alt={school.name}
               className="w-full h-full object-cover"
               onError={(e) => {

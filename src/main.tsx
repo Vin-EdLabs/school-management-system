@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
 import { detectTenantSlugFromHost } from './utils/tenantHost'
-import { resolveLogoUrl } from './services/tenantService'
+import { buildServedLogoUrl } from './services/tenantService'
 
 const API_BASE = (() => {
   if (import.meta.env.VITE_API_BASE_URL) return import.meta.env.VITE_API_BASE_URL;
@@ -41,13 +41,20 @@ function detectPwaKind(pathname: string): 'parent' | 'school' | 'super-admin' {
   return 'parent';
 }
 
-function setCssBrandingVars(tenant: any) {
+function setCssBrandingVars(tenant: any, context?: { tenantId?: number | null; slug?: string | null }) {
   const root = document.documentElement;
   const primary = tenant?.primary_color || '#0f766e';
   const secondary = tenant?.secondary_color || '#14b8a6';
   root.style.setProperty('--primary', primary);
   root.style.setProperty('--secondary', secondary);
-  if (tenant?.logo_url) {
+  const servedLogo = buildServedLogoUrl({
+    tenantId: tenant?.id ?? context?.tenantId ?? null,
+    slug: tenant?.slug ?? context?.slug ?? null,
+    size: 192,
+  });
+  if (servedLogo) {
+    root.style.setProperty('--school-logo', `url(${servedLogo})`);
+  } else if (tenant?.logo_url) {
     root.style.setProperty('--school-logo', `url(${tenant.logo_url})`);
   }
 
@@ -81,7 +88,7 @@ async function bootstrapTenantBrandingAndManifest() {
     const tenant = tenantData?.tenant || null;
 
     if (tenant) {
-      setCssBrandingVars(tenant);
+      setCssBrandingVars(tenant, { tenantId, slug });
       let portalLabel = 'Parent Portal';
       if (kind === 'school') {
         portalLabel = 'School';

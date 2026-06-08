@@ -132,10 +132,10 @@ const SchoolManager = () => {
             <h3 className="text-sm font-medium">Existing Schools</h3>
             <ul className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {schools.map((school) => {
-                const loginUrl = school.subdomain 
-                  ? getSubdomainUrl(school.subdomain) 
+                const loginUrl = school.subdomain
+                  ? getSubdomainUrl(school.subdomain)
                   : `${window.location.origin}/school/${school.id}`;
-                
+
                 return (
                   <li key={school.id} className="flex flex-col gap-2.5 p-3 bg-muted/30 border border-border rounded-xl hover:border-blue-500/30 transition-all group shadow-sm">
                     <div className="flex justify-between items-start">

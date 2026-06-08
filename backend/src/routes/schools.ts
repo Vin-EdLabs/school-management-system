@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { getClient, query } from '../db/connection.js';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth.js';
 import { getIO } from '../socket.js';
+import { compressLogoForStorage } from '../services/logoImageService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -365,14 +366,17 @@ router.post('/:id/logo', requireRole('super-admin'), upload.single('logo'), asyn
   try {
     const { id } = req.params;
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-    
-    // Convert to Base64
-    const base64Image = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
-    
+
+    const base64Image = await compressLogoForStorage(req.file.buffer, req.file.mimetype);
+
     await query(
       `UPDATE tenants SET logo_url = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
       [base64Image, id]
     );
+    await query(
+      `UPDATE school_settings SET logo_url = $1, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = $2`,
+      [base64Image, id]
+    ).catch(() => undefined);
     res.json({ logoUrl: base64Image });
   } catch (error) {
     console.error('Upload school logo error:', error);

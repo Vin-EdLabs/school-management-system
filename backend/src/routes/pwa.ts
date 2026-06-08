@@ -66,8 +66,20 @@ router.get('/manifest', async (req: TenantRequest, res) => {
     const primary = tenant?.primary_color || '#0f766e';
     const secondary = tenant?.secondary_color || primary;
     const subdomain = tenant?.subdomain || tenant?.slug || null;
-    const logo = tenant?.logo_url || '';
     const tenantId = Number(tenant?.id || 0);
+    let logo = tenant?.logo_url || '';
+    if (tenantId > 0) {
+      const logoRes = await query(
+        `SELECT COALESCE(ss.logo_url, t.logo_url) as logo_url
+         FROM tenants t
+         LEFT JOIN school_settings ss ON ss.tenant_id = t.id
+         WHERE t.id = $1`,
+        [tenantId]
+      ).catch(() => null);
+      if (logoRes && logoRes.rows.length > 0 && logoRes.rows[0].logo_url) {
+        logo = logoRes.rows[0].logo_url;
+      }
+    }
 
     // CRITICAL: Determine the correct origin for this tenant
     // For subdomain architecture, use the tenant's subdomain

@@ -85,8 +85,11 @@ router.get('/manifest', async (req: TenantRequest, res) => {
       if (!logo) return '';
       if (logo.startsWith('data:') || logo.startsWith('http')) return logo;
       // For subdomain architecture, serve logos from CDN or API
-      const cdnDomain = process.env.CDN_DOMAIN || 'cdn.scholarnerve.com';
-      return `https://${cdnDomain}${logo.startsWith('/') ? '' : '/'}${logo}`;
+      if (process.env.CDN_DOMAIN) {
+        return `https://${process.env.CDN_DOMAIN}${logo.startsWith('/') ? '' : '/'}${logo}`;
+      }
+      // Fallback to the current API request origin (e.g., https://scholarnerve.com)
+      return `${req.protocol}://${req.get('host')}${logo.startsWith('/') ? '' : '/'}${logo}`;
     })();
 
     const fallbackIcon192 = '/android-chrome-192x192.png';
@@ -131,8 +134,7 @@ router.get('/manifest', async (req: TenantRequest, res) => {
       theme_color: secondary,
       categories: ['education', 'productivity'],
       prefer_related_applications: false,
-      icons: [
-        ...tenantIcons,
+      icons: tenantIcons.length > 0 ? tenantIcons : [
         { src: fallbackIcon192, sizes: '192x192', type: 'image/png', purpose: 'any' },
         { src: fallbackIcon192, sizes: '192x192', type: 'image/png', purpose: 'maskable' },
         { src: fallbackIcon512, sizes: '512x512', type: 'image/png', purpose: 'any' },

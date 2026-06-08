@@ -1,5 +1,5 @@
 /* ScholarNerve service worker — caching + push. Bump CACHE_VERSION on breaking cache changes. */
-const CACHE_VERSION = '2026-06-07-v17';
+const CACHE_VERSION = '2026-06-07-v18';
 const CACHE_NAME = `scholarnerve-app-${CACHE_VERSION}`;
 const APP_SHELL = ['/', '/index.html', '/site.webmanifest'];
 
@@ -54,10 +54,21 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Intercept PWA logo requests and transparently route them to the backend API origin
+  // Intercept PWA logo requests, cache them, and transparently route them to the backend API origin
   if (url.pathname.startsWith('/api/pwa/logo/')) {
     const apiOrigin = getApiOrigin(url.hostname);
-    event.respondWith(fetch(`${apiOrigin}${url.pathname}${url.search}`));
+    event.respondWith(
+      caches.open(CACHE_NAME).then(async (cache) => {
+        const cachedResponse = await cache.match(event.request);
+        if (cachedResponse) return cachedResponse;
+        
+        const response = await fetch(`${apiOrigin}${url.pathname}${url.search}`);
+        if (response.ok) {
+          cache.put(event.request, response.clone());
+        }
+        return response;
+      })
+    );
     return;
   }
 

@@ -92,6 +92,7 @@ async function bootstrapTenantBrandingAndManifest() {
       document.title = `${tenant.name} — ${portalLabel}`;
       const resolved = resolveLogoUrl(tenant.logo_url as string | null);
       if (resolved) {
+        // Apple touch icon
         let appleTouch = document.querySelector("link[rel='apple-touch-icon']") as HTMLLinkElement | null;
         if (!appleTouch) {
           appleTouch = document.createElement('link');
@@ -99,6 +100,25 @@ async function bootstrapTenantBrandingAndManifest() {
           document.head.appendChild(appleTouch);
         }
         appleTouch.href = resolved;
+
+        // Also set standard favicon
+        let favicon = document.querySelector("link[rel='icon']") as HTMLLinkElement | null;
+        if (!favicon) {
+          favicon = document.createElement('link');
+          favicon.rel = 'icon';
+          favicon.type = 'image/png';
+          document.head.appendChild(favicon);
+        }
+        favicon.href = resolved;
+
+        // Set shortcut icon for older browsers
+        let shortcutIcon = document.querySelector("link[rel='shortcut icon']") as HTMLLinkElement | null;
+        if (!shortcutIcon) {
+          shortcutIcon = document.createElement('link');
+          shortcutIcon.rel = 'shortcut icon';
+          document.head.appendChild(shortcutIcon);
+        }
+        shortcutIcon.href = resolved;
       }
     }
 

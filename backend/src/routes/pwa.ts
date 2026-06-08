@@ -7,6 +7,10 @@ const router = express.Router();
 // Public endpoint to serve the decoded base64 logo as binary image data
 router.get('/logo/:tenantId', async (req, res) => {
   try {
+    // Add CORS headers to allow frontend access
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET');
+
     const tenantId = parseInt(req.params.tenantId, 10);
     if (isNaN(tenantId)) {
       return res.status(400).send('Invalid tenant ID');
@@ -32,7 +36,11 @@ router.get('/logo/:tenantId', async (req, res) => {
       }
       const contentType = matches[1];
       const buffer = Buffer.from(matches[2], 'base64');
-      res.type(contentType).send(buffer);
+      
+      // Set cache headers for better performance
+      res.setHeader('Cache-Control', 'public, max-age=86400'); // 24 hours
+      res.setHeader('Content-Type', contentType);
+      return res.send(buffer);
     } else {
       if (logo.startsWith('http')) {
         return res.redirect(logo);
@@ -139,17 +147,24 @@ router.get('/manifest', async (req: TenantRequest, res) => {
 
     const absLogo = (() => {
       if (!logo) return '';
-      // If it's a base64 string, point to the dynamic logo endpoint
+      // If it's a base64 string, point to the dynamic logo endpoint with absolute URL
       if (logo.startsWith('data:')) {
-        return `${req.protocol}://${req.get('host')}/api/pwa/logo/${tenantId}`;
+        const apiHost = req.get('host');
+        const protocol = req.protocol;
+        // Ensure we use the API host, not the tenant subdomain for logo requests
+        // Strip trailing /api to get the base API origin
+        const apiBaseUrl = (process.env.API_BASE_URL || `${protocol}://${apiHost}`).replace(/\/api$/, '');
+        return `${apiBaseUrl}/api/pwa/logo/${tenantId}`;
       }
       if (logo.startsWith('http')) return logo;
       // For subdomain architecture, serve logos from CDN or API
       if (process.env.CDN_DOMAIN) {
         return `https://${process.env.CDN_DOMAIN}${logo.startsWith('/') ? '' : '/'}${logo}`;
       }
-      // Fallback to the current API request origin (e.g., https://scholarnerve.com)
-      return `${req.protocol}://${req.get('host')}${logo.startsWith('/') ? '' : '/'}${logo}`;
+      // Fallback to the current API request origin
+      const apiHost = req.get('host');
+      const protocol = req.protocol;
+      return `${protocol}://${apiHost}${logo.startsWith('/') ? '' : '/'}${logo}`;
     })();
 
     const fallbackIcon192 = '/android-chrome-192x192.png';

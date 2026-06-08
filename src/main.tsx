@@ -102,11 +102,8 @@ async function bootstrapTenantBrandingAndManifest() {
       }
     }
 
-    // Set the manifest URL directly to the API instead of using a Blob URL.
-    // Chrome/Android cannot generate a WebAPK from a blob: URL.
-    // Use a relative path that the Service Worker intercepts.
-    // This solves the 'Cross-Origin Manifest' security errors in Chrome.
-    const manifestUrl = `/manifest.json`; // Clean URL, SW handles everything
+    // Use a relative path with query parameters that the Service Worker intercepts and forwards to the API.
+    const manifestUrl = `/manifest.json?kind=${kind}${slug ? `&slug=${slug}` : tenantId ? `&tenantId=${tenantId}` : ''}`;
 
     let link = document.querySelector("link[rel='manifest']") as HTMLLinkElement | null;
     if (!link) {

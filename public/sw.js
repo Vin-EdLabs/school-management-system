@@ -1,5 +1,5 @@
 /* ScholarNerve service worker — caching + push. Bump CACHE_VERSION on breaking cache changes. */
-const CACHE_VERSION = '2026-06-07-v11';
+const CACHE_VERSION = '2026-06-07-v12';
 const CACHE_NAME = `scholarnerve-app-${CACHE_VERSION}`;
 const APP_SHELL = ['/', '/index.html', '/site.webmanifest'];
 
@@ -50,14 +50,24 @@ self.addEventListener('fetch', (event) => {
   // Dynamic manifest from API (same-origin path proxied / built).
   // Replace lines 46-70 with:
   if (url.pathname === '/manifest.json' || url.pathname === '/site.webmanifest') {
-    // Extract tenant from subdomain
     const hostname = self.location.hostname;
-    const tenant = hostname.split('.')[0]; // Gets 'tenantname' from tenant.scholarnerve.com
-
     const apiBase = `${getApiOrigin(hostname)}/api`;
 
-    // Pass tenant to API as slug so it can be resolved by backend middleware
-    const apiUrl = `${apiBase}/pwa/manifest?slug=${tenant}`;
+    // Use the query parameters from the intercepted manifest request (contains slug, tenantId, kind)
+    let search = url.search;
+
+    // If no query parameters, fallback to subdomain parsing
+    if (!search || search === '?') {
+      const subdomain = hostname.split('.')[0];
+      const reserved = ['www', 'api', 'app', 'admin', 'dev', 'staging', 'scholarnerve', 'portal', 'localhost', '127'];
+      if (!reserved.includes(subdomain)) {
+        search = `?slug=${encodeURIComponent(subdomain)}`;
+      } else {
+        search = '';
+      }
+    }
+
+    const apiUrl = `${apiBase}/pwa/manifest${search}`;
 
     event.respondWith(
       fetch(apiUrl)

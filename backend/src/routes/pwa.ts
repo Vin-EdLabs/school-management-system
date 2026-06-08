@@ -36,7 +36,7 @@ router.get('/logo/:tenantId', async (req, res) => {
       }
       const contentType = matches[1];
       const buffer = Buffer.from(matches[2], 'base64');
-      
+
       // Set cache headers for better performance
       res.setHeader('Cache-Control', 'public, max-age=86400'); // 24 hours
       res.setHeader('Content-Type', contentType);
@@ -170,24 +170,22 @@ router.get('/manifest', async (req: TenantRequest, res) => {
     const fallbackIcon192 = '/android-chrome-192x192.png';
     const fallbackIcon512 = '/android-chrome-512x512.png';
 
-    const logoMime = (() => {
-      if (logo?.startsWith('data:')) return logo.split(';')[0].split(':')[1] || 'image/png';
-      const lower = logo.toLowerCase();
-      if (lower.endsWith('.svg')) return 'image/svg+xml';
-      if (lower.endsWith('.webp')) return 'image/webp';
-      if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
-      return 'image/png';
-    })();
+    // 🚀 FIX 1: Explicitly identify as image/webp since your DB saves images in webp format
+    const logoMime = 'image/webp';
 
-    const tenantIcons = absLogo
-      ? [
-        { src: absLogo, sizes: '192x192', type: logoMime, purpose: 'any' },
-        { src: absLogo, sizes: '192x192', type: logoMime, purpose: 'maskable' },
-        { src: absLogo, sizes: '512x512', type: logoMime, purpose: 'any' },
-        { src: absLogo, sizes: '512x512', type: logoMime, purpose: 'maskable' },
-      ]
-      : [];
+    // 🚀 FIX 2: Split your logo path into separate parameters for matching dimensions
+    // This stops Android from rejecting a 192px source mapped into a 512px wrapper.
+    const logoUrl192 = absLogo ? `${absLogo}&size=192` : '';
+    const logoUrl512 = absLogo ? `${absLogo}&size=512` : '';
 
+    const tenantIcons = absLogo ? [
+      { src: logoUrl192, sizes: '192x192', type: logoMime, purpose: 'any' },
+      { src: logoUrl192, sizes: '192x192', type: logoMime, purpose: 'maskable' },
+      { src: logoUrl512, sizes: '512x512', type: logoMime, purpose: 'any' },
+      { src: logoUrl512, sizes: '512x512', type: logoMime, purpose: 'maskable' },
+    ] : [];
+
+    // Base description mapping logic
     let description = `${baseName} parent portal`;
     if (kind === 'school') {
       description = `${baseName} staff and teacher portal`;
@@ -195,6 +193,7 @@ router.get('/manifest', async (req: TenantRequest, res) => {
       description = `${baseName} super admin dashboard`;
     }
 
+    // Construct the standard clean PWA manifest configuration payload
     const manifest = {
       id: startUrl,
       name: appName,
@@ -217,31 +216,25 @@ router.get('/manifest', async (req: TenantRequest, res) => {
       ],
       shortcuts: [
         {
-          name: kind === 'school'
-            ? 'Open school app'
-            : kind === 'super-admin'
-              ? 'Open super admin'
-              : 'Open parent portal',
-          short_name: kind === 'school'
-            ? 'School'
-            : kind === 'super-admin'
-              ? 'Admin'
-              : 'Portal',
+          name: kind === 'school' ? 'Open school app' : kind === 'super-admin' ? 'Open super admin' : 'Open parent portal',
+          short_name: kind === 'school' ? 'School' : kind === 'super-admin' ? 'Admin' : 'Portal',
           url: startUrl,
         }
       ]
     };
 
-    // Only add gcm_sender_id for push notifications if needed
+    // Conditional push notification integration check
     const responseManifest = process.env.VAPID_PUBLIC_KEY
       ? { ...manifest, gcm_sender_id: "103953800507" }
       : manifest;
 
     console.log(`[PWA] Generated manifest for tenant ${subdomain || tenantId}: start_url=${startUrl}, scope=${scope}`);
 
+    // Set correct PWA specification headers and send response
     return res
       .type('application/manifest+json')
       .json(responseManifest);
+
   } catch (error) {
     console.error('PWA manifest error:', error);
     return res.status(500).json({ error: 'Failed to build manifest' });

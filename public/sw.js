@@ -1,5 +1,5 @@
 /* ScholarNerve service worker — caching + push. Bump CACHE_VERSION on breaking cache changes. */
-const CACHE_VERSION = '2026-06-07-v15';
+const CACHE_VERSION = '2026-06-07-v17';
 const CACHE_NAME = `scholarnerve-app-${CACHE_VERSION}`;
 const APP_SHELL = ['/', '/index.html', '/site.webmanifest'];
 
@@ -47,6 +47,20 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
+  // Intercept uploads and transparently route them to the backend API origin
+  if (url.pathname.startsWith('/uploads/')) {
+    const apiOrigin = getApiOrigin(url.hostname);
+    event.respondWith(fetch(`${apiOrigin}${url.pathname}${url.search}`));
+    return;
+  }
+
+  // Intercept PWA logo requests and transparently route them to the backend API origin
+  if (url.pathname.startsWith('/api/pwa/logo/')) {
+    const apiOrigin = getApiOrigin(url.hostname);
+    event.respondWith(fetch(`${apiOrigin}${url.pathname}${url.search}`));
+    return;
+  }
+
   // Dynamic manifest from API (same-origin path proxied / built).
   // Replace lines 46-70 with:
   if (url.pathname === '/manifest.json' || url.pathname === '/site.webmanifest') {
@@ -89,9 +103,18 @@ self.addEventListener('fetch', (event) => {
           // Fix icon URLs
           if (Array.isArray(data.icons)) {
             data.icons = data.icons.map(icon => {
-              if (icon.src && icon.src.startsWith('/')) {
-                // Relative paths for icons should point to the frontend origin
-                icon.src = `${origin}${icon.src}`;
+              if (icon.src) {
+                if (icon.src.startsWith('/')) {
+                  // Relative paths for icons should point to the frontend origin
+                  icon.src = `${origin}${icon.src}`;
+                } else if (icon.src.includes('/api/pwa/logo/') || icon.src.includes('/uploads/')) {
+                  // Rewrite backend absolute URLs to same-origin URLs relative to the frontend domain
+                  const pathIndex = icon.src.indexOf('/api/pwa/logo/') !== -1 
+                    ? icon.src.indexOf('/api/pwa/logo/') 
+                    : icon.src.indexOf('/uploads/');
+                  const pathWithQuery = icon.src.substring(pathIndex);
+                  icon.src = `${origin}/${pathWithQuery.replace(/^\/+/, '')}`;
+                }
               }
               return icon;
             });

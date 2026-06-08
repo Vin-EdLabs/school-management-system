@@ -51,7 +51,7 @@ export async function resolveTenant(
       // Basic check: at least 2 parts
       if (parts.length >= 2) {
         const subdomain = parts[0];
-        const reserved = ['www', 'api', 'app', 'admin', 'dev', 'staging', 'scholarnerve', 'portal'];
+        const reserved = ['www', 'api', 'app', 'admin', 'dev', 'staging', 'scholarnerve', 'portal', 'school'];
         
         // Only try resolving if it's not a reserved subdomain
         if (!reserved.includes(subdomain)) {

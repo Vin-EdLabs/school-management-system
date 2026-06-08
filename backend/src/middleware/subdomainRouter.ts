@@ -148,6 +148,7 @@ export async function subdomainRouter(
       'dev',
       'staging',
       'portal',
+      'school',
       'scholarnerve',
       'localhost'
     ]);

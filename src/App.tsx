@@ -49,7 +49,15 @@ const ManifestKindUpdater = () => {
       kind = 'school';
     }
     
-    link.setAttribute('href', `/site.webmanifest?kind=${kind}`);
+    try {
+      const currentUrl = new URL(link.href, window.location.origin);
+      const params = new URLSearchParams(currentUrl.search);
+      params.set('kind', kind);
+      const filename = currentUrl.pathname.endsWith('manifest.json') ? '/manifest.json' : '/site.webmanifest';
+      link.setAttribute('href', `${filename}?${params.toString()}`);
+    } catch {
+      link.setAttribute('href', `/site.webmanifest?kind=${kind}`);
+    }
   }, [location.pathname]);
   
   return null;
@@ -214,9 +222,10 @@ const App = () => {
               <Toaster />
               <Sonner />
               <BrowserRouter>
+              <ManifestKindUpdater />   {/* 👈 add this line */}
                 {subdomainSlug ? (
                   <Routes>
-                    <ManifestKindUpdater />   {/* 👈 add this line */}
+                   
                     {/* --- WILDCARD SUBDOMAIN ROUTING (Clean URL bar, e.g. rosa.localhost:8080) --- */}
                     <Route path="/portal" element={<ParentPortalRoute />} />
                     <Route path="/portal/*" element={<ParentPortalRoute />} />

@@ -28,7 +28,7 @@ export function detectTenantSlugFromHost(hostname: string = window.location.host
   }
 
   // Common subdomains that should never be treated as tenant slugs
-  const reservedSubdomains = ['www', 'api', 'app', 'admin', 'dev', 'staging', 'scholarnerve', 'portal'];
+  const reservedSubdomains = ['www', 'api', 'app', 'admin', 'dev', 'staging', 'scholarnerve', 'portal', 'school'];
   if (reservedSubdomains.includes(parts[0])) return null;
 
   // Production wildcard domains:

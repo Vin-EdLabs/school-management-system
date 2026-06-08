@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
+import { formatDisplayDate } from '../../utils/dateFormat';
 import { Search } from 'lucide-react';
 
 const ViewPayments = () => {
@@ -144,7 +145,7 @@ const ViewPayments = () => {
                         <Badge variant="secondary">{payment.paymentMethod}</Badge>
                       </TableCell>
                       <TableCell>{payment.term}</TableCell>
-                      <TableCell>{new Date(payment.date).toLocaleDateString()}</TableCell>
+                      <TableCell>{formatDisplayDate(payment.date)}</TableCell>
                       <TableCell className="max-w-xs truncate">
                         {payment.notes || '-'}
                       </TableCell>

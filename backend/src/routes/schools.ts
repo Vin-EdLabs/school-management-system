@@ -4,8 +4,9 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { query } from '../db/connection.js';
+import { getClient, query } from '../db/connection.js';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth.js';
+import { getIO } from '../socket.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -13,16 +14,68 @@ const uploadsDir = path.join(__dirname, '../../uploads');
 
 const router = express.Router();
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-    cb(null, uploadsDir);
-  },
-  filename: (req, file, cb) => {
-    cb(null, 'logo-' + Date.now() + '-' + Math.round(Math.random() * 1E9) + path.extname(file.originalname));
-  },
-});
-const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
+const SCHOOL_BACKUP_TABLES = [
+  'school_settings',
+  'academic_terms',
+  'academic_years',
+  'terms',
+  'classes',
+  'subjects',
+  'students',
+  'teachers',
+  'fees',
+  'fee_structures',
+  'payments',
+  'receipts',
+  'income',
+  'expenses',
+  'student_ledger',
+  'ledger_fee_structures',
+  'student_credits',
+  'student_arrears',
+  'student_arrears_balance',
+  'term_arrears',
+  'term_outstanding_balances',
+  'attendance',
+  'grade_assignments',
+  'student_grades',
+  'grade_audit_log',
+  'salary_payments',
+  'payroll_other_staff',
+  'payroll_settings',
+  'class_teachers',
+  'parent_portal_accounts',
+  'support_messages',
+  'term_report_releases',
+  'events',
+];
+
+const SCHOOL_RESET_TABLES = [
+  'attendance', 'student_grades', 'grade_audit_log', 'grade_assignments',
+  'receipts', 'payments', 'student_credits', 'income', 'expenses',
+  'student_ledger', 'ledger_fee_structures', 'term_outstanding_balances',
+  'student_arrears', 'student_arrears_balance', 'term_arrears',
+  'salary_payments', 'payroll_other_staff', 'payroll_settings', 'class_teachers', 'students',
+  'classes', 'subjects', 'support_messages', 'term_report_releases',
+  'parent_portal_accounts', 'receipt_number_seq', 'terms', 'academic_years',
+  'academic_terms', 'events'
+];
+
+const emitSystemDataChanged = (entity: string, action: 'created' | 'updated' | 'deleted', tenantId?: number) => {
+  try {
+    const io = getIO();
+    io.to('global:general').emit('tenant-data-changed', { tenantId: tenantId ?? null, entity, action, at: Date.now() });
+    if (tenantId) {
+      io.to(`tenant:${tenantId}`).emit('tenant-data-changed', { tenantId, entity, action, at: Date.now() });
+    }
+  } catch {
+    // Socket server may be unavailable in some non-realtime contexts.
+  }
+};
+
+// Configure multer for memory storage (Base64)
+const storage = multer.memoryStorage();
+const upload = multer({ storage, limits: { fileSize: 2 * 1024 * 1024 } }); // 2MB limit for Base64
 
 // All routes require authentication
 router.use(authenticate);
@@ -79,6 +132,7 @@ router.post('/super-admins', requireRole('super-admin'), async (req: AuthRequest
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id, details) VALUES (NULL, $1, $2, $3, $4, $5)',
       [req.user!.id, 'CREATE', 'SUPER_ADMIN', result.rows[0].id, JSON.stringify({ username, created_by: req.user!.username })]
     );
+    emitSystemDataChanged('super-admin', 'created');
     res.status(201).json(result.rows[0]);
   } catch (error: any) {
     console.error('Create super admin error:', error);
@@ -103,10 +157,105 @@ router.post('/super-admins/:userId/reset-password', requireRole('super-admin'), 
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id, details) VALUES (NULL, $1, $2, $3, $4, $5)',
       [req.user!.id, 'RESET_PASSWORD', 'SUPER_ADMIN', parseInt(userId), JSON.stringify({ target: userCheck.rows[0].username })]
     );
+    emitSystemDataChanged('super-admin', 'updated');
     res.json({ message: 'Password reset successfully' });
   } catch (error) {
     console.error('Reset super admin password error:', error);
     res.status(500).json({ error: 'Failed to reset password' });
+  }
+});
+
+// Create a tenant-scoped backup. Super admins can back up any school; school admins can back up only their school.
+router.get('/:id/backup', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = parseInt(req.params.id, 10);
+    if (!tenantId) return res.status(400).json({ error: 'Invalid school id' });
+    if (req.user?.role !== 'super-admin' && req.user?.tenantId !== tenantId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const tenant = await query(
+      `SELECT id, name, slug, subdomain, logo_url, primary_color, secondary_color,
+              subscription_status, is_active, created_at, updated_at
+       FROM tenants WHERE id = $1`,
+      [tenantId]
+    );
+    if (tenant.rows.length === 0) return res.status(404).json({ error: 'School not found' });
+
+    const data: Record<string, unknown[]> = {};
+    for (const table of SCHOOL_BACKUP_TABLES) {
+      try {
+        const result = await query(`SELECT * FROM ${table} WHERE tenant_id = $1`, [tenantId]);
+        data[table] = result.rows;
+      } catch (err: any) {
+        console.warn(`[backup] Skipped ${table}:`, err?.message || err);
+      }
+    }
+
+    await query(
+      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, details) VALUES ($1, $2, $3, $4, $5)',
+      [tenantId, req.user!.id, 'BACKUP_EXPORT', 'TENANT_DATA', JSON.stringify({ requested_by: req.user!.username, timestamp: new Date() })]
+    );
+
+    res.json({
+      version: '1.0',
+      generatedAt: new Date().toISOString(),
+      school: tenant.rows[0],
+      data,
+    });
+  } catch (error) {
+    console.error('School backup error:', error);
+    res.status(500).json({ error: 'Failed to create school backup' });
+  }
+});
+
+// Reset one school's data. Only super admins can run this from the Super Admin page.
+router.post('/:id/reset-data', requireRole('super-admin'), async (req: AuthRequest, res) => {
+  const client = await getClient();
+  try {
+    const tenantId = parseInt(req.params.id, 10);
+    const { confirm } = req.body || {};
+    if (!tenantId) return res.status(400).json({ error: 'Invalid school id' });
+    if (confirm !== 'RESET') return res.status(400).json({ error: 'Type RESET to confirm this action' });
+
+    const tenant = await client.query('SELECT id, name FROM tenants WHERE id = $1', [tenantId]);
+    if (tenant.rows.length === 0) return res.status(404).json({ error: 'School not found' });
+
+    await client.query('BEGIN');
+    for (const table of SCHOOL_RESET_TABLES) {
+      try {
+        await client.query(`DELETE FROM ${table} WHERE tenant_id = $1`, [tenantId]);
+      } catch (err: any) {
+        console.warn(`[super-admin reset] Skip/Fail table ${table}:`, err?.message || err);
+      }
+    }
+
+    await client.query(
+      `UPDATE school_settings 
+       SET address = NULL, contact = NULL, email = NULL,
+           current_year = $2, current_term = NULL,
+           receipt_prefix = 'R', postal_address = NULL,
+           contact_phone = NULL, receipt_footer = NULL,
+           bank_details = NULL, phone_number = NULL, whatsapp_number = NULL,
+           office_hours = NULL, physical_address = NULL, updated_at = CURRENT_TIMESTAMP
+       WHERE tenant_id = $1`,
+      [tenantId, new Date().getFullYear().toString()]
+    );
+
+    await client.query(
+      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, details) VALUES ($1, $2, $3, $4, $5)',
+      [tenantId, req.user!.id, 'FULL_RESET', 'TENANT_DATA', JSON.stringify({ requested_by: req.user!.username, timestamp: new Date() })]
+    );
+
+    await client.query('COMMIT');
+    emitSystemDataChanged('tenant-data', 'deleted', tenantId);
+    res.json({ message: `${tenant.rows[0].name} data reset successfully` });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    console.error('Super admin school reset error:', error);
+    res.status(500).json({ error: 'Failed to reset school data' });
+  } finally {
+    client.release();
   }
 });
 
@@ -187,6 +336,7 @@ router.post('/', requireRole('super-admin'), async (req: AuthRequest, res) => {
         'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES (NULL, $1, $2, $3, $4)',
         [req.user!.id, 'CREATE', 'TENANT', tenantId]
       );
+      emitSystemDataChanged('school', 'created', tenantId);
       
       res.status(201).json({
         id: tenantId,
@@ -215,12 +365,15 @@ router.post('/:id/logo', requireRole('super-admin'), upload.single('logo'), asyn
   try {
     const { id } = req.params;
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-    const logoUrl = `/uploads/${req.file.filename}`;
+    
+    // Convert to Base64
+    const base64Image = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+    
     await query(
       `UPDATE tenants SET logo_url = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
-      [logoUrl, id]
+      [base64Image, id]
     );
-    res.json({ logoUrl });
+    res.json({ logoUrl: base64Image });
   } catch (error) {
     console.error('Upload school logo error:', error);
     res.status(500).json({ error: 'Failed to upload logo' });
@@ -254,6 +407,7 @@ router.put('/:id', requireRole('super-admin'), async (req: AuthRequest, res) => 
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES (NULL, $1, $2, $3, $4)',
       [req.user!.id, 'UPDATE', 'TENANT', parseInt(id)]
     );
+    emitSystemDataChanged('school', 'updated', parseInt(id));
     
     res.json(result.rows[0]);
   } catch (error: any) {
@@ -270,6 +424,7 @@ router.post('/:id/activate', requireRole('super-admin'), async (req: AuthRequest
   try {
     const { id } = req.params;
     await query('UPDATE tenants SET is_active = true, updated_at = CURRENT_TIMESTAMP WHERE id = $1', [id]);
+    emitSystemDataChanged('school', 'updated', parseInt(id));
     res.json({ message: 'School activated' });
   } catch (error) {
     console.error('Activate school error:', error);
@@ -282,6 +437,7 @@ router.post('/:id/deactivate', requireRole('super-admin'), async (req: AuthReque
   try {
     const { id } = req.params;
     await query('UPDATE tenants SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id = $1', [id]);
+    emitSystemDataChanged('school', 'updated', parseInt(id));
     res.json({ message: 'School deactivated' });
   } catch (error) {
     console.error('Deactivate school error:', error);
@@ -305,6 +461,7 @@ router.delete('/:id', requireRole('super-admin'), async (req: AuthRequest, res) 
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES (NULL, $1, $2, $3, $4)',
       [req.user!.id, 'DELETE', 'TENANT', parseInt(id)]
     );
+    emitSystemDataChanged('school', 'deleted', parseInt(id));
     
     res.json({ message: 'School deleted successfully' });
   } catch (error) {
@@ -348,6 +505,7 @@ router.post('/:id/reset-password', requireRole('super-admin'), async (req: AuthR
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES (NULL, $1, $2, $3, $4)',
       [req.user!.id, 'RESET_PASSWORD', 'USER', userResult.rows[0].id]
     );
+    emitSystemDataChanged('user', 'updated', parseInt(id));
 
     res.json({ message: 'Password reset successfully' });
   } catch (error) {
@@ -397,6 +555,7 @@ router.post('/:id/users', requireRole('super-admin'), async (req: AuthRequest, r
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
       [parseInt(id), req.user!.id, 'CREATE', 'USER', result.rows[0].id]
     );
+    emitSystemDataChanged('user', 'created', parseInt(id));
     
     res.status(201).json(result.rows[0]);
   } catch (error: any) {

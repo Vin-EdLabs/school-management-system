@@ -1,24 +1,7 @@
-
-import { useEffect } from 'react';
-import { useAudit } from '../contexts/AuditContext';
-
-const AuditLoginTracker = () => {
-  const { addAuditLog } = useAudit();
-
-  useEffect(() => {
-    const handleLogin = (event: any) => {
-      const { username, role } = event.detail;
-      addAuditLog({
-        actionType: 'Login',
-        module: 'Authentication'
-      });
-    };
-
-    window.addEventListener('userLogin', handleLogin);
-    return () => window.removeEventListener('userLogin', handleLogin);
-  }, [addAuditLog]);
-
-  return null;
-};
+/**
+ * Login / logout are recorded on the server (see backend auth routes).
+ * This component is kept as a no-op mount so existing layout imports stay valid.
+ */
+const AuditLoginTracker = () => null;
 
 export default AuditLoginTracker;

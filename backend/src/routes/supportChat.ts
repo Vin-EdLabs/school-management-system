@@ -14,14 +14,9 @@ const router = express.Router();
 const uploadsDir = path.join(__dirname, '../../uploads/support');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, uploadsDir),
-  filename: (_req, file, cb) => {
-    const ext = file.originalname.split('.').pop() || 'jpg';
-    cb(null, `support-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`);
-  },
-});
-const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
+// Configure multer for memory storage (Base64)
+const storage = multer.memoryStorage();
+const upload = multer({ storage, limits: { fileSize: 8 * 1024 * 1024 } }); // client compresses; server accepts up to 8MB before write
 
 // Get conversations list (super-admin only) - all schools with last message and unread count
 router.get('/conversations', authenticate, async (req: AuthRequest, res) => {
@@ -55,6 +50,48 @@ router.get('/conversations', authenticate, async (req: AuthRequest, res) => {
   } catch (error) {
     console.error('Support conversations error:', error);
     res.status(500).json({ error: 'Failed to fetch conversations' });
+  }
+});
+
+// Unread badge: super-admin = unread school messages; school admin/finance = unread super-admin replies
+router.get('/unread-count', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const user = req.user!;
+    if (user.role === 'super-admin') {
+      const r = await query(
+        `SELECT COUNT(*)::int AS c FROM support_messages WHERE is_from_superadmin = false AND read_at IS NULL`
+      );
+      return res.json({ count: Number(r.rows[0]?.c ?? 0) });
+    }
+    if (!user.tenantId || (user.role !== 'administrator' && user.role !== 'finance')) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const r = await query(
+      `SELECT COUNT(*)::int AS c FROM support_messages WHERE tenant_id = $1 AND is_from_superadmin = true AND read_at IS NULL`,
+      [user.tenantId]
+    );
+    return res.json({ count: Number(r.rows[0]?.c ?? 0) });
+  } catch (error) {
+    console.error('Support unread-count error:', error);
+    res.status(500).json({ error: 'Failed to read unread count' });
+  }
+});
+
+// School marks super-admin thread messages as read (opens support chat)
+router.post('/mark-read-by-school', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const user = req.user!;
+    if (!user.tenantId || (user.role !== 'administrator' && user.role !== 'finance')) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    await query(
+      `UPDATE support_messages SET read_at = CURRENT_TIMESTAMP WHERE tenant_id = $1 AND is_from_superadmin = true AND read_at IS NULL`,
+      [user.tenantId]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    console.error('mark-read-by-school error:', error);
+    res.status(500).json({ error: 'Failed to mark as read' });
   }
 });
 
@@ -127,24 +164,61 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
       }
     }
 
-    await query(
+    const insertResult = await query(
       `INSERT INTO support_messages (tenant_id, user_id, sender_role, sender_username, tenant_name, message, is_from_superadmin, read_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [tenantId, user.id, user.role, user.username, tenantName, message || '', isSuperAdmin, isSuperAdmin ? new Date() : null]
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING *`,
+      [tenantId, user.id, user.role, user.username, tenantName, message || '', isSuperAdmin, null]
     );
-    res.json({ success: true });
+
+    const newMessage = insertResult.rows[0];
+
+    // Emit via socket
+    try {
+      const { getIO } = await import('../socket.js');
+      const io = getIO();
+      // To tenant
+      if (tenantId) {
+        io.to(`tenant:${tenantId}`).emit('new-support-message', newMessage);
+      }
+      // To all super-admins (they should join a specific room or listen globally)
+      io.emit('new-support-message', newMessage);
+      if (tenantId) {
+        io.to(`tenant:${tenantId}`).emit('tenant-data-changed', {
+          tenantId,
+          entity: 'support-chat',
+          action: 'created',
+          at: Date.now(),
+        });
+      }
+    } catch (socketErr) {
+      console.error('Socket emit error:', socketErr);
+    }
+
+    res.json(newMessage);
   } catch (error) {
     console.error('Support chat post error:', error);
     res.status(500).json({ error: 'Failed to send message' });
   }
 });
 
-// Upload image and send as message
+const ALLOWED_IMAGE = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+
+// Upload image (stored on disk) and send as message — optional caption in body field "message"
 router.post('/upload-image', authenticate, upload.single('image'), async (req: AuthRequest, res) => {
   try {
     const user = req.user!;
     if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
+    if (!ALLOWED_IMAGE.has(req.file.mimetype)) {
+      return res.status(400).json({ error: 'Only JPEG, PNG, GIF, or WebP images are allowed' });
+    }
     const targetTenantId = req.body.tenantId != null ? parseInt(String(req.body.tenantId)) : null;
+    const caption =
+      typeof req.body.message === 'string'
+        ? req.body.message.trim().slice(0, 2000)
+        : typeof req.body.caption === 'string'
+          ? req.body.caption.trim().slice(0, 2000)
+          : '';
 
     const isSuperAdmin = user.role === 'super-admin';
     let tenantId: number | null;
@@ -163,13 +237,52 @@ router.post('/upload-image', authenticate, upload.single('image'), async (req: A
       }
     }
 
-    const imageUrl = `/uploads/support/${req.file.filename}`;
-    await query(
+    const origExt = path.extname(req.file.originalname || '').toLowerCase();
+    const ext =
+      origExt && ['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(origExt)
+        ? origExt
+        : req.file.mimetype === 'image/png'
+          ? '.png'
+          : req.file.mimetype === 'image/webp'
+            ? '.webp'
+            : req.file.mimetype === 'image/gif'
+              ? '.gif'
+              : '.jpg';
+    const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${ext}`;
+    const filePath = path.join(uploadsDir, filename);
+    fs.writeFileSync(filePath, req.file.buffer);
+    const imageUrl = `/uploads/support/${filename}`;
+
+    const insertResult = await query(
       `INSERT INTO support_messages (tenant_id, user_id, sender_role, sender_username, tenant_name, message, image_url, is_from_superadmin, read_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [tenantId, user.id, user.role, user.username, tenantName, '', imageUrl, isSuperAdmin, isSuperAdmin ? new Date() : null]
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING *`,
+      [tenantId, user.id, user.role, user.username, tenantName, caption, imageUrl, isSuperAdmin, null]
     );
-    res.json({ success: true, imageUrl });
+
+    const newMessage = insertResult.rows[0];
+
+    // Emit via socket
+    try {
+      const { getIO } = await import('../socket.js');
+      const io = getIO();
+      if (tenantId) {
+        io.to(`tenant:${tenantId}`).emit('new-support-message', newMessage);
+      }
+      io.emit('new-support-message', newMessage);
+      if (tenantId) {
+        io.to(`tenant:${tenantId}`).emit('tenant-data-changed', {
+          tenantId,
+          entity: 'support-chat',
+          action: 'created',
+          at: Date.now(),
+        });
+      }
+    } catch (socketErr) {
+      console.error('Socket emit error:', socketErr);
+    }
+
+    res.json(newMessage);
   } catch (error) {
     console.error('Support chat image upload error:', error);
     res.status(500).json({ error: 'Failed to upload image' });

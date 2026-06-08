@@ -1,6 +1,22 @@
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=DM+Sans:wght@300;400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* PWA mobile: iOS avoids input-zoom below 16px; modal panels scroll when keyboard opens */
+input,
+textarea,
+select {
+  font-size: 16px !important;
+}
+
+.modal {
+  max-height: 90dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
 
 @layer utilities {
   .scrollbar-hide {
@@ -10,16 +26,28 @@
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
-}
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
+  .form-action-bar {
+    position: sticky;
+    bottom: max(0px, env(safe-area-inset-bottom));
+    z-index: 20;
+    margin-top: 1rem;
+    border-top: 1px solid hsl(var(--border));
+    background: hsl(var(--card) / 0.96);
+    padding-top: 0.75rem;
+    box-shadow: 0 -10px 30px rgb(15 23 42 / 0.08);
+    backdrop-filter: blur(12px);
+  }
+
+  .dark .form-action-bar {
+    box-shadow: 0 -10px 30px rgb(0 0 0 / 0.3);
+  }
+}
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
 
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
@@ -27,8 +55,8 @@ All colors MUST be HSL.
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 148 56% 24%;
+    --primary-foreground: 0 0% 100%;
 
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
@@ -44,25 +72,18 @@ All colors MUST be HSL.
 
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --ring: 142 71% 45%;
 
-    --radius: 0.5rem;
+    --radius: 1rem;
 
-    --sidebar-background: 0 0% 98%;
-
-    --sidebar-foreground: 240 5.3% 26.1%;
-
-    --sidebar-primary: 240 5.9% 10%;
-
-    --sidebar-primary-foreground: 0 0% 98%;
-
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-background: 152 69% 19%;
+    --sidebar-foreground: 150 80% 96%;
+    --sidebar-primary: 142 71% 45%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 148 56% 24%;
+    --sidebar-accent-foreground: 150 80% 96%;
+    --sidebar-border: 151 48% 29%;
+    --sidebar-ring: 142 71% 45%;
   }
 
   .dark {
@@ -93,23 +114,144 @@ All colors MUST be HSL.
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
+
+    --sidebar-background: 222.2 84% 4.9%;
+    --sidebar-foreground: 210 40% 98%;
     --sidebar-primary: 224.3 76.3% 48%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-accent: 217.2 32.6% 17.5%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 217.2 32.6% 17.5%;
+    --sidebar-ring: 212.7 26.8% 83.9%;
   }
 }
 
 @layer base {
-  * {
-    @apply border-border;
-  }
+  * { @apply border-border; }
+  body { @apply bg-background text-foreground antialiased; }
+}
 
-  body {
-    @apply bg-background text-foreground;
+/* Telegram Specific Layout */
+.telegram-chat-bg { background-color: #f4f4f5; }
+.telegram-blue { background-color: #0088cc; }
+.telegram-header-blue { background-color: #0088cc; }
+.telegram-bubble-in { background-color: #ffffff; }
+.telegram-bubble-out { background-color: #effdde; } /* Telegram classic light blue/green */
+
+/* Clean Animations for Telegram UI */
+@keyframes slide-up {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes fade-in-scale {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-slide-up { animation: slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-fade-in-scale { animation: fade-in-scale 0.3s ease-out forwards; }
+
+/* Writing vertical fix (for the trigger) */
+.writing-vertical {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+}
+
+/* Hide number input spinners */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type=number] {
+  -moz-appearance: textfield;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+.scholar-landing {
+  --brand: #0D9E75;
+  --brand-dark: #085041;
+  --brand-light: #E1F5EE;
+  --brand-mid: #1D9E75;
+  --ink: #0F1A14;
+  --ink-muted: #3D5047;
+  --ink-subtle: #7A9185;
+  --surface: #FFFFFF;
+  --surface-2: #F6FAF8;
+  --surface-3: #EDF6F1;
+  --sn-border: rgba(13,158,117,0.15);
+  --sn-border-strong: rgba(13,158,117,0.3);
+  --radius: 16px;
+  --radius-sm: 10px;
+  --radius-pill: 100px;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 400;
+}
+
+.scholar-display {
+  font-family: 'Bricolage Grotesque', sans-serif;
+  letter-spacing: -0.03em;
+}
+
+.scholar-hero-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at top center, rgba(13,158,117,0.12), transparent 48%),
+    linear-gradient(rgba(13,158,117,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(13,158,117,0.04) 1px, transparent 1px);
+  background-size: auto, 48px 48px, 48px 48px;
+  mask-image: radial-gradient(circle at top center, black 0%, transparent 76%);
+  -webkit-mask-image: radial-gradient(circle at top center, black 0%, transparent 76%);
+  pointer-events: none;
+}
+
+@keyframes scholarFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(22px);
   }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scholarPulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(1.5);
+  }
+}
+
+.scholar-fade-up {
+  opacity: 0;
+  animation: scholarFadeUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scholar-pulse-dot {
+  animation: scholarPulse 1.5s ease-in-out infinite;
+}
+
+.scroll-reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+
+.scroll-reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
 }

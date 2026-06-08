@@ -1,10 +1,11 @@
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { apiService } from '../services/api';
 import { useAuth } from './AuthContext';
 import { useSchool } from './SchoolContext';
+import { useSocket } from './SocketContext';
 
-interface Student {
+export interface Student {
   id: string;
   firstName: string;
   lastName: string;
@@ -24,6 +25,13 @@ interface Student {
   dateOfAdmission: string;
   notes: string;
   passportPhotoUrl?: string;
+  isBeneficiary?: boolean;
+  beneficiaryType?: string;
+  discountType?: 'percentage' | 'fixed';
+  discountValue?: number;
+  beneficiaryNotes?: string;
+  /** active | graduated | suspended (and custom values from DB) */
+  enrollmentStatus?: string;
 }
 
 interface Teacher {
@@ -56,7 +64,7 @@ interface Class {
   studentCount?: number;
 }
 
-interface FeeStructure {
+export interface FeeStructure {
   id: string;
   className: string;
   classId?: number;
@@ -72,10 +80,19 @@ interface Payment {
   studentIdNum?: number;
   amount: number;
   date: string;
+  recordedAt?: string;
   paymentMethod: string;
   term: string;
   notes: string;
   receiptNumber?: string;
+  /** Frozen at payment time — do not recompute from live balances for receipts */
+  receiptSnapshot?: {
+    totalDue: number;
+    termFee: number;
+    arrears: number;
+    balanceAfter: number;
+    credit?: number;
+  };
 }
 
 interface Income {
@@ -83,6 +100,7 @@ interface Income {
   source: string;
   amount: number;
   date: string;
+  recordedAt?: string;
   paymentMethod: string;
   receivedBy: string;
   notes: string;
@@ -97,6 +115,7 @@ interface Expense {
   amount: number;
   payeeName: string;
   paymentDate: string;
+  recordedAt?: string;
   paymentMethod: string;
   purpose: string;
   notes: string;
@@ -123,7 +142,7 @@ interface DataContextType {
   arrearsBalances: Record<string, number>;
   loading: boolean;
   refresh: () => Promise<void>;
-  addStudent: (student: Omit<Student, 'id' | 'studentId' | 'admissionNumber'>) => Promise<{ id: string } | void>;
+  addStudent: (student: Omit<Student, 'id' | 'studentId' | 'admissionNumber'>) => Promise<{ id: string; studentId: string; admissionNumber: string } | void>;
   updateStudent: (id: string, updates: Partial<Student>) => Promise<void>;
   deleteStudent: (id: string) => Promise<void>;
   addTeacher: (teacher: Omit<Teacher, 'id' | 'staffId'>) => Promise<{ loginStaffId?: string; loginPin?: string; loginMessage?: string } | void>;
@@ -135,7 +154,17 @@ interface DataContextType {
   addFeeStructure: (fee: Omit<FeeStructure, 'id'>) => Promise<void>;
   updateFeeStructure: (id: string, fee: Partial<FeeStructure>) => Promise<void>;
   deleteFeeStructure: (id: string) => Promise<void>;
-  addPayment: (payment: Omit<Payment, 'id'> & { academicYear?: string }) => Promise<Payment>;
+  addPayment: (payment: Omit<Payment, 'id'> & { academicYear?: string }) => Promise<{
+    payment: Payment;
+    balance?: {
+      totalFees: number;
+      totalPaid: number;
+      outstanding: number;
+      arrears: number;
+      credit: number;
+      status: string;
+    }
+  }>;
   addIncome: (income: Omit<Income, 'id'>) => Promise<void>;
   addExpense: (expense: Omit<Expense, 'id'>) => Promise<void>;
   addSubject: (subject: Omit<Subject, 'id'>) => Promise<void>;
@@ -147,13 +176,28 @@ interface DataContextType {
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
+// Helper to format dates to YYYY-MM-DD for HTML date inputs
+const formatDateForInput = (date: any): string => {
+  if (!date) return '';
+  if (typeof date === 'string') {
+    return date.split('T')[0];
+  }
+  try {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return '';
+    return d.toISOString().split('T')[0];
+  } catch {
+    return '';
+  }
+};
+
 // Helper function to map backend student to frontend format
 const mapStudent = (backendStudent: any): Student => ({
   id: backendStudent.id.toString(),
   firstName: backendStudent.first_name,
   lastName: backendStudent.last_name,
   gender: backendStudent.gender || '',
-  dateOfBirth: backendStudent.date_of_birth || '',
+  dateOfBirth: formatDateForInput(backendStudent.date_of_birth),
   nationality: backendStudent.nationality || '',
   studentId: backendStudent.student_id,
   admissionNumber: backendStudent.admission_number,
@@ -165,9 +209,35 @@ const mapStudent = (backendStudent: any): Student => ({
   numberOfSiblings: backendStudent.number_of_siblings || 0,
   namesOfSiblings: backendStudent.names_of_siblings || '',
   previousSchool: backendStudent.previous_school || '',
-  dateOfAdmission: backendStudent.date_of_admission || '',
+  dateOfAdmission: formatDateForInput(backendStudent.date_of_admission),
   notes: backendStudent.notes || '',
   passportPhotoUrl: backendStudent.passport_photo_url || undefined,
+  isBeneficiary: !!backendStudent.is_beneficiary,
+  beneficiaryType: backendStudent.beneficiary_type || '',
+  ...(() => {
+    const isBen = !!backendStudent.is_beneficiary;
+    const rawType =
+      backendStudent.discount_type != null ? String(backendStudent.discount_type).trim() : '';
+    if (isBen) {
+      if (!rawType) {
+        return { discountType: 'percentage' as const, discountValue: 100 };
+      }
+      const discountType = rawType === 'fixed' ? ('fixed' as const) : ('percentage' as const);
+      const discountValue =
+        backendStudent.discount_value != null && backendStudent.discount_value !== ''
+          ? parseFloat(String(backendStudent.discount_value))
+          : discountType === 'percentage'
+            ? 100
+            : 0;
+      return { discountType, discountValue: Number.isFinite(discountValue) ? discountValue : discountType === 'percentage' ? 100 : 0 };
+    }
+    return {
+      discountType: (backendStudent.discount_type as 'percentage' | 'fixed') || 'percentage',
+      discountValue: backendStudent.discount_value ? parseFloat(String(backendStudent.discount_value)) : 0,
+    };
+  })(),
+  beneficiaryNotes: backendStudent.beneficiary_notes || '',
+  enrollmentStatus: (backendStudent.enrollment_status || 'active').toLowerCase(),
 });
 
 // Helper function to map frontend student to backend format
@@ -187,6 +257,12 @@ const mapStudentToBackend = (student: Partial<Student>): any => ({
   date_of_admission: student.dateOfAdmission,
   notes: student.notes,
   passport_photo_url: student.passportPhotoUrl,
+  is_beneficiary: student.isBeneficiary,
+  beneficiary_type: student.isBeneficiary ? student.beneficiaryType ?? null : null,
+  discount_type: student.isBeneficiary ? student.discountType ?? null : null,
+  discount_value: student.isBeneficiary ? student.discountValue ?? null : null,
+  beneficiary_notes: student.beneficiaryNotes,
+  enrollment_status: student.enrollmentStatus,
 });
 
 // Helper function to map backend teacher to frontend format
@@ -194,7 +270,7 @@ const mapTeacher = (backendTeacher: any): Teacher => ({
   id: backendTeacher.id.toString(),
   fullName: backendTeacher.full_name,
   gender: backendTeacher.gender || '',
-  dateOfBirth: backendTeacher.date_of_birth || '',
+  dateOfBirth: formatDateForInput(backendTeacher.date_of_birth),
   staffId: backendTeacher.staff_id,
   phoneNumber: backendTeacher.phone_number || '',
   email: backendTeacher.email || '',
@@ -202,7 +278,7 @@ const mapTeacher = (backendTeacher: any): Teacher => ({
   subjectsTaught: backendTeacher.subjects_taught || [],
   classAssigned: backendTeacher.class_name || '',
   classAssignedId: backendTeacher.class_assigned_id,
-  employmentDate: backendTeacher.employment_date || '',
+  employmentDate: formatDateForInput(backendTeacher.employment_date),
   monthlySalary: backendTeacher.monthly_salary || 0,
   employmentStatus: backendTeacher.employment_status || '',
   notes: backendTeacher.notes || '',
@@ -229,7 +305,7 @@ const mapTeacherToBackend = (teacher: Partial<Teacher>): any => {
 // Helper function to map backend class to frontend format
 const mapClass = (backendClass: any): Class => ({
   id: backendClass.id.toString(),
-  className: backendClass.class_name,
+  className: backendClass.class_name || backendClass.name || '',
   level: backendClass.level || '',
   stream: backendClass.stream || '',
   assignedTeacher: backendClass.teacher_name || '',
@@ -253,6 +329,7 @@ const mapClassToBackend = (classData: Partial<Class>): any => {
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuth();
   const { schoolId } = useSchool();
+  const { socket } = useSocket();
   const [students, setStudents] = useState<Student[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
@@ -263,12 +340,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [arrearsBalances, setArrearsBalances] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
+  const [workspaceReady, setWorkspaceReady] = useState(false);
+  const loadGeneration = useRef(0);
+
+  useEffect(() => {
+    if (!isAuthenticated) setWorkspaceReady(false);
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    setWorkspaceReady(false);
+  }, [schoolId]);
 
   const loadData = useCallback(async () => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated) {
+      setLoading(false);
+      setWorkspaceReady(false);
+      return;
+    }
     if (schoolId != null) {
       apiService.setTenantContext(schoolId);
     }
+    const gen = ++loadGeneration.current;
     setLoading(true);
     try {
       const [studentsRes, teachersRes, classesRes, feesRes, paymentsRes, incomeRes, expensesRes, arrearsRes, subjectsRes] = await Promise.all([
@@ -294,7 +386,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         class_name: f.class_name || '',
         term: f.term,
         amount: parseFloat(f.amount),
-        dueDate: f.due_date || '',
+        dueDate: formatDateForInput(f.due_date),
         description: f.description || '',
       })));
       const rawPayments = Array.isArray(paymentsRes)
@@ -307,17 +399,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         studentId: (p.student_id ?? p.studentId)?.toString() || '',
         studentIdNum: p.student_id ?? p.studentId,
         amount: parseFloat(p.amount ?? 0),
-        date: p.payment_date ?? p.date,
+        date: formatDateForInput(p.payment_date ?? p.date),
+        recordedAt: p.created_at ?? p.recorded_at ?? p.payment_date ?? p.date,
         paymentMethod: p.payment_method ?? p.paymentMethod ?? '',
         term: p.term ?? '',
         notes: p.notes ?? '',
         receiptNumber: p.receipt_number ?? p.receiptNumber,
+        receiptSnapshot: p.receipt_snapshot ?? p.receiptSnapshot ?? undefined,
       })));
       setIncome((Array.isArray(incomeRes) ? incomeRes : []).map((i: any) => ({
         id: i.id.toString(),
         source: i.source,
         amount: parseFloat(i.amount),
-        date: i.income_date,
+        date: formatDateForInput(i.income_date),
+        recordedAt: i.created_at ?? i.recorded_at ?? i.income_date,
         paymentMethod: i.payment_method || '',
         receivedBy: i.received_by || '',
         notes: i.notes || '',
@@ -331,7 +426,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         category: e.category || '',
         amount: parseFloat(e.amount),
         payeeName: e.payee_name || '',
-        paymentDate: e.payment_date,
+        paymentDate: formatDateForInput(e.payment_date),
+        recordedAt: e.created_at ?? e.recorded_at ?? e.payment_date,
         paymentMethod: e.payment_method || '',
         purpose: e.purpose || '',
         notes: e.notes || '',
@@ -347,13 +443,58 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
-      setLoading(false);
+      if (gen === loadGeneration.current) {
+        setLoading(false);
+        setWorkspaceReady(true);
+      }
     }
   }, [isAuthenticated, schoolId]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    // Keep UI fresh when user returns to tab/focus.
+    const onFocus = () => {
+      loadData().catch(() => undefined);
+    };
+
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+
+    // Light polling as fallback in case other modules mutate data directly.
+    const interval = window.setInterval(() => {
+      loadData().catch(() => undefined);
+    }, 15000);
+
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+      window.clearInterval(interval);
+    };
+  }, [isAuthenticated, loadData]);
+
+  useEffect(() => {
+    if (!socket || !isAuthenticated) return;
+
+    let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+    const refreshNow = () => {
+      if (debounceTimer != null) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = undefined;
+        loadData().catch(() => undefined);
+      }, 120);
+    };
+
+    socket.on('tenant-data-changed', refreshNow);
+    return () => {
+      if (debounceTimer != null) clearTimeout(debounceTimer);
+      socket.off('tenant-data-changed', refreshNow);
+    };
+  }, [socket, isAuthenticated, loadData]);
 
   const refresh = useCallback(async () => {
     await loadData();
@@ -447,9 +588,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await loadData();
   };
 
-  const addPayment = async (paymentData: Omit<Payment, 'id'> & { academicYear?: string }): Promise<Payment> => {
+  const addPayment = async (paymentData: Omit<Payment, 'id'> & { academicYear?: string }): Promise<{ payment: Payment; balance?: any }> => {
     const res = await apiService.post<{
       payment?: { id: number; receipt_number: string; student_id: number; amount: number; payment_date: string; payment_method: string; term: string; notes: string };
+      balance?: any;
       id?: number;
       receipt_number?: string;
       student_id?: number;
@@ -467,18 +609,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       notes: paymentData.notes,
       academic_year: paymentData.academicYear,
     });
-    const created = res.payment || res;
+    const created = (res.payment || res) as any;
     await loadData();
     return {
-      id: created.id.toString(),
-      studentId: (created.student_id ?? created.studentId)?.toString() || '',
-      studentIdNum: created.student_id ?? created.studentId,
-      amount: parseFloat(created.amount ?? 0),
-      date: created.payment_date ?? created.date ?? '',
-      paymentMethod: created.payment_method ?? created.paymentMethod ?? '',
-      term: created.term ?? '',
-      notes: created.notes ?? '',
-      receiptNumber: created.receipt_number ?? created.receiptNumber,
+      payment: {
+        id: created.id.toString(),
+        studentId: (created.student_id || created.studentId)?.toString() || '',
+        studentIdNum: created.student_id || created.studentId,
+        amount: parseFloat(created.amount ?? 0),
+        date: created.payment_date || created.date || '',
+        paymentMethod: created.payment_method || created.paymentMethod || '',
+        term: created.term ?? '',
+        notes: created.notes ?? '',
+        receiptNumber: created.receipt_number || created.receiptNumber,
+        receiptSnapshot: created.receipt_snapshot ?? created.receiptSnapshot,
+      },
+      balance: res.balance
     };
   };
 
@@ -564,6 +710,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       subjects,
       arrearsBalances,
       loading,
+      workspaceReady,
       refresh,
       addStudent,
       updateStudent,

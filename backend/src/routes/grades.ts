@@ -2,8 +2,19 @@ import express from 'express';
 import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
+import { getIO } from '../socket.js';
+import { sendPushToStudentParents } from '../services/webPushService.js';
 
 const router = express.Router();
+
+const emitTenantDataChanged = (tenantId: number, entity: string, action: 'created' | 'updated' | 'deleted') => {
+  try {
+    const io = getIO();
+    io.to(`tenant:${tenantId}`).emit('tenant-data-changed', { tenantId, entity, action, at: Date.now() });
+  } catch {
+    // Socket server may be unavailable in some non-realtime contexts.
+  }
+};
 
 router.use(authenticate);
 router.use(requireTenant);
@@ -70,6 +81,7 @@ router.post('/assignments', async (req: AuthRequest, res) => {
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
       [tenantId, classId, subject.trim(), name.trim(), assignmentType || 'Test', parseFloat(maxScore) || 100, dueDate || null]
     );
+    emitTenantDataChanged(tenantId, 'grade-assignment', 'created');
     res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error('Create assignment error:', error);
@@ -85,6 +97,7 @@ router.delete('/assignments/:id', async (req: AuthRequest, res) => {
       'DELETE FROM grade_assignments WHERE id = $1 AND tenant_id = $2',
       [req.params.id, tenantId]
     );
+    emitTenantDataChanged(tenantId, 'grade-assignment', 'deleted');
     res.json({ message: 'Assignment deleted' });
   } catch (error) {
     console.error('Delete assignment error:', error);
@@ -203,6 +216,7 @@ router.post('/', async (req: AuthRequest, res) => {
       [tenantId, studentId, assignmentId, oldScore, newScore, userId]
     );
 
+    emitTenantDataChanged(tenantId, 'grade', 'updated');
     res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error('Save grade error:', error);
@@ -266,6 +280,7 @@ router.post('/batch', async (req: AuthRequest, res) => {
       saved++;
     }
 
+    emitTenantDataChanged(tenantId, 'grade', 'updated');
     res.json({ message: `${saved} grade(s) saved`, saved, skipped });
   } catch (error) {
     console.error('Batch save grades error:', error);
@@ -470,6 +485,20 @@ router.post('/release-report', async (req: AuthRequest, res) => {
       [tenantId, classId, currentTerm, userId, release !== false]
     );
 
+    emitTenantDataChanged(tenantId, 'term-report-release', 'updated');
+    if (release !== false) {
+      const studentsRes = await query(
+        `SELECT id FROM students WHERE tenant_id = $1 AND class_assigned_id = $2`,
+        [tenantId, classId]
+      ).catch(() => ({ rows: [] as any[] }));
+      for (const row of studentsRes.rows) {
+        await sendPushToStudentParents(tenantId, row.id, {
+          title: 'Results Released',
+          body: `Your ward's ${currentTerm} results are now available.`,
+          url: `/parent/${tenantId}`,
+        }).catch(() => {});
+      }
+    }
     res.json({ message: release !== false ? 'Report released to parents' : 'Report hidden from parents' });
   } catch (error) {
     console.error('Release report error:', error);

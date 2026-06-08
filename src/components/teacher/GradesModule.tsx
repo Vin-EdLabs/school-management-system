@@ -16,6 +16,7 @@ import { apiService } from '../../services/api';
 import { useSchool } from '../../contexts/SchoolContext';
 import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatDisplayDate, formatDisplayDateTime } from '../../utils/dateFormat';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -97,12 +98,6 @@ interface TermReport {
 
 const ASSESSMENT_TYPES = ['Test', 'Exam', 'Quiz', 'Dictation', 'Exercise', 'Assignment', 'Project', 'Homework'];
 
-const JHS_SUBJECTS = [
-  'English Language', 'Mathematics', 'Integrated Science', 'Social Studies',
-  'French', 'Religious & Moral Education', 'ICT / Computing', 'Creative Arts',
-  'Physical Education', 'Career Technology', 'Ghanaian Language',
-];
-
 const getLetterGrade = (pct: number) => {
   if (pct >= 80) return { letter: 'A', color: 'text-green-700 bg-green-50 border border-green-200' };
   if (pct >= 70) return { letter: 'B', color: 'text-blue-700 bg-blue-50 border border-blue-200' };
@@ -124,7 +119,16 @@ const relativeTime = (isoString: string | null): string => {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   if (days < 7) return `${days}d ago`;
-  return new Date(isoString).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  return formatDisplayDate(isoString);
+};
+
+const resolvePhotoUrl = (photoUrl?: string | null) => {
+  if (!photoUrl) return '';
+  if (/^https?:\/\//i.test(photoUrl) || photoUrl.startsWith('data:')) return photoUrl;
+  const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+  const origin = apiBase.replace(/\/api\/?$/, '');
+  const normalized = photoUrl.startsWith('/') ? photoUrl : `/${photoUrl}`;
+  return `${origin}${normalized}`;
 };
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -159,6 +163,7 @@ const GradesModule = () => {
   const [termReport, setTermReport] = useState<TermReport | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
   const [releaseLoading, setReleaseLoading] = useState(false);
+  const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
 
   // Grade history dropdown — key is `${studentId}-${assignmentId}`
   const [expandedHistory, setExpandedHistory] = useState<Set<string>>(new Set());
@@ -434,11 +439,12 @@ const GradesModule = () => {
 
   const handleToggleRelease = async () => {
     if (!selectedClassId || !termReport) return;
+    setShowReleaseConfirm(true);
+  };
+
+  const confirmToggleRelease = async () => {
+    if (!selectedClassId || !termReport) return;
     const newState = !termReport.isReleased;
-    const msg = newState
-      ? 'Release this report so parents can view it?'
-      : 'Hide this report from parents?';
-    if (!confirm(msg)) return;
     setReleaseLoading(true);
     try {
       await apiService.post('/grades/release-report', { classId: Number(selectedClassId), release: newState });
@@ -453,6 +459,7 @@ const GradesModule = () => {
       toast({ title: 'Error', description: e?.message, variant: 'destructive' });
     } finally {
       setReleaseLoading(false);
+      setShowReleaseConfirm(false);
     }
   };
 
@@ -478,37 +485,43 @@ const GradesModule = () => {
     win.print();
   };
 
+
   // ── Render ───────────────────────────────────────────────────────────────────
 
   const subjectsToDisplay = activeSubjects;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="px-4 py-5 sm:p-6 space-y-5 sm:space-y-6 max-w-7xl mx-auto w-full">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg flex items-center justify-center">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex items-start gap-3 min-w-0">
+          <div className="w-11 h-11 shrink-0 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl flex items-center justify-center">
             <BookOpen className="w-6 h-6 text-white" />
           </div>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-800">Grades</h1>
-            <p className="text-gray-600">
-              {isAdminViewer ? 'View grades across all classes (read-only)' : 'Manage subjects, assessments and student grades'}
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-800 dark:text-gray-100 leading-tight">Grades</h1>
+            <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-1">
+              {isAdminViewer ? 'View grades (read-only)' : 'Assessments and student grades'}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full lg:w-auto shrink-0">
           {isAdminViewer ? (
-            <Badge variant="secondary" className="flex items-center gap-1 text-blue-700 bg-blue-50 border border-blue-200">
+            <Badge variant="secondary" className="justify-center py-2 flex items-center gap-1 text-blue-700 bg-blue-50 border border-blue-200">
               <Eye className="w-3 h-3" /> Read Only
             </Badge>
           ) : (
-            <Button onClick={() => setIsAddOpen(true)} disabled={!selectedClassId}>
+            <Button
+              className="min-h-[48px] w-full sm:w-auto touch-manipulation hidden sm:inline-flex"
+              variant="primaryAction"
+              onClick={() => setIsAddOpen(true)}
+              disabled={!selectedClassId}
+            >
               <Plus className="w-4 h-4 mr-2" /> Add Assessment
             </Button>
           )}
           {selectedClassId && (
-            <Button variant="outline" onClick={handleLoadReport}>
+            <Button variant="outline" className="min-h-[48px] w-full sm:w-auto touch-manipulation" onClick={handleLoadReport}>
               <Trophy className="w-4 h-4 mr-2" /> Term Report
             </Button>
           )}
@@ -517,11 +530,11 @@ const GradesModule = () => {
 
       {/* Class selector */}
       <Card>
-        <CardContent className="pt-4">
+        <CardContent className="pt-4 px-4 sm:px-6">
           <div className="space-y-1.5">
             <Label>Class</Label>
             <Select value={selectedClassId} onValueChange={setSelectedClassId}>
-              <SelectTrigger><SelectValue placeholder="Select a class" /></SelectTrigger>
+              <SelectTrigger className="h-12 min-h-[48px] text-base sm:text-sm rounded-xl"><SelectValue placeholder="Select a class" /></SelectTrigger>
               <SelectContent>
                 {teacherClasses.map(c => (
                   <SelectItem key={c.id} value={String(c.id)}>{c.class_name}</SelectItem>
@@ -535,21 +548,74 @@ const GradesModule = () => {
       {selectedClassId && (
         <>
           {/* Tabs */}
-          <div className="flex gap-0 border-b">
+          <div className="flex gap-0 border-b -mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto touch-pan-x">
             {[
               { key: 'grades', icon: BookOpen, label: 'Grade Entry' },
               { key: 'report', icon: Trophy, label: 'Term Report' },
             ].map(tab => (
               <button
                 key={tab.key}
+                type="button"
                 onClick={() => tab.key === 'report' ? handleLoadReport() : setActiveTab('grades')}
-                className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.key ? 'border-purple-600 text-purple-700' : 'border-transparent text-gray-500 hover:text-gray-700'
+                className={`flex items-center gap-1.5 px-4 min-h-[48px] shrink-0 text-sm font-medium border-b-2 transition-colors touch-manipulation ${activeTab === tab.key ? 'border-purple-600 text-purple-700' : 'border-transparent text-gray-500 hover:text-gray-700'
                   }`}
               >
-                <tab.icon className="w-4 h-4" />{tab.label}
+                <tab.icon className="w-4 h-4 shrink-0" />{tab.label}
               </button>
             ))}
           </div>
+
+          {!isAdminViewer && activeTab === 'grades' && (
+            <div className="sm:hidden sticky top-0 z-20 -mx-4 px-4 py-2 border-b border-slate-200 bg-white/95 dark:bg-slate-950/95 backdrop-blur-md shadow-sm grid grid-cols-2 gap-2">
+              {!isBulkEditing ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-12 text-sm font-semibold touch-manipulation border-2 border-purple-700 text-purple-900 bg-white hover:bg-purple-50 dark:border-purple-400 dark:text-purple-100 dark:bg-slate-900 dark:hover:bg-slate-800"
+                    onClick={() => setIsAddOpen(true)}
+                    disabled={!selectedClassId}
+                  >
+                    <Plus className="w-4 h-4 mr-1.5 shrink-0" />
+                    Add assessment
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-12 text-sm font-semibold touch-manipulation border-2 border-indigo-600 text-indigo-900 bg-indigo-50 hover:bg-indigo-100 dark:border-indigo-400 dark:text-indigo-100 dark:bg-slate-900 dark:hover:bg-slate-800 disabled:opacity-50"
+                    onClick={enterBulkEdit}
+                    disabled={!selectedAssignmentId || gradeRows.length === 0}
+                  >
+                    <PencilLine className="w-4 h-4 mr-1.5 shrink-0" />
+                    Edit all
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-12 text-sm font-semibold touch-manipulation border-2 border-slate-600 text-slate-900 bg-white hover:bg-slate-50 dark:border-slate-400 dark:text-slate-100 dark:bg-slate-900"
+                    onClick={cancelBulkEdit}
+                    disabled={bulkSaving}
+                  >
+                    <X className="w-4 h-4 mr-1.5 shrink-0" />
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="primaryAction"
+                    className="h-12 text-sm font-semibold touch-manipulation"
+                    onClick={handleBulkSave}
+                    disabled={bulkSaving}
+                  >
+                    <Save className="w-4 h-4 mr-1.5 shrink-0 text-white" />
+                    {bulkSaving ? 'Saving…' : 'Save grades'}
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
 
           {/* ── GRADE ENTRY TAB ── */}
           {activeTab === 'grades' && (
@@ -630,25 +696,25 @@ const GradesModule = () => {
                             <strong>{selectedAssignment?.max_score} marks</strong>
                           </p>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm font-normal text-gray-500">{gradedCount}/{gradeRows.length} graded</span>
                           {movedCount > 0 && (
                             <Badge variant="secondary" className="text-xs text-amber-700 bg-amber-50 border border-amber-200">
                               {movedCount} moved
                             </Badge>
                           )}
-                          {/* Bulk edit controls */}
+                          {/* Desktop / tablet: bulk controls (mobile uses sticky bar to avoid duplicate Save) */}
                           {!isAdminViewer && !isBulkEditing && (
-                            <Button size="sm" variant="outline" onClick={enterBulkEdit} className="gap-1.5">
+                            <Button size="sm" variant="outline" onClick={enterBulkEdit} className="gap-1.5 hidden sm:inline-flex border-purple-300 text-purple-900 dark:text-purple-100">
                               <PencilLine className="w-3.5 h-3.5" /> Edit All
                             </Button>
                           )}
                           {!isAdminViewer && isBulkEditing && (
-                            <div className="flex gap-2">
-                              <Button size="sm" variant="outline" onClick={cancelBulkEdit} className="gap-1.5">
+                            <div className="hidden sm:flex gap-2">
+                              <Button size="sm" variant="outline" onClick={cancelBulkEdit} className="gap-1.5 border-slate-400 text-slate-900 dark:text-slate-100">
                                 <X className="w-3.5 h-3.5" /> Cancel
                               </Button>
-                              <Button size="sm" onClick={handleBulkSave} disabled={bulkSaving} className="gap-1.5 bg-purple-600 hover:bg-purple-700">
+                              <Button size="sm" variant="primaryAction" onClick={handleBulkSave} disabled={bulkSaving} className="gap-1.5">
                                 <Save className="w-3.5 h-3.5" />
                                 {bulkSaving ? 'Saving…' : 'Save All'}
                               </Button>
@@ -926,7 +992,7 @@ const GradesModule = () => {
                         <CheckCircle2 className="w-3 h-3" />
                         Released by <strong className="ml-0.5">{termReport.releasedByName}</strong>
                         {termReport.releasedAt && (
-                          <> · {new Date(termReport.releasedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</>
+                          <> · {formatDisplayDateTime(termReport.releasedAt)}</>
                         )}
                       </p>
                     )}
@@ -966,6 +1032,9 @@ const GradesModule = () => {
                             {termReport.students.map((s, idx) => {
                               const pct = s.percentage;
                               const grade = getLetterGrade(pct);
+                              const sourceStudent = students.find((st) => Number(st.id) === Number(s.studentId));
+                              const photoUrl =
+                                sourceStudent?.passportPhotoUrl || (s as any).passportPhotoUrl || (s as any).passport_photo_url || '';
                               const rowBg =
                                 s.position === 1 ? 'bg-yellow-50' :
                                   s.position === 2 ? 'bg-slate-50' :
@@ -978,8 +1047,8 @@ const GradesModule = () => {
                                     <div className="flex items-center gap-2">
                                       {/* Passport photo */}
                                       <div className="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center shrink-0 text-white text-xs font-bold">
-                                        {(s as any).passportPhotoUrl
-                                          ? <img src={`${import.meta.env.VITE_API_BASE_URL?.replace('/api', '') || 'http://localhost:3001'}${(s as any).passportPhotoUrl}`} alt="" className="w-full h-full object-cover" />
+                                        {photoUrl
+                                          ? <img src={resolvePhotoUrl(photoUrl)} alt={`${s.firstName} ${s.lastName}`} className="w-full h-full object-cover" loading="lazy" />
                                           : `${s.firstName[0]}${s.lastName[0]}`}
                                       </div>
                                       {s.position <= 3 && (
@@ -1060,28 +1129,22 @@ const GradesModule = () => {
 
       {/* ── Add Assessment Dialog ── */}
       <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md bg-white text-slate-900 border-slate-200 dark:bg-slate-950 dark:text-slate-100 dark:border-slate-700">
           <DialogHeader>
-            <DialogTitle>Add Assessment</DialogTitle>
+            <DialogTitle className="text-slate-900 dark:text-white">Add Assessment</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 pt-2">
+          <div className="space-y-4 pt-2 text-slate-900 dark:text-slate-100">
             <div className="space-y-1.5">
-              <Label>Subject</Label>
+              <Label className="text-slate-700 dark:text-slate-200">Subject</Label>
               <Select value={newAssignment.subject} onValueChange={v => setNewAssignment(p => ({ ...p, subject: v }))}>
-                <SelectTrigger><SelectValue placeholder="Choose subject…" /></SelectTrigger>
+                <SelectTrigger className="bg-white text-slate-900 border-slate-300 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-600">
+                  <SelectValue placeholder="Choose subject…" />
+                </SelectTrigger>
                 <SelectContent>
                   {globalSubjects.length > 0 ? (
-                    <>
-                      <div className="px-2 py-1 text-xs text-gray-400 font-medium">School Subjects</div>
-                      {globalSubjects.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}
-                    </>
+                    globalSubjects.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)
                   ) : (
-                    <>
-                      <div className="px-2 py-1 text-xs text-gray-400 font-medium">Common JHS subjects</div>
-                      {JHS_SUBJECTS.map(s => (
-                        <SelectItem key={s} value={s}>{s}</SelectItem>
-                      ))}
-                    </>
+                    <div className="px-2 py-3 text-sm text-gray-500 text-center italic">No subjects defined in system</div>
                   )}
                   <div className="border-t my-1" />
                   <SelectItem value="__custom__">+ Other (type below)</SelectItem>
@@ -1093,44 +1156,103 @@ const GradesModule = () => {
                   value={newAssignment.subjectCustom}
                   onChange={e => setNewAssignment(p => ({ ...p, subjectCustom: e.target.value }))}
                   autoFocus
+                  className="bg-white text-slate-900 border-slate-300 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-600"
                 />
               )}
             </div>
 
             <div className="space-y-1.5">
-              <Label>Assessment Name</Label>
+              <Label className="text-slate-700 dark:text-slate-200">Assessment Name</Label>
               <Input
                 placeholder="e.g. Mid-Term Test, End of Term Exam…"
                 value={newAssignment.name}
                 onChange={e => setNewAssignment(p => ({ ...p, name: e.target.value }))}
+                className="bg-white text-slate-900 border-slate-300 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-600"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label>Type</Label>
+                <Label className="text-slate-700 dark:text-slate-200">Type</Label>
                 <Select value={newAssignment.assignmentType} onValueChange={v => setNewAssignment(p => ({ ...p, assignmentType: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="bg-white text-slate-900 border-slate-300 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-600">
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
                     {ASSESSMENT_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label>Max Marks</Label>
+                <Label className="text-slate-700 dark:text-slate-200">Max Marks</Label>
                 <Input
                   type="number" min={1} step={0.5}
                   value={newAssignment.maxScore}
                   onChange={e => setNewAssignment(p => ({ ...p, maxScore: e.target.value }))}
                   placeholder="e.g. 20, 50, 100"
+                  className="bg-white text-slate-900 border-slate-300 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-600"
                 />
               </div>
             </div>
 
-            <Button onClick={handleAddAssignment} className="w-full">Add Assessment</Button>
+            <Button
+              type="button"
+              variant="primaryAction"
+              onClick={handleAddAssignment}
+              className="w-full h-11 font-semibold"
+            >
+              Add Assessment
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={showReleaseConfirm} onOpenChange={setShowReleaseConfirm}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {termReport?.isReleased ? <EyeOff className="w-5 h-5 text-orange-600" /> : <Send className="w-5 h-5 text-green-600" />}
+              {termReport?.isReleased ? 'Hide Results from Parents?' : 'Release Results to Parents?'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 pt-1">
+            <div className={`rounded-xl border p-3 text-sm ${
+              termReport?.isReleased
+                ? 'border-orange-200 bg-orange-50 text-orange-700'
+                : 'border-green-200 bg-green-50 text-green-700'
+            }`}>
+              {termReport?.isReleased
+                ? 'Parents will no longer see this report in their portal until you release it again.'
+                : 'Parents will be able to view this report immediately in their portal.'}
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowReleaseConfirm(false)}
+                disabled={releaseLoading}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={confirmToggleRelease}
+                disabled={releaseLoading}
+                className={termReport?.isReleased
+                  ? 'bg-orange-600 hover:bg-orange-700 text-white'
+                  : 'bg-green-600 hover:bg-green-700 text-white'}
+              >
+                {releaseLoading
+                  ? 'Please wait...'
+                  : termReport?.isReleased
+                    ? 'Yes, Hide Results'
+                    : 'Yes, Release Results'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 };

@@ -2,8 +2,16 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { query } from '../db/connection.js';
+import { getVapidPublicKey } from '../services/webPushService.js';
+import { resolveTenant, TenantRequest } from '../middleware/tenantResolver.js';
+import { beneficiaryAdjustedFee } from '../utils/beneficiaryFee.js';
 
 const router = express.Router();
+
+function parentJwtExpiresIn(): jwt.SignOptions['expiresIn'] {
+  const raw = process.env.PARENT_JWT_EXPIRES_IN?.trim();
+  return (raw && raw.length > 0 ? raw : '365d') as jwt.SignOptions['expiresIn'];
+}
 
 // ── Parent JWT middleware ─────────────────────────────────────────────────────
 
@@ -44,12 +52,13 @@ const authenticateParent = async (
 // Uses the student's admission number as both the username and default password.
 // If no account exists yet it is created on first login with default pass = admission number.
 
-router.post('/login', async (req, res) => {
+router.post('/login', resolveTenant, async (req: ParentRequest & TenantRequest, res) => {
   try {
     const { tenantId: rawTenantId, studentId: admissionNumber, password } = req.body;
-    const tenantId = parseInt(String(rawTenantId), 10);
-    if (!tenantId || isNaN(tenantId) || !admissionNumber || !password) {
-      return res.status(400).json({ error: 'tenantId, studentId and password are required' });
+    const bodyTenantId = parseInt(String(rawTenantId), 10);
+    const tenantId = !isNaN(bodyTenantId) && bodyTenantId > 0 ? bodyTenantId : (req.tenantId || null);
+    if (!tenantId || !admissionNumber || !password) {
+      return res.status(400).json({ error: 'tenantId (or tenant slug), studentId and password are required' });
     }
 
     // Verify tenant is active
@@ -62,7 +71,7 @@ router.post('/login', async (req, res) => {
     // Also try admission_number in case school uses that format instead
     const studentRow = await query(
       `SELECT id, first_name, last_name, student_id AS admission_number,
-              class_assigned_id
+              class_assigned_id, passport_photo_url, guardian_name, guardian_contact
        FROM students
        WHERE tenant_id = $1
          AND (LOWER(student_id) = LOWER($2) OR LOWER(admission_number) = LOWER($2))`,
@@ -105,7 +114,7 @@ router.post('/login', async (req, res) => {
     const token = jwt.sign(
       { parentAccountId: account.id, studentId: student.id, tenantId, role: 'parent' },
       process.env.JWT_SECRET || 'secret',
-      { expiresIn: '12h' }
+      { expiresIn: parentJwtExpiresIn() }
     );
 
     res.json({
@@ -117,6 +126,9 @@ router.post('/login', async (req, res) => {
         lastName: student.last_name,
         admissionNumber: student.admission_number,
         classId: student.class_assigned_id,
+        passportPhotoUrl: student.passport_photo_url,
+        guardianName: student.guardian_name,
+        guardianContact: student.guardian_contact,
       },
     });
   } catch (error: any) {
@@ -125,24 +137,52 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// ── POST /api/parent/refresh ─────────────────────────────────────────────────
+// Issues a new JWT while the current one is still valid — keeps long-lived sessions fresh.
+
+router.post('/refresh', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    const token = jwt.sign(
+      {
+        parentAccountId: req.parent!.accountId,
+        studentId: req.parent!.studentId,
+        tenantId: req.parent!.tenantId,
+        role: 'parent',
+      },
+      process.env.JWT_SECRET || 'secret',
+      { expiresIn: parentJwtExpiresIn() }
+    );
+    return res.json({ token });
+  } catch (error) {
+    console.error('Parent refresh error:', error);
+    return res.status(500).json({ error: 'Failed to refresh session' });
+  }
+});
+
 // ── POST /api/parent/change-password ─────────────────────────────────────────
 
 router.post('/change-password', authenticateParent, async (req: ParentRequest, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
-    if (!currentPassword || !newPassword) {
-      return res.status(400).json({ error: 'currentPassword and newPassword are required' });
+    if (!newPassword) {
+      return res.status(400).json({ error: 'newPassword is required' });
     }
     if (newPassword.length < 6) {
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
 
     const row = await query(
-      'SELECT password_hash FROM parent_portal_accounts WHERE id = $1',
+      'SELECT password_hash, must_change_password FROM parent_portal_accounts WHERE id = $1',
       [req.parent!.accountId]
     );
-    const valid = await bcrypt.compare(currentPassword, row.rows[0].password_hash);
-    if (!valid) return res.status(401).json({ error: 'Current password is incorrect' });
+    const mustChange = !!row.rows[0]?.must_change_password;
+    if (!mustChange) {
+      if (!currentPassword) {
+        return res.status(400).json({ error: 'currentPassword is required' });
+      }
+      const valid = await bcrypt.compare(currentPassword, row.rows[0].password_hash);
+      if (!valid) return res.status(401).json({ error: 'Current password is incorrect' });
+    }
 
     const hash = await bcrypt.hash(newPassword, 10);
     await query(
@@ -153,6 +193,138 @@ router.post('/change-password', authenticateParent, async (req: ParentRequest, r
   } catch (error) {
     console.error('Parent change-password error:', error);
     res.status(500).json({ error: 'Failed to change password' });
+  }
+});
+
+router.get('/push/public-key', authenticateParent, async (_req: ParentRequest, res) => {
+  const publicKey = getVapidPublicKey();
+  if (!publicKey) {
+    return res.status(503).json({ error: 'Push notifications are not configured yet' });
+  }
+  return res.json({ publicKey });
+});
+
+router.post('/push/subscribe', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    const { endpoint, keys } = req.body || {};
+    const p256dh = keys?.p256dh;
+    const auth = keys?.auth;
+    if (!endpoint || !p256dh || !auth) {
+      return res.status(400).json({ error: 'Invalid push subscription payload' });
+    }
+
+    await query(
+      `INSERT INTO parent_push_subscriptions (tenant_id, parent_account_id, endpoint, p256dh, auth)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (parent_account_id, endpoint)
+       DO UPDATE SET p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth`,
+      [req.parent!.tenantId, req.parent!.accountId, endpoint, p256dh, auth]
+    );
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Parent push subscribe error:', error);
+    return res.status(500).json({ error: 'Failed to save push subscription' });
+  }
+});
+
+router.post('/push/unsubscribe', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    const endpoint = req.body?.endpoint;
+    if (!endpoint) return res.status(400).json({ error: 'endpoint is required' });
+    await query(
+      'DELETE FROM parent_push_subscriptions WHERE parent_account_id = $1 AND endpoint = $2',
+      [req.parent!.accountId, endpoint]
+    );
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Parent push unsubscribe error:', error);
+    return res.status(500).json({ error: 'Failed to remove push subscription' });
+  }
+});
+
+router.post('/push/fcm-token', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    const token = String(req.body?.token || '').trim();
+    if (!token) return res.status(400).json({ error: 'token is required' });
+    await query(
+      `INSERT INTO parent_fcm_tokens (tenant_id, parent_account_id, token)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (parent_account_id, token)
+       DO UPDATE SET updated_at = CURRENT_TIMESTAMP`,
+      [req.parent!.tenantId, req.parent!.accountId, token]
+    );
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Parent FCM token save error:', error);
+    return res.status(500).json({ error: 'Failed to save FCM token' });
+  }
+});
+
+router.post('/push/fcm-unsubscribe', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    const token = String(req.body?.token || '').trim();
+    if (!token) {
+      await query(
+        'DELETE FROM parent_fcm_tokens WHERE parent_account_id = $1',
+        [req.parent!.accountId]
+      );
+    } else {
+      await query(
+        'DELETE FROM parent_fcm_tokens WHERE parent_account_id = $1 AND token = $2',
+        [req.parent!.accountId, token]
+      );
+    }
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Parent FCM token remove error:', error);
+    return res.status(500).json({ error: 'Failed to remove FCM token' });
+  }
+});
+
+router.get('/notifications', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    const rows = await query(
+      `SELECT id, title, message, url, icon, is_read, created_at
+       FROM parent_notifications
+       WHERE parent_account_id = $1
+       ORDER BY created_at DESC
+       LIMIT 100`,
+      [req.parent!.accountId]
+    );
+    return res.json({ notifications: rows.rows });
+  } catch (error) {
+    console.error('Parent notifications error:', error);
+    return res.status(500).json({ error: 'Failed to fetch notifications' });
+  }
+});
+
+router.post('/notifications/:id/read', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    await query(
+      `UPDATE parent_notifications
+       SET is_read = true, read_at = NOW()
+       WHERE id = $1 AND parent_account_id = $2`,
+      [req.params.id, req.parent!.accountId]
+    );
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Parent mark notification read error:', error);
+    return res.status(500).json({ error: 'Failed to update notification' });
+  }
+});
+
+router.post('/notifications/read-all', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    await query(
+      `UPDATE parent_notifications
+       SET is_read = true, read_at = NOW()
+       WHERE parent_account_id = $1 AND is_read = false`,
+      [req.parent!.accountId]
+    );
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Parent mark all notifications read error:', error);
+    return res.status(500).json({ error: 'Failed to update notifications' });
   }
 });
 
@@ -167,15 +339,32 @@ router.get('/me', authenticateParent, async (req: ParentRequest, res) => {
          s.id, s.first_name, s.last_name, s.student_id AS admission_number,
          s.gender, s.date_of_birth, s.class_assigned_id,
          s.passport_photo_url,
-         c.class_name, c.level,
+         COALESCE(c.class_name, TRIM(CONCAT(COALESCE(c.level, ''), ' ', COALESCE(c.stream, '')))) AS class_name,
+         c.level,
          t.name AS tenant_name,
-         t.logo_url AS school_logo_url,
-         ss.school_name, ss.current_term, ss.current_year,
-         pa.must_change_password, pa.last_login
+         COALESCE(ss.logo_url, t.logo_url) AS school_logo_url,
+         COALESCE(ss.school_name, t.name) AS school_name,
+         COALESCE(
+           NULLIF(ss.current_term, ''),
+           NULLIF(at.term_name, '')
+         ) AS current_term,
+         COALESCE(
+           NULLIF(ss.current_year, ''),
+           NULLIF(at.year::text, '')
+         ) AS current_year,
+         pa.must_change_password, pa.last_login,
+         s.is_beneficiary, s.beneficiary_type, s.discount_type, s.discount_value, s.beneficiary_notes, s.guardian_name, s.guardian_contact
        FROM students s
        LEFT JOIN classes c ON s.class_assigned_id = c.id
        LEFT JOIN tenants t ON s.tenant_id = t.id
        LEFT JOIN school_settings ss ON ss.tenant_id = s.tenant_id
+       LEFT JOIN LATERAL (
+         SELECT term_name, year
+         FROM academic_terms
+         WHERE tenant_id = s.tenant_id AND is_active = true
+         ORDER BY updated_at DESC NULLS LAST, id DESC
+         LIMIT 1
+       ) at ON true
        LEFT JOIN parent_portal_accounts pa ON pa.student_id = s.id AND pa.tenant_id = s.tenant_id
        WHERE s.id = $1 AND s.tenant_id = $2`,
       [studentId, tenantId]
@@ -188,6 +377,75 @@ router.get('/me', authenticateParent, async (req: ParentRequest, res) => {
   } catch (error) {
     console.error('Parent me error:', error);
     res.status(500).json({ error: 'Failed to fetch student info' });
+  }
+});
+ 
+// ── POST /api/parent/link-siblings ───────────────────────────────────────────
+// Links two students as siblings in the database if they share the same guardian.
+ 
+router.post('/link-siblings', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    const { studentId: currentStudentId, tenantId } = req.parent!;
+    const { targetStudentId } = req.body;
+ 
+    if (!targetStudentId) {
+      return res.status(400).json({ error: 'targetStudentId is required' });
+    }
+ 
+    // Fetch both students
+    const students = await query(
+      `SELECT id, first_name, last_name, guardian_name, guardian_contact, names_of_siblings, number_of_siblings
+       FROM students
+       WHERE id IN ($1, $2) AND tenant_id = $3`,
+      [currentStudentId, targetStudentId, tenantId]
+    );
+ 
+    if (students.rows.length < 2) {
+      return res.status(404).json({ error: 'One or both students not found' });
+    }
+ 
+    const studentA = students.rows.find(s => s.id === currentStudentId);
+    const studentB = students.rows.find(s => s.id === targetStudentId);
+ 
+    // Verify guardian name matches (case-insensitive, trimmed)
+    const gA = (studentA.guardian_name || '').trim().toLowerCase();
+    const gB = (studentB.guardian_name || '').trim().toLowerCase();
+ 
+    // Verify guardian contact matches (normalized digits only)
+    const cA = (studentA.guardian_contact || '').replace(/\D/g, '');
+    const cB = (studentB.guardian_contact || '').replace(/\D/g, '');
+ 
+    if (!gA || !gB || gA !== gB) {
+      return res.status(403).json({ error: 'Guardian name mismatch.' });
+    }
+    
+    if (!cA || !cB || cA !== cB) {
+      return res.status(403).json({ error: 'Guardian phone number mismatch.' });
+    }
+ 
+    // Update both records
+    const updateStudent = async (student: any, sibling: any) => {
+      const existingSiblings = (student.names_of_siblings || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+      const siblingFullName = `${sibling.first_name} ${sibling.last_name}`;
+      
+      if (!existingSiblings.includes(siblingFullName)) {
+        existingSiblings.push(siblingFullName);
+        await query(
+          `UPDATE students 
+           SET names_of_siblings = $1, number_of_siblings = $2, updated_at = NOW()
+           WHERE id = $3`,
+          [existingSiblings.join(', '), existingSiblings.length, student.id]
+        );
+      }
+    };
+ 
+    await updateStudent(studentA, studentB);
+    await updateStudent(studentB, studentA);
+ 
+    res.json({ success: true, message: 'Siblings linked successfully' });
+  } catch (error) {
+    console.error('Link siblings error:', error);
+    res.status(500).json({ error: 'Failed to link siblings' });
   }
 });
 
@@ -398,6 +656,7 @@ router.get('/finance', authenticateParent, async (req: ParentRequest, res) => {
     // Get student + class info
     const studentRow = await query(
       `SELECT s.first_name, s.last_name, s.student_id AS admission_number,
+              s.is_beneficiary, s.beneficiary_type, s.discount_type, s.discount_value,
               c.class_name, c.id AS class_id
        FROM students s
        LEFT JOIN classes c ON s.class_assigned_id = c.id
@@ -406,41 +665,120 @@ router.get('/finance', authenticateParent, async (req: ParentRequest, res) => {
     );
     const student = studentRow.rows[0];
 
-    // Get fee structure for student's class + current term
-    const feeRow = await query(
-      `SELECT total_amount, tuition_fee, pta_fee, sports_fee, library_fee, other_fee, term
-       FROM fee_structures
-       WHERE tenant_id = $1 AND class_id = $2 AND term = $3
-       ORDER BY created_at DESC LIMIT 1`,
-      [tenantId, student?.class_id, currentTerm]
-    );
+    // Get fee structure for student's class + current term (legacy-safe)
+    let feeRow;
+    try {
+      feeRow = await query(
+        `SELECT total_amount, tuition_fee, pta_fee, sports_fee, library_fee, other_fee, term
+         FROM fee_structures
+         WHERE tenant_id = $1
+           AND class_id = $2
+           AND (term = $3 OR $3 LIKE term || '%' OR term LIKE $3 || '%' OR term IS NULL OR term = '')
+         ORDER BY created_at DESC LIMIT 1`,
+        [tenantId, student?.class_id, currentTerm]
+      );
+    } catch {
+      feeRow = await query(
+        `SELECT
+           amount AS total_amount,
+           amount AS tuition_fee,
+           0::numeric AS pta_fee,
+           0::numeric AS sports_fee,
+           0::numeric AS library_fee,
+           0::numeric AS other_fee,
+           term
+         FROM fee_structures
+          WHERE (tenant_id = $1 OR tenant_id IS NULL)
+            AND class_id = $2
+            AND (term = $3 OR $3 LIKE term || '%' OR term LIKE $3 || '%' OR term IS NULL OR term = '')
+          ORDER BY created_at DESC LIMIT 1`,
+        [tenantId, student?.class_id, currentTerm]
+      );
+    }
     const feeStructure = feeRow.rows[0] || null;
 
     // Get arrears for current term
     const arrearsRow = await query(
       `SELECT amount FROM term_arrears
-       WHERE tenant_id = $1 AND student_id = $2 AND current_term = $3`,
+       WHERE tenant_id = $1 AND student_id = $2 AND (current_term = $3 OR $3 LIKE current_term || '%' OR current_term LIKE $3 || '%')`,
       [tenantId, studentId, currentTerm]
     );
     const arrears = parseFloat(arrearsRow.rows[0]?.amount || '0');
 
-    // Get payments for this student
-    const paymentsRow = await query(
-      `SELECT
-         p.amount_paid, p.payment_date, p.payment_method,
-         p.receipt_number, p.reference_number, p.notes,
-         p.term
-       FROM payments p
-       WHERE p.tenant_id = $1 AND p.student_id = $2
-       ORDER BY p.payment_date DESC`,
-      [tenantId, studentId]
-    );
+    // Get payments for this student (legacy-safe)
+    let paymentsRow;
+    try {
+      paymentsRow = await query(
+        `SELECT
+           p.id,
+           COALESCE(p.amount_paid, p.amount) AS amount_paid,
+           p.payment_date,
+           p.payment_method,
+           p.receipt_number,
+           p.reference_number,
+           p.notes,
+           p.term,
+           p.receipt_snapshot
+         FROM payments p
+         WHERE p.tenant_id = $1 AND p.student_id = $2
+         ORDER BY p.payment_date DESC`,
+        [tenantId, studentId]
+      );
+    } catch {
+      try {
+        paymentsRow = await query(
+          `SELECT
+             p.id,
+             COALESCE(p.amount_paid, p.amount) AS amount_paid,
+             p.payment_date,
+             ''::text AS payment_method,
+             p.receipt_number,
+             ''::text AS reference_number,
+             p.notes,
+             ''::text AS term,
+             NULL::jsonb AS receipt_snapshot
+           FROM payments p
+           WHERE p.tenant_id = $1 AND p.student_id = $2
+           ORDER BY p.payment_date DESC`,
+          [tenantId, studentId]
+        );
+      } catch {
+        paymentsRow = await query(
+          `SELECT
+             p.id,
+             COALESCE(p.amount_paid, p.amount) AS amount_paid,
+             p.payment_date,
+             ''::text AS payment_method,
+             p.receipt_number,
+             ''::text AS reference_number,
+             ''::text AS notes,
+             ''::text AS term,
+             NULL::jsonb AS receipt_snapshot
+           FROM payments p
+           WHERE p.tenant_id = $1 AND p.student_id = $2
+           ORDER BY p.payment_date DESC`,
+          [tenantId, studentId]
+        );
+      }
+    }
     const allPayments = paymentsRow.rows;
 
-    // Payments for current term
-    const termPayments = allPayments.filter((p: any) => p.term === currentTerm);
+    // Payments for current term (legacy-safe):
+    // if payment term is missing on old schema, treat it as current-term payment.
+    const normalizedCurrentTerm = String(currentTerm || '').trim().toLowerCase();
+    const termPayments = allPayments.filter((p: any) => {
+      const paymentTerm = String(p?.term || '').trim().toLowerCase();
+      if (!paymentTerm) return true;
+      if (!normalizedCurrentTerm) return true;
+      return (
+        paymentTerm === normalizedCurrentTerm ||
+        paymentTerm.includes(normalizedCurrentTerm) ||
+        normalizedCurrentTerm.includes(paymentTerm)
+      );
+    });
     const totalPaidThisTerm = termPayments.reduce((s: number, p: any) => s + parseFloat(p.amount_paid), 0);
-    const termFee = parseFloat(feeStructure?.total_amount || '0');
+    const baseTermFee = parseFloat(feeStructure?.total_amount || '0');
+    const { totalFees: termFee, discountAmount } = beneficiaryAdjustedFee(baseTermFee, student);
     const totalDue = termFee + arrears;
     const balance = totalDue - totalPaidThisTerm;
 
@@ -450,6 +788,8 @@ router.get('/finance', authenticateParent, async (req: ParentRequest, res) => {
       currentYear,
       student,
       feeStructure,
+      baseTermFee,
+      discountAmount,
       termFee,
       arrears,
       totalDue,

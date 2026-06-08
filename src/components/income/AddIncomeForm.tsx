@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -11,7 +11,7 @@ import { toast } from '@/hooks/use-toast';
 import { TrendingUp, Save } from 'lucide-react';
 
 const AddIncomeForm = () => {
-  const { addIncome } = useData();
+  const { addIncome, income } = useData();
   const [formData, setFormData] = useState({
     source: '',
     amount: '',
@@ -20,47 +20,58 @@ const AddIncomeForm = () => {
     receivedBy: 'Admin',
     notes: ''
   });
+  const [customSource, setCustomSource] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
     }));
+    if (field === 'source' && value !== 'Other') setCustomSource('');
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const finalSource = formData.source === 'Other' ? customSource.trim() : formData.source.trim();
     
-    if (!formData.source || !formData.amount) {
+    if (!finalSource || !formData.amount) {
       toast({
         title: "Validation Error",
-        description: "Please fill in source and amount",
+        description: formData.source === 'Other' ? "Please type the income source and amount" : "Please fill in source and amount",
         variant: "destructive"
       });
       return;
     }
 
-    addIncome({
-      ...formData,
-      amount: parseFloat(formData.amount)
-    });
+    try {
+      setSaving(true);
+      await addIncome({
+        ...formData,
+        source: finalSource,
+        amount: parseFloat(formData.amount)
+      });
 
-    toast({
-      title: "Income Added",
-      description: `GHS ${formData.amount} income from ${formData.source} recorded`,
-    });
+      toast({
+        title: "Income Added",
+        description: `GHS ${formData.amount} income from ${finalSource} recorded`,
+      });
 
-    setFormData({
-      source: '',
-      amount: '',
-      date: new Date().toISOString().split('T')[0],
-      paymentMethod: 'Cash',
-      receivedBy: 'Admin',
-      notes: ''
-    });
+      setFormData({
+        source: '',
+        amount: '',
+        date: new Date().toISOString().split('T')[0],
+        paymentMethod: 'Cash',
+        receivedBy: 'Admin',
+        notes: ''
+      });
+      setCustomSource('');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const incomeSources = [
+  const defaultIncomeSources = [
     'Registration Fees',
     'Uniform Sales',
     'Book Sales',
@@ -72,6 +83,12 @@ const AddIncomeForm = () => {
     'Rental Income',
     'Other'
   ];
+  const incomeSources = useMemo(() => {
+    const saved = (income || [])
+      .map((item) => item.source?.trim())
+      .filter((source): source is string => Boolean(source));
+    return Array.from(new Set([...defaultIncomeSources.filter((s) => s !== 'Other'), ...saved, 'Other']));
+  }, [income]);
 
   return (
     <Card>
@@ -98,6 +115,15 @@ const AddIncomeForm = () => {
                   ))}
                 </SelectContent>
               </Select>
+              {formData.source === 'Other' && (
+                <Input
+                  value={customSource}
+                  onChange={(e) => setCustomSource(e.target.value)}
+                  placeholder="Type new income source"
+                  className="mt-2"
+                  required
+                />
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="amount">Amount (GHS) *</Label>
@@ -161,10 +187,13 @@ const AddIncomeForm = () => {
             />
           </div>
 
-          <Button type="submit" className="w-full md:w-auto">
-            <Save className="w-4 h-4 mr-2" />
-            Add Income
-          </Button>
+          <div className="form-action-bar flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-muted-foreground">Fill in source and amount to save.</p>
+            <Button type="submit" variant="primaryAction" className="min-h-10 w-full sm:w-auto" disabled={saving}>
+              <Save className="w-4 h-4 mr-2" />
+              {saving ? 'Saving...' : 'Add Income'}
+            </Button>
+          </div>
         </form>
       </CardContent>
     </Card>

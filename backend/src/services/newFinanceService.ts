@@ -5,7 +5,7 @@
  * calculated as a sum of all historical transactions.
  */
 
-import { query, getClient } from '../db/connection';
+import { query, getClient } from '../db/connection.js';
 import { z } from 'zod';
 
 // ==================================================================================================

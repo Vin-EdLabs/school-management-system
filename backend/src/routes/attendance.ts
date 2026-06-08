@@ -2,8 +2,18 @@ import express from 'express';
 import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
+import { getIO } from '../socket.js';
 
 const router = express.Router();
+
+const emitTenantDataChanged = (tenantId: number, entity: string, action: 'created' | 'updated' | 'deleted') => {
+  try {
+    const io = getIO();
+    io.to(`tenant:${tenantId}`).emit('tenant-data-changed', { tenantId, entity, action, at: Date.now() });
+  } catch {
+    // Socket server may be unavailable in some non-realtime contexts.
+  }
+};
 
 router.use(authenticate);
 router.use(requireTenant);
@@ -122,6 +132,7 @@ router.post('/', async (req: AuthRequest, res) => {
         [tenantId, classId, r.studentId, date, r.present, userId]
       );
     }
+    emitTenantDataChanged(tenantId, 'attendance', 'updated');
     res.json({ message: 'Attendance saved', count: markedRecords.length });
   } catch (error) {
     console.error('Save attendance error:', error);

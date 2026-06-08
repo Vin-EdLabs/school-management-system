@@ -14,12 +14,13 @@ import {
 } from '@/components/ui/dialog';
 import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
-import { UserPlus, X, Copy, KeyRound } from 'lucide-react';
+import { Loader2, UserPlus, X, Copy, KeyRound } from 'lucide-react';
 
 const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
   const { addTeacher, subjects } = useData();
   const [credentialsOpen, setCredentialsOpen] = useState(false);
   const [loginCredentials, setLoginCredentials] = useState<{ staffId: string; pin: string } | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     fullName: '',
     gender: '',
@@ -53,6 +54,7 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
 
     if (!formData.fullName || !formData.email || !formData.phoneNumber || !formData.gender) {
       toast({
@@ -66,6 +68,7 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
     // Convert salary to number for storage, default to 0 if empty or invalid
     const salaryValue = formData.monthlySalary.trim() === '' ? 0 : parseFloat(formData.monthlySalary) || 0;
 
+    setIsSubmitting(true);
     try {
       const result = await addTeacher({
         ...formData,
@@ -105,20 +108,22 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
         description: "Failed to add teacher. Please try again.",
         variant: "destructive"
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
     <>
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <UserPlus className="w-5 h-5" />
+      <Card className="border-border bg-card shadow-sm overflow-visible">
+        <CardHeader className="border-b border-border/70 bg-muted/30 px-4 py-4 sm:px-6">
+          <CardTitle className="flex items-center gap-2 text-lg text-card-foreground">
+            <UserPlus className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
             <span>Add New Teacher</span>
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+        <CardContent className="px-4 py-5 sm:px-6 md:px-8 md:py-6">
+          <form onSubmit={handleSubmit} className="space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="fullName">Full Name *</Label>
@@ -258,10 +263,15 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
               />
             </div>
 
-            <Button type="submit" className="w-full">
-              <UserPlus className="w-4 h-4 mr-2" />
-              Add Teacher
-            </Button>
+            <div className="form-action-bar flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-muted-foreground">
+                Required fields are marked with *.
+              </p>
+              <Button type="submit" variant="primaryAction" className="min-h-11 w-full sm:w-auto sm:min-w-40" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <UserPlus className="w-4 h-4 mr-2" />}
+                {isSubmitting ? 'Processing...' : 'Add Teacher'}
+              </Button>
+            </div>
           </form>
         </CardContent>
       </Card>
@@ -277,14 +287,14 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
           </DialogHeader>
           {loginCredentials && (
             <div className="space-y-4 py-2">
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-slate-600 dark:text-slate-300">
                 Share these credentials with the teacher. They login using <strong>Staff ID</strong> as username and <strong>PIN</strong> as password.
               </p>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3 dark:border-slate-700 dark:bg-slate-900">
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                    <p className="text-xs text-slate-500 uppercase tracking-wide">Staff ID (Username)</p>
-                    <p className="font-mono font-semibold text-slate-800">{loginCredentials.staffId}</p>
+                    <p className="text-xs text-slate-500 uppercase tracking-wide dark:text-slate-400">Staff ID (Username)</p>
+                    <p className="font-mono font-semibold text-slate-800 dark:text-slate-100">{loginCredentials.staffId}</p>
                   </div>
                   <Button size="sm" variant="outline" onClick={() => { navigator.clipboard.writeText(loginCredentials.staffId); toast({ title: 'Copied', description: 'Staff ID copied to clipboard' }); }}>
                     <Copy className="w-4 h-4" />
@@ -292,15 +302,15 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
                 </div>
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                    <p className="text-xs text-slate-500 uppercase tracking-wide">PIN (Password) — 5 digits</p>
-                    <p className="font-mono font-semibold text-slate-800">{loginCredentials.pin}</p>
+                    <p className="text-xs text-slate-500 uppercase tracking-wide dark:text-slate-400">PIN (Password) — 5 digits</p>
+                    <p className="font-mono font-semibold text-slate-800 dark:text-slate-100">{loginCredentials.pin}</p>
                   </div>
                   <Button size="sm" variant="outline" onClick={() => { navigator.clipboard.writeText(loginCredentials.pin); toast({ title: 'Copied', description: 'PIN copied to clipboard' }); }}>
                     <Copy className="w-4 h-4" />
                   </Button>
                 </div>
               </div>
-              <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded">
+              <p className="text-xs text-amber-700 bg-amber-50 p-2 rounded dark:bg-amber-950/40 dark:text-amber-300">
                 Save this PIN now. It cannot be retrieved later. For Teacher/Staff login, select the school, choose &quot;Teacher / Staff&quot; role, then enter Staff ID and PIN.
               </p>
             </div>

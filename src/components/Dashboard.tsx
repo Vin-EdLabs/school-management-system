@@ -12,32 +12,47 @@ import FeesModule from './fees/FeesModule';
 import IncomeModule from './income/IncomeModule';
 import ExpensesModule from './expenses/ExpensesModule';
 import PayrollModule from './payroll/PayrollModule';
-import ReportsModule from './reports/ReportsModule';
+import AdvancedReports from './reports/AdvancedReports';
 import SettingsModule from './settings/SettingsModule';
 import UsersModule from './users/UsersModule';
 import AuditModule from './audit/AuditModule';
 import PrintFeeStatusModule from './fees/PrintFeeStatusModule';
+import TransactionsPage from './finance/TransactionsPage';
+import ManualAdjustmentsReport from './finance/ManualAdjustmentsReport';
 import TeacherDashboard from './teacher/TeacherDashboard';
 import TeacherClassesModule from './teacher/TeacherClassesModule';
 import AttendanceModule from './teacher/AttendanceModule';
 import GradesModule from './teacher/GradesModule';
 import TeacherProfileModule from './teacher/TeacherProfileModule';
 import TeacherPaymentHistoryModule from './teacher/TeacherPaymentHistoryModule';
+import TeacherQuizModule from './teacher/TeacherQuizModule';
 import AiChatModule from './ai/AiChatModule';
-import SupportChatModule from './support/SupportChatModule';
 import RecordsModule from './records/RecordsModule';
 import SubjectsModule from './subjects/SubjectsModule';
+import SupportModule from './support/SupportModule';
+import PushNotificationsModule from './notifications/PushNotificationsModule';
+import ParentDeskAdminModule from './notifications/ParentDeskAdminModule';
 import { useAuth } from '../contexts/AuthContext';
+import { useSchool } from '../contexts/SchoolContext';
+import { useData } from '../contexts/DataContext';
+import { useStaffPushSync } from '../hooks/useStaffPushSync';
+import { BrandedLoadingScreen } from '@/components/common/BrandedLoading';
 
 const Dashboard = () => {
   const { hasAccess, user } = useAuth();
+  const { school } = useSchool();
+  const { workspaceReady } = useData();
+  useStaffPushSync();
   const [activeModule, setActiveModule] = useState(() => {
+    if (window.location.pathname.includes('/finance/transactions')) {
+      return 'transactions';
+    }
     // Set default module based on user role
     if (user?.role === 'finance') {
       return 'financial-dashboard';
     } else if (user?.role === 'administrator') {
       return 'dashboard';
-    } else if (user?.role === 'teacher') {
+    } else if (user?.role === 'teacher' || user?.role === 'staff') {
       return 'teacher-dashboard';
     } else {
       return 'dashboard'; // super-admin
@@ -46,7 +61,11 @@ const Dashboard = () => {
 
   const renderActiveModule = () => {
     // Check access before rendering
-    if (!hasAccess(activeModule) && !hasAccess(activeModule + '-view-only')) {
+    const hasModuleAccess =
+      hasAccess(activeModule) ||
+      hasAccess(activeModule + '-view-only') ||
+      (activeModule === 'teacher-quizzes' && (hasAccess('grades') || user?.role === 'teacher'));
+    if (!hasModuleAccess) {
       return (
         <div className="p-6 text-center">
           <h2 className="text-2xl font-bold text-gray-800 mb-4">Access Denied</h2>
@@ -86,6 +105,8 @@ const Dashboard = () => {
         return <TeacherProfileModule />;
       case 'teacher-payment-history':
         return <TeacherPaymentHistoryModule />;
+      case 'teacher-quizzes':
+        return <TeacherQuizModule />;
       case 'fees':
         return <FeesModule />;
       case 'income':
@@ -95,21 +116,29 @@ const Dashboard = () => {
       case 'payroll':
         return <PayrollModule />;
       case 'reports':
-        return <ReportsModule />;
+        return <AdvancedReports />;
       case 'print-fee-status':
         return <PrintFeeStatusModule />;
+      case 'transactions':
+        return <TransactionsPage onNavigate={setActiveModule} />;
+      case 'manual-adjustments':
+        return <ManualAdjustmentsReport />;
       case 'users':
         return <UsersModule />;
       case 'settings':
         return <SettingsModule />;
       case 'audit':
         return <AuditModule />;
-      case 'support-chat':
-        return <SupportChatModule />;
       case 'records':
         return <RecordsModule />;
       case 'subjects':
         return <SubjectsModule />;
+      case 'support-chat':
+        return <SupportModule />;
+      case 'push-notifications':
+        return <PushNotificationsModule />;
+      case 'parent-desk':
+        return <ParentDeskAdminModule />;
       default:
         if (user?.role === 'teacher') {
           return <TeacherDashboard />;
@@ -119,6 +148,14 @@ const Dashboard = () => {
         return <DashboardHome />;
     }
   };
+
+  if (!workspaceReady) {
+    return (
+      <SidebarWrapper activeModule={activeModule} setActiveModule={setActiveModule}>
+        <BrandedLoadingScreen logoUrl={school?.logo_url} label="Loading your workspace…" />
+      </SidebarWrapper>
+    );
+  }
 
   return (
     <SidebarWrapper

@@ -7,15 +7,18 @@ export type UserRole = 'administrator' | 'finance' | 'super-admin' | 'teacher' |
 interface User {
   id: number;
   username: string;
+  fullName: string | null;
   role: UserRole;
   tenantId: number | null;
   teacherId?: string;
+  otherStaffId?: number | null;
   isPrimaryAdmin?: boolean;
 }
 
 interface AuthContextType {
   isAuthenticated: boolean;
   user: User | null;
+  token: string | null;
   login: (username: string, password: string, role: UserRole, tenantId?: number) => Promise<boolean>;
   logout: () => void;
   changePassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
@@ -29,6 +32,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -41,7 +45,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .then((response: any) => {
           if (response.user) {
             setIsAuthenticated(true);
-            setUser({ ...response.user, isPrimaryAdmin: response.user.isPrimaryAdmin });
+            setToken(token);
+            setUser({
+              ...response.user,
+              isPrimaryAdmin: response.user.isPrimaryAdmin,
+              otherStaffId: response.user.otherStaffId ?? null,
+            });
           } else {
             localStorage.removeItem('authToken');
             localStorage.removeItem('rosaGardensUser');
@@ -61,9 +70,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (username: string, password: string, role: UserRole, tenantId?: number): Promise<boolean> => {
     try {
-      const payload: { username: string; password: string; tenantId?: number } = {
+      const payload: { username: string; password: string; role?: UserRole; tenantId?: number } = {
         username,
         password,
+        role,
       };
       if (tenantId !== undefined && tenantId !== null && !isNaN(tenantId)) {
         payload.tenantId = Number(tenantId);
@@ -74,7 +84,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.setItem('authToken', response.token);
         localStorage.setItem('rosaGardensUser', JSON.stringify(response.user));
         setIsAuthenticated(true);
-        setUser({ ...response.user, isPrimaryAdmin: response.user.isPrimaryAdmin });
+        setToken(response.token);
+        setUser({
+          ...response.user,
+          isPrimaryAdmin: response.user.isPrimaryAdmin,
+          otherStaffId: response.user.otherStaffId ?? null,
+        });
 
         // Add audit log for login (will be handled by backend)
         setTimeout(() => {
@@ -86,9 +101,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         return true;
       }
-      return false;
+      const serverMsg = response?.error || response?.message;
+      throw new Error(
+        typeof serverMsg === 'string' && serverMsg.trim()
+          ? serverMsg.trim()
+          : 'Those credentials do not match our records. Check your username and password.'
+      );
     } catch (error: any) {
       console.error('Login error:', error);
+      if (error instanceof TypeError && String(error.message || '').toLowerCase().includes('fetch')) {
+        throw new Error('Failed to fetch');
+      }
       const msg = error?.message || error?.response?.data?.error || 'Connection failed';
       throw new Error(typeof msg === 'string' ? msg : 'Login failed');
     }
@@ -101,6 +124,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setIsAuthenticated(false);
     setUser(null);
+    setToken(null);
     localStorage.removeItem('authToken');
     localStorage.removeItem('rosaGardensUser');
   };
@@ -131,22 +155,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Super-admin: full access including school creation
     if (user.role === 'super-admin') {
-      return ['students', 'teachers', 'classes', 'calendar', 'fees', 'income', 'expenses', 'payroll', 'reports', 'dashboard', 'financial-dashboard', 'settings', 'settings-full', 'users', 'audit', 'print-fee-status', 'teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'ai-assistant', 'schools', 'records', 'subjects'].includes(module);
+      return ['students', 'teachers', 'classes', 'calendar', 'fees', 'income', 'expenses', 'transactions', 'payroll', 'reports', 'dashboard', 'financial-dashboard', 'settings', 'settings-full', 'users', 'audit', 'print-fee-status', 'teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'ai-assistant', 'schools', 'records', 'subjects', 'support-chat', 'push-notifications', 'parent-desk', 'manual-adjustments'].includes(module);
     }
 
     // Primary admin: full school control except school creation (sees everything)
     if (user.role === 'administrator' && user.isPrimaryAdmin) {
-      return ['students', 'teachers', 'classes', 'calendar', 'fees', 'income', 'expenses', 'payroll', 'reports', 'dashboard', 'financial-dashboard', 'settings', 'settings-full', 'users', 'audit', 'print-fee-status', 'teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'ai-assistant', 'support-chat', 'records', 'subjects'].includes(module);
+      return ['students', 'teachers', 'classes', 'calendar', 'fees', 'income', 'expenses', 'transactions', 'payroll', 'reports', 'dashboard', 'financial-dashboard', 'settings', 'settings-full', 'users', 'audit', 'print-fee-status', 'teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'ai-assistant', 'records', 'subjects', 'support-chat', 'push-notifications', 'parent-desk', 'manual-adjustments'].includes(module);
     }
 
     // Additional administrators: academic only
     if (user.role === 'administrator') {
-      return ['students', 'teachers', 'classes', 'calendar', 'dashboard', 'settings', 'settings-password-only', 'print-fee-status', 'support-chat', 'records'].includes(module);
+      return ['students', 'teachers', 'classes', 'calendar', 'dashboard', 'settings', 'settings-password-only', 'print-fee-status', 'records', 'support-chat', 'parent-desk', 'push-notifications', 'audit'].includes(module);
     }
 
     // Finance: financial sections only
     if (user.role === 'finance') {
-      return ['students-view-only', 'teachers-view-only', 'fees', 'income', 'expenses', 'payroll', 'reports', 'financial-dashboard', 'dashboard', 'settings', 'settings-password-only', 'print-fee-status', 'ai-assistant', 'support-chat'].includes(module);
+      return ['students-view-only', 'teachers-view-only', 'fees', 'income', 'expenses', 'transactions', 'payroll', 'reports', 'financial-dashboard', 'dashboard', 'settings', 'settings-password-only', 'print-fee-status', 'ai-assistant', 'support-chat', 'parent-desk', 'audit', 'manual-adjustments'].includes(module);
     }
 
     // Teacher: teacher section + profile + payment history
@@ -163,7 +187,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, logout, changePassword, verifyPassword, hasAccess, loading }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, token, login, logout, changePassword, verifyPassword, hasAccess, loading }}>
       {children}
     </AuthContext.Provider>
   );

@@ -3,13 +3,30 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { query } from '../db/connection.js';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
+import { getVapidPublicKey } from '../services/webPushService.js';
+import { writeAuditLog } from '../services/auditService.js';
+import { getClientIp } from '../utils/clientIp.js';
 
 const router = express.Router();
+
+const normalizeRole = (role: string | null | undefined): string => {
+  const r = String(role || '').toLowerCase().trim();
+  if (r === 'superadmin') return 'super-admin';
+  if (r === 'admin') return 'administrator';
+  return r;
+};
+
+const isSuperAdminUser = (role: string | null | undefined, tenantId: number | null | undefined) =>
+  normalizeRole(role) === 'super-admin' && (tenantId == null || Number.isNaN(Number(tenantId)));
+
+const nextDayLockSql = `
+  date_trunc('day', NOW() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' + interval '1 day'
+`;
 
 // Login - tenant-aware, blocks inactive schools
 router.post('/login', async (req, res) => {
   try {
-    const { username, password, tenantId: rawTenantId } = req.body;
+    const { username, password, tenantId: rawTenantId, role: requestedRole } = req.body;
     const tenantId = rawTenantId !== undefined && rawTenantId !== null && rawTenantId !== ''
       ? parseInt(String(rawTenantId), 10) : null;
     const hasTenantId = tenantId !== null && !isNaN(tenantId);
@@ -31,59 +48,219 @@ router.post('/login', async (req, res) => {
       }
     }
     
-    let userQuery = 'SELECT id, tenant_id, username, password_hash, role, teacher_id, is_primary_admin FROM users WHERE username = $1 AND is_active = true';
-    const params: any[] = [username];
-    
-    if (hasTenantId) {
-      userQuery += ' AND tenant_id = $2';
-      params.push(tenantId);
-    } else {
-      userQuery += ' AND tenant_id IS NULL';
+    // Try modern schema first, then progressively simpler legacy-compatible queries.
+    const attempts: Array<{ sql: string; params: any[] }> = [
+      {
+        sql: `
+          SELECT u.id, u.tenant_id, u.username, u.password_hash, u.role, u.teacher_id, u.other_staff_id, u.is_primary_admin,
+                 COALESCE(t.full_name, s.full_name, u.full_name, u.username) as full_name
+          FROM users u
+          LEFT JOIN teachers t ON u.teacher_id::text = t.id::text AND t.tenant_id = u.tenant_id
+          LEFT JOIN payroll_other_staff s ON u.other_staff_id = s.id AND s.tenant_id = u.tenant_id
+          WHERE (u.username = $1 OR u.email = $1) AND u.is_active = true
+          ${hasTenantId ? 'AND (u.tenant_id = $2 OR u.tenant_id IS NULL)' : 'AND u.tenant_id IS NULL'}
+        `,
+        params: hasTenantId ? [username, tenantId] : [username]
+      },
+      {
+        sql: `
+          SELECT u.id, u.tenant_id, u.username, u.password_hash, u.role, u.teacher_id, u.other_staff_id, u.is_primary_admin,
+                 u.username as full_name
+          FROM users u
+          WHERE u.username = $1 AND COALESCE(u.is_active, true) = true
+          ${hasTenantId ? 'AND (u.tenant_id = $2 OR u.tenant_id IS NULL)' : ''}
+        `,
+        params: hasTenantId ? [username, tenantId] : [username]
+      },
+      {
+        sql: `
+          SELECT u.id, NULL::integer as tenant_id, u.username, u.password_hash, u.role,
+                 NULL::text as teacher_id, false as is_primary_admin, u.username as full_name
+          FROM users u
+          WHERE u.username = $1 AND COALESCE(u.is_active, true) = true
+        `,
+        params: [username]
+      }
+    ];
+
+    let result: any = { rows: [] };
+    for (const attempt of attempts) {
+      try {
+        result = await query(attempt.sql, attempt.params);
+        if (result.rows.length > 0) break;
+      } catch {
+        continue;
+      }
     }
-    
-    const result = await query(userQuery, params);
     
     if (result.rows.length === 0) {
+      const inactiveAttempts: Array<{ sql: string; params: any[] }> = [
+        {
+          sql: `
+            SELECT u.id, u.tenant_id, u.username, u.role
+            FROM users u
+            WHERE (u.username = $1 OR u.email = $1) AND COALESCE(u.is_active, true) = false
+            ${hasTenantId ? 'AND (u.tenant_id = $2 OR u.tenant_id IS NULL)' : 'AND u.tenant_id IS NULL'}
+            LIMIT 1
+          `,
+          params: hasTenantId ? [username, tenantId] : [username],
+        },
+        {
+          sql: `
+            SELECT u.id, u.tenant_id, u.username, u.role
+            FROM users u
+            WHERE u.username = $1 AND COALESCE(u.is_active, true) = false
+            ${hasTenantId ? 'AND (u.tenant_id = $2 OR u.tenant_id IS NULL)' : ''}
+            LIMIT 1
+          `,
+          params: hasTenantId ? [username, tenantId] : [username],
+        },
+      ];
+
+      for (const attempt of inactiveAttempts) {
+        try {
+          const inactiveResult = await query(attempt.sql, attempt.params);
+          if (inactiveResult.rows.length > 0) {
+            const inactiveUser = inactiveResult.rows[0];
+            await writeAuditLog({
+              tenantId: inactiveUser.tenant_id ?? (hasTenantId ? tenantId : null),
+              userId: inactiveUser.id,
+              userRole: normalizeRole(inactiveUser.role),
+              action: 'LOGIN_BLOCKED',
+              entityType: 'USER',
+              module: 'security',
+              status: 'failed',
+              summary: 'Login blocked — account deactivated',
+              details: { username: inactiveUser.username },
+              ipAddress: getClientIp(req),
+              userAgent: req.get('user-agent') || null,
+            });
+            return res.status(403).json({
+              error: 'Your account has been deactivated. Please contact your school administrator for help.',
+            });
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      const superAdminAttempt = normalizeRole(requestedRole) === 'super-admin' && !hasTenantId;
+      await writeAuditLog({
+        tenantId: hasTenantId ? tenantId : null,
+        userId: null,
+        userRole: null,
+        action: superAdminAttempt ? 'SUPER_ADMIN_FAILED_LOGIN' : 'FAILED_LOGIN',
+        entityType: 'USER',
+        module: superAdminAttempt ? 'superadmin' : 'security',
+        status: 'failed',
+        summary: superAdminAttempt ? `Super Admin failed login — unknown username` : `Failed login — unknown username`,
+        details: { username: String(username).slice(0, 120), reason: 'unknown_username' },
+        ipAddress: getClientIp(req),
+        userAgent: req.get('user-agent') || null,
+      });
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-    
+
     const user = result.rows[0];
+
+    const lockRes = await query(
+      `SELECT locked_until, failed_login_attempts FROM users WHERE id = $1`,
+      [user.id]
+    ).catch(() => ({ rows: [{}] }));
+    const lockRow = lockRes.rows[0] || {};
+    const lockedUntil = lockRow.locked_until ? new Date(lockRow.locked_until) : null;
+    if (lockedUntil && lockedUntil.getTime() > Date.now()) {
+      const superAdmin = isSuperAdminUser(user.role, user.tenant_id);
+      await writeAuditLog({
+        tenantId: user.tenant_id,
+        userId: user.id,
+        userRole: normalizeRole(user.role),
+        action: superAdmin ? 'SUPER_ADMIN_LOGIN_BLOCKED' : 'LOGIN_BLOCKED',
+        entityType: 'USER',
+        module: superAdmin ? 'superadmin' : 'security',
+        status: 'failed',
+        summary: superAdmin ? `Super Admin login blocked — ${user.username}` : 'Login blocked — account temporarily locked',
+        details: { username: user.username, lockedUntil: lockedUntil.toISOString() },
+        ipAddress: getClientIp(req),
+        userAgent: req.get('user-agent') || null,
+      });
+      return res.status(423).json({
+        error: isSuperAdminUser(user.role, user.tenant_id)
+          ? 'This Super Admin username is locked until tomorrow after 3 failed attempts.'
+          : 'Account temporarily locked after multiple failed attempts. Try again later or contact an administrator.',
+      });
+    }
+
     const isValidPassword = await bcrypt.compare(password, user.password_hash);
-    
+
     if (!isValidPassword) {
+      const superAdmin = isSuperAdminUser(user.role, user.tenant_id);
+      await query(
+        superAdmin
+          ? `UPDATE users SET
+               failed_login_attempts = failed_login_attempts + 1,
+               locked_until = CASE WHEN failed_login_attempts + 1 >= 3 THEN ${nextDayLockSql} ELSE locked_until END
+             WHERE id = $1`
+          : `UPDATE users SET
+               failed_login_attempts = failed_login_attempts + 1,
+               locked_until = CASE WHEN failed_login_attempts + 1 >= 5 THEN NOW() + interval '15 minutes' ELSE locked_until END
+             WHERE id = $1`,
+        [user.id]
+      ).catch(() => {});
+      await writeAuditLog({
+        tenantId: user.tenant_id,
+        userId: user.id,
+        userRole: normalizeRole(user.role),
+        action: superAdmin ? 'SUPER_ADMIN_FAILED_LOGIN' : 'FAILED_LOGIN',
+        entityType: 'USER',
+        module: superAdmin ? 'superadmin' : 'security',
+        status: 'failed',
+        summary: superAdmin ? `Super Admin failed login — ${user.username}` : `Failed login — wrong password`,
+        details: {
+          username: user.username,
+          lockPolicy: superAdmin ? '3 failed attempts locks until the next day' : '5 failed attempts locks for 15 minutes',
+        },
+        ipAddress: getClientIp(req),
+        userAgent: req.get('user-agent') || null,
+      });
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-    
+
+    await query(`UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = $1`, [user.id]).catch(() => {});
+
     const token = jwt.sign(
-      { userId: user.id, tenantId: user.tenant_id, role: user.role },
+      { userId: user.id, tenantId: user.tenant_id, role: normalizeRole(user.role) },
       process.env.JWT_SECRET || 'secret',
       { expiresIn: '7d' }
     );
-    
-    // Log login
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, ip_address, user_agent, details) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [
-        user.tenant_id,
-        user.id,
-        'LOGIN',
-        'USER',
-        req.ip || null,
-        req.get('user-agent') || null,
-        JSON.stringify({ username: user.username, role: user.role }),
-      ]
-    );
+
+    const superAdmin = isSuperAdminUser(user.role, user.tenant_id);
+    await writeAuditLog({
+      tenantId: user.tenant_id,
+      userId: user.id,
+      userRole: normalizeRole(user.role),
+      action: superAdmin ? 'SUPER_ADMIN_LOGIN' : 'LOGIN',
+      entityType: 'USER',
+      module: superAdmin ? 'superadmin' : 'security',
+      status: 'success',
+      summary: superAdmin ? `Super Admin login — ${user.username}` : `Successful login — ${user.username}`,
+      details: { username: user.username, role: normalizeRole(user.role) },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') || null,
+    });
     
     const userRow = result.rows[0];
     const isPrimaryAdmin = userRow.is_primary_admin === true;
     res.json({
       token,
-      user: {
+        user: {
         id: user.id,
         username: user.username,
-        role: user.role,
+        fullName: user.full_name,
+        role: normalizeRole(user.role),
         tenantId: user.tenant_id,
         teacherId: user.teacher_id,
+        otherStaffId: user.other_staff_id ?? null,
         isPrimaryAdmin,
       },
     });
@@ -117,8 +294,9 @@ router.post('/change-password', authenticate, async (req: AuthRequest, res) => {
       return res.status(400).json({ error: 'Current and new password required' });
     }
     
-    if (newPassword.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    const minLength = req.user!.role === 'teacher' || req.user!.role === 'staff' ? 5 : 6;
+    if (newPassword.length < minLength) {
+      return res.status(400).json({ error: `Password must be at least ${minLength} characters` });
     }
     
     const userResult = await query(
@@ -146,11 +324,19 @@ router.post('/change-password', authenticate, async (req: AuthRequest, res) => {
       [hashedPassword, req.user!.id]
     );
     
-    // Log password change
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type) VALUES ($1, $2, $3, $4)',
-      [req.user!.tenantId, req.user!.id, 'PASSWORD_CHANGE', 'USER']
-    );
+    await writeAuditLog({
+      tenantId: req.user!.tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'PASSWORD_CHANGE',
+      entityType: 'USER',
+      module: 'security',
+      status: 'success',
+      summary: 'Password changed',
+      details: { userId: req.user!.id },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') || null,
+    });
     
     res.json({ message: 'Password changed successfully' });
   } catch (error) {
@@ -162,18 +348,19 @@ router.post('/change-password', authenticate, async (req: AuthRequest, res) => {
 // Logout - logs LOGOUT for audit
 router.post('/logout', authenticate, async (req: AuthRequest, res) => {
   try {
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, ip_address, user_agent, details) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [
-        req.user!.tenantId,
-        req.user!.id,
-        'LOGOUT',
-        'USER',
-        req.ip || null,
-        req.get('user-agent') || null,
-        JSON.stringify({ username: req.user!.username }),
-      ]
-    );
+    await writeAuditLog({
+      tenantId: req.user!.tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'LOGOUT',
+      entityType: 'USER',
+      module: 'security',
+      status: 'success',
+      summary: `Logout — ${req.user!.username}`,
+      details: { username: req.user!.username },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') || null,
+    });
     res.json({ message: 'Logged out' });
   } catch (error) {
     console.error('Logout audit error:', error);
@@ -185,7 +372,12 @@ router.post('/logout', authenticate, async (req: AuthRequest, res) => {
 router.get('/me', authenticate, async (req: AuthRequest, res) => {
   try {
     const result = await query(
-      'SELECT id, username, role, tenant_id, teacher_id, is_primary_admin FROM users WHERE id = $1',
+      `SELECT u.id, u.username, u.role, u.tenant_id, u.teacher_id, u.other_staff_id, u.is_primary_admin,
+              COALESCE(t.full_name, s.full_name, u.full_name, u.username) as full_name
+       FROM users u
+       LEFT JOIN teachers t ON u.teacher_id::text = t.id::text AND t.tenant_id = u.tenant_id
+       LEFT JOIN payroll_other_staff s ON u.other_staff_id = s.id AND s.tenant_id = u.tenant_id
+       WHERE u.id = $1`,
       [req.user!.id]
     );
     
@@ -208,9 +400,11 @@ router.get('/me', authenticate, async (req: AuthRequest, res) => {
       user: {
         id: user.id,
         username: user.username,
-        role: user.role,
+        fullName: user.full_name,
+        role: normalizeRole(user.role),
         tenantId: user.tenant_id,
         teacherId: user.teacher_id,
+        otherStaffId: user.other_staff_id ?? null,
         isPrimaryAdmin: user.is_primary_admin === true,
         tenant,
       },
@@ -218,6 +412,64 @@ router.get('/me', authenticate, async (req: AuthRequest, res) => {
   } catch (error) {
     console.error('Get user error:', error);
     res.status(500).json({ error: 'Failed to get user' });
+  }
+});
+
+// Web push for teacher/staff school app (same VAPID keys as parent portal)
+router.get('/push/public-key', authenticate, async (req: AuthRequest, res) => {
+  const role = normalizeRole(req.user!.role);
+  if (role !== 'teacher' && role !== 'staff') {
+    return res.status(403).json({ error: 'Only teacher or staff accounts can use school push' });
+  }
+  const publicKey = getVapidPublicKey();
+  if (!publicKey) {
+    return res.status(503).json({ error: 'Push notifications are not configured yet' });
+  }
+  return res.json({ publicKey });
+});
+
+router.post('/push/subscribe', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const role = normalizeRole(req.user!.role);
+    if (role !== 'teacher' && role !== 'staff') {
+      return res.status(403).json({ error: 'Only teacher or staff accounts can subscribe' });
+    }
+    const tenantId = req.user!.tenantId;
+    if (!tenantId) return res.status(400).json({ error: 'School context required' });
+
+    const { endpoint, keys } = req.body || {};
+    const p256dh = keys?.p256dh;
+    const auth = keys?.auth;
+    if (!endpoint || !p256dh || !auth) {
+      return res.status(400).json({ error: 'Invalid push subscription payload' });
+    }
+
+    await query(
+      `INSERT INTO staff_user_push_subscriptions (tenant_id, user_id, endpoint, p256dh, auth)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (user_id, endpoint)
+       DO UPDATE SET p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth`,
+      [tenantId, req.user!.id, endpoint, p256dh, auth]
+    );
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Staff push subscribe error:', error);
+    return res.status(500).json({ error: 'Failed to save push subscription' });
+  }
+});
+
+router.post('/push/unsubscribe', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const endpoint = req.body?.endpoint;
+    if (!endpoint) return res.status(400).json({ error: 'endpoint is required' });
+    await query('DELETE FROM staff_user_push_subscriptions WHERE user_id = $1 AND endpoint = $2', [
+      req.user!.id,
+      endpoint,
+    ]);
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Staff push unsubscribe error:', error);
+    return res.status(500).json({ error: 'Failed to remove push subscription' });
   }
 });
 

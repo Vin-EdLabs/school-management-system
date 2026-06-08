@@ -5,6 +5,7 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Printer, Download, X } from 'lucide-react';
+import { formatDisplayDate, formatDisplayDateTime, formatDisplayTime } from '../../utils/dateFormat';
 
 interface A4ReportPrinterProps {
   reportData: any;
@@ -389,7 +390,7 @@ const A4ReportPrinter: React.FC<A4ReportPrinterProps> = ({
                         <div className="expense-title">{item.description}</div>
                         <div className="expense-details">
                           <span>GHS {item.amount.toLocaleString()}</span>
-                          <span>{new Date(item.date).toLocaleDateString()} {new Date(item.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                          <span>{formatDisplayDateTime(item.date)}</span>
                           <span>{item.paymentMethod}</span>
                         </div>
                       </div>
@@ -574,7 +575,7 @@ const A4ReportPrinter: React.FC<A4ReportPrinterProps> = ({
                   <TableRow key={index}>
                     <TableCell className="font-medium">{source}</TableCell>
                     <TableCell>GHS {(amount as number).toLocaleString()}</TableCell>
-                    <TableCell>{new Date().toLocaleDateString()} {new Date().toLocaleTimeString()}</TableCell>
+                    <TableCell>{formatDisplayDateTime(new Date())}</TableCell>
                     <TableCell>
                       {((amount as number / reportData.otherIncome) * 100).toFixed(1)}%
                     </TableCell>
@@ -622,7 +623,7 @@ const A4ReportPrinter: React.FC<A4ReportPrinterProps> = ({
                   <TableRow key={index}>
                     <TableCell className="font-medium">{category}</TableCell>
                     <TableCell>GHS {(amount as number).toLocaleString()}</TableCell>
-                    <TableCell>{new Date().toLocaleDateString()} {new Date().toLocaleTimeString()}</TableCell>
+                    <TableCell>{formatDisplayDateTime(new Date())}</TableCell>
                     <TableCell>
                       {((amount as number / reportData.total) * 100).toFixed(1)}%
                     </TableCell>
@@ -652,7 +653,7 @@ const A4ReportPrinter: React.FC<A4ReportPrinterProps> = ({
                   <TableRow key={index}>
                     <TableCell className="font-medium">{month}</TableCell>
                     <TableCell>GHS {(amount as number).toLocaleString()}</TableCell>
-                    <TableCell>{new Date().toLocaleDateString()} {new Date().toLocaleTimeString()}</TableCell>
+                    <TableCell>{formatDisplayDateTime(new Date())}</TableCell>
                     <TableCell>
                       {((amount as number / reportData.total) * 100).toFixed(1)}%
                     </TableCell>
@@ -667,7 +668,7 @@ const A4ReportPrinter: React.FC<A4ReportPrinterProps> = ({
 
   return (
     <Dialog open={show} onOpenChange={onClose}>
-      <DialogContent className="max-w-7xl max-h-[95vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-7xl max-h-[95dvh] overflow-hidden flex flex-col">
         <DialogHeader className="flex-shrink-0">
           <div className="flex items-center justify-between">
             <DialogTitle className="text-xl font-bold">📊 Comprehensive School Report</DialogTitle>
@@ -696,7 +697,7 @@ const A4ReportPrinter: React.FC<A4ReportPrinterProps> = ({
               <div className="report-meta text-sm text-gray-500 flex justify-around">
                 <div>Academic Term: {reportData.term || 'Current Term'}</div>
                 <div>Report Period: {reportData.year || 'Current Year'}</div>
-                <div>Generated: {new Date(reportData.date || Date.now()).toLocaleDateString()} at {new Date(reportData.date || Date.now()).toLocaleTimeString()}</div>
+                <div>Generated: {formatDisplayDate(reportData.date || Date.now())} at {formatDisplayTime(reportData.date || Date.now())}</div>
               </div>
             </div>
 

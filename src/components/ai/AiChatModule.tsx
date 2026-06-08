@@ -7,7 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
-import { Bot, Send, User, Receipt, Sparkles, MessageCircle, Clock, Trash2, Command, Zap, ArrowUp, Mic, FileText, BarChart3, TrendingUp, Calculator } from 'lucide-react';
+import { Bot, Send, User, Receipt, Sparkles, MessageCircle, Clock, Trash2, Command, Zap, ArrowUp, Mic, FileText, BarChart3, TrendingUp, Calculator, ShieldAlert } from 'lucide-react';
+import { cn } from "@/lib/utils";
 import ReceiptPrinter from '../common/ReceiptPrinter';
 import { useChatPersistence } from '../../hooks/useChatPersistence';
 import { AIProcessor } from '../../utils/aiProcessor';
@@ -136,399 +137,111 @@ const AiChatModule = () => {
 
   if (!hasAccess('ai-assistant')) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="max-w-md mx-auto text-center bg-white rounded-2xl p-8 shadow-lg">
-          <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
-            <Bot className="w-8 h-8 text-gray-400" />
+      <div className="flex items-center justify-center h-full bg-background/50 backdrop-blur-md">
+        <div className="max-w-md mx-auto text-center bg-card rounded-3xl p-10 shadow-2xl border border-border/50">
+          <div className="w-20 h-20 mx-auto mb-6 bg-red-500/10 rounded-2xl flex items-center justify-center text-red-500 shadow-inner border border-red-500/20">
+            <ShieldAlert className="w-10 h-10" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">Access Denied</h2>
-          <p className="text-gray-600">Only Super Admin and Finance roles can access the AI Assistant.</p>
+          <h2 className="text-2xl font-black text-foreground mb-3 tracking-tight">Access Restricted</h2>
+          <p className="text-muted-foreground font-medium leading-relaxed">
+            Only authorized administrator and finance roles can access the AI infrastructure.
+          </p>
         </div>
       </div>
     );
   }
 
-  useEffect(() => {
-    if (scrollAreaRef.current) {
-      const scrollElement = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
-      if (scrollElement) {
-        scrollElement.scrollTop = scrollElement.scrollHeight;
-      }
-    }
-  }, [messages, typingMessageId]);
-
-  const processUserInput = async (input: string): Promise<void> => {
-    setIsProcessing(true);
-    
-    const typingId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-    setTypingMessageId(typingId);
-    
-    try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      const processor = new AIProcessor({
-        students,
-        teachers,
-        payments,
-        feeStructures,
-        classes,
-        income: income as any[],
-        expenses: expenses as any[],
-        addPayment
-      });
-
-      const response = await processor.processInput(input);
-      
-      setTypingMessageId(null);
-      
-      const aiMessage: ChatMessage = {
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-        type: 'ai',
-        content: typeof response === 'string' ? response : response.content,
-        timestamp: new Date(),
-        action: typeof response === 'object' ? response.action : undefined,
-        data: typeof response === 'object' ? response.data : undefined
-      };
-
-      addMessage(aiMessage);
-
-      if (typeof response === 'object' && response.action === 'payment') {
-        toast({
-          title: "Payment Recorded",
-          description: "Payment has been successfully recorded and receipt generated.",
-        });
-      }
-    } catch (error) {
-      console.error('AI processing error:', error);
-      setTypingMessageId(null);
-      const errorMessage: ChatMessage = {
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-        type: 'ai',
-        content: 'Sorry, I encountered an error processing your request. Please try again or rephrase your question.',
-        timestamp: new Date()
-      };
-      addMessage(errorMessage);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleSendMessage = async () => {
-    if (!inputValue.trim() || isProcessing) return;
-
-    const userMessage: ChatMessage = {
-      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-      type: 'user',
-      content: inputValue,
-      timestamp: new Date()
-    };
-
-    addMessage(userMessage);
-    const currentInput = inputValue;
-    setInputValue('');
-
-    await processUserInput(currentInput);
-  };
-
-  const handleQuickCommand = async (template: string) => {
-    if (template.includes('[')) {
-      setInputValue(template);
-      inputRef.current?.focus();
-    } else {
-      const userMessage: ChatMessage = {
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-        type: 'user',
-        content: template,
-        timestamp: new Date()
-      };
-
-      addMessage(userMessage);
-      await processUserInput(template);
-    }
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey && !isProcessing) {
-      e.preventDefault();
-      handleSendMessage();
-    }
-  };
-
-  const handleShowReceipt = (data: any) => {
-    console.log('handleShowReceipt called with:', data);
-    
-    if (data && (data.type === 'general' || data.type === 'income' || data.type === 'expenses')) {
-      console.log('Opening A4 Report for type:', data.type);
-      setReportData(data);
-      setShowA4Report(true);
-    } 
-    else if (data && data.studentName && data.amount !== undefined) {
-      console.log('Opening Receipt Printer');
-      setReceiptData(data);
-      setShowReceipt(true);
-    }
-    else if (data && (data.receiptNumber || data.paymentMethod)) {
-      console.log('Opening Receipt Printer (fallback)');
-      setReceiptData(data);
-      setShowReceipt(true);
-    }
-    else if (data && (data.financial || data.students || data.classes)) {
-      console.log('Opening A4 Report (comprehensive data detected)');
-      setReportData(data);
-      setShowA4Report(true);
-    }
-    else {
-      console.log('Unknown data format:', data);
-      toast({
-        title: "Unable to Display",
-        description: "The data format is not recognized for display.",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const handleClearChat = () => {
-    clearMessages();
-    toast({
-      title: "Chat Cleared",
-      description: "Chat history has been cleared.",
-    });
-  };
-
   return (
-    <>
-      <div className="h-full flex flex-col bg-white">
-        {/* Fixed Chat Header */}
-        <div className="flex-shrink-0 p-6 bg-white border-b border-gray-200 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl text-white shadow-lg">
-                <Bot className="w-7 h-7" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">AI Assistant</h1>
-                <p className="text-sm text-gray-600">School Management by TECHNERVE</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-3">
-              <Badge variant="secondary" className="text-xs bg-blue-50 text-blue-700 border-blue-200 px-3 py-1">
-                <MessageCircle className="w-3 h-3 mr-1" />
-                {messages.length - 1} messages
-              </Badge>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleClearChat}
-                className="text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-xl"
-              >
-                <Trash2 className="w-4 h-4" />
-              </Button>
-            </div>
+    <div className="h-full w-full flex flex-col items-center justify-center bg-background p-4 overflow-x-hidden overflow-y-auto relative">
+      {/* Background Neural Decorations */}
+      <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-blue-600/10 rounded-full blur-[120px] animate-pulse" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-purple-600/10 rounded-full blur-[100px] animate-pulse" style={{ animationDelay: '2s' }} />
+      <div className="absolute top-[40%] left-[30%] w-[20%] h-[20%] bg-indigo-500/5 rounded-full blur-[80px]" />
+
+      <div className="max-w-4xl w-full text-center space-y-2 md:space-y-4 relative z-10 animate-in fade-in zoom-in duration-700">
+        {/* Animated Icon Container */}
+        <div className="relative inline-block group">
+          <div className="absolute inset-0 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl blur-2xl opacity-30 group-hover:opacity-50 transition-opacity duration-700" />
+          <div className="relative w-16 h-16 bg-slate-900 dark:bg-slate-800 border border-white/10 rounded-2xl flex items-center justify-center shadow-xl transform group-hover:scale-105 group-hover:rotate-3 transition-all duration-500 overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-tr from-blue-600/20 via-transparent to-purple-600/20" />
+            <Bot className="w-8 h-8 text-white drop-shadow-[0_0_10px_rgba(59,130,246,0.5)]" />
+          </div>
+          
+          <div className="absolute -top-2 -right-3 px-2 py-0.5 bg-gradient-to-r from-amber-400 to-orange-500 text-white text-[7px] font-black uppercase tracking-[0.2em] rounded-full shadow-lg shadow-orange-500/20 flex items-center gap-1 animate-bounce ring-4 ring-background">
+            <Zap className="w-2 h-2 fill-white" />
+            Beta
           </div>
         </div>
 
-        {/* Scrollable Chat Area */}
-        <div className="flex-1 overflow-hidden">
-          <ScrollArea className="h-full p-6" ref={scrollAreaRef}>
-            <div className="space-y-6 pb-6">
-              {messages.map((message) => (
-                <div key={message.id} className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] ${
-                    message.type === 'user' 
-                      ? 'bg-white shadow-lg border border-gray-100' 
-                      : 'bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 shadow-sm'
-                  } rounded-2xl p-5`}>
-                    
-                    <div className="flex items-start space-x-3">
-                      <div className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${
-                        message.type === 'user' 
-                          ? 'bg-gray-100 border border-gray-200' 
-                          : 'bg-gradient-to-br from-blue-500 to-indigo-600'
-                      }`}>
-                        {message.type === 'ai' ? (
-                          <Bot className="w-5 h-5 text-white" />
-                        ) : (
-                          <User className="w-5 h-5 text-gray-600" />
-                        )}
-                      </div>
-                      
-                      <div className="flex-1 min-w-0">
-                        <div 
-                          className="text-sm leading-relaxed prose prose-sm max-w-none text-gray-800"
-                          dangerouslySetInnerHTML={{ 
-                            __html: message.content
-                              .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-900">$1</strong>')
-                              .replace(/\n/g, '<br />') 
-                          }}
-                        />
-                        
-                        {(message.action === 'receipt' || message.action === 'payment' || message.action === 'report') && message.data && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleShowReceipt(message.data)}
-                            className={`mt-4 ${
-                              message.type === 'user' 
-                                ? 'text-blue-600 hover:text-blue-700 hover:bg-blue-50' 
-                                : 'text-blue-600 hover:text-blue-700 hover:bg-blue-100'
-                            } rounded-xl`}
-                          >
-                            {message.action === 'report' ? (
-                              <>
-                                <FileText className="w-4 h-4 mr-2" />
-                                View Report
-                              </>
-                            ) : (
-                              <>
-                                <Receipt className="w-4 h-4 mr-2" />
-                                View Receipt
-                              </>
-                            )}
-                          </Button>
-                        )}
-                        
-                        <div className={`text-xs mt-3 ${
-                          message.type === 'user' ? 'text-gray-500' : 'text-blue-600/60'
-                        }`}>
-                          {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              
-              {typingMessageId && <TypingMessage />}
+        {/* Text Content */}
+        <div className="space-y-2">
+          <div className="space-y-1">
+            <div className="inline-flex items-center gap-2 px-2 py-0.5 border border-indigo-500/30 text-indigo-400 bg-indigo-500/10 rounded-full font-bold uppercase tracking-widest text-[7px] backdrop-blur-md">
+              <Sparkles className="w-2 h-2" />
+              <span>Next Gen AI</span>
             </div>
-          </ScrollArea>
+            <h1 className="text-3xl md:text-4xl font-black tracking-tighter text-foreground leading-[1.1] font-outfit">
+              Intelligence is <br />
+              <span className="bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent">Coming Soon</span>
+            </h1>
+          </div>
+          
+          <p className="text-xs md:text-sm text-muted-foreground font-medium max-w-lg mx-auto leading-relaxed">
+            We're engineering a smarter way to manage your school. 
+            Predictive insights are being finalized.
+          </p>
         </div>
 
-        {/* Fixed Input Area */}
-        <div className="flex-shrink-0 border-t border-gray-200 bg-white">
-          {/* Quick Commands */}
-          {showCommands && (
-            <div className="p-4 border-b border-gray-100">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
-                <Zap className="w-4 h-4 mr-2 text-blue-500" />
-                Quick Commands
-              </h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
-                {quickCommands.map((command) => (
-                  <Button
-                    key={command.id}
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleQuickCommand(command.template)}
-                    className="h-auto p-3 flex flex-col items-center text-center hover:bg-blue-50 hover:border-blue-300 transition-all duration-200 hover:shadow-sm rounded-xl"
-                  >
-                    <div className="text-lg mb-1">{command.icon}</div>
-                    <div className="text-xs font-medium">{command.title}</div>
-                  </Button>
-                ))}
+        {/* Feature Grid Mockup */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-left">
+          {[
+            { icon: <MessageCircle className="w-4 h-4" />, title: "NLP Actions", desc: "Speak to your data. Record payments by typing naturally.", color: "text-blue-400", bg: "bg-blue-500/10" },
+            { icon: <BarChart3 className="w-4 h-4" />, title: "Smart Reports", desc: "Instant financial audits and performance analysis.", color: "text-purple-400", bg: "bg-purple-500/10" },
+            { icon: <Calculator className="w-4 h-4" />, title: "AI Ledger", desc: "Automatic debt tracking and fee alerts.", color: "text-emerald-400", bg: "bg-emerald-500/10" }
+          ].map((feature, i) => (
+            <div key={i} className="p-5 bg-card/40 backdrop-blur-2xl rounded-3xl border border-border/50 hover:border-indigo-500/50 transition-all duration-500 group relative overflow-hidden shadow-sm">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-indigo-500/5 to-transparent rounded-full -mr-12 -mt-12 blur-2xl" />
+              <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center mb-3 shadow-inner border border-white/5", feature.bg, feature.color)}>
+                {feature.icon}
               </div>
+              <h3 className="font-bold text-foreground text-sm mb-1">{feature.title}</h3>
+              <p className="text-[10px] text-muted-foreground font-medium leading-relaxed opacity-80">{feature.desc}</p>
             </div>
-          )}
+          ))}
+        </div>
 
-          <div className="p-4">
-            <div className="flex items-center justify-between mb-3">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowCommands(!showCommands)}
-                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200 rounded-xl"
-              >
-                <Command className="w-4 h-4 mr-2" />
-                {showCommands ? 'Hide' : 'Show'} Commands
-              </Button>
-              <Badge variant="secondary" className="text-xs bg-amber-50 text-amber-700 border-amber-200">
-                <Clock className="w-3 h-3 mr-1" />
-                Auto-clear in 10min
-              </Badge>
+        {/* Progress Bar Mockup */}
+        <div className="pt-2 space-y-3 max-w-xl mx-auto">
+          <div className="flex justify-between items-end">
+            <div className="text-left">
+              <p className="text-indigo-400 font-black uppercase tracking-widest text-[8px]">Neural Engine Training</p>
+              <p className="text-foreground font-bold text-xs">Optimization Phase: Luminous Core v4.2</p>
             </div>
-            
-            <div className="flex items-end space-x-3">
-              <div className="flex-1 relative">
-                <Input
-                  ref={inputRef}
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  placeholder="Type a command, e.g. 'Record payment ₵500 for 12345' or 'Generate general report'"
-                  className="pr-12 min-h-[52px] text-sm border-gray-300 focus:border-blue-500 focus:ring-blue-500 rounded-xl shadow-sm"
-                  disabled={isProcessing}
-                />
-              </div>
-              <Button 
-                onClick={handleSendMessage} 
-                disabled={!inputValue.trim() || isProcessing}
-                className="h-[52px] w-[52px] p-0 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
-              >
-                <ArrowUp className="w-5 h-5" />
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-[52px] w-[52px] p-0 border-gray-300 hover:bg-gray-50 rounded-xl"
-                disabled={isProcessing}
-              >
-                <Mic className="w-5 h-5 text-gray-500" />
-              </Button>
+            <div className="text-right">
+              <span className="text-xl font-black text-indigo-400 font-outfit">74%</span>
             </div>
-
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button 
-                onClick={() => handleQuickCommand('Record payment ₵500 for student 12345')}
-                className="text-xs bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full transition-colors duration-200"
-              >
-                💡 Record payment ₵500 for student 12345
-              </button>
-              <button 
-                onClick={() => handleQuickCommand('Generate general report for current term')}
-                className="text-xs bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full transition-colors duration-200"
-              >
-                📊 Generate general report for current term
-              </button>
-              <button 
-                onClick={() => handleQuickCommand('Which students owe money?')}
-                className="text-xs bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full transition-colors duration-200"
-              >
-                👥 Which students owe money?
-              </button>
+          </div>
+          <div className="h-4 w-full bg-muted/50 rounded-full overflow-hidden p-1 border border-border shadow-inner">
+            <div 
+              className="h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-600 rounded-full relative shadow-[0_0_15px_rgba(99,102,241,0.2)] w-[74%]"
+            >
+              <div className="absolute top-0 left-0 w-full h-full bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.2)_50%,transparent_100%)] animate-[shimmer_2s_infinite]" />
             </div>
+          </div>
+          <div className="flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground/60 font-medium italic">
+            <div className="w-1 h-1 bg-emerald-500 rounded-full animate-pulse" />
+            Ensuring accuracy for financial processing...
           </div>
         </div>
       </div>
 
-      {/* Receipt Printer */}
-      {receiptData && (
-        <ReceiptPrinter
-          receiptData={receiptData}
-          show={showReceipt}
-          onClose={() => setShowReceipt(false)}
-          onPrint={() => {
-            toast({
-              title: "Receipt Printed",
-              description: "Receipt has been printed successfully",
-            });
-          }}
-        />
-      )}
-
-      {/* A4 Report Printer */}
-      {reportData && (
-        <A4ReportPrinter
-          reportData={reportData}
-          show={showA4Report}
-          onClose={() => setShowA4Report(false)}
-          onPrint={() => {
-            toast({
-              title: "Report Generated",
-              description: "Report has been generated successfully",
-            });
-          }}
-        />
-      )}
-    </>
+      <style dangerouslySetInnerHTML={{ __html: `
+        @keyframes shimmer {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+      `}} />
+    </div>
   );
 };
 

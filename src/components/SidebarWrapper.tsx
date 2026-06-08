@@ -19,30 +19,24 @@ const SidebarWrapper: React.FC<SidebarWrapperProps> = ({
   };
 
   return (
-    <SidebarProvider
-      style={
-        {
-          '--sidebar-background': '222 47% 11%',
-          '--sidebar-foreground': '210 40% 80%',
-          '--sidebar-accent': '222 47% 18%',
-          '--sidebar-accent-foreground': '0 0% 100%',
-          '--sidebar-border': '222 47% 18%',
-        } as React.CSSProperties
-      }
-    >
-      <div className="flex min-h-screen w-full bg-slate-50/80">
+    <SidebarProvider>
+      <div className="flex h-screen w-full overflow-hidden bg-[#F8FAFC] bg-[radial-gradient(circle_at_top_left,rgba(34,197,94,0.14),transparent_30%),radial-gradient(circle_at_top_right,rgba(20,108,67,0.10),transparent_28%)] dark:bg-slate-950/80 dark:bg-none">
         <AppSidebar activeModule={activeModule} setActiveModule={setActiveModule} />
 
-        <SidebarInset className="flex-1 flex flex-col min-h-screen">
-          <header className="sticky top-0 z-40 h-14 shrink-0 border-b border-slate-200/80 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
-            <div className="flex h-full items-center gap-4 px-4 md:px-6">
-              <SidebarTrigger className="h-8 w-8 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600" />
-              <div className="h-5 w-px bg-slate-200" />
-              <MainHeader onAiAssistantClick={handleAiAssistantClick} />
+        <SidebarInset className="flex-1 flex flex-col min-h-0 h-full bg-transparent">
+          <header className="sticky top-0 z-40 m-3 mb-0 h-16 shrink-0 rounded-2xl border border-white/70 bg-white/80 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-2xl transition-all duration-300 pt-[env(safe-area-inset-top)] print:hidden dark:m-0 dark:h-14 dark:rounded-none dark:border-slate-800/80 dark:bg-slate-900/95 dark:shadow-sm dark:backdrop-blur-sm sm:h-16">
+            <div className="flex h-full min-h-[3.25rem] sm:min-h-0 items-center gap-2 sm:gap-4 px-3 sm:px-4 md:px-8">
+              <SidebarTrigger className="h-10 w-10 shrink-0 rounded-xl border border-slate-200/80 bg-white/90 text-slate-700 shadow-sm transition-all hover:scale-105 hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 active:scale-95 touch-manipulation dark:h-9 dark:w-9 dark:rounded-lg dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700" />
+              <div className="hidden h-6 w-px bg-slate-200/80 dark:bg-slate-800 sm:block" />
+              <MainHeader
+                activeModule={activeModule}
+                setActiveModule={setActiveModule}
+                onAiAssistantClick={handleAiAssistantClick}
+              />
             </div>
           </header>
 
-          <main className="flex-1 overflow-auto">
+          <main className="flex-1 overflow-x-hidden overflow-y-auto min-w-0 overscroll-y-contain pb-[max(1.5rem,env(safe-area-inset-bottom))] [-webkit-overflow-scrolling:touch]">
             {children}
           </main>
         </SidebarInset>

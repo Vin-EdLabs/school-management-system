@@ -40,13 +40,13 @@ const ViewAllTeachers = () => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Active':
-        return 'bg-green-100 text-green-800';
+        return 'bg-green-100 text-green-800 dark:bg-green-950/50 dark:text-green-300';
       case 'Left':
-        return 'bg-red-100 text-red-800';
+        return 'bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-300';
       case 'Suspended':
-        return 'bg-yellow-100 text-yellow-800';
+        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-950/50 dark:text-yellow-300';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-muted text-muted-foreground';
     }
   };
 
@@ -84,14 +84,14 @@ const ViewAllTeachers = () => {
 
   return (
     <>
-      <Card>
-        <CardHeader>
+      <Card className="border-border bg-card shadow-sm">
+        <CardHeader className="border-b border-border/70 bg-muted/30">
           <CardTitle className="flex items-center space-x-2">
             <Users className="w-5 h-5" />
             <span>All Teachers ({filteredTeachers.length})</span>
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-6">
           {/* Search and Filters */}
           <div className="flex flex-col lg:flex-row gap-4 mb-6">
             <div className="relative flex-1">
@@ -133,31 +133,31 @@ const ViewAllTeachers = () => {
           </div>
 
           {/* Teachers Table */}
-          <div className="rounded-md border overflow-x-auto">
-            <Table>
+          <div className="rounded-md border border-border overflow-x-auto w-full bg-card">
+            <Table className="w-full">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-14">Photo</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Staff ID</TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead>Subjects</TableHead>
-                  <TableHead>Class Assigned</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Salary</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead className="w-14 whitespace-nowrap">Photo</TableHead>
+                  <TableHead className="whitespace-nowrap min-w-[150px]">Name</TableHead>
+                  <TableHead className="whitespace-nowrap">Staff ID</TableHead>
+                  <TableHead className="whitespace-nowrap">Contact</TableHead>
+                  <TableHead className="whitespace-nowrap">Subjects</TableHead>
+                  <TableHead className="whitespace-nowrap">Class Assigned</TableHead>
+                  <TableHead className="whitespace-nowrap">Status</TableHead>
+                  <TableHead className="whitespace-nowrap">Salary</TableHead>
+                  <TableHead className="sticky right-0 z-10 min-w-[8.5rem] whitespace-nowrap bg-card/95 text-right backdrop-blur supports-[backdrop-filter]:bg-card/80">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredTeachers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                       No teachers found matching your criteria
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredTeachers.map((teacher) => (
-                    <TableRow key={teacher.id}>
+                    <TableRow key={teacher.id} className="hover:bg-muted/40">
                       <TableCell>
                         <Avatar className="h-10 w-10 rounded-full border border-slate-200">
                           <AvatarFallback className="bg-slate-200 text-slate-600 text-sm font-medium">
@@ -168,7 +168,7 @@ const ViewAllTeachers = () => {
                       <TableCell>
                         <div>
                           <div className="font-medium">{teacher.fullName}</div>
-                          <div className="text-sm text-gray-500">{teacher.gender}</div>
+                          <div className="text-sm text-muted-foreground">{teacher.gender}</div>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -177,7 +177,7 @@ const ViewAllTeachers = () => {
                       <TableCell>
                         <div className="text-sm">
                           <div>{teacher.phoneNumber}</div>
-                          <div className="text-gray-500">{teacher.email}</div>
+                          <div className="text-muted-foreground">{teacher.email}</div>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -198,7 +198,7 @@ const ViewAllTeachers = () => {
                         {teacher.classAssigned ? (
                           <Badge variant="secondary">{teacher.classAssigned}</Badge>
                         ) : (
-                          <span className="text-gray-400">No class</span>
+                          <span className="text-muted-foreground">No class</span>
                         )}
                       </TableCell>
                       <TableCell>
@@ -210,15 +210,17 @@ const ViewAllTeachers = () => {
                         {teacher.monthlySalary > 0 ? (
                           <span className="font-mono">GHS {teacher.monthlySalary.toLocaleString()}</span>
                         ) : (
-                          <span className="text-gray-400">-</span>
+                          <span className="text-muted-foreground">-</span>
                         )}
                       </TableCell>
-                      <TableCell>
-                        <div className="flex space-x-2">
+                      <TableCell className="sticky right-0 z-10 bg-card/95 text-right backdrop-blur supports-[backdrop-filter]:bg-card/80">
+                        <div className="flex justify-end items-center gap-2">
                           <Button 
                             size="sm" 
                             variant="outline"
                             onClick={() => handleViewTeacher(teacher)}
+                            className="h-9 w-9 p-0"
+                            title="View teacher"
                           >
                             <Eye className="w-4 h-4" />
                           </Button>
@@ -226,6 +228,8 @@ const ViewAllTeachers = () => {
                             size="sm" 
                             variant="outline"
                             onClick={() => handleEditTeacher(teacher)}
+                            className="h-9 w-9 p-0"
+                            title="Edit teacher"
                           >
                             <Edit className="w-4 h-4" />
                           </Button>
@@ -233,7 +237,8 @@ const ViewAllTeachers = () => {
                             size="sm" 
                             variant="outline" 
                             onClick={() => handleDeleteClick(teacher)}
-                            className="text-red-600 hover:text-red-800"
+                            className="h-9 w-9 p-0 border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/40"
+                            title="Delete teacher"
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>

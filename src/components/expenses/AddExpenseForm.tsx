@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -11,7 +11,7 @@ import { toast } from '@/hooks/use-toast';
 import { TrendingDown, Save } from 'lucide-react';
 
 const AddExpenseForm = () => {
-  const { addExpense } = useData();
+  const { addExpense, expenses } = useData();
   const [formData, setFormData] = useState({
     title: '',
     category: '',
@@ -22,49 +22,60 @@ const AddExpenseForm = () => {
     purpose: '',
     notes: ''
   });
+  const [customCategory, setCustomCategory] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
     }));
+    if (field === 'category' && value !== 'Other') setCustomCategory('');
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const finalCategory = formData.category === 'Other' ? customCategory.trim() : formData.category.trim();
     
-    if (!formData.title || !formData.category || !formData.amount) {
+    if (!formData.title || !finalCategory || !formData.amount) {
       toast({
         title: "Validation Error",
-        description: "Please fill in title, category and amount",
+        description: formData.category === 'Other' ? "Please fill in title, type the category, and enter amount" : "Please fill in title, category and amount",
         variant: "destructive"
       });
       return;
     }
 
-    addExpense({
-      ...formData,
-      amount: parseFloat(formData.amount)
-    });
+    try {
+      setSaving(true);
+      await addExpense({
+        ...formData,
+        category: finalCategory,
+        amount: parseFloat(formData.amount)
+      });
 
-    toast({
-      title: "Expense Added",
-      description: `GHS ${formData.amount} expense for ${formData.title} recorded`,
-    });
+      toast({
+        title: "Expense Added",
+        description: `GHS ${formData.amount} expense for ${formData.title} recorded`,
+      });
 
-    setFormData({
-      title: '',
-      category: '',
-      amount: '',
-      payeeName: '',
-      paymentDate: new Date().toISOString().split('T')[0],
-      paymentMethod: 'Cash',
-      purpose: '',
-      notes: ''
-    });
+      setFormData({
+        title: '',
+        category: '',
+        amount: '',
+        payeeName: '',
+        paymentDate: new Date().toISOString().split('T')[0],
+        paymentMethod: 'Cash',
+        purpose: '',
+        notes: ''
+      });
+      setCustomCategory('');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const expenseCategories = [
+  const defaultExpenseCategories = [
     'Salaries',
     'Utilities',
     'Supplies',
@@ -79,6 +90,12 @@ const AddExpenseForm = () => {
     'Rent',
     'Other'
   ];
+  const expenseCategories = useMemo(() => {
+    const saved = (expenses || [])
+      .map((item) => item.category?.trim())
+      .filter((category): category is string => Boolean(category));
+    return Array.from(new Set([...defaultExpenseCategories.filter((c) => c !== 'Other'), ...saved, 'Other']));
+  }, [expenses]);
 
   return (
     <Card>
@@ -115,6 +132,15 @@ const AddExpenseForm = () => {
                   ))}
                 </SelectContent>
               </Select>
+              {formData.category === 'Other' && (
+                <Input
+                  value={customCategory}
+                  onChange={(e) => setCustomCategory(e.target.value)}
+                  placeholder="Type new expense category"
+                  className="mt-2"
+                  required
+                />
+              )}
             </div>
           </div>
 
@@ -190,10 +216,13 @@ const AddExpenseForm = () => {
             />
           </div>
 
-          <Button type="submit" className="w-full md:w-auto">
-            <Save className="w-4 h-4 mr-2" />
-            Add Expense
-          </Button>
+          <div className="form-action-bar flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-muted-foreground">Fill in title, category, and amount to save.</p>
+            <Button type="submit" variant="primaryAction" className="min-h-10 w-full sm:w-auto" disabled={saving}>
+              <Save className="w-4 h-4 mr-2" />
+              {saving ? 'Saving...' : 'Add Expense'}
+            </Button>
+          </div>
         </form>
       </CardContent>
     </Card>

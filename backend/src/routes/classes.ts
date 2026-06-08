@@ -3,8 +3,18 @@ import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
+import { getIO } from '../socket.js';
 
 const router = express.Router();
+
+const emitTenantDataChanged = (tenantId: number, entity: string, action: 'created' | 'updated' | 'deleted') => {
+  try {
+    const io = getIO();
+    io.to(`tenant:${tenantId}`).emit('tenant-data-changed', { tenantId, entity, action, at: Date.now() });
+  } catch {
+    // Socket server may be unavailable in some non-realtime contexts.
+  }
+};
 
 router.use(authenticate);
 router.use(requireTenant);
@@ -17,6 +27,7 @@ router.get('/', async (req: AuthRequest, res) => {
     
     const result = await query(
       `SELECT c.*, 
+              c.class_name,
               t.full_name as teacher_name, t.staff_id as teacher_staff_id,
               COUNT(s.id) as student_count
        FROM classes c
@@ -24,7 +35,7 @@ router.get('/', async (req: AuthRequest, res) => {
        LEFT JOIN students s ON s.class_assigned_id = c.id
        WHERE c.tenant_id = $1
        GROUP BY c.id, t.full_name, t.staff_id
-       ORDER BY c.level, c.stream`,
+       ORDER BY COALESCE(c.level, ''), COALESCE(c.stream, ''), COALESCE(c.class_name, '')`,
       [tenantId]
     );
     
@@ -61,7 +72,7 @@ router.get('/:id', async (req: AuthRequest, res) => {
     const { id } = req.params;
     
     const classResult = await query(
-      `SELECT c.*, t.full_name as teacher_name, t.staff_id as teacher_staff_id
+      `SELECT c.*, c.class_name, t.full_name as teacher_name, t.staff_id as teacher_staff_id
        FROM classes c
        LEFT JOIN teachers t ON c.assigned_teacher_id = t.id
        WHERE c.id = $1 AND c.tenant_id = $2`,
@@ -97,24 +108,39 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
       return res.status(400).json({ error: 'Class name is required' });
     }
     
-    const result = await query(
-      `INSERT INTO classes (tenant_id, class_name, level, stream, assigned_teacher_id, max_class_size)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [
-        tenantId,
-        class_name,
-        level || null,
-        stream || null,
-        assigned_teacher_id || null,
-        max_class_size || 30,
-      ]
-    );
+    // Support both modern schema (class_name) and legacy schema (name)
+    let result: any;
+    try {
+      // Try most complete schema first
+      result = await query(
+        `INSERT INTO classes (tenant_id, class_name, name, level, stream, assigned_teacher_id, max_class_size)
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+        [tenantId, class_name, class_name, level || null, stream || null, assigned_teacher_id || null, max_class_size || 30]
+      );
+    } catch (err1: any) {
+      try {
+        // Try without 'name' column (modern schema only)
+        result = await query(
+          `INSERT INTO classes (tenant_id, class_name, level, stream, assigned_teacher_id, max_class_size)
+           VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+          [tenantId, class_name, level || null, stream || null, assigned_teacher_id || null, max_class_size || 30]
+        );
+      } catch (err2: any) {
+        // Try without 'class_name' column (legacy schema only)
+        result = await query(
+          `INSERT INTO classes (tenant_id, name, level, stream, assigned_teacher_id, max_class_size)
+           VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+          [tenantId, class_name, level || null, stream || null, assigned_teacher_id || null, max_class_size || 30]
+        );
+      }
+    }
     
     // Log creation
     await query(
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
       [tenantId, req.user!.id, 'CREATE', 'CLASS', result.rows[0].id]
     );
+    emitTenantDataChanged(tenantId, 'class', 'created');
     
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -138,6 +164,15 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
     
     for (const field of allowedFields) {
       if (updates[field] !== undefined) {
+        if (field === 'class_name') {
+          updateFields.push(`class_name = $${paramCount}`);
+          values.push(updates[field]);
+          paramCount++;
+          updateFields.push(`name = $${paramCount}`);
+          values.push(updates[field]);
+          paramCount++;
+          continue;
+        }
         updateFields.push(`${field} = $${paramCount}`);
         values.push(updates[field]);
         paramCount++;
@@ -151,10 +186,45 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
     updateFields.push(`updated_at = CURRENT_TIMESTAMP`);
     values.push(tenantId, id);
     
-    const result = await query(
-      `UPDATE classes SET ${updateFields.join(', ')} WHERE tenant_id = $${paramCount} AND id = $${paramCount + 1} RETURNING *`,
-      values
-    );
+    let result;
+    try {
+      // Try updating both columns for compatibility
+      result = await query(
+        `UPDATE classes SET ${updateFields.join(', ')} WHERE tenant_id = $${paramCount} AND id = $${paramCount + 1} RETURNING *`,
+        values
+      );
+    } catch (err1: any) {
+      try {
+        // Fallback: If 'name' column is missing, remove 'name = $x' from updateFields and try again
+        const modernFields = updateFields.filter(f => !f.startsWith('name ='));
+        result = await query(
+          `UPDATE classes SET ${modernFields.join(', ')} WHERE tenant_id = $${paramCount} AND id = $${paramCount + 1} RETURNING *`,
+          values
+        );
+      } catch (err2: any) {
+        // Legacy fallback: class_name column may not exist, update using name.
+        result = await query(
+          `UPDATE classes
+           SET name = COALESCE($1, name),
+               level = COALESCE($2, level),
+               stream = COALESCE($3, stream),
+               assigned_teacher_id = COALESCE($4, assigned_teacher_id),
+               max_class_size = COALESCE($5, max_class_size),
+               updated_at = CURRENT_TIMESTAMP
+           WHERE tenant_id = $6 AND id = $7
+           RETURNING *`,
+          [
+            updates.class_name || updates.name,
+            updates.level,
+            updates.stream,
+            updates.assigned_teacher_id,
+            updates.max_class_size,
+            tenantId,
+            id
+          ]
+        );
+      }
+    }
     
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Class not found' });
@@ -165,6 +235,7 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
       [tenantId, req.user!.id, 'UPDATE', 'CLASS', parseInt(id)]
     );
+    emitTenantDataChanged(tenantId, 'class', 'updated');
     
     res.json(result.rows[0]);
   } catch (error) {
@@ -203,6 +274,7 @@ router.delete('/:id', requireRole('super-admin', 'administrator'), async (req: A
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
       [tenantId, req.user!.id, 'DELETE', 'CLASS', parseInt(id)]
     );
+    emitTenantDataChanged(tenantId, 'class', 'deleted');
     
     res.json({ message: 'Class deleted successfully' });
   } catch (error) {
@@ -232,11 +304,18 @@ router.post('/:id/teachers', requireRole('super-admin', 'administrator'), async 
        VALUES ($1, $2, $3, $4) ON CONFLICT (class_id, teacher_id) DO UPDATE SET is_main = $4`,
       [tenantId, id, teacher_id, !!is_main]
     );
+    await query(
+      `UPDATE teachers SET class_assigned_id = $1::int
+       WHERE id = $2::int AND tenant_id = $3 AND class_assigned_id IS NULL`,
+      [id, teacher_id, tenantId]
+    ).catch(() => {});
     const updated = await query(
       `SELECT ct.*, t.full_name, t.staff_id FROM class_teachers ct JOIN teachers t ON ct.teacher_id = t.id
        WHERE ct.class_id = $1 AND ct.tenant_id = $2`,
       [id, tenantId]
     );
+    emitTenantDataChanged(tenantId, 'class', 'updated');
+    emitTenantDataChanged(tenantId, 'teacher', 'updated');
     res.json(updated.rows);
   } catch (error: any) {
     if (error.code === '42P01') return res.status(500).json({ error: 'class_teachers table not found' });
@@ -260,6 +339,8 @@ router.delete('/:id/teachers/:teacherId', requireRole('super-admin', 'administra
       await query('UPDATE classes SET assigned_teacher_id = $1 WHERE id = $2 AND tenant_id = $3', [newMain, id, tenantId]);
       if (newMain) await query('UPDATE class_teachers SET is_main = true WHERE class_id = $1 AND teacher_id = $2', [id, newMain]);
     }
+    emitTenantDataChanged(tenantId, 'class', 'updated');
+    emitTenantDataChanged(tenantId, 'teacher', 'updated');
     res.json({ message: 'Teacher removed from class' });
   } catch (error) {
     console.error('Remove class teacher error:', error);
@@ -275,6 +356,8 @@ router.patch('/:id/teachers/:teacherId/main', requireRole('super-admin', 'admini
     await query('UPDATE class_teachers SET is_main = false WHERE class_id = $1 AND tenant_id = $2', [id, tenantId]);
     await query('UPDATE class_teachers SET is_main = true WHERE class_id = $1 AND teacher_id = $2 AND tenant_id = $3', [id, teacherId, tenantId]);
     await query('UPDATE classes SET assigned_teacher_id = $1 WHERE id = $2 AND tenant_id = $3', [teacherId, id, tenantId]);
+    emitTenantDataChanged(tenantId, 'class', 'updated');
+    emitTenantDataChanged(tenantId, 'teacher', 'updated');
     res.json({ message: 'Main teacher updated' });
   } catch (error) {
     console.error('Set main teacher error:', error);

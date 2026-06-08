@@ -1,137 +1,184 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '../contexts/AuthContext';
-import { GraduationCap, Lock, User, ArrowLeft, Shield, ShieldCheck } from 'lucide-react';
+import { GraduationCap, Lock, User, ArrowLeft, Shield, ShieldCheck, AlertCircle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { Link } from 'react-router-dom';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { getFriendlyLoginMessage, getFriendlyLoginTitle } from '../utils/loginErrors';
 
 const SuperAdminLoginForm = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [formError, setFormError] = useState('');
   const { login } = useAuth();
+
+  useEffect(() => {
+    try {
+      const key = 'scholarnerve_superadmin_visitor_id';
+      let visitorId = localStorage.getItem(key);
+      if (!visitorId) {
+        visitorId =
+          typeof crypto !== 'undefined' && 'randomUUID' in crypto
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        localStorage.setItem(key, visitorId);
+      }
+
+      const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+      fetch(`${base}/audit/super-admin/portal-visit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ visitorId, path: window.location.pathname }),
+      }).catch(() => undefined);
+    } catch {
+      // Audit logging must not block access to the login screen.
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError('');
     try {
       const success = await login(username, password, 'super-admin', undefined);
       if (success) {
         toast({ title: 'Login Successful', description: 'Welcome to Super Admin Panel' });
       } else {
-        toast({
-          title: 'Login Failed',
-          description: 'Invalid Super Admin credentials',
-          variant: 'destructive',
-        });
+        setFormError('Sign-in failed. Check your username and password.');
+        toast({ title: 'Sign-in failed', description: 'Check your username and password.', variant: 'destructive' });
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const friendly = getFriendlyLoginMessage(error);
+      setFormError(friendly);
       toast({
-        title: 'Login Failed',
-        description: error?.message || 'An error occurred. Please try again.',
+        title: getFriendlyLoginTitle(error),
+        description: friendly,
         variant: 'destructive',
       });
     }
   };
 
   return (
-    <div className="min-h-screen flex bg-slate-950">
-      {/* Left: Security branding panel */}
-      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_20%,rgba(34,197,94,0.15),transparent_50%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_80%_at_80%_80%,rgba(59,130,246,0.1),transparent_50%)]" />
-        <div className="relative z-10 flex flex-col justify-center items-center p-12 w-full">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/30">
-              <GraduationCap className="w-8 h-8 text-white" />
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#020617] overflow-hidden font-sans selection:bg-emerald-500/30 selection:text-white">
+      {/* Dynamic Background Elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute inset-0 opacity-15 bg-gradient-to-br from-emerald-600 via-teal-900 to-[#020617]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(16,185,129,0.1),transparent_70%)]" />
+      </div>
+
+      <div className="relative z-10 w-full max-w-4xl px-6 animate-in fade-in zoom-in duration-700">
+        <div className="bg-white/[0.03] backdrop-blur-3xl border border-white/10 rounded-[2.5rem] overflow-hidden shadow-2xl flex flex-col md:flex-row">
+          
+          {/* Left Side: Branding */}
+          <div className="w-full md:w-[40%] p-8 md:p-12 flex flex-col justify-between items-center md:items-start relative overflow-hidden border-b md:border-b-0 md:border-r border-white/10 bg-emerald-500/5">
+            <div className="relative z-10 flex flex-col items-center md:items-start text-center md:text-left">
+              <div className="w-16 h-16 mb-8 backdrop-blur-2xl rounded-2xl flex items-center justify-center border border-white/10 shadow-xl bg-emerald-500/10">
+                <GraduationCap className="w-8 h-8 text-white/90" />
+              </div>
+              
+              <h1 className="text-3xl font-black tracking-tight text-white font-outfit uppercase leading-tight mb-2">
+                SCHOLARNERVE
+              </h1>
+              <div className="flex items-center gap-2">
+                <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                <p className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em]">Super Admin Core</p>
+              </div>
             </div>
-            <span className="font-bold text-2xl tracking-tight text-white">TECHNERVE</span>
+
+            <div className="relative z-10 mt-12 md:mt-auto">
+              <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.3em] opacity-50">
+                Security Protocol 4.2.0
+              </p>
+            </div>
           </div>
-          <div className="w-20 h-20 rounded-2xl bg-slate-800/80 border border-slate-600/50 flex items-center justify-center mb-6">
-            <ShieldCheck className="w-10 h-10 text-emerald-400" />
-          </div>
-          <h1 className="text-2xl font-bold text-white text-center mb-2">Secure Admin Access</h1>
-          <p className="text-slate-400 text-center max-w-xs">
-            Platform administration. Authorized personnel only. All access is logged and monitored.
-          </p>
-          <div className="mt-10 flex items-center gap-2 text-slate-500 text-sm">
-            <Shield className="w-4 h-4" />
-            <span>256-bit encryption</span>
-          </div>
-          <div className="flex items-center gap-2 text-slate-500 text-sm mt-1">
-            <Lock className="w-4 h-4" />
-            <span>Audit trail enabled</span>
+
+          {/* Right Side: Form */}
+          <div className="flex-1 p-8 md:p-12">
+            <div className="mb-10 text-center md:text-left">
+              <h2 className="text-3xl font-black text-white tracking-tight font-outfit mb-2">Admin Portal</h2>
+              <p className="text-slate-500 font-medium text-sm">Sign in to manage institutional infrastructure.</p>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {formError && (
+                <Alert variant="destructive" className="border-red-500/40 bg-red-950/50 text-red-100">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle className="text-sm font-semibold">Sign-in failed</AlertTitle>
+                  <AlertDescription className="text-sm text-red-100/90">{formError}</AlertDescription>
+                </Alert>
+              )}
+              <div className="space-y-2">
+                <Label htmlFor="username" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">
+                  Admin Identity
+                </Label>
+                <div className="relative group">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <User className="h-4.5 w-4.5 text-slate-600 group-focus-within:text-emerald-400 transition-colors" />
+                  </div>
+                  <Input
+                    id="username"
+                    type="text"
+                    placeholder="Enter username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    className="pl-12 h-14 rounded-2xl border-white/10 bg-slate-800/40 text-white placeholder:text-slate-600 focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 transition-all text-base font-medium"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="password" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">
+                  Security Code
+                </Label>
+                <div className="relative group">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <Lock className="h-4.5 w-4.5 text-slate-600 group-focus-within:text-emerald-400 transition-colors" />
+                  </div>
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="pl-12 h-14 rounded-2xl border-white/10 bg-slate-800/40 text-white placeholder:text-slate-600 focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 transition-all text-base font-medium"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <Button
+                  type="submit"
+                  className="w-full h-14 rounded-2xl text-white font-bold text-base shadow-xl transition-all hover:scale-[1.01] active:scale-[0.99] relative overflow-hidden group border-0 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500"
+                >
+                  <span className="relative z-10 flex items-center justify-center gap-2">
+                    Initialize Access
+                    <ArrowLeft className="w-4 h-4 rotate-180" />
+                  </span>
+                  <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+                </Button>
+              </div>
+            </form>
+
+            <div className="mt-8 pt-6 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4">
+              <Link to="/" className="text-[10px] text-slate-500 hover:text-white transition-colors font-bold uppercase tracking-widest flex items-center gap-2">
+                <ArrowLeft className="w-3 h-3" />
+                Return to Site
+              </Link>
+              <p className="text-[8px] text-white/10 font-bold uppercase tracking-widest">
+                Authorized Use Only
+              </p>
+            </div>
           </div>
         </div>
       </div>
-
-      {/* Right: Login form */}
-      <div className="w-full lg:w-1/2 flex flex-col justify-center items-center p-8 bg-slate-900">
-        <div className="w-full max-w-sm">
-          {/* TECHNERVE logo - visible on form side for mobile */}
-          <div className="flex items-center justify-center gap-2 mb-10">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-              <GraduationCap className="w-7 h-7 text-white" />
-            </div>
-            <span className="font-bold text-xl text-white tracking-tight">TECHNERVE</span>
-          </div>
-
-          <h2 className="text-xl font-semibold text-white mb-1">Super Admin Portal</h2>
-          <p className="text-slate-400 text-sm mb-8">Sign in to manage all schools and platform settings</p>
-
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <Label htmlFor="username" className="text-slate-300 text-sm font-medium">Username</Label>
-              <div className="relative mt-1.5">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-                <Input
-                  id="username"
-                  type="text"
-                  placeholder="Enter Super Admin username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="pl-10 h-11 bg-slate-800/50 border-slate-600 text-white placeholder:text-slate-500 focus-visible:ring-emerald-500"
-                  required
-                />
-              </div>
-            </div>
-            <div>
-              <Label htmlFor="password" className="text-slate-300 text-sm font-medium">Password</Label>
-              <div className="relative mt-1.5">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="Enter password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="pl-10 h-11 bg-slate-800/50 border-slate-600 text-white placeholder:text-slate-500 focus-visible:ring-emerald-500"
-                  required
-                />
-              </div>
-            </div>
-            <Button
-              type="submit"
-              className="w-full h-11 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold border-0 shadow-lg shadow-emerald-500/25"
-            >
-              Sign In Securely
-            </Button>
-          </form>
-
-          <div className="mt-8 pt-6 border-t border-slate-700">
-            <Link to="/select-school">
-              <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white hover:bg-slate-800 w-full justify-center">
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back to School Login
-              </Button>
-            </Link>
-          </div>
-
-          <p className="text-xs text-slate-500 text-center mt-4">
-            Authorized access only. Default: superadmin / superadmin123
-          </p>
-        </div>
+      {/* Footer - Fixed at Bottom */}
+      <div className="absolute bottom-8 left-0 right-0 z-20 flex flex-col items-center gap-2 animate-in fade-in duration-1000 delay-500">
+        <p className="text-[10px] font-bold text-white/20 uppercase tracking-[0.4em]">Powered by SCHOLARNERVE</p>
+        <p className="text-[8px] text-white/10 font-bold uppercase tracking-widest">© 2026 Platform Infrastructure</p>
       </div>
     </div>
   );

@@ -5,19 +5,26 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '../../contexts/AuthContext';
-import { useData } from '../../contexts/DataContext';
 import { useSchool } from '../../contexts/SchoolContext';
+import { useData } from '../../contexts/DataContext';
 import { apiService } from '../../services/api';
 import { toast } from '@/hooks/use-toast';
-import { Settings, Key, Building, Download, Upload, RefreshCw, Receipt, GraduationCap, Copy, ExternalLink } from 'lucide-react';
+import {
+  Settings, Key, Building, Download, Receipt,
+  GraduationCap, Copy, ExternalLink, ShieldAlert, RefreshCw,
+} from 'lucide-react';
 import AcademicTermManager from './AcademicTermManager';
 import SchoolManager from './SchoolManager';
+import { getTenantParentPortalUrl } from '../../utils/tenantHost';
 
 interface SchoolSettings {
   name: string;
   address: string;
   contact: string;
+  whatsappNumber: string;
   email: string;
+  officeHours: string;
+  physicalAddress: string;
   primaryColor: string;
   secondaryColor: string;
 }
@@ -30,15 +37,20 @@ interface AcademicSettings {
 const SettingsModule = () => {
   const { user, hasAccess, changePassword } = useAuth();
   const { school } = useSchool();
-  const { students, teachers, classes, payments, income, expenses } = useData();
+  const { refresh: refreshData } = useData();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [isSyncingArrears, setIsSyncingArrears] = useState(false);
+
   const [schoolInfo, setSchoolInfo] = useState<SchoolSettings>({
     name: 'School',
     address: 'Accra, Ghana',
     contact: '+233 XX XXX XXXX',
+    whatsappNumber: '',
     email: 'info@rosagardens.edu.gh',
+    officeHours: 'Mon-Fri • 7:00am - 4:00pm',
+    physicalAddress: '',
     primaryColor: '#2563eb',
     secondaryColor: '#7c3aed',
   });
@@ -57,16 +69,22 @@ const SettingsModule = () => {
   const isSuperAdmin = hasAccess('schools');
   const hasSettingsFull = hasAccess('settings-full');
 
+  const getParentPortalUrl = () =>
+    getTenantParentPortalUrl(school?.slug ?? null, school?.id);
+
   const loadSettings = useCallback(async () => {
     if (!hasSettingsFull) return;
     try {
-      const settings = await apiService.get('/settings');
+      const settings = await apiService.get<any>('/settings');
       if (settings) {
         setSchoolInfo({
           name: settings.school_name || 'School',
           address: settings.address || '',
           contact: settings.contact || '',
+          whatsappNumber: settings.whatsapp_number || '',
           email: settings.email || '',
+          officeHours: settings.office_hours || 'Mon-Fri • 7:00am - 4:00pm',
+          physicalAddress: settings.physical_address || settings.address || '',
           primaryColor: school?.primary_color || '#2563eb',
           secondaryColor: school?.secondary_color || '#7c3aed',
         });
@@ -116,8 +134,9 @@ const SettingsModule = () => {
       toast({ title: "Password Mismatch", description: "Passwords do not match", variant: "destructive" });
       return;
     }
-    if (newPassword.length < 6) {
-      toast({ title: "Password Too Short", description: "Password must be at least 6 characters long", variant: "destructive" });
+    const minLength = user?.role === 'teacher' || user?.role === 'staff' ? 5 : 6;
+    if (newPassword.length < minLength) {
+      toast({ title: "Password Too Short", description: `Password must be at least ${minLength} characters long`, variant: "destructive" });
       return;
     }
     if (!currentPassword) {
@@ -149,6 +168,10 @@ const SettingsModule = () => {
         address: schoolInfo.address,
         contact: schoolInfo.contact,
         email: schoolInfo.email,
+        phone_number: schoolInfo.contact,
+        whatsapp_number: schoolInfo.whatsappNumber,
+        office_hours: schoolInfo.officeHours,
+        physical_address: schoolInfo.physicalAddress,
         primary_color: schoolInfo.primaryColor,
         secondary_color: schoolInfo.secondaryColor,
       });
@@ -167,6 +190,74 @@ const SettingsModule = () => {
     }
   };
 
+  const handleExportJSON = async () => {
+    try {
+      if (!school?.id) {
+        toast({ title: "Backup Failed", description: "School context is not ready.", variant: "destructive" });
+        return;
+      }
+
+      const exportData = await apiService.get<any>(`/schools/${school.id}/backup`);
+
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const safeName = (school.name || 'school').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      link.download = `${safeName || 'school'}_backup_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: "Export Successful",
+        description: "Your school data has been exported as a JSON archive.",
+      });
+    } catch (err) {
+      toast({
+        title: "Export Failed",
+        description: "Could not generate JSON backup.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleSyncArrears = async () => {
+    if (isSyncingArrears) return;
+
+    setIsSyncingArrears(true);
+    try {
+      const backfill = await apiService.post<{
+        message?: string;
+        arrearsRowsInserted?: number;
+        studentsProcessed?: number;
+      }>('/finance/backfill-arrears', {});
+
+      const sync = await apiService.post<{
+        message?: string;
+        studentsUpdated?: number;
+        currentTerm?: string;
+      }>('/settings/sync-arrears', {});
+
+      await refreshData();
+
+      const count = sync.studentsUpdated ?? backfill.arrearsRowsInserted ?? backfill.studentsProcessed ?? 0;
+      toast({
+        title: 'Arrears Updated',
+        description: `Arrears have been recalculated for ${sync.currentTerm || 'the active term'}${count ? ` (${count} student${count === 1 ? '' : 's'})` : ''}.`,
+      });
+    } catch (err: any) {
+      toast({
+        title: 'Arrears Sync Failed',
+        description: err?.message || 'Could not recalculate arrears. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSyncingArrears(false);
+    }
+  };
+
   if (!hasSettingsFull && !hasAccess('settings-password-only')) {
     return null;
   }
@@ -181,8 +272,8 @@ const SettingsModule = () => {
               <Key className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-800">Account Settings</h1>
-              <p className="text-gray-600">Change your password</p>
+              <h1 className="text-3xl font-bold text-foreground">Account Settings</h1>
+              <p className="text-muted-foreground">Change your password</p>
             </div>
           </div>
         </div>
@@ -214,9 +305,9 @@ const SettingsModule = () => {
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Enter new password (min 6 characters)"
+                  placeholder={`Enter new password (min ${user?.role === 'teacher' || user?.role === 'staff' ? 5 : 6} characters)`}
                   required
-                  minLength={6}
+                  minLength={user?.role === 'teacher' || user?.role === 'staff' ? 5 : 6}
                 />
               </div>
               <div className="space-y-2">
@@ -228,10 +319,10 @@ const SettingsModule = () => {
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Confirm new password"
                   required
-                  minLength={6}
+                  minLength={user?.role === 'teacher' || user?.role === 'staff' ? 5 : 6}
                 />
               </div>
-              <Button type="submit" className="w-full" disabled={!currentPassword || !newPassword || !confirmPassword}>
+              <Button type="submit" variant="primaryAction" className="w-full" disabled={!currentPassword || !newPassword || !confirmPassword}>
                 Update Password
               </Button>
             </form>
@@ -243,15 +334,15 @@ const SettingsModule = () => {
 
   // Super-admin / Primary admin settings view
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 md:p-5 space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-gray-500 to-gray-600 rounded-lg flex items-center justify-center">
-            <Settings className="w-6 h-6 text-white" />
+          <div className="w-9 h-9 bg-gradient-to-br from-gray-500 to-gray-600 rounded-lg flex items-center justify-center">
+            <Settings className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">System Settings</h1>
-            <p className="text-gray-600">Configure system settings and preferences</p>
+            <h1 className="text-2xl font-bold text-foreground">System Settings</h1>
+            <p className="text-sm text-muted-foreground">Configure system settings and preferences</p>
           </div>
         </div>
       </div>
@@ -261,16 +352,16 @@ const SettingsModule = () => {
 
       {hasSettingsFull && <AcademicTermManager />}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Key className="w-5 h-5" />
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
+        <Card className="shadow-sm">
+          <CardHeader className="px-4 py-3">
+            <CardTitle className="flex items-center space-x-2 text-base">
+              <Key className="w-4 h-4" />
               <span>Change Password</span>
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <form onSubmit={handlePasswordChange} className="space-y-4">
+          <CardContent className="px-4 pb-4">
+            <form onSubmit={handlePasswordChange} className="space-y-3">
               <div className="space-y-2">
                 <Label htmlFor="currentPasswordFull">Current Password</Label>
                 <Input
@@ -289,9 +380,9 @@ const SettingsModule = () => {
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Enter new password (min 6 characters)"
+                  placeholder={`Enter new password (min ${user?.role === 'teacher' || user?.role === 'staff' ? 5 : 6} characters)`}
                   required
-                  minLength={6}
+                  minLength={user?.role === 'teacher' || user?.role === 'staff' ? 5 : 6}
                 />
               </div>
               <div className="space-y-2">
@@ -303,10 +394,10 @@ const SettingsModule = () => {
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Confirm new password"
                   required
-                  minLength={6}
+                  minLength={user?.role === 'teacher' || user?.role === 'staff' ? 5 : 6}
                 />
               </div>
-              <Button type="submit" className="w-full" disabled={!currentPassword || !newPassword || !confirmPassword}>
+              <Button type="submit" variant="primaryAction" className="w-full" disabled={!currentPassword || !newPassword || !confirmPassword}>
                 Update Password
               </Button>
             </form>
@@ -314,15 +405,16 @@ const SettingsModule = () => {
         </Card>
 
         {hasSettingsFull && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Building className="w-5 h-5" />
+          <Card className="xl:col-span-2 shadow-sm">
+            <CardHeader className="px-4 py-3">
+              <CardTitle className="flex items-center space-x-2 text-base">
+                <Building className="w-4 h-4" />
                 <span>School Information</span>
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSchoolInfoUpdate} className="space-y-4">
+            <CardContent className="px-4 pb-4">
+              <form onSubmit={handleSchoolInfoUpdate} className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label htmlFor="schoolName">School Name</Label>
                   <Input
@@ -354,6 +446,15 @@ const SettingsModule = () => {
                   />
                 </div>
                 <div className="space-y-2">
+                  <Label htmlFor="schoolWhatsapp">WhatsApp Number</Label>
+                  <Input
+                    id="schoolWhatsapp"
+                    value={schoolInfo.whatsappNumber}
+                    onChange={(e) => setSchoolInfo({ ...schoolInfo, whatsappNumber: e.target.value })}
+                    placeholder="Enter WhatsApp number"
+                  />
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="schoolEmail">Email Address</Label>
                   <Input
                     id="schoolEmail"
@@ -364,7 +465,26 @@ const SettingsModule = () => {
                     required
                   />
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="officeHours">Office Hours</Label>
+                  <Input
+                    id="officeHours"
+                    value={schoolInfo.officeHours}
+                    onChange={(e) => setSchoolInfo({ ...schoolInfo, officeHours: e.target.value })}
+                    placeholder="Mon-Fri • 7:00am - 4:00pm"
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="physicalAddress">Physical Address (Parent Desk)</Label>
+                  <Input
+                    id="physicalAddress"
+                    value={schoolInfo.physicalAddress}
+                    onChange={(e) => setSchoolInfo({ ...schoolInfo, physicalAddress: e.target.value })}
+                    placeholder="School location for Parent Desk"
+                  />
+                </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>Primary Color (Login & Branding)</Label>
                     <div className="flex gap-2">
@@ -380,7 +500,7 @@ const SettingsModule = () => {
                     </div>
                   </div>
                 </div>
-                <Button type="submit" className="w-full">
+                <Button type="submit" variant="primaryAction" className="w-full h-9">
                   Update School Information
                 </Button>
               </form>
@@ -389,15 +509,15 @@ const SettingsModule = () => {
         )}
 
         {hasSettingsFull && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Receipt className="w-5 h-5" />
+          <Card className="shadow-sm">
+            <CardHeader className="px-4 py-3">
+              <CardTitle className="flex items-center space-x-2 text-base">
+                <Receipt className="w-4 h-4" />
                 <span>Receipt Customization</span>
               </CardTitle>
-              <p className="text-sm text-gray-500">Customize how receipts appear when printing</p>
+              <p className="text-xs text-muted-foreground">Customize printed receipts</p>
             </CardHeader>
-            <CardContent>
+            <CardContent className="px-4 pb-4">
               <form onSubmit={async (e) => {
                 e.preventDefault();
                 try {
@@ -412,7 +532,7 @@ const SettingsModule = () => {
                 } catch (err: any) {
                   toast({ title: 'Error', description: err?.message, variant: 'destructive' });
                 }
-              }} className="space-y-4">
+              }} className="space-y-3">
                 <div className="space-y-2">
                   <Label>Receipt Number Prefix</Label>
                   <Input
@@ -421,7 +541,7 @@ const SettingsModule = () => {
                     placeholder="R (default)"
                     maxLength={5}
                   />
-                  <p className="text-xs text-gray-500">e.g. R for R00012345</p>
+                  <p className="text-xs text-muted-foreground">e.g. R for R00012345</p>
                 </div>
                 <div className="space-y-2">
                   <Label>Postal Address (for receipt header)</Label>
@@ -455,107 +575,116 @@ const SettingsModule = () => {
                     placeholder="Bank: XYZ, Account: 1234567890"
                   />
                 </div>
-                <Button type="submit" className="w-full">Save Receipt Settings</Button>
+                <Button type="submit" variant="primaryAction" className="w-full h-9">Save Receipt Settings</Button>
               </form>
+            </CardContent>
+          </Card>
+        )}
+
+        {hasSettingsFull && (
+          <Card className="shadow-sm border-amber-500/20 bg-amber-500/5 dark:bg-amber-500/10">
+            <CardHeader className="px-4 py-3">
+              <CardTitle className="flex items-center space-x-2 text-base">
+                <RefreshCw className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                <span>Arrears Sync</span>
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Term changes now calculate previous-term arrears automatically. Use this button for manual refresh if needed.
+              </p>
+            </CardHeader>
+            <CardContent className="px-4 pb-4">
+              <Button
+                type="button"
+                variant="primaryAction"
+                className="w-full h-9"
+                onClick={handleSyncArrears}
+                disabled={isSyncingArrears}
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${isSyncingArrears ? 'animate-spin' : ''}`} />
+                {isSyncingArrears ? 'Syncing Arrears...' : 'Sync Arrears Now'}
+              </Button>
+              <p className="mt-3 text-[11px] text-muted-foreground">
+                This recalculates old balances and adds them to the active term fee balance.
+              </p>
             </CardContent>
           </Card>
         )}
 
         {/* Parent Portal Link */}
         {hasSettingsFull && school?.id && (
-          <Card className="border-purple-200 bg-purple-50/30">
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2 text-purple-700">
-                <GraduationCap className="w-5 h-5" />
-                <span>Parent Portal</span>
+          <Card className="border-purple-500/20 bg-purple-500/5 dark:bg-purple-500/10 backdrop-blur-sm overflow-hidden shadow-sm">
+            <CardHeader className="px-4 py-3">
+              <CardTitle className="flex items-center space-x-2 text-purple-600 dark:text-purple-400 font-bold text-base">
+                <div className="w-7 h-7 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                  <GraduationCap className="w-4 h-4" />
+                </div>
+                <span>Parent Portal Gateway</span>
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm text-gray-600">
-                Share this link with parents so they can view their child's grades, attendance and fee balance.
-                Parents log in using their child's <strong>Student ID</strong> as both username and initial password.
+            <CardContent className="px-4 pb-4 space-y-3">
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Share this secure link with parents to provide real-time access to grades, attendance, and financial records. 
+                Parents log in using the <span className="text-foreground font-bold">Student ID</span> as both username and initial password.
               </p>
-              <div className="flex items-center gap-2 bg-white border border-purple-200 rounded-lg p-2.5">
-                <code className="text-xs text-purple-700 flex-1 truncate select-all">
-                  {window.location.origin}/portal/{school.id}
+              
+              <div className="flex items-center gap-2 bg-background/50 border border-purple-500/20 rounded-xl p-2.5 shadow-inner group">
+                <code className="text-xs text-purple-600 dark:text-purple-400 flex-1 truncate font-mono select-all">
+                  {getParentPortalUrl()}
                 </code>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(`${window.location.origin}/portal/${school.id}`);
-                    toast({ title: 'Link copied!', description: 'Parent portal link copied to clipboard.' });
-                  }}
-                  className="text-purple-500 hover:text-purple-700 transition-colors shrink-0"
-                  title="Copy link"
-                >
-                  <Copy className="w-4 h-4" />
-                </button>
-                <a
-                  href={`/portal/${school.id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-purple-500 hover:text-purple-700 transition-colors shrink-0"
-                  title="Open portal"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                </a>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => {
+                      const url = getParentPortalUrl();
+                      navigator.clipboard.writeText(url);
+                      toast({ title: 'Link Copied', description: 'The branded parent portal link is now in your clipboard.' });
+                    }}
+                    className="p-2 text-purple-500 hover:text-purple-700 hover:bg-purple-500/10 rounded-lg transition-all"
+                    title="Copy link"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                  <a
+                    href={getParentPortalUrl()}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2 text-purple-500 hover:text-purple-700 hover:bg-purple-500/10 rounded-lg transition-all"
+                    title="Open portal"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                  </a>
+                </div>
               </div>
-              <p className="text-xs text-gray-400">
-                First-time login: Student ID is both the username and default password. Parents are prompted to change it on first login.
-              </p>
+
+              <div className="flex items-start gap-3 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                  <strong>Security Note:</strong> Parents will be prompted to change their password immediately upon their first successful login to ensure data privacy.
+                </p>
+              </div>
             </CardContent>
           </Card>
         )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Download className="w-5 h-5" />
-              <span>Data Management</span>
+        <Card className="shadow-sm">
+          <CardHeader className="px-4 py-3">
+            <CardTitle className="flex items-center space-x-2 text-base">
+              <Download className="w-4 h-4" />
+              <span>School Backup</span>
             </CardTitle>
+            <p className="text-xs text-muted-foreground">Create a read-only backup of this school's current data.</p>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div>
-                <h4 className="font-medium mb-2">Export/Backup Data</h4>
-                <p className="text-sm text-gray-600 mb-3">
-                  Download all your school data as a backup file
-                </p>
-                <Button variant="outline" className="w-full">
-                  <Download className="w-4 h-4 mr-2" />
-                  Export Data
-                </Button>
-              </div>
-
-              <div>
-                <h4 className="font-medium mb-2">Import Data</h4>
-                <p className="text-sm text-gray-600 mb-3">
-                  Import data from a backup file
-                </p>
-                <Input
-                  type="file"
-                  accept=".json"
-                  className="w-full"
-                />
-              </div>
-
-              <div>
-                <h4 className="font-medium mb-2 text-red-700">Reset All Data</h4>
-                <p className="text-sm text-gray-600 mb-3">
-                  ⚠️ Permanently delete all data and start fresh
-                </p>
-                <Button
-                  variant="destructive"
-                  className="w-full"
-                >
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Reset All Data
-                </Button>
-              </div>
-            </div>
+          <CardContent className="px-4 pb-4">
+            <Button variant="outline" className="w-full h-9" onClick={handleExportJSON}>
+              <Download className="w-4 h-4 mr-2" />
+              Create Backup
+            </Button>
+            <p className="mt-3 text-[11px] text-muted-foreground">
+              Import, restore, and reset actions are managed by Super Admin only.
+            </p>
           </CardContent>
         </Card>
       </div>
-    </div>
+    </div >
   );
 };
 

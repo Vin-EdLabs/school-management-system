@@ -1,7 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '../contexts/AuthContext';
 import { useSchool } from '../contexts/SchoolContext';
+import { useSocket } from '../contexts/SocketContext';
+import { apiService } from '../services/api';
+import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
   Users,
@@ -16,6 +19,7 @@ import {
   Settings,
   Shield,
   FileText,
+  ReceiptText,
   UserCheck,
   Search,
   Award,
@@ -25,6 +29,10 @@ import {
   User,
   History,
   MessageCircle,
+  BellRing,
+  MessagesSquare,
+  ClipboardList,
+  Scale,
 } from 'lucide-react';
 import { resolveLogoUrl } from '../services/tenantService';
 import {
@@ -64,6 +72,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
     ...(hasAccess('teacher-classes') ? [{ id: 'teacher-classes', label: 'My Classes', icon: BookOpen }] : []),
     ...(hasAccess('attendance') ? [{ id: 'attendance', label: 'Attendance', icon: UserCheck }] : []),
     ...(hasAccess('grades') ? [{ id: 'grades', label: 'Grades', icon: Award }] : []),
+    ...(hasAccess('grades') ? [{ id: 'teacher-quizzes', label: 'Online assessments', icon: ClipboardList }] : []),
     ...(hasAccess('teacher-profile') ? [{ id: 'teacher-profile', label: 'My Profile', icon: User }] : []),
     ...(hasAccess('teacher-payment-history') ? [{ id: 'teacher-payment-history', label: 'Payment History', icon: History }] : []),
   ],
@@ -71,21 +80,29 @@ const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
     ...(hasAccess('fees') ? [{ id: 'fees', label: 'Fees', icon: DollarSign }] : []),
     ...(hasAccess('income') ? [{ id: 'income', label: 'Income', icon: TrendingUp }] : []),
     ...(hasAccess('expenses') ? [{ id: 'expenses', label: 'Expenses', icon: TrendingDown }] : []),
+    ...(hasAccess('transactions') ? [{ id: 'transactions', label: 'Transactions', icon: ReceiptText }] : []),
     ...(hasAccess('payroll') ? [{ id: 'payroll', label: 'Payroll', icon: Wallet }] : []),
     ...(hasAccess('reports') ? [{ id: 'reports', label: 'Reports', icon: BarChart3 }] : []),
     ...(hasAccess('print-fee-status') ? [{ id: 'print-fee-status', label: 'Fee Status', icon: FileText }] : []),
+    ...(hasAccess('manual-adjustments') ? [{ id: 'manual-adjustments', label: 'Balance overrides', icon: Scale }] : []),
   ],
   records: [
     ...(hasAccess('records') ? [{ id: 'records', label: 'Records', icon: Search }] : []),
   ],
-  system: [
-    ...(hasAccess('support-chat') ? [{ id: 'support-chat', label: 'Support', icon: MessageCircle }] : []),
-    ...(hasAccess('users') ? [{ id: 'users', label: 'Users', icon: UserCog }] : []),
-    ...(hasAccess('settings') || hasAccess('settings-password-only') ? [{ id: 'settings', label: 'Settings', icon: Settings }] : []),
-    ...(hasAccess('audit') ? [{ id: 'audit', label: 'Audit Logs', icon: Shield }] : []),
+  /** Previously sat with System; now placed here (where Settings group was). */
+  announcements: [
+    ...(hasAccess('push-notifications') ? [{ id: 'push-notifications', label: 'Push Notifications', icon: BellRing }] : []),
+    ...(hasAccess('parent-desk') ? [{ id: 'parent-desk', label: 'Parent Desk', icon: MessagesSquare }] : []),
   ],
   ai: [
     ...(hasAccess('ai-assistant') ? [{ id: 'ai-assistant', label: 'AI Assistant', icon: Bot, badge: 'New' }] : []),
+    ...(hasAccess('support-chat') ? [{ id: 'support-chat', label: 'Support Chat', icon: MessageCircle }] : []),
+  ],
+  /** Users, Settings, Audit — always last before footer. */
+  system: [
+    ...(hasAccess('users') ? [{ id: 'users', label: 'Users', icon: UserCog }] : []),
+    ...(hasAccess('settings') || hasAccess('settings-password-only') ? [{ id: 'settings', label: 'Settings', icon: Settings }] : []),
+    ...(hasAccess('audit') ? [{ id: 'audit', label: 'Audit Logs', icon: Shield }] : []),
   ],
 });
 
@@ -94,33 +111,69 @@ const MenuSection: React.FC<{
   label: string;
   activeModule: string;
   setActiveModule: (module: string) => void;
-}> = ({ items, label, activeModule, setActiveModule }) => {
+  itemCounts?: Record<string, number>;
+}> = ({ items, label, activeModule, setActiveModule, itemCounts }) => {
+  const { isMobile, setOpenMobile } = useSidebar();
+
   if (items.length === 0) return null;
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest px-3">
+      <SidebarGroupLabel className="text-[10px] font-bold text-sidebar-foreground/50 uppercase tracking-[0.2em] px-3 mb-2 opacity-80 group-data-[collapsible=icon]:hidden">
         {label}
       </SidebarGroupLabel>
       <SidebarGroupContent>
-        <SidebarMenu className="space-y-0.5">
-          {items.map((item) => (
-            <SidebarMenuItem key={item.id}>
-              <SidebarMenuButton
-                isActive={activeModule === item.id}
-                onClick={() => setActiveModule(item.id)}
-                className="rounded-lg mx-2 text-slate-200 data-[active=true]:bg-slate-700 data-[active=true]:text-white data-[active=true]:shadow-sm hover:bg-slate-700/70 hover:text-white transition-colors"
-              >
-                <item.icon className="h-4 w-4 shrink-0 opacity-90" />
-                <span className="font-medium">{item.label}</span>
-                {item.badge && (
-                  <Badge variant="secondary" className="ml-auto text-[10px] px-1.5 py-0 bg-amber-500/20 text-amber-600 border-0">
-                    {item.badge}
-                  </Badge>
-                )}
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          ))}
+        <SidebarMenu className="space-y-1">
+          {items.map((item) => {
+            const unread = itemCounts?.[item.id] ?? 0;
+            return (
+              <SidebarMenuItem key={item.id} className="flex justify-center">
+                <SidebarMenuButton
+                  isActive={activeModule === item.id}
+                  onClick={() => {
+                    setActiveModule(item.id);
+                    if (item.id === 'transactions') {
+                      const schoolMatch = window.location.pathname.match(/^\/school\/[^/]+/);
+                      window.history.pushState({}, '', `${schoolMatch?.[0] || ''}/finance/transactions`);
+                    } else if (window.location.pathname.endsWith('/finance/transactions')) {
+                      const base = window.location.pathname.replace(/\/finance\/transactions\/?$/, '') || '/';
+                      window.history.pushState({}, '', base);
+                    }
+                    if (isMobile) setOpenMobile(false);
+                  }}
+                  tooltip={item.label}
+                  className={cn(
+                    "relative rounded-xl mx-auto w-[calc(100%-12px)] h-10 text-emerald-50/72 transition-all duration-300 group-data-[collapsible=icon]:w-9 group-data-[collapsible=icon]:h-9 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:mx-0 dark:h-9 dark:text-sidebar-foreground/70",
+                    activeModule === item.id
+                      ? "bg-gradient-to-r from-emerald-500 to-green-500 text-white shadow-lg shadow-emerald-400/25 ring-1 ring-white/15 before:absolute before:left-1 before:top-1/2 before:h-5 before:w-1 before:-translate-y-1/2 before:rounded-full before:bg-white/80 dark:bg-sidebar-primary dark:bg-none dark:text-sidebar-primary-foreground dark:shadow-sidebar-primary/20 dark:before:hidden"
+                      : "hover:bg-white/10 hover:text-white dark:hover:bg-sidebar-accent dark:hover:text-sidebar-foreground"
+                  )}
+                >
+                  <span className="relative inline-flex shrink-0">
+                    <item.icon className="h-[1.1rem] w-[1.1rem] opacity-80 group-data-[active=true]:opacity-100 transition-all duration-300 group-hover/menu-item:scale-110" />
+                    {unread > 0 && (
+                      <span className="absolute -right-1.5 -top-1 flex h-[15px] min-w-[15px] items-center justify-center rounded-full bg-destructive px-0.5 text-[9px] font-bold leading-none text-destructive-foreground ring-2 ring-sidebar">
+                        {unread > 99 ? '99' : unread}
+                      </span>
+                    )}
+                  </span>
+                  <span className="font-semibold text-sm group-data-[collapsible=icon]:hidden ml-3 flex min-w-0 flex-1 items-center gap-1.5 text-left">
+                    <span className="truncate">{item.label}</span>
+                    {unread > 0 && (
+                      <span className="shrink-0 rounded-full bg-destructive px-1.5 py-0 text-[10px] font-bold leading-5 text-destructive-foreground">
+                        {unread > 99 ? '99+' : unread}
+                      </span>
+                    )}
+                  </span>
+                  {item.badge && !(activeModule === item.id) && (
+                    <Badge variant="secondary" className="ml-auto text-[9px] px-1.5 py-0 bg-emerald-300/20 text-emerald-50 border-0 group-data-[collapsible=icon]:hidden dark:bg-sidebar-primary/20 dark:text-sidebar-primary">
+                      {item.badge}
+                    </Badge>
+                  )}
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            );
+          })}
         </SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>
@@ -128,66 +181,133 @@ const MenuSection: React.FC<{
 };
 
 export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveModule }) => {
-  const { logout, hasAccess } = useAuth();
-  const { school, schoolId } = useSchool();
-  const schoolName = school?.name ?? (schoolId ? 'School' : 'Select School');
-  const schoolLogo = resolveLogoUrl(school?.logo_url ?? null);
-  const primaryColor = school?.primary_color ?? '#0f172a';
+  const { logout, hasAccess, user } = useAuth();
+  const { school } = useSchool();
+  const { isMobile, setOpenMobile } = useSidebar();
+  const { socket } = useSocket();
+  const [parentDeskUnread, setParentDeskUnread] = useState(0);
+  const [supportUnread, setSupportUnread] = useState(0);
 
   const menuItems = getMenuItems(hasAccess);
+
+  const refreshCommsBadges = useCallback(async () => {
+    try {
+      if (hasAccess('parent-desk')) {
+        const d = await apiService.get<{ count: number }>('/messages/admin/unread-count');
+        setParentDeskUnread(Number(d?.count ?? 0));
+      } else {
+        setParentDeskUnread(0);
+      }
+      if (hasAccess('support-chat')) {
+        const s = await apiService.get<{ count: number }>('/support-chat/unread-count');
+        setSupportUnread(Number(s?.count ?? 0));
+      } else {
+        setSupportUnread(0);
+      }
+    } catch {
+      setParentDeskUnread(0);
+      setSupportUnread(0);
+    }
+  }, [hasAccess]);
+
+  useEffect(() => {
+    if (!user) return;
+    void refreshCommsBadges();
+    const id = window.setInterval(() => void refreshCommsBadges(), 48000);
+    return () => window.clearInterval(id);
+  }, [user, refreshCommsBadges]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const onTenant = (evt: { entity?: string }) => {
+      const e = String(evt?.entity || '');
+      if (e === 'parent-desk' || e === 'support-chat') void refreshCommsBadges();
+    };
+    const onSupport = () => void refreshCommsBadges();
+    socket.on('tenant-data-changed', onTenant);
+    socket.on('new-support-message', onSupport);
+    return () => {
+      socket.off('tenant-data-changed', onTenant);
+      socket.off('new-support-message', onSupport);
+    };
+  }, [socket, refreshCommsBadges]);
 
   return (
     <Sidebar
       variant="sidebar"
       collapsible="icon"
-      className="border-r border-slate-700/60 bg-slate-900 text-slate-200"
+      className="border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl shadow-emerald-950/20 overflow-hidden print:hidden"
     >
-      <SidebarHeader className="border-b border-slate-700/80 px-4 py-5">
-        <div className="flex items-center gap-3 min-w-0 flex-1">
-          <div
-            className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 overflow-hidden ring-1 ring-slate-600/50 bg-slate-800"
-            style={{ backgroundColor: primaryColor }}
-          >
-            {schoolLogo ? (
-              <img src={schoolLogo} alt="" className="w-full h-full object-contain p-1" />
-            ) : (
-              <GraduationCap className="w-6 h-6 text-white" />
-            )}
-          </div>
-          <div className="min-w-0 flex-1 overflow-hidden">
-            <h1 className="font-semibold text-white truncate text-base tracking-tight" title={schoolName}>
-              {schoolName}
-            </h1>
-            <p className="text-xs text-slate-400 truncate">TECHNERVE</p>
-          </div>
+      <SidebarHeader className="min-h-24 flex items-center justify-center border-b border-white/10 mb-3 px-3 py-4 overflow-hidden bg-[radial-gradient(circle_at_top,rgba(34,197,94,0.22),transparent_65%)] dark:min-h-24 dark:border-sidebar-border dark:bg-none">
+        <div className="w-11 h-11 rounded-2xl bg-white/10 ring-1 ring-white/15 flex items-center justify-center shadow-xl shadow-emerald-950/25 shrink-0 overflow-hidden backdrop-blur dark:bg-gradient-to-br dark:from-indigo-500 dark:to-blue-600 dark:ring-0 dark:shadow-indigo-500/20">
+          {school?.logo_url ? (
+            <img
+              src={resolveLogoUrl(school.logo_url) || ''}
+              alt={school.name}
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = 'none';
+                (e.target as HTMLImageElement).parentElement?.querySelector('.fallback-icon')?.classList.remove('hidden');
+              }}
+            />
+          ) : null}
+          <GraduationCap className={cn("w-6 h-6 text-white fallback-icon", school?.logo_url ? "hidden" : "")} />
+        </div>
+        <div className="ml-3 min-w-0 flex-1 overflow-visible transition-all duration-300 group-data-[collapsible=icon]:hidden group-data-[collapsible=icon]:w-0 group-data-[collapsible=icon]:opacity-0">
+          <h2 className="break-words text-sm font-black leading-tight text-white uppercase tracking-tight dark:text-sidebar-foreground">
+            {school?.name || 'EDUNERVE'}
+          </h2>
         </div>
       </SidebarHeader>
 
-      <SidebarContent className="px-2 py-4 gap-6 flex flex-col overflow-y-auto scrollbar-hide">
+      <SidebarContent className="flex-1 min-h-0 overflow-y-auto scrollbar-hide overscroll-contain px-1 py-3 gap-3 bg-transparent outline-none border-none">
         <MenuSection items={menuItems.dashboard} label="Overview" activeModule={activeModule} setActiveModule={setActiveModule} />
-        <MenuSection items={menuItems.academic} label="Academic" activeModule={activeModule} setActiveModule={setActiveModule} />
-        <MenuSection items={menuItems.teaching} label="Teaching" activeModule={activeModule} setActiveModule={setActiveModule} />
-        <MenuSection items={menuItems.financial} label="Finance" activeModule={activeModule} setActiveModule={setActiveModule} />
-        <MenuSection items={menuItems.records} label="Records" activeModule={activeModule} setActiveModule={setActiveModule} />
+        <MenuSection items={menuItems.academic} label="Academic Central" activeModule={activeModule} setActiveModule={setActiveModule} />
+        <MenuSection items={menuItems.teaching} label="Teaching Room" activeModule={activeModule} setActiveModule={setActiveModule} />
+        <MenuSection items={menuItems.financial} label="Financial Ops" activeModule={activeModule} setActiveModule={setActiveModule} />
+        <MenuSection items={menuItems.records} label="Data Center" activeModule={activeModule} setActiveModule={setActiveModule} />
+        <MenuSection
+          items={menuItems.announcements}
+          label="Announcements & parent desk"
+          activeModule={activeModule}
+          setActiveModule={setActiveModule}
+          itemCounts={{ 'parent-desk': parentDeskUnread }}
+        />
+        <SidebarSeparator className="bg-sidebar-border mx-4 my-2" />
+        <MenuSection
+          items={menuItems.ai}
+          label="Innovation"
+          activeModule={activeModule}
+          setActiveModule={setActiveModule}
+          itemCounts={{ 'support-chat': supportUnread }}
+        />
         <MenuSection items={menuItems.system} label="System" activeModule={activeModule} setActiveModule={setActiveModule} />
-        <SidebarSeparator className="bg-slate-700/60 mx-2" />
-        <MenuSection items={menuItems.ai} label="Tools" activeModule={activeModule} setActiveModule={setActiveModule} />
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-slate-700/80 p-2">
+      <SidebarFooter className="border-t border-white/10 p-3 space-y-4 bg-black/10 dark:border-sidebar-border dark:bg-sidebar-accent/50">
         <SidebarMenu>
-          <SidebarMenuItem>
+          <SidebarMenuItem className="flex justify-center">
             <SidebarMenuButton
-              onClick={logout}
-              className="rounded-lg mx-2 text-slate-300 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+              onClick={() => {
+                if (isMobile) setOpenMobile(false);
+                logout();
+              }}
+              className="rounded-xl w-full h-10 text-sidebar-foreground/60 hover:text-red-500 hover:bg-red-500/10 transition-all group-data-[collapsible=icon]:w-10 group-data-[collapsible=icon]:justify-center"
+              tooltip="Terminate Session"
             >
-              <LogOut className="h-4 w-4" />
-              <span>Logout</span>
+              <LogOut className="h-4.5 w-4.5 shrink-0" />
+              <span className="font-bold text-xs uppercase tracking-tight ml-3 group-data-[collapsible=icon]:hidden">Sign Out</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-        <div className="px-4 py-3 border-t border-slate-700/60">
-          <p className="text-[11px] text-slate-400 text-center">Powered by <span className="font-semibold text-slate-300">TECHNERVE</span></p>
+
+        <div className="px-2 group-data-[collapsible=icon]:hidden">
+          <div className="p-3 bg-sidebar-accent/30 rounded-2xl border border-sidebar-border">
+            <p className="text-[10px] text-sidebar-foreground/50 text-center font-medium leading-tight">
+              Crafted with Excellence by <br />
+              <span className="font-black text-sidebar-foreground uppercase tracking-widest text-[9px]">Scholarnerve</span>
+            </p>
+          </div>
         </div>
       </SidebarFooter>
     </Sidebar>

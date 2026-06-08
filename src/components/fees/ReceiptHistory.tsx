@@ -8,9 +8,11 @@ import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
 import { Search, Receipt, Eye } from 'lucide-react';
 import ReceiptPrinter from '../common/ReceiptPrinter';
+import { receiptAmountsForPayment } from '../../utils/feeCalculations';
+import { formatDisplayDate } from '../../utils/dateFormat';
 
 const ReceiptHistory = () => {
-  const { payments, students } = useData();
+  const { payments, students, feeStructures, arrearsBalances } = useData();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [showReceipt, setShowReceipt] = useState(false);
@@ -32,6 +34,8 @@ const ReceiptHistory = () => {
     const student = students.find(s => s.id === payment.studentId);
     if (!student) return;
 
+    const amounts = receiptAmountsForPayment(payment, payments, student, feeStructures, arrearsBalances);
+
     const receiptData = {
       studentName: `${student.firstName} ${student.lastName}`,
       studentId: student.studentId,
@@ -41,7 +45,12 @@ const ReceiptHistory = () => {
       paymentMethod: payment.paymentMethod,
       term: payment.term,
       receiptNumber: payment.receiptNumber || `R${payment.id.toString().padStart(8, '0')}`,
-      notes: payment.notes
+      notes: payment.notes,
+      remainingBalance: amounts.remainingBalance,
+      creditBalance: amounts.creditBalance,
+      arrears: amounts.arrears,
+      currentTermFee: amounts.currentTermFee,
+      totalAmountDue: amounts.totalAmountDue
     };
 
     setSelectedReceipt(receiptData);
@@ -60,31 +69,31 @@ const ReceiptHistory = () => {
         <CardContent>
           <div className="space-y-4">
             <div className="relative">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search by receipt number, student name, or ID..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
+                className="pl-10 bg-background border-border"
               />
             </div>
 
             <div className="rounded-md border overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Receipt #</TableHead>
-                    <TableHead>Student</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Method</TableHead>
-                    <TableHead>Actions</TableHead>
+                  <TableRow className="border-border bg-muted/50">
+                    <TableHead className="font-semibold text-foreground">Receipt #</TableHead>
+                    <TableHead className="font-semibold text-foreground">Student</TableHead>
+                    <TableHead className="font-semibold text-foreground">Amount</TableHead>
+                    <TableHead className="font-semibold text-foreground">Date</TableHead>
+                    <TableHead className="font-semibold text-foreground">Method</TableHead>
+                    <TableHead className="font-semibold text-foreground">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredPayments.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground italic">
                         No receipts found matching your search
                       </TableCell>
                     </TableRow>
@@ -95,26 +104,26 @@ const ReceiptHistory = () => {
                       return (
                         <TableRow key={payment.id}>
                           <TableCell>
-                            <span className="font-mono text-sm bg-gray-100 px-2 py-1 rounded">
+                            <span className="font-mono text-xs bg-muted text-foreground px-2 py-1 rounded-md border border-border/50">
                               {receiptNumber}
                             </span>
                           </TableCell>
                           <TableCell>
                             <div>
-                              <div className="font-medium">
+                              <div className="font-medium text-foreground">
                                 {student?.firstName} {student?.lastName}
                               </div>
-                              <div className="text-sm text-gray-500">
+                              <div className="text-sm text-muted-foreground">
                                 ID: {student?.studentId}
                               </div>
                             </div>
                           </TableCell>
                           <TableCell>
-                            <span className="font-bold text-green-600">
+                            <span className="font-bold text-emerald-600 dark:text-emerald-400">
                               GHS {payment.amount.toFixed(2)}
                             </span>
                           </TableCell>
-                          <TableCell>{new Date(payment.date).toLocaleDateString()}</TableCell>
+                          <TableCell className="text-foreground">{formatDisplayDate(payment.date)}</TableCell>
                           <TableCell>
                             <Badge variant="secondary">{payment.paymentMethod}</Badge>
                           </TableCell>
@@ -123,7 +132,7 @@ const ReceiptHistory = () => {
                               variant="ghost"
                               size="sm"
                               onClick={() => handleViewReceipt(payment)}
-                              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                              className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-500/10"
                             >
                               <Eye className="w-4 h-4" />
                             </Button>
@@ -137,7 +146,7 @@ const ReceiptHistory = () => {
             </div>
 
             {filteredPayments.length > 0 && (
-              <div className="text-sm text-gray-600">
+              <div className="text-sm text-muted-foreground">
                 Showing {filteredPayments.length} of {payments.length} receipts
               </div>
             )}

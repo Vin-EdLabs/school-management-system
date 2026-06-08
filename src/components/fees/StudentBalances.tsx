@@ -9,6 +9,7 @@ import { useData } from '../../contexts/DataContext';
 import { Search, AlertCircle, CreditCard, TrendingUp } from 'lucide-react';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
 import { getActiveAcademicTerm, calculateStudentFeesSync, calculateStudentFeeStatusSync } from '../../utils/feeCalculations';
+import { formatDisplayDate } from '../../utils/dateFormat';
 
 const StudentBalances = () => {
   const { students, payments, feeStructures, classes, arrearsBalances } = useData();
@@ -28,7 +29,12 @@ const StudentBalances = () => {
       feeStructures || [],
       payments || [],
       student.classAssignedId,
-      arrearsBalances
+      arrearsBalances,
+      {
+        isBeneficiary: !!student.isBeneficiary,
+        discountType: student.discountType,
+        discountValue: student.discountValue
+      }
     );
     const feeStatus = calculateStudentFeeStatusSync(feeCalculation);
     const balance = Math.max(0, feeCalculation.totalAmountDue - feeCalculation.totalPaid);
@@ -120,54 +126,54 @@ const StudentBalances = () => {
       <CardContent>
         {/* Enhanced Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
             <div className="flex items-center space-x-2 mb-2">
-              <AlertCircle className="w-4 h-4 text-red-600" />
-              <span className="text-sm font-medium text-red-800">Outstanding</span>
+              <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
+              <span className="text-sm font-medium text-red-600 dark:text-red-400">Outstanding</span>
             </div>
-            <div className="text-lg font-bold text-red-600">
+            <div className="text-lg font-bold text-red-600 dark:text-red-400">
               {studentsWithOutstanding} students
             </div>
-            <div className="text-sm text-red-600">
+            <div className="text-sm text-red-600 dark:text-red-400">
               GHS {totalOutstanding.toLocaleString()}
             </div>
           </div>
 
-          <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+          <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
             <div className="flex items-center space-x-2 mb-2">
-              <TrendingUp className="w-4 h-4 text-amber-600" />
-              <span className="text-sm font-medium text-amber-800">Arrears</span>
+              <TrendingUp className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+              <span className="text-sm font-medium text-amber-600 dark:text-amber-400">Arrears</span>
             </div>
-            <div className="text-lg font-bold text-amber-600">
+            <div className="text-lg font-bold text-amber-600 dark:text-amber-400">
               {studentsWithArrears} students
             </div>
-            <div className="text-sm text-amber-600">
+            <div className="text-sm text-amber-600 dark:text-amber-400">
               GHS {totalArrears.toLocaleString()}
             </div>
           </div>
 
-          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
             <div className="flex items-center space-x-2 mb-2">
-              <CreditCard className="w-4 h-4 text-blue-600" />
-              <span className="text-sm font-medium text-blue-800">Credit Balance</span>
+              <CreditCard className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              <span className="text-sm font-medium text-blue-600 dark:text-blue-400">Credit Balance</span>
             </div>
-            <div className="text-lg font-bold text-blue-600">
+            <div className="text-lg font-bold text-blue-600 dark:text-blue-400">
               {studentsWithCredit} students
             </div>
-            <div className="text-sm text-blue-600">
+            <div className="text-sm text-blue-600 dark:text-blue-400">
               GHS {totalCreditBalance.toLocaleString()}
             </div>
           </div>
 
-          <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+          <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
             <div className="flex items-center space-x-2 mb-2">
-              <Search className="w-4 h-4 text-green-600" />
-              <span className="text-sm font-medium text-green-800">Showing</span>
+              <Search className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400">Showing</span>
             </div>
-            <div className="text-lg font-bold text-green-600">
+            <div className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
               {filteredStudents.length} students
             </div>
-            <div className="text-sm text-green-600">
+            <div className="text-sm text-emerald-600 dark:text-emerald-400">
               Filtered results
             </div>
           </div>
@@ -176,12 +182,12 @@ const StudentBalances = () => {
         {/* Search and Filters */}
         <div className="flex flex-col lg:flex-row gap-4 mb-6">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search by student name or ID..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
+              className="pl-10 bg-background border-border"
             />
           </div>
           <Select value={filterClass} onValueChange={setFilterClass}>
@@ -231,20 +237,25 @@ const StudentBalances = () => {
             </TableHeader>
             <TableBody>
               {filteredStudents.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={9} className="text-center py-8 text-gray-500">
+                <TableRow className="border-border">
+                  <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                     No students found matching your criteria
                   </TableCell>
                 </TableRow>
               ) : (
                 filteredStudents.map((student) => (
-                  <TableRow key={student.id}>
+                  <TableRow key={student.id} className="border-border hover:bg-muted/30 transition-colors">
                     <TableCell>
                       <div>
-                        <div className="font-medium">
+                        <div className="font-medium text-foreground flex items-center gap-2">
                           {student.firstName} {student.lastName}
+                          {student.isBeneficiary && (
+                            <Badge variant="outline" className="bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800 text-[10px] h-5 px-1.5 font-bold">
+                              Beneficiary
+                            </Badge>
+                          )}
                         </div>
-                        <div className="text-sm text-gray-500">
+                        <div className="text-sm text-muted-foreground">
                           ID: {student.studentId}
                         </div>
                       </div>
@@ -265,12 +276,12 @@ const StudentBalances = () => {
                       </span>
                     </TableCell>
                     <TableCell>
-                      <span className="font-mono font-bold">
+                      <span className="font-mono text-foreground">
                         GHS {(student.totalAmountDue ?? 0).toLocaleString()}
                       </span>
                     </TableCell>
                     <TableCell>
-                      <span className="font-mono text-green-600">
+                      <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">
                         GHS {(student.totalPaid ?? 0).toLocaleString()}
                       </span>
                     </TableCell>
@@ -303,24 +314,24 @@ const StudentBalances = () => {
 
         {/* Summary */}
         {filteredStudents.length > 0 && (
-          <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+          <div className="mt-4 p-4 bg-muted/50 rounded-lg border border-border">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
               <div>
-                <p className="font-medium text-gray-800">Showing {filteredStudents.length} students</p>
-                <p className="text-gray-600">
+                <p className="font-medium text-foreground">Showing {filteredStudents.length} students</p>
+                <p className="text-muted-foreground">
                   {studentsWithOutstanding} have outstanding balances
                 </p>
               </div>
               <div>
-                <p className="font-medium text-gray-800">Total Outstanding: GHS {totalOutstanding.toLocaleString()}</p>
-                <p className="text-gray-600">
+                <p className="font-medium text-foreground">Total Outstanding: GHS {totalOutstanding.toLocaleString()}</p>
+                <p className="text-muted-foreground">
                   Arrears: GHS {totalArrears.toLocaleString()}
                 </p>
               </div>
               <div>
-                <p className="font-medium text-gray-800">Academic Period: {currentTerm}</p>
-                <p className="text-gray-600">
-                  Generated: {new Date().toLocaleDateString()}
+                <p className="font-medium text-foreground">Academic Period: {currentTerm}</p>
+                <p className="text-muted-foreground">
+                  Generated: {formatDisplayDate(new Date())}
                 </p>
               </div>
             </div>

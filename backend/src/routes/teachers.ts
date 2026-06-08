@@ -4,12 +4,34 @@ import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
+import { getIO } from '../socket.js';
+import { sendPushToTenantStaff } from '../services/webPushService.js';
 
 function generatePin(): string {
   return String(Math.floor(10000 + Math.random() * 90000));
 }
 
 const router = express.Router();
+
+const emitTenantDataChanged = (
+  tenantId: number,
+  entity: string,
+  action: 'created' | 'updated' | 'deleted',
+  extra?: Record<string, unknown>
+) => {
+  try {
+    const io = getIO();
+    io.to(`tenant:${tenantId}`).emit('tenant-data-changed', {
+      tenantId,
+      entity,
+      action,
+      at: Date.now(),
+      ...(extra || {}),
+    });
+  } catch {
+    // Socket server may be unavailable in some non-realtime contexts.
+  }
+};
 
 router.use(authenticate);
 router.use(requireTenant);
@@ -19,7 +41,8 @@ router.use(setTenantContext);
 router.get('/me', async (req: AuthRequest, res) => {
   try {
     const teacherId = req.user!.teacherId;
-    if (!teacherId || req.user!.role !== 'teacher') {
+    const role = req.user!.role;
+    if (!teacherId || (role !== 'teacher' && role !== 'staff')) {
       return res.status(403).json({ error: 'Not a teacher account' });
     }
     const tenantId = req.user!.tenantId!;
@@ -42,7 +65,8 @@ router.get('/me', async (req: AuthRequest, res) => {
 router.get('/me/classes', async (req: AuthRequest, res) => {
   try {
     const teacherId = req.user!.teacherId;
-    if (!teacherId || req.user!.role !== 'teacher') {
+    const role = req.user!.role;
+    if (!teacherId || (role !== 'teacher' && role !== 'staff')) {
       return res.status(403).json({ error: 'Not a teacher account' });
     }
     const tenantId = req.user!.tenantId!;
@@ -64,28 +88,93 @@ router.get('/me/classes', async (req: AuthRequest, res) => {
   }
 });
 
+// Broadcast in-app notice to teachers and payroll staff (socket + bell / toast on client)
+router.post(
+  '/announce',
+  requireRole('super-admin', 'administrator', 'finance'),
+  async (req: AuthRequest, res) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const title = String(req.body?.title || 'Message from school').slice(0, 120);
+      const body = String(req.body?.message || '').trim().slice(0, 800);
+      if (!body) return res.status(400).json({ error: 'message is required' });
+      emitTenantDataChanged(tenantId, 'school-staff-notice', 'created', { title, body });
+      await sendPushToTenantStaff(tenantId, {
+        title,
+        body,
+        url: `/school/${tenantId}`,
+      }).catch(() => {});
+      await query(
+        'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, details) VALUES ($1, $2, $3, $4, $5)',
+        [tenantId, req.user!.id, 'SCHOOL_STAFF_ANNOUNCE', 'TEACHERS_AND_STAFF', JSON.stringify({ title, bodyLen: body.length })],
+      ).catch(() => {});
+      return res.json({ success: true });
+    } catch (error) {
+      console.error('Teacher announce error:', error);
+      return res.status(500).json({ error: 'Failed to send notice' });
+    }
+  }
+);
+
+// Display name for classes: junction (Assign Class tab) + legacy teachers.class_assigned_id
+const TEACHER_CLASS_NAME_SQL = `
+  COALESCE(
+    NULLIF((
+      SELECT STRING_AGG(DISTINCT cl.class_name, ', ' ORDER BY cl.class_name)
+      FROM class_teachers ct2
+      JOIN classes cl ON cl.id = ct2.class_id AND cl.tenant_id = ct2.tenant_id
+      WHERE ct2.teacher_id = t.id AND ct2.tenant_id = t.tenant_id
+    ), ''),
+    c.class_name
+  ) AS class_name
+`;
+
 // Get all teachers
 router.get('/', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const { classId } = req.query;
-    
+
     let queryText = `
-      SELECT t.*, c.class_name, c.level, c.stream
+      SELECT t.*, ${TEACHER_CLASS_NAME_SQL.trim()},
+        c.level, c.stream
       FROM teachers t
       LEFT JOIN classes c ON t.class_assigned_id = c.id
       WHERE t.tenant_id = $1
     `;
     const params: any[] = [tenantId];
-    
+
     if (classId) {
-      queryText += ' AND t.class_assigned_id = $2';
+      queryText += ` AND (
+        t.class_assigned_id = $2::int
+        OR EXISTS (
+          SELECT 1 FROM class_teachers ct3
+          WHERE ct3.teacher_id = t.id AND ct3.class_id = $2::int AND ct3.tenant_id = t.tenant_id
+        )
+      )`;
       params.push(classId);
     }
-    
+
     queryText += ' ORDER BY t.created_at DESC';
-    
-    const result = await query(queryText, params);
+
+    let result;
+    try {
+      result = await query(queryText, params);
+    } catch (e: any) {
+      if (e?.code === '42P01') {
+        queryText = `
+          SELECT t.*, c.class_name, c.level, c.stream
+          FROM teachers t
+          LEFT JOIN classes c ON t.class_assigned_id = c.id
+          WHERE t.tenant_id = $1
+          ${classId ? ' AND t.class_assigned_id = $2' : ''}
+          ORDER BY t.created_at DESC
+        `;
+        result = await query(queryText, classId ? [tenantId, classId] : [tenantId]);
+      } else {
+        throw e;
+      }
+    }
     res.json(result.rows);
   } catch (error) {
     console.error('Get teachers error:', error);
@@ -99,18 +188,34 @@ router.get('/:id', async (req: AuthRequest, res) => {
     const tenantId = req.user!.tenantId!;
     const { id } = req.params;
     
-    const result = await query(
-      `SELECT t.*, c.class_name, c.level, c.stream
-       FROM teachers t
-       LEFT JOIN classes c ON t.class_assigned_id = c.id
-       WHERE t.id = $1 AND t.tenant_id = $2`,
-      [id, tenantId]
-    );
-    
+    let result;
+    try {
+      result = await query(
+        `SELECT t.*, ${TEACHER_CLASS_NAME_SQL.trim()},
+           c.level, c.stream
+         FROM teachers t
+         LEFT JOIN classes c ON t.class_assigned_id = c.id
+         WHERE t.id = $1 AND t.tenant_id = $2`,
+        [id, tenantId]
+      );
+    } catch (e: any) {
+      if (e?.code === '42P01') {
+        result = await query(
+          `SELECT t.*, c.class_name, c.level, c.stream
+           FROM teachers t
+           LEFT JOIN classes c ON t.class_assigned_id = c.id
+           WHERE t.id = $1 AND t.tenant_id = $2`,
+          [id, tenantId]
+        );
+      } else {
+        throw e;
+      }
+    }
+
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Teacher not found' });
     }
-    
+
     res.json(result.rows[0]);
   } catch (error) {
     console.error('Get teacher error:', error);
@@ -172,14 +277,16 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
     const passwordHash = await bcrypt.hash(loginPin, 10);
     
     await query(
-      `INSERT INTO users (tenant_id, username, password_hash, role, teacher_id) VALUES ($1, $2, $3, 'teacher', $4)`,
-      [tenantId, staffId, passwordHash, String(teacherId)]
+      `INSERT INTO users (tenant_id, username, full_name, email, password_hash, role, teacher_id)
+       VALUES ($1, $2, $3, $4, $5, 'teacher', $6)`,
+      [tenantId, staffId, teacherData.full_name, teacherData.email || null, passwordHash, String(teacherId)]
     );
     
     await query(
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
       [tenantId, req.user!.id, 'CREATE', 'TEACHER', teacherId]
     );
+    emitTenantDataChanged(tenantId, 'teacher', 'created');
     
     res.status(201).json({
       ...result.rows[0],
@@ -236,12 +343,20 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Teacher not found' });
     }
+
+    await query(
+      `UPDATE users
+       SET full_name = $1, email = $2, updated_at = CURRENT_TIMESTAMP
+       WHERE tenant_id = $3 AND teacher_id::text = $4::text`,
+      [result.rows[0].full_name, result.rows[0].email || null, tenantId, id]
+    ).catch(() => {});
     
     // Log update
     await query(
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
       [tenantId, req.user!.id, 'UPDATE', 'TEACHER', parseInt(id)]
     );
+    emitTenantDataChanged(tenantId, 'teacher', 'updated');
     
     res.json(result.rows[0]);
   } catch (error) {
@@ -270,6 +385,7 @@ router.delete('/:id', requireRole('super-admin', 'administrator'), async (req: A
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
       [tenantId, req.user!.id, 'DELETE', 'TEACHER', parseInt(id)]
     );
+    emitTenantDataChanged(tenantId, 'teacher', 'deleted');
     
     res.json({ message: 'Teacher deleted successfully' });
   } catch (error) {

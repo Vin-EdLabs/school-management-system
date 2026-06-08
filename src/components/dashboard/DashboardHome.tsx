@@ -1,8 +1,15 @@
-import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import React, { useMemo } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useData } from '../../contexts/DataContext';
-import { getActiveAcademicTerm, getActiveAcademicYear, calculateStudentFeesSync } from '../../utils/feeCalculations';
+import {
+  getActiveAcademicTerm,
+  getActiveAcademicYear,
+  calculateStudentFeesSync,
+  dateMatchesAcademicYearSetting,
+  getDashboardCalendarYearForMonthlyChart,
+} from '../../utils/feeCalculations';
+import { formatDisplayDate } from '../../utils/dateFormat';
 import FinancialSummary from './FinancialSummary';
 import {
   Users,
@@ -12,278 +19,456 @@ import {
   GraduationCap,
   Plus,
   Receipt,
-  FileText
+  FileText,
+  LayoutDashboard,
+  Sparkles,
 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+  ComposedChart,
+  Line,
+  Area,
+} from 'recharts';
+
+const SERIES_COLORS = ['#0ea5e9', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#ec4899'];
+
+const tooltipStyle = {
+  backgroundColor: 'hsl(var(--card))',
+  border: '1px solid hsl(var(--border))',
+  borderRadius: '8px',
+  color: 'hsl(var(--foreground))',
+};
+
+function EmptyChart({ label }: { label: string }) {
+  return (
+    <div className="flex h-[min(320px,40vh)] min-h-[200px] flex-col items-center justify-center rounded-lg border border-dashed border-border/80 bg-muted/15 px-4 text-center text-sm text-muted-foreground">
+      <Sparkles className="mb-2 h-8 w-8 opacity-40" aria-hidden />
+      {label}
+    </div>
+  );
+}
 
 const DashboardHome = () => {
   const { students, teachers, classes = [], payments, expenses, feeStructures, income, arrearsBalances } = useData();
 
-  // Get active academic term and year
   const currentTerm = getActiveAcademicTerm();
   const currentYear = getActiveAcademicYear();
 
-  // Calculate summary statistics
-  const totalStudents = students.length;
-  const totalTeachers = teachers.length;
-  
-  const feesCollectedThisTerm = payments
-    .filter(payment => {
-      const pt = payment.term || '';
-      return pt === currentTerm || pt.includes(currentTerm) || currentTerm.includes(pt);
-    })
-    .reduce((sum, payment) => sum + payment.amount, 0);
+  const termMatch = (term: string | undefined | null) => {
+    const pt = term || '';
+    return pt === currentTerm || pt.includes(currentTerm) || currentTerm.includes(pt);
+  };
 
-  const otherIncomeThisYear = income
-    .filter(inc => inc.category !== 'Fee Payment')
-    .filter(inc => {
-      const d = new Date(inc.date);
-      return d.getFullYear().toString() === currentYear;
-    })
-    .reduce((sum, inc) => sum + inc.amount, 0);
+  const stats = useMemo(() => {
+    const totalStudents = students.length;
+    const totalTeachers = teachers.length;
 
-  const totalIncome = feesCollectedThisTerm + otherIncomeThisYear;
-  
-  const expensesThisYear = expenses
-    .filter(expense => {
-      const expenseDate = new Date(expense.paymentDate);
-      const expenseYear = expenseDate.getFullYear().toString();
-      return expenseYear === currentYear;
-    })
-    .reduce((sum, expense) => sum + expense.amount, 0);
+    const feesCollectedThisTerm = payments
+      .filter((payment) => termMatch(payment.term))
+      .reduce((sum, payment) => sum + payment.amount, 0);
 
-  const netBalance = totalIncome - expensesThisYear;
-
-  // Calculate outstanding balances using proper fee structure matching (class + term)
-  const outstandingBalances = students.reduce((totalOwed, student) => {
-    const feeCalc = calculateStudentFeesSync(
-      student.id,
-      currentTerm,
-      student.classAssigned,
-      feeStructures || [],
-      payments || [],
-      student.classAssignedId,
-      arrearsBalances
-    );
-    const outstanding = Math.max(0, (feeCalc.totalAmountDue ?? feeCalc.currentTermFee) - feeCalc.totalPaid);
-    return totalOwed + outstanding;
-  }, 0);
-
-  // Prepare chart data - fees collected per class (one bar per class)
-  const uniqueClassNames = [...new Set(classes.map(c => c.className).filter(Boolean))];
-  const classFeesData = uniqueClassNames.map(className => ({
-    name: className,
-    fees: payments
-      .filter(payment => {
-        const student = students.find(s => s.id === payment.studentId);
-        const termMatch = (payment.term || '') === currentTerm || (payment.term || '').includes(currentTerm) || currentTerm.includes(payment.term || '');
-        return student && student.classAssigned === className && termMatch;
+    const otherIncomeThisYear = income
+      .filter((inc) => inc.category !== 'Fee Payment')
+      .filter((inc) => {
+        const d = new Date(inc.date);
+        return dateMatchesAcademicYearSetting(d, currentYear);
       })
-      .reduce((sum, payment) => sum + payment.amount, 0)
-  }));
+      .reduce((sum, inc) => sum + inc.amount, 0);
 
-  const expenseCategories = expenses.reduce((acc, expense) => {
-    acc[expense.category] = (acc[expense.category] || 0) + expense.amount;
-    return acc;
-  }, {} as Record<string, number>);
+    const totalIncome = feesCollectedThisTerm + otherIncomeThisYear;
 
-  const expenseChartData = Object.entries(expenseCategories).map(([category, amount]) => ({
-    name: category,
-    value: amount
-  }));
+    const expensesThisYear = expenses
+      .filter((expense) => {
+        const expenseDate = new Date(expense.paymentDate);
+        return dateMatchesAcademicYearSetting(expenseDate, currentYear);
+      })
+      .reduce((sum, expense) => sum + expense.amount, 0);
 
-  const COLORS = ['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444'];
+    const netBalance = totalIncome - expensesThisYear;
 
-  // Recent activities
-  const recentActivities = [
-    ...payments.slice(-3).map(payment => {
-      const student = students.find(s => s.id === payment.studentId);
+    const outstandingBalances = students.reduce((totalOwed, student) => {
+      const feeCalc = calculateStudentFeesSync(
+        student.id,
+        currentTerm,
+        student.classAssigned,
+        feeStructures || [],
+        payments || [],
+        student.classAssignedId,
+        arrearsBalances,
+        {
+          isBeneficiary: !!student.isBeneficiary,
+          discountType: student.discountType,
+          discountValue: student.discountValue,
+        }
+      );
+      const outstanding = Math.max(0, (feeCalc.totalAmountDue ?? feeCalc.currentTermFee) - feeCalc.totalPaid);
+      return totalOwed + outstanding;
+    }, 0);
+
+    return {
+      totalStudents,
+      totalTeachers,
+      feesCollectedThisTerm,
+      otherIncomeThisYear,
+      totalIncome,
+      expensesThisYear,
+      netBalance,
+      outstandingBalances,
+    };
+  }, [students, teachers, payments, income, expenses, feeStructures, arrearsBalances, currentTerm, currentYear]);
+
+  const classFeesData = useMemo(() => {
+    const uniqueClassNames = [...new Set(classes.map((c) => c.className).filter(Boolean))];
+    return uniqueClassNames.map((className) => ({
+      name: className.length > 14 ? `${className.slice(0, 12)}…` : className,
+      fullName: className,
+      fees: payments
+        .filter((payment) => {
+          const student = students.find((s) => s.id === payment.studentId);
+          return student && student.classAssigned === className && termMatch(payment.term);
+        })
+        .reduce((sum, payment) => sum + payment.amount, 0),
+    }));
+  }, [classes, payments, students, currentTerm]);
+
+  const expenseChartData = useMemo(() => {
+    const expenseCategories = expenses
+      .filter((expense) => dateMatchesAcademicYearSetting(new Date(expense.paymentDate), currentYear))
+      .reduce(
+        (acc, expense) => {
+          const c = expense.category || 'Other';
+          acc[c] = (acc[c] || 0) + expense.amount;
+          return acc;
+        },
+        {} as Record<string, number>
+      );
+    return Object.entries(expenseCategories).map(([name, value]) => ({ name, value }));
+  }, [expenses, currentYear]);
+
+  const monthlyCash = useMemo(() => {
+    const y = getDashboardCalendarYearForMonthlyChart(currentYear);
+    return Array.from({ length: 12 }, (_, i) => {
+      const label = new Date(parseInt(y, 10), i, 1).toLocaleDateString('en-US', { month: 'short' });
+      const feesInMonth = payments
+        .filter((p) => {
+          const d = new Date(p.date);
+          return d.getMonth() === i && d.getFullYear().toString() === y;
+        })
+        .reduce((s, p) => s + p.amount, 0);
+      const otherInMonth = income
+        .filter((inc) => inc.category !== 'Fee Payment')
+        .filter((inc) => {
+          const d = new Date(inc.date);
+          return d.getMonth() === i && d.getFullYear().toString() === y;
+        })
+        .reduce((s, inc) => s + inc.amount, 0);
+      const expInMonth = expenses
+        .filter((ex) => {
+          const d = new Date(ex.paymentDate);
+          return d.getMonth() === i && d.getFullYear().toString() === y;
+        })
+        .reduce((s, ex) => s + ex.amount, 0);
       return {
-        text: `GHS${payment.amount} payment recorded for ${student?.firstName} ${student?.lastName}, ${student?.classAssigned}`,
-        time: new Date(payment.date).toLocaleDateString(),
-        type: 'payment'
+        month: label,
+        income: feesInMonth + otherInMonth,
+        expenses: expInMonth,
+        net: feesInMonth + otherInMonth - expInMonth,
       };
-    }),
-    ...expenses.slice(-2).map(expense => ({
-      text: `GHS${expense.amount} expense recorded for ${expense.title}`,
-      time: new Date(expense.paymentDate).toLocaleDateString(),
-      type: 'expense'
-    }))
-  ].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+    });
+  }, [payments, income, expenses, currentYear]);
+
+  const recentActivities = useMemo(
+    () =>
+      [
+        ...payments.slice(-3).map((payment) => {
+          const student = students.find((s) => s.id === payment.studentId);
+          return {
+            text: `GHS ${payment.amount.toLocaleString()} payment — ${student?.firstName} ${student?.lastName}, ${student?.classAssigned}`,
+            time: formatDisplayDate(payment.date),
+            type: 'payment' as const,
+          };
+        }),
+        ...expenses.slice(-2).map((expense) => ({
+          text: `GHS ${expense.amount.toLocaleString()} expense — ${expense.title}`,
+          time: formatDisplayDate(expense.paymentDate),
+          type: 'expense' as const,
+        })),
+      ].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()),
+    [payments, expenses, students]
+  );
+
+  const hasMonthly = monthlyCash.some((m) => m.income > 0 || m.expenses > 0);
+  const hasClassFees = classFeesData.some((c) => c.fees > 0);
+  const hasExpensePie = expenseChartData.length > 0;
+  const monthlyChartCalendarYear = getDashboardCalendarYearForMonthlyChart(currentYear);
 
   return (
-    <div className="p-6 md:p-8 space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-800">Dashboard</h1>
-          <p className="text-sm text-slate-500 mt-0.5">School overview and quick actions</p>
-        </div>
-        <div className="flex items-center gap-3 px-3 py-2 bg-slate-100 rounded-lg w-fit">
-          <span className="text-sm text-slate-500">Term</span>
-          <span className="text-sm font-medium text-slate-800">{currentTerm}</span>
-        </div>
-      </div>
+    <div className="relative min-h-full overflow-hidden p-6 md:p-8">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,hsl(var(--primary)/0.12),transparent)] dark:bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,hsl(var(--primary)/0.18),transparent)]" />
 
-      {/* Financial Summary Dropdown */}
-      <FinancialSummary />
-
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
-        <Card className="border-slate-200/80 bg-white shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-slate-600">Total Students</CardTitle>
-            <Users className="h-4 w-4 text-slate-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-slate-800">{totalStudents}</div>
-            <p className="text-xs text-slate-500">Active enrollments</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-slate-200/80 bg-white shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-slate-600">Total Income</CardTitle>
-            <CreditCard className="h-4 w-4 text-slate-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-slate-800">GHS {totalIncome.toLocaleString()}</div>
-            <p className="text-xs text-slate-500">Fees + other</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-slate-200/80 bg-white shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-slate-600">Expenses</CardTitle>
-            <TrendingDown className="h-4 w-4 text-slate-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-slate-800">GHS {expensesThisYear.toLocaleString()}</div>
-            <p className="text-xs text-slate-500">This year</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-slate-200/80 bg-white shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-slate-600">Net Balance</CardTitle>
-            <CreditCard className="h-4 w-4 text-slate-400" />
-          </CardHeader>
-          <CardContent>
-            <div className={`text-2xl font-bold ${netBalance >= 0 ? 'text-emerald-600' : 'text-amber-600'}`}>GHS {netBalance.toLocaleString()}</div>
-            <p className="text-xs text-slate-500">Income − Expenses</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-slate-200/80 bg-white shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-slate-600">Outstanding</CardTitle>
-            <AlertCircle className="h-4 w-4 text-slate-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-slate-800">GHS {outstandingBalances.toLocaleString()}</div>
-            <p className="text-xs text-slate-500">Pending payments</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-slate-200/80 bg-white shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-slate-600">Total Teachers</CardTitle>
-            <GraduationCap className="h-4 w-4 text-slate-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-slate-800">{totalTeachers}</div>
-            <p className="text-xs text-slate-500">Active staff</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Charts */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Fees Collection by Class</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={classFeesData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip formatter={(value) => [`GHS ${value}`, 'Fees Collected']} />
-                <Bar dataKey="fees" fill="#3B82F6" />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Expense Breakdown</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={expenseChartData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {expenseChartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(value) => `GHS ${value}`} />
-              </PieChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Quick Actions and Recent Activity */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Button className="w-full justify-start bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200">
-              <Plus className="w-4 h-4 mr-2" />
-              Add Student
-            </Button>
-            <Button className="w-full justify-start bg-green-50 text-green-700 hover:bg-green-100 border border-green-200">
-              <Receipt className="w-4 h-4 mr-2" />
-              Record Payment
-            </Button>
-            <Button className="w-full justify-start bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200">
-              <FileText className="w-4 h-4 mr-2" />
-              Add Expense
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Activity</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {recentActivities.slice(0, 5).map((activity, index) => (
-                <div key={index} className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
-                  <div className={`w-2 h-2 rounded-full mt-2 ${activity.type === 'payment' ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                  <div className="flex-1">
-                    <p className="text-sm text-gray-800">{activity.text}</p>
-                    <p className="text-xs text-gray-500">{activity.time}</p>
-                  </div>
-                </div>
-              ))}
+      <div className="relative space-y-8">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/20">
+              <LayoutDashboard className="h-5 w-5" />
             </div>
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">Dashboard</h1>
+              <p className="mt-0.5 text-sm text-muted-foreground">Overview, cash flow, and quick actions</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/80 bg-card/80 px-4 py-2.5 shadow-sm backdrop-blur-sm">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Active term</span>
+            <span className="text-sm font-semibold text-foreground">{currentTerm}</span>
+            <span className="text-border">·</span>
+            <span className="text-sm text-muted-foreground">{currentYear}</span>
+          </div>
+        </div>
+
+        <FinancialSummary />
+
+        {/* KPI strip */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
+          {[
+            {
+              label: 'Students',
+              value: stats.totalStudents,
+              sub: 'Enrolled',
+              icon: Users,
+              accent: 'from-sky-500/20 to-sky-500/5 border-sky-500/25 text-sky-700 dark:text-sky-300',
+            },
+            {
+              label: 'Total income',
+              value: `GHS ${stats.totalIncome.toLocaleString()}`,
+              sub: 'Fees + other',
+              icon: CreditCard,
+              accent: 'from-emerald-500/20 to-emerald-500/5 border-emerald-500/25 text-emerald-700 dark:text-emerald-300',
+            },
+            {
+              label: 'Expenses',
+              value: `GHS ${stats.expensesThisYear.toLocaleString()}`,
+              sub: `Year ${currentYear}`,
+              icon: TrendingDown,
+              accent: 'from-amber-500/20 to-amber-500/5 border-amber-500/25 text-amber-800 dark:text-amber-200',
+            },
+            {
+              label: 'Net balance',
+              value: `GHS ${stats.netBalance.toLocaleString()}`,
+              sub: 'Income − expenses',
+              icon: CreditCard,
+              accent:
+                stats.netBalance >= 0
+                  ? 'from-violet-500/20 to-violet-500/5 border-violet-500/25 text-violet-700 dark:text-violet-300'
+                  : 'from-rose-500/20 to-rose-500/5 border-rose-500/25 text-rose-700 dark:text-rose-300',
+            },
+            {
+              label: 'Outstanding',
+              value: `GHS ${stats.outstandingBalances.toLocaleString()}`,
+              sub: 'Fees pending',
+              icon: AlertCircle,
+              accent: 'from-orange-500/20 to-orange-500/5 border-orange-500/25 text-orange-800 dark:text-orange-200',
+            },
+            {
+              label: 'Teachers',
+              value: stats.totalTeachers,
+              sub: 'Staff',
+              icon: GraduationCap,
+              accent: 'from-indigo-500/20 to-indigo-500/5 border-indigo-500/25 text-indigo-700 dark:text-indigo-300',
+            },
+          ].map((k) => (
+            <Card
+              key={k.label}
+              className={`border bg-gradient-to-br ${k.accent} shadow-sm ring-1 ring-black/5 dark:ring-white/5`}
+            >
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4">
+                <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{k.label}</CardTitle>
+                <k.icon className="h-4 w-4 opacity-70" />
+              </CardHeader>
+              <CardContent className="pb-4">
+                <div className="text-xl font-bold tabular-nums tracking-tight text-foreground md:text-2xl">{k.value}</div>
+                <p className="mt-1 text-xs text-muted-foreground">{k.sub}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* Cash flow — full width */}
+        <Card className="overflow-hidden border-border/80 shadow-md">
+          <CardHeader className="border-b border-border/60 bg-muted/30 pb-4">
+            <CardTitle className="text-lg">Cash flow</CardTitle>
+            <CardDescription>
+              Income vs expenses by month for calendar year {monthlyChartCalendarYear}
+              {monthlyChartCalendarYear !== currentYear ? ` (active year: ${currentYear})` : ''}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-6">
+            {hasMonthly ? (
+              <div className="h-[min(340px,42vh)] w-full min-h-[240px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={monthlyCash} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="homeIncomeFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#10b981" stopOpacity={0.35} />
+                        <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                    <XAxis dataKey="month" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <YAxis
+                      tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                      tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))}
+                      axisLine={false}
+                      tickLine={false}
+                      width={44}
+                    />
+                    <Tooltip
+                      formatter={(v: number, name: string) => [`GHS ${Number(v).toLocaleString()}`, name]}
+                      contentStyle={tooltipStyle}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Area type="monotone" dataKey="income" name="Income" stroke="#059669" fill="url(#homeIncomeFill)" strokeWidth={2} />
+                    <Line type="monotone" dataKey="expenses" name="Expenses" stroke="#f97316" strokeWidth={2} dot={{ r: 3 }} />
+                    <Line type="monotone" dataKey="net" name="Net" stroke="#6366f1" strokeWidth={1.5} dot={false} strokeDasharray="6 4" />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <EmptyChart label="No payments or expenses recorded for this year yet." />
+            )}
           </CardContent>
         </Card>
+
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+          <Card className="overflow-hidden border-border/80 shadow-md">
+            <CardHeader className="border-b border-border/60 bg-muted/30 pb-4">
+              <CardTitle className="text-lg">Fees by class</CardTitle>
+              <CardDescription>Collected in current term ({currentTerm})</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-6">
+              {hasClassFees ? (
+                <div className="h-[min(320px,40vh)] w-full min-h-[220px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={classFeesData} layout="vertical" margin={{ left: 8, right: 16 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+                      <XAxis type="number" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <YAxis
+                        type="category"
+                        dataKey="name"
+                        width={100}
+                        tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <Tooltip
+                        formatter={(v: number) => [`GHS ${Number(v).toLocaleString()}`, 'Fees']}
+                        contentStyle={tooltipStyle}
+                        labelFormatter={(_, p) => (p?.[0]?.payload as { fullName?: string })?.fullName ?? ''}
+                      />
+                      <Bar dataKey="fees" name="Fees" fill="#0ea5e9" radius={[0, 6, 6, 0]} barSize={18} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <EmptyChart label="No class fee collections for the current term yet." />
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="overflow-hidden border-border/80 shadow-md">
+            <CardHeader className="border-b border-border/60 bg-muted/30 pb-4">
+              <CardTitle className="text-lg">Expense mix</CardTitle>
+              <CardDescription>All-time categories (by amount)</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-6">
+              {hasExpensePie ? (
+                <div className="h-[min(320px,40vh)] w-full min-h-[220px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={expenseChartData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={58}
+                        outerRadius={96}
+                        paddingAngle={2}
+                        dataKey="value"
+                        nameKey="name"
+                        stroke="hsl(var(--background))"
+                        strokeWidth={2}
+                      >
+                        {expenseChartData.map((_, index) => (
+                          <Cell key={`cell-${index}`} fill={SERIES_COLORS[index % SERIES_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(v: number) => `GHS ${Number(v).toLocaleString()}`} contentStyle={tooltipStyle} />
+                      <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: 11 }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <EmptyChart label="No expenses recorded yet." />
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+          <Card className="border-border/80 shadow-md">
+            <CardHeader>
+              <CardTitle className="text-lg">Quick actions</CardTitle>
+              <CardDescription>Shortcuts to common tasks</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Button className="h-11 w-full justify-start border border-sky-500/25 bg-sky-500/10 text-sky-800 shadow-none hover:bg-sky-500/15 dark:text-sky-200">
+                <Plus className="mr-2 h-4 w-4" />
+                Add student
+              </Button>
+              <Button className="h-11 w-full justify-start border border-emerald-500/25 bg-emerald-500/10 text-emerald-800 shadow-none hover:bg-emerald-500/15 dark:text-emerald-200">
+                <Receipt className="mr-2 h-4 w-4" />
+                Record payment
+              </Button>
+              <Button className="h-11 w-full justify-start border border-violet-500/25 bg-violet-500/10 text-violet-800 shadow-none hover:bg-violet-500/15 dark:text-violet-200">
+                <FileText className="mr-2 h-4 w-4" />
+                Add expense
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/80 shadow-md">
+            <CardHeader>
+              <CardTitle className="text-lg">Recent activity</CardTitle>
+              <CardDescription>Latest payments and expenses</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {recentActivities.slice(0, 6).map((activity, index) => (
+                  <div
+                    key={index}
+                    className="flex items-start gap-3 rounded-lg border border-border/60 bg-muted/20 p-3 transition-colors hover:bg-muted/35"
+                  >
+                    <div
+                      className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${activity.type === 'payment' ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm leading-snug text-foreground">{activity.text}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">{activity.time}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

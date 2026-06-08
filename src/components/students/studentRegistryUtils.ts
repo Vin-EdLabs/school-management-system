@@ -1,0 +1,101 @@
+import type { FeeStructure, Student } from '../../contexts/DataContext';
+
+export function normalizeEnrollmentStatus(raw: string | undefined): string {
+  const s = (raw || 'active').toLowerCase().trim();
+  if (['active', 'graduated', 'suspended'].includes(s)) return s;
+  return s || 'active';
+}
+
+export function classBadgeClass(className: string): string {
+  const c = (className || '').toUpperCase();
+  if (c.includes('JHS') || c.includes('J.H.S')) {
+    return 'border-amber-400/40 bg-amber-500/10 text-amber-800 dark:text-amber-200';
+  }
+  if (c.includes('PRIMARY') || c.includes('PRY')) {
+    return 'border-sky-400/40 bg-sky-500/10 text-sky-900 dark:text-sky-100';
+  }
+  if (c.includes('KG') || c.includes('NURSERY') || c.includes('CRECHE')) {
+    return 'border-violet-400/40 bg-violet-500/10 text-violet-900 dark:text-violet-100';
+  }
+  if (c.includes('SHS') || c.includes('S.H.S')) {
+    return 'border-emerald-400/40 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100';
+  }
+  return 'border-border bg-muted/60 text-foreground';
+}
+
+export function statusBadgeClass(status: string): string {
+  const s = normalizeEnrollmentStatus(status);
+  if (s === 'active') return 'border-emerald-500/30 bg-emerald-500/12 text-emerald-800 dark:text-emerald-200';
+  if (s === 'graduated') return 'border-slate-400/40 bg-slate-500/10 text-slate-800 dark:text-slate-200';
+  if (s === 'suspended') return 'border-red-500/35 bg-red-500/10 text-red-800 dark:text-red-200';
+  return 'border-border bg-muted/70 text-foreground';
+}
+
+export function totalScheduledFeesForStudent(
+  student: Student,
+  feeStructures: FeeStructure[],
+  currentTerm: string | undefined
+): number {
+  const fs = feeStructures || [];
+  const classMatch = (f: FeeStructure & { class_name?: string }) =>
+    (f.classId != null &&
+      student.classAssignedId != null &&
+      Number(f.classId) === Number(student.classAssignedId)) ||
+    f.className === student.classAssigned ||
+    f.class_name === student.classAssigned;
+  const termMatch = (f: FeeStructure) =>
+    !!currentTerm &&
+    currentTerm !== 'Not Set' &&
+    !!f.term &&
+    (f.term === currentTerm || f.term.includes(currentTerm) || currentTerm.includes(f.term));
+  return fs.filter((f) => classMatch(f as FeeStructure & { class_name?: string }) && termMatch(f)).reduce((sum, f) => sum + (Number(f.amount) || 0), 0);
+}
+
+export function paymentsForStudentTerm(
+  studentId: string,
+  payments: { studentId?: string; amount: number; term?: string }[],
+  currentTerm: string | undefined
+): { studentId?: string; amount: number; term?: string }[] {
+  return (payments || []).filter((p) => {
+    if (String(p.studentId) !== String(studentId)) return false;
+    if (!currentTerm || currentTerm === 'Not Set') return true;
+    const t = p.term || '';
+    return t === currentTerm || t.includes(currentTerm) || currentTerm.includes(t);
+  });
+}
+
+export function exportStudentsToCsv(rows: Student[]): string {
+  const headers = [
+    'Student ID',
+    'Admission',
+    'First name',
+    'Last name',
+    'Class',
+    'Gender',
+    'Status',
+    'Guardian',
+    'Guardian phone',
+  ];
+  const esc = (v: string | number | undefined | null) => {
+    const s = String(v ?? '');
+    if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  };
+  const lines = [
+    headers.join(','),
+    ...rows.map((s) =>
+      [
+        esc(s.studentId),
+        esc(s.admissionNumber),
+        esc(s.firstName),
+        esc(s.lastName),
+        esc(s.classAssigned),
+        esc(s.gender),
+        esc(normalizeEnrollmentStatus(s.enrollmentStatus)),
+        esc(s.guardianName),
+        esc(s.guardianContact),
+      ].join(',')
+    ),
+  ];
+  return lines.join('\n');
+}

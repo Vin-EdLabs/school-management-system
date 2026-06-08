@@ -1,4 +1,5 @@
 import { generateReceiptNumber, getActiveAcademicTerm, getActiveAcademicYear } from './feeCalculations';
+import { formatDisplayDate } from './dateFormat';
 
 interface Student {
   id: string;
@@ -306,7 +307,7 @@ export class AIProcessor {
 
     const reportContent = `📊 **ROSA GARDENS SCHOOL - GENERAL REPORT**
 **Academic Term:** ${currentTerm}
-**Generated on:** ${new Date().toLocaleDateString()}
+**Generated on:** ${formatDisplayDate(new Date())}
 
 ---
 
@@ -577,7 +578,7 @@ ${availableStudents}
       content: `📄 **Latest receipt for ${student.firstName} ${student.lastName}** is ready to view.
 
 💰 **Amount:** GHS ${lastPayment.amount.toFixed(2)}
-📅 **Date:** ${new Date(lastPayment.date).toLocaleDateString()}
+📅 **Date:** ${formatDisplayDate(lastPayment.date)}
 💳 **Remaining Balance:** GHS ${receiptData.remainingBalance.toFixed(2)}`,
       action: 'receipt',
       data: receiptData
@@ -738,7 +739,7 @@ ${studentsText}`,
 🏫 **Class:** ${student.classAssigned}
 📞 **Guardian:** ${student.guardianName}
 ☎️ **Contact:** ${student.guardianContact}
-📅 **Admission:** ${new Date(student.dateOfAdmission).toLocaleDateString()}
+📅 **Admission:** ${formatDisplayDate(student.dateOfAdmission)}
 💰 **Balance:** GHS ${balanceInfo?.balance.toFixed(2) || '0.00'}
 📊 **Payments Made:** ${paymentCount}`,
       action: 'search',

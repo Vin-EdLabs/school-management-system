@@ -2,8 +2,18 @@ import express from 'express';
 import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
+import { getIO } from '../socket.js';
 
 const router = express.Router();
+
+const emitTenantDataChanged = (tenantId: number, entity: string, action: 'created' | 'updated' | 'deleted') => {
+    try {
+        const io = getIO();
+        io.to(`tenant:${tenantId}`).emit('tenant-data-changed', { tenantId, entity, action, at: Date.now() });
+    } catch {
+        // Socket server may be unavailable in some non-realtime contexts.
+    }
+};
 
 router.use(authenticate);
 router.use(requireTenant);
@@ -47,6 +57,7 @@ router.post('/', async (req: AuthRequest, res) => {
             [tenantId, name, code || null, level || null]
         );
 
+        emitTenantDataChanged(tenantId, 'subject', 'created');
         res.status(201).json(result.rows[0]);
     } catch (error: any) {
         console.error('Create subject error:', error);
@@ -82,6 +93,7 @@ router.put('/:id', async (req: AuthRequest, res) => {
             return res.status(404).json({ error: 'Subject not found' });
         }
 
+        emitTenantDataChanged(tenantId, 'subject', 'updated');
         res.json(result.rows[0]);
     } catch (error: any) {
         console.error('Update subject error:', error);
@@ -110,6 +122,7 @@ router.delete('/:id', async (req: AuthRequest, res) => {
             return res.status(404).json({ error: 'Subject not found' });
         }
 
+        emitTenantDataChanged(tenantId, 'subject', 'deleted');
         res.json({ message: 'Subject deleted successfully' });
     } catch (error) {
         console.error('Delete subject error:', error);

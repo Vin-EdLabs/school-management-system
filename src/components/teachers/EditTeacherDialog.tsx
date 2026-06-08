@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -35,21 +35,17 @@ interface EditTeacherDialogProps {
   onSuccess: () => void;
 }
 
-const SUBJECTS = [
-  'Mathematics', 'English', 'Science', 'Social Studies', 'French',
-  'Physical Education', 'Art', 'Music', 'Computer Studies', 'Religious Studies'
-];
-
 const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
   teacher,
   open,
   onClose,
   onSuccess
 }) => {
-  const { updateTeacher } = useData();
+  const { updateTeacher, subjects } = useData();
   const { verifyPassword, user } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [password, setPassword] = useState('');
+  const [confirming, setConfirming] = useState(false);
   const [formData, setFormData] = useState({
     fullName: '',
     gender: '',
@@ -63,6 +59,14 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
     employmentStatus: '',
     notes: ''
   });
+
+  useEffect(() => {
+    if (!open) {
+      setShowPassword(false);
+      setPassword('');
+      setConfirming(false);
+    }
+  }, [open]);
 
   useEffect(() => {
     if (teacher) {
@@ -123,24 +127,29 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
     }
   };
 
-  const handlePasswordConfirm = async (e: React.FormEvent) => {
-    e.preventDefault();
+  /** Must not be nested inside another `<form>` — that causes a real browser navigation (page refresh) on submit. */
+  const confirmPasswordAndUpdate = async () => {
     if (!password.trim()) {
       toast({ title: 'Password required', description: 'Enter your password to continue', variant: 'destructive' });
       return;
     }
-    const valid = await verifyPassword(password);
-    if (!valid) {
-      toast({ title: 'Incorrect password', description: 'Please try again', variant: 'destructive' });
-      return;
+    if (confirming) return;
+    setConfirming(true);
+    try {
+      const valid = await verifyPassword(password);
+      if (!valid) {
+        toast({ title: 'Incorrect password', description: 'Please try again', variant: 'destructive' });
+        return;
+      }
+      setShowPassword(false);
+      setPassword('');
+      await performUpdate();
+    } finally {
+      setConfirming(false);
     }
-    setShowPassword(false);
-    setPassword('');
-    await performUpdate();
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleUpdateClick = async () => {
     if (!teacher) return;
     if (!formData.fullName || !formData.email || !formData.phoneNumber) {
       toast({ title: "Validation Error", description: "Please fill in all required fields", variant: "destructive" });
@@ -158,12 +167,13 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[90dvh] max-w-2xl flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="shrink-0 border-b border-border/70 px-6 py-4">
           <DialogTitle>Edit Teacher Details</DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <DialogBody className="px-6 py-4">
+        <div className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Staff ID</Label>
@@ -241,9 +251,9 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
                 <SelectValue placeholder="Add subjects" />
               </SelectTrigger>
               <SelectContent>
-                {SUBJECTS.filter(subject => !formData.subjectsTaught.includes(subject)).map((subject) => (
-                  <SelectItem key={subject} value={subject}>
-                    {subject}
+                {subjects.filter(subject => !formData.subjectsTaught.includes(subject.name)).map((subject) => (
+                  <SelectItem key={subject.id} value={subject.name}>
+                    {subject.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -309,22 +319,43 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
 
           {showPassword && (
             <div className="border-t pt-4 space-y-4">
-              <Label>Enter your password to confirm this update</Label>
-              <form onSubmit={handlePasswordConfirm} className="flex gap-2">
-                <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Your password" required className="flex-1" />
-                <Button type="button" variant="outline" onClick={() => { setShowPassword(false); setPassword(''); }}>Cancel</Button>
-                <Button type="submit">Confirm</Button>
-              </form>
+              <Label htmlFor="edit-teacher-admin-password">Enter your password to confirm this update</Label>
+              <div className="flex flex-wrap gap-2">
+                <Input
+                  id="edit-teacher-admin-password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Your password"
+                  required
+                  className="flex-1 min-w-[12rem]"
+                  autoComplete="current-password"
+                  disabled={confirming}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      void confirmPasswordAndUpdate();
+                    }
+                  }}
+                />
+                <Button type="button" variant="outline" disabled={confirming} onClick={() => { setShowPassword(false); setPassword(''); }}>
+                  Cancel
+                </Button>
+                <Button type="button" variant="primaryAction" disabled={confirming} onClick={() => void confirmPasswordAndUpdate()}>
+                  {confirming ? 'Checking…' : 'Confirm'}
+                </Button>
+              </div>
             </div>
           )}
+        </div>
+        </DialogBody>
 
-          {!showPassword && (
-            <div className="flex justify-end space-x-2 pt-4">
-              <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-              <Button type="submit">Update Teacher</Button>
-            </div>
-          )}
-        </form>
+        {!showPassword && (
+          <DialogFooter className="form-action-bar shrink-0 gap-2 px-6 py-4">
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="button" variant="primaryAction" onClick={() => void handleUpdateClick()}>Update Teacher</Button>
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   );

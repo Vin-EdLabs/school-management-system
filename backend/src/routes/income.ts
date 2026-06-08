@@ -3,8 +3,19 @@ import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
+import { getIO } from '../socket.js';
+import { writeAuditLog } from '../services/auditService.js';
 
 const router = express.Router();
+
+const emitTenantDataChanged = (tenantId: number, entity: string, action: 'created' | 'updated' | 'deleted') => {
+  try {
+    const io = getIO();
+    io.to(`tenant:${tenantId}`).emit('tenant-data-changed', { tenantId, entity, action, at: Date.now() });
+  } catch {
+    // Socket server may be unavailable in some non-realtime contexts.
+  }
+};
 
 router.use(authenticate);
 router.use(requireTenant);
@@ -99,11 +110,20 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
       ]
     );
     
-    // Log creation
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'CREATE', 'INCOME', result.rows[0].id]
-    );
+    const row = result.rows[0];
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'INCOME_CREATE',
+      entityType: 'INCOME',
+      entityId: row.id,
+      module: 'finance',
+      status: 'success',
+      summary: `Income "${source}" created — GHS ${amount}`,
+      details: { income_id: row.id, source, amount, income_date },
+    });
+    emitTenantDataChanged(tenantId, 'income', 'created');
     
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -149,11 +169,18 @@ router.put('/:id', requireRole('super-admin', 'administrator', 'finance'), async
       return res.status(404).json({ error: 'Income record not found' });
     }
     
-    // Log update
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'UPDATE', 'INCOME', parseInt(id)]
-    );
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'INCOME_UPDATE',
+      entityType: 'INCOME',
+      entityId: parseInt(id, 10),
+      module: 'finance',
+      status: 'success',
+      summary: `Income #${id} updated`,
+    });
+    emitTenantDataChanged(tenantId, 'income', 'updated');
     
     res.json(result.rows[0]);
   } catch (error) {
@@ -177,11 +204,18 @@ router.delete('/:id', requireRole('super-admin', 'administrator', 'finance'), as
       return res.status(404).json({ error: 'Income record not found' });
     }
     
-    // Log deletion
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'DELETE', 'INCOME', parseInt(id)]
-    );
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'INCOME_DELETE',
+      entityType: 'INCOME',
+      entityId: parseInt(id, 10),
+      module: 'finance',
+      status: 'success',
+      summary: `Income #${id} deleted`,
+    });
+    emitTenantDataChanged(tenantId, 'income', 'deleted');
     
     res.json({ message: 'Income record deleted successfully' });
   } catch (error) {

@@ -16,6 +16,15 @@ interface TeacherClass {
   student_count: string;
 }
 
+const resolvePhotoUrl = (photoUrl?: string | null) => {
+  if (!photoUrl) return '';
+  if (/^https?:\/\//i.test(photoUrl) || photoUrl.startsWith('data:')) return photoUrl;
+  const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+  const origin = apiBase.replace(/\/api\/?$/, '');
+  const normalized = photoUrl.startsWith('/') ? photoUrl : `/${photoUrl}`;
+  return `${origin}${normalized}`;
+};
+
 const TeacherClassesModule = () => {
   const { schoolId } = useSchool();
   const { students, classes } = useData();
@@ -77,19 +86,23 @@ const TeacherClassesModule = () => {
     : [];
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+    <div className="px-4 py-5 sm:p-6 space-y-5 sm:space-y-6 max-w-7xl mx-auto w-full">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-3 min-w-0">
+          <div className="w-11 h-11 shrink-0 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
             <BookOpen className="w-6 h-6 text-white" />
           </div>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-800">{isAdminViewer ? 'All Classes' : 'My Classes'}</h1>
-            <p className="text-gray-600">{isAdminViewer ? 'View all classes and their students (read-only)' : 'View your assigned classes and students'}</p>
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-800 dark:text-gray-100 leading-tight">
+              {isAdminViewer ? 'All Classes' : 'My Classes'}
+            </h1>
+            <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-1">
+              {isAdminViewer ? 'All classes and students (read-only)' : 'Your assigned classes and students'}
+            </p>
           </div>
         </div>
         {isAdminViewer && (
-          <Badge variant="secondary" className="flex items-center gap-1 text-blue-700 bg-blue-50 border border-blue-200">
+          <Badge variant="secondary" className="w-fit flex items-center gap-1 text-blue-700 bg-blue-50 border border-blue-200 shrink-0">
             <Eye className="w-3 h-3" /> Read Only
           </Badge>
         )}
@@ -116,7 +129,7 @@ const TeacherClassesModule = () => {
               {teacherClasses.map((cls) => (
                 <div
                   key={cls.id}
-                  className={`flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer ${selectedClassId === String(cls.id) ? 'ring-2 ring-blue-500' : ''}`}
+                  className={`flex items-center justify-between min-h-[56px] p-3 sm:p-4 bg-gray-50 dark:bg-gray-900/40 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-900/60 cursor-pointer touch-manipulation active:scale-[0.99] transition-transform ${selectedClassId === String(cls.id) ? 'ring-2 ring-blue-500' : ''}`}
                   onClick={() => setSelectedClassId(String(cls.id))}
                 >
                   <div>
@@ -150,11 +163,20 @@ const TeacherClassesModule = () => {
                 <p className="text-gray-500">No students are assigned to this class yet.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                 {classStudents.map((student) => (
-                  <div key={student.id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                    <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
-                      {student.firstName.charAt(0)}{student.lastName.charAt(0)}
+                  <div key={student.id} className="flex items-center space-x-3 min-h-[52px] p-3 bg-gray-50 dark:bg-gray-900/40 rounded-xl">
+                    <div className="w-8 h-8 rounded-full overflow-hidden bg-blue-500 flex items-center justify-center text-white text-sm font-bold">
+                      {student.passportPhotoUrl ? (
+                        <img
+                          src={resolvePhotoUrl(student.passportPhotoUrl)}
+                          alt={`${student.firstName} ${student.lastName}`}
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <>{student.firstName.charAt(0)}{student.lastName.charAt(0)}</>
+                      )}
                     </div>
                     <div>
                       <p className="font-medium text-gray-900">{student.firstName} {student.lastName}</p>

@@ -3,6 +3,7 @@ import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest, requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { calculateFeeBalance } from '../services/financeCalculationService.js';
+import { beneficiaryAdjustedFee } from '../utils/beneficiaryFee.js';
 
 const router = express.Router();
 
@@ -47,7 +48,7 @@ router.get('/arrears-balances', async (req: AuthRequest, res) => {
 
     const arrearsBalances: Record<string, number> = {};
     for (const row of arrearsResult.rows) {
-      arrearsBalances[String(row.student_id)] = parseFloat(row.arrears) || 0;
+      arrearsBalances[String(row.student_id)] = Math.max(0, parseFloat(row.arrears) || 0);
     }
     return res.json(arrearsBalances);
   } catch (e) {
@@ -85,16 +86,29 @@ async function computeStudentBalance(
 ) {
   const termMatch = resolveTermForMatch(term, academicYear) || term;
   if (!termMatch || !classId) {
-    return calculateFeeBalance(0, 0);
+    return { ...calculateFeeBalance(0, 0), standardFees: 0, discountAmount: 0 };
   }
 
+  // 1. Fetch Student Beneficiary Details
+  const studentRes = await query(
+    `SELECT is_beneficiary, discount_type, discount_value FROM students 
+     WHERE id = $1 AND tenant_id = $2`,
+    [studentId, tenantId]
+  );
+  const student = studentRes.rows[0];
+
+  // 2. Fetch Base Fees
   const feeRes = await query(
     `SELECT COALESCE(SUM(amount), 0) as total FROM fee_structures
      WHERE tenant_id = $1 AND class_id = $2 AND (term = $3 OR term LIKE $4)`,
     [tenantId, classId, termMatch, `${termMatch}%`]
   );
-  const totalFees = parseFloat(feeRes.rows[0]?.total || '0');
+  const standardFees = parseFloat(feeRes.rows[0]?.total || '0');
+  const adjusted = beneficiaryAdjustedFee(standardFees, student);
+  const totalFees = adjusted.totalFees;
+  const discountAmount = adjusted.discountAmount;
 
+  // 4. Fetch Payments
   const paidRes = await query(
     `SELECT COALESCE(SUM(amount), 0) as total FROM payments
      WHERE tenant_id = $1 AND student_id = $2 AND (term = $3 OR term LIKE $4)`,
@@ -102,15 +116,20 @@ async function computeStudentBalance(
   );
   const totalPaid = parseFloat(paidRes.rows[0]?.total || '0');
 
-  // Fetch arrears from term_arrears (previously calculated by switchTerm service)
+  // 5. Fetch Arrears
   const arrearsRes = await query(
     `SELECT COALESCE(SUM(amount), 0) as total FROM term_arrears
      WHERE tenant_id = $1 AND student_id = $2 AND (current_term = $3 OR current_term = $4)`,
     [tenantId, studentId, termMatch, term]
   );
-  const arrears = parseFloat(arrearsRes.rows[0]?.total || '0');
+  const arrears = Math.max(0, parseFloat(arrearsRes.rows[0]?.total || '0'));
 
-  return calculateFeeBalance(totalFees, totalPaid, arrears);
+  const balance = calculateFeeBalance(totalFees, totalPaid, arrears);
+  return {
+    ...balance,
+    standardFees,
+    discountAmount
+  };
 }
 
 // Calculate student fees - all dynamic, no stored balances
@@ -163,11 +182,15 @@ router.get('/student/:studentId', async (req: AuthRequest, res) => {
       },
       feeCalculation: {
         totalFees: balance.totalFees,
+        standardFees: (balance as any).standardFees,
+        discountAmount: (balance as any).discountAmount,
         totalPaid: balance.totalPaid,
         outstanding: balance.outstanding,
         arrears: balance.arrears,
         credit: balance.credit,
         status: balance.status,
+        isBeneficiary: student.is_beneficiary,
+        beneficiaryType: student.beneficiary_type,
         term,
         academicYear,
       },
@@ -324,108 +347,9 @@ router.get('/class-report', async (req: AuthRequest, res) => {
 router.post('/refresh-arrears', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
-
-    // 1. Get current active term from settings
-    const settingsResult = await query(
-      'SELECT current_term, current_year FROM school_settings WHERE tenant_id = $1',
-      [tenantId]
-    );
-    if (settingsResult.rows.length === 0 || !settingsResult.rows[0].current_term) {
-      return res.status(400).json({ error: 'Active term not set' });
-    }
-    const { current_term, current_year } = settingsResult.rows[0];
-    const currentYearNum = parseInt(current_year, 10);
-    const currentTermNum = parseInt(current_term.match(/Term\s*(\d)/i)?.[1] || '1', 10);
-
-    // Standardize current term strings for exclusion
-    const termOnly = current_term.replace(/\s+\d{4}$/, '').trim();
-    const fullTerm = (current_year && !current_term.includes(current_year))
-      ? `${current_term} ${current_year}`.trim()
-      : current_term;
-
-    // 2. Fetch all students to process
-    const studentsRes = await query(
-      `SELECT id FROM students WHERE tenant_id = $1`,
-      [tenantId]
-    );
-
-    let updatedCount = 0;
-    for (const studentRow of studentsRes.rows) {
-      const studentId = studentRow.id;
-
-      // A. Calculate Legacy Arrears (from fee_structures and payments)
-      // Filter out current term (and variants) and any future terms.
-      const legacyResult = await query(
-        `SELECT term, COALESCE(amount, 0) as amount, 'fee' as type 
-         FROM fee_structures fs
-         JOIN students s ON s.id = $1
-         WHERE fs.tenant_id = $2 AND fs.class_id = s.class_assigned_id
-           AND fs.term NOT IN ($3, $4, $5)
-         UNION ALL
-         SELECT term, -COALESCE(amount, 0) as amount, 'payment' as type 
-         FROM payments
-         WHERE tenant_id = $2 AND student_id = $1
-           AND term NOT IN ($3, $4, $5)`,
-        [studentId, tenantId, fullTerm, current_term, termOnly]
-      );
-
-      let legacyArrears = 0;
-      for (const row of legacyResult.rows) {
-        const termStr = row.term || '';
-        const match = termStr.match(/\b(20\d{2})\b/);
-        const year = match ? parseInt(match[1], 10) : currentYearNum;
-        const rowTermNum = parseInt(termStr.match(/Term\s*(\d)/i)?.[1] || '0', 10);
-
-        // Include only if Year is older, OR if same year but Term Number is older
-        if (year < currentYearNum || (year === currentYearNum && rowTermNum < currentTermNum)) {
-          legacyArrears += parseFloat(row.amount);
-        }
-      }
-
-      // B. Calculate Ledger Arrears (if any)
-      // Exclude the current term by name and then filter by hierarchy (past terms only)
-      const ledgerArrearsRes = await query(
-        `SELECT (COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0))::numeric AS balance
-         FROM student_ledger sl
-         JOIN terms t ON sl.term_id = t.id
-         JOIN academic_years ay ON t.academic_year_id = ay.id
-         WHERE sl.tenant_id = $1 AND sl.student_id = $2
-           AND t.id NOT IN (
-             SELECT id FROM terms WHERE tenant_id = $1 AND (name = $3 OR name = $4 OR name = $5)
-           )
-           AND (
-             CAST(ay.name AS INTEGER) < $6
-             OR (CAST(ay.name AS INTEGER) = $6 AND (
-                -- Compare term name numerically if possible
-                CAST(substring(t.name from 'Term\s*(\d)') AS INTEGER) < $7
-             ))
-           )`,
-        [tenantId, studentId, fullTerm, current_term, termOnly, currentYearNum, currentTermNum]
-      );
-      const ledgerArrears = parseFloat(ledgerArrearsRes.rows[0].balance) || 0;
-
-      const totalArrears = legacyArrears + ledgerArrears;
-
-      // Only insert if there's actual debt (or credit) to track
-      if (totalArrears !== 0) {
-        await query(
-          `INSERT INTO term_arrears (tenant_id, student_id, current_term, amount)
-           VALUES ($1, $2, $3, $4)
-           ON CONFLICT (tenant_id, student_id, current_term) 
-           DO UPDATE SET amount = EXCLUDED.amount`,
-          [tenantId, studentId, fullTerm, totalArrears]
-        );
-        updatedCount++;
-      } else {
-        // If arrears is 0, make sure we don't have a stale record
-        await query(
-          `DELETE FROM term_arrears 
-           WHERE tenant_id = $1 AND student_id = $2 AND current_term = $3`,
-          [tenantId, studentId, fullTerm]
-        );
-      }
-    }
-    res.json({ message: 'Arrears refreshed successfully', studentsUpdated: updatedCount });
+    const { refreshArrearsForTenant } = await import('../services/arrearsService.js');
+    const result = await refreshArrearsForTenant(tenantId);
+    res.json({ message: 'Arrears refreshed successfully', ...result });
   } catch (error) {
     console.error('Refresh arrears error:', error);
     res.status(500).json({ error: 'Failed to refresh arrears' });

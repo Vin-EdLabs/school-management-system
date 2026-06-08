@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { User, Mail, Phone, MapPin, Calendar, GraduationCap, Briefcase, DollarSign } from 'lucide-react';
+import { formatDisplayDate } from '../../utils/dateFormat';
 
 interface Teacher {
   id: string;
@@ -37,7 +38,7 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90dvh]">
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2">
             <User className="w-5 h-5" />
@@ -65,7 +66,7 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
               <div>
                 <label className="text-sm font-medium text-gray-500">Date of Birth</label>
                 <p className="text-base">
-                  {teacher.dateOfBirth ? new Date(teacher.dateOfBirth).toLocaleDateString() : 'Not provided'}
+                  {formatDisplayDate(teacher.dateOfBirth, 'Not provided')}
                 </p>
               </div>
             </div>
@@ -127,7 +128,7 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
                 <Calendar className="w-4 h-4 text-gray-500" />
                 <div>
                   <label className="text-sm font-medium text-gray-500">Employment Date</label>
-                  <p className="text-base">{new Date(teacher.employmentDate).toLocaleDateString()}</p>
+                  <p className="text-base">{formatDisplayDate(teacher.employmentDate)}</p>
                 </div>
               </div>
               <div className="flex items-center space-x-2">

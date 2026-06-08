@@ -3,8 +3,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { User, Calendar, Phone, MapPin, School, Users, FileText, CreditCard } from 'lucide-react';
+import { User, Calendar, Phone, MapPin, School, Users, FileText, CreditCard, GraduationCap as ScholarshipIcon } from 'lucide-react';
 import { resolveLogoUrl } from '../../services/tenantService';
+import { formatDisplayDate } from '../../utils/dateFormat';
 
 interface Student {
   id: string;
@@ -25,6 +26,11 @@ interface Student {
   dateOfAdmission: string;
   notes: string;
   passportPhotoUrl?: string;
+  isBeneficiary?: boolean;
+  beneficiaryType?: string;
+  discountType?: 'percentage' | 'fixed';
+  discountValue?: number;
+  beneficiaryNotes?: string;
 }
 
 interface Payment {
@@ -73,7 +79,7 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[85dvh]">
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2">
             <User className="w-5 h-5" />
@@ -131,6 +137,20 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
                   </div>
                 </div>
               </div>
+              {student.isBeneficiary && (
+                <div className="mt-4 pt-4 border-t border-indigo-100 flex items-center gap-3">
+                  <ScholarshipIcon className="w-5 h-5 text-indigo-600" />
+                  <div>
+                    <span className="text-sm font-bold text-indigo-900 uppercase tracking-wider">Beneficiary:</span>
+                    <span className="ml-2 text-sm font-medium text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
+                      {student.beneficiaryType}
+                    </span>
+                    <span className="ml-2 text-sm font-black text-indigo-600">
+                      ({student.discountType === 'percentage' ? `${student.discountValue}% Off` : `GHS ${student.discountValue?.toLocaleString()} Discount`})
+                    </span>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -159,7 +179,7 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
                       <label className="text-sm font-medium text-gray-500">Date of Birth</label>
                       <div className="flex items-center space-x-2">
                         <Calendar className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm">{new Date(student.dateOfBirth).toLocaleDateString()}</span>
+                        <span className="text-sm">{formatDisplayDate(student.dateOfBirth)}</span>
                       </div>
                     </div>
                     <div>
@@ -188,7 +208,7 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
                     <label className="text-sm font-medium text-gray-500">Date of Admission</label>
                     <div className="flex items-center space-x-2">
                       <Calendar className="w-4 h-4 text-gray-400" />
-                      <span className="text-sm">{new Date(student.dateOfAdmission).toLocaleDateString()}</span>
+                      <span className="text-sm">{formatDisplayDate(student.dateOfAdmission)}</span>
                     </div>
                   </div>
                   <div>
@@ -252,6 +272,42 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
             </CardContent>
           </Card>
 
+          {/* Beneficiary Details */}
+          {student.isBeneficiary && (
+            <Card className="border-indigo-200 bg-indigo-50/30">
+              <CardContent className="pt-6">
+                <div className="flex items-center space-x-2 mb-4">
+                  <ScholarshipIcon className="w-4 h-4 text-indigo-600" />
+                  <h3 className="font-semibold text-indigo-900">Beneficiary & Scholarship Details</h3>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-xs font-bold text-indigo-400 uppercase tracking-widest">Scholarship Type</label>
+                      <p className="font-bold text-slate-800">{student.beneficiaryType}</p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-indigo-400 uppercase tracking-widest">Discount applied</label>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                          {student.discountType === 'percentage' ? `${student.discountValue}%` : `GHS ${student.discountValue?.toLocaleString()}`}
+                        </Badge>
+                        <span className="text-xs text-slate-500 font-medium">({student.discountType === 'percentage' ? 'Percentage based' : 'Fixed amount deduction'})</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-indigo-400 uppercase tracking-widest">Scholarship Notes</label>
+                    <div className="mt-1 p-3 bg-white rounded-lg border border-indigo-100 text-sm text-slate-600 italic">
+                      {student.beneficiaryNotes || 'No specific notes recorded for this beneficiary status.'}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Payment History */}
           {paymentsWithBalance.length > 0 && (
             <Card>
@@ -274,7 +330,7 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
                     <TableBody>
                       {paymentsWithBalance.map((p) => (
                         <TableRow key={p.id}>
-                          <TableCell>{new Date(p.date).toLocaleDateString()}</TableCell>
+                          <TableCell>{formatDisplayDate(p.date)}</TableCell>
                           <TableCell className="font-medium text-green-600">GHS {p.amount.toLocaleString()}</TableCell>
                           <TableCell>{p.paymentMethod}</TableCell>
                           <TableCell className="font-mono text-sm">{p.receiptNumber || '-'}</TableCell>

@@ -16,14 +16,16 @@ export interface TenantBranding {
 
 export function resolveLogoUrl(logoUrl: string | null): string | null {
   if (!logoUrl) return null;
-  if (logoUrl.startsWith('http')) return logoUrl;
+  if (logoUrl.startsWith('http') || logoUrl.startsWith('data:')) return logoUrl;
   return `${API_ORIGIN}${logoUrl.startsWith('/') ? '' : '/'}${logoUrl}`;
 }
 
 export async function fetchTenantById(id: number): Promise<TenantBranding | null> {
   try {
     const res = await fetch(`${API_BASE}/tenant/by-id/${id}`);
-    const data = await res.json();
+    const text = await res.text();
+    if (!res.ok) return null;
+    const data = text.trim() ? (JSON.parse(text) as { tenant?: TenantBranding }) : {};
     return data?.tenant ?? null;
   } catch {
     return null;
@@ -32,8 +34,10 @@ export async function fetchTenantById(id: number): Promise<TenantBranding | null
 
 export async function fetchTenantBySlug(slug: string): Promise<TenantBranding | null> {
   try {
-    const res = await fetch(`${API_BASE}/tenant/by-slug/${slug}`);
-    const data = await res.json();
+    const res = await fetch(`${API_BASE}/tenant/by-slug/${encodeURIComponent(slug)}`);
+    const text = await res.text();
+    if (!res.ok) return null;
+    const data = text.trim() ? (JSON.parse(text) as { tenant?: TenantBranding }) : {};
     return data?.tenant ?? null;
   } catch {
     return null;

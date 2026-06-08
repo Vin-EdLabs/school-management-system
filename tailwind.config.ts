@@ -18,6 +18,20 @@ export default {
 			}
 		},
 		extend: {
+			/* Dynamic viewport: keyboard-safe on iOS/Android PWA */
+			minHeight: {
+				screen: '100dvh',
+			},
+			height: {
+				screen: '100dvh',
+			},
+			maxHeight: {
+				screen: '100dvh',
+			},
+			fontFamily: {
+				sans: ['Inter', 'sans-serif'],
+				outfit: ['Outfit', 'sans-serif'],
+			},
 			colors: {
 				border: 'hsl(var(--border))',
 				input: 'hsl(var(--input))',

@@ -7,23 +7,26 @@ import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
+import { getIO } from '../socket.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const uploadsDir = path.join(__dirname, '../../uploads');
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-    cb(null, uploadsDir);
-  },
-  filename: (req, file, cb) => {
-    cb(null, 'student-' + Date.now() + '-' + Math.round(Math.random() * 1E9) + path.extname(file.originalname));
-  },
-});
-const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
+// Configure multer for memory storage (Base64)
+const storage = multer.memoryStorage();
+const upload = multer({ storage, limits: { fileSize: 2 * 1024 * 1024 } }); // 2MB limit for Base64
 
 const router = express.Router();
+
+const emitTenantDataChanged = (tenantId: number, entity: string, action: 'created' | 'updated' | 'deleted') => {
+  try {
+    const io = getIO();
+    io.to(`tenant:${tenantId}`).emit('tenant-data-changed', { tenantId, entity, action, at: Date.now() });
+  } catch {
+    // Socket server may be unavailable in some non-realtime contexts.
+  }
+};
 
 router.use(authenticate);
 router.use(requireTenant);
@@ -125,9 +128,11 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
         tenant_id, first_name, last_name, gender, date_of_birth, nationality,
         student_id, admission_number, class_assigned_id, guardian_name,
         guardian_contact, home_address, number_of_siblings, names_of_siblings,
-        previous_school, date_of_admission, notes, passport_photo_url
+        previous_school, date_of_admission, notes, passport_photo_url,
+        is_beneficiary, beneficiary_type, discount_type, discount_value, beneficiary_notes
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
+        $19, $20, $21, $22, $23
       ) RETURNING *`,
       [
         tenantId,
@@ -148,6 +153,11 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
         studentData.date_of_admission || null,
         studentData.notes || null,
         studentData.passport_photo_url || null,
+        studentData.is_beneficiary || false,
+        studentData.beneficiary_type || null,
+        studentData.discount_type || null,
+        studentData.discount_value || 0,
+        studentData.beneficiary_notes || null,
       ]
     );
     
@@ -156,6 +166,7 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
       [tenantId, req.user!.id, 'CREATE', 'STUDENT', result.rows[0].id]
     );
+    emitTenantDataChanged(tenantId, 'student', 'created');
     
     res.status(201).json(result.rows[0]);
   } catch (error: any) {
@@ -173,10 +184,13 @@ router.post('/:id/photo', requireRole('super-admin', 'administrator'), upload.si
     const tenantId = req.user!.tenantId!;
     const { id } = req.params;
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-    const photoUrl = `/uploads/${req.file.filename}`;
+    
+    // Convert to Base64
+    const base64Image = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+    
     const result = await query(
       'UPDATE students SET passport_photo_url = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND tenant_id = $3 RETURNING *',
-      [photoUrl, id, tenantId]
+      [base64Image, id, tenantId]
     );
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Student not found' });
@@ -203,7 +217,9 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
       'first_name', 'last_name', 'gender', 'date_of_birth', 'nationality',
       'class_assigned_id', 'guardian_name', 'guardian_contact', 'home_address',
       'number_of_siblings', 'names_of_siblings', 'previous_school',
-      'date_of_admission', 'notes', 'passport_photo_url'
+      'date_of_admission', 'notes', 'passport_photo_url',
+      'is_beneficiary', 'beneficiary_type', 'discount_type', 'discount_value', 'beneficiary_notes',
+      'enrollment_status',
     ];
     
     for (const field of allowedFields) {
@@ -235,6 +251,7 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
       [tenantId, req.user!.id, 'UPDATE', 'STUDENT', parseInt(id)]
     );
+    emitTenantDataChanged(tenantId, 'student', 'updated');
     
     res.json(result.rows[0]);
   } catch (error) {
@@ -263,6 +280,7 @@ router.delete('/:id', requireRole('super-admin', 'administrator'), async (req: A
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
       [tenantId, req.user!.id, 'DELETE', 'STUDENT', parseInt(id)]
     );
+    emitTenantDataChanged(tenantId, 'student', 'deleted');
     
     res.json({ message: 'Student deleted successfully' });
   } catch (error) {

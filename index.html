@@ -21,8 +21,10 @@
       params.set('kind', kind);
       var schoolMatch = path.match(/^\/school\/(\d+)/);
       var portalMatch = path.match(/^\/portal\/(\d+)/);
+      var schMatch = path.match(/^\/sch\/([^/]+)/);
       if (schoolMatch) params.set('tenantId', schoolMatch[1]);
       if (portalMatch) params.set('tenantId', portalMatch[1]);
+      if (schMatch) params.set('slug', schMatch[1]);
 
       var hostParts = host.toLowerCase().replace(/^www\./, '').split('.');
       var reserved = ['www', 'api', 'app', 'admin', 'dev', 'staging', 'scholarnerve', 'portal', 'school'];
@@ -38,13 +40,13 @@
 
       var manifest = document.createElement('link');
       manifest.rel = 'manifest';
-      manifest.href = '/manifest.json?' + params.toString();
+      manifest.href = '/api/pwa/manifest?' + params.toString();
       document.head.appendChild(manifest);
 
-      var isTenantHost = !!slugFromHost || schoolMatch || portalMatch;
+      var isTenantHost = !!slugFromHost || schoolMatch || portalMatch || schMatch;
 
       if (isTenantHost) {
-        var logoUrl = location.origin + '/pwa-icon-192.png?' + params.toString();
+        var logoUrl = location.origin + '/api/pwa/logo?' + params.toString() + '&size=192';
         function upsertIcon(rel, sizes, type) {
           var selector = 'link[rel="' + rel + '"]' + (sizes ? '[sizes="' + sizes + '"]' : '');
           var el = document.querySelector(selector);
@@ -85,8 +87,28 @@
         document.head.appendChild(icon16);
       }
 
+      var isDevHost = host === 'localhost' || host === '127.0.0.1' ||
+        host.endsWith('.localhost') || host.endsWith('.lvh.me');
+
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js').catch(function () {});
+        if (isDevHost) {
+          // Dev: a cached service worker poisons Vite's module graph (stale
+          // optimized-dep chunks -> duplicate React / hook errors). Tear it down.
+          var hadController = !!navigator.serviceWorker.controller;
+          navigator.serviceWorker.getRegistrations().then(function (regs) {
+            return Promise.all(regs.map(function (r) { return r.unregister(); }));
+          }).then(function () {
+            if (window.caches && caches.keys) {
+              return caches.keys().then(function (keys) {
+                return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+              });
+            }
+          }).then(function () {
+            if (hadController) location.reload();
+          }).catch(function () {});
+        } else {
+          navigator.serviceWorker.register('/sw.js').catch(function () {});
+        }
       }
     })();
   </script>

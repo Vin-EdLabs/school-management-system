@@ -1,13 +1,12 @@
 /* ScholarNerve service worker — caching + push. Bump CACHE_VERSION on breaking cache changes. */
-const CACHE_VERSION = '2026-06-08-v10';
+const CACHE_VERSION = '2026-06-08-v12';
 const CACHE_NAME = `scholarnerve-app-${CACHE_VERSION}`;
-const APP_SHELL = ['/', '/index.html', '/site.webmanifest'];
+const APP_SHELL = ['/', '/index.html'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL).catch(() => undefined))
   );
-  // Do not skipWaiting here — the app controls when to activate (Update now / background).
 });
 
 self.addEventListener('activate', (event) => {
@@ -28,7 +27,28 @@ function isNavigationRequest(request) {
   );
 }
 
+function isViteDevPath(url) {
+  return (
+    url.pathname.startsWith('/node_modules/') ||
+    url.pathname.startsWith('/@vite/') ||
+    url.pathname.startsWith('/@react-refresh') ||
+    url.pathname.startsWith('/@fs/') ||
+    url.pathname.startsWith('/@id/') ||
+    url.pathname.startsWith('/.vite/')
+  );
+}
+
 function isStaticAsset(url) {
+  if (
+    url.pathname === '/manifest.json' ||
+    url.pathname === '/site.webmanifest' ||
+    url.pathname.startsWith('/pwa-icon-')
+  ) {
+    return false;
+  }
+  if (isViteDevPath(url)) {
+    return false;
+  }
   return (
     /\.(?:js|mjs|css|woff2?|ttf|eot|png|jpg|jpeg|webp|gif|svg|ico|json|map)$/i.test(url.pathname) ||
     url.pathname.startsWith('/assets/')
@@ -74,33 +94,89 @@ function isTenantSubdomainHost(host) {
   return parts.length >= 3;
 }
 
+function hasTenantContext(url) {
+  return (
+    isTenantSubdomainHost(self.location.hostname) ||
+    url.search.includes('slug=') ||
+    url.search.includes('tenantId=')
+  );
+}
+
+function buildLogoProxyUrl(url) {
+  const apiBase = apiBaseForLocation();
+  const params = new URLSearchParams(url.search);
+  if (!params.has('host')) {
+    params.set('host', self.location.hostname);
+  }
+  if (url.pathname === '/pwa-icon-512.png') {
+    params.set('size', '512');
+  } else if (url.pathname === '/pwa-icon-192.png') {
+    params.set('size', '192');
+  }
+  return `${apiBase}/pwa/logo?${params.toString()}`;
+}
+
+function fetchTenantLogo(url) {
+  const logoUrl = buildLogoProxyUrl(url);
+  console.log('[PWA SW] Fetching tenant logo:', logoUrl);
+  return fetch(logoUrl)
+    .then((response) => {
+      if (response.ok) return response;
+      console.warn('[PWA SW] Logo proxy failed, using fallback icon');
+      const fallback =
+        url.pathname === '/pwa-icon-512.png'
+          ? '/android-chrome-512x512.png'
+          : '/android-chrome-192x192.png';
+      return fetch(fallback);
+    })
+    .catch((err) => {
+      console.error('[PWA SW] Logo proxy error:', err);
+      const fallback =
+        url.pathname === '/pwa-icon-512.png'
+          ? '/android-chrome-512x512.png'
+          : '/android-chrome-192x192.png';
+      return fetch(fallback);
+    });
+}
+
+function appendIconQueryParams(iconSrc, manifestParams) {
+  if (!iconSrc || !manifestParams) return iconSrc;
+  try {
+    const iconUrl = new URL(iconSrc, self.location.origin);
+    if (!iconUrl.pathname.startsWith('/pwa-icon-')) return iconSrc;
+    manifestParams.forEach((value, key) => {
+      if (!iconUrl.searchParams.has(key)) {
+        iconUrl.searchParams.set(key, value);
+      }
+    });
+    return iconUrl.toString();
+  } catch {
+    return iconSrc;
+  }
+}
+
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
-  // Dynamic manifest from API (same-origin path proxied for WebAPK compliance).
+  // Vite dev-server internals (deps, HMR client) must never be cached — stale
+  // optimized-dep chunks cause 404s after re-optimization. Always go network.
+  if (isViteDevPath(url)) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
   const isManifestRequest =
     url.pathname === '/manifest.json' ||
     url.pathname === '/site.webmanifest' ||
     url.pathname === '/api/pwa/manifest';
 
-  if (DYNAMIC_ICON_PATHS.has(url.pathname) && (isTenantSubdomainHost(self.location.hostname) || url.search.includes('slug=') || url.search.includes('tenantId='))) {
-    const apiBase = apiBaseForLocation();
-    const params = new URLSearchParams(url.search);
-    if (!params.has('host')) {
-      params.set('host', self.location.hostname);
-    }
-    event.respondWith(
-      fetch(`${apiBase}/pwa/logo?${params.toString()}`, { redirect: 'manual' })
-        .then((response) => {
-          if (response.type === 'opaqueredirect' || (response.status >= 300 && response.status < 400)) {
-            return fetch(event.request);
-          }
-          return response.ok ? response : fetch(event.request);
-        })
-        .catch(() => fetch(event.request))
-    );
+  const isPwaIcon =
+    url.pathname === '/pwa-icon-192.png' || url.pathname === '/pwa-icon-512.png';
+
+  if (isPwaIcon || (DYNAMIC_ICON_PATHS.has(url.pathname) && hasTenantContext(url))) {
+    event.respondWith(fetchTenantLogo(url));
     return;
   }
 
@@ -113,12 +189,19 @@ self.addEventListener('fetch', (event) => {
     const apiUrl = `${apiBase}/pwa/manifest?${params.toString()}`;
 
     event.respondWith(
-      fetch(apiUrl)
+      fetch(apiUrl, { cache: 'no-store' })
         .then((response) => {
           if (!response.ok) throw new Error('API manifest failed');
           return response.json();
         })
         .then((data) => {
+          console.log('[PWA SW] Dynamic manifest loaded', {
+            name: data.name,
+            startUrl: data.start_url,
+            iconCount: Array.isArray(data.icons) ? data.icons.length : 0,
+            firstIcon: data.icons?.[0]?.src,
+          });
+
           const origin = self.location.origin;
           const apiOrigin = apiBase.replace(/\/api$/, '');
 
@@ -142,6 +225,7 @@ self.addEventListener('fetch', (event) => {
                   icon.src = origin + icon.src;
                 }
               }
+              icon.src = appendIconQueryParams(icon.src, params);
               return icon;
             });
           }
@@ -154,8 +238,8 @@ self.addEventListener('fetch', (event) => {
           });
         })
         .catch((err) => {
-          console.error('Dynamic manifest failed:', err);
-          return fetch('/site.webmanifest');
+          console.error('[PWA SW] Dynamic manifest failed:', err);
+          return fetch('/site.webmanifest', { cache: 'no-store' });
         })
     );
     return;
@@ -167,7 +251,6 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // HTML navigations: network-first to avoid stale app shell after deploy (prevents blank / broken bundles).
   if (isNavigationRequest(event.request)) {
     event.respondWith(
       fetch(event.request)
@@ -185,7 +268,6 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Hashed build assets: cache-first for speed offline; network fills cache on miss.
   if (isStaticAsset(url)) {
     event.respondWith(
       caches.match(event.request).then((cached) => {
@@ -204,7 +286,6 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Other same-origin GET: try cache then network.
   event.respondWith(
     caches.match(event.request).then((cached) => {
       const networkFetch = fetch(event.request)
@@ -302,6 +383,12 @@ self.addEventListener('message', (event) => {
     self.skipWaiting();
     return;
   }
+  if (data.type === 'INVALIDATE_PWA_CACHE') {
+    event.waitUntil(
+      caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+    );
+    return;
+  }
   if (data.type !== 'SET_BADGE_COUNT') return;
   const count = Number(data.count || 0);
   event.waitUntil(
@@ -311,4 +398,35 @@ self.addEventListener('message', (event) => {
       else if (self.registration.clearAppBadge) await self.registration.clearAppBadge();
     })()
   );
+});
+
+self.addEventListener('error', (event) => {
+  const apiBase = apiBaseForLocation();
+  fetch(`${apiBase}/system/errors/report`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: event.message || 'Service worker error',
+      stack: event.error?.stack || null,
+      source: 'service_worker',
+      endpoint: 'sw.js',
+      severity: 'critical',
+    }),
+  }).catch(() => undefined);
+});
+
+self.addEventListener('unhandledrejection', (event) => {
+  const reason = event.reason;
+  const apiBase = apiBaseForLocation();
+  fetch(`${apiBase}/system/errors/report`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: reason?.message || String(reason || 'Unhandled SW rejection'),
+      stack: reason?.stack || null,
+      source: 'service_worker',
+      endpoint: 'sw.js',
+      severity: 'critical',
+    }),
+  }).catch(() => undefined);
 });

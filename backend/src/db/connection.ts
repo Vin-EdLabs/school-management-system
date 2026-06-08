@@ -1398,6 +1398,29 @@ const runMigrations = async () => {
       }
     }
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS system_errors (
+        id SERIAL PRIMARY KEY,
+        message TEXT NOT NULL,
+        stack TEXT,
+        source VARCHAR(50) NOT NULL DEFAULT 'backend',
+        tenant_id INTEGER REFERENCES tenants(id) ON DELETE SET NULL,
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        endpoint VARCHAR(500),
+        action VARCHAR(500),
+        severity VARCHAR(20) NOT NULL DEFAULT 'warning',
+        status VARCHAR(20) NOT NULL DEFAULT 'new',
+        metadata JSONB DEFAULT '{}'::jsonb,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        resolved_at TIMESTAMP
+      )
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_system_errors_created_at ON system_errors(created_at DESC)`).catch(() => { });
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_system_errors_status ON system_errors(status)`).catch(() => { });
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_system_errors_tenant_id ON system_errors(tenant_id)`).catch(() => { });
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_system_errors_source ON system_errors(source)`).catch(() => { });
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_system_errors_severity ON system_errors(severity)`).catch(() => { });
+
     console.log('✅ Database migrations completed');
   } catch (error) {
     console.error('❌ Migration error:', error);

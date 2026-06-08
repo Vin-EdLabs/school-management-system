@@ -1,0 +1,64 @@
+# ============================================================================
+# ScholarNerve — Caddy reverse proxy (alternative to nginx.conf)
+#
+# Caddy auto-provisions TLS. For wildcard *.scholarnerve.com you MUST use a DNS
+# challenge (set up the DNS provider plugin + API token), because HTTP challenges
+# cannot issue wildcard certs.
+#
+# Serves the built frontend (Vite `dist/`) as a SPA and proxies /api, /uploads,
+# and /socket.io to the Node backend on :3001. This makes /api/pwa/manifest and
+# /api/pwa/logo real server-side resources on every school host — required so
+# Android (WebAPK) and iOS install each school with its own logo.
+#
+# Adjust before use:
+#   - the site label (domains)
+#   - root path to the built frontend
+#   - backend address (127.0.0.1:3001)
+#   - tls block: configure your DNS provider for the wildcard cert
+# ============================================================================
+
+scholarnerve.com, www.scholarnerve.com, *.scholarnerve.com {
+
+	# Wildcard TLS via DNS challenge (example uses Cloudflare; swap for yours).
+	# tls {
+	#   dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+	# }
+
+	encode gzip zstd
+
+	# Allow large logo / file uploads.
+	request_body {
+		max_size 50MB
+	}
+
+	# ---- API (includes /api/pwa/manifest and /api/pwa/logo) ----
+	handle /api/* {
+		reverse_proxy 127.0.0.1:3001
+	}
+
+	# ---- Socket.IO real-time endpoint ----
+	handle /socket.io/* {
+		reverse_proxy 127.0.0.1:3001
+	}
+
+	# ---- Uploaded files (tenant logos served by backend) ----
+	handle /uploads/* {
+		reverse_proxy 127.0.0.1:3001
+	}
+
+	# ---- Static frontend + SPA fallback ----
+	handle {
+		root * /var/www/scholarnerve/dist
+
+		# Never cache the service worker or index.html (pick up new deploys).
+		@noStore path /sw.js /index.html /
+		header @noStore Cache-Control "no-cache, no-store, must-revalidate"
+
+		# Hashed build assets can be cached forever.
+		@assets path /assets/*
+		header @assets Cache-Control "public, immutable, max-age=2592000"
+
+		try_files {path} /index.html
+		file_server
+	}
+}

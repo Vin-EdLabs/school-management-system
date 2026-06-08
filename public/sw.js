@@ -1,7 +1,14 @@
 /* ScholarNerve service worker — caching + push. Bump CACHE_VERSION on breaking cache changes. */
-const CACHE_VERSION = '2026-06-06-v7';
+const CACHE_VERSION = '2026-06-07-v18';
 const CACHE_NAME = `scholarnerve-app-${CACHE_VERSION}`;
 const APP_SHELL = ['/', '/index.html', '/site.webmanifest'];
+
+function getApiOrigin(hostname) {
+  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.lvh.me')) {
+    return 'http://localhost:3001';
+  }
+  return 'https://scholarnerve.com';
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -40,7 +47,33 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
+  // Intercept uploads and transparently route them to the backend API origin
+  if (url.pathname.startsWith('/uploads/')) {
+    const apiOrigin = getApiOrigin(url.hostname);
+    event.respondWith(fetch(`${apiOrigin}${url.pathname}${url.search}`));
+    return;
+  }
+
+  // Intercept PWA logo requests, cache them, and transparently route them to the backend API origin
+  if (url.pathname.startsWith('/api/pwa/logo/')) {
+    const apiOrigin = getApiOrigin(url.hostname);
+    event.respondWith(
+      caches.open(CACHE_NAME).then(async (cache) => {
+        const cachedResponse = await cache.match(event.request);
+        if (cachedResponse) return cachedResponse;
+        
+        const response = await fetch(`${apiOrigin}${url.pathname}${url.search}`);
+        if (response.ok) {
+          cache.put(event.request, response.clone());
+        }
+        return response;
+      })
+    );
+    return;
+  }
+
   // Dynamic manifest from API (same-origin path proxied / built).
+  // Replace lines 46-70 with:
   if (url.pathname === '/manifest.json' || url.pathname === '/site.webmanifest') {
     const apiBase =
       self.location.hostname === 'scholarnerve.com' ||
@@ -59,20 +92,29 @@ self.addEventListener('fetch', (event) => {
         })
         .then((data) => {
           const origin = self.location.origin;
-          // Use the API origin for assets if they are relative
-          const apiOrigin = apiBase.replace(/\/api$/, '');
 
-          if (data.start_url && data.start_url.startsWith('/')) {
+          // Make sure start_url and scope are absolute to the current frontend origin
+          if (data.start_url && !data.start_url.startsWith('http')) {
             data.start_url = origin + data.start_url;
           }
+          if (data.scope && !data.scope.startsWith('http')) {
+            data.scope = origin + data.scope;
+          }
 
+          // Fix icon URLs
           if (Array.isArray(data.icons)) {
             data.icons = data.icons.map(icon => {
-              if (icon.src && icon.src.startsWith('/') && !icon.src.startsWith('//')) {
-                if (icon.src.startsWith('/uploads/')) {
-                  icon.src = apiOrigin + icon.src;
-                } else {
-                  icon.src = origin + icon.src;
+              if (icon.src) {
+                if (icon.src.startsWith('/')) {
+                  // Relative paths for icons should point to the frontend origin
+                  icon.src = `${origin}${icon.src}`;
+                } else if (icon.src.includes('/api/pwa/logo/') || icon.src.includes('/uploads/')) {
+                  // Rewrite backend absolute URLs to same-origin URLs relative to the frontend domain
+                  const pathIndex = icon.src.indexOf('/api/pwa/logo/') !== -1 
+                    ? icon.src.indexOf('/api/pwa/logo/') 
+                    : icon.src.indexOf('/uploads/');
+                  const pathWithQuery = icon.src.substring(pathIndex);
+                  icon.src = `${origin}/${pathWithQuery.replace(/^\/+/, '')}`;
                 }
               }
               return icon;
@@ -83,7 +125,7 @@ self.addEventListener('fetch', (event) => {
             headers: { 'Content-Type': 'application/manifest+json' },
           });
         })
-        .catch(() => fetch('/site.webmanifest'))
+        .catch(() => caches.match('/site.webmanifest'))
     );
     return;
   }
@@ -164,8 +206,12 @@ self.addEventListener('push', (event) => {
   let icon = notif.icon || data.icon || payloadData.icon || '/android-chrome-192x192.png';
   let badge = notif.badge || data.badge || payloadData.badge || icon;
 
-  if (icon.startsWith('/')) icon = self.location.origin + icon;
-  if (badge.startsWith('/')) badge = self.location.origin + badge;
+  const apiOrigin = getApiOrigin(self.location.hostname);
+  if (icon.startsWith('/uploads/')) icon = apiOrigin + icon;
+  else if (icon.startsWith('/')) icon = self.location.origin + icon;
+
+  if (badge.startsWith('/uploads/')) badge = apiOrigin + badge;
+  else if (badge.startsWith('/')) badge = self.location.origin + badge;
 
   const url = payloadData.url || data.url || '/';
 

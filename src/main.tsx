@@ -32,12 +32,12 @@ function detectPwaKind(pathname: string): 'parent' | 'school' | 'super-admin' {
   if (/^\/super-admin(\/|$)/i.test(pathname)) return 'super-admin';
   if (/^\/portal(\/|$)/i.test(pathname)) return 'parent';
   if (/^\/(school|sch)(\/|$)/i.test(pathname)) return 'school';
-  
+
   // Root path `/` or other path on a tenant subdomain is the school portal
   if (detectTenantSlugFromHost()) {
     return 'school';
   }
-  
+
   return 'parent';
 }
 
@@ -92,6 +92,7 @@ async function bootstrapTenantBrandingAndManifest() {
       document.title = `${tenant.name} — ${portalLabel}`;
       const resolved = resolveLogoUrl(tenant.logo_url as string | null);
       if (resolved) {
+        // Apple touch icon
         let appleTouch = document.querySelector("link[rel='apple-touch-icon']") as HTMLLinkElement | null;
         if (!appleTouch) {
           appleTouch = document.createElement('link');
@@ -99,19 +100,31 @@ async function bootstrapTenantBrandingAndManifest() {
           document.head.appendChild(appleTouch);
         }
         appleTouch.href = resolved;
+
+        // Also set standard favicon
+        let favicon = document.querySelector("link[rel='icon']") as HTMLLinkElement | null;
+        if (!favicon) {
+          favicon = document.createElement('link');
+          favicon.rel = 'icon';
+          favicon.type = 'image/png';
+          document.head.appendChild(favicon);
+        }
+        favicon.href = resolved;
+
+        // Set shortcut icon for older browsers
+        let shortcutIcon = document.querySelector("link[rel='shortcut icon']") as HTMLLinkElement | null;
+        if (!shortcutIcon) {
+          shortcutIcon = document.createElement('link');
+          shortcutIcon.rel = 'shortcut icon';
+          document.head.appendChild(shortcutIcon);
+        }
+        shortcutIcon.href = resolved;
       }
     }
 
-    // Set the manifest URL directly to the API instead of using a Blob URL.
-    // Chrome/Android cannot generate a WebAPK from a blob: URL.
-    // Use a relative path that the Service Worker intercepts.
-    // This solves the 'Cross-Origin Manifest' security errors in Chrome.
-    const manifestParams = new URLSearchParams();
-    if (tenantId) manifestParams.set('tenantId', String(tenantId));
-    else if (slug) manifestParams.set('slug', slug);
-    manifestParams.set('kind', kind);
-    const manifestUrl = `/manifest.json?${manifestParams.toString()}`;
-    
+    // Use a relative path with query parameters that the Service Worker intercepts and forwards to the API.
+    const manifestUrl = `/manifest.json?kind=${kind}${slug ? `&slug=${slug}` : tenantId ? `&tenantId=${tenantId}` : ''}`;
+
     let link = document.querySelector("link[rel='manifest']") as HTMLLinkElement | null;
     if (!link) {
       link = document.createElement('link');

@@ -12,14 +12,21 @@ router.use(resolveTenant);
 
 const PWA_ICON_SIZES = ['128x128', '192x192', '256x256', '512x512'] as const;
 
+function pageOrigin(req: TenantRequest, clientHost: string): string {
+  const protocol = req.protocol || 'https';
+  const host = (isTenantSubdomainHost(clientHost) ? clientHost : req.get('host') || clientHost)
+    .split(':')[0];
+  return `${protocol}://${host}`;
+}
+
 function buildManifestIcons(
-  origin: string,
-  logoEndpointUrl: string | null,
+  pageOriginUrl: string,
+  hasTenantLogo: boolean,
   logoMime: string,
   fallbackIcon192: string,
   fallbackIcon512: string,
 ) {
-  if (!logoEndpointUrl) {
+  if (!hasTenantLogo) {
     return [
       { src: fallbackIcon192, sizes: '192x192', type: 'image/png', purpose: 'any' },
       { src: fallbackIcon192, sizes: '192x192', type: 'image/png', purpose: 'maskable' },
@@ -28,14 +35,20 @@ function buildManifestIcons(
     ];
   }
 
+  const icon192 = `${pageOriginUrl}/pwa-icon-192.png`;
+  const icon512 = `${pageOriginUrl}/pwa-icon-512.png`;
   const icons: Array<{ src: string; sizes: string; type: string; purpose: string }> = [];
+
   for (const size of PWA_ICON_SIZES) {
-    icons.push({ src: logoEndpointUrl, sizes: size, type: logoMime, purpose: 'any' });
+    const src = size === '512x512' ? icon512 : icon192;
+    icons.push({ src, sizes: size, type: logoMime, purpose: 'any' });
   }
+
   icons.push(
-    { src: logoEndpointUrl, sizes: '192x192', type: logoMime, purpose: 'maskable' },
-    { src: logoEndpointUrl, sizes: '512x512', type: logoMime, purpose: 'maskable' },
+    { src: icon192, sizes: '192x192', type: logoMime, purpose: 'maskable' },
+    { src: icon512, sizes: '512x512', type: logoMime, purpose: 'maskable' },
   );
+
   return icons;
 }
 
@@ -97,7 +110,7 @@ router.get('/manifest', async (req: TenantRequest, res) => {
     const logo = tenant?.logo_url || '';
     const tenantId = Number(tenant?.id || 0);
 
-    const origin = `${req.protocol}://${req.get('host')}`;
+    const origin = pageOrigin(req, clientHost);
 
     let startUrl = '/';
     let scope = '/';
@@ -134,21 +147,13 @@ router.get('/manifest', async (req: TenantRequest, res) => {
       return 'image/png';
     })();
 
-    const logoParams = new URLSearchParams();
-    if (tenant?.slug) {
-      logoParams.set('slug', tenant.slug);
-    } else if (req.query.tenantId) {
-      logoParams.set('tenantId', String(req.query.tenantId));
-    } else if (req.query.slug) {
-      logoParams.set('slug', String(req.query.slug));
-    }
-    if (req.query.host) {
-      logoParams.set('host', String(req.query.host));
-    }
-
-    const logoQueryStr = logoParams.toString() ? `?${logoParams.toString()}` : '';
-    const logoEndpointUrl = tenant?.logo_url ? `${origin}/api/pwa/logo${logoQueryStr}` : null;
-    const icons = buildManifestIcons(origin, logoEndpointUrl, logoMime, fallbackIcon192, fallbackIcon512);
+    const icons = buildManifestIcons(
+      origin,
+      Boolean(tenant?.logo_url),
+      logoMime,
+      fallbackIcon192,
+      fallbackIcon512,
+    );
 
     let description = `${baseName} parent portal`;
     if (kind === 'school') {

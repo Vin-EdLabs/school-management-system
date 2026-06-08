@@ -4,7 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate, useParams, Link } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useParams, Link, useLocation, useNavigate } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import { SocketProvider } from "./contexts/SocketContext";
 import { TeacherNotificationProvider } from "./contexts/TeacherNotificationContext";
@@ -19,7 +19,7 @@ import LandingPage from "./pages/LandingPage";
 import RegisterSchool from "./pages/RegisterSchool";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import { ParentPortalRoute } from "./pages/ParentPortal";
-import { detectTenantSlugFromHost, getSubdomainUrl } from "./utils/tenantHost";
+import { detectTenantSlugFromHost, getSubdomainUrl, normalizeLegacyPathOnSubdomain } from "./utils/tenantHost";
 import { PwaUpdateManager } from "@/components/pwa/PwaUpdateManager";
 import { BrandedLoadingScreen } from "@/components/common/BrandedLoading";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -30,6 +30,20 @@ const HostAwareLanding = () => {
   const slug = detectTenantSlugFromHost();
   if (slug) return <Navigate to="/" replace />; // Keep URL clean, let the root route render it
   return <LandingPage />;
+};
+
+const SubdomainPathNormalizer = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  React.useEffect(() => {
+    const target = normalizeLegacyPathOnSubdomain(location.pathname);
+    if (target && target !== location.pathname) {
+      navigate(`${target}${location.search}${location.hash}`, { replace: true });
+    }
+  }, [location.pathname, location.search, location.hash, navigate]);
+
+  return null;
 };
 
 const LegacySubdomainRedirect = () => {
@@ -48,23 +62,41 @@ const LegacySubdomainRedirect = () => {
 
 const LegacyPortalRedirect = () => {
   const { tenantId } = useParams<{ tenantId?: string }>();
-  
+  const [redirecting, setRedirecting] = React.useState(true);
+
   React.useEffect(() => {
-    // If tenantId is numeric, we can't redirect directly to subdomain without fetching the slug, 
-    // so we let the old path handle it. If it's a string (slug), we redirect.
-    if (tenantId && isNaN(Number(tenantId))) {
+    if (!tenantId) {
+      setRedirecting(false);
+      return;
+    }
+
+    if (isNaN(Number(tenantId))) {
       const targetBase = getSubdomainUrl(tenantId);
       const restOfPath = window.location.pathname.replace(new RegExp(`^/portal/${tenantId}`), '/portal');
       window.location.replace(`${targetBase}${restOfPath}${window.location.search}${window.location.hash}`);
+      return;
     }
+
+    const base = import.meta.env.VITE_API_BASE_URL || `${window.location.origin}/api`;
+    fetch(`${base}/tenant/by-id/${tenantId}`)
+      .then(async (r) => {
+        const d = await r.json();
+        const slug = d?.tenant?.slug;
+        if (slug) {
+          const targetBase = getSubdomainUrl(slug);
+          window.location.replace(`${targetBase}/portal${window.location.search}${window.location.hash}`);
+          return;
+        }
+        setRedirecting(false);
+      })
+      .catch(() => setRedirecting(false));
   }, [tenantId]);
 
-  // If it's a numeric ID, render the normal route
-  if (tenantId && !isNaN(Number(tenantId))) {
-    return <ParentPortalRoute />;
+  if (redirecting) {
+    return <BrandedLoadingScreen label="Redirecting to parent portal..." tone="dark" />;
   }
 
-  return <BrandedLoadingScreen label="Redirecting to parent portal..." tone="dark" />;
+  return <ParentPortalRoute />;
 };
 
 const IndexWithSchool = () => {
@@ -190,6 +222,7 @@ const App = () => {
               <Toaster />
               <Sonner />
               <BrowserRouter>
+                <SubdomainPathNormalizer />
                 {subdomainSlug ? (
                   <Routes>
                    

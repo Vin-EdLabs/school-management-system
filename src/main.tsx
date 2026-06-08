@@ -53,8 +53,9 @@ function buildPwaQueryParams(
   return params;
 }
 
-function setDynamicHeadIcons(logoApiUrl: string) {
-  const upsert = (rel: string, sizes?: string, type?: string) => {
+function setDynamicHeadIcons(iconQuery: string) {
+  const icon192 = `${window.location.origin}/pwa-icon-192.png?${iconQuery}`;
+  const upsert = (rel: string, sizes?: string, type?: string, href?: string) => {
     const selector = sizes
       ? `link[rel='${rel}'][sizes='${sizes}']`
       : `link[rel='${rel}']`;
@@ -66,13 +67,13 @@ function setDynamicHeadIcons(logoApiUrl: string) {
       if (type) el.type = type;
       document.head.appendChild(el);
     }
-    el.href = logoApiUrl;
+    el.href = href || icon192;
   };
 
-  upsert('apple-touch-icon', '180x180');
-  upsert('shortcut icon');
-  upsert('icon', '32x32', 'image/png');
-  upsert('icon', '16x16', 'image/png');
+  upsert('apple-touch-icon', '180x180', undefined, icon192);
+  upsert('shortcut icon', undefined, undefined, icon192);
+  upsert('icon', '32x32', 'image/png', icon192);
+  upsert('icon', '16x16', 'image/png', icon192);
 }
 
 function setCssBrandingVars(tenant: any) {
@@ -127,11 +128,10 @@ async function bootstrapTenantBrandingAndManifest() {
     }
 
     const manifestParams = buildPwaQueryParams(slug, tenantId, kind);
-    const manifestUrl = `/api/pwa/manifest?${manifestParams.toString()}`;
-    const logoApiUrl = `/api/pwa/logo?${manifestParams.toString()}`;
+    const manifestUrl = `/manifest.json?${manifestParams.toString()}`;
 
     if (tenant?.logo_url) {
-      setDynamicHeadIcons(logoApiUrl);
+      setDynamicHeadIcons(manifestParams.toString());
     }
 
     let link = document.querySelector("link[rel='manifest']") as HTMLLinkElement | null;

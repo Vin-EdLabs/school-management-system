@@ -1,5 +1,5 @@
 /* ScholarNerve service worker — caching + push. Bump CACHE_VERSION on breaking cache changes. */
-const CACHE_VERSION = '2026-06-08-v9';
+const CACHE_VERSION = '2026-06-08-v10';
 const CACHE_NAME = `scholarnerve-app-${CACHE_VERSION}`;
 const APP_SHELL = ['/', '/index.html', '/site.webmanifest'];
 
@@ -48,6 +48,8 @@ const DYNAMIC_ICON_PATHS = new Set([
   '/favicon-16x16.png',
   '/favicon-32x32.png',
   '/apple-touch-icon.png',
+  '/pwa-icon-192.png',
+  '/pwa-icon-512.png',
   '/android-chrome-192x192.png',
   '/android-chrome-512x512.png',
 ]);
@@ -83,10 +85,12 @@ self.addEventListener('fetch', (event) => {
     url.pathname === '/site.webmanifest' ||
     url.pathname === '/api/pwa/manifest';
 
-  if (DYNAMIC_ICON_PATHS.has(url.pathname) && isTenantSubdomainHost(self.location.hostname)) {
+  if (DYNAMIC_ICON_PATHS.has(url.pathname) && (isTenantSubdomainHost(self.location.hostname) || url.search.includes('slug=') || url.search.includes('tenantId='))) {
     const apiBase = apiBaseForLocation();
-    const params = new URLSearchParams();
-    params.set('host', self.location.hostname);
+    const params = new URLSearchParams(url.search);
+    if (!params.has('host')) {
+      params.set('host', self.location.hostname);
+    }
     event.respondWith(
       fetch(`${apiBase}/pwa/logo?${params.toString()}`, { redirect: 'manual' })
         .then((response) => {
@@ -149,7 +153,10 @@ self.addEventListener('fetch', (event) => {
             },
           });
         })
-        .catch(() => fetch('/site.webmanifest'))
+        .catch((err) => {
+          console.error('Dynamic manifest failed:', err);
+          return fetch('/site.webmanifest');
+        })
     );
     return;
   }

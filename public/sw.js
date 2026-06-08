@@ -1,5 +1,5 @@
 /* ScholarNerve service worker — caching + push. Bump CACHE_VERSION on breaking cache changes. */
-const CACHE_VERSION = '2026-06-07-v14';
+const CACHE_VERSION = '2026-06-07-v15';
 const CACHE_NAME = `scholarnerve-app-${CACHE_VERSION}`;
 const APP_SHELL = ['/', '/index.html', '/site.webmanifest'];
 
@@ -78,9 +78,13 @@ self.addEventListener('fetch', (event) => {
         .then((data) => {
           const origin = self.location.origin;
 
-          // CRITICAL: Set start_url and scope to the tenant subdomain
-          data.start_url = `${origin}/portal/`;
-          data.scope = `${origin}/portal/`;
+          // Make sure start_url and scope are absolute to the current frontend origin
+          if (data.start_url && !data.start_url.startsWith('http')) {
+            data.start_url = origin + data.start_url;
+          }
+          if (data.scope && !data.scope.startsWith('http')) {
+            data.scope = origin + data.scope;
+          }
 
           // Fix icon URLs
           if (Array.isArray(data.icons)) {

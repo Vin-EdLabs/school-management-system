@@ -1,7 +1,50 @@
 import express from 'express';
 import { resolveTenant, TenantRequest } from '../middleware/tenantResolver.js';
+import { query } from '../db/connection.js';
 
 const router = express.Router();
+
+// Public endpoint to serve the decoded base64 logo as binary image data
+router.get('/logo/:tenantId', async (req, res) => {
+  try {
+    const tenantId = parseInt(req.params.tenantId, 10);
+    if (isNaN(tenantId)) {
+      return res.status(400).send('Invalid tenant ID');
+    }
+
+    const result = await query(
+      `SELECT COALESCE(ss.logo_url, t.logo_url) as logo_url
+       FROM tenants t
+       LEFT JOIN school_settings ss ON ss.tenant_id = t.id
+       WHERE t.id = $1`,
+      [tenantId]
+    );
+
+    const logo = result.rows[0]?.logo_url;
+    if (!logo) {
+      return res.status(404).send('Logo not found');
+    }
+
+    if (logo.startsWith('data:')) {
+      const matches = logo.match(/^data:([^;]+);base64,(.+)$/);
+      if (!matches || matches.length !== 3) {
+        return res.status(500).send('Invalid logo format');
+      }
+      const contentType = matches[1];
+      const buffer = Buffer.from(matches[2], 'base64');
+      res.type(contentType).send(buffer);
+    } else {
+      if (logo.startsWith('http')) {
+        return res.redirect(logo);
+      }
+      const origin = `${req.protocol}://${req.get('host')}`;
+      return res.redirect(`${origin}${logo.startsWith('/') ? '' : '/'}${logo}`);
+    }
+  } catch (error) {
+    console.error('Failed to serve tenant logo:', error);
+    return res.status(500).send('Server error');
+  }
+});
 
 router.use(resolveTenant);
 
@@ -44,7 +87,8 @@ router.get('/manifest', async (req: TenantRequest, res) => {
     // For subdomain-based tenants, ensure we're using the correct subdomain
     // If the request came to api.scholarnerve.com, we need to construct the tenant URL
     const isApiDomain = req.get('host')?.includes('api.scholarnerve.com') ||
-      req.get('host')?.includes('api.scholarnerve.onrender.com');
+      req.get('host')?.includes('api.scholarnerve.onrender.com') ||
+      req.get('host')?.includes('scholarnerve.com'); // Support direct main domain requests
 
     if (isApiDomain && subdomain) {
       // Build the correct tenant subdomain URL
@@ -83,7 +127,11 @@ router.get('/manifest', async (req: TenantRequest, res) => {
 
     const absLogo = (() => {
       if (!logo) return '';
-      if (logo.startsWith('data:') || logo.startsWith('http')) return logo;
+      // If it's a base64 string, point to the dynamic logo endpoint
+      if (logo.startsWith('data:')) {
+        return `${req.protocol}://${req.get('host')}/api/pwa/logo/${tenantId}`;
+      }
+      if (logo.startsWith('http')) return logo;
       // For subdomain architecture, serve logos from CDN or API
       if (process.env.CDN_DOMAIN) {
         return `https://${process.env.CDN_DOMAIN}${logo.startsWith('/') ? '' : '/'}${logo}`;

@@ -8,7 +8,7 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
-    allowedHosts: ['.lvh.me', '.localhost'],
+    allowedHosts: ['.lvh.me', '.scholarnerve.com', '.localhost'],
   },
   plugins: [
     react(),

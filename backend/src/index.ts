@@ -69,11 +69,11 @@ app.use(cors({
     const allowedPatterns = [
       /^https:\/\/([a-z0-9-]+\.)?scholarnerve\.com$/,
       /^http:\/\/([a-z0-9-]+\.)?scholarnerve\.com$/,
-      /^http:\/\/([a-z0-9-]+\.)?localhost:(8080|5173)$/,
-      /^http:\/\/localhost:(8080|5173)$/,
-      /^http:\/\/([a-z0-9-]+\.)?127\.0\.0\.1:(8080|5173)$/,
-      /^http:\/\/127\.0\.0\.1:(8080|5173)$/,
-      /^http:\/\/([a-z0-9-]+\.)?lvh\.me:(8080|5173)$/,
+      /^http:\/\/([a-z0-9-]+\.)?localhost:(8080|5173|4173)$/,
+      /^http:\/\/localhost:(8080|5173|4173)$/,
+      /^http:\/\/([a-z0-9-]+\.)?127\.0\.0\.1:(8080|5173|4173)$/,
+      /^http:\/\/127\.0\.0\.1:(8080|5173|4173)$/,
+      /^http:\/\/([a-z0-9-]+\.)?lvh\.me:(8080|5173|4173)$/,
     ];
     
     const isAllowed = allowedPatterns.some(pattern => pattern.test(origin));

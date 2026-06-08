@@ -1,5 +1,6 @@
 import express from 'express';
 import multer from 'multer';
+import { compressLogoForStorage } from '../services/logoImageService.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -266,9 +267,8 @@ router.post('/logo', requirePrimaryAdminOrSuperAdmin, upload.single('logo'), asy
     }
     
     const tenantId = req.user!.tenantId!;
-    // Convert to Base64
-    const base64Image = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
-    
+    const base64Image = await compressLogoForStorage(req.file.buffer, req.file.mimetype);
+
     // Update logo URL in school_settings and tenants for consistent branding
     await query(
       'UPDATE school_settings SET logo_url = $1, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = $2',

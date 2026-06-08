@@ -51,7 +51,10 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
     bank_details?: string;
   } | null>(null);
   const schoolName = schoolNameOverride || school?.name || 'School';
-  const logoUrl = resolveLogoUrl(logoUrlOverride ?? school?.logo_url ?? null);
+  const logoUrl = resolveLogoUrl(logoUrlOverride ?? school?.logo_url ?? null, {
+    tenantId: school?.id,
+    slug: school?.slug,
+  });
 
   useEffect(() => {
     if (show) {

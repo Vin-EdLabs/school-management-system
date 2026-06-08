@@ -1,5 +1,5 @@
 /* ScholarNerve service worker — caching + push. Bump CACHE_VERSION on breaking cache changes. */
-const CACHE_VERSION = '2026-06-08-v10';
+const CACHE_VERSION = '2026-06-08-v11';
 const CACHE_NAME = `scholarnerve-app-${CACHE_VERSION}`;
 const APP_SHELL = ['/', '/index.html', '/site.webmanifest'];
 
@@ -90,6 +90,15 @@ self.addEventListener('fetch', (event) => {
     const params = new URLSearchParams(url.search);
     if (!params.has('host')) {
       params.set('host', self.location.hostname);
+    }
+    if (!params.has('size')) {
+      if (url.pathname.includes('512')) params.set('size', '512');
+      else if (url.pathname.includes('256')) params.set('size', '256');
+      else if (url.pathname.includes('128')) params.set('size', '128');
+      else if (url.pathname.includes('apple-touch')) params.set('size', '180');
+      else if (url.pathname.includes('32')) params.set('size', '32');
+      else if (url.pathname.includes('16')) params.set('size', '16');
+      else params.set('size', '192');
     }
     event.respondWith(
       fetch(`${apiBase}/pwa/logo?${params.toString()}`, { redirect: 'manual' })

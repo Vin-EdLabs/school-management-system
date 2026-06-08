@@ -25,7 +25,10 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
   const { theme, toggleTheme } = useTheme();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [notifOpen, setNotifOpen] = useState(false);
-  const pwaLogo = resolveLogoUrl(school?.logo_url ?? null);
+  const pwaLogo = resolveLogoUrl(school?.logo_url ?? null, {
+    tenantId: school?.id,
+    slug: school?.slug,
+  });
   const showStaffNotifications = user?.role === 'teacher' || user?.role === 'staff';
   const displayName = user?.fullName?.trim() || user?.username || '';
 

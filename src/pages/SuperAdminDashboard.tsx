@@ -996,7 +996,7 @@ const SuperAdminDashboard = () => {
                                   className="w-20 h-20 rounded-[1.5rem] flex items-center justify-center overflow-hidden border border-slate-200/80 dark:border-slate-700/80 bg-slate-50 dark:bg-slate-800 shadow-inner group-hover:scale-105 transition-transform duration-500"
                                 >
                                   {school.logo_url ? (
-                                    <img src={resolveLogoUrl(school.logo_url)!} alt="" className="w-full h-full object-contain p-2" />
+                                    <img src={resolveLogoUrl(school.logo_url, { tenantId: school.id, slug: school.slug })!} alt="" className="w-full h-full object-contain p-2" />
                                   ) : (
                                     <Building2 className="w-10 h-10 text-slate-300 dark:text-slate-600" />
                                   )}

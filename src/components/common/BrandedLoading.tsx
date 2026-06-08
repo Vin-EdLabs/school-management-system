@@ -1,17 +1,12 @@
 import React from 'react';
 import { GraduationCap } from 'lucide-react';
-
-const API_ROOT = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api').replace(/\/api\/?$/, '');
-
-function resolveLogo(url: string | null | undefined): string | null {
-  if (!url) return null;
-  if (url.startsWith('http') || url.startsWith('data:')) return url;
-  return `${API_ROOT}${url.startsWith('/') ? '' : '/'}${url}`;
-}
+import { resolveLogoUrl } from '../../services/tenantService';
 
 type BrandedLoadingProps = {
   /** School logo URL (relative or absolute). */
   logoUrl?: string | null;
+  tenantId?: number | null;
+  slug?: string | null;
   /** Short status line (no “LOODING” typos). */
   label?: string;
   className?: string;
@@ -22,8 +17,15 @@ type BrandedLoadingProps = {
 /**
  * Full-screen or card-style loading with optional school logo and smooth spinner.
  */
-export function BrandedLoading({ logoUrl, label = 'Loading…', className = '', tone = 'default' }: BrandedLoadingProps) {
-  const resolved = resolveLogo(logoUrl);
+export function BrandedLoading({
+  logoUrl,
+  tenantId,
+  slug,
+  label = 'Loading…',
+  className = '',
+  tone = 'default',
+}: BrandedLoadingProps) {
+  const resolved = resolveLogoUrl(logoUrl ?? null, { tenantId, slug });
   const ring = tone === 'dark' ? 'border-white/15 border-t-purple-400' : 'border-indigo-100 border-t-indigo-600';
   const panel = tone === 'dark' ? 'bg-white/10 shadow-md ring-1 ring-white/15' : 'bg-white shadow-md ring-1 ring-slate-200/80';
   const cap = tone === 'dark' ? 'text-purple-300' : 'text-indigo-500';
@@ -55,14 +57,21 @@ type BrandedLoadingScreenProps = BrandedLoadingProps & {
   screenClassName?: string;
 };
 
-export function BrandedLoadingScreen({ logoUrl, label, tone = 'default', screenClassName = '' }: BrandedLoadingScreenProps) {
+export function BrandedLoadingScreen({
+  logoUrl,
+  tenantId,
+  slug,
+  label,
+  tone = 'default',
+  screenClassName = '',
+}: BrandedLoadingScreenProps) {
   const bg =
     tone === 'dark'
       ? 'bg-gradient-to-b from-slate-950 to-indigo-950'
       : 'bg-gradient-to-br from-slate-50 via-white to-indigo-50/80 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950/40';
   return (
     <div className={`min-h-screen flex items-center justify-center ${bg} ${screenClassName}`}>
-      <BrandedLoading logoUrl={logoUrl} label={label} tone={tone} />
+      <BrandedLoading logoUrl={logoUrl} tenantId={tenantId} slug={slug} label={label} tone={tone} />
     </div>
   );
 }

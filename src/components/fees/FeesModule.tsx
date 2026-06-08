@@ -1,6 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import RecordPayment from './RecordPayment';
@@ -9,12 +7,11 @@ import SetFeeStructure from './SetFeeStructure';
 import StudentBalances from './StudentBalances';
 import ReceiptHistory from './ReceiptHistory';
 import OutstandingFees from './OutstandingFees';
-import ConfirmDialog from '../common/ConfirmDialog';
 import { apiService } from '../../services/api';
 import { useData } from '../../contexts/DataContext';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
 import { toast } from '@/hooks/use-toast';
-import { CreditCard, DollarSign, Eye, Users, Receipt, AlertCircle, Trash2, RefreshCw, ArrowRightCircle } from 'lucide-react';
+import { CreditCard, DollarSign, Eye, Users, Receipt, AlertCircle } from 'lucide-react';
 
 interface AcademicTermOption {
   termLabel: string;   // e.g. "Term 1 2027"
@@ -25,8 +22,6 @@ const FeesModule = () => {
   const { refresh } = useData();
   const { currentTerm, currentYear } = useActiveTerm();
   const [activeTab, setActiveTab] = useState('record-payment');
-  const [showClearConfirm, setShowClearConfirm] = useState(false);
-  const [clearing, setClearing] = useState(false);
 
   // Carry arrears state
   const [termOptions, setTermOptions] = useState<AcademicTermOption[]>([]);
@@ -88,28 +83,6 @@ const FeesModule = () => {
       setCarryingArrears(false);
     }
   };
-
-  const handleClearAllPayments = async () => {
-    setClearing(true);
-    try {
-      await apiService.post('/finance/clear-all-payments', {});
-      toast({
-        title: 'Cleared',
-        description: 'All payments and receipts for this school have been cleared. Receipt numbers will start from 1 again.',
-      });
-      setShowClearConfirm(false);
-      await refresh();
-    } catch (err: any) {
-      toast({
-        title: 'Error',
-        description: err?.message || 'Failed to clear payments and receipts',
-        variant: 'destructive',
-      });
-    } finally {
-      setClearing(false);
-    }
-  };
-
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
@@ -177,41 +150,6 @@ const FeesModule = () => {
           <SetFeeStructure />
         </TabsContent>
       </Tabs>
-
-      {/* Finance Cleanup Tool (Hidden/Settings only usually, but kept here for now if needed) */}
-      <Card className="mt-4 border-amber-200 bg-amber-50/50">
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2 text-amber-800">
-            <Trash2 className="w-4 h-4" />
-            Clear all payments &amp; receipts
-          </CardTitle>
-          <CardContent className="text-sm text-amber-800/90">
-            <p className="mb-3">
-              Permanently delete all payment and receipt records for <strong>this school only</strong>. Receipt numbers will reset and start from 1 again. This cannot be undone.
-            </p>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => setShowClearConfirm(true)}
-              disabled={clearing}
-            >
-              <Trash2 className="w-4 h-4 mr-2" />
-              Clear all payments &amp; receipts
-            </Button>
-          </CardContent>
-        </CardHeader>
-      </Card>
-
-      <ConfirmDialog
-        open={showClearConfirm}
-        onClose={() => !clearing && setShowClearConfirm(false)}
-        onConfirm={handleClearAllPayments}
-        title="Clear all payments and receipts?"
-        description="This will permanently delete all payments and receipts for this school. Receipt numbers will start from 1 again. This action cannot be undone."
-        confirmText={clearing ? 'Clearing…' : 'Yes, clear all'}
-        cancelText="Cancel"
-        variant="destructive"
-      />
     </div>
   );
 };

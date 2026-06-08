@@ -18,10 +18,14 @@ export interface TenantInfo {
 
 export async function resolveTenantById(id: number): Promise<TenantInfo | null> {
   const result = await query(
-    `SELECT id, name, slug, subdomain, logo_url, primary_color, secondary_color, 
-            COALESCE(subscription_status, 'active') as subscription_status,
-            COALESCE(is_active, true) as is_active
-     FROM tenants WHERE id = $1`,
+    `SELECT t.id, t.name, t.slug, t.subdomain,
+            COALESCE(ss.logo_url, t.logo_url) AS logo_url,
+            t.primary_color, t.secondary_color,
+            COALESCE(t.subscription_status, 'active') as subscription_status,
+            COALESCE(t.is_active, true) as is_active
+     FROM tenants t
+     LEFT JOIN school_settings ss ON ss.tenant_id = t.id
+     WHERE t.id = $1`,
     [id]
   );
   if (result.rows.length === 0) return null;
@@ -30,12 +34,15 @@ export async function resolveTenantById(id: number): Promise<TenantInfo | null> 
 
 export async function resolveTenantBySlug(slug: string): Promise<TenantInfo | null> {
   const result = await query(
-    `SELECT id, name, slug, subdomain, logo_url, primary_color, secondary_color,
-            COALESCE(subscription_status, 'active') as subscription_status,
-            COALESCE(is_active, true) as is_active
-     FROM tenants 
-     WHERE (LOWER(slug) = LOWER($1) OR LOWER(subdomain) = LOWER($1)) 
-     AND COALESCE(is_active, true) = true`,
+    `SELECT t.id, t.name, t.slug, t.subdomain,
+            COALESCE(ss.logo_url, t.logo_url) AS logo_url,
+            t.primary_color, t.secondary_color,
+            COALESCE(t.subscription_status, 'active') as subscription_status,
+            COALESCE(t.is_active, true) as is_active
+     FROM tenants t
+     LEFT JOIN school_settings ss ON ss.tenant_id = t.id
+     WHERE (LOWER(t.slug) = LOWER($1) OR LOWER(t.subdomain) = LOWER($1))
+     AND COALESCE(t.is_active, true) = true`,
     [slug]
   );
   if (result.rows.length === 0) return null;

@@ -42,6 +42,45 @@ function isStaticAsset(url) {
   );
 }
 
+function apiBaseForLocation() {
+  return self.location.hostname === 'localhost' ||
+    self.location.hostname === '127.0.0.1' ||
+    self.location.hostname.endsWith('.lvh.me')
+    ? 'http://localhost:3001/api'
+    : `${self.location.origin}/api`;
+}
+
+const DYNAMIC_ICON_PATHS = new Set([
+  '/favicon.ico',
+  '/favicon-16x16.png',
+  '/favicon-32x32.png',
+  '/apple-touch-icon.png',
+  '/pwa-icon-192.png',
+  '/pwa-icon-512.png',
+  '/android-chrome-192x192.png',
+  '/android-chrome-512x512.png',
+]);
+
+function isTenantSubdomainHost(host) {
+  var normalized = String(host || '').toLowerCase().replace(/^www\./, '');
+  if (!normalized || normalized === 'localhost' || normalized === '127.0.0.1') return false;
+  if (
+    normalized === 'scholarnerve.com' ||
+    normalized === 'scholarnerve.onrender.com' ||
+    normalized === 'school-management-system.onrender.com'
+  ) {
+    return false;
+  }
+  var parts = normalized.split('.').filter(Boolean);
+  if (parts.length < 2) return false;
+  var reserved = ['www', 'api', 'app', 'admin', 'dev', 'staging', 'scholarnerve', 'portal', 'school'];
+  if (reserved.indexOf(parts[0]) !== -1) return false;
+  if (normalized.endsWith('.localhost')) return parts.length >= 2;
+  if (normalized.endsWith('.lvh.me')) return parts.length >= 3;
+  if (normalized.endsWith('.onrender.com')) return parts.length >= 4;
+  return parts.length >= 3;
+}
+
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
@@ -122,7 +161,10 @@ self.addEventListener('fetch', (event) => {
           }
 
           return new Response(JSON.stringify(data), {
-            headers: { 'Content-Type': 'application/manifest+json' },
+            headers: {
+              'Content-Type': 'application/manifest+json',
+              'Cache-Control': 'no-store, no-cache, must-revalidate',
+            },
           });
         })
         .catch(() => caches.match('/site.webmanifest'))

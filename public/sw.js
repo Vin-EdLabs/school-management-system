@@ -1,5 +1,5 @@
 /* ScholarNerve service worker — caching + push. Bump CACHE_VERSION on breaking cache changes. */
-const CACHE_VERSION = '2026-06-06-v7';
+const CACHE_VERSION = '2026-06-08-v9';
 const CACHE_NAME = `scholarnerve-app-${CACHE_VERSION}`;
 const APP_SHELL = ['/', '/index.html', '/site.webmanifest'];
 
@@ -35,21 +35,78 @@ function isStaticAsset(url) {
   );
 }
 
+function apiBaseForLocation() {
+  return self.location.hostname === 'localhost' ||
+    self.location.hostname === '127.0.0.1' ||
+    self.location.hostname.endsWith('.lvh.me')
+    ? 'http://localhost:3001/api'
+    : `${self.location.origin}/api`;
+}
+
+const DYNAMIC_ICON_PATHS = new Set([
+  '/favicon.ico',
+  '/favicon-16x16.png',
+  '/favicon-32x32.png',
+  '/apple-touch-icon.png',
+  '/android-chrome-192x192.png',
+  '/android-chrome-512x512.png',
+]);
+
+function isTenantSubdomainHost(host) {
+  var normalized = String(host || '').toLowerCase().replace(/^www\./, '');
+  if (!normalized || normalized === 'localhost' || normalized === '127.0.0.1') return false;
+  if (
+    normalized === 'scholarnerve.com' ||
+    normalized === 'scholarnerve.onrender.com' ||
+    normalized === 'school-management-system.onrender.com'
+  ) {
+    return false;
+  }
+  var parts = normalized.split('.').filter(Boolean);
+  if (parts.length < 2) return false;
+  var reserved = ['www', 'api', 'app', 'admin', 'dev', 'staging', 'scholarnerve', 'portal', 'school'];
+  if (reserved.indexOf(parts[0]) !== -1) return false;
+  if (normalized.endsWith('.localhost')) return parts.length >= 2;
+  if (normalized.endsWith('.lvh.me')) return parts.length >= 3;
+  if (normalized.endsWith('.onrender.com')) return parts.length >= 4;
+  return parts.length >= 3;
+}
+
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
-  // Dynamic manifest from API (same-origin path proxied / built).
-  if (url.pathname === '/manifest.json' || url.pathname === '/site.webmanifest') {
-    const apiBase =
-      self.location.hostname === 'localhost' ||
-      self.location.hostname === '127.0.0.1' ||
-      self.location.hostname.endsWith('.lvh.me')
-        ? 'http://localhost:3001/api'
-        : `${self.location.origin}/api`;
-    const qs = url.search || '';
-    const apiUrl = `${apiBase}/pwa/manifest${qs}`;
+  // Dynamic manifest from API (same-origin path proxied for WebAPK compliance).
+  const isManifestRequest =
+    url.pathname === '/manifest.json' ||
+    url.pathname === '/site.webmanifest' ||
+    url.pathname === '/api/pwa/manifest';
+
+  if (DYNAMIC_ICON_PATHS.has(url.pathname) && isTenantSubdomainHost(self.location.hostname)) {
+    const apiBase = apiBaseForLocation();
+    const params = new URLSearchParams();
+    params.set('host', self.location.hostname);
+    event.respondWith(
+      fetch(`${apiBase}/pwa/logo?${params.toString()}`, { redirect: 'manual' })
+        .then((response) => {
+          if (response.type === 'opaqueredirect' || (response.status >= 300 && response.status < 400)) {
+            return fetch(event.request);
+          }
+          return response.ok ? response : fetch(event.request);
+        })
+        .catch(() => fetch(event.request))
+    );
+    return;
+  }
+
+  if (isManifestRequest) {
+    const apiBase = apiBaseForLocation();
+    const params = new URLSearchParams(url.search);
+    if (!params.has('host')) {
+      params.set('host', self.location.hostname);
+    }
+    const apiUrl = `${apiBase}/pwa/manifest?${params.toString()}`;
 
     event.respondWith(
       fetch(apiUrl)
@@ -59,15 +116,21 @@ self.addEventListener('fetch', (event) => {
         })
         .then((data) => {
           const origin = self.location.origin;
-          // Use the API origin for assets if they are relative
           const apiOrigin = apiBase.replace(/\/api$/, '');
 
-          if (data.start_url && data.start_url.startsWith('/')) {
-            data.start_url = origin + data.start_url;
-          }
+          const toAbsolute = (value) => {
+            if (typeof value === 'string' && value.startsWith('/') && !value.startsWith('//')) {
+              return origin + value;
+            }
+            return value;
+          };
+
+          if (data.start_url) data.start_url = toAbsolute(data.start_url);
+          if (data.scope) data.scope = toAbsolute(data.scope);
+          if (data.id) data.id = toAbsolute(data.id);
 
           if (Array.isArray(data.icons)) {
-            data.icons = data.icons.map(icon => {
+            data.icons = data.icons.map((icon) => {
               if (icon.src && icon.src.startsWith('/') && !icon.src.startsWith('//')) {
                 if (icon.src.startsWith('/uploads/')) {
                   icon.src = apiOrigin + icon.src;
@@ -80,7 +143,10 @@ self.addEventListener('fetch', (event) => {
           }
 
           return new Response(JSON.stringify(data), {
-            headers: { 'Content-Type': 'application/manifest+json' },
+            headers: {
+              'Content-Type': 'application/manifest+json',
+              'Cache-Control': 'no-store, no-cache, must-revalidate',
+            },
           });
         })
         .catch(() => fetch('/site.webmanifest'))

@@ -5,6 +5,7 @@
  */
 import { Request, Response, NextFunction } from 'express';
 import { resolveTenantById, resolveTenantBySlug, TenantInfo } from '../services/tenantResolver.js';
+import { getTenantSlugFromHost, resolveClientHost } from '../utils/tenantHost.js';
 
 export interface TenantRequest extends Request {
   tenant?: TenantInfo | null;
@@ -43,29 +44,11 @@ export async function resolveTenant(
       if (!tenant && querySlug) tenant = await resolveTenantBySlug(querySlug);
     }
 
-    // 4. Subdomain: school1.scholarnerve.com
-    if (!tenant && req.hostname) {
-      const host = req.hostname.toLowerCase();
-      const parts = host.split('.');
-      
-      // Basic check: at least 2 parts
-      if (parts.length >= 2) {
-        const subdomain = parts[0];
-        const reserved = ['www', 'api', 'app', 'admin', 'dev', 'staging', 'scholarnerve', 'portal', 'school'];
-        
-        // Only try resolving if it's not a reserved subdomain
-        if (!reserved.includes(subdomain)) {
-          // If on onrender.com, we expect 4 parts for a tenant (tenant.app.onrender.com)
-          if (host.endsWith('.onrender.com')) {
-            if (parts.length >= 4) {
-              tenant = await resolveTenantBySlug(subdomain);
-            }
-          } 
-          // For custom domains (e.g. tenant.scholarnerve.com), we expect 3 parts
-          else if (parts.length >= 3) {
-            tenant = await resolveTenantBySlug(subdomain);
-          }
-        }
+    // 4. Subdomain: school1.scholarnerve.com (prefer client host from query/forwarded header)
+    if (!tenant) {
+      const slugFromHost = getTenantSlugFromHost(resolveClientHost(req));
+      if (slugFromHost) {
+        tenant = await resolveTenantBySlug(slugFromHost);
       }
     }
 

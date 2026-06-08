@@ -22,9 +22,6 @@ import { ParentPortalRoute } from "./pages/ParentPortal";
 import { detectTenantSlugFromHost, getSubdomainUrl } from "./utils/tenantHost";
 import { PwaUpdateManager } from "@/components/pwa/PwaUpdateManager";
 import { BrandedLoadingScreen } from "@/components/common/BrandedLoading";
-import { useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
-
 import { ThemeProvider } from "./contexts/ThemeContext";
 
 const queryClient = new QueryClient();
@@ -34,35 +31,6 @@ const HostAwareLanding = () => {
   if (slug) return <Navigate to="/" replace />; // Keep URL clean, let the root route render it
   return <LandingPage />;
 };
-
-const ManifestKindUpdater = () => {
-  const location = useLocation();
-  
-  useEffect(() => {
-    const link = document.querySelector('link[rel="manifest"]') as HTMLLinkElement;
-    if (!link) return;
-    
-    let kind = 'parent';
-    if (location.pathname.startsWith('/super-admin')) {
-      kind = 'super-admin';
-    } else if (!location.pathname.startsWith('/portal')) {
-      kind = 'school';
-    }
-    
-    try {
-      const currentUrl = new URL(link.href, window.location.origin);
-      const params = new URLSearchParams(currentUrl.search);
-      params.set('kind', kind);
-      const filename = currentUrl.pathname.endsWith('manifest.json') ? '/manifest.json' : '/site.webmanifest';
-      link.setAttribute('href', `${filename}?${params.toString()}`);
-    } catch {
-      link.setAttribute('href', `/site.webmanifest?kind=${kind}`);
-    }
-  }, [location.pathname]);
-  
-  return null;
-};
-
 
 const LegacySubdomainRedirect = () => {
   const { slug } = useParams<{ slug?: string }>();
@@ -222,7 +190,6 @@ const App = () => {
               <Toaster />
               <Sonner />
               <BrowserRouter>
-              <ManifestKindUpdater />   {/* 👈 add this line */}
                 {subdomainSlug ? (
                   <Routes>
                    

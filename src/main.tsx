@@ -3,7 +3,6 @@ import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
 import { detectTenantSlugFromHost } from './utils/tenantHost'
-import { resolveLogoUrl } from './services/tenantService'
 
 const API_BASE = (() => {
   if (import.meta.env.VITE_API_BASE_URL) return import.meta.env.VITE_API_BASE_URL;
@@ -37,8 +36,43 @@ function detectPwaKind(pathname: string): 'parent' | 'school' | 'super-admin' {
   if (detectTenantSlugFromHost()) {
     return 'school';
   }
-  
-  return 'parent';
+
+  return 'school';
+}
+
+function buildPwaQueryParams(
+  slug: string | null,
+  tenantId: number | null,
+  kind: string,
+): URLSearchParams {
+  const params = new URLSearchParams();
+  if (tenantId) params.set('tenantId', String(tenantId));
+  else if (slug) params.set('slug', slug);
+  params.set('kind', kind);
+  params.set('host', window.location.hostname);
+  return params;
+}
+
+function setDynamicHeadIcons(logoApiUrl: string) {
+  const upsert = (rel: string, sizes?: string, type?: string) => {
+    const selector = sizes
+      ? `link[rel='${rel}'][sizes='${sizes}']`
+      : `link[rel='${rel}']`;
+    let el = document.querySelector(selector) as HTMLLinkElement | null;
+    if (!el) {
+      el = document.createElement('link');
+      el.rel = rel;
+      if (sizes) el.sizes = sizes;
+      if (type) el.type = type;
+      document.head.appendChild(el);
+    }
+    el.href = logoApiUrl;
+  };
+
+  upsert('apple-touch-icon', '180x180');
+  upsert('shortcut icon');
+  upsert('icon', '32x32', 'image/png');
+  upsert('icon', '16x16', 'image/png');
 }
 
 function setCssBrandingVars(tenant: any) {
@@ -90,28 +124,16 @@ async function bootstrapTenantBrandingAndManifest() {
       }
 
       document.title = `${tenant.name} — ${portalLabel}`;
-      const resolved = resolveLogoUrl(tenant.logo_url as string | null);
-      if (resolved) {
-        let appleTouch = document.querySelector("link[rel='apple-touch-icon']") as HTMLLinkElement | null;
-        if (!appleTouch) {
-          appleTouch = document.createElement('link');
-          appleTouch.rel = 'apple-touch-icon';
-          document.head.appendChild(appleTouch);
-        }
-        appleTouch.href = resolved;
-      }
     }
 
-    // Set the manifest URL directly to the API instead of using a Blob URL.
-    // Chrome/Android cannot generate a WebAPK from a blob: URL.
-    // Use a relative path that the Service Worker intercepts.
-    // This solves the 'Cross-Origin Manifest' security errors in Chrome.
-    const manifestParams = new URLSearchParams();
-    if (tenantId) manifestParams.set('tenantId', String(tenantId));
-    else if (slug) manifestParams.set('slug', slug);
-    manifestParams.set('kind', kind);
-    const manifestUrl = `/manifest.json?${manifestParams.toString()}`;
-    
+    const manifestParams = buildPwaQueryParams(slug, tenantId, kind);
+    const manifestUrl = `/api/pwa/manifest?${manifestParams.toString()}`;
+    const logoApiUrl = `/api/pwa/logo?${manifestParams.toString()}`;
+
+    if (tenant?.logo_url) {
+      setDynamicHeadIcons(logoApiUrl);
+    }
+
     let link = document.querySelector("link[rel='manifest']") as HTMLLinkElement | null;
     if (!link) {
       link = document.createElement('link');

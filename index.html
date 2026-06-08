@@ -9,11 +9,80 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 
-  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-  <link rel="shortcut icon" href="/favicon.ico">
-  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
-  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
-  <link rel="manifest" href="/site.webmanifest">
+  <!-- Dynamic PWA manifest + icons (desktop + mobile) before app bundle loads -->
+  <script>
+    (function () {
+      var host = location.hostname;
+      var path = location.pathname || '/';
+      var params = new URLSearchParams();
+      params.set('host', host);
+      var kind = path.indexOf('/super-admin') === 0 ? 'super-admin'
+        : path.indexOf('/portal') === 0 ? 'parent' : 'school';
+      params.set('kind', kind);
+      var schoolMatch = path.match(/^\/school\/(\d+)/);
+      var portalMatch = path.match(/^\/portal\/(\d+)/);
+      if (schoolMatch) params.set('tenantId', schoolMatch[1]);
+      if (portalMatch) params.set('tenantId', portalMatch[1]);
+
+      var manifest = document.createElement('link');
+      manifest.rel = 'manifest';
+      manifest.href = '/api/pwa/manifest?' + params.toString();
+      document.head.appendChild(manifest);
+
+      var hostParts = host.toLowerCase().replace(/^www\./, '').split('.');
+      var reserved = ['www', 'api', 'app', 'admin', 'dev', 'staging', 'scholarnerve', 'portal', 'school'];
+      var isTenantHost = (schoolMatch || portalMatch)
+        || (host.indexOf('.localhost') > -1 && hostParts.length >= 2 && reserved.indexOf(hostParts[0]) === -1)
+        || (host.indexOf('.lvh.me') > -1 && hostParts.length >= 3 && reserved.indexOf(hostParts[0]) === -1)
+        || (host.indexOf('scholarnerve.com') > -1 && host !== 'scholarnerve.com' && host !== 'www.scholarnerve.com' && hostParts.length >= 3 && reserved.indexOf(hostParts[0]) === -1);
+
+      if (isTenantHost) {
+        var logoUrl = '/api/pwa/logo?' + params.toString();
+        function upsertIcon(rel, sizes, type) {
+          var selector = 'link[rel="' + rel + '"]' + (sizes ? '[sizes="' + sizes + '"]' : '');
+          var el = document.querySelector(selector);
+          if (!el) {
+            el = document.createElement('link');
+            el.rel = rel;
+            if (sizes) el.setAttribute('sizes', sizes);
+            if (type) el.type = type;
+            document.head.appendChild(el);
+          }
+          el.href = logoUrl;
+        }
+        upsertIcon('apple-touch-icon', '180x180');
+        upsertIcon('shortcut icon');
+        upsertIcon('icon', '32x32', 'image/png');
+        upsertIcon('icon', '16x16', 'image/png');
+      } else {
+        var apple = document.createElement('link');
+        apple.rel = 'apple-touch-icon';
+        apple.sizes = '180x180';
+        apple.href = '/apple-touch-icon.png';
+        document.head.appendChild(apple);
+        var shortcut = document.createElement('link');
+        shortcut.rel = 'shortcut icon';
+        shortcut.href = '/favicon.ico';
+        document.head.appendChild(shortcut);
+        var icon32 = document.createElement('link');
+        icon32.rel = 'icon';
+        icon32.type = 'image/png';
+        icon32.sizes = '32x32';
+        icon32.href = '/favicon-32x32.png';
+        document.head.appendChild(icon32);
+        var icon16 = document.createElement('link');
+        icon16.rel = 'icon';
+        icon16.type = 'image/png';
+        icon16.sizes = '16x16';
+        icon16.href = '/favicon-16x16.png';
+        document.head.appendChild(icon16);
+      }
+
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').catch(function () {});
+      }
+    })();
+  </script>
 
   <!-- Typography -->
   <link rel="preconnect" href="https://fonts.googleapis.com">

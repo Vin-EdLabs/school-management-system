@@ -409,7 +409,7 @@ const LandingPage = () => {
             to="/register-school"
             className="rounded-[var(--radius-pill)] bg-[var(--ink)] px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-slate-900/15 transition-all hover:-translate-y-0.5 hover:shadow-xl"
           >
-            Register School →
+            Register→
           </Link>
         </div>
       </header>

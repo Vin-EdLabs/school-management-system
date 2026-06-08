@@ -43,10 +43,10 @@ self.addEventListener('fetch', (event) => {
   // Dynamic manifest from API (same-origin path proxied / built).
   if (url.pathname === '/manifest.json' || url.pathname === '/site.webmanifest') {
     const apiBase =
-      self.location.hostname === 'localhost' ||
+      self.location.hostname === 'scholarnerve.com' ||
       self.location.hostname === '127.0.0.1' ||
       self.location.hostname.endsWith('.lvh.me')
-        ? 'http://localhost:3001/api'
+        ? 'http://scholarnerve.com/api'
         : `${self.location.origin}/api`;
     const qs = url.search || '';
     const apiUrl = `${apiBase}/pwa/manifest${qs}`;

@@ -22,6 +22,8 @@ import { ParentPortalRoute } from "./pages/ParentPortal";
 import { detectTenantSlugFromHost, getSubdomainUrl } from "./utils/tenantHost";
 import { PwaUpdateManager } from "@/components/pwa/PwaUpdateManager";
 import { BrandedLoadingScreen } from "@/components/common/BrandedLoading";
+import { useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 
 import { ThemeProvider } from "./contexts/ThemeContext";
 
@@ -32,6 +34,27 @@ const HostAwareLanding = () => {
   if (slug) return <Navigate to="/" replace />; // Keep URL clean, let the root route render it
   return <LandingPage />;
 };
+
+const ManifestKindUpdater = () => {
+  const location = useLocation();
+  
+  useEffect(() => {
+    const link = document.querySelector('link[rel="manifest"]') as HTMLLinkElement;
+    if (!link) return;
+    
+    let kind = 'parent';
+    if (location.pathname.startsWith('/super-admin')) {
+      kind = 'super-admin';
+    } else if (!location.pathname.startsWith('/portal')) {
+      kind = 'school';
+    }
+    
+    link.setAttribute('href', `/site.webmanifest?kind=${kind}`);
+  }, [location.pathname]);
+  
+  return null;
+};
+
 
 const LegacySubdomainRedirect = () => {
   const { slug } = useParams<{ slug?: string }>();
@@ -193,6 +216,7 @@ const App = () => {
               <BrowserRouter>
                 {subdomainSlug ? (
                   <Routes>
+                    <ManifestKindUpdater />   {/* 👈 add this line */}
                     {/* --- WILDCARD SUBDOMAIN ROUTING (Clean URL bar, e.g. rosa.localhost:8080) --- */}
                     <Route path="/portal" element={<ParentPortalRoute />} />
                     <Route path="/portal/*" element={<ParentPortalRoute />} />

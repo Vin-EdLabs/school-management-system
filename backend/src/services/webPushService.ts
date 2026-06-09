@@ -22,9 +22,28 @@ async function attachSchoolLogoToPayloadIfNeeded(tenantId: number, payload: Push
     [tenantId]
   ).catch(() => ({ rows: [] as any[] }));
   const logo = settings.rows[0]?.logo_url;
-  if (logo && !String(logo).startsWith('data:')) {
-    payload.icon = logo;
+  if (!logo) return;
+
+  const apiBase = process.env.API_BASE_URL || process.env.BACKEND_ORIGIN || 'http://localhost:3001';
+
+  // If stored as base64, point to the dynamic logo endpoint which serves binary
+  if (String(logo).startsWith('data:')) {
+    // prefer tenantId route which returns decoded image
+    payload.icon = `${apiBase.replace(/\/+$/, '')}/api/pwa/logo/${tenantId}`;
+    payload.badge = payload.badge || payload.icon;
+    return;
   }
+
+  // If logo is an absolute URL, use it as-is
+  if (String(logo).startsWith('http')) {
+    payload.icon = logo;
+    payload.badge = payload.badge || payload.icon;
+    return;
+  }
+
+  // Otherwise assume a relative path on the API and build an absolute URL
+  payload.icon = `${apiBase.replace(/\/+$/, '')}${String(logo).startsWith('/') ? '' : '/'}${String(logo)}`;
+  payload.badge = payload.badge || payload.icon;
 }
 
 function ensureConfigured() {

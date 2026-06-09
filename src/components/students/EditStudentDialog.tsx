@@ -633,9 +633,9 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
               <div className="space-y-0.5">
                 <div className="flex items-center gap-2">
                   <ScholarshipIcon className="w-5 h-5 text-indigo-600" />
-                  <h3 className="font-semibold text-lg">Beneficiary & Scholarship</h3>
+                  <h3 className="font-semibold text-lg">Beneficiary & Discount</h3>
                 </div>
-                <p className="text-sm text-slate-500">Enable if student receives any form of fee discount or scholarship</p>
+                <p className="text-sm text-slate-500">Enable if student receives any form of fee discount</p>
               </div>
               <Switch
                 checked={formData.isBeneficiary}
@@ -666,7 +666,7 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
                     }}
                   />
                   <Label htmlFor="isFullScholarship" className="text-indigo-900 font-bold cursor-pointer">
-                    Full Scholarship (100% Free)
+                    Full Discount (100% Free)
                   </Label>
                 </div>
 
@@ -682,8 +682,8 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
                           <SelectValue placeholder="Select type" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="Full Scholarship">Full Scholarship</SelectItem>
-                          <SelectItem value="Partial Scholarship">Partial Scholarship</SelectItem>
+                          <SelectItem value="Full Scholarship">Full Discount</SelectItem>
+                          <SelectItem value="Partial Scholarship">Partial Discount</SelectItem>
                           <SelectItem value="Staff Child Discount">Staff Child Discount</SelectItem>
                           <SelectItem value="Bursary">Bursary</SelectItem>
                           <SelectItem value="Sibling Discount">Sibling Discount</SelectItem>
@@ -724,12 +724,12 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
                 )}
 
                 <div className="space-y-2">
-                  <Label htmlFor="beneficiaryNotes">Scholarship Notes</Label>
+                  <Label htmlFor="beneficiaryNotes">Discount Notes</Label>
                   <Textarea
                     id="beneficiaryNotes"
                     value={formData.beneficiaryNotes}
                     onChange={(e) => handleInputChange('beneficiaryNotes', e.target.value)}
-                    placeholder="Reason for scholarship, awarding body, etc."
+                    placeholder="Reason for discount, awarding body, etc."
                     rows={2}
                   />
                 </div>

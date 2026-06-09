@@ -24,7 +24,17 @@ import { PwaUpdateManager } from "@/components/pwa/PwaUpdateManager";
 import { BrandedLoadingScreen } from "@/components/common/BrandedLoading";
 import { ThemeProvider } from "./contexts/ThemeContext";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30 * 1000, // 30 seconds
+      refetchInterval: 45 * 1000, // 45 seconds
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
+      retry: 1,
+    },
+  },
+});
 
 const HostAwareLanding = () => {
   const slug = detectTenantSlugFromHost();

@@ -684,7 +684,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       parentFetch('/parent/finance', {}, token)
         .then(setFinance)
         .catch(() => undefined);
-    }, 10000);
+    }, 45000);
     return () => window.clearInterval(interval);
   }, [token, activeTab]);
 
@@ -812,7 +812,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     if (!token) return;
     const autoHardRefresh = window.setInterval(() => {
       hardRefreshApp().catch(() => undefined);
-    }, 10000);
+    }, 45000);
     return () => window.clearInterval(autoHardRefresh);
   }, [token, hardRefreshApp]);
 
@@ -1154,7 +1154,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   })();
   const studentFullName = `${student.first_name} ${student.last_name}`;
   const scholarshipLabel = student.is_beneficiary
-    ? student.beneficiary_type || 'Full Scholarship'
+    ? `Discount (${student.discount_type === 'percentage' ? `${student.discount_value || 0}%` : `GHS ${(student.discount_value || 0).toLocaleString()}`})`
     : 'Private Student';
   const quickActions: {
     key: Tab;
@@ -1388,7 +1388,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       )}
 
       {/* ── Content ── */}
-      <main className="relative z-10 max-w-6xl mx-auto px-5 sm:px-6 pt-24 pb-28 sm:pt-32 sm:pb-8">
+      <main className="relative z-10 max-w-6xl mx-auto px-3.5 sm:px-6 pt-24 pb-28 sm:pt-32 sm:pb-8">
 
         {/* Change password banner */}
         {!mustChangePassword && student.must_change_password && (
@@ -1415,7 +1415,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               <div className="relative rounded-[calc(2rem-1px)] border border-white/60 bg-white/58 p-4 backdrop-blur-2xl sm:p-5">
                 <div className="absolute -right-12 -top-12 h-36 w-36 rounded-full bg-fuchsia-300/30 blur-3xl" />
                 <div className="absolute -bottom-14 -left-10 h-32 w-32 rounded-full bg-violet-300/35 blur-3xl" />
-                <div className="relative flex items-start gap-4">
+                <div className="relative flex flex-col sm:flex-row items-center sm:items-start gap-4">
                   <button
                     onClick={() => studentPhotoUrl && setLightboxUrl(studentPhotoUrl)}
                     className={`group shrink-0 ${studentPhotoUrl ? 'cursor-pointer' : 'cursor-default'}`}
@@ -1430,12 +1430,12 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                     </div>
                   </button>
 
-                  <div className="min-w-0 flex-1 pt-2">
-                    <h2 className="text-2xl font-black leading-tight tracking-tight text-slate-950">{studentFullName}</h2>
-                    <p className="mt-2 text-sm font-medium text-slate-500">Student ID: {student.admission_number}</p>
-                    <div className="mt-4 flex flex-wrap gap-2">
+                  <div className="min-w-0 flex-1 pt-2 flex flex-col items-center sm:items-start">
+                    <h2 className="text-2xl font-black leading-tight tracking-tight text-slate-950 text-center sm:text-left">{studentFullName}</h2>
+                    <p className="mt-2 text-sm font-medium text-slate-500 text-center sm:text-left">Student ID: {student.admission_number}</p>
+                    <div className="mt-4 flex flex-wrap gap-2 justify-center sm:justify-start">
                       <span className="inline-flex items-center gap-1 rounded-full border border-violet-100 bg-white/70 px-3 py-1.5 text-xs font-bold text-violet-700 shadow-sm">
-                        <Trophy className="h-3.5 w-3.5" /> Victory
+                        <Trophy className="h-3.5 w-3.5" /> {student.class_name}
                       </span>
                       {student.gender && (
                         <span className="inline-flex items-center gap-1 rounded-full border border-slate-100 bg-white/70 px-3 py-1.5 text-xs font-bold capitalize text-slate-600 shadow-sm">
@@ -1449,7 +1449,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                   </div>
                 </div>
 
-                <div className="relative mt-6 grid grid-cols-3 gap-2 border-t border-white/70 pt-4">
+                <div className="relative mt-6 grid grid-cols-1 sm:grid-cols-3 gap-2 border-t border-white/70 pt-4">
                   {[
                     { label: 'School', value: student.school_name || schoolName || 'Sacred Hearts School', icon: <Home className="h-3.5 w-3.5" /> },
                     { label: 'Academic Year', value: student.current_year || '2026', icon: <CalendarCheck className="h-3.5 w-3.5" /> },
@@ -1468,20 +1468,22 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             </section>
 
             {/* Continue Learning */}
-            <section className="relative overflow-hidden rounded-[2rem] border border-white/75 bg-white/62 p-3 shadow-[0_14px_38px_rgba(139,92,246,0.14)] backdrop-blur-2xl">
+            <section className="relative overflow-hidden rounded-[2rem] border border-white/75 bg-white/62 p-4 shadow-[0_14px_38px_rgba(139,92,246,0.14)] backdrop-blur-2xl">
               <div className="absolute -right-8 top-1/2 h-20 w-20 -translate-y-1/2 rounded-full border border-white/60" />
-              <div className="relative flex items-center gap-3">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[1.25rem] bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-[0_12px_28px_rgba(139,92,246,0.28)]">
-                  <GraduationCap className="h-6 w-6" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-base font-black tracking-tight text-slate-950">Continue Learning</p>
-                  <p className="mt-0.5 text-xs font-medium text-slate-500">Tap to let {student.first_name} study</p>
-                  <p className="mt-1 text-[11px] font-bold text-orange-500">🔥 Daily practice available</p>
+              <div className="relative flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[1.25rem] bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-[0_12px_28px_rgba(139,92,246,0.28)]">
+                    <GraduationCap className="h-6 w-6" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-base font-black tracking-tight text-slate-950">Continue Learning</p>
+                    <p className="mt-0.5 text-xs font-medium text-slate-500">Tap to let {student.first_name} study</p>
+                    <p className="mt-1 text-[11px] font-bold text-orange-500">🔥 Daily practice available</p>
+                  </div>
                 </div>
                 <button
                   onClick={openStudentMode}
-                  className="shrink-0 rounded-2xl bg-gradient-to-r from-violet-600 via-purple-500 to-fuchsia-500 px-3 py-2 text-xs font-black text-white shadow-[0_12px_28px_rgba(139,92,246,0.30)] transition-all hover:-translate-y-0.5 active:scale-95"
+                  className="w-full sm:w-auto text-center shrink-0 rounded-2xl bg-gradient-to-r from-violet-600 via-purple-500 to-fuchsia-500 px-4 py-2.5 sm:py-2 text-xs font-black text-white shadow-[0_12px_28px_rgba(139,92,246,0.30)] transition-all hover:-translate-y-0.5 active:scale-95"
                 >
                   Enter →
                 </button>
@@ -1489,7 +1491,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             </section>
 
             {/* Quick Actions */}
-            <section className="grid grid-cols-2 gap-3">
+            <section className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {quickActions.map((action) => (
                 <button
                   key={action.key}
@@ -1632,24 +1634,23 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                           {report.schoolName} · {report.currentTerm.includes(report.currentYear) ? report.currentTerm : `${report.currentTerm} ${report.currentYear}`}
                         </p>
                       )}
-                      <div className="flex items-center gap-4">
+                      <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4">
                         {/* Passport photo */}
                         <div className="w-16 h-20 rounded-lg overflow-hidden bg-white/20 shrink-0 flex items-center justify-center text-white font-bold text-lg border-2 border-white/30">
                           {myRecord.passportPhotoUrl
                             ? <img src={resolveMediaUrl(myRecord.passportPhotoUrl) || ''} alt="" className="w-full h-full object-cover" />
                             : `${myRecord.firstName[0]}${myRecord.lastName[0]}`}
                         </div>
-                        <div className="flex-1">
+                        <div className="flex-1 text-center sm:text-left">
                           <p className="text-white/70 text-xs mb-0.5">Position in {report.className}</p>
-                          <span className="text-5xl font-black leading-none">{positionLabel(myRecord.position)}</span>
+                          <span className="text-5xl font-black leading-none block sm:inline">{positionLabel(myRecord.position)}</span>
                           <p className="text-white/80 text-sm mt-1.5">
                             Out of <strong>{report.totalStudents}</strong> students
                           </p>
                         </div>
-                        <div className="text-right shrink-0">
+                        <div className="text-center sm:text-right w-full sm:w-auto border-t border-white/20 sm:border-t-0 pt-3 sm:pt-0 shrink-0">
                           <p className="text-white/70 text-xs">Total Score</p>
-                          <p className="text-3xl font-bold mt-1">{Math.round(myRecord.grandTotal)}</p>
-                          <p className="text-white/70 text-xs">out of {myRecord.grandMax}</p>
+                          <p className="text-3xl font-bold mt-1">{Math.round(myRecord.grandTotal)} <span className="text-xs text-white/70 font-normal">out of {myRecord.grandMax}</span></p>
                           <p className="text-2xl font-bold mt-0.5">{myRecord.percentage}%</p>
                         </div>
                       </div>
@@ -1727,7 +1728,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
-                        <p className="text-sm font-bold text-amber-900">{student.beneficiary_type || 'Scholarship/Beneficiary'}</p>
+                        <p className="text-sm font-bold text-amber-900">Discount ({student.discount_type === 'percentage' ? `${student.discount_value || 0}%` : `GHS ${(student.discount_value || 0).toLocaleString()}`})</p>
                         <span className="text-[10px] font-bold bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full uppercase tracking-wider">Active</span>
                       </div>
                       <p className="text-xs text-amber-800 mt-1">
@@ -1772,15 +1773,15 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                   <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-white/20">
                     <div className="text-center">
                       <p className="text-white/60 text-[10px] uppercase tracking-wide">Term Fee</p>
-                      <p className="text-sm font-bold mt-0.5">{GH(finance.termFee)}</p>
+                      <p className="text-xs sm:text-sm font-bold mt-0.5">{GH(finance.termFee)}</p>
                     </div>
                     <div className="text-center">
                       <p className="text-white/60 text-[10px] uppercase tracking-wide">Arrears</p>
-                      <p className="text-sm font-bold mt-0.5">{GH(finance.arrears)}</p>
+                      <p className="text-xs sm:text-sm font-bold mt-0.5">{GH(finance.arrears)}</p>
                     </div>
                     <div className="text-center">
                       <p className="text-white/60 text-[10px] uppercase tracking-wide">Paid</p>
-                      <p className="text-sm font-bold mt-0.5">{GH(finance.totalPaid)}</p>
+                      <p className="text-xs sm:text-sm font-bold mt-0.5">{GH(finance.totalPaid)}</p>
                     </div>
                   </div>
                 </div>
@@ -1807,7 +1808,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                       {finance.discountAmount > 0 && (
                         <div className="flex items-center justify-between px-4 py-2.5 bg-amber-50">
                           <span className="text-sm text-amber-700 flex items-center gap-1.5">
-                            <Medal className="w-3.5 h-3.5" /> Scholarship / Discount
+                            <Medal className="w-3.5 h-3.5" /> Discount
                           </span>
                           <span className="text-sm font-bold text-amber-700">-{GH(finance.discountAmount)}</span>
                         </div>
@@ -1839,53 +1840,57 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                   ) : (
                     <div className="divide-y divide-gray-50 max-h-64 overflow-y-auto">
                       {finance.payments.map((p: any) => (
-                        <div key={p.id ?? `${p.receipt_number}-${p.payment_date}`} className="flex items-center gap-3 px-4 py-3">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-                            p.term === finance.currentTerm ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
-                          }`}>
-                            <CheckCircle2 className="w-4 h-4" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-800">{GH(parseFloat(p.amount_paid))}</p>
-                            <p className="text-xs text-gray-400 flex items-center gap-1 flex-wrap">
-                              <Clock className="w-3 h-3" />
-                              {fmtDate(p.payment_date)}
-                              {p.payment_method && <><span>·</span> {p.payment_method}</>}
-                              {p.receipt_number && (
-                                <>
-                                  <span>·</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => openReceipt(p)}
-                                    className="font-medium text-purple-600 hover:text-purple-700 underline underline-offset-2"
-                                  >
-                                    #{p.receipt_number}
-                                  </button>
-                                </>
-                              )}
-                            </p>
-                            {(p.reference_number || p.notes) && (
-                              <p className="text-[11px] text-gray-500 mt-0.5 truncate">
-                                {p.reference_number ? `Ref: ${p.reference_number}` : ''}
-                                {p.reference_number && p.notes ? ' · ' : ''}
-                                {p.notes ? `Note: ${p.notes}` : ''}
+                        <div key={p.id ?? `${p.receipt_number}-${p.payment_date}`} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3">
+                          <div className="flex items-start gap-3 min-w-0">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+                              p.term === finance.currentTerm ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                            }`}>
+                              <CheckCircle2 className="w-4 h-4" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-bold text-gray-800">{GH(parseFloat(p.amount_paid))}</span>
+                                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                                  p.term === finance.currentTerm
+                                    ? 'bg-green-100 text-green-700'
+                                    : 'bg-gray-100 text-gray-500'
+                                }`}>
+                                  {p.term || '—'}
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-400 flex items-center gap-1 flex-wrap mt-0.5">
+                                <Clock className="w-3 h-3" />
+                                {fmtDate(p.payment_date)}
+                                {p.payment_method && <><span>·</span> {p.payment_method}</>}
+                                {p.receipt_number && (
+                                  <>
+                                    <span>·</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => openReceipt(p)}
+                                      className="font-medium text-purple-600 hover:text-purple-700 underline underline-offset-2"
+                                    >
+                                      #{p.receipt_number}
+                                    </button>
+                                  </>
+                                )}
                               </p>
-                            )}
+                              {(p.reference_number || p.notes) && (
+                                <p className="text-[11px] text-gray-500 mt-1 truncate">
+                                  {p.reference_number ? `Ref: ${p.reference_number}` : ''}
+                                  {p.reference_number && p.notes ? ' · ' : ''}
+                                  {p.notes ? `Note: ${p.notes}` : ''}
+                                </p>
+                              )}
+                            </div>
                           </div>
                           <button
                             type="button"
                             onClick={() => openReceipt(p)}
-                            className="shrink-0 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100"
+                            className="w-full sm:w-auto text-center text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100 shrink-0"
                           >
                             View Receipt
                           </button>
-                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                            p.term === finance.currentTerm
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-gray-100 text-gray-500'
-                          }`}>
-                            {p.term || '—'}
-                          </span>
                         </div>
                       ))}
                     </div>
@@ -2087,7 +2092,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             <button
               key={t.key}
               onClick={() => handleTabChange(t.key)}
-              className={`relative flex min-h-[58px] flex-col items-center justify-center gap-1 rounded-2xl px-1 py-2 text-[10px] font-bold transition-all active:scale-95 ${
+              className={`relative flex min-h-[58px] flex-col items-center justify-center gap-1 rounded-2xl px-1 py-2 text-[9px] xs:text-[10px] font-bold transition-all active:scale-95 ${
                 activeTab === t.key
                   ? 'text-white shadow-[0_12px_28px_rgba(139,92,246,0.35)]'
                   : 'text-slate-500 hover:text-violet-700'
@@ -2102,7 +2107,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                   </span>
                 )}
               </span>
-              <span className="leading-none">{t.label}</span>
+              <span className="leading-none">{t.key === 'desk' ? 'Desk' : t.label}</span>
             </button>
           ))}
         </div>

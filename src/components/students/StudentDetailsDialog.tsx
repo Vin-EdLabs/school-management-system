@@ -143,7 +143,7 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
                   <div>
                     <span className="text-sm font-bold text-indigo-900 uppercase tracking-wider">Beneficiary:</span>
                     <span className="ml-2 text-sm font-medium text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
-                      {student.beneficiaryType}
+                      {student.beneficiaryType?.replace(/Scholarship/g, 'Discount').replace(/scholarship/g, 'discount').replace(/SCHOLARSHIP/g, 'DISCOUNT')}
                     </span>
                     <span className="ml-2 text-sm font-black text-indigo-600">
                       ({student.discountType === 'percentage' ? `${student.discountValue}% Off` : `GHS ${student.discountValue?.toLocaleString()} Discount`})
@@ -278,14 +278,14 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
               <CardContent className="pt-6">
                 <div className="flex items-center space-x-2 mb-4">
                   <ScholarshipIcon className="w-4 h-4 text-indigo-600" />
-                  <h3 className="font-semibold text-indigo-900">Beneficiary & Scholarship Details</h3>
+                  <h3 className="font-semibold text-indigo-900">Beneficiary & Discount Details</h3>
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-4">
                     <div>
-                      <label className="text-xs font-bold text-indigo-400 uppercase tracking-widest">Scholarship Type</label>
-                      <p className="font-bold text-slate-800">{student.beneficiaryType}</p>
+                      <label className="text-xs font-bold text-indigo-400 uppercase tracking-widest">Discount Type</label>
+                      <p className="font-bold text-slate-800">{student.beneficiaryType?.replace(/Scholarship/g, 'Discount').replace(/scholarship/g, 'discount').replace(/SCHOLARSHIP/g, 'DISCOUNT')}</p>
                     </div>
                     <div>
                       <label className="text-xs font-bold text-indigo-400 uppercase tracking-widest">Discount applied</label>
@@ -298,7 +298,7 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
                     </div>
                   </div>
                   <div>
-                    <label className="text-xs font-bold text-indigo-400 uppercase tracking-widest">Scholarship Notes</label>
+                    <label className="text-xs font-bold text-indigo-400 uppercase tracking-widest">Discount Notes</label>
                     <div className="mt-1 p-3 bg-white rounded-lg border border-indigo-100 text-sm text-slate-600 italic">
                       {student.beneficiaryNotes || 'No specific notes recorded for this beneficiary status.'}
                     </div>

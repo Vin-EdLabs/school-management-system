@@ -607,9 +607,9 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
                     <div className="w-10 h-10 rounded-xl bg-indigo-500/20 flex items-center justify-center">
                       <ScholarshipIcon className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                     </div>
-                    <Label className="text-lg font-semibold text-slate-900 dark:text-white">Scholarship or discount</Label>
+                    <Label className="text-lg font-semibold text-slate-900 dark:text-white">Discount</Label>
                   </div>
-                  <p className="mt-2 ml-1 text-sm text-slate-500 dark:text-slate-400">Turn on if this student gets a fee reduction or scholarship.</p>
+                  <p className="mt-2 ml-1 text-sm text-slate-500 dark:text-slate-400">Turn on if this student gets a fee reduction or discount.</p>
                 </div>
                 <Switch
                   checked={formData.isBeneficiary}
@@ -641,7 +641,7 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
                       }}
                     />
                     <Label htmlFor="isFullScholarship" className="text-sm font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest cursor-pointer">
-                      Full Scholarship (100% Free)
+                      Full Discount (100% Free)
                     </Label>
                   </div>
 
@@ -651,15 +651,15 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
                         <div className="space-y-2.5">
                           <Label htmlFor="beneficiaryType" className="text-sm font-medium text-slate-700 dark:text-slate-300 ml-1">Type</Label>
                           <Select 
-                            value={formData.beneficiaryType} 
-                            onValueChange={(value) => handleInputChange('beneficiaryType', value)}
+                             value={formData.beneficiaryType} 
+                             onValueChange={(value) => handleInputChange('beneficiaryType', value)}
                           >
                             <SelectTrigger className="h-12 bg-white dark:bg-slate-900 border-indigo-500/30 rounded-xl">
                               <SelectValue placeholder="Select type" />
                             </SelectTrigger>
                             <SelectContent className="rounded-xl border-indigo-500/20 shadow-2xl">
-                              <SelectItem value="Full Scholarship" className="rounded-lg">Full Scholarship</SelectItem>
-                              <SelectItem value="Partial Scholarship" className="rounded-lg">Partial Scholarship</SelectItem>
+                              <SelectItem value="Full Scholarship" className="rounded-lg">Full Discount</SelectItem>
+                              <SelectItem value="Partial Scholarship" className="rounded-lg">Partial Discount</SelectItem>
                               <SelectItem value="Staff Child Discount" className="rounded-lg">Staff Child Discount</SelectItem>
                               <SelectItem value="Bursary" className="rounded-lg">Bursary</SelectItem>
                               <SelectItem value="Sibling Discount" className="rounded-lg">Sibling Discount</SelectItem>

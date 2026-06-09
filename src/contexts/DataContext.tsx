@@ -351,7 +351,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setWorkspaceReady(false);
   }, [schoolId]);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (isSilent = false) => {
     if (!isAuthenticated) {
       setLoading(false);
       setWorkspaceReady(false);
@@ -361,7 +361,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       apiService.setTenantContext(schoolId);
     }
     const gen = ++loadGeneration.current;
-    setLoading(true);
+    if (!isSilent) {
+      setLoading(true);
+    }
     try {
       const [studentsRes, teachersRes, classesRes, feesRes, paymentsRes, incomeRes, expensesRes, arrearsRes, subjectsRes] = await Promise.all([
         apiService.get('/students').catch(() => []),
@@ -459,7 +461,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Keep UI fresh when user returns to tab/focus.
     const onFocus = () => {
-      loadData().catch(() => undefined);
+      loadData(true).catch(() => undefined);
     };
 
     window.addEventListener('focus', onFocus);
@@ -467,8 +469,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Light polling as fallback in case other modules mutate data directly.
     const interval = window.setInterval(() => {
-      loadData().catch(() => undefined);
-    }, 15000);
+      loadData(true).catch(() => undefined);
+    }, 45000);
 
     return () => {
       window.removeEventListener('focus', onFocus);
@@ -485,7 +487,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (debounceTimer != null) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         debounceTimer = undefined;
-        loadData().catch(() => undefined);
+        loadData(true).catch(() => undefined);
       }, 120);
     };
 

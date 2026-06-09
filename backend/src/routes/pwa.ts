@@ -1,138 +1,97 @@
 import express from 'express';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import crypto from 'crypto';
+import sharp from 'sharp';
+
 import { resolveTenant, TenantRequest } from '../middleware/tenantResolver.js';
-import { query } from '../db/connection.js';
-import { Request } from 'express';
+import { captureSystemError } from '../services/systemErrorService.js';
+import {
+  isTenantSubdomainHost,
+  resolveClientHost,
+  resolvePwaKind,
+} from '../utils/tenantHost.js';
 
-// 1. Fixes host string mapping issues gracefully
-function resolveClientHost(req: any, ...args: any[]): string {
-  if (typeof req === 'string') return req.split(':')[0];
-  const hostHeader = req?.headers?.host || req?.get?.('host') || '';
-  return hostHeader.split(':')[0]; // strips out ports like :3000
-}
-
-// 2. Accepts either a request or raw string
-function isTenantSubdomainHost(host: any, ...args: any[]): boolean {
-  const hostStr = typeof host === 'string' ? host : resolveClientHost(host);
-  if (!hostStr || hostStr.includes('localhost') || hostStr.match(/^(\d{1,3}\.){3}\d{1,3}$/)) {
-    return false;
-  }
-  const parts = hostStr.split('.');
-  return parts.length > 2;
-}
-
-// 3. Handles both requests or custom routing strings
-function resolvePwaKind(req: any, ...args: any[]): 'school' | 'super-admin' | 'parent' {
-  if (typeof req === 'string') {
-    if (req === 'school' || req === 'super-admin') return req;
-    return 'parent';
-  }
-  const kind = req?.query?.kind as string;
-  if (kind === 'school' || kind === 'super-admin') return kind;
-  return 'parent';
-}
-
-// 4. FIXES LINES 181 & 201: Accepts a request or a raw string cleanly
-function parseIconSize(req: any, ...args: any[]): number {
-  // If the code accidentally passed a raw numeric string/number directly
-  if (typeof req === 'string' || typeof req === 'number') {
-    const size = parseInt(req as string, 10);
-    return isNaN(size) ? 192 : size;
-  }
-  // Standard fallback extraction if a Request object is passed
-  const sizeQuery = req?.query?.size || (args[0]?.query?.size);
-  const size = parseInt(sizeQuery as string, 10);
-  return isNaN(size) ? 192 : size;
-}
-
-// 5. Flexible DB buffer lookup signature
-async function loadLogoBuffer(tenantId: string | number, size?: any, ...args: any[]): Promise<any> {
-  try {
-    return null; // Your DB query replacement line
-  } catch (error) {
-    console.error('[PWA] Error loading logo buffer:', error);
-    return null;
-  }
-}
-
-// 6. Flexible response output pipeline
-function renderLogoPng(res: any, buffer: any, size?: any, ...args: any[]): any {
-  if (res && typeof res.setHeader === 'function' && buffer) {
-    res.setHeader('Content-Type', 'image/webp');
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    return res.send(buffer);
-  }
-  if (res && typeof res.status === 'function') {
-    return res.status(400).send('Invalid asset buffer');
-  }
-}
-
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const router = express.Router();
-
-// Public endpoint to serve the decoded base64 logo as binary image data
-router.get('/logo/:tenantId', async (req, res) => {
-  try {
-    // Add CORS headers to allow frontend access
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET');
-
-    const tenantId = parseInt(req.params.tenantId, 10);
-    if (isNaN(tenantId)) {
-      return res.status(400).send('Invalid tenant ID');
-    }
-
-    const result = await query(
-      `SELECT COALESCE(ss.logo_url, t.logo_url) as logo_url
-       FROM tenants t
-       LEFT JOIN school_settings ss ON ss.tenant_id = t.id
-       WHERE t.id = $1`,
-      [tenantId]
-    );
-
-    const logo = result.rows[0]?.logo_url;
-    if (!logo) {
-      return res.status(404).send('Logo not found');
-    }
-
-    if (logo.startsWith('data:')) {
-      const matches = logo.match(/^data:([^;]+);base64,(.+)$/);
-      if (!matches || matches.length !== 3) {
-        return res.status(500).send('Invalid logo format');
-      }
-      const contentType = matches[1];
-      const buffer = Buffer.from(matches[2], 'base64');
-
-      // Set cache headers for better performance
-      res.setHeader('Cache-Control', 'public, max-age=86400'); // 24 hours
-      res.setHeader('Content-Type', contentType);
-      return res.send(buffer);
-    } else {
-      if (logo.startsWith('http')) {
-        return res.redirect(logo);
-      }
-      const origin = `${req.protocol}://${req.get('host')}`;
-      return res.redirect(`${origin}${logo.startsWith('/') ? '' : '/'}${logo}`);
-    }
-  } catch (error) {
-    console.error('Failed to serve tenant logo:', error);
-    return res.status(500).send('Server error');
-  }
-});
 
 router.use(resolveTenant);
 
 const PWA_ICON_SIZES = ['128x128', '192x192', '256x256', '512x512'] as const;
 
 function pageOrigin(req: TenantRequest, clientHost: string): string {
+  const referer = req.headers.referer;
+  if (referer) {
+    try {
+      return new URL(referer).origin;
+    } catch {
+      // fall through
+    }
+  }
+
   const protocol = req.protocol || 'https';
-  const host = (isTenantSubdomainHost(clientHost) ? clientHost : req.get('host') || clientHost)
-    .split(':')[0];
-  return `${protocol}://${host}`;
+  const forwarded = req.get('x-forwarded-host')?.split(',')[0]?.trim();
+  if (forwarded) {
+    return `${protocol}://${forwarded}`;
+  }
+
+  const isLocal =
+    clientHost === 'localhost' ||
+    clientHost === '127.0.0.1' ||
+    clientHost.endsWith('.localhost') ||
+    clientHost.endsWith('.lvh.me');
+  if (isLocal && protocol === 'http') {
+    const devPort = process.env.FRONTEND_DEV_PORT || '8080';
+    return `${protocol}://${clientHost}:${devPort}`;
+  }
+
+  return `${protocol}://${clientHost}`;
+}
+
+function logoVersionKey(logo: string, tenantId: number): string {
+  return crypto
+    .createHash('sha256')
+    .update(`${tenantId}:${logo.length}:${logo.slice(0, 64)}:${logo.slice(-64)}`)
+    .digest('hex')
+    .slice(0, 12);
+}
+
+function buildPwaIconQueryParams(
+  req: TenantRequest,
+  clientHost: string,
+  kind: string,
+): string {
+  const params = new URLSearchParams();
+  const tenant = req.tenant;
+
+  if (tenant?.id) params.set('tenantId', String(tenant.id));
+  if (!params.has('tenantId')) {
+    const queryTenantId = req.query.tenantId as string;
+    if (queryTenantId) params.set('tenantId', queryTenantId);
+  }
+
+  if (tenant?.slug) params.set('slug', tenant.slug);
+  if (!params.has('slug')) {
+    const querySlug = req.query.slug as string;
+    if (querySlug) params.set('slug', querySlug);
+  }
+
+  params.set('kind', kind);
+  params.set('host', clientHost);
+
+  if (tenant?.logo_url) {
+    params.set('v', logoVersionKey(tenant.logo_url, tenant.id));
+  }
+
+  return params.toString();
 }
 
 function buildManifestIcons(
   pageOriginUrl: string,
+  iconQuery: string,
   hasTenantLogo: boolean,
   fallbackIcon192: string,
   fallbackIcon512: string,
@@ -146,8 +105,15 @@ function buildManifestIcons(
     ];
   }
 
-  const icon192 = `${pageOriginUrl}/pwa-icon-192.png`;
-  const icon512 = `${pageOriginUrl}/pwa-icon-512.png`;
+  // Point icons at the real backend logo endpoint (NOT the virtual /pwa-icon-*.png
+  // paths). Android WebAPK minting and iOS fetch these server-side, bypassing the
+  // service worker — so they must resolve to a true HTTP resource. The endpoint
+  // normalizes every logo into a padded square PNG, so the declared type is png.
+  const base = `${pageOriginUrl}/api/pwa/logo?${iconQuery}`;
+  const icon192 = `${base}&size=192`;
+  const icon512 = `${base}&size=512`;
+  const maskable192 = `${base}&size=192&maskable=1`;
+  const maskable512 = `${base}&size=512&maskable=1`;
   const icons: Array<{ src: string; sizes: string; type: string; purpose: string }> = [];
 
   for (const size of PWA_ICON_SIZES) {
@@ -155,55 +121,182 @@ function buildManifestIcons(
     icons.push({ src, sizes: size, type: 'image/png', purpose: 'any' });
   }
 
+  // Maskable variants carry safe-zone padding so Android never crops the logo.
   icons.push(
-    { src: icon192, sizes: '192x192', type: 'image/png', purpose: 'maskable' },
-    { src: icon512, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+    { src: maskable192, sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+    { src: maskable512, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
   );
 
   return icons;
 }
 
-async function resolveTenantLogoUrl(tenantId: number | null): Promise<string | null> {
-  if (!tenantId) return null;
-  const result = await query(
-    `SELECT COALESCE(ss.logo_url, t.logo_url) AS logo_url
-     FROM tenants t
-     LEFT JOIN school_settings ss ON ss.tenant_id = t.id
-     WHERE t.id = $1`,
-    [tenantId],
-  );
-  return result.rows[0]?.logo_url || null;
+async function readLogoBytes(
+  logo: string,
+  req: TenantRequest,
+): Promise<{ buffer: Buffer; contentType: string } | null> {
+  if (logo.startsWith('data:')) {
+    const matches = logo.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) return null;
+    return {
+      contentType: matches[1],
+      buffer: Buffer.from(matches[2], 'base64'),
+    };
+  }
+
+  if (logo.startsWith('http')) {
+    const response = await fetch(logo);
+    if (!response.ok) return null;
+    const contentType = response.headers.get('content-type') || 'image/png';
+    const buffer = Buffer.from(await response.arrayBuffer());
+    return { buffer, contentType };
+  }
+
+  const relative = logo.startsWith('/') ? logo : `/${logo}`;
+  const uploadsRoot = path.join(__dirname, '../../uploads');
+  const filePath = relative.startsWith('/uploads/')
+    ? path.join(uploadsRoot, relative.replace(/^\/uploads\//, ''))
+    : path.join(uploadsRoot, relative.replace(/^\//, ''));
+
+  try {
+    const buffer = await fs.readFile(filePath);
+    const lower = filePath.toLowerCase();
+    let contentType = 'image/png';
+    if (lower.endsWith('.svg')) contentType = 'image/svg+xml';
+    else if (lower.endsWith('.webp')) contentType = 'image/webp';
+    else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) contentType = 'image/jpeg';
+    return { buffer, contentType };
+  } catch {
+    const origin = `${req.protocol}://${req.get('host')}`;
+    const remote = await fetch(`${origin}${relative}`);
+    if (!remote.ok) return null;
+    const contentType = remote.headers.get('content-type') || 'image/png';
+    const buffer = Buffer.from(await remote.arrayBuffer());
+    return { buffer, contentType };
+  }
 }
 
-function fallbackIconPath(size: number): string {
-  return size >= 256 ? '/android-chrome-512x512.png' : '/android-chrome-192x192.png';
+/**
+ * Normalize an arbitrary logo into a square PNG icon so it renders consistently
+ * as a PWA icon on every platform regardless of the logo's shape or format.
+ *  - `any` icons: logo fitted (contain) on a transparent square, tiny padding.
+ *  - `maskable` icons: extra safe-zone padding + solid background so Android's
+ *    circular/squircle mask never crops the logo.
+ */
+async function renderIcon(
+  buffer: Buffer,
+  size: number,
+  maskable: boolean,
+  background: string,
+): Promise<Buffer> {
+  const padRatio = maskable ? 0.18 : 0.04;
+  const pad = Math.round(size * padRatio);
+  const inner = Math.max(1, size - pad * 2);
+
+  const resized = await sharp(buffer)
+    .resize(inner, inner, {
+      fit: 'contain',
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    })
+    .png()
+    .toBuffer();
+
+  const canvasBg = maskable
+    ? hexToRgba(background)
+    : { r: 0, g: 0, b: 0, alpha: 0 };
+
+  return sharp({
+    create: { width: size, height: size, channels: 4, background: canvasBg },
+  })
+    .composite([{ input: resized, gravity: 'center' }])
+    .png()
+    .toBuffer();
 }
 
-// Public route: serve tenant logo as a resized/compressed PNG (PWA + favicon friendly)
+function hexToRgba(hex: string): { r: number; g: number; b: number; alpha: number } {
+  const fallback = { r: 255, g: 255, b: 255, alpha: 1 };
+  if (!hex || !hex.startsWith('#')) return fallback;
+  const clean = hex.slice(1);
+  const full = clean.length === 3 ? clean.split('').map((c) => c + c).join('') : clean;
+  if (full.length !== 6) return fallback;
+  const num = parseInt(full, 16);
+  if (Number.isNaN(num)) return fallback;
+  return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255, alpha: 1 };
+}
+
 router.get('/logo', async (req: TenantRequest, res) => {
   try {
-    const size = parseIconSize(req.originalUrl || req.url || req.path, req.query.size as string | undefined);
-    const tenantLogo =
-      req.tenant?.logo_url ||
-      (req.tenantId ? await resolveTenantLogoUrl(req.tenantId) : null);
+    const tenant = req.tenant;
+    const size = String(req.query.size || '192');
 
-    if (!tenantLogo) {
-      return res.redirect(fallbackIconPath(size));
+    if (!tenant || !tenant.logo_url) {
+      console.log('[PWA] Logo fallback — no tenant logo', {
+        tenantId: tenant?.id ?? null,
+        host: resolveClientHost(req),
+      });
+      return res.redirect(302, '/android-chrome-192x192.png');
     }
 
-    const source = await loadLogoBuffer(tenantLogo);
-    if (!source) {
-      return res.redirect(fallbackIconPath(size));
+    const logo = tenant.logo_url;
+    const version = logoVersionKey(logo, tenant.id);
+    const logoData = await readLogoBytes(logo, req);
+
+    if (!logoData) {
+      console.warn('[PWA] Logo read failed — using default icon', {
+        tenantId: tenant.id,
+        logoPreview: logo.slice(0, 80),
+      });
+      return res.redirect(302, '/android-chrome-192x192.png');
     }
 
-    const png = await renderLogoPng(source, size);
-    res.setHeader('Content-Type', 'image/png');
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    return res.send(png);
-  } catch (error) {
-    console.error('PWA logo error:', error);
-    const size = parseIconSize(req.path, req.query.size as string | undefined);
-    return res.redirect(fallbackIconPath(size));
+    const sizeNum = size === '512' ? 512 : 192;
+    const maskable = req.query.maskable === '1';
+    const background = tenant.primary_color || '#ffffff';
+
+    let outBuffer = logoData.buffer;
+    let outType = logoData.contentType;
+    let normalized = false;
+    try {
+      outBuffer = await renderIcon(logoData.buffer, sizeNum, maskable, background);
+      outType = 'image/png';
+      normalized = true;
+    } catch (normErr: any) {
+      console.warn('[PWA] Logo normalization failed — serving raw bytes', {
+        tenantId: tenant.id,
+        error: normErr?.message,
+      });
+    }
+
+    const variantTag = `${version}-${sizeNum}${maskable ? '-m' : ''}`;
+
+    console.log('[PWA] Serving tenant logo', {
+      tenantId: tenant.id,
+      tenantName: tenant.name,
+      size: sizeNum,
+      maskable,
+      normalized,
+      version,
+      contentType: outType,
+      bytes: outBuffer.length,
+      host: resolveClientHost(req),
+    });
+
+    res.setHeader('Content-Type', outType);
+    res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
+    res.setHeader('ETag', `"${variantTag}"`);
+    res.setHeader('X-PWA-Logo-Version', version);
+    return res.send(outBuffer);
+  } catch (error: any) {
+    console.error('[PWA] Logo error:', error);
+    captureSystemError({
+      message: error?.message || 'PWA logo error',
+      stack: error?.stack || null,
+      source: 'pwa',
+      tenantId: req.tenant?.id ?? null,
+      endpoint: '/api/pwa/logo',
+      action: 'serve_tenant_logo',
+      severity: 'critical',
+    }).catch(() => undefined);
+    return res.status(500).send('Internal server error');
   }
 });
 
@@ -228,119 +321,47 @@ router.get('/manifest', async (req: TenantRequest, res) => {
     const shortName = baseName.slice(0, 12);
     const primary = tenant?.primary_color || '#0f766e';
     const secondary = tenant?.secondary_color || primary;
-    const subdomain = tenant?.subdomain || tenant?.slug || null;
+    const logo = tenant?.logo_url || '';
     const tenantId = Number(tenant?.id || 0);
-    let logo = tenant?.logo_url || '';
-    if (tenantId > 0) {
-      const logoRes = await query(
-        `SELECT COALESCE(ss.logo_url, t.logo_url) as logo_url
-         FROM tenants t
-         LEFT JOIN school_settings ss ON ss.tenant_id = t.id
-         WHERE t.id = $1`,
-        [tenantId]
-      ).catch(() => null);
-      if (logoRes && logoRes.rows.length > 0 && logoRes.rows[0].logo_url) {
-        logo = logoRes.rows[0].logo_url;
-      }
-    }
 
-    // CRITICAL: Determine the correct origin for this tenant
-    // For subdomain architecture, use the tenant's subdomain
-    let origin = `${req.protocol}://${req.get('host')}`;
-    let baseUrl = origin;
-    let appPath = '/portal'; // Default path for parent portal
+    const origin = pageOrigin(req, clientHost);
+    const iconQuery = buildPwaIconQueryParams(req, clientHost, kind);
 
-    // Determine app path based on kind
-    if (kind === 'school') {
-      appPath = '/';
-    } else if (kind === 'super-admin') {
-      appPath = '/super-admin';
-    } else {
-      appPath = '/portal';
-    }
+    let startUrl = '/';
+    let scope = '/';
 
-    // For subdomain-based tenants, ensure we're using the correct subdomain
-    // If the request came to api.scholarnerve.com, we need to construct the tenant URL
-    const isApiDomain = req.get('host')?.includes('api.scholarnerve.com') ||
-      req.get('host')?.includes('api.scholarnerve.onrender.com') ||
-      req.get('host')?.includes('scholarnerve.com'); // Support direct main domain requests
-
-    if (isApiDomain && subdomain) {
-      // Build the correct tenant subdomain URL
-      const mainDomain = process.env.MAIN_DOMAIN || 'scholarnerve.com';
-      origin = `${req.protocol}://${subdomain}.${mainDomain}`;
-      baseUrl = origin;
-    }
-
-    // Construct start_url - MUST be an absolute URL or root-relative path within scope
-    let startUrl: string;
     if (kind === 'super-admin') {
-      startUrl = `${baseUrl}/super-admin`;
-    } else if (subdomain) {
-      // Subdomain architecture: start at the root of the tenant subdomain with appropriate path
-      startUrl = `${baseUrl}${appPath}`;
+      startUrl = '/super-admin';
+      scope = '/super-admin';
     } else if (tenantId > 0) {
-      // Legacy path-based architecture fallback
-      startUrl = kind === 'school' ? `/school/${tenantId}` : `/portal/${tenantId}`;
-    } else {
-      startUrl = appPath;
+      if (isTenantSubdomain) {
+        if (kind === 'parent') {
+          startUrl = '/portal';
+          scope = '/portal';
+        } else {
+          startUrl = '/';
+          scope = '/';
+        }
+      } else if (kind === 'parent') {
+        startUrl = `/portal/${tenantId}`;
+        scope = `/portal/${tenantId}`;
+      } else {
+        startUrl = `/school/${tenantId}`;
+        scope = `/school/${tenantId}`;
+      }
     }
 
-    // Scope should be limited to the app's directory
-    let scope: string;
-    if (kind === 'super-admin') {
-      scope = `${baseUrl}/super-admin/`;
-    } else if (subdomain) {
-      // Scope to the specific path on the subdomain
-      scope = `${baseUrl}${appPath}/`;
-    } else {
-      scope = appPath === '/' ? '/' : `${appPath}/`;
-    }
+    const fallbackIcon192 = `${origin}/android-chrome-192x192.png`;
+    const fallbackIcon512 = `${origin}/android-chrome-512x512.png`;
 
-    // Ensure trailing slashes for scope
-    if (!scope.endsWith('/')) scope += '/';
+    const icons = buildManifestIcons(
+      origin,
+      iconQuery,
+      Boolean(tenant?.logo_url),
+      fallbackIcon192,
+      fallbackIcon512,
+    );
 
-    const absLogo = (() => {
-      if (!logo) return '';
-      // If it's a base64 string, point to the dynamic logo endpoint with absolute URL
-      if (logo.startsWith('data:')) {
-        const apiHost = req.get('host');
-        const protocol = req.protocol;
-        // Ensure we use the API host, not the tenant subdomain for logo requests
-        // Strip trailing /api to get the base API origin
-        const apiBaseUrl = (process.env.API_BASE_URL || `${protocol}://${apiHost}`).replace(/\/api$/, '');
-        return `${apiBaseUrl}/api/pwa/logo/${tenantId}`;
-      }
-      if (logo.startsWith('http')) return logo;
-      // For subdomain architecture, serve logos from CDN or API
-      if (process.env.CDN_DOMAIN) {
-        return `https://${process.env.CDN_DOMAIN}${logo.startsWith('/') ? '' : '/'}${logo}`;
-      }
-      // Fallback to the current API request origin
-      const apiHost = req.get('host');
-      const protocol = req.protocol;
-      return `${protocol}://${apiHost}${logo.startsWith('/') ? '' : '/'}${logo}`;
-    })();
-
-    const fallbackIcon192 = '/android-chrome-192x192.png';
-    const fallbackIcon512 = '/android-chrome-512x512.png';
-
-    // 🚀 FIX 1: Explicitly identify as image/webp since your DB saves images in webp format
-    const logoMime = 'image/webp';
-
-    // 🚀 FIX 2: Split your logo path into separate parameters for matching dimensions
-    // This stops Android from rejecting a 192px source mapped into a 512px wrapper.
-    const logoUrl192 = absLogo ? `${absLogo}&size=192` : '';
-    const logoUrl512 = absLogo ? `${absLogo}&size=512` : '';
-
-    const tenantIcons = absLogo ? [
-      { src: logoUrl192, sizes: '192x192', type: logoMime, purpose: 'any' },
-      { src: logoUrl192, sizes: '192x192', type: logoMime, purpose: 'maskable' },
-      { src: logoUrl512, sizes: '512x512', type: logoMime, purpose: 'any' },
-      { src: logoUrl512, sizes: '512x512', type: logoMime, purpose: 'maskable' },
-    ] : [];
-
-    // Base description mapping logic
     let description = `${baseName} parent portal`;
     if (kind === 'school') {
       description = `${baseName} staff and teacher portal`;
@@ -348,50 +369,61 @@ router.get('/manifest', async (req: TenantRequest, res) => {
       description = `${baseName} super admin dashboard`;
     }
 
-    // Construct the standard clean PWA manifest configuration payload
-    const manifest = {
+    console.log('[PWA] Manifest generated', {
+      tenantId: tenant?.id ?? null,
+      tenantName: tenant?.name ?? null,
+      kind,
+      host: clientHost,
+      startUrl,
+      scope,
+      hasLogo: Boolean(tenant?.logo_url),
+      logoVersion: tenant?.logo_url ? logoVersionKey(logo, tenantId) : null,
+      icon192: icons[0]?.src ?? null,
+    });
+
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+
+    return res.type('application/manifest+json').json({
       id: startUrl,
       name: appName,
       short_name: shortName,
       description,
       start_url: startUrl,
-      scope: scope,
+      scope,
       display: 'standalone',
       display_override: ['standalone', 'minimal-ui'],
-      orientation: 'portrait',
+      orientation: 'any',
       background_color: primary,
       theme_color: secondary,
       categories: ['education', 'productivity'],
       prefer_related_applications: false,
-      icons: tenantIcons.length > 0 ? tenantIcons : [
-        { src: fallbackIcon192, sizes: '192x192', type: 'image/png', purpose: 'any' },
-        { src: fallbackIcon192, sizes: '192x192', type: 'image/png', purpose: 'maskable' },
-        { src: fallbackIcon512, sizes: '512x512', type: 'image/png', purpose: 'any' },
-        { src: fallbackIcon512, sizes: '512x512', type: 'image/png', purpose: 'maskable' }
-      ],
+      icons,
       shortcuts: [
         {
-          name: kind === 'school' ? 'Open school app' : kind === 'super-admin' ? 'Open super admin' : 'Open parent portal',
-          short_name: kind === 'school' ? 'School' : kind === 'super-admin' ? 'Admin' : 'Portal',
+          name:
+            kind === 'school'
+              ? 'Open school app'
+              : kind === 'super-admin'
+                ? 'Open super admin'
+                : 'Open parent portal',
+          short_name:
+            kind === 'school' ? 'School' : kind === 'super-admin' ? 'Admin' : 'Portal',
           url: startUrl,
-        }
-      ]
-    };
-
-    // Conditional push notification integration check
-    const responseManifest = process.env.VAPID_PUBLIC_KEY
-      ? { ...manifest, gcm_sender_id: "103953800507" }
-      : manifest;
-
-    console.log(`[PWA] Generated manifest for tenant ${subdomain || tenantId}: start_url=${startUrl}, scope=${scope}`);
-
-    // Set correct PWA specification headers and send response
-    return res
-      .type('application/manifest+json')
-      .json(responseManifest);
-
-  } catch (error) {
-    console.error('PWA manifest error:', error);
+        },
+      ],
+      gcm_sender_id: '103953800507',
+    });
+  } catch (error: any) {
+    console.error('[PWA] Manifest error:', error);
+    captureSystemError({
+      message: error?.message || 'PWA manifest error',
+      stack: error?.stack || null,
+      source: 'pwa',
+      tenantId: req.tenant?.id ?? null,
+      endpoint: '/api/pwa/manifest',
+      action: 'build_manifest',
+      severity: 'critical',
+    }).catch(() => undefined);
     return res.status(500).json({ error: 'Failed to build manifest' });
   }
 });

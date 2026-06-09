@@ -3,7 +3,8 @@ import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
 import { detectTenantSlugFromHost } from './utils/tenantHost'
-import { buildServedLogoUrl } from './services/tenantService'
+import { resolveLogoUrl } from './services/tenantService'
+import { initSystemErrorReporter } from './utils/systemErrorReporter'
 
 const API_BASE = (() => {
   if (import.meta.env.VITE_API_BASE_URL) return import.meta.env.VITE_API_BASE_URL;
@@ -33,29 +34,73 @@ function detectPwaKind(pathname: string): 'parent' | 'school' | 'super-admin' {
   if (/^\/portal(\/|$)/i.test(pathname)) return 'parent';
   if (/^\/(school|sch)(\/|$)/i.test(pathname)) return 'school';
 
-  // Root path `/` or other path on a tenant subdomain is the school portal
   if (detectTenantSlugFromHost()) {
     return 'school';
   }
 
-  return 'parent';
+  return 'school';
 }
 
-function setCssBrandingVars(tenant: any, context?: { tenantId?: number | null; slug?: string | null }) {
+function logoVersionKey(logo: string, tenantId: number): string {
+  const input = `${tenantId}:${logo.length}:${logo.slice(0, 64)}:${logo.slice(-64)}`;
+  let hash = 0;
+  for (let i = 0; i < input.length; i++) {
+    hash = ((hash << 5) - hash + input.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
+function buildPwaQueryParams(
+  slug: string | null,
+  tenantId: number | null,
+  kind: string,
+  logoUrl?: string | null,
+): URLSearchParams {
+  const params = new URLSearchParams();
+  if (tenantId) params.set('tenantId', String(tenantId));
+  else if (slug) params.set('slug', slug);
+  params.set('kind', kind);
+  params.set('host', window.location.hostname);
+  if (logoUrl && tenantId) {
+    params.set('v', logoVersionKey(logoUrl, tenantId));
+  }
+  return params;
+}
+
+function setDynamicHeadIcons(iconQuery: string) {
+  const icon192 = `${window.location.origin}/api/pwa/logo?${iconQuery}&size=192`;
+  const icon512 = `${window.location.origin}/api/pwa/logo?${iconQuery}&size=512`;
+  const upsert = (rel: string, sizes?: string, type?: string, href?: string) => {
+    const selector = sizes
+      ? `link[rel='${rel}'][sizes='${sizes}']`
+      : `link[rel='${rel}']`;
+    let el = document.querySelector(selector) as HTMLLinkElement | null;
+    if (!el) {
+      el = document.createElement('link');
+      el.rel = rel;
+      if (sizes) el.sizes = sizes;
+      if (type) el.type = type;
+      document.head.appendChild(el);
+    }
+    el.href = href || icon192;
+  };
+
+  upsert('apple-touch-icon', '180x180', undefined, icon192);
+  upsert('shortcut icon', undefined, undefined, icon192);
+  upsert('icon', '32x32', 'image/png', icon192);
+  upsert('icon', '16x16', 'image/png', icon192);
+  upsert('icon', '512x512', 'image/png', icon512);
+}
+
+function setCssBrandingVars(tenant: any) {
   const root = document.documentElement;
   const primary = tenant?.primary_color || '#0f766e';
   const secondary = tenant?.secondary_color || '#14b8a6';
   root.style.setProperty('--primary', primary);
   root.style.setProperty('--secondary', secondary);
-  const servedLogo = buildServedLogoUrl({
-    tenantId: tenant?.id ?? context?.tenantId ?? null,
-    slug: tenant?.slug ?? context?.slug ?? null,
-    size: 192,
-  });
-  if (servedLogo) {
-    root.style.setProperty('--school-logo', `url(${servedLogo})`);
-  } else if (tenant?.logo_url) {
-    root.style.setProperty('--school-logo', `url(${tenant.logo_url})`);
+  const resolvedLogo = resolveLogoUrl(tenant?.logo_url || null);
+  if (resolvedLogo) {
+    root.style.setProperty('--school-logo', `url(${resolvedLogo})`);
   }
 
   let themeMeta = document.querySelector("meta[name='theme-color']") as HTMLMetaElement | null;
@@ -65,6 +110,12 @@ function setCssBrandingVars(tenant: any, context?: { tenantId?: number | null; s
     document.head.appendChild(themeMeta);
   }
   themeMeta.content = primary;
+}
+
+async function invalidatePwaCaches() {
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({ type: 'INVALIDATE_PWA_CACHE' });
+  }
 }
 
 async function bootstrapTenantBrandingAndManifest() {
@@ -97,40 +148,15 @@ async function bootstrapTenantBrandingAndManifest() {
       }
 
       document.title = `${tenant.name} — ${portalLabel}`;
-      const resolved = resolveLogoUrl(tenant.logo_url as string | null);
-      if (resolved) {
-        // Apple touch icon
-        let appleTouch = document.querySelector("link[rel='apple-touch-icon']") as HTMLLinkElement | null;
-        if (!appleTouch) {
-          appleTouch = document.createElement('link');
-          appleTouch.rel = 'apple-touch-icon';
-          document.head.appendChild(appleTouch);
-        }
-        appleTouch.href = resolved;
-
-        // Also set standard favicon
-        let favicon = document.querySelector("link[rel='icon']") as HTMLLinkElement | null;
-        if (!favicon) {
-          favicon = document.createElement('link');
-          favicon.rel = 'icon';
-          favicon.type = 'image/png';
-          document.head.appendChild(favicon);
-        }
-        favicon.href = resolved;
-
-        // Set shortcut icon for older browsers
-        let shortcutIcon = document.querySelector("link[rel='shortcut icon']") as HTMLLinkElement | null;
-        if (!shortcutIcon) {
-          shortcutIcon = document.createElement('link');
-          shortcutIcon.rel = 'shortcut icon';
-          document.head.appendChild(shortcutIcon);
-        }
-        shortcutIcon.href = resolved;
-      }
     }
 
-    // Use a relative path with query parameters pointing directly to the backend manifest route.
-    const manifestUrl = `/api/pwa/manifest?kind=${kind}${slug ? `&slug=${slug}` : tenantId ? `&tenantId=${tenantId}` : ''}`;
+    const manifestParams = buildPwaQueryParams(slug, tenantId, kind, tenant?.logo_url);
+    const manifestUrl = `/api/pwa/manifest?${manifestParams.toString()}`;
+
+    if (tenant?.logo_url) {
+      setDynamicHeadIcons(manifestParams.toString());
+      await invalidatePwaCaches();
+    }
 
     let link = document.querySelector("link[rel='manifest']") as HTMLLinkElement | null;
     if (!link) {
@@ -140,30 +166,53 @@ async function bootstrapTenantBrandingAndManifest() {
     }
     link.removeAttribute('crossorigin');
     link.href = manifestUrl;
-  } catch {
-    // Keep app boot resilient if tenant resolve fails.
+
+    console.debug('[PWA] Tenant branding applied', {
+      tenantId: tenant?.id ?? tenantId,
+      slug,
+      kind,
+      manifestUrl,
+      logoUrl: tenant?.logo_url ? resolveLogoUrl(tenant.logo_url) : null,
+      icon192: tenant?.logo_url
+        ? `${window.location.origin}/api/pwa/logo?${manifestParams.toString()}&size=192`
+        : null,
+    });
+  } catch (error) {
+    console.warn('[PWA] Tenant branding bootstrap failed:', error);
   }
 }
 
 async function registerServiceWorker() {
   if ('serviceWorker' in navigator) {
+    const host = window.location.hostname;
+    const isDevHost =
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host.endsWith('.localhost') ||
+      host.endsWith('.lvh.me');
+    if (isDevHost) {
+      // index.html tears down the SW in dev; never re-register here.
+      return;
+    }
     try {
-      const registration = await navigator.serviceWorker.register('/sw.js');
-      registration.update().catch(() => undefined);
+      const registration = await navigator.serviceWorker.ready.catch(() =>
+        navigator.serviceWorker.getRegistration()
+      );
+      registration?.update().catch(() => undefined);
     } catch {
-      // No-op in unsupported/local edge cases.
+      // index.html registers the service worker before the bundle loads.
     }
   }
 }
 
-// Prevent number inputs from changing value on scroll
+initSystemErrorReporter();
+
 document.addEventListener('wheel', (e) => {
   if (document.activeElement instanceof HTMLInputElement && document.activeElement.type === 'number') {
     (document.activeElement as HTMLInputElement).blur();
   }
 });
 
-// PWA / mobile: keep textarea visible when the virtual keyboard opens (iOS + Android)
 document.addEventListener(
   'focusin',
   (e) => {

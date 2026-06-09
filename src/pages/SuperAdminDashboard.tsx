@@ -77,6 +77,7 @@ import {
   Eye,
   EyeOff,
   DollarSign,
+  Activity,
 } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import SuperAdminLoginForm from '../components/SuperAdminLoginForm';
@@ -84,6 +85,7 @@ import SupportModule from '../components/support/SupportModule';
 import { resolveLogoUrl } from '../services/tenantService';
 import { useTheme } from '../contexts/ThemeContext';
 import PwaInstallButton from '../components/common/PwaInstallButton';
+import SystemHealthModule from '../components/superadmin/SystemHealthModule';
 
 interface School {
   id: number;
@@ -147,7 +149,7 @@ interface TrackerUser {
   finance_activity_count: number;
 }
 
-type Section = 'schools' | 'visits' | 'tracker' | 'registrations' | 'audit' | 'super-admins' | 'support-chat' | 'school-data';
+type Section = 'schools' | 'visits' | 'tracker' | 'registrations' | 'audit' | 'super-admins' | 'support-chat' | 'school-data' | 'system-health';
 
 const SuperAdminDashboard = () => {
   const navigate = useNavigate();
@@ -699,6 +701,7 @@ const SuperAdminDashboard = () => {
     { id: 'support-chat' as Section, label: 'Support Chat', icon: MessageCircle },
   ];
   const systemItems = [
+    { id: 'system-health' as Section, label: 'System Health', icon: Activity },
     { id: 'super-admins' as Section, label: 'Super Admins', icon: UserPlus },
     { id: 'audit' as Section, label: 'Audit Logs', icon: Shield },
   ];
@@ -815,6 +818,7 @@ const SuperAdminDashboard = () => {
               {section === 'registrations' && 'Registration Requests'}
               {section === 'super-admins' && 'Super Admins'}
               {section === 'audit' && 'Audit Logs'}
+              {section === 'system-health' && 'System Health / Errors'}
               {section === 'support-chat' && 'Support Chat'}
             </h2>
             <div className="flex-1" />
@@ -1812,6 +1816,10 @@ const SuperAdminDashboard = () => {
                   )}
                 </Card>
               </div>
+            )}
+
+            {section === 'system-health' && (
+              <SystemHealthModule schools={schools} />
             )}
 
             {section === 'audit' && (

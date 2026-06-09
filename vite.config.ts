@@ -10,25 +10,15 @@ export default defineConfig(({ mode }) => ({
     port: 8080,
     allowedHosts: ['.lvh.me', '.scholarnerve.com', '.localhost'],
     proxy: {
-      "/pwa-icon-192.png": {
-        target: "http://localhost:3001",
+      // Same-origin /api in dev (mirrors production reverse proxy) so the PWA
+      // manifest + logo endpoints resolve without the service worker.
+      '/api': {
+        target: 'http://localhost:3001',
         changeOrigin: true,
-        rewrite: (path) => {
-          const [, search = ""] = path.split("?");
-          const params = new URLSearchParams(search);
-          params.set("size", "192");
-          return `/api/pwa/logo?${params.toString()}`;
-        },
       },
-      "/pwa-icon-512.png": {
-        target: "http://localhost:3001",
+      '/uploads': {
+        target: 'http://localhost:3001',
         changeOrigin: true,
-        rewrite: (path) => {
-          const [, search = ""] = path.split("?");
-          const params = new URLSearchParams(search);
-          params.set("size", "512");
-          return `/api/pwa/logo?${params.toString()}`;
-        },
       },
     },
   },

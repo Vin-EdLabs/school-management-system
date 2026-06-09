@@ -9,21 +9,123 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 
-  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-  <link rel="shortcut icon" href="/favicon.ico">
-  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
-  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
-  <link rel="manifest" href="/api/pwa/manifest">
+  <!-- Dynamic PWA manifest + icons (desktop + mobile) before app bundle loads -->
+  <script>
+    (function () {
+      var host = location.hostname;
+      var path = location.pathname || '/';
+      var params = new URLSearchParams();
+      params.set('host', host);
+      var kind = path.indexOf('/super-admin') === 0 ? 'super-admin'
+        : path.indexOf('/portal') === 0 ? 'parent' : 'school';
+      params.set('kind', kind);
+      var schoolMatch = path.match(/^\/school\/(\d+)/);
+      var portalMatch = path.match(/^\/portal\/(\d+)/);
+      var schMatch = path.match(/^\/sch\/([^/]+)/);
+      if (schoolMatch) params.set('tenantId', schoolMatch[1]);
+      if (portalMatch) params.set('tenantId', portalMatch[1]);
+      if (schMatch) params.set('slug', schMatch[1]);
+
+      var hostParts = host.toLowerCase().replace(/^www\./, '').split('.');
+      var reserved = ['www', 'api', 'app', 'admin', 'dev', 'staging', 'scholarnerve', 'portal', 'school'];
+      var slugFromHost = null;
+      if (host.indexOf('.localhost') > -1 && hostParts.length >= 2 && reserved.indexOf(hostParts[0]) === -1) {
+        slugFromHost = hostParts[0];
+      } else if (host.indexOf('.lvh.me') > -1 && hostParts.length >= 3 && reserved.indexOf(hostParts[0]) === -1) {
+        slugFromHost = hostParts[0];
+      } else if (host.indexOf('scholarnerve.com') > -1 && host !== 'scholarnerve.com' && host !== 'www.scholarnerve.com' && hostParts.length >= 3 && reserved.indexOf(hostParts[0]) === -1) {
+        slugFromHost = hostParts[0];
+      }
+      if (slugFromHost) params.set('slug', slugFromHost);
+
+      var manifest = document.createElement('link');
+      manifest.rel = 'manifest';
+      manifest.href = '/api/pwa/manifest?' + params.toString();
+      document.head.appendChild(manifest);
+
+      var isTenantHost = !!slugFromHost || schoolMatch || portalMatch || schMatch;
+
+      if (isTenantHost) {
+        var logoUrl = location.origin + '/api/pwa/logo?' + params.toString() + '&size=192';
+        function upsertIcon(rel, sizes, type) {
+          var selector = 'link[rel="' + rel + '"]' + (sizes ? '[sizes="' + sizes + '"]' : '');
+          var el = document.querySelector(selector);
+          if (!el) {
+            el = document.createElement('link');
+            el.rel = rel;
+            if (sizes) el.setAttribute('sizes', sizes);
+            if (type) el.type = type;
+            document.head.appendChild(el);
+          }
+          el.href = logoUrl;
+        }
+        upsertIcon('apple-touch-icon', '180x180');
+        upsertIcon('shortcut icon');
+        upsertIcon('icon', '32x32', 'image/png');
+        upsertIcon('icon', '16x16', 'image/png');
+      } else {
+        var apple = document.createElement('link');
+        apple.rel = 'apple-touch-icon';
+        apple.sizes = '180x180';
+        apple.href = '/apple-touch-icon.png';
+        document.head.appendChild(apple);
+        var shortcut = document.createElement('link');
+        shortcut.rel = 'shortcut icon';
+        shortcut.href = '/favicon.ico';
+        document.head.appendChild(shortcut);
+        var icon32 = document.createElement('link');
+        icon32.rel = 'icon';
+        icon32.type = 'image/png';
+        icon32.sizes = '32x32';
+        icon32.href = '/favicon-32x32.png';
+        document.head.appendChild(icon32);
+        var icon16 = document.createElement('link');
+        icon16.rel = 'icon';
+        icon16.type = 'image/png';
+        icon16.sizes = '16x16';
+        icon16.href = '/favicon-16x16.png';
+        document.head.appendChild(icon16);
+      }
+
+      var isDevHost = host === 'localhost' || host === '127.0.0.1' ||
+        host.endsWith('.localhost') || host.endsWith('.lvh.me');
+
+      if ('serviceWorker' in navigator) {
+        if (isDevHost) {
+          // Dev: a cached service worker poisons Vite's module graph (stale
+          // optimized-dep chunks -> duplicate React / hook errors). Tear it down.
+          var hadController = !!navigator.serviceWorker.controller;
+          navigator.serviceWorker.getRegistrations().then(function (regs) {
+            return Promise.all(regs.map(function (r) { return r.unregister(); }));
+          }).then(function () {
+            if (window.caches && caches.keys) {
+              return caches.keys().then(function (keys) {
+                return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+              });
+            }
+          }).then(function () {
+            if (hadController) location.reload();
+          }).catch(function () { });
+        } else {
+          navigator.serviceWorker.register('/sw.js').catch(function () { });
+        }
+      }
+    })();
+  </script>
 
   <!-- Typography -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
 
   <!-- Primary SEO -->
   <title>ScholarNerve – Africa's Complete School Management System for JHS & Primary Schools</title>
-  <meta name="description" content="ScholarNerve is Africa's most complete school management system for JHS and primary schools. Enroll students, collect fees and generate instant receipts, track daily attendance, record grades, produce term report cards, manage staff and payroll, and keep parents informed in real time — all from one secure platform. Built in Ghana, designed for schools across Africa. No spreadsheets. No paper. Just a smarter way to run your school. Get set up in 24 hours." />
-  <meta name="keywords" content="school management system Africa, school management system Ghana, JHS management software Ghana, primary school management system Africa, school fees management Africa, student attendance system Africa, school ERP Africa, private school software Ghana, school administration software Africa, best school software Africa, student result management system, school payroll Africa, parent communication app school, teacher attendance app Africa, school report card system Africa, JHS school software Nigeria, primary school management Kenya, school management system Sierra Leone, student enrollment system Africa, school fee receipt generator Africa, school dashboard Africa" />
+  <meta name="description"
+    content="ScholarNerve is Africa's most complete school management system for JHS and primary schools. Enroll students, collect fees and generate instant receipts, track daily attendance, record grades, produce term report cards, manage staff and payroll, and keep parents informed in real time — all from one secure platform. Built in Ghana, designed for schools across Africa. No spreadsheets. No paper. Just a smarter way to run your school. Get set up in 24 hours." />
+  <meta name="keywords"
+    content="school management system Africa, school management system Ghana, JHS management software Ghana, primary school management system Africa, school fees management Africa, student attendance system Africa, school ERP Africa, private school software Ghana, school administration software Africa, best school software Africa, student result management system, school payroll Africa, parent communication app school, teacher attendance app Africa, school report card system Africa, JHS school software Nigeria, primary school management Kenya, school management system Sierra Leone, student enrollment system Africa, school fee receipt generator Africa, school dashboard Africa" />
   <meta name="author" content="ScholarNerve" />
   <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
   <meta name="googlebot" content="index, follow" />
@@ -37,12 +139,15 @@
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://scholarnerve.com/" />
   <meta property="og:site_name" content="ScholarNerve" />
-  <meta property="og:title" content="ScholarNerve – Africa's Complete School Management System for JHS & Primary Schools" />
-  <meta property="og:description" content="ScholarNerve gives JHS and primary schools across Africa one powerful platform to manage everything — student enrollment, fee collection with instant receipts, daily attendance, grades, term report cards, staff payroll, and a parent app that keeps families informed in real time. No spreadsheets. No chasing parents. No manual errors. Founded in Ghana, built for Africa. Your school can be fully set up and running in 24 hours." />
+  <meta property="og:title"
+    content="ScholarNerve – Africa's Complete School Management System for JHS & Primary Schools" />
+  <meta property="og:description"
+    content="ScholarNerve gives JHS and primary schools across Africa one powerful platform to manage everything — student enrollment, fee collection with instant receipts, daily attendance, grades, term report cards, staff payroll, and a parent app that keeps families informed in real time. No spreadsheets. No chasing parents. No manual errors. Founded in Ghana, built for Africa. Your school can be fully set up and running in 24 hours." />
   <meta property="og:image" content="https://scholarnerve.com/og-image.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
-  <meta property="og:image:alt" content="ScholarNerve — Africa's complete school management system for JHS and primary schools" />
+  <meta property="og:image:alt"
+    content="ScholarNerve — Africa's complete school management system for JHS and primary schools" />
   <meta property="og:locale" content="en_GH" />
   <meta property="og:locale:alternate" content="en_NG" />
   <meta property="og:locale:alternate" content="en_KE" />
@@ -52,10 +157,13 @@
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:url" content="https://scholarnerve.com/" />
-  <meta name="twitter:title" content="ScholarNerve – Africa's Complete School Management System for JHS & Primary Schools" />
-  <meta name="twitter:description" content="Run your school smarter. Student enrollment, fees, attendance, report cards, payroll and parent communication — all in one platform built for JHS and primary schools across Africa. Get set up in 24 hours." />
+  <meta name="twitter:title"
+    content="ScholarNerve – Africa's Complete School Management System for JHS & Primary Schools" />
+  <meta name="twitter:description"
+    content="Run your school smarter. Student enrollment, fees, attendance, report cards, payroll and parent communication — all in one platform built for JHS and primary schools across Africa. Get set up in 24 hours." />
   <meta name="twitter:image" content="https://scholarnerve.com/og-image.png" />
-  <meta name="twitter:image:alt" content="ScholarNerve school management dashboard for African JHS and primary schools" />
+  <meta name="twitter:image:alt"
+    content="ScholarNerve school management dashboard for African JHS and primary schools" />
 
   <!-- Schema.org — Software Application -->
   <script type="application/ld+json">

@@ -34,6 +34,7 @@ import conversationRoutes from './routes/conversations.js';
 import messagesRoutes from './routes/messages.js';
 import studentLearningRoutes from './routes/student.js';
 import visitRoutes from './routes/visits.js';
+import systemRoutes from './routes/system.js';
 import { initSocket } from './socket.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { idempotencyGuard } from './middleware/idempotency.js';
@@ -117,6 +118,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/tenant', tenantRoutes);
 app.use('/api/pwa', pwaRoutes);
 app.use('/api', visitRoutes);
+app.use('/api/system', systemRoutes);
 
 // School registrations (POST public, GET requires super-admin)
 app.use('/api/school-registrations', schoolRegistrationsRoutes);

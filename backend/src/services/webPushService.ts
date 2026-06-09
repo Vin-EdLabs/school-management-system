@@ -12,19 +12,27 @@ export type PushPayload = {
 
 let configured = false;
 
+const PUBLIC_BASE_DOMAIN = process.env.PUBLIC_BASE_DOMAIN || 'scholarnerve.com';
+
 async function attachSchoolLogoToPayloadIfNeeded(tenantId: number, payload: PushPayload) {
   if (payload.icon) return;
   const settings = await query(
-    `SELECT COALESCE(ss.logo_url, t.logo_url) as logo_url
+    `SELECT t.slug, t.logo_url
      FROM tenants t
-     LEFT JOIN school_settings ss ON ss.tenant_id = t.id
      WHERE t.id = $1`,
     [tenantId]
   ).catch(() => ({ rows: [] as any[] }));
-  const logo = settings.rows[0]?.logo_url;
-  if (logo && !String(logo).startsWith('data:')) {
-    payload.icon = logo;
-  }
+  const row = settings.rows[0];
+  if (!row || !row.logo_url) return;
+
+  // Reference the normalized logo ENDPOINT (a short URL), never the raw logo.
+  // Raw data: URIs are tens of KB and blow past the ~4KB web-push payload limit
+  // (which silently drops the notification). The endpoint returns a square PNG
+  // that renders correctly as the Android/iOS notification icon.
+  const host = row.slug
+    ? `${String(row.slug).toLowerCase()}.${PUBLIC_BASE_DOMAIN}`
+    : PUBLIC_BASE_DOMAIN;
+  payload.icon = `https://${host}/api/pwa/logo?tenantId=${tenantId}&size=192`;
 }
 
 function ensureConfigured() {
@@ -105,13 +113,16 @@ export async function sendPushToStaffUser(userId: number, payload: PushPayload) 
   const webPushEnabled = configured;
 
   const subs = await query(
-    `SELECT endpoint, p256dh, auth
+    `SELECT endpoint, p256dh, auth, tenant_id
      FROM staff_user_push_subscriptions
      WHERE user_id = $1`,
     [userId]
   );
 
   if (!webPushEnabled || subs.rows.length === 0) return;
+
+  const tenantId = subs.rows[0]?.tenant_id;
+  if (tenantId) await attachSchoolLogoToPayloadIfNeeded(Number(tenantId), payload);
 
   const data = JSON.stringify({
     title: payload.title,

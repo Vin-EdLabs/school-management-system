@@ -1,5 +1,5 @@
 /* ScholarNerve service worker — caching + push. Bump CACHE_VERSION on breaking cache changes. */
-const CACHE_VERSION = '2026-06-08-v12';
+const CACHE_VERSION = '2026-06-09-v13';
 const CACHE_NAME = `scholarnerve-app-${CACHE_VERSION}`;
 const APP_SHELL = ['/', '/index.html'];
 
@@ -328,6 +328,13 @@ self.addEventListener('push', (event) => {
     icon,
     badge,
     data: { url },
+    // Android needs vibrate + high-importance hints to show a heads-up pop-up
+    // instead of a silent tray entry.
+    vibrate: [200, 100, 200],
+    requireInteraction: true,
+    renotify: true,
+    tag: payloadData.tag || data.tag || `scholarnerve-${Date.now()}`,
+    timestamp: Date.now(),
   };
   const badgeCountFromPayload = Number(payloadData.unreadCount || data.unreadCount || 0);
   event.waitUntil(

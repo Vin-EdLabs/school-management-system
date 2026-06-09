@@ -135,12 +135,21 @@ async function readLogoBytes(
   req: TenantRequest,
 ): Promise<{ buffer: Buffer; contentType: string } | null> {
   if (logo.startsWith('data:')) {
-    const matches = logo.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-    if (!matches || matches.length !== 3) return null;
-    return {
-      contentType: matches[1],
-      buffer: Buffer.from(matches[2], 'base64'),
-    };
+    // Parse manually instead of a strict regex: stored data URIs can contain
+    // newlines/whitespace in the base64 body (a strict `$`-anchored regex then
+    // fails and we'd wrongly fall back to the default icon).
+    const comma = logo.indexOf(',');
+    if (comma === -1) return null;
+    const header = logo.slice(5, comma); // e.g. "image/jpeg;base64"
+    const isBase64 = /;base64\s*$/i.test(header);
+    const contentType = header.split(';')[0].trim() || 'image/png';
+    const dataPart = logo.slice(comma + 1).replace(/\s+/g, '');
+    if (!dataPart) return null;
+    const buffer = isBase64
+      ? Buffer.from(dataPart, 'base64')
+      : Buffer.from(decodeURIComponent(dataPart), 'utf-8');
+    if (buffer.length === 0) return null;
+    return { buffer, contentType };
   }
 
   if (logo.startsWith('http')) {

@@ -55,6 +55,88 @@ const STUDENT_FROM_JOINS = `
   ) gc ON true
 `;
 
+const STUDENT_FROM_JOINS_LEGACY = `
+  FROM students s
+  LEFT JOIN classes c ON s.class_assigned_id = c.id
+`;
+
+const STUDENT_SELECT_LEGACY = `
+  s.*,
+  c.class_name,
+  c.level,
+  c.stream
+`;
+
+async function queryStudentsList(
+  tenantId: number,
+  status: string,
+  classId?: string
+): Promise<any[]> {
+  const params: any[] = [tenantId, status];
+  let classFilter = '';
+  if (classId) {
+    classFilter = ` AND s.class_assigned_id = $${params.length + 1}`;
+    params.push(classId);
+  }
+
+  try {
+    const result = await query(
+      `SELECT ${STUDENT_SELECT_FIELDS}
+       ${STUDENT_FROM_JOINS}
+       WHERE s.tenant_id = $1
+         AND ($2::text = 'all' OR COALESCE(s.enrollment_status, 'active') = $2)
+       ${classFilter}
+       ORDER BY s.created_at DESC`,
+      params
+    );
+    return result.rows;
+  } catch (advancedErr) {
+    console.warn('Students list advanced query failed, using legacy:', (advancedErr as Error)?.message);
+    try {
+      const result = await query(
+        `SELECT ${STUDENT_SELECT_LEGACY}
+         ${STUDENT_FROM_JOINS_LEGACY}
+         WHERE s.tenant_id = $1
+           AND ($2::text = 'all' OR COALESCE(s.enrollment_status, 'active') = $2)
+         ${classFilter}
+         ORDER BY s.created_at DESC`,
+        params
+      );
+      return result.rows;
+    } catch {
+      const result = await query(
+        `SELECT ${STUDENT_SELECT_LEGACY}
+         ${STUDENT_FROM_JOINS_LEGACY}
+         WHERE s.tenant_id = $1
+         ${classFilter}
+         ORDER BY s.created_at DESC`,
+        classId ? [tenantId, classId] : [tenantId]
+      );
+      return result.rows;
+    }
+  }
+}
+
+async function queryStudentById(tenantId: number, id: string): Promise<any | null> {
+  try {
+    const result = await query(
+      `SELECT ${STUDENT_SELECT_FIELDS}
+       ${STUDENT_FROM_JOINS}
+       WHERE s.id = $1 AND s.tenant_id = $2`,
+      [id, tenantId]
+    );
+    return result.rows[0] || null;
+  } catch {
+    const result = await query(
+      `SELECT ${STUDENT_SELECT_LEGACY}
+       ${STUDENT_FROM_JOINS_LEGACY}
+       WHERE s.id = $1 AND s.tenant_id = $2`,
+      [id, tenantId]
+    );
+    return result.rows[0] || null;
+  }
+}
+
 // Get all students
 // Default: active students only
 // ?status=inactive: inactive students
@@ -67,23 +149,8 @@ router.get('/', async (req: AuthRequest, res) => {
     const statusParam = String(req.query.status || 'active').toLowerCase();
     const status = ['active', 'inactive', 'all', 'graduated'].includes(statusParam) ? statusParam : 'active';
 
-    let queryText = `
-      SELECT ${STUDENT_SELECT_FIELDS}
-      ${STUDENT_FROM_JOINS}
-      WHERE s.tenant_id = $1
-        AND ($2::text = 'all' OR COALESCE(s.enrollment_status, 'active') = $2)
-    `;
-    const params: any[] = [tenantId, status];
-
-    if (classId) {
-      queryText += ` AND s.class_assigned_id = $${params.length + 1}`;
-      params.push(classId);
-    }
-
-    queryText += ' ORDER BY s.created_at DESC';
-
-    const result = await query(queryText, params);
-    res.json(result.rows);
+    const rows = await queryStudentsList(tenantId, status, classId ? String(classId) : undefined);
+    res.json(rows);
   } catch (error) {
     console.error('Get students error:', error);
     res.status(500).json({ error: 'Failed to fetch students' });
@@ -96,18 +163,13 @@ router.get('/:id', async (req: AuthRequest, res) => {
     const tenantId = req.user!.tenantId!;
     const { id } = req.params;
 
-    const result = await query(
-      `SELECT ${STUDENT_SELECT_FIELDS}
-       ${STUDENT_FROM_JOINS}
-       WHERE s.id = $1 AND s.tenant_id = $2`,
-      [id, tenantId]
-    );
+    const row = await queryStudentById(tenantId, id);
 
-    if (result.rows.length === 0) {
+    if (!row) {
       return res.status(404).json({ error: 'Student not found' });
     }
 
-    res.json(result.rows[0]);
+    res.json(row);
   } catch (error) {
     console.error('Get student error:', error);
     res.status(500).json({ error: 'Failed to fetch student' });

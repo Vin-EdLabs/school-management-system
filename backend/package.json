@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "node start-server.js",
     "start-server": "node start-server.js",
-    "build": "tsc",
+    "build": "tsc && node scripts/copy-migrations.cjs",
     "start": "node dist/index.js",
     "migrate": "node --loader ts-node/esm src/db/migrate.ts",
+    "schema:ensure": "node dist/db/ensureSchema.js",
+    "smoke-test": "node scripts/smoke-test.mjs",
     "seed:learning": "node --loader ts-node/esm src/db/seedLearningQuestions.ts"
   },
   "keywords": [],

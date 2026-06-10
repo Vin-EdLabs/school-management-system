@@ -12,47 +12,55 @@ type SetupProgressGateProps = {
   setActiveModule: (module: string) => void;
 };
 
+const SETUP_MODULES = new Set(['subjects', 'classes', 'settings']);
+
 /**
- * Soft onboarding checklist for school administrators.
- * Non-blocking — dismissible per session, reappears on next login until complete.
+ * Soft onboarding checklist — opens once per login session when setup is genuinely incomplete.
  */
 const SetupProgressGate: React.FC<SetupProgressGateProps> = ({ activeModule, setActiveModule }) => {
   const { user, loading: authLoading } = useAuth();
   const { schoolId } = useSchool();
-  const { steps, isComplete, isLoading, completedCount, totalSteps, refetch } = useSetupProgress();
+  const { steps, isComplete, isLoading, loadFailed, completedCount, totalSteps, refetch } =
+    useSetupProgress();
   const [open, setOpen] = useState(false);
-  const prevModuleRef = useRef(activeModule);
+  const hasAutoOpenedRef = useRef(false);
   const navigatedFromSetupRef = useRef(false);
+  const prevModuleRef = useRef(activeModule);
 
-  const isSchoolAdmin = user?.role === 'administrator' && user.tenantId != null;
+  const isPrimarySchoolAdmin =
+    user?.role === 'administrator' && user.tenantId != null && user.isPrimaryAdmin === true;
 
-  const tryOpen = useCallback(() => {
-    if (!schoolId || !isSchoolAdmin || isLoading || isComplete) return;
+  const shouldShowChecklist =
+    isPrimarySchoolAdmin && !loadFailed && !isLoading && !isComplete && completedCount < totalSteps;
+
+  const tryOpenOnce = useCallback(() => {
+    if (!schoolId || !shouldShowChecklist) return;
     if (isSetupDismissedForSession(schoolId)) return;
+    if (hasAutoOpenedRef.current) return;
+    hasAutoOpenedRef.current = true;
     setOpen(true);
-  }, [schoolId, isSchoolAdmin, isLoading, isComplete]);
+  }, [schoolId, shouldShowChecklist]);
 
-  // Auto-open once after login when setup is incomplete
   useEffect(() => {
     if (authLoading || isLoading) return;
-    tryOpen();
-  }, [authLoading, isLoading, tryOpen]);
+    tryOpenOnce();
+  }, [authLoading, isLoading, tryOpenOnce]);
 
-  // Refetch when returning from a setup module and reopen if still incomplete
+  // After "Set Up →", refresh when admin returns to dashboard — show updated checklist once
   useEffect(() => {
     const prev = prevModuleRef.current;
     prevModuleRef.current = activeModule;
 
-    const setupModules = ['subjects', 'classes', 'settings'];
-    const wasOnSetup = setupModules.includes(prev);
-    const leftSetup = wasOnSetup && !setupModules.includes(activeModule);
+    if (!navigatedFromSetupRef.current || !schoolId) return;
 
-    if (navigatedFromSetupRef.current && (leftSetup || setupModules.includes(activeModule))) {
+    const leftSetupModule = SETUP_MODULES.has(prev) && !SETUP_MODULES.has(activeModule);
+    const onDashboard = activeModule === 'dashboard';
+
+    if (leftSetupModule || onDashboard) {
       navigatedFromSetupRef.current = false;
       void refetch().then(() => {
-        if (!isSetupDismissedForSession(schoolId!)) {
-          setOpen(true);
-        }
+        if (isSetupDismissedForSession(schoolId)) return;
+        setOpen(true);
       });
     }
   }, [activeModule, refetch, schoolId]);
@@ -63,7 +71,7 @@ const SetupProgressGate: React.FC<SetupProgressGateProps> = ({ activeModule, set
     }
   }, [isComplete]);
 
-  if (!isSchoolAdmin || isComplete) {
+  if (!isPrimarySchoolAdmin || loadFailed || isComplete) {
     return null;
   }
 

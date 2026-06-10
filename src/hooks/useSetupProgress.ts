@@ -9,7 +9,6 @@ export type SetupStep = {
   label: string;
   description: string;
   done: boolean;
-  /** In-app module id (ScholarNerve uses module navigation, not URL paths). */
   route: string;
 };
 
@@ -17,6 +16,7 @@ export type SetupProgressState = {
   steps: SetupStep[];
   isComplete: boolean;
   isLoading: boolean;
+  loadFailed: boolean;
   completedCount: number;
   totalSteps: number;
   refetch: () => Promise<void>;
@@ -56,28 +56,31 @@ export function useSetupProgress(): SetupProgressState {
   const { socket } = useSocket();
   const [data, setData] = useState<SetupProgressApi | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
 
-  const isSchoolAdmin = user?.role === 'administrator' && user.tenantId != null;
+  const isPrimarySchoolAdmin =
+    user?.role === 'administrator' && user.tenantId != null && user.isPrimaryAdmin === true;
 
   const fetchProgress = useCallback(async () => {
-    if (!schoolId || !isSchoolAdmin) {
+    if (!schoolId || !isPrimarySchoolAdmin) {
       setData(null);
+      setLoadFailed(false);
       setIsLoading(false);
       return;
     }
     setIsLoading(true);
     try {
-      if (schoolId) {
-        apiService.setTenantContext(schoolId);
-      }
+      apiService.setTenantContext(schoolId);
       const res = await apiService.get<SetupProgressApi>(`/schools/${schoolId}/setup-progress`);
       setData(res);
+      setLoadFailed(false);
     } catch {
       setData(null);
+      setLoadFailed(true);
     } finally {
       setIsLoading(false);
     }
-  }, [schoolId, isSchoolAdmin]);
+  }, [schoolId, isPrimarySchoolAdmin]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -85,7 +88,7 @@ export function useSetupProgress(): SetupProgressState {
   }, [authLoading, fetchProgress]);
 
   useEffect(() => {
-    if (!socket || !schoolId || !isSchoolAdmin) return;
+    if (!socket || !schoolId || !isPrimarySchoolAdmin) return;
     const onChange = (evt: { entity?: string; tenantId?: number }) => {
       if (evt?.tenantId != null && evt.tenantId !== schoolId) return;
       const entity = evt?.entity || '';
@@ -97,7 +100,7 @@ export function useSetupProgress(): SetupProgressState {
     return () => {
       socket.off('tenant-data-changed', onChange);
     };
-  }, [socket, schoolId, isSchoolAdmin, fetchProgress]);
+  }, [socket, schoolId, isPrimarySchoolAdmin, fetchProgress]);
 
   const steps = useMemo((): SetupStep[] => {
     const flags = {
@@ -112,11 +115,13 @@ export function useSetupProgress(): SetupProgressState {
   }, [data]);
 
   const completedCount = steps.filter((s) => s.done).length;
+  const isComplete = !!data?.is_complete;
 
   return {
     steps,
-    isComplete: !!data?.is_complete,
+    isComplete,
     isLoading: authLoading || isLoading,
+    loadFailed,
     completedCount,
     totalSteps: STEP_DEFS.length,
     refetch: fetchProgress,

@@ -1,6 +1,8 @@
 import pg from 'pg';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
+import { applyPendingSqlFileMigrations } from './fileMigrations.js';
+import { ensureSupplementalSchema } from './ensureSchema.js';
 
 dotenv.config();
 
@@ -29,8 +31,14 @@ export const query = async (text: string, params?: any[]) => {
     const duration = Date.now() - start;
     console.log('Executed query', { text, duration, rows: res.rowCount });
     return res;
-  } catch (error) {
-    console.error('Database query error:', error);
+  } catch (error: any) {
+    console.error('Database query error:', {
+      message: error?.message,
+      code: error?.code,
+      table: error?.table,
+      position: error?.position,
+      queryPreview: text.length > 300 ? `${text.slice(0, 300)}…` : text,
+    });
     throw error;
   }
 };
@@ -48,6 +56,12 @@ export const initializeDatabase = async () => {
 
     // Run migrations
     await runMigrations();
+    await ensureSupplementalSchema();
+    try {
+      await applyPendingSqlFileMigrations();
+    } catch (migrationErr: any) {
+      console.error('⚠️ SQL file migrations warning:', migrationErr?.message || migrationErr);
+    }
 
     return true;
   } catch (error: any) {
@@ -221,6 +235,20 @@ const runMigrations = async () => {
     await client.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS max_class_size INTEGER DEFAULT 30`).catch(() => { });
     await client.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`).catch(() => { });
     await client.query(`UPDATE classes SET class_name = name WHERE class_name IS NULL AND name IS NOT NULL`).catch(() => { });
+    await client.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS level_order INTEGER`).catch(() => { });
+    await client.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS is_final_class BOOLEAN NOT NULL DEFAULT false`).catch(() => { });
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS school_setup_progress (
+        id SERIAL PRIMARY KEY,
+        school_id INTEGER NOT NULL UNIQUE REFERENCES tenants(id) ON DELETE CASCADE,
+        has_subjects BOOLEAN NOT NULL DEFAULT false,
+        has_classes BOOLEAN NOT NULL DEFAULT false,
+        has_terms BOOLEAN NOT NULL DEFAULT false,
+        completed_at TIMESTAMPTZ,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `).catch(() => { });
 
     // Create students table
     await client.query(`
@@ -1197,6 +1225,18 @@ const runMigrations = async () => {
     await client.query(`ALTER TABLE global_chat_messages ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'`).catch(() => { });
     await client.query(`CREATE INDEX IF NOT EXISTS idx_global_chat_channel ON global_chat_messages(channel)`).catch(() => { });
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS global_chat_reactions (
+        id SERIAL PRIMARY KEY,
+        message_id INTEGER NOT NULL REFERENCES global_chat_messages(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        emoji VARCHAR(32) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(message_id, user_id, emoji)
+      )
+    `).catch(() => { });
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_global_chat_reactions_message ON global_chat_reactions(message_id)`).catch(() => { });
+
     // Receipt number sequence per tenant (R + 8 digits)
     await client.query(`
       CREATE TABLE IF NOT EXISTS receipt_number_seq (
@@ -1238,6 +1278,9 @@ const runMigrations = async () => {
       )
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_academic_years_tenant ON academic_years(tenant_id)`).catch(() => { });
+    await client.query(`ALTER TABLE academic_years ADD COLUMN IF NOT EXISTS start_date DATE`).catch(() => { });
+    await client.query(`ALTER TABLE academic_years ADD COLUMN IF NOT EXISTS end_date DATE`).catch(() => { });
+    await client.query(`ALTER TABLE academic_years ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active'`).catch(() => { });
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS terms (

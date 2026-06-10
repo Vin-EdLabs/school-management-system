@@ -22,13 +22,12 @@ router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
 
-// Get all classes
-router.get('/', async (req: AuthRequest, res) => {
-  try {
-    const tenantId = req.user!.tenantId!;
-    const academicYearId = req.query.academicYearId ? Number(req.query.academicYearId) : null;
+async function listClasses(tenantId: number, academicYearId: number | null) {
+  const orderBy =
+    'ORDER BY COALESCE(c.level, \'\'), COALESCE(c.stream, \'\'), COALESCE(c.class_name, \'\')';
 
-    if (academicYearId && !Number.isNaN(academicYearId)) {
+  if (academicYearId && !Number.isNaN(academicYearId)) {
+    try {
       const result = await query(
         `SELECT c.*,
                 c.class_name,
@@ -43,9 +42,13 @@ router.get('/', async (req: AuthRequest, res) => {
          ORDER BY COALESCE(c.level_order, 999), COALESCE(c.level, ''), COALESCE(c.stream, ''), COALESCE(c.class_name, '')`,
         [tenantId, academicYearId]
       );
-      return res.json(result.rows);
+      return result.rows;
+    } catch {
+      // fall through to roster without enrollments table
     }
+  }
 
+  try {
     const result = await query(
       `SELECT c.*, 
               c.class_name,
@@ -60,8 +63,33 @@ router.get('/', async (req: AuthRequest, res) => {
        ORDER BY COALESCE(c.level_order, 999), COALESCE(c.level, ''), COALESCE(c.stream, ''), COALESCE(c.class_name, '')`,
       [tenantId]
     );
-    
-    res.json(result.rows);
+    return result.rows;
+  } catch {
+    // Legacy schema: no level_order or enrollment_status
+    const result = await query(
+      `SELECT c.*, 
+              c.class_name,
+              t.full_name as teacher_name, t.staff_id as teacher_staff_id,
+              COUNT(s.id) as student_count
+       FROM classes c
+       LEFT JOIN teachers t ON c.assigned_teacher_id = t.id
+       LEFT JOIN students s ON s.class_assigned_id = c.id
+       WHERE c.tenant_id = $1
+       GROUP BY c.id, t.full_name, t.staff_id
+       ${orderBy}`,
+      [tenantId]
+    );
+    return result.rows;
+  }
+}
+
+// Get all classes
+router.get('/', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const academicYearId = req.query.academicYearId ? Number(req.query.academicYearId) : null;
+    const rows = await listClasses(tenantId, academicYearId);
+    res.json(rows);
   } catch (error) {
     console.error('Get classes error:', error);
     res.status(500).json({ error: 'Failed to fetch classes' });

@@ -32,6 +32,17 @@ router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
 
+function resolveTenantId(req: AuthRequest): number {
+  const fromUser = req.user?.tenantId;
+  if (fromUser != null && !Number.isNaN(Number(fromUser))) return Number(fromUser);
+  const q = req.query.tenantId;
+  if (q != null && String(q).trim() !== '') {
+    const parsed = parseInt(String(q), 10);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  throw new Error('School context required');
+}
+
 /** Last graduated class + date when class_assigned_id was cleared on graduation. */
 const STUDENT_SELECT_FIELDS = `
   s.*,
@@ -176,24 +187,49 @@ router.get('/:id', async (req: AuthRequest, res) => {
   }
 });
 
+async function nextStudentIdentifiers(tenantId: number, bump = 0): Promise<{ studentId: string; admissionNumber: string }> {
+  const year = new Date().getFullYear();
+  const yearShort = year.toString().slice(-2);
+
+  // Use max existing sequence for this year — COUNT(*) + 1 reuses IDs after deletes and causes 409.
+  const seqRes = await query(
+    `SELECT COALESCE(MAX(CAST(SUBSTRING(student_id FROM 5) AS INTEGER)), 0) AS mx
+     FROM students
+     WHERE tenant_id = $1 AND student_id ~ ('^' || $2 || '[0-9]{4}$')`,
+    [tenantId, String(year)]
+  );
+  const seq = parseInt(seqRes.rows[0]?.mx || '0', 10) + 1 + bump;
+
+  const admRes = await query(
+    `SELECT COALESCE(MAX(CAST(SUBSTRING(admission_number FROM 6) AS INTEGER)), 0) AS mx
+     FROM students
+     WHERE tenant_id = $1 AND admission_number ~ ('^ADM' || $2 || '[0-9]{3}$')`,
+    [tenantId, yearShort]
+  );
+  const admSeq = parseInt(admRes.rows[0]?.mx || '0', 10) + 1 + bump;
+
+  return {
+    studentId: `${year}${seq.toString().padStart(4, '0')}`,
+    admissionNumber: `ADM${yearShort}${admSeq.toString().padStart(3, '0')}`,
+  };
+}
+
 // Create student
 router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
   try {
-    const tenantId = req.user!.tenantId!;
+    let tenantId: number;
+    try {
+      tenantId = resolveTenantId(req);
+    } catch {
+      return res.status(400).json({ error: 'School context required. Select a school first.' });
+    }
     const studentData = req.body;
 
-    // Generate student ID and admission number using a single count query for this tenant.
-    const year = new Date().getFullYear();
-    const yearShort = year.toString().slice(-2);
-    const countRes = await query(
-      'SELECT COUNT(*) AS total FROM students WHERE tenant_id = $1',
-      [tenantId]
-    );
-    const count = parseInt(countRes.rows[0]?.total || '0', 10) + 1;
-    const studentId = `${year}${count.toString().padStart(4, '0')}`;
-    const admissionNumber = `ADM${yearShort}${count.toString().padStart(3, '0')}`;
-
-    const result = await query(
+    let lastError: any;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { studentId, admissionNumber } = await nextStudentIdentifiers(tenantId, attempt);
+      try {
+        const result = await query(
       `INSERT INTO students (
         tenant_id, first_name, last_name, gender, date_of_birth, nationality,
         student_id, admission_number, class_assigned_id, guardian_name,
@@ -230,20 +266,32 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
         studentData.discount_value || 0,
         studentData.beneficiary_notes || null,
       ]
-    );
+        );
 
-    // Log creation
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'CREATE', 'STUDENT', result.rows[0].id]
-    );
-    emitTenantDataChanged(tenantId, 'student', 'created');
+        await query(
+          'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
+          [tenantId, req.user!.id, 'CREATE', 'STUDENT', result.rows[0].id]
+        ).catch(() => undefined);
+        emitTenantDataChanged(tenantId, 'student', 'created');
 
-    res.status(201).json(result.rows[0]);
+        return res.status(201).json(result.rows[0]);
+      } catch (insertErr: any) {
+        lastError = insertErr;
+        if (insertErr.code === '23505' && attempt < 2) continue;
+        throw insertErr;
+      }
+    }
+    throw lastError;
   } catch (error: any) {
-    console.error('Create student error:', error);
+    console.error('Create student error:', error?.message || error, error?.code);
     if (error.code === '23505') {
       return res.status(409).json({ error: 'Student ID or admission number already exists' });
+    }
+    if (error.code === '42703') {
+      return res.status(500).json({
+        error: 'Failed to create student',
+        hint: 'Database schema out of date — run npm run schema:ensure on the server.',
+      });
     }
     res.status(500).json({ error: 'Failed to create student' });
   }

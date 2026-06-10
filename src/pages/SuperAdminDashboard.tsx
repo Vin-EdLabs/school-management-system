@@ -396,7 +396,7 @@ const SuperAdminDashboard = () => {
         adminEmail: newSchool.adminEmail || undefined,
         primary_color: newSchool.primaryColor,
         secondary_color: newSchool.secondaryColor,
-      });
+      }, { skipTenant: true });
       if (logoFile) {
         const formData = new FormData();
         formData.append('logo', logoFile);

@@ -162,11 +162,11 @@ export class ApiService {
     });
   }
 
-  async post<T>(endpoint: string, data: any): Promise<T> {
+  async post<T>(endpoint: string, data: any, options?: { skipTenant?: boolean }): Promise<T> {
     const key = this.mutationKey('POST', endpoint, data);
     return this.withMutationGuard(key, async () => {
       const headers = { ...this.getAuthHeaders(), 'X-Idempotency-Key': key };
-      const response = await fetch(this.buildURL(endpoint), {
+      const response = await fetch(this.buildURL(endpoint, !options?.skipTenant), {
         method: 'POST',
         headers,
         body: JSON.stringify(data),

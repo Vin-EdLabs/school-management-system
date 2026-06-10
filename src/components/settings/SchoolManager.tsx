@@ -73,7 +73,7 @@ const SchoolManager = () => {
   const handleCreateSchool = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await apiService.post('/schools', newSchool);
+      await apiService.post('/schools', newSchool, { skipTenant: true });
       toast({
         title: 'Success',
         description: 'School created successfully.',

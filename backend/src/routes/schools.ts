@@ -337,10 +337,21 @@ router.post('/', requireRole('super-admin'), async (req: AuthRequest, res) => {
       
       // Create admin user (first admin = primary for this school)
       const hashedPassword = await bcrypt.hash(adminPassword, 10);
-      await client.query(
-        'INSERT INTO users (tenant_id, username, email, password_hash, role, is_primary_admin) VALUES ($1, $2, $3, $4, $5, true)',
-        [tenantId, adminUsername, adminEmail || null, hashedPassword, 'administrator']
-      );
+      try {
+        await client.query(
+          'INSERT INTO users (tenant_id, username, email, password_hash, role, is_primary_admin) VALUES ($1, $2, $3, $4, $5, true)',
+          [tenantId, adminUsername, adminEmail || null, hashedPassword, 'administrator']
+        );
+      } catch (userErr: any) {
+        if (userErr.code === '42703') {
+          await client.query(
+            'INSERT INTO users (tenant_id, username, password_hash, role) VALUES ($1, $2, $3, $4)',
+            [tenantId, adminUsername, hashedPassword, 'administrator']
+          );
+        } else {
+          throw userErr;
+        }
+      }
       
       // Create default school settings
       await client.query(
@@ -348,9 +359,29 @@ router.post('/', requireRole('super-admin'), async (req: AuthRequest, res) => {
         [tenantId, name]
       );
 
-      await ensureSetupProgressRow(tenantId);
-      
+      // Seed first academic year on same connection (visible within transaction)
+      const yearLabel = new Date().getFullYear().toString();
+      const ay = await client.query(
+        `INSERT INTO academic_years (tenant_id, name, is_current)
+         VALUES ($1, $2, true) RETURNING id`,
+        [tenantId, yearLabel]
+      ).catch(() => ({ rows: [] as { id: number }[] }));
+      if (ay.rows[0]?.id) {
+        await client.query(
+          `INSERT INTO terms (tenant_id, academic_year_id, name, is_current)
+           VALUES ($1, $2, 'Term 1', true)`,
+          [tenantId, ay.rows[0].id]
+        ).catch(() => undefined);
+      }
+
       await client.query('COMMIT');
+
+      // After commit — other pool connections can see the tenant (FK-safe)
+      try {
+        await ensureSetupProgressRow(tenantId);
+      } catch (setupErr) {
+        console.warn('setup progress row (non-fatal):', (setupErr as Error)?.message);
+      }
       
       // Log creation
       await query(
@@ -375,9 +406,16 @@ router.post('/', requireRole('super-admin'), async (req: AuthRequest, res) => {
     } finally {
       client.release();
     }
-  } catch (error) {
-    console.error('Create school error:', error);
-    res.status(500).json({ error: 'Failed to create school' });
+  } catch (error: any) {
+    console.error('Create school error:', error?.message || error, error?.code, error?.detail);
+    const hint =
+      error?.code === '23503'
+        ? 'Database schema may be out of date — run npm run schema:ensure on the server.'
+        : undefined;
+    res.status(500).json({
+      error: 'Failed to create school',
+      ...(hint ? { hint } : {}),
+    });
   }
 });
 

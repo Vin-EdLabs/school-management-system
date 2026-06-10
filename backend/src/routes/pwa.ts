@@ -97,11 +97,13 @@ function buildManifestIcons(
   fallbackIcon512: string,
 ) {
   if (!hasTenantLogo) {
+    const maskable192 = `${pageOriginUrl}/android-chrome-maskable-192x192.png`;
+    const maskable512 = `${pageOriginUrl}/android-chrome-maskable-512x512.png`;
     return [
       { src: fallbackIcon192, sizes: '192x192', type: 'image/png', purpose: 'any' },
-      { src: fallbackIcon192, sizes: '192x192', type: 'image/png', purpose: 'maskable' },
       { src: fallbackIcon512, sizes: '512x512', type: 'image/png', purpose: 'any' },
-      { src: fallbackIcon512, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      { src: maskable192, sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+      { src: maskable512, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
     ];
   }
 
@@ -185,11 +187,12 @@ async function readLogoBytes(
 }
 
 /**
- * Normalize an arbitrary logo into a square PNG icon so it renders consistently
- * as a PWA icon on every platform regardless of the logo's shape or format.
- *  - `any` icons: logo fitted (contain) on a transparent square, tiny padding.
- *  - `maskable` icons: extra safe-zone padding + solid background so Android's
- *    circular/squircle mask never crops the logo.
+ * Normalize an arbitrary logo into a square PNG icon for PWA home-screen install.
+ * - Trims outer whitespace / frame borders from the source first.
+ * - Uses a clean white canvas so icons fill the launcher shape instead of a tiny
+ *   logo floating inside a visible box.
+ * - `any`: logo fills ~88% of canvas (minimal padding).
+ * - `maskable`: safe-zone padding for Android adaptive icons (~80% visible area).
  */
 async function renderIcon(
   buffer: Buffer,
@@ -197,21 +200,32 @@ async function renderIcon(
   maskable: boolean,
   background: string,
 ): Promise<Buffer> {
-  const padRatio = maskable ? 0.18 : 0.04;
+  const padRatio = maskable ? 0.1 : 0.06;
   const pad = Math.round(size * padRatio);
   const inner = Math.max(1, size - pad * 2);
 
-  const resized = await sharp(buffer)
+  let trimmed = buffer;
+  try {
+    trimmed = await sharp(buffer)
+      .flatten({ background: { r: 255, g: 255, b: 255 } })
+      .trim({ threshold: 18 })
+      .png()
+      .toBuffer();
+  } catch {
+    // If trim fails (e.g. uniform image), use the original buffer.
+  }
+
+  const resized = await sharp(trimmed)
     .resize(inner, inner, {
       fit: 'contain',
-      background: { r: 0, g: 0, b: 0, alpha: 0 },
+      background: { r: 255, g: 255, b: 255, alpha: 0 },
     })
     .png()
     .toBuffer();
 
   const canvasBg = maskable
-    ? hexToRgba(background)
-    : { r: 0, g: 0, b: 0, alpha: 0 };
+    ? hexToRgba(background.startsWith('#') ? background : '#ffffff')
+    : { r: 255, g: 255, b: 255, alpha: 1 };
 
   return sharp({
     create: { width: size, height: size, channels: 4, background: canvasBg },

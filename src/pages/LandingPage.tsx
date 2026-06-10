@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import ParentAppShowcase from '../components/landing/ParentAppShowcase';
 import ScrollToTopButton from '../components/landing/ScrollToTopButton';
+import LandingHeader from '../components/landing/LandingHeader';
 
 type IconProps = {
   className?: string;
@@ -124,7 +125,7 @@ const IconCall = ({ className = '' }: IconProps) => (
 );
 
 const SectionLabel = ({ children }: { children: React.ReactNode }) => (
-  <p className="mb-3 text-xs font-bold uppercase tracking-[0.24em] text-[var(--brand)]">{children}</p>
+  <p className="scholar-eyebrow">{children}</p>
 );
 
 const CheckItem = ({ children }: { children: React.ReactNode }) => (
@@ -391,102 +392,76 @@ const LandingPage = () => {
   ];
 
   return (
-    <div className="scholar-landing min-h-screen overflow-hidden">
-      <header className="fixed left-0 right-0 top-0 z-[100] h-16 border-b border-[var(--sn-border)] bg-white/90 backdrop-blur-[20px]">
-        <div className="mx-auto flex h-full max-w-[1100px] items-center justify-between px-5">
-          <Link to="/" className="flex items-center gap-3" aria-label="ScholarNerve home">
-            <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-[13px] bg-white shadow-lg shadow-emerald-950/20 ring-1 ring-[var(--sn-border)]">
-              <BrandMark className="h-full w-full" />
-            </span>
-            <span className="scholar-display text-xl font-bold text-[var(--ink)]">ScholarNerve</span>
-          </Link>
+    <div className="scholar-landing min-h-screen overflow-x-hidden">
+      <LandingHeader brandMark={<BrandMark className="h-full w-full" />} />
 
-          <nav className="hidden items-center gap-8 text-sm font-medium text-[var(--ink-muted)] md:flex">
-            <a className="transition-colors hover:text-[var(--brand)]" href="#features">Features</a>
-            <a className="transition-colors hover:text-[var(--brand)]" href="#parent-app">Mobile App</a>
-            <a className="transition-colors hover:text-[var(--brand)]" href="#portals">Portals</a>
-            <a className="transition-colors hover:text-[var(--brand)]" href="#about">About</a>
-          </nav>
-
-          <Link
-            to="/register-school"
-            className="rounded-[var(--radius-pill)] bg-[var(--ink)] px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-slate-900/15 transition-all hover:-translate-y-0.5 hover:shadow-xl"
-          >
-            Register→
-          </Link>
-        </div>
-      </header>
-
-      <main className="pt-16">
-        <section className="scholar-hero-bg relative flex min-h-[calc(100vh-64px)] items-center px-5 pb-16 pt-16">
+      <main className="pt-14 sm:pt-16">
+        <section className="scholar-hero-bg relative flex min-h-[calc(100dvh-64px)] items-center px-4 pb-14 pt-12 sm:px-5 sm:pb-16 sm:pt-16">
           <div className="relative mx-auto w-full max-w-[1100px] text-center">
-            <div className="scholar-fade-up mx-auto mb-6 inline-flex items-center gap-2 rounded-[var(--radius-pill)] border border-[var(--sn-border)] bg-[var(--brand-light)] px-4 py-2 text-sm font-medium text-[var(--brand-dark)]">
-              <span className="scholar-pulse-dot h-2.5 w-2.5 rounded-full bg-[var(--brand)]" />
+            <div
+              className="scholar-fade-up mx-auto mb-5 inline-flex items-center gap-2 rounded-[var(--radius-pill)] border border-[var(--sn-border)] bg-white/90 px-4 py-2 text-sm font-semibold text-[var(--brand-dark)] shadow-sm backdrop-blur"
+              style={{ animationDelay: '0s' }}
+            >
+              <span className="scholar-pulse-dot h-2 w-2 rounded-full bg-[var(--brand)]" />
               Africa&apos;s Complete School Platform
             </div>
 
             <h1
-              className="scholar-display scholar-fade-up mx-auto max-w-4xl font-extrabold leading-[0.95] text-[var(--ink)]"
-              style={{ animationDelay: '0.1s', fontSize: 'clamp(2.8rem, 5vw, 4.8rem)' }}
+              className="scholar-display scholar-fade-up scholar-section-title mx-auto max-w-4xl text-[var(--ink)]"
+              style={{ animationDelay: '0.1s' }}
             >
               Run your school{' '}
-              <span className="relative inline-block text-[var(--brand)]">
+              <span className="relative inline-block bg-gradient-to-r from-[var(--brand)] via-teal-500 to-[var(--brand-dark)] bg-clip-text text-transparent">
                 smarter
-                <span className="absolute -bottom-1 left-1/2 h-1 w-[92%] -translate-x-1/2 rounded-full bg-[var(--brand)]/20" />
               </span>{' '}
               — not harder.
             </h1>
 
             <p
-              className="scholar-fade-up mx-auto mt-6 max-w-[560px] text-[1.1rem] font-light leading-8 text-[var(--ink-muted)]"
+              className="scholar-fade-up mx-auto mt-5 max-w-[580px] text-base font-light leading-7 text-[var(--ink-muted)] sm:mt-6 sm:text-[1.08rem] sm:leading-8"
               style={{ animationDelay: '0.2s' }}
             >
-              ScholarNerve is a school management system for JHS and primary schools in Ghana 
-              covering student records, fee collection, attendance tracking, grading, report cards,
-              and parent communication in one secure platform.
+              ScholarNerve is a school management system for JHS and primary schools in Ghana covering student records,
+              fee collection, attendance, grading, report cards, and parent communication in one secure platform.
             </p>
 
             <div
-              className="scholar-fade-up mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row"
+              className="scholar-fade-up mt-7 flex flex-col items-stretch justify-center gap-3 sm:mt-8 sm:flex-row sm:items-center"
               style={{ animationDelay: '0.3s' }}
             >
-              <Link
-                to="/register-school"
-                className="rounded-[var(--radius-pill)] bg-[var(--brand)] px-7 py-3.5 font-medium text-white shadow-[0_4px_20px_rgba(13,158,117,0.3)] transition-all hover:-translate-y-1 hover:shadow-[0_14px_34px_rgba(13,158,117,0.38)]"
-              >
+              <Link to="/register-school" className="scholar-btn-primary">
                 Register Your School →
               </Link>
-              <a
-                href="#features"
-                className="rounded-[var(--radius-pill)] border border-[var(--sn-border-strong)] px-7 py-3.5 font-medium text-[var(--ink-muted)] transition-all hover:-translate-y-1 hover:border-[var(--brand)] hover:text-[var(--brand)]"
-              >
-                ▷ See how it works
+              <a href="#features" className="scholar-btn-secondary">
+                See how it works
               </a>
             </div>
 
             <div
-              className="scholar-fade-up mt-7 flex items-center justify-center gap-3 text-sm text-[var(--ink-muted)]"
-              style={{ animationDelay: '0.4s' }}
+              className="scholar-fade-up mt-7 flex flex-col items-center justify-center gap-3 sm:mt-8"
+              style={{ animationDelay: '0.38s' }}
             >
-              <div className="flex -space-x-2">
-                {['SN', 'GH', 'PW', 'ED'].map((initials, index) => (
-                  <span
-                    key={initials}
-                    className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white text-[10px] font-bold text-white shadow-sm"
-                    style={{ backgroundColor: ['#0D9E75', '#085041', '#1D9E75', '#63C5A3'][index] }}
-                  >
-                    {initials}
-                  </span>
-                ))}
+              <div className="scholar-trust-pill">
+                <div className="flex -space-x-2">
+                  {['SN', 'GH', 'PW', 'ED'].map((initials, index) => (
+                    <span
+                      key={initials}
+                      className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white text-[9px] font-bold text-white shadow-sm"
+                      style={{ backgroundColor: ['#0D9E75', '#085041', '#1D9E75', '#63C5A3'][index] }}
+                    >
+                      {initials}
+                    </span>
+                  ))}
+                </div>
+                <span className="text-left leading-snug">
+                  Trusted by Light Preparatory, Victory International &amp; Rosa Gardens School Accra
+                </span>
               </div>
-              <span>
-                Trusted by Light Preparatory, Victory International, and Rosa Gardens School Accra
-              </span>
             </div>
 
             <div
-              className="scholar-fade-up mx-auto mt-12 max-w-[1040px] rounded-[28px] border border-[var(--sn-border)] bg-[linear-gradient(180deg,#ffffff,#f3fbf7)] p-3 text-left shadow-[0_34px_90px_rgba(8,80,65,0.16),0_10px_26px_rgba(15,26,20,0.08)]"
-              style={{ animationDelay: '0.5s', animationDuration: '0.8s' }}
+              className="scholar-fade-up scholar-browser-frame mx-auto mt-10 max-w-[1040px] text-left sm:mt-12"
+              style={{ animationDelay: '0.52s', animationDuration: '0.8s' }}
             >
               <div className="overflow-hidden rounded-[22px] border border-emerald-950/10 bg-white">
                 <div className="flex items-center gap-3 bg-[var(--surface-2)] px-4 py-3">
@@ -516,11 +491,11 @@ const LandingPage = () => {
           </div>
         </section>
 
-        <section className="bg-white px-5 py-24">
+        <section className="scholar-section bg-white px-4 sm:px-5">
           <div className="mx-auto grid max-w-[1100px] items-center gap-10 lg:grid-cols-[0.82fr_1.18fr]">
             <div className="scroll-reveal">
               <SectionLabel>Financial Analytics</SectionLabel>
-              <h2 className="scholar-display text-4xl font-extrabold leading-tight text-[var(--ink)] md:text-5xl">
+              <h2 className="scholar-display scholar-section-title text-[var(--ink)]">
                 See every cedi moving through your school.
               </h2>
               <p className="mt-5 text-[var(--ink-muted)] leading-7">
@@ -528,7 +503,7 @@ const LandingPage = () => {
               </p>
               <div className="mt-7 grid gap-3 sm:grid-cols-2">
                 {['Fees collected', 'Other income', 'Expenses trend', 'Outstanding balances'].map((item) => (
-                  <div key={item} className="rounded-2xl border border-[var(--sn-border)] bg-[var(--surface-2)] px-4 py-3 text-sm font-medium text-[var(--ink-muted)]">
+                  <div key={item} className="rounded-2xl border border-[var(--sn-border)] bg-[var(--surface-2)] px-4 py-3.5 text-sm font-semibold text-[var(--ink-muted)] shadow-sm">
                     <span className="mr-2 inline-block h-2 w-2 rounded-full bg-[var(--brand)]" />
                     {item}
                   </div>
@@ -536,7 +511,7 @@ const LandingPage = () => {
               </div>
             </div>
 
-            <div className="scroll-reveal rounded-[28px] border border-[var(--brand-dark)]/20 bg-[var(--ink)] p-3 shadow-[0_30px_80px_rgba(8,80,65,0.24)]" style={{ '--reveal-delay': '120ms' } as React.CSSProperties}>
+            <div className="scroll-reveal scholar-browser-frame border-[var(--brand-dark)]/20 bg-[var(--ink)] p-3 shadow-[0_30px_80px_rgba(8,80,65,0.24)]" style={{ '--reveal-delay': '120ms' } as React.CSSProperties}>
               <div className="overflow-hidden rounded-[20px] border border-white/10 bg-[#030b16]">
                 <div className="flex items-center gap-3 border-b border-white/10 bg-white/[0.04] px-4 py-3">
                   <div className="flex gap-1.5">
@@ -561,11 +536,13 @@ const LandingPage = () => {
           </div>
         </section>
 
-        <section id="features" className="bg-[var(--surface-2)] px-5 py-24">
+        <section id="features" className="scholar-section bg-[var(--surface-2)] px-4 sm:px-5">
           <div className="mx-auto max-w-[1100px]">
             <div className="mx-auto max-w-2xl text-center">
               <SectionLabel>Features</SectionLabel>
-              <h2 className="scholar-display text-4xl font-extrabold text-[var(--ink)] md:text-5xl">Everything your school needs, built in.</h2>
+              <h2 className="scholar-display scholar-section-title text-[var(--ink)]">
+                Everything your school needs, built in.
+              </h2>
               <p className="mt-4 text-[var(--ink-muted)]">
                 ScholarNerve brings admin, teachers, finance teams, and parents into one polished operating system.
               </p>
@@ -577,19 +554,17 @@ const LandingPage = () => {
                 return (
                   <div
                     key={card.title}
-                    className={`scroll-reveal group rounded-[var(--radius)] border p-8 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_18px_45px_rgba(8,80,65,0.12)] ${card.span} ${
-                      card.dark
-                        ? 'border-transparent bg-[var(--ink)] text-white hover:border-[var(--brand)]'
-                        : 'border-[var(--sn-border)] bg-white text-[var(--ink)] hover:border-[var(--sn-border-strong)]'
+                    className={`scroll-reveal scholar-feature-card group ${card.span} ${
+                      card.dark ? 'is-dark' : ''
                     }`}
                     style={{ '--reveal-delay': `${index * 80}ms` } as React.CSSProperties}
                   >
-                    <div className={`mb-5 flex h-12 w-12 items-center justify-center rounded-2xl ${card.dark ? 'bg-[var(--brand)] text-white' : 'bg-[var(--brand-light)] text-[var(--brand)]'}`}>
+                    <div className={`mb-5 flex h-12 w-12 items-center justify-center rounded-2xl ${card.dark ? 'bg-[var(--brand)] text-white shadow-lg shadow-emerald-900/30' : 'bg-[var(--brand-light)] text-[var(--brand)]'}`}>
                       <Icon className="h-6 w-6" />
                     </div>
                     <p className={`mb-2 text-xs font-bold uppercase tracking-[0.18em] ${card.dark ? 'text-[var(--brand-light)]' : 'text-[var(--brand)]'}`}>{card.tag}</p>
                     <h3 className="scholar-display text-2xl font-bold">{card.title}</h3>
-                    <p className={`mt-3 text-sm leading-6 ${card.dark ? 'text-white/65' : 'text-[var(--ink-muted)]'}`}>{card.desc}</p>
+                    <p className={`mt-3 text-sm leading-6 ${card.dark ? 'text-white/70' : 'text-[var(--ink-muted)]'}`}>{card.desc}</p>
 
                     {card.visual === 'bars' && (
                       <div className="mt-7 flex gap-2">
@@ -648,11 +623,13 @@ const LandingPage = () => {
 
         <ParentAppShowcase />
 
-        <section id="portals" className="bg-white px-5 py-24">
+        <section id="portals" className="scholar-section bg-white px-4 sm:px-5">
           <div className="mx-auto max-w-[1100px]">
             <div className="max-w-2xl">
               <SectionLabel>Portals</SectionLabel>
-              <h2 className="scholar-display text-4xl font-extrabold text-[var(--ink)] md:text-5xl">One school. Three powerful views.</h2>
+              <h2 className="scholar-display scholar-section-title text-[var(--ink)]">
+                One school. Three powerful views.
+              </h2>
               <p className="mt-4 text-[var(--ink-muted)]">
                 Every role sees exactly what they need, with clean tools for the way schools actually work.
               </p>
@@ -677,12 +654,13 @@ const LandingPage = () => {
                   number: '03',
                   label: 'Parent PWA',
                   title: 'Parent PWA',
+                  featured: true,
                   features: ['Real-time fee status', 'View receipts & statements', 'Term report cards', 'Attendance notifications', 'Student learning mode'],
                 },
               ].map((portal, index) => (
                 <div
                   key={portal.title}
-                  className={`scroll-reveal relative overflow-hidden rounded-[var(--radius)] border bg-white transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_22px_50px_rgba(8,80,65,0.13)] ${
+                  className={`scroll-reveal relative overflow-hidden rounded-[calc(var(--radius)+2px)] border bg-white transition-all duration-300 hover:-translate-y-1 hover:shadow-[var(--shadow-premium-lg)] ${
                     portal.featured ? 'border-[var(--brand)] shadow-[0_18px_55px_rgba(13,158,117,0.12)]' : 'border-[var(--sn-border)]'
                   }`}
                   style={{ '--reveal-delay': `${index * 100}ms` } as React.CSSProperties}
@@ -708,11 +686,13 @@ const LandingPage = () => {
           </div>
         </section>
 
-        <section className="bg-[var(--surface-2)] px-5 py-24">
+        <section className="scholar-section bg-[var(--surface-2)] px-4 sm:px-5">
           <div className="mx-auto max-w-[1100px]">
             <div className="mx-auto max-w-2xl text-center">
               <SectionLabel>Testimonials</SectionLabel>
-              <h2 className="scholar-display text-4xl font-extrabold text-[var(--ink)] md:text-5xl">Schools already trust the ScholarNerve experience.</h2>
+              <h2 className="scholar-display scholar-section-title text-[var(--ink)]">
+                Schools already trust the ScholarNerve experience.
+              </h2>
               <p className="mt-4 text-[var(--ink-muted)]">
                 Real school workflows, premium support, and a platform designed around Ghanaian school operations.
               </p>
@@ -779,27 +759,27 @@ const LandingPage = () => {
           </div>
         </section>
 
-        <section id="about" className="relative overflow-hidden bg-[var(--ink)] px-5 py-24 text-center">
+        <section id="about" className="scholar-section relative overflow-hidden bg-[var(--ink)] px-4 text-center sm:px-5">
           <div className="absolute left-1/2 top-0 h-96 w-96 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--brand)]/20 blur-3xl" />
           <div className="absolute bottom-0 right-0 h-80 w-80 translate-x-1/3 translate-y-1/3 rounded-full bg-[var(--brand)]/15 blur-3xl" />
           <div className="scroll-reveal relative mx-auto max-w-[760px]">
-            <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--brand)]">Get started in 24 hours</p>
-            <h2 className="scholar-display mt-4 font-extrabold leading-tight text-white" style={{ fontSize: 'clamp(2.2rem, 5vw, 3.5rem)' }}>
+            <p className="scholar-eyebrow mx-auto border-white/10 bg-white/5 text-emerald-200">Get started in 24 hours</p>
+            <h2 className="scholar-display scholar-section-title mt-2 text-white">
               Your school deserves better tools.
             </h2>
-            <p className="mx-auto mt-5 max-w-[620px] text-lg font-light leading-8 text-white/55">
+            <p className="mx-auto mt-5 max-w-[620px] text-base font-light leading-7 text-white/60 sm:text-lg sm:leading-8">
               Register today. We review every application and have your school set up and running within 24 hours.
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
               <Link
                 to="/register-school"
-                className="rounded-[var(--radius-pill)] bg-white px-7 py-3.5 font-medium text-[var(--ink)] shadow-[0_18px_45px_rgba(255,255,255,0.12)] transition-all hover:-translate-y-1"
+                className="inline-flex items-center justify-center rounded-[var(--radius-pill)] bg-white px-7 py-3.5 font-semibold text-[var(--ink)] shadow-[0_18px_45px_rgba(255,255,255,0.12)] transition-transform hover:-translate-y-0.5"
               >
                 Register Your School →
               </Link>
               <a
                 href="tel:+233506741322"
-                className="rounded-[var(--radius-pill)] border border-white/30 px-7 py-3.5 font-medium text-white/80 transition-all hover:-translate-y-1 hover:border-white/60 hover:text-white"
+                className="scholar-btn-secondary border-white/25 bg-transparent text-white/85 hover:border-white/50 hover:bg-white/5 hover:text-white"
               >
                 Talk to us first
               </a>
@@ -808,10 +788,10 @@ const LandingPage = () => {
         </section>
       </main>
 
-      <footer className="bg-[var(--ink)] px-5 pb-8 pt-16 text-white">
+      <footer className="bg-[var(--ink)] px-4 pb-8 pt-14 text-white sm:px-5">
         <div className="mx-auto max-w-[1100px]">
-          <div className="grid gap-10 border-t border-white/[0.08] pt-10 sm:grid-cols-2 lg:grid-cols-3">
-            <div>
+          <div className="grid gap-10 border-t border-white/[0.08] pt-10 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="lg:col-span-2">
               <div className="flex items-center gap-3">
                 <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-[13px] bg-white ring-1 ring-white/20">
                   <BrandMark className="h-full w-full" />
@@ -821,6 +801,22 @@ const LandingPage = () => {
               <p className="mt-4 max-w-xs text-sm leading-6 text-white/55">
                 Africa&apos;s complete school management platform, built for Ghana and beyond.
               </p>
+            </div>
+
+            <div>
+              <p className="mb-4 text-sm font-bold text-white">Explore</p>
+              <div className="space-y-3">
+                {[
+                  ['#features', 'Features'],
+                  ['#parent-app', 'Mobile App'],
+                  ['#portals', 'Portals'],
+                  ['#about', 'About'],
+                ].map(([href, label]) => (
+                  <a key={href} href={href} className="block text-sm text-white/50 transition-colors hover:text-white">
+                    {label}
+                  </a>
+                ))}
+              </div>
             </div>
 
             <div>

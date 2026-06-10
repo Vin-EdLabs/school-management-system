@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import { query } from '../db/connection.js';
 import { getVapidPublicKey } from '../services/webPushService.js';
 import { resolveTenant, TenantRequest } from '../middleware/tenantResolver.js';
-import { authenticate, requireRole, validateTenantAccess } from '../middleware/auth.js';
+import { authenticate, requireRole, validateTenantAccess, AuthRequest } from '../middleware/auth.js';
 import { writeAuditLog } from '../services/auditService.js';
 import { beneficiaryAdjustedFee } from '../utils/beneficiaryFee.js';
 

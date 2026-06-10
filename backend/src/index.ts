@@ -34,6 +34,8 @@ import conversationRoutes from './routes/conversations.js';
 import messagesRoutes from './routes/messages.js';
 import studentLearningRoutes from './routes/student.js';
 import visitRoutes from './routes/visits.js';
+import academicCycleRoutes from './routes/academicCycle.js';
+import enrollmentsRoutes from './routes/enrollments.js';
 import systemRoutes from './routes/system.js';
 import { initSocket } from './socket.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -51,7 +53,12 @@ const httpServer = createServer(app);
 const PORT = process.env.PORT || 3001;
 
 // So req.ip and secure cookies respect X-Forwarded-For (public client IP behind Render/nginx).
-if (process.env.TRUST_PROXY === '1' || process.env.TRUST_PROXY === 'true' || process.env.RENDER) {
+if (
+  process.env.TRUST_PROXY === '1' ||
+  process.env.TRUST_PROXY === 'true' ||
+  process.env.RENDER ||
+  process.env.NODE_ENV === 'production'
+) {
   app.set('trust proxy', 1);
 }
 
@@ -126,6 +133,8 @@ app.use('/api/school-registrations', schoolRegistrationsRoutes);
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/schools', schoolRoutes);
+app.use('/api/schools', academicCycleRoutes);
+app.use('/api/enrollments', enrollmentsRoutes);
 app.use('/api/students', studentRoutes);
 app.use('/api/teachers', teacherRoutes);
 app.use('/api/classes', classRoutes);

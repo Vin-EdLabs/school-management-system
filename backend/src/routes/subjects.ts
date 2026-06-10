@@ -3,6 +3,7 @@ import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { getIO } from '../socket.js';
+import { notifySetupProgressChanged } from '../services/setupProgressService.js';
 
 const router = express.Router();
 
@@ -58,6 +59,7 @@ router.post('/', async (req: AuthRequest, res) => {
         );
 
         emitTenantDataChanged(tenantId, 'subject', 'created');
+        notifySetupProgressChanged(tenantId);
         res.status(201).json(result.rows[0]);
     } catch (error: any) {
         console.error('Create subject error:', error);

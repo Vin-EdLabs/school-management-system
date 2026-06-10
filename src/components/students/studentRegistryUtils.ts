@@ -2,8 +2,21 @@ import type { FeeStructure, Student } from '../../contexts/DataContext';
 
 export function normalizeEnrollmentStatus(raw: string | undefined): string {
   const s = (raw || 'active').toLowerCase().trim();
-  if (['active', 'graduated', 'suspended'].includes(s)) return s;
+  if (['active', 'inactive', 'graduated', 'suspended', 'alumni'].includes(s)) return s === 'alumni' ? 'graduated' : s;
   return s || 'active';
+}
+
+/** User-facing label — graduated students are shown as Alumni. */
+export function enrollmentStatusLabel(raw: string | undefined): string {
+  const s = normalizeEnrollmentStatus(raw);
+  if (s === 'graduated') return 'Alumni';
+  if (s === 'inactive') return 'Inactive';
+  if (s === 'suspended') return 'Suspended';
+  return 'Active';
+}
+
+export function isAlumniStudent(student: { enrollmentStatus?: string }): boolean {
+  return normalizeEnrollmentStatus(student.enrollmentStatus) === 'graduated';
 }
 
 export function classBadgeClass(className: string): string {
@@ -26,7 +39,8 @@ export function classBadgeClass(className: string): string {
 export function statusBadgeClass(status: string): string {
   const s = normalizeEnrollmentStatus(status);
   if (s === 'active') return 'border-emerald-500/30 bg-emerald-500/12 text-emerald-800 dark:text-emerald-200';
-  if (s === 'graduated') return 'border-slate-400/40 bg-slate-500/10 text-slate-800 dark:text-slate-200';
+  if (s === 'inactive') return 'border-slate-400/40 bg-slate-500/10 text-slate-600 dark:text-slate-400';
+  if (s === 'graduated') return 'border-indigo-500/35 bg-indigo-500/10 text-indigo-800 dark:text-indigo-200';
   if (s === 'suspended') return 'border-red-500/35 bg-red-500/10 text-red-800 dark:text-red-200';
   return 'border-border bg-muted/70 text-foreground';
 }
@@ -91,7 +105,7 @@ export function exportStudentsToCsv(rows: Student[]): string {
         esc(s.lastName),
         esc(s.classAssigned),
         esc(s.gender),
-        esc(normalizeEnrollmentStatus(s.enrollmentStatus)),
+        esc(enrollmentStatusLabel(s.enrollmentStatus)),
         esc(s.guardianName),
         esc(s.guardianContact),
       ].join(',')

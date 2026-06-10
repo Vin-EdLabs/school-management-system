@@ -7,7 +7,8 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
-import { TrendingUp, Users, User, AlertTriangle, DollarSign } from 'lucide-react';
+import { TrendingUp, Users, User, AlertTriangle, GraduationCap } from 'lucide-react';
+import { isJhs3Class } from '../../utils/classLevelUtils';
 import { 
   calculateStudentFees, 
   calculateStudentFeesSync,
@@ -25,23 +26,41 @@ const PromoteStudents: React.FC<PromoteStudentsProps> = ({
   initialStudentId = null,
   onConsumeInitialStudentId,
 }) => {
-  const { students, classes, promoteStudent, promoteClass, feeStructures, payments } = useData();
+  const { students, classes, promoteStudent, promoteClass, graduateClassToAlumni, feeStructures, payments } = useData();
   const { currentTerm, currentYear } = useActiveTerm();
   const [promotionType, setPromotionType] = useState<'individual' | 'class'>('individual');
   const [selectedStudent, setSelectedStudent] = useState('');
+  const [selectedCurrentClass, setSelectedCurrentClass] = useState('');
+  const [selectedNewClass, setSelectedNewClass] = useState('');
+  const [pendingAlumniAction, setPendingAlumniAction] = useState(false);
+  const [showFeeWarning, setShowFeeWarning] = useState(false);
+  const [feeImpactData, setFeeImpactData] = useState<any>(null);
+
+  const activeStudents = students.filter(
+    (s) => (s.enrollmentStatus || 'active').toLowerCase() === 'active'
+  );
+
+  const selectedCurrentClassObj = classes.find(
+    (c) => c.className === selectedCurrentClass || c.id === selectedCurrentClass
+  );
+  const isSelectedJhs3 = selectedCurrentClassObj
+    ? isJhs3Class(selectedCurrentClassObj)
+    : false;
 
   useEffect(() => {
     if (!initialStudentId) return;
-    const exists = students.some((s) => s.id === String(initialStudentId));
+    const exists = activeStudents.some((s) => s.id === String(initialStudentId));
     if (!exists) return;
     setPromotionType('individual');
     setSelectedStudent(String(initialStudentId));
     onConsumeInitialStudentId?.();
-  }, [initialStudentId, students, onConsumeInitialStudentId]);
-  const [selectedCurrentClass, setSelectedCurrentClass] = useState('');
-  const [selectedNewClass, setSelectedNewClass] = useState('');
-  const [showFeeWarning, setShowFeeWarning] = useState(false);
-  const [feeImpactData, setFeeImpactData] = useState<any>(null);
+  }, [initialStudentId, activeStudents, onConsumeInitialStudentId]);
+
+  useEffect(() => {
+    if (isSelectedJhs3) {
+      setSelectedNewClass('');
+    }
+  }, [isSelectedJhs3, selectedCurrentClass]);
 
   // Calculate fee impact for individual promotion
   const calculateIndividualFeeImpact = async (studentId: string, newClass: string) => {
@@ -72,8 +91,8 @@ const PromoteStudents: React.FC<PromoteStudentsProps> = ({
   };
 
   // Calculate fee impact for class promotion
-  const calculateClassFeeImpact = async (currentClass: string, newClass: string) => {
-    const studentsInClass = students.filter(s => s.classAssigned === currentClass);
+  const calculateClassFeeImpact = async (currentClass: string, _newClass?: string) => {
+    const studentsInClass = activeStudents.filter(s => s.classAssigned === currentClass);
     
     const impactDataPromises = studentsInClass.map(async (student) => {
       const feeCalc = await calculateStudentFees(
@@ -179,7 +198,68 @@ const PromoteStudents: React.FC<PromoteStudentsProps> = ({
     setFeeImpactData(null);
   };
 
+  const executeClassAlumni = async () => {
+    const studentsInClass = getStudentsInClass(selectedCurrentClass);
+    if (studentsInClass.length === 0) {
+      toast({
+        title: 'No active students',
+        description: 'This class has no active students to move to Alumni.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      const result = await graduateClassToAlumni(selectedCurrentClass);
+      toast({
+        title: 'Moved to Alumni',
+        description: `${result.graduated} student(s) from ${selectedCurrentClass} are now in Alumni.`,
+      });
+      setSelectedCurrentClass('');
+      setSelectedNewClass('');
+      setShowFeeWarning(false);
+      setFeeImpactData(null);
+      setPendingAlumniAction(false);
+    } catch (err: any) {
+      toast({
+        title: 'Could not move to Alumni',
+        description: err?.message || 'Something went wrong. Try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleClassAlumni = async () => {
+    if (!selectedCurrentClass) {
+      toast({
+        title: 'Validation Error',
+        description: 'Please select the JHS 3 class to graduate',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!isSelectedJhs3) {
+      toast({
+        title: 'Not JHS 3',
+        description: 'Only JHS 3 classes can be moved to Alumni as a whole class.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const feeImpact = await calculateClassFeeImpact(selectedCurrentClass);
+    if (feeImpact.studentsWithOutstanding > 0) {
+      setPendingAlumniAction(true);
+      setFeeImpactData(feeImpact);
+      setShowFeeWarning(true);
+    } else {
+      await executeClassAlumni();
+    }
+  };
+
   const handleClassPromotion = async () => {
+    setPendingAlumniAction(false);
     if (!selectedCurrentClass || !selectedNewClass) {
       toast({
         title: "Validation Error",
@@ -200,7 +280,7 @@ const PromoteStudents: React.FC<PromoteStudentsProps> = ({
   };
 
   const executeClassPromotion = async () => {
-    const studentsInClass = students.filter(s => s.classAssigned === selectedCurrentClass);
+    const studentsInClass = getStudentsInClass(selectedCurrentClass);
     const currentClassObj = classes.find(c => c.className === selectedCurrentClass || c.id === selectedCurrentClass);
     const newClassObj = classes.find(c => c.className === selectedNewClass || c.id === selectedNewClass);
     if (!currentClassObj || !newClassObj) return;
@@ -236,10 +316,11 @@ const PromoteStudents: React.FC<PromoteStudentsProps> = ({
     setSelectedNewClass('');
     setShowFeeWarning(false);
     setFeeImpactData(null);
+    setPendingAlumniAction(false);
   };
 
   const getStudentsInClass = (className: string) => {
-    return students.filter(s => s.classAssigned === className);
+    return activeStudents.filter(s => s.classAssigned === className);
   };
 
   const getStudentWithFeeInfo = (studentId: string) => {
@@ -361,16 +442,23 @@ const PromoteStudents: React.FC<PromoteStudentsProps> = ({
             )}
             <div className="mt-8 flex flex-col gap-3 border-t border-orange-200/50 pt-6 dark:border-orange-800/50 sm:flex-row">
               <Button
-                onClick={promotionType === 'individual' ? executeIndividualPromotion : executeClassPromotion}
+                onClick={
+                  promotionType === 'individual'
+                    ? executeIndividualPromotion
+                    : pendingAlumniAction
+                      ? executeClassAlumni
+                      : executeClassPromotion
+                }
                 className="h-11 rounded-xl bg-orange-600 px-8 text-sm font-semibold text-white shadow-lg hover:bg-orange-700 dark:bg-orange-500 dark:hover:bg-orange-400"
               >
-                Yes, promote anyway
+                {pendingAlumniAction ? 'Yes, move to Alumni anyway' : 'Yes, promote anyway'}
               </Button>
               <Button
                 variant="outline"
                 onClick={() => {
                   setShowFeeWarning(false);
                   setFeeImpactData(null);
+                  setPendingAlumniAction(false);
                 }}
                 className="h-11 rounded-xl border-slate-200 px-8 text-sm font-medium dark:border-slate-700"
               >
@@ -432,7 +520,7 @@ const PromoteStudents: React.FC<PromoteStudentsProps> = ({
                       <SelectValue placeholder="Choose a student" />
                     </SelectTrigger>
                     <SelectContent className="rounded-2xl border-slate-200 dark:border-slate-800 shadow-2xl">
-                      {students.map((student) => {
+                      {activeStudents.map((student) => {
                         const studentWithFee = getStudentWithFeeInfo(student.id);
                         return (
                           <SelectItem key={student.id} value={student.id} className="rounded-xl p-3">
@@ -506,7 +594,8 @@ const PromoteStudents: React.FC<PromoteStudentsProps> = ({
               <div className="flex justify-end">
                 <Button
                   onClick={handleIndividualPromotion}
-                  className="h-11 rounded-xl bg-slate-900 px-10 text-sm font-semibold text-white shadow-lg transition-opacity hover:opacity-90 dark:bg-white dark:text-slate-900"
+                  variant="primaryAction"
+                  className="h-11 rounded-xl px-10 text-sm font-semibold"
                 >
                   Promote student
                 </Button>
@@ -517,7 +606,14 @@ const PromoteStudents: React.FC<PromoteStudentsProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="space-y-2.5">
                   <Label className="ml-1 text-sm font-medium text-slate-700 dark:text-slate-300">Class to move from</Label>
-                  <Select value={selectedCurrentClass} onValueChange={setSelectedCurrentClass}>
+                  <Select
+                    value={selectedCurrentClass}
+                    onValueChange={(value) => {
+                      setSelectedCurrentClass(value);
+                      setSelectedNewClass('');
+                      setPendingAlumniAction(false);
+                    }}
+                  >
                     <SelectTrigger className="h-12 rounded-xl border-slate-200 bg-slate-50/50 font-medium dark:border-slate-700 dark:bg-slate-800/50">
                       <SelectValue placeholder="Choose current class" />
                     </SelectTrigger>
@@ -528,12 +624,18 @@ const PromoteStudents: React.FC<PromoteStudentsProps> = ({
                           const studentWithFee = getStudentWithFeeInfo(s.id);
                           return studentWithFee?.hasOutstanding;
                         }).length;
+                        const jhs3 = isJhs3Class(cls);
                         
                         return (
                           <SelectItem key={cls.id} value={cls.className} className="rounded-xl p-3">
                             <div className="flex items-center justify-between w-full">
                               <span className="text-sm font-medium text-slate-900 dark:text-white">{cls.className}</span>
                               <div className="flex items-center gap-2">
+                                {jhs3 && (
+                                  <Badge variant="outline" className="text-[10px] font-medium border-amber-500/30 text-amber-700 dark:text-amber-300">
+                                    JHS 3
+                                  </Badge>
+                                )}
                                 <Badge variant="outline" className="text-xs font-medium">
                                   {studentsInClass.length} students
                                 </Badge>
@@ -551,21 +653,36 @@ const PromoteStudents: React.FC<PromoteStudentsProps> = ({
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2.5">
-                  <Label className="ml-1 text-sm font-medium text-slate-700 dark:text-slate-300">New class</Label>
-                  <Select value={selectedNewClass} onValueChange={setSelectedNewClass}>
-                    <SelectTrigger className="h-12 rounded-xl border-slate-200 bg-slate-50/50 font-medium dark:border-slate-700 dark:bg-slate-800/50">
-                      <SelectValue placeholder="Choose new class" />
-                    </SelectTrigger>
-                    <SelectContent className="rounded-2xl border-slate-200 dark:border-slate-800 shadow-2xl">
-                      {classes.map((cls) => (
-                        <SelectItem key={cls.id} value={cls.className} className="rounded-xl">
-                          {cls.className}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {!isSelectedJhs3 ? (
+                  <div className="space-y-2.5">
+                    <Label className="ml-1 text-sm font-medium text-slate-700 dark:text-slate-300">New class</Label>
+                    <Select value={selectedNewClass} onValueChange={setSelectedNewClass}>
+                      <SelectTrigger className="h-12 rounded-xl border-slate-200 bg-slate-50/50 font-medium dark:border-slate-700 dark:bg-slate-800/50">
+                        <SelectValue placeholder="Choose new class" />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-2xl border-slate-200 dark:border-slate-800 shadow-2xl">
+                        {classes
+                          .filter((cls) => cls.className !== selectedCurrentClass && !isJhs3Class(cls))
+                          .map((cls) => (
+                            <SelectItem key={cls.id} value={cls.className} className="rounded-xl">
+                              {cls.className}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    <Label className="ml-1 text-sm font-medium text-slate-700 dark:text-slate-300">Destination</Label>
+                    <div className="flex h-12 items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 dark:border-amber-500/20 dark:bg-amber-500/10">
+                      <GraduationCap className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900 dark:text-white">Alumni</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">JHS 3 graduates — not promoted to another class</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {selectedCurrentClass && (
@@ -583,7 +700,7 @@ const PromoteStudents: React.FC<PromoteStudentsProps> = ({
                         <Badge 
                           key={student.id} 
                           variant="outline" 
-                          className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
+                          className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
                             studentWithFee?.hasOutstanding 
                             ? 'border-orange-300 dark:border-orange-800 bg-orange-50 dark:bg-orange-950 text-orange-700 dark:text-orange-400' 
                             : 'border-emerald-200 dark:border-emerald-800 bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400'
@@ -601,12 +718,24 @@ const PromoteStudents: React.FC<PromoteStudentsProps> = ({
               )}
 
               <div className="flex justify-end">
-                <Button
-                  onClick={handleClassPromotion}
-                  className="h-11 rounded-xl bg-slate-900 px-10 text-sm font-semibold text-white shadow-lg transition-opacity hover:opacity-90 dark:bg-white dark:text-slate-900"
-                >
-                  Promote whole class
-                </Button>
+                {isSelectedJhs3 ? (
+                  <Button
+                    onClick={handleClassAlumni}
+                    variant="primaryAction"
+                    className="h-11 rounded-xl px-10 text-sm font-semibold gap-2"
+                  >
+                    <GraduationCap className="h-4 w-4" />
+                    Move to Alumni
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleClassPromotion}
+                    variant="primaryAction"
+                    className="h-11 rounded-xl px-10 text-sm font-semibold"
+                  >
+                    Promote whole class
+                  </Button>
+                )}
               </div>
             </div>
           )}
@@ -626,21 +755,29 @@ const PromoteStudents: React.FC<PromoteStudentsProps> = ({
                 const studentWithFee = getStudentWithFeeInfo(s.id);
                 return studentWithFee?.hasOutstanding;
               });
+              const jhs3 = isJhs3Class(cls);
               
               return (
-                <div key={cls.id} className="p-6 bg-slate-50/50 dark:bg-slate-800/20 rounded-[1.5rem] border border-slate-200 dark:border-slate-700/50 hover:border-indigo-500/30 transition-all group">
+                <div key={cls.id} className="p-6 bg-slate-50/50 dark:bg-slate-800/20 rounded-[1.5rem] border border-slate-200 dark:border-slate-700/50">
                   <div className="flex items-start justify-between mb-4">
                     <div className="space-y-1">
-                      <h3 className="text-sm font-semibold text-slate-900 transition-colors group-hover:text-indigo-600 dark:text-white dark:group-hover:text-indigo-400">
+                      <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
                         {cls.className}
                       </h3>
                       <p className="text-xs text-slate-500 dark:text-slate-400">{cls.level}</p>
                     </div>
+                    <div className="flex items-center gap-2">
+                      {jhs3 && (
+                        <Badge variant="outline" className="text-[10px] font-medium border-amber-500/30 text-amber-700 dark:text-amber-300">
+                          Alumni eligible
+                        </Badge>
+                      )}
                     {studentsWithOutstanding.length > 0 && (
                       <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center">
                         <AlertTriangle className="w-4 h-4 text-red-500" />
                       </div>
                     )}
+                    </div>
                   </div>
                   
                   <div className="flex flex-wrap gap-2 mb-6">

@@ -396,7 +396,7 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="graduated">Graduated</SelectItem>
+                    <SelectItem value="graduated">Alumni (graduated)</SelectItem>
                     <SelectItem value="suspended">Suspended</SelectItem>
                   </SelectContent>
                 </Select>

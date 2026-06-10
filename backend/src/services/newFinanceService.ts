@@ -131,6 +131,7 @@ export const postFeesForNewTermSwitch = async (tenantId: number, newTermId: numb
                 AND fs.academic_year_id = t.academic_year_id
                 AND fs.term_id = t.id
             WHERE s.tenant_id = $1
+              AND COALESCE(s.enrollment_status, 'active') = 'active'
             AND NOT EXISTS (
                 SELECT 1 FROM student_ledger sl
                 WHERE sl.student_id = s.id

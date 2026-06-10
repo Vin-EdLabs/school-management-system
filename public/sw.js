@@ -1,5 +1,5 @@
 /* ScholarNerve service worker — caching + push. Bump CACHE_VERSION on breaking cache changes. */
-const CACHE_VERSION = '2026-06-09-v13';
+const CACHE_VERSION = '2026-06-10-v14';
 const CACHE_NAME = `scholarnerve-app-${CACHE_VERSION}`;
 const APP_SHELL = ['/', '/index.html'];
 
@@ -155,10 +155,21 @@ function appendIconQueryParams(iconSrc, manifestParams) {
   }
 }
 
+function isSocketIoRequest(url) {
+  return url.pathname.startsWith('/socket.io');
+}
+
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
+
+  // Socket.IO long-polling MUST bypass the service worker. Caching or offline
+  // fallbacks here cause net::ERR_FAILED 200 (OK) in production.
+  if (isSocketIoRequest(url)) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
 
   // Vite dev-server internals (deps, HMR client) must never be cached — stale
   // optimized-dep chunks cause 404s after re-optimization. Always go network.

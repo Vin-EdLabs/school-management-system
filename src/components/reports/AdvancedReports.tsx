@@ -362,7 +362,7 @@ const AdvancedReports = () => {
           'Outstanding (GHS)': financialSummary?.outstanding ?? 0,
           'Other income (GHS)': financialSummary?.otherIncome ?? 0,
           'Expenses (GHS)': financialSummary?.totalExpenses ?? 0,
-          'Net position (GHS)': financialSummary?.netBalance ?? 0,
+          'Net position (GHS)': financialSummary?.systemNetPosition ?? financialSummary?.netBalance ?? 0,
           'Collection %': Math.round(financialSummary?.collectionRate ?? 0),
         },
       ]),
@@ -423,7 +423,13 @@ const AdvancedReports = () => {
   if (loading && !financialSummary) {
     return (
       <div className="flex min-h-[70dvh] items-center justify-center bg-slate-50 dark:bg-slate-950/50 px-4">
-        <BrandedLoading logoUrl={school?.logo_url ?? null} label="Loading reports…" className="py-12" />
+        <BrandedLoading
+          logoUrl={school?.logo_url ?? null}
+          label="Loading reports…"
+          className="py-12"
+          active={loading && !financialSummary}
+          onRetry={fetchData}
+        />
       </div>
     );
   }
@@ -546,7 +552,7 @@ const AdvancedReports = () => {
       </header>
 
       {/* --- HERO STATS ROW --- */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
         <StatCard 
           label="Total Fees Expected"
           value={`GHS ${financialSummary?.totalExpected || 0}`}
@@ -562,6 +568,14 @@ const AdvancedReports = () => {
           trend={{ value: `${Math.round(financialSummary?.collectionRate || 0)}% efficiency`, positive: true }}
           glowColor="emerald"
           delay={200}
+        />
+        <StatCard 
+          label="Other Income"
+          value={`GHS ${financialSummary?.otherIncome || 0}`}
+          subtext={`Non-fee income (${academicYearLabel} window)`}
+          trend={{ value: 'Donations, services & more', positive: true }}
+          glowColor="blue"
+          delay={250}
         />
         <StatCard 
           label="Outstanding Balance"
@@ -713,16 +727,26 @@ const AdvancedReports = () => {
             <div className="space-y-4">
               <div className="flex justify-between items-center border-b border-emerald-500/20 pb-2 dark:border-emerald-500/10">
                 <span className="text-sm text-[var(--report-text-primary)]">Fees collected (term)</span>
-                <span className="font-bold text-emerald-600 dark:text-emerald-400">GHS {financialSummary?.collected || 0} <ArrowUpRight size={14} className="inline ml-1" /></span>
+                <span className="font-bold text-emerald-600 dark:text-emerald-400">GHS {(financialSummary?.collected ?? 0).toLocaleString()} <ArrowUpRight size={14} className="inline ml-1" /></span>
+              </div>
+              <div className="flex justify-between items-center border-b border-emerald-500/20 pb-2 dark:border-emerald-500/10">
+                <span className="text-sm text-[var(--report-text-primary)]">Other income ({academicYearLabel})</span>
+                <span className="font-bold text-sky-600 dark:text-sky-400">GHS {(financialSummary?.otherIncome ?? 0).toLocaleString()} <ArrowUpRight size={14} className="inline ml-1" /></span>
+              </div>
+              <div className="flex justify-between items-center border-b border-emerald-500/20 pb-2 dark:border-emerald-500/10">
+                <span className="text-sm font-medium text-[var(--report-text-primary)]">Total income (fees + other)</span>
+                <span className="font-bold text-[var(--report-text-primary)]">
+                  GHS {((financialSummary?.collected ?? 0) + (financialSummary?.otherIncome ?? 0)).toLocaleString()}
+                </span>
               </div>
               <div className="flex justify-between items-center border-b border-emerald-500/20 pb-2 dark:border-emerald-500/10">
                 <span className="text-sm text-[var(--report-text-primary)]">Expenses ({academicYearLabel})</span>
-                <span className="font-bold text-red-600 dark:text-red-400">GHS {incomeVsExpense.reduce((a, b) => a + Number(b.expense || 0), 0).toLocaleString()}</span>
+                <span className="font-bold text-red-600 dark:text-red-400">GHS {(financialSummary?.totalExpenses ?? incomeVsExpense.reduce((a, b) => a + Number(b.expense || 0), 0)).toLocaleString()}</span>
               </div>
               <div className="flex justify-between items-center pt-2">
                 <span className="text-base font-bold text-[var(--report-text-primary)]">Net position</span>
-                <span className={`text-2xl font-bold ${financialSummary?.netBalance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-                  GHS {financialSummary?.netBalance?.toLocaleString() || 0}
+                <span className={`text-2xl font-bold ${(financialSummary?.systemNetPosition ?? financialSummary?.netBalance ?? 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                  GHS {(financialSummary?.systemNetPosition ?? financialSummary?.netBalance ?? 0).toLocaleString()}
                 </span>
               </div>
             </div>

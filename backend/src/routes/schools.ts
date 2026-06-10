@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { getClient, query } from '../db/connection.js';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth.js';
 import { getIO } from '../socket.js';
+import { ensureSetupProgressRow, getSetupProgress } from '../services/setupProgressService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -166,6 +167,24 @@ router.post('/super-admins/:userId/reset-password', requireRole('super-admin'), 
 });
 
 // Create a tenant-scoped backup. Super admins can back up any school; school admins can back up only their school.
+// Setup checklist progress (school admin) — must be before /:id
+router.get('/:id/setup-progress', requireRole('administrator'), async (req: AuthRequest, res) => {
+  try {
+    const schoolId = parseInt(req.params.id, 10);
+    if (!schoolId || Number.isNaN(schoolId)) {
+      return res.status(400).json({ error: 'Invalid school id' });
+    }
+    if (req.user!.tenantId !== schoolId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    const progress = await getSetupProgress(schoolId);
+    return res.json(progress);
+  } catch (error) {
+    console.error('Get setup progress error:', error);
+    return res.status(500).json({ error: 'Failed to fetch setup progress' });
+  }
+});
+
 router.get('/:id/backup', async (req: AuthRequest, res) => {
   try {
     const tenantId = parseInt(req.params.id, 10);
@@ -328,6 +347,8 @@ router.post('/', requireRole('super-admin'), async (req: AuthRequest, res) => {
         'INSERT INTO school_settings (tenant_id, school_name) VALUES ($1, $2)',
         [tenantId, name]
       );
+
+      await ensureSetupProgressRow(tenantId);
       
       await client.query('COMMIT');
       

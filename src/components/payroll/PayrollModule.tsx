@@ -933,12 +933,12 @@ const PayrollModule = () => {
       </Dialog>
 
       <Dialog open={payDialogOpen} onOpenChange={setPayDialogOpen}>
-        <DialogContent className="flex max-h-[90vh] flex-col gap-4 overflow-hidden p-6 sm:max-w-md">
-          <DialogHeader className="shrink-0">
+        <DialogContent className="flex max-h-[min(90vh,640px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
+          <DialogHeader className="shrink-0 border-b border-border px-6 py-4">
             <DialogTitle>Record payment — {selectedPayee?.name}</DialogTitle>
           </DialogHeader>
           {selectedPayee && (
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain py-1 pr-1 text-sm">
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-6 py-4 text-sm">
               <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1 font-mono">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Gross</span>
@@ -985,11 +985,12 @@ const PayrollModule = () => {
               </div>
             </div>
           )}
-          <DialogFooter className="shrink-0 border-t border-border pt-2">
+          <DialogFooter className="mt-auto shrink-0 gap-2 border-t border-border bg-background px-6 py-4">
             <Button variant="outline" onClick={() => setPayDialogOpen(false)}>
               Cancel
             </Button>
             <Button
+              variant="primaryAction"
               onClick={() => {
                 setConfirmPayOpen(true);
               }}
@@ -1021,7 +1022,7 @@ const PayrollModule = () => {
               onClick={() => {
                 void submitPayment();
               }}
-              className="bg-slate-800 hover:bg-slate-700"
+              className="bg-gradient-to-r from-[#146C43] via-[#16A34A] to-[#22C55E] text-white shadow-md shadow-emerald-500/20 hover:from-[#0F5132] hover:via-[#146C43] hover:to-[#16A34A] hover:shadow-emerald-500/30"
             >
               Confirm payment
             </AlertDialogAction>

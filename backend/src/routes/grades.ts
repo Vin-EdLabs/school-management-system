@@ -111,7 +111,7 @@ router.delete('/assignments/:id', async (req: AuthRequest, res) => {
 router.get('/', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
-    const { classId, assignmentId } = req.query;
+    const { classId, assignmentId, studentId } = req.query;
 
     const gradeSelect = `
       g.id, g.student_id, g.assignment_id, g.score,
@@ -144,8 +144,19 @@ router.get('/', async (req: AuthRequest, res) => {
          ORDER BY a.subject, a.name, s.first_name, s.last_name`,
         [tenantId, classId]
       );
+    } else if (studentId) {
+      result = await query(
+        `SELECT ${gradeSelect}
+         FROM student_grades g
+         JOIN students s ON g.student_id = s.id AND s.tenant_id = g.tenant_id
+         JOIN grade_assignments a ON g.assignment_id = a.id
+         LEFT JOIN users u ON g.graded_by = u.id
+         WHERE g.tenant_id = $1 AND g.student_id = $2
+         ORDER BY a.subject, a.name`,
+        [tenantId, studentId]
+      );
     } else {
-      return res.status(400).json({ error: 'classId or assignmentId required' });
+      return res.status(400).json({ error: 'classId, studentId, or assignmentId required' });
     }
     res.json(result.rows);
   } catch (error) {

@@ -8,16 +8,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
-import { toast } from '@/hooks/use-toast';
-import { CreditCard, Search } from 'lucide-react';
+import { CreditCard, Search, Loader2 } from 'lucide-react';
 import ReceiptPrinter from '../common/ReceiptPrinter';
 import { calculateStudentFeesSync, parseReceiptSnapshot } from '../../utils/feeCalculations';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
 import { apiService } from '../../services/api';
+import { useRecordPayment } from '../../hooks/useRecordPayment';
+import { normalizeEnrollmentStatus } from '../students/studentRegistryUtils';
+import { toast } from '@/hooks/use-toast';
 
 const RecordPayment = () => {
-  const { students, addPayment, feeStructures, payments, arrearsBalances, refresh } = useData();
+  const { students, feeStructures, payments, arrearsBalances } = useData();
   const { currentTerm, currentYear } = useActiveTerm();
+  const recordPayment = useRecordPayment();
 
   const [formData, setFormData] = useState({
     studentId: '',
@@ -31,7 +34,6 @@ const RecordPayment = () => {
   const [showReceipt, setShowReceipt] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
 
-  // Load available terms for selection
   const [availableTerms, setAvailableTerms] = useState<any[]>([]);
   React.useEffect(() => {
     const fetchTerms = async () => {
@@ -45,20 +47,23 @@ const RecordPayment = () => {
     fetchTerms();
   }, []);
 
-  // Update form term when active term changes
   React.useEffect(() => {
     if (currentTerm && !formData.term) {
       setFormData(prev => ({ ...prev, term: currentTerm }));
     }
   }, [currentTerm]);
 
-  const filteredStudents = students.filter(student =>
+  const activeStudents = useMemo(
+    () => students.filter((s) => normalizeEnrollmentStatus(s.enrollmentStatus) === 'active'),
+    [students]
+  );
+
+  const filteredStudents = activeStudents.filter(student =>
     student.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     student.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     student.studentId.includes(searchTerm)
   );
 
-  // Derive fee details synchronously from DataContext data — includes term_arrears via arrearsBalances
   const selectedStudentFeeDetails = useMemo(() => {
     if (!formData.studentId || !currentTerm || currentTerm === 'Not Set') return null;
     const student = students.find(s => s.id === formData.studentId);
@@ -79,7 +84,6 @@ const RecordPayment = () => {
     );
   }, [formData.studentId, currentTerm, students, feeStructures, payments, arrearsBalances]);
 
-  // Outstanding balance = totalAmountDue - totalPaid
   const outstandingBalance = selectedStudentFeeDetails
     ? Math.max(0, selectedStudentFeeDetails.totalAmountDue - selectedStudentFeeDetails.totalPaid)
     : 0;
@@ -88,8 +92,23 @@ const RecordPayment = () => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  const isSubmitting = recordPayment.isPending;
+
+  const resetForm = () => {
+    setFormData({
+      studentId: '',
+      amount: '',
+      date: new Date().toISOString().split('T')[0],
+      paymentMethod: 'Cash',
+      notes: '',
+      term: currentTerm || '',
+    });
+    setSearchTerm('');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
 
     if (!formData.studentId || !formData.amount) {
       toast({ title: 'Validation Error', description: 'Please select a student and enter an amount', variant: 'destructive' });
@@ -107,53 +126,58 @@ const RecordPayment = () => {
 
     const paymentAmount = parseFloat(formData.amount);
     const feeDetails = selectedStudentFeeDetails;
+    const paymentDate = formData.date;
+    const paymentMethod = formData.paymentMethod;
+    const paymentTerm = formData.term || currentTerm;
+    const paymentNotes = formData.notes;
 
-    const paymentResult = await addPayment({
-      ...formData,
-      amount: paymentAmount,
-      term: formData.term || currentTerm,
-      academicYear: currentYear
-    });
-    
-    // Refresh to update local context, but use the immediate server response for the receipt
-    await refresh();
+    try {
+      const result = await recordPayment.mutateAsync({
+        studentId: formData.studentId,
+        studentIdNum: parseInt(formData.studentId, 10),
+        amount: paymentAmount,
+        date: paymentDate,
+        paymentMethod,
+        term: paymentTerm,
+        notes: paymentNotes,
+        academicYear: currentYear,
+      });
+      const res = result.res;
+      const createdPayment = res.payment || res;
+      const serverBalance = res.balance;
+      const snap = parseReceiptSnapshot(createdPayment.receipt_snapshot ?? createdPayment.receiptSnapshot);
+      const finalBalance = snap
+        ? snap.balanceAfter
+        : serverBalance
+          ? Math.max(0, Number(serverBalance.outstanding) || 0)
+          : Math.max(0, feeDetails.totalAmountDue - (feeDetails.totalPaid + paymentAmount));
+      const finalTotalDue = snap ? snap.totalDue : serverBalance ? (serverBalance.totalFees + serverBalance.arrears) : feeDetails.totalAmountDue;
+      const finalArrears = snap ? snap.arrears : serverBalance ? serverBalance.arrears : feeDetails.arrears;
+      const finalTermFee = snap ? snap.termFee : serverBalance ? serverBalance.totalFees : feeDetails.currentTermFee;
+      const finalCredit = snap ? Math.max(0, snap.credit || 0) : serverBalance ? serverBalance.credit : Math.max(0, (feeDetails.totalPaid + paymentAmount) - feeDetails.totalAmountDue);
 
-    const { payment: createdPayment, balance: serverBalance } = paymentResult;
-
-    const snap = parseReceiptSnapshot(createdPayment.receiptSnapshot);
-    const finalBalance = snap
-      ? snap.balanceAfter
-      : serverBalance
-        ? Math.max(0, Number(serverBalance.outstanding) || 0)
-        : Math.max(0, feeDetails.totalAmountDue - (feeDetails.totalPaid + paymentAmount));
-    const finalTotalDue = snap ? snap.totalDue : serverBalance ? (serverBalance.totalFees + serverBalance.arrears) : feeDetails.totalAmountDue;
-    const finalArrears = snap ? snap.arrears : serverBalance ? serverBalance.arrears : feeDetails.arrears;
-    const finalTermFee = snap ? snap.termFee : serverBalance ? serverBalance.totalFees : feeDetails.currentTermFee;
-    const finalCredit = snap ? Math.max(0, snap.credit || 0) : serverBalance ? serverBalance.credit : Math.max(0, (feeDetails.totalPaid + paymentAmount) - feeDetails.totalAmountDue);
-
-    setReceiptData({
-      studentName: `${student.firstName} ${student.lastName}`,
-      studentId: student.studentId,
-      className: student.classAssigned,
-      amount: paymentAmount,
-      date: formData.date,
-      paymentMethod: formData.paymentMethod,
-      term: formData.term || currentTerm,
-      year: currentYear,
-      receiptNumber: createdPayment.receiptNumber || `R${Date.now().toString().slice(-8)}`,
-      notes: formData.notes,
-      remainingBalance: finalBalance,
-      creditBalance: finalCredit,
-      arrears: finalArrears,
-      currentTermFee: finalTermFee,
-      totalAmountDue: finalTotalDue
-    } as any);
-    setShowReceipt(true);
-
-    toast({ title: 'Payment Recorded', description: `GHS ${paymentAmount.toFixed(2)} recorded for ${student.firstName} ${student.lastName}` });
-
-    setFormData({ studentId: '', amount: '', date: new Date().toISOString().split('T')[0], paymentMethod: 'Cash', notes: '' });
-    setSearchTerm('');
+      setReceiptData({
+        studentName: `${student.firstName} ${student.lastName}`,
+        studentId: student.studentId,
+        className: student.classAssigned,
+        amount: paymentAmount,
+        date: paymentDate,
+        paymentMethod,
+        term: paymentTerm,
+        year: currentYear,
+        receiptNumber: createdPayment.receipt_number || createdPayment.receiptNumber || `R${Date.now().toString().slice(-8)}`,
+        notes: paymentNotes,
+        remainingBalance: finalBalance,
+        creditBalance: finalCredit,
+        arrears: finalArrears,
+        currentTermFee: finalTermFee,
+        totalAmountDue: finalTotalDue
+      } as any);
+      setShowReceipt(true);
+      resetForm();
+    } catch {
+      // Error toast handled by useRecordPayment
+    }
   };
 
   return (
@@ -187,6 +211,7 @@ const RecordPayment = () => {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10"
+                  disabled={isSubmitting}
                 />
               </div>
               {searchTerm && (
@@ -196,6 +221,7 @@ const RecordPayment = () => {
                       key={student.id}
                       className="cursor-pointer border-b border-slate-100 p-3 transition-colors last:border-b-0 hover:bg-emerald-50/70 dark:border-border dark:hover:bg-muted/50"
                       onClick={() => {
+                        if (isSubmitting) return;
                         setFormData(prev => ({...prev, studentId: student.id}));
                         setSearchTerm(`${student.firstName} ${student.lastName} - ${student.studentId}`);
                       }}
@@ -214,7 +240,6 @@ const RecordPayment = () => {
               )}
             </div>
 
-            {/* Fee Details Display */}
             {formData.studentId && (
               <div className="overflow-hidden rounded-2xl border border-emerald-200 bg-emerald-50/40 shadow-sm dark:rounded-lg dark:border-blue-200 dark:bg-transparent">
                 <div className="bg-gradient-to-r from-[#146C43] to-[#22C55E] px-4 py-2 dark:bg-blue-600 dark:bg-none">
@@ -263,7 +288,6 @@ const RecordPayment = () => {
                         <span className="font-medium text-emerald-700 dark:text-green-700">− GHS {selectedStudentFeeDetails.totalPaid.toFixed(2)}</span>
                       </div>
                     </div>
-                    {/* Outstanding balance — the main figure */}
                     <div className={`px-4 py-3 flex items-center justify-between ${outstandingBalance > 0 ? 'bg-red-50 border-t border-red-200' : 'bg-green-50 border-t border-green-200'}`}>
                       <span className={`font-bold text-base ${outstandingBalance > 0 ? 'text-red-700' : 'text-green-700'}`}>
                         Outstanding Balance:
@@ -288,8 +312,9 @@ const RecordPayment = () => {
               <Select
                 value={formData.term}
                 onValueChange={(value) => handleInputChange('term', value)}
+                disabled={isSubmitting}
               >
-                <SelectTrigger id="term">
+                <SelectTrigger id="term" disabled={isSubmitting}>
                   <SelectValue placeholder="Select Term" />
                 </SelectTrigger>
                 <SelectContent>
@@ -313,7 +338,8 @@ const RecordPayment = () => {
                   {outstandingBalance > 0 && (
                     <button
                       type="button"
-                      className="ml-2 text-xs text-emerald-700 underline dark:text-blue-600"
+                      className="ml-2 text-xs text-emerald-700 underline dark:text-blue-600 disabled:opacity-50"
+                      disabled={isSubmitting}
                       onClick={() => handleInputChange('amount', outstandingBalance.toFixed(2))}
                     >
                       Fill outstanding (GHS {outstandingBalance.toFixed(2)})
@@ -328,6 +354,7 @@ const RecordPayment = () => {
                   onChange={(e) => handleInputChange('amount', e.target.value)}
                   placeholder={outstandingBalance > 0 ? `Outstanding: GHS ${outstandingBalance.toFixed(2)}` : '0.00'}
                   required
+                  disabled={isSubmitting}
                 />
               </div>
               <div className="space-y-2">
@@ -338,14 +365,15 @@ const RecordPayment = () => {
                   value={formData.date}
                   onChange={(e) => handleInputChange('date', e.target.value)}
                   required
+                  disabled={isSubmitting}
                 />
               </div>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="paymentMethod" className="font-semibold text-slate-800 dark:text-foreground">Payment Method</Label>
-              <Select value={formData.paymentMethod} onValueChange={(value) => handleInputChange('paymentMethod', value)}>
-                <SelectTrigger>
+              <Select value={formData.paymentMethod} onValueChange={(value) => handleInputChange('paymentMethod', value)} disabled={isSubmitting}>
+                <SelectTrigger disabled={isSubmitting}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -365,12 +393,25 @@ const RecordPayment = () => {
                 onChange={(e) => handleInputChange('notes', e.target.value)}
                 placeholder="Additional notes about the payment..."
                 rows={3}
+                disabled={isSubmitting}
               />
             </div>
 
             <div className="flex justify-end border-t border-slate-100 pt-5 dark:border-border">
-              <Button type="submit" variant="primaryAction" className="w-full rounded-xl px-6 font-bold shadow-lg md:w-auto dark:rounded-md" disabled={!formData.studentId}>
-                Record Payment
+              <Button
+                type="submit"
+                variant="primaryAction"
+                className="w-full rounded-xl px-6 font-bold shadow-lg md:w-auto dark:rounded-md"
+                disabled={!formData.studentId || !formData.amount || isSubmitting}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Recording payment…
+                  </>
+                ) : (
+                  'Record Payment'
+                )}
               </Button>
             </div>
           </form>
@@ -383,10 +424,7 @@ const RecordPayment = () => {
           show={showReceipt}
           onClose={() => setShowReceipt(false)}
           onPrint={() => {
-            toast({
-              title: "Receipt Generated",
-              description: "Payment receipt has been generated successfully",
-            });
+            // Receipt is already available from server response
           }}
         />
       )}

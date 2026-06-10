@@ -43,7 +43,8 @@ import {
   Search,
   Eye,
   Pencil,
-  Trash2,
+  UserX,
+  RotateCcw,
   ChevronLeft,
   ChevronRight,
   Users,
@@ -62,6 +63,8 @@ import {
   classBadgeClass,
   exportStudentsToCsv,
   normalizeEnrollmentStatus,
+  enrollmentStatusLabel,
+  isAlumniStudent,
   statusBadgeClass,
   totalScheduledFeesForStudent,
 } from './studentRegistryUtils';
@@ -72,6 +75,8 @@ type SortKey = 'name' | 'studentId' | 'class' | 'gender' | 'status';
 
 type ViewAllStudentsProps = {
   onRequestPromoteStudent?: (studentId: string) => void;
+  /** active = main registry; inactive = archived students with preserved records */
+  variant?: 'active' | 'inactive';
 };
 
 function sortStudents(list: Student[], key: SortKey, dir: 'asc' | 'desc'): Student[] {
@@ -98,8 +103,8 @@ function sortStudents(list: Student[], key: SortKey, dir: 'asc' | 'desc'): Stude
   return [...list].sort(cmp);
 }
 
-const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStudent }) => {
-  const { students, classes, deleteStudent, payments, feeStructures, loading } = useData();
+const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStudent, variant = 'active' }) => {
+  const { students, classes, setStudentStatus, payments, feeStructures, loading } = useData();
   const { currentTerm } = useActiveTerm();
   const { addAuditLog } = useAudit();
 
@@ -119,8 +124,19 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
   const [quickViewStudent, setQuickViewStudent] = useState<Student | null>(null);
   const [quickSheetOpen, setQuickSheetOpen] = useState(false);
 
-  const [deleteTarget, setDeleteTarget] = useState<Student | null>(null);
-  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [inactiveTarget, setInactiveTarget] = useState<Student | null>(null);
+  const [reactivateTarget, setReactivateTarget] = useState<Student | null>(null);
+
+  const isInactiveView = variant === 'inactive';
+
+  const registryStudents = useMemo(() => {
+    return students.filter((s) => {
+      const st = normalizeEnrollmentStatus(s.enrollmentStatus);
+      if (isInactiveView) return st === 'inactive';
+      if (filterStatus === 'graduated') return st === 'graduated';
+      return st !== 'inactive' && st !== 'graduated';
+    });
+  }, [students, isInactiveView, filterStatus]);
 
   const termPayments = useMemo(() => {
     return (payments || []).filter((p) => {
@@ -132,7 +148,7 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
 
   const filteredStudents = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
-    return students.filter((student) => {
+    return registryStudents.filter((student) => {
       const matchesSearch =
         q === '' ||
         student.firstName.toLowerCase().includes(q) ||
@@ -145,7 +161,7 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
       const matchesStatus = filterStatus === 'all-status' || st === filterStatus;
       return matchesSearch && matchesClass && matchesGender && matchesStatus;
     });
-  }, [students, searchTerm, filterClass, filterGender, filterStatus]);
+  }, [registryStudents, searchTerm, filterClass, filterGender, filterStatus]);
 
   const sortedStudents = useMemo(
     () => sortStudents(filteredStudents, sortKey, sortDir),
@@ -226,18 +242,18 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
     setQuickSheetOpen(true);
   };
 
-  const runDelete = async (student: Student): Promise<boolean> => {
+  const runSetInactive = async (student: Student): Promise<boolean> => {
     addAuditLog({
-      actionType: 'Delete',
+      actionType: 'Edit',
       module: 'Students',
       itemId: student.id,
-      itemName: `${student.firstName} ${student.lastName}`,
+      itemName: `${student.firstName} ${student.lastName} (set inactive)`,
     });
     try {
-      await deleteStudent(student.id);
+      await setStudentStatus(student.id, 'inactive');
       toast({
-        title: 'Student removed',
-        description: `${student.firstName} ${student.lastName} was deleted.`,
+        title: 'Student set inactive',
+        description: `${student.firstName} ${student.lastName} is now inactive. All records are preserved.`,
       });
       setSelected((prev) => {
         const next = new Set(prev);
@@ -246,15 +262,35 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
       });
       return true;
     } catch (e: any) {
-      toast({ title: 'Delete failed', description: e?.message || 'Could not delete', variant: 'destructive' });
+      toast({ title: 'Update failed', description: e?.message || 'Could not update status', variant: 'destructive' });
       return false;
     }
   };
 
-  const confirmDeleteOne = (student: Student) => setDeleteTarget(student);
+  const runReactivate = async (student: Student): Promise<boolean> => {
+    addAuditLog({
+      actionType: 'Edit',
+      module: 'Students',
+      itemId: student.id,
+      itemName: `${student.firstName} ${student.lastName} (reactivated)`,
+    });
+    try {
+      await setStudentStatus(student.id, 'active');
+      toast({
+        title: 'Student reactivated',
+        description: `${student.firstName} ${student.lastName} is active again and will appear in active lists.`,
+      });
+      return true;
+    } catch (e: any) {
+      toast({ title: 'Reactivate failed', description: e?.message || 'Could not reactivate student', variant: 'destructive' });
+      return false;
+    }
+  };
+
+  const confirmSetInactive = (student: Student) => setInactiveTarget(student);
 
   const exportSelectedCsv = () => {
-    const rows = students.filter((s) => selected.has(s.id));
+    const rows = registryStudents.filter((s) => selected.has(s.id));
     if (rows.length === 0) {
       toast({ title: 'Nothing selected', description: 'Select at least one student to export.', variant: 'destructive' });
       return;
@@ -288,17 +324,7 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
     }
   };
 
-  const runBulkDelete = async () => {
-    const ids = Array.from(selected);
-    for (const id of ids) {
-      const st = students.find((s) => s.id === id);
-      if (st) await runDelete(st);
-    }
-    setBulkDeleteOpen(false);
-    setSelected(new Set());
-  };
-
-  const initialLoad = loading && students.length === 0;
+  const initialLoad = loading && registryStudents.length === 0;
 
   const totalFeesForDialog = useCallback(
     (st: Student | null) => {
@@ -315,9 +341,11 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
         <div className="rounded-xl border border-border/80 bg-card/80 p-4 shadow-sm backdrop-blur-sm">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-1">
-              <h2 className="text-lg font-semibold tracking-tight text-foreground">Student registry</h2>
+              <h2 className="text-lg font-semibold tracking-tight text-foreground">
+                {isInactiveView ? 'Inactive students' : 'Student registry'}
+              </h2>
               <p className="text-xs text-muted-foreground">
-                {filteredStudents.length} of {students.length} students
+                {filteredStudents.length} of {registryStudents.length} {isInactiveView ? 'inactive' : 'active'} students
                 {searchTerm || filterClass !== 'all-classes' || filterGender !== 'all-genders' || filterStatus !== 'all-status'
                   ? ' · filters active'
                   : ''}
@@ -339,13 +367,6 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
                   <DropdownMenuItem onClick={bulkPromote}>
                     <TrendingUp className="mr-2 h-4 w-4" />
                     Go to promote (1)
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="text-destructive focus:text-destructive"
-                    onClick={() => selected.size > 0 && setBulkDeleteOpen(true)}
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Delete selected…
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -398,7 +419,8 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
               <SelectContent>
                 <SelectItem value="all-status">All statuses</SelectItem>
                 <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="graduated">Graduated</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+                <SelectItem value="graduated">Alumni</SelectItem>
                 <SelectItem value="suspended">Suspended</SelectItem>
               </SelectContent>
             </Select>
@@ -468,7 +490,9 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
               <div>
                 <p className="text-sm font-medium text-foreground">No students match</p>
                 <p className="mt-1 max-w-sm text-xs text-muted-foreground">
-                  Try adjusting search or filters, or add students from the Add Student tab.
+                  {isInactiveView
+                    ? 'No inactive students. Students set inactive will appear here with all records preserved.'
+                    : 'Try adjusting search or filters, or add students from the Add Student tab.'}
                 </p>
               </div>
               <Button type="button" variant="outline" size="sm" className="mt-2 gap-1" onClick={clearFilters}>
@@ -552,7 +576,8 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
                           key={student.id}
                           className={cn(
                             'group cursor-pointer border-border/60 transition-colors hover:bg-muted/50',
-                            rowTint
+                            rowTint,
+                            isInactiveView && 'opacity-75 saturate-[0.85] bg-muted/30'
                           )}
                           onClick={() => openQuickView(student)}
                           onKeyDown={(e) => {
@@ -617,9 +642,9 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
                           <TableCell>
                             <Badge
                               variant="outline"
-                              className={cn('rounded-full px-2.5 py-0.5 text-[11px] font-medium capitalize', statusBadgeClass(status))}
+                              className={cn('rounded-full px-2.5 py-0.5 text-[11px] font-medium', statusBadgeClass(status))}
                             >
-                              {status}
+                              {enrollmentStatusLabel(student.enrollmentStatus)}
                             </Badge>
                           </TableCell>
                           <TableCell className="pr-3 text-right" onClick={(e) => e.stopPropagation()}>
@@ -654,21 +679,39 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
                                 </TooltipTrigger>
                                 <TooltipContent side="top">Edit</TooltipContent>
                               </Tooltip>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 rounded-md text-muted-foreground transition-transform hover:scale-105 hover:bg-destructive/10 hover:text-destructive"
-                                    onClick={() => confirmDeleteOne(student)}
-                                    aria-label="Delete student"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent side="top">Delete</TooltipContent>
-                              </Tooltip>
+                              {!isInactiveView ? (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 rounded-md text-muted-foreground transition-transform hover:scale-105 hover:bg-amber-500/10 hover:text-amber-700"
+                                      onClick={() => confirmSetInactive(student)}
+                                      aria-label="Set student inactive"
+                                    >
+                                      <UserX className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top">Set inactive</TooltipContent>
+                                </Tooltip>
+                              ) : (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 rounded-md text-muted-foreground transition-transform hover:scale-105 hover:bg-emerald-500/10 hover:text-emerald-700"
+                                      onClick={() => setReactivateTarget(student)}
+                                      aria-label="Reactivate student"
+                                    >
+                                      <RotateCcw className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top">Reactivate</TooltipContent>
+                                </Tooltip>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>
@@ -720,7 +763,7 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
           setShowDetailsDialog(false);
           setSelectedStudent(null);
         }}
-        payments={termPayments as any}
+        payments={(selectedStudent && isAlumniStudent(selectedStudent) ? payments : termPayments) as any}
         totalFeesForStudent={totalFeesForDialog(selectedStudent)}
       />
 
@@ -752,50 +795,61 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
           setQuickViewStudent(null);
           handleEditStudent(st);
         }}
+        onViewFull={(st) => {
+          setQuickSheetOpen(false);
+          setQuickViewStudent(null);
+          handleViewStudent(st);
+        }}
       />
 
-      <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+      <AlertDialog open={!!inactiveTarget} onOpenChange={(o) => !o && setInactiveTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete student?</AlertDialogTitle>
+            <AlertDialogTitle>Set student inactive?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently remove{' '}
+              Are you sure you want to set{' '}
               <span className="font-medium text-foreground">
-                {deleteTarget ? `${deleteTarget.firstName} ${deleteTarget.lastName}` : ''}
+                {inactiveTarget ? `${inactiveTarget.firstName} ${inactiveTarget.lastName}` : ''}
               </span>{' '}
-              and their records from this school. This action cannot be undone.
+              as inactive? Their records will be preserved but they will not appear in active lists or be billed next term.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-amber-600 text-white hover:bg-amber-600/90"
               onClick={async () => {
-                if (deleteTarget) await runDelete(deleteTarget);
-                setDeleteTarget(null);
+                if (inactiveTarget) await runSetInactive(inactiveTarget);
+                setInactiveTarget(null);
               }}
             >
-              Delete
+              Set inactive
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+      <AlertDialog open={!!reactivateTarget} onOpenChange={(o) => !o && setReactivateTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {selected.size} students?</AlertDialogTitle>
+            <AlertDialogTitle>Reactivate student?</AlertDialogTitle>
             <AlertDialogDescription>
-              Selected students will be permanently removed. This cannot be undone.
+              Reactivate{' '}
+              <span className="font-medium text-foreground">
+                {reactivateTarget ? `${reactivateTarget.firstName} ${reactivateTarget.lastName}` : ''}
+              </span>
+              ? They will return to active lists and be eligible for billing in future terms.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => void runBulkDelete()}
+              onClick={async () => {
+                if (reactivateTarget) await runReactivate(reactivateTarget);
+                setReactivateTarget(null);
+              }}
             >
-              Delete all
+              Reactivate
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

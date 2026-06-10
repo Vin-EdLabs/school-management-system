@@ -662,7 +662,7 @@ const SuperAdminDashboard = () => {
 
   const formatDate = (d: string) => new Date(d).toLocaleString();
 
-  if (authLoading) return <BrandedLoadingScreen label="Loading…" />;
+  if (authLoading) return <BrandedLoadingScreen label="Loading…" active={authLoading} />;
   if (!user || user.role !== 'super-admin') return <SuperAdminLoginForm />;
 
   const moduleTone = (module?: string, action?: string, entityType?: string) => {

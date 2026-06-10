@@ -17,6 +17,7 @@ import {
   sendPushToTenantStaff,
 } from '../services/webPushService.js';
 import { isFcmConfigured } from '../services/fcmService.js';
+import { notifySetupProgressChanged } from '../services/setupProgressService.js';
 
 const router = express.Router();
 
@@ -356,6 +357,7 @@ router.post('/academic-terms', requirePrimaryAdminOrSuperAdmin, async (req: Auth
       [tenantId, req.user!.id, 'CREATE', 'ACADEMIC_TERM', result.rows[0].id]
     );
     emitTenantDataChanged(tenantId, 'academic-term', 'created');
+    notifySetupProgressChanged(tenantId);
     res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error('Create academic term error:', error);

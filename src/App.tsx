@@ -21,6 +21,7 @@ import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import { ParentPortalRoute } from "./pages/ParentPortal";
 import { detectTenantSlugFromHost, getSubdomainUrl, normalizeLegacyPathOnSubdomain } from "./utils/tenantHost";
 import { PwaUpdateManager } from "@/components/pwa/PwaUpdateManager";
+import { NetworkStatusBanner } from "@/components/ui/NetworkStatusBanner";
 import { BrandedLoadingScreen } from "@/components/common/BrandedLoading";
 import { ThemeProvider } from "./contexts/ThemeContext";
 
@@ -119,6 +120,7 @@ const IndexWithSchool = () => {
   });
   const [resolving, setResolving] = React.useState(!schoolId && !!slug);
   const [schoolResolveError, setSchoolResolveError] = React.useState<string | null>(null);
+  const [resolveAttempt, setResolveAttempt] = React.useState(0);
 
   React.useEffect(() => {
     setSchoolResolveError(null);
@@ -191,9 +193,21 @@ const IndexWithSchool = () => {
 
     setResolvedId(null);
     setResolving(false);
-  }, [schoolId, slug]);
+  }, [schoolId, slug, resolveAttempt]);
 
-  if (resolving) return <BrandedLoadingScreen label="Opening your school…" />;
+  if (resolving) {
+    return (
+      <BrandedLoadingScreen
+        label="Opening your school…"
+        active={resolving}
+        onRetry={() => {
+          setSchoolResolveError(null);
+          setResolveAttempt((n) => n + 1);
+          if (slug && !schoolId) setResolving(true);
+        }}
+      />
+    );
+  }
   if (!resolvedId) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background p-6 text-center text-foreground">
@@ -229,6 +243,7 @@ const App = () => {
           <SocketProvider>
             <TeacherNotificationProvider>
             <TooltipProvider>
+              <NetworkStatusBanner />
               <PwaUpdateManager />
               <Toaster />
               <Sonner />

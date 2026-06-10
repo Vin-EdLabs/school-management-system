@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { calculateStudentFeesSync, calculateStudentFeeStatusSync } from '../../utils/feeCalculations';
 import { cn } from '@/lib/utils';
+import { enrollmentStatusLabel } from '../students/studentRegistryUtils';
 import {
   PieChart,
   Pie,
@@ -487,7 +488,7 @@ const AdministratorDashboard = () => {
                             {student.enrollmentStatus && (
                               <>
                                 <span className="text-border">·</span>
-                                <span className="capitalize">{student.enrollmentStatus}</span>
+                                <span>{enrollmentStatusLabel(student.enrollmentStatus)}</span>
                               </>
                             )}
                           </div>

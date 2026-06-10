@@ -4,6 +4,8 @@ import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js'
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { getIO } from '../socket.js';
+import { levelOrderFromName, isJhs3Class, graduateClassToAlumni } from '../services/academicYearEndService.js';
+import { notifySetupProgressChanged } from '../services/setupProgressService.js';
 
 const router = express.Router();
 
@@ -24,7 +26,26 @@ router.use(setTenantContext);
 router.get('/', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
-    
+    const academicYearId = req.query.academicYearId ? Number(req.query.academicYearId) : null;
+
+    if (academicYearId && !Number.isNaN(academicYearId)) {
+      const result = await query(
+        `SELECT c.*,
+                c.class_name,
+                t.full_name as teacher_name, t.staff_id as teacher_staff_id,
+                COUNT(e.id) FILTER (WHERE e.status IN ('active', 'repeat')) as student_count
+         FROM classes c
+         LEFT JOIN teachers t ON c.assigned_teacher_id = t.id
+         LEFT JOIN student_class_enrollments e
+           ON e.class_id = c.id AND e.tenant_id = c.tenant_id AND e.academic_year_id = $2
+         WHERE c.tenant_id = $1
+         GROUP BY c.id, t.full_name, t.staff_id
+         ORDER BY COALESCE(c.level_order, 999), COALESCE(c.level, ''), COALESCE(c.stream, ''), COALESCE(c.class_name, '')`,
+        [tenantId, academicYearId]
+      );
+      return res.json(result.rows);
+    }
+
     const result = await query(
       `SELECT c.*, 
               c.class_name,
@@ -33,9 +54,10 @@ router.get('/', async (req: AuthRequest, res) => {
        FROM classes c
        LEFT JOIN teachers t ON c.assigned_teacher_id = t.id
        LEFT JOIN students s ON s.class_assigned_id = c.id
+         AND COALESCE(s.enrollment_status, 'active') = 'active'
        WHERE c.tenant_id = $1
        GROUP BY c.id, t.full_name, t.staff_id
-       ORDER BY COALESCE(c.level, ''), COALESCE(c.stream, ''), COALESCE(c.class_name, '')`,
+       ORDER BY COALESCE(c.level_order, 999), COALESCE(c.level, ''), COALESCE(c.stream, ''), COALESCE(c.class_name, '')`,
       [tenantId]
     );
     
@@ -83,10 +105,28 @@ router.get('/:id', async (req: AuthRequest, res) => {
       return res.status(404).json({ error: 'Class not found' });
     }
     
-    const studentsResult = await query(
-      'SELECT id, first_name, last_name, student_id, admission_number FROM students WHERE class_assigned_id = $1 AND tenant_id = $2 ORDER BY first_name, last_name',
-      [id, tenantId]
-    );
+    const academicYearId = req.query.academicYearId ? Number(req.query.academicYearId) : null;
+
+    let studentsResult;
+    if (academicYearId && !Number.isNaN(academicYearId)) {
+      studentsResult = await query(
+        `SELECT s.id, s.first_name, s.last_name, s.student_id, s.admission_number, e.status AS enrollment_status
+         FROM student_class_enrollments e
+         JOIN students s ON s.id = e.student_id AND s.tenant_id = e.tenant_id
+         WHERE e.class_id = $1 AND e.tenant_id = $2 AND e.academic_year_id = $3
+           AND e.status IN ('active', 'repeat')
+         ORDER BY s.first_name, s.last_name`,
+        [id, tenantId, academicYearId]
+      );
+    } else {
+      studentsResult = await query(
+        `SELECT id, first_name, last_name, student_id, admission_number FROM students
+         WHERE class_assigned_id = $1 AND tenant_id = $2
+           AND COALESCE(enrollment_status, 'active') = 'active'
+         ORDER BY first_name, last_name`,
+        [id, tenantId]
+      );
+    }
     
     res.json({
       ...classResult.rows[0],
@@ -102,33 +142,33 @@ router.get('/:id', async (req: AuthRequest, res) => {
 router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
-    const { class_name, level, stream, assigned_teacher_id, max_class_size } = req.body;
+    const { class_name, level, stream, assigned_teacher_id, max_class_size, is_final_class } = req.body;
     
     if (!class_name) {
       return res.status(400).json({ error: 'Class name is required' });
     }
+
+    const level_order = levelOrderFromName(level);
+    const isFinal = is_final_class === true || levelOrderFromName(level) === levelOrderFromName('JHS 3') || levelOrderFromName(level) === levelOrderFromName('SHS 3');
     
     // Support both modern schema (class_name) and legacy schema (name)
     let result: any;
     try {
-      // Try most complete schema first
       result = await query(
-        `INSERT INTO classes (tenant_id, class_name, name, level, stream, assigned_teacher_id, max_class_size)
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-        [tenantId, class_name, class_name, level || null, stream || null, assigned_teacher_id || null, max_class_size || 30]
+        `INSERT INTO classes (tenant_id, class_name, name, level, stream, assigned_teacher_id, max_class_size, level_order, is_final_class)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+        [tenantId, class_name, class_name, level || null, stream || null, assigned_teacher_id || null, max_class_size || 30, level_order, isFinal]
       );
     } catch (err1: any) {
       try {
-        // Try without 'name' column (modern schema only)
         result = await query(
-          `INSERT INTO classes (tenant_id, class_name, level, stream, assigned_teacher_id, max_class_size)
-           VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-          [tenantId, class_name, level || null, stream || null, assigned_teacher_id || null, max_class_size || 30]
+          `INSERT INTO classes (tenant_id, class_name, level, stream, assigned_teacher_id, max_class_size, level_order, is_final_class)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+          [tenantId, class_name, level || null, stream || null, assigned_teacher_id || null, max_class_size || 30, level_order, isFinal]
         );
       } catch (err2: any) {
-        // Try without 'class_name' column (legacy schema only)
         result = await query(
-          `INSERT INTO classes (tenant_id, name, level, stream, assigned_teacher_id, max_class_size)
+          `INSERT INTO classes (tenant_id, class_name, level, stream, assigned_teacher_id, max_class_size)
            VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
           [tenantId, class_name, level || null, stream || null, assigned_teacher_id || null, max_class_size || 30]
         );
@@ -141,6 +181,7 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
       [tenantId, req.user!.id, 'CREATE', 'CLASS', result.rows[0].id]
     );
     emitTenantDataChanged(tenantId, 'class', 'created');
+    notifySetupProgressChanged(tenantId);
     
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -160,7 +201,7 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
     const values: any[] = [];
     let paramCount = 1;
     
-    const allowedFields = ['class_name', 'level', 'stream', 'assigned_teacher_id', 'max_class_size'];
+    const allowedFields = ['class_name', 'level', 'stream', 'assigned_teacher_id', 'max_class_size', 'is_final_class'];
     
     for (const field of allowedFields) {
       if (updates[field] !== undefined) {
@@ -177,6 +218,12 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
         values.push(updates[field]);
         paramCount++;
       }
+    }
+
+    if (updates.level !== undefined) {
+      updateFields.push(`level_order = $${paramCount}`);
+      values.push(levelOrderFromName(updates.level));
+      paramCount++;
     }
     
     if (updateFields.length === 0) {
@@ -422,37 +469,77 @@ router.post('/:id/promote', requireRole('super-admin', 'administrator'), async (
     const tenantId = req.user!.tenantId!;
     const { id } = req.params;
     const { new_class_id } = req.body;
-    
+
     if (!new_class_id) {
       return res.status(400).json({ error: 'New class ID is required' });
     }
-    
-    // Verify both classes exist
+
     const classesCheck = await query(
-      'SELECT id FROM classes WHERE id IN ($1, $2) AND tenant_id = $3',
+      'SELECT id, level, class_name FROM classes WHERE id IN ($1, $2) AND tenant_id = $3',
       [id, new_class_id, tenantId]
     );
-    
+
     if (classesCheck.rows.length !== 2) {
       return res.status(404).json({ error: 'One or both classes not found' });
     }
-    
-    // Update all students in the class
+
+    const sourceClass = classesCheck.rows.find((r) => String(r.id) === String(id));
+    if (sourceClass && isJhs3Class(sourceClass)) {
+      return res.status(400).json({
+        error: 'JHS 3 cannot be promoted to another class. Use Move to Alumni instead.',
+      });
+    }
+
     await query(
       'UPDATE students SET class_assigned_id = $1, updated_at = CURRENT_TIMESTAMP WHERE class_assigned_id = $2 AND tenant_id = $3',
       [new_class_id, id, tenantId]
     );
-    
-    // Log promotion
+
     await query(
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id, details) VALUES ($1, $2, $3, $4, $5, $6)',
       [tenantId, req.user!.id, 'PROMOTE_CLASS', 'CLASS', parseInt(id), JSON.stringify({ new_class_id })]
     );
-    
+
+    emitTenantDataChanged(tenantId, 'class', 'updated');
     res.json({ message: 'Class promoted successfully' });
   } catch (error) {
     console.error('Promote class error:', error);
     res.status(500).json({ error: 'Failed to promote class' });
+  }
+});
+
+// Graduate entire JHS 3 class to alumni
+router.post('/:id/graduate-to-alumni', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const classId = parseInt(req.params.id, 10);
+    if (!classId || Number.isNaN(classId)) {
+      return res.status(400).json({ error: 'Invalid class id' });
+    }
+
+    const result = await graduateClassToAlumni(tenantId, classId);
+
+    await query(
+      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id, details) VALUES ($1, $2, $3, $4, $5, $6)',
+      [
+        tenantId,
+        req.user!.id,
+        'GRADUATE_CLASS',
+        'CLASS',
+        classId,
+        JSON.stringify({ graduated: result.graduated, className: result.className }),
+      ]
+    );
+
+    emitTenantDataChanged(tenantId, 'student', 'updated');
+    res.json({
+      message: `${result.graduated} student(s) moved to Alumni`,
+      graduated: result.graduated,
+      className: result.className,
+    });
+  } catch (error: any) {
+    console.error('Graduate class error:', error);
+    res.status(400).json({ error: error.message || 'Failed to graduate class' });
   }
 });
 

@@ -14,6 +14,7 @@ import StudentLearningMode from '@/components/parent/StudentLearningMode';
 import { BrandedLoading, BrandedLoadingScreen } from '@/components/common/BrandedLoading';
 import { getFriendlyLoginMessage } from '@/utils/loginErrors';
 import { formatDisplayDate } from '@/utils/dateFormat';
+import { resolveSocketBaseUrl, SOCKET_IO_OPTIONS } from '@/utils/socketUrl';
 
 function resolveApiBase(): string {
   if (import.meta.env.VITE_API_BASE_URL) return import.meta.env.VITE_API_BASE_URL;
@@ -702,10 +703,9 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
   useEffect(() => {
     if (!token) return;
-    const socketUrl = API.replace('/api', '');
-    const socket: Socket = io(socketUrl, {
+    const socket: Socket = io(resolveSocketBaseUrl(), {
+      ...SOCKET_IO_OPTIONS,
       auth: { token },
-      transports: ['websocket'],
       autoConnect: true,
     });
 
@@ -1270,8 +1270,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                 : <GraduationCap className="h-5 w-5 text-violet-600" />}
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-medium text-slate-500">{greeting}</p>
-              <p className="truncate text-xl font-black tracking-tight text-slate-950">{studentFullName}</p>
+              <p className="truncate text-lg font-black tracking-tight text-slate-950">{greeting}</p>
             </div>
           </button>
 
@@ -1525,7 +1524,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             </div>
 
             {dataLoading && !grades ? (
-              <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} />
+              <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} onRetry={refreshTab} />
             ) : !grades?.grades?.length ? (
               <EmptyCard icon={<BookOpen className="w-10 h-10 text-gray-300" />} message="No grades recorded yet." />
             ) : (() => {
@@ -1608,7 +1607,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             </div>
 
             {dataLoading && !termReport ? (
-              <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} />
+              <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} onRetry={refreshTab} />
             ) : !termReport?.report ? (
               <div className="bg-white border border-gray-200 rounded-xl p-8 text-center shadow-sm">
                 <Clock className="w-10 h-10 text-gray-300 mx-auto mb-3" />
@@ -1716,7 +1715,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             </div>
 
             {dataLoading && !finance ? (
-              <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} />
+              <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} onRetry={refreshTab} />
             ) : !finance ? (
               <EmptyCard icon={<CreditCard className="w-10 h-10 text-gray-300" />} message="No finance data available." />
             ) : (
@@ -1914,7 +1913,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             </div>
 
             {dataLoading && !attendance ? (
-              <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} />
+              <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} onRetry={refreshTab} />
             ) : !attendance ? (
               <EmptyCard icon={<CalendarCheck className="w-10 h-10 text-gray-300" />} message="No attendance records yet." />
             ) : (
@@ -2029,7 +2028,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             </div>
 
             {deskLoading ? (
-              <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} />
+              <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} onRetry={refreshTab} />
             ) : deskMessages.length === 0 ? (
               <div className="bg-white border border-gray-200 rounded-xl p-8 text-center shadow-sm">
                 <MessageSquare className="w-10 h-10 text-purple-300 mx-auto mb-3" />
@@ -2542,9 +2541,23 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
 // ── Shared sub-components ─────────────────────────────────────────────────────
 
-const LoadingCard = ({ logoUrl }: { logoUrl?: string | null }) => (
+const LoadingCard = ({
+  logoUrl,
+  active = true,
+  onRetry,
+}: {
+  logoUrl?: string | null;
+  active?: boolean;
+  onRetry?: () => void;
+}) => (
   <div className="bg-white border border-gray-200 rounded-xl p-6 text-center shadow-sm">
-    <BrandedLoading logoUrl={logoUrl} label="Loading…" className="py-2" />
+    <BrandedLoading
+      logoUrl={logoUrl}
+      label="Loading…"
+      className="py-2"
+      active={active}
+      onRetry={onRetry}
+    />
   </div>
 );
 
@@ -2567,6 +2580,7 @@ export const ParentPortalRoute: React.FC = () => {
   const [primaryColor, setPrimaryColor] = React.useState<string | null>(null);
   const [secondaryColor, setSecondaryColor] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const [fetchAttempt, setFetchAttempt] = React.useState(0);
 
   React.useEffect(() => {
     const fetchTenant = async () => {
@@ -2608,7 +2622,7 @@ export const ParentPortalRoute: React.FC = () => {
     };
 
     fetchTenant();
-  }, [tenantIdParam, slug]);
+  }, [tenantIdParam, slug, fetchAttempt]);
 
   if (loading) {
     return (
@@ -2616,6 +2630,8 @@ export const ParentPortalRoute: React.FC = () => {
         logoUrl={schoolLogoUrl}
         label="Opening parent portal…"
         tone="dark"
+        active={loading}
+        onRetry={() => setFetchAttempt((n) => n + 1)}
       />
     );
   }

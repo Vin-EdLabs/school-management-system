@@ -32,6 +32,8 @@ export interface Student {
   beneficiaryNotes?: string;
   /** active | graduated | suspended (and custom values from DB) */
   enrollmentStatus?: string;
+  /** Set when student is alumni (from graduation_details). */
+  graduatedAt?: string;
 }
 
 interface Teacher {
@@ -74,7 +76,7 @@ export interface FeeStructure {
   description: string;
 }
 
-interface Payment {
+export interface Payment {
   id: string;
   studentId: string;
   studentIdNum?: number;
@@ -144,7 +146,13 @@ interface DataContextType {
   refresh: () => Promise<void>;
   addStudent: (student: Omit<Student, 'id' | 'studentId' | 'admissionNumber'>) => Promise<{ id: string; studentId: string; admissionNumber: string } | void>;
   updateStudent: (id: string, updates: Partial<Student>) => Promise<void>;
-  deleteStudent: (id: string) => Promise<void>;
+  setStudentStatus: (id: string, status: 'active' | 'inactive') => Promise<void>;
+  applyPaymentLocally: (
+    payment: Payment,
+    amount: number,
+    balance?: { outstanding?: number; arrears?: number; credit?: number }
+  ) => string;
+  revertPaymentLocally: (token: string) => void;
   addTeacher: (teacher: Omit<Teacher, 'id' | 'staffId'>) => Promise<{ loginStaffId?: string; loginPin?: string; loginMessage?: string } | void>;
   updateTeacher: (id: string, updates: Partial<Teacher>) => Promise<void>;
   deleteTeacher: (id: string) => Promise<void>;
@@ -172,6 +180,7 @@ interface DataContextType {
   deleteSubject: (id: string) => Promise<void>;
   promoteStudent: (studentId: string, newClass: string, currentTerm?: string, academicYear?: string) => Promise<void>;
   promoteClass: (currentClass: string, newClass: string) => Promise<void>;
+  graduateClassToAlumni: (currentClass: string) => Promise<{ graduated: number }>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -202,7 +211,9 @@ const mapStudent = (backendStudent: any): Student => ({
   studentId: backendStudent.student_id,
   admissionNumber: backendStudent.admission_number,
   classAssigned: backendStudent.class_name || '',
-  classAssignedId: backendStudent.class_assigned_id,
+  classAssignedId:
+    backendStudent.class_assigned_id ??
+    (backendStudent.resolved_class_id != null ? Number(backendStudent.resolved_class_id) : undefined),
   guardianName: backendStudent.guardian_name || '',
   guardianContact: backendStudent.guardian_contact || '',
   homeAddress: backendStudent.home_address || '',
@@ -238,6 +249,7 @@ const mapStudent = (backendStudent: any): Student => ({
   })(),
   beneficiaryNotes: backendStudent.beneficiary_notes || '',
   enrollmentStatus: (backendStudent.enrollment_status || 'active').toLowerCase(),
+  graduatedAt: backendStudent.graduated_at ? formatDateForInput(backendStudent.graduated_at) : undefined,
 });
 
 // Helper function to map frontend student to backend format
@@ -323,6 +335,9 @@ const mapClassToBackend = (classData: Partial<Class>): any => {
   if (classData.stream !== undefined) out.stream = classData.stream;
   if (classData.maxClassSize !== undefined) out.max_class_size = classData.maxClassSize;
   if (classData.assignedTeacherId !== undefined) out.assigned_teacher_id = classData.assignedTeacherId;
+  if ((classData as { isFinalClass?: boolean }).isFinalClass !== undefined) {
+    out.is_final_class = (classData as { isFinalClass?: boolean }).isFinalClass;
+  }
   return out;
 };
 
@@ -339,6 +354,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [arrearsBalances, setArrearsBalances] = useState<Record<string, number>>({});
+  const paymentRollbackRef = useRef<Map<string, { payments: Payment[]; arrears: Record<string, number> }>>(new Map());
+  const arrearsBalancesRef = useRef<Record<string, number>>({});
+  useEffect(() => {
+    arrearsBalancesRef.current = arrearsBalances;
+  }, [arrearsBalances]);
   const [loading, setLoading] = useState(false);
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const loadGeneration = useRef(0);
@@ -366,7 +386,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     try {
       const [studentsRes, teachersRes, classesRes, feesRes, paymentsRes, incomeRes, expensesRes, arrearsRes, subjectsRes] = await Promise.all([
-        apiService.get('/students').catch(() => []),
+        apiService.get('/students?status=all').catch(() => []),
         apiService.get('/teachers').catch(() => []),
         apiService.get('/classes').catch(() => []),
         apiService.get('/fees').catch(() => []),
@@ -483,7 +503,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!socket || !isAuthenticated) return;
 
     let debounceTimer: ReturnType<typeof setTimeout> | undefined;
-    const refreshNow = () => {
+    const refreshNow = (payload?: { entity?: string }) => {
+      // Payment UI updates optimistically — avoid full reload that causes ~8s delay.
+      if (payload?.entity === 'payment') return;
       if (debounceTimer != null) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         debounceTimer = undefined;
@@ -520,9 +542,42 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await loadData();
   };
 
-  const deleteStudent = async (id: string) => {
-    await apiService.delete(`/students/${id}`);
-    await loadData();
+  const setStudentStatus = async (id: string, status: 'active' | 'inactive') => {
+    await apiService.patch(`/students/${id}/status`, { status });
+    setStudents((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, enrollmentStatus: status } : s))
+    );
+  };
+
+  const applyPaymentLocally = (
+    payment: Payment,
+    _amount: number,
+    balance?: { outstanding?: number; arrears?: number; credit?: number }
+  ): string => {
+    const token = `pay-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setPayments((prev) => {
+      paymentRollbackRef.current.set(token, {
+        payments: prev,
+        arrears: { ...arrearsBalancesRef.current },
+      });
+      const withoutDup = prev.filter((p) => p.id !== payment.id && !p.id.startsWith('optimistic-'));
+      return [payment, ...withoutDup];
+    });
+    if (balance?.arrears !== undefined) {
+      setArrearsBalances((prev) => ({
+        ...prev,
+        [payment.studentId]: balance.arrears!,
+      }));
+    }
+    return token;
+  };
+
+  const revertPaymentLocally = (token: string) => {
+    const snapshot = paymentRollbackRef.current.get(token);
+    if (!snapshot) return;
+    setPayments(snapshot.payments);
+    setArrearsBalances(snapshot.arrears);
+    paymentRollbackRef.current.delete(token);
   };
 
   // Teacher functions
@@ -592,7 +647,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const addPayment = async (paymentData: Omit<Payment, 'id'> & { academicYear?: string }): Promise<{ payment: Payment; balance?: any }> => {
     const res = await apiService.post<{
-      payment?: { id: number; receipt_number: string; student_id: number; amount: number; payment_date: string; payment_method: string; term: string; notes: string };
+      payment?: { id: number; receipt_number: string; student_id: number; amount: number; payment_date: string; payment_method: string; term: string; notes: string; receipt_snapshot?: Payment['receiptSnapshot'] };
       balance?: any;
       id?: number;
       receipt_number?: string;
@@ -602,6 +657,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       payment_method?: string;
       term?: string;
       notes?: string;
+      receipt_snapshot?: Payment['receiptSnapshot'];
     }>('/payments', {
       student_id: paymentData.studentIdNum || parseInt(paymentData.studentId),
       amount: paymentData.amount,
@@ -612,22 +668,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       academic_year: paymentData.academicYear,
     });
     const created = (res.payment || res) as any;
-    await loadData();
-    return {
-      payment: {
-        id: created.id.toString(),
-        studentId: (created.student_id || created.studentId)?.toString() || '',
-        studentIdNum: created.student_id || created.studentId,
-        amount: parseFloat(created.amount ?? 0),
-        date: created.payment_date || created.date || '',
-        paymentMethod: created.payment_method || created.paymentMethod || '',
-        term: created.term ?? '',
-        notes: created.notes ?? '',
-        receiptNumber: created.receipt_number || created.receiptNumber,
-        receiptSnapshot: created.receipt_snapshot ?? created.receiptSnapshot,
-      },
-      balance: res.balance
+    const payment: Payment = {
+      id: created.id.toString(),
+      studentId: (created.student_id || created.studentId)?.toString() || paymentData.studentId,
+      studentIdNum: created.student_id || created.studentId,
+      amount: parseFloat(created.amount ?? 0),
+      date: created.payment_date || created.date || '',
+      paymentMethod: created.payment_method || created.paymentMethod || '',
+      term: created.term ?? '',
+      notes: created.notes ?? '',
+      receiptNumber: created.receipt_number || created.receiptNumber,
+      receiptSnapshot: created.receipt_snapshot ?? created.receiptSnapshot,
     };
+    applyPaymentLocally(payment, paymentData.amount, res.balance);
+    return { payment, balance: res.balance };
   };
 
   // Income and Expense functions
@@ -700,6 +754,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const graduateClassToAlumni = async (currentClass: string) => {
+    const currentClassObj = classes.find(c => c.id === currentClass || c.className === currentClass);
+    if (!currentClassObj) {
+      throw new Error('Class not found');
+    }
+    const result = await apiService.post<{ graduated: number; message: string }>(
+      `/classes/${currentClassObj.id}/graduate-to-alumni`,
+      {}
+    );
+    await loadData();
+    return { graduated: result.graduated ?? 0 };
+  };
+
   return (
     <DataContext.Provider value={{
       students,
@@ -716,7 +783,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       refresh,
       addStudent,
       updateStudent,
-      deleteStudent,
+      setStudentStatus,
+      applyPaymentLocally,
+      revertPaymentLocally,
       addTeacher,
       updateTeacher,
       deleteTeacher,
@@ -733,7 +802,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updateSubject,
       deleteSubject,
       promoteStudent,
-      promoteClass
+      promoteClass,
+      graduateClassToAlumni
     }}>
       {children}
     </DataContext.Provider>

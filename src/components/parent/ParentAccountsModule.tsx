@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiService } from '@/services/api';
+import { useSchool } from '@/contexts/SchoolContext';
 import { RefreshCw, Shield, UserCheck, Users, Lock } from 'lucide-react';
 
 interface ParentAccountRow {
@@ -19,6 +20,7 @@ const statusOptions = [
 ];
 
 const ParentAccountsModule: React.FC = () => {
+  const { schoolId } = useSchool();
   const [accounts, setAccounts] = useState<ParentAccountRow[]>([]);
   const [selectedStudentId, setSelectedStudentId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
@@ -31,6 +33,12 @@ const ParentAccountsModule: React.FC = () => {
   const [linkStudentId, setLinkStudentId] = useState('');
 
   const PAGE_SIZE = 10;
+
+  useEffect(() => {
+    if (schoolId != null) {
+      apiService.setTenantContext(schoolId);
+    }
+  }, [schoolId]);
 
   const loadAccounts = useCallback(async () => {
     setLoading(true);
@@ -82,7 +90,7 @@ const ParentAccountsModule: React.FC = () => {
       setFeedback(message);
     } catch (error) {
       console.error('Parent account update failed', error);
-      setFeedback('Unable to update account. Please try again.');
+      setFeedback(error instanceof Error ? error.message : 'Unable to update account. Please try again.');
     } finally {
       setActionLoading(false);
     }
@@ -98,7 +106,7 @@ const ParentAccountsModule: React.FC = () => {
       setFeedback(`Password reset for ${account.studentName}.`);
     } catch (error) {
       console.error('Password reset failed', error);
-      setFeedback('Unable to reset password. Please try again.');
+      setFeedback(error instanceof Error ? error.message : 'Unable to reset password. Please try again.');
     } finally {
       setActionLoading(false);
     }
@@ -113,7 +121,7 @@ const ParentAccountsModule: React.FC = () => {
       setFeedback('Parent portal account created successfully.');
     } catch (error) {
       console.error('Create parent account failed', error);
-      setFeedback('Unable to create parent account. Please try again.');
+      setFeedback(error instanceof Error ? error.message : 'Unable to create parent account. Please try again.');
     } finally {
       setActionLoading(false);
     }
@@ -128,7 +136,7 @@ const ParentAccountsModule: React.FC = () => {
 
   useEffect(() => {
     if (selectedDetails) {
-      setLinkStudentId(String(selectedDetails.studentId));
+      setLinkStudentId(selectedDetails.admissionNumber || '');
     }
   }, [selectedDetails]);
 
@@ -184,7 +192,11 @@ const ParentAccountsModule: React.FC = () => {
       </div>
 
       {feedback ? (
-        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 shadow-sm">
+        <div className={`rounded-2xl border px-4 py-3 text-sm shadow-sm ${
+          feedback.toLowerCase().includes('unable') || feedback.toLowerCase().includes('cannot') || feedback.toLowerCase().includes('failed') || feedback.toLowerCase().includes('not found')
+            ? 'border-rose-100 bg-rose-50 text-rose-800'
+            : 'border-emerald-100 bg-emerald-50 text-emerald-800'
+        }`}>
           {feedback}
         </div>
       ) : null}
@@ -221,7 +233,7 @@ const ParentAccountsModule: React.FC = () => {
                     const isSelected = selectedStudentId === account.studentId;
                     return (
                       <tr
-                        key={account.accountId}
+                        key={`${account.studentId}-${account.accountId ?? 'new'}`}
                         className={`transition-colors ${isSelected ? 'bg-indigo-50' : 'hover:bg-slate-50'} cursor-pointer`}
                         onClick={() => setSelectedStudentId(account.studentId)}
                       >
@@ -343,20 +355,24 @@ const ParentAccountsModule: React.FC = () => {
                       <input
                         type="text"
                         value={linkStudentId}
-                        onChange={(e) => setLinkStudentId(e.target.value.replace(/[^0-9]/g, ''))}
-                        placeholder="Student ID"
+                        onChange={(e) => setLinkStudentId(e.target.value.trim())}
+                        placeholder="Student portal ID (e.g. 20260001)"
                         className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
                       />
                       <button
                         type="button"
                         onClick={async () => {
                           if (!selectedDetails?.accountId) return;
-                          const studentId = Number(linkStudentId.trim());
-                          if (!studentId || isNaN(studentId)) {
-                            setFeedback('Please enter a valid student ID to link.');
+                          const loginId = linkStudentId.trim();
+                          if (!loginId) {
+                            setFeedback('Enter the student portal login ID to link.');
                             return;
                           }
-                          await updateAccount(selectedDetails.accountId, { studentId }, 'Student link updated.');
+                          await updateAccount(
+                            selectedDetails.accountId,
+                            { studentLoginId: loginId },
+                            'Student link updated.'
+                          );
                         }}
                         disabled={actionLoading}
                         className="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
@@ -364,7 +380,10 @@ const ParentAccountsModule: React.FC = () => {
                         Link Student
                       </button>
                     </div>
-                    <p className="text-xs text-slate-500">Enter a new student ID to relink this parent account to another student in the same tenant.</p>
+                    <p className="text-xs text-slate-500">
+                      Enter another student&apos;s portal login ID (same guardian) to link this account to them.
+                      Default password after reset is the student&apos;s login ID.
+                    </p>
                   </div>
 
                   <div className="rounded-3xl border border-slate-200 bg-white p-4">

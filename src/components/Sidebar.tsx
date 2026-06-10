@@ -33,6 +33,7 @@ import {
   MessagesSquare,
   ClipboardList,
   Scale,
+  CalendarClock,
 } from 'lucide-react';
 import { resolveLogoUrl } from '../services/tenantService';
 import {
@@ -69,6 +70,9 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
     ...(hasAccess('classes') ? [{ id: 'classes', label: 'Classes', icon: BookOpen }] : []),
     ...(hasAccess('subjects') ? [{ id: 'subjects', label: 'Subjects', icon: BookOpen }] : []),
     ...(hasAccess('calendar') ? [{ id: 'calendar', label: 'Calendar', icon: Calendar }] : []),
+    ...(hasAccess('end-of-year') && userRole === 'administrator'
+      ? [{ id: 'end-of-year', label: 'End of Year', icon: CalendarClock }]
+      : []),
   ],
   teaching: [
     ...(hasAccess('teacher-classes') ? [{ id: 'teacher-classes', label: 'My Classes', icon: BookOpen }] : []),

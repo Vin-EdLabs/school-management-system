@@ -193,7 +193,9 @@ export const postFeesForClass = async (tenantId: number, classId: number, academ
 
     // 2. Get all students in the class.
     const studentsResult = await client.query(
-      'SELECT id FROM students WHERE tenant_id = $1 AND class_assigned_id = $2',
+      `SELECT id FROM students
+       WHERE tenant_id = $1 AND class_assigned_id = $2
+         AND COALESCE(enrollment_status, 'active') = 'active'`,
       [validatedTenantId, validatedClassId]
     );
     console.log(`[postFeesForClass] Found ${studentsResult.rows.length} students in class.`);
@@ -310,6 +312,7 @@ export const postFeesForNewTerm = async (tenantId: number, newTermId: number) =>
                 AND fs.academic_year_id = t.academic_year_id
                 AND fs.term_id = t.id
             WHERE s.tenant_id = $1
+              AND COALESCE(s.enrollment_status, 'active') = 'active'
             AND NOT EXISTS (
                 SELECT 1 FROM student_ledger sl
                 WHERE sl.student_id = s.id
@@ -539,6 +542,7 @@ export const postFeesForNewTermWithArrears = async (
         AND fs.academic_year_id = t.academic_year_id
         AND fs.term_id = t.id
        WHERE s.tenant_id = $1
+         AND COALESCE(s.enrollment_status, 'active') = 'active'
          AND NOT EXISTS (
            SELECT 1 FROM student_ledger sl
            WHERE sl.student_id = s.id

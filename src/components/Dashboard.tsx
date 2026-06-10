@@ -33,6 +33,8 @@ import SupportModule from './support/SupportModule';
 import PushNotificationsModule from './notifications/PushNotificationsModule';
 import ParentDeskAdminModule from './notifications/ParentDeskAdminModule';
 import ParentAccountsModule from './parent/ParentAccountsModule';
+import EndOfYearWizard from './academic/EndOfYearWizard';
+import SetupProgressGate from './onboarding/SetupProgressGate';
 import { useAuth } from '../contexts/AuthContext';
 import { useSchool } from '../contexts/SchoolContext';
 import { useData } from '../contexts/DataContext';
@@ -42,7 +44,7 @@ import { BrandedLoadingScreen } from '@/components/common/BrandedLoading';
 const Dashboard = () => {
   const { hasAccess, user } = useAuth();
   const { school } = useSchool();
-  const { workspaceReady } = useData();
+  const { workspaceReady, refresh } = useData();
   useStaffPushSync();
   const [activeModule, setActiveModule] = useState(() => {
     if (window.location.pathname.includes('/finance/transactions')) {
@@ -142,6 +144,8 @@ const Dashboard = () => {
         return <ParentDeskAdminModule />;
       case 'parent-accounts':
         return <ParentAccountsModule />;
+      case 'end-of-year':
+        return <EndOfYearWizard />;
       default:
         if (user?.role === 'teacher') {
           return <TeacherDashboard />;
@@ -155,7 +159,12 @@ const Dashboard = () => {
   if (!workspaceReady) {
     return (
       <SidebarWrapper activeModule={activeModule} setActiveModule={setActiveModule}>
-        <BrandedLoadingScreen logoUrl={school?.logo_url} label="Loading your workspace…" />
+        <BrandedLoadingScreen
+          logoUrl={school?.logo_url}
+          label="Loading your workspace…"
+          active={!workspaceReady}
+          onRetry={() => void refresh()}
+        />
       </SidebarWrapper>
     );
   }
@@ -165,6 +174,7 @@ const Dashboard = () => {
       activeModule={activeModule}
       setActiveModule={setActiveModule}
     >
+      <SetupProgressGate activeModule={activeModule} setActiveModule={setActiveModule} />
       {renderActiveModule()}
     </SidebarWrapper>
   );

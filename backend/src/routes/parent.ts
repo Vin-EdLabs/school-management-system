@@ -459,6 +459,38 @@ function normalizeSearchTerm(value: string): string {
   return value.trim().toLowerCase();
 }
 
+/** Resolve students.id from internal PK or portal login id (student_id / admission_number). */
+async function resolveStudentInternalId(
+  tenantId: number,
+  ref: string | number | null | undefined
+): Promise<number | null> {
+  if (ref == null || ref === '') return null;
+
+  const asStr = String(ref).trim();
+  if (!asStr) return null;
+
+  const asNum = Number(asStr);
+  if (Number.isInteger(asNum) && asNum > 0 && asNum < 1_000_000) {
+    const byPk = await query(
+      'SELECT id FROM students WHERE id = $1 AND tenant_id = $2',
+      [asNum, tenantId]
+    );
+    if (byPk.rows.length > 0) return Number(byPk.rows[0].id);
+  }
+
+  const byCode = await query(
+    `SELECT id FROM students
+     WHERE tenant_id = $1
+       AND (LOWER(student_id) = LOWER($2) OR LOWER(admission_number) = LOWER($2))`,
+    [tenantId, asStr]
+  );
+  return byCode.rows.length > 0 ? Number(byCode.rows[0].id) : null;
+}
+
+function defaultParentPortalPassword(studentRow: { student_id?: string; admission_number?: string }): string {
+  return String(studentRow.student_id || studentRow.admission_number || '').trim();
+}
+
 const adminRouter = express.Router();
 adminRouter.use(authenticate, requireRole('super-admin', 'administrator'), validateTenantAccess);
 
@@ -552,14 +584,14 @@ adminRouter.post('/accounts', async (req: AuthRequest, res) => {
       return res.status(400).json({ error: 'tenantId is required' });
     }
 
-    const studentId = Number(req.body.studentId);
-    if (!studentId || Number.isNaN(studentId)) {
-      return res.status(400).json({ error: 'studentId is required' });
+    const studentPk = await resolveStudentInternalId(tenantId, req.body?.studentId);
+    if (!studentPk) {
+      return res.status(400).json({ error: 'studentId is required and must match a student in this school' });
     }
 
     const studentResult = await query(
-      'SELECT student_id FROM students WHERE id = $1 AND tenant_id = $2',
-      [studentId, tenantId]
+      'SELECT id, student_id, admission_number FROM students WHERE id = $1 AND tenant_id = $2',
+      [studentPk, tenantId]
     );
     if (studentResult.rows.length === 0) {
       return res.status(404).json({ error: 'Student not found for this tenant' });
@@ -567,19 +599,23 @@ adminRouter.post('/accounts', async (req: AuthRequest, res) => {
 
     const existing = await query(
       'SELECT id FROM parent_portal_accounts WHERE tenant_id = $1 AND student_id = $2',
-      [tenantId, studentId]
+      [tenantId, studentPk]
     );
     if (existing.rows.length > 0) {
       return res.status(400).json({ error: 'Parent account already exists for this student' });
     }
 
-    const studentIdentifier = studentResult.rows[0].student_id || '';
-    const passwordHash = await bcrypt.hash(studentIdentifier, 10);
+    const defaultPassword = defaultParentPortalPassword(studentResult.rows[0]);
+    if (!defaultPassword) {
+      return res.status(400).json({ error: 'Student has no portal login ID configured' });
+    }
+
+    const passwordHash = await bcrypt.hash(defaultPassword, 10);
     const inserted = await query(
       `INSERT INTO parent_portal_accounts (tenant_id, student_id, password_hash, must_change_password)
        VALUES ($1, $2, $3, true)
        RETURNING id, is_active, must_change_password, last_login`,
-      [tenantId, studentId, passwordHash]
+      [tenantId, studentPk, passwordHash]
     );
 
     await writeAuditLog({
@@ -589,7 +625,7 @@ adminRouter.post('/accounts', async (req: AuthRequest, res) => {
       entityType: 'parent_portal_account',
       entityId: inserted.rows[0].id,
       summary: 'Admin created parent portal account',
-      details: { studentId, defaultPassword: 'student_id' },
+      details: { studentId: studentPk, defaultPassword: 'student_login_id' },
     });
 
     return res.status(201).json({ success: true, accountId: inserted.rows[0].id });
@@ -661,7 +697,7 @@ adminRouter.patch('/accounts/:accountId', async (req: AuthRequest, res) => {
     }
 
     const accountId = Number(req.params.accountId);
-    const { isActive, mustChangePassword, studentId } = req.body || {};
+    const { isActive, mustChangePassword, studentId, studentLoginId } = req.body || {};
     const updates: string[] = [];
     const params: any[] = [];
 
@@ -673,20 +709,23 @@ adminRouter.patch('/accounts/:accountId', async (req: AuthRequest, res) => {
       updates.push(`must_change_password = $${params.length + 1}`);
       params.push(mustChangePassword);
     }
-    if (typeof studentId === 'number' && Number.isInteger(studentId) && studentId > 0) {
-      const student = await query('SELECT id FROM students WHERE id = $1 AND tenant_id = $2', [studentId, tenantId]);
-      if (student.rows.length === 0) {
-        return res.status(400).json({ error: 'Student not found for this tenant' });
+
+    const linkRef = studentLoginId ?? studentId;
+    let resolvedStudentPk: number | null = null;
+    if (linkRef != null && String(linkRef).trim() !== '') {
+      resolvedStudentPk = await resolveStudentInternalId(tenantId, linkRef);
+      if (!resolvedStudentPk) {
+        return res.status(400).json({ error: 'Student not found. Use the student portal login ID (e.g. 20260001).' });
       }
       const conflict = await query(
         'SELECT id FROM parent_portal_accounts WHERE tenant_id = $1 AND student_id = $2 AND id != $3',
-        [tenantId, studentId, accountId]
+        [tenantId, resolvedStudentPk, accountId]
       );
       if (conflict.rows.length > 0) {
         return res.status(400).json({ error: 'Another parent account is already linked to that student' });
       }
       updates.push(`student_id = $${params.length + 1}`);
-      params.push(studentId);
+      params.push(resolvedStudentPk);
     }
 
     if (updates.length === 0) {
@@ -706,10 +745,10 @@ adminRouter.patch('/accounts/:accountId', async (req: AuthRequest, res) => {
     }
 
     const existingRow = existing.rows[0];
-    if (typeof studentId === 'number' && Number.isInteger(studentId) && studentId > 0) {
+    if (resolvedStudentPk != null) {
       const studentTarget = await query(
         `SELECT guardian_name, guardian_contact FROM students WHERE id = $1 AND tenant_id = $2`,
-        [studentId, tenantId]
+        [resolvedStudentPk, tenantId]
       );
       if (studentTarget.rows.length === 0) {
         return res.status(400).json({ error: 'Student not found for this tenant' });
@@ -719,12 +758,13 @@ adminRouter.patch('/accounts/:accountId', async (req: AuthRequest, res) => {
       const normalizeName = (value: string | null | undefined) => String(value || '').trim().toLowerCase();
       const normalizePhone = (value: string | null | undefined) => String(value || '').replace(/\D/g, '');
 
-      if (
-        normalizeName(existingRow.guardian_name) !== normalizeName(targetRow.guardian_name) ||
-        normalizePhone(existingRow.guardian_contact) !== normalizePhone(targetRow.guardian_contact)
-      ) {
+      const sameGuardian =
+        normalizeName(existingRow.guardian_name) === normalizeName(targetRow.guardian_name) &&
+        normalizePhone(existingRow.guardian_contact) === normalizePhone(targetRow.guardian_contact);
+
+      if (!sameGuardian) {
         return res.status(400).json({
-          error: 'Cannot link student: guardian name or contact does not match the current parent account.',
+          error: 'Cannot link student: guardian name and phone must match (same parent/guardian).',
         });
       }
     }
@@ -743,7 +783,7 @@ adminRouter.patch('/accounts/:accountId', async (req: AuthRequest, res) => {
       summary: 'Admin updated parent account',
       details: {
         before: existing.rows[0],
-        after: { isActive, mustChangePassword, studentId },
+        after: { isActive, mustChangePassword, studentId: resolvedStudentPk },
       },
     });
 
@@ -763,7 +803,7 @@ adminRouter.post('/accounts/:accountId/reset-password', async (req: AuthRequest,
 
     const accountId = Number(req.params.accountId);
     const result = await query(
-      `SELECT pa.id, pa.is_active, s.admission_number
+      `SELECT pa.id, pa.is_active, s.student_id, s.admission_number
        FROM parent_portal_accounts pa
        JOIN students s ON s.id = pa.student_id AND s.tenant_id = pa.tenant_id
        WHERE pa.id = $1 AND pa.tenant_id = $2`,
@@ -774,7 +814,11 @@ adminRouter.post('/accounts/:accountId/reset-password', async (req: AuthRequest,
     }
 
     const row = result.rows[0];
-    const passwordHash = await bcrypt.hash(row.admission_number, 10);
+    const defaultPassword = defaultParentPortalPassword(row);
+    if (!defaultPassword) {
+      return res.status(400).json({ error: 'Student has no portal login ID configured' });
+    }
+    const passwordHash = await bcrypt.hash(defaultPassword, 10);
     await query(
       `UPDATE parent_portal_accounts
        SET password_hash = $1, must_change_password = true
@@ -789,7 +833,7 @@ adminRouter.post('/accounts/:accountId/reset-password', async (req: AuthRequest,
       entityType: 'parent_portal_account',
       entityId: accountId,
       summary: 'Admin reset parent account password to admission number',
-      details: { accountId, studentAdmissionNumber: row.admission_number },
+      details: { accountId, studentLoginId: defaultPassword },
     });
 
     return res.json({ success: true, message: 'Password has been reset to the student admission number.' });

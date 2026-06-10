@@ -41,12 +41,28 @@ function formDataFingerprint(formData: FormData): string {
   return parts.sort().join('&');
 }
 
+function resolveApiBaseUrl(): string {
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    if (host === 'scholarnerve.com' || host.endsWith('.scholarnerve.com')) {
+      return `${window.location.origin}/api`;
+    }
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+    }
+    if (host.endsWith('.lvh.me')) {
+      return import.meta.env.VITE_API_BASE_URL || `${window.location.origin}/api`;
+    }
+  }
+  return import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+}
+
 export class ApiService {
   private baseURL: string;
   private tenantId: number | null = null;
   private inFlightMutations = new Map<string, Promise<unknown>>();
 
-  constructor(baseURL: string = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api') {
+  constructor(baseURL: string = resolveApiBaseUrl()) {
     this.baseURL = baseURL;
     const stored = localStorage.getItem('currentSchoolId');
     if (stored) {

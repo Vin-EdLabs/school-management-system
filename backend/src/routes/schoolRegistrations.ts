@@ -185,6 +185,11 @@ router.patch('/:id/status', authenticate, requireRole('super-admin'), async (req
         [tenantId, school_name, email]
       );
 
+      await client.query(
+        `INSERT INTO school_setup_progress (school_id) VALUES ($1) ON CONFLICT (school_id) DO NOTHING`,
+        [tenantId]
+      );
+
       // 4. Update registration with created tenant and password
       const result = await client.query(
         `UPDATE school_registrations SET status = $1, tenant_id = $2, generated_password = $3, generated_username = $4 WHERE id = $5 RETURNING *`,

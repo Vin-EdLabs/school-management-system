@@ -22,7 +22,8 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
     level: '',
     stream: 'no-stream',
     assignedTeacher: 'no-teacher',
-    maxClassSize: 30
+    maxClassSize: 30,
+    isFinalClass: false,
   });
 
   const [levels, setLevels] = useState<string[]>([]);
@@ -136,6 +137,7 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
         assignedTeacher: formData.assignedTeacher === 'no-teacher' ? '' : formData.assignedTeacher,
         assignedTeacherId,
         maxClassSize: formData.maxClassSize,
+        isFinalClass: formData.isFinalClass,
         students: []
       });
       
@@ -150,7 +152,8 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
         level: '',
         stream: 'no-stream',
         assignedTeacher: 'no-teacher',
-        maxClassSize: 30
+        maxClassSize: 30,
+        isFinalClass: false,
       });
 
       if (onSuccess) onSuccess();
@@ -267,11 +270,24 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
                 id="maxClassSize"
                 type="number"
                 min="1"
-                max="50"
+                max="200"
                 value={formData.maxClassSize}
-                onChange={(e) => handleInputChange('maxClassSize', parseInt(e.target.value) || 30)}
+                onChange={(e) => handleInputChange('maxClassSize', parseInt(e.target.value, 10) || 30)}
               />
             </div>
+          </div>
+
+          <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+            <input
+              id="isFinalClass"
+              type="checkbox"
+              checked={formData.isFinalClass}
+              onChange={(e) => setFormData((prev) => ({ ...prev, isFinalClass: e.target.checked }))}
+              className="h-4 w-4 rounded border-slate-300"
+            />
+            <Label htmlFor="isFinalClass" className="cursor-pointer text-sm font-normal">
+              Final graduating class (e.g. JHS 3, SHS 3)
+            </Label>
           </div>
 
           <div className="space-y-2">

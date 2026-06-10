@@ -18,11 +18,32 @@ export interface AuthenticatedSocket extends Socket {
 }
 
 export const initSocket = (server: HttpServer) => {
+  const corsOrigin = (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    if (!origin) return callback(null, true);
+    const allowedPatterns = [
+      /^https:\/\/([a-z0-9-]+\.)?scholarnerve\.com$/,
+      /^http:\/\/([a-z0-9-]+\.)?scholarnerve\.com$/,
+      /^http:\/\/([a-z0-9-]+\.)?localhost:(8080|5173|4173|3001)$/,
+      /^http:\/\/localhost:(8080|5173|4173|3001)$/,
+      /^http:\/\/([a-z0-9-]+\.)?127\.0\.0\.1:(8080|5173|4173|3001)$/,
+      /^http:\/\/127\.0\.0\.1:(8080|5173|4173|3001)$/,
+      /^http:\/\/([a-z0-9-]+\.)?lvh\.me:(8080|5173|4173)$/,
+    ];
+    if (allowedPatterns.some((p) => p.test(origin))) return callback(null, true);
+    callback(new Error('Not allowed by CORS'));
+  };
+
   io = new Server(server, {
+    path: '/socket.io',
     cors: {
-      origin: '*', // Adjust for production once URL is known
+      origin: corsOrigin,
       methods: ['GET', 'POST'],
+      credentials: true,
     },
+    transports: ['polling', 'websocket'],
+    pingTimeout: 60000,
+    pingInterval: 25000,
+    allowEIO3: true,
   });
 
   io.use(async (socket: AuthenticatedSocket, next) => {

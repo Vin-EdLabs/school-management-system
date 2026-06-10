@@ -1,9 +1,21 @@
 import React from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { User, Calendar, Phone, MapPin, School, Users, FileText, CreditCard, GraduationCap as ScholarshipIcon } from 'lucide-react';
+import {
+  User,
+  Calendar,
+  Phone,
+  MapPin,
+  School,
+  Users,
+  FileText,
+  CreditCard,
+  GraduationCap,
+} from 'lucide-react';
+import { enrollmentStatusLabel, isAlumniStudent, statusBadgeClass, normalizeEnrollmentStatus } from './studentRegistryUtils';
+import { cn } from '@/lib/utils';
 import { resolveLogoUrl } from '../../services/tenantService';
 import { formatDisplayDate } from '../../utils/dateFormat';
 
@@ -31,6 +43,8 @@ interface Student {
   discountType?: 'percentage' | 'fixed';
   discountValue?: number;
   beneficiaryNotes?: string;
+  enrollmentStatus?: string;
+  graduatedAt?: string;
 }
 
 interface Payment {
@@ -53,6 +67,9 @@ interface StudentDetailsDialogProps {
 
 const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, open, onClose, payments = [], totalFeesForStudent = 0 }) => {
   if (!student) return null;
+
+  const alumni = isAlumniStudent(student);
+  const status = normalizeEnrollmentStatus(student.enrollmentStatus);
 
   const studentPayments = payments.filter((p: any) => String(p.studentId) === String(student.id));
   let runningPaid = 0;
@@ -78,18 +95,18 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
   };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[85dvh]">
-        <DialogHeader>
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="flex max-h-[min(90dvh,900px)] max-w-4xl flex-col gap-0 overflow-hidden p-0 [&>button.absolute]:hidden">
+        <DialogHeader className="shrink-0 border-b px-6 py-4">
           <DialogTitle className="flex items-center space-x-2">
-            <User className="w-5 h-5" />
-            <span>Student Complete Profile</span>
+            {alumni ? <GraduationCap className="w-5 h-5 text-indigo-600" /> : <User className="w-5 h-5" />}
+            <span>{alumni ? 'Alumni profile' : 'Student complete profile'}</span>
           </DialogTitle>
         </DialogHeader>
-        
-        <div className="space-y-6">
+
+        <DialogBody className="space-y-6 px-6 py-4">
           {/* Student Header Card with Passport Photo */}
-          <Card className="bg-gradient-to-r from-slate-50 to-slate-100 border-slate-200">
+          <Card className={cn('border-slate-200', alumni && 'border-indigo-200 bg-gradient-to-r from-indigo-50/80 to-slate-50 dark:from-indigo-950/30 dark:to-slate-900/50')}>
             <CardContent className="pt-6">
               <div className="flex flex-col md:flex-row md:items-start gap-6">
                 {/* Passport Photo - large and prominent */}
@@ -121,9 +138,22 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
                       <span className="text-sm text-slate-600">
                         Age: {calculateAge(student.dateOfBirth)} years
                       </span>
-                      <Badge variant="outline" className="bg-white">
-                        {student.classAssigned}
+                      <Badge
+                        variant="outline"
+                        className={cn('text-sm capitalize', statusBadgeClass(status))}
+                      >
+                        {enrollmentStatusLabel(student.enrollmentStatus)}
                       </Badge>
+                      {student.classAssigned && (
+                        <Badge variant="outline" className="bg-white">
+                          {alumni ? `Graduated from ${student.classAssigned}` : student.classAssigned}
+                        </Badge>
+                      )}
+                      {alumni && student.graduatedAt && (
+                        <Badge variant="outline" className="border-indigo-300/50 text-indigo-700 dark:text-indigo-300">
+                          Graduated {formatDisplayDate(student.graduatedAt)}
+                        </Badge>
+                      )}
                     </div>
                   </div>
                   <div className="text-left md:text-right shrink-0">
@@ -139,7 +169,7 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
               </div>
               {student.isBeneficiary && (
                 <div className="mt-4 pt-4 border-t border-indigo-100 flex items-center gap-3">
-                  <ScholarshipIcon className="w-5 h-5 text-indigo-600" />
+                  <User className="w-5 h-5 text-indigo-600" />
                   <div>
                     <span className="text-sm font-bold text-indigo-900 uppercase tracking-wider">Beneficiary:</span>
                     <span className="ml-2 text-sm font-medium text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
@@ -201,7 +231,7 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
                 
                 <div className="space-y-3">
                   <div>
-                    <label className="text-sm font-medium text-gray-500">Current Class</label>
+                    <label className="text-sm font-medium text-gray-500">{alumni ? 'Last class' : 'Current class'}</label>
                     <Badge variant="outline" className="text-sm">{student.classAssigned}</Badge>
                   </div>
                   <div>
@@ -277,7 +307,7 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
             <Card className="border-indigo-200 bg-indigo-50/30">
               <CardContent className="pt-6">
                 <div className="flex items-center space-x-2 mb-4">
-                  <ScholarshipIcon className="w-4 h-4 text-indigo-600" />
+                  <GraduationCap className="w-4 h-4 text-indigo-600" />
                   <h3 className="font-semibold text-indigo-900">Beneficiary & Discount Details</h3>
                 </div>
                 
@@ -358,7 +388,7 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
               </CardContent>
             </Card>
           )}
-        </div>
+        </DialogBody>
       </DialogContent>
     </Dialog>
   );

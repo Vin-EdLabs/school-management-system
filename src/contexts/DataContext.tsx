@@ -470,7 +470,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Light polling as fallback in case other modules mutate data directly.
     const interval = window.setInterval(() => {
       loadData(true).catch(() => undefined);
-    }, 45000);
+    }, 60000);
 
     return () => {
       window.removeEventListener('focus', onFocus);

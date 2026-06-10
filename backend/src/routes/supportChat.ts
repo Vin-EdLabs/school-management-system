@@ -11,6 +11,26 @@ const __dirname = path.dirname(__filename);
 
 const router = express.Router();
 
+async function emitSupportNotification(tenantId: number, preview: string) {
+  try {
+    const unreadRow = await query(
+      `SELECT COUNT(*)::int AS c FROM support_messages WHERE tenant_id = $1 AND is_from_superadmin = true AND read_at IS NULL`,
+      [tenantId]
+    );
+    const unreadCount = Number(unreadRow.rows[0]?.c ?? 0);
+    const { getIO } = await import('../socket.js');
+    const io = getIO();
+    io.to(`tenant:${tenantId}`).emit('new-parent-message', {
+      type: 'support-chat',
+      count: unreadCount,
+      preview: preview.slice(0, 120),
+      timestamp: Date.now(),
+    });
+  } catch (socketErr) {
+    console.error('Support notification emit error:', socketErr);
+  }
+}
+
 const uploadsDir = path.join(__dirname, '../../uploads/support');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
@@ -177,11 +197,10 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
     try {
       const { getIO } = await import('../socket.js');
       const io = getIO();
-      // To tenant
       if (tenantId) {
         io.to(`tenant:${tenantId}`).emit('new-support-message', newMessage);
+        await emitSupportNotification(tenantId, String(newMessage.message || 'New support message'));
       }
-      // To all super-admins (they should join a specific room or listen globally)
       io.emit('new-support-message', newMessage);
       if (tenantId) {
         io.to(`tenant:${tenantId}`).emit('tenant-data-changed', {
@@ -268,6 +287,7 @@ router.post('/upload-image', authenticate, upload.single('image'), async (req: A
       const io = getIO();
       if (tenantId) {
         io.to(`tenant:${tenantId}`).emit('new-support-message', newMessage);
+        await emitSupportNotification(tenantId, String(newMessage.message || 'New support message'));
       }
       io.emit('new-support-message', newMessage);
       if (tenantId) {

@@ -35,7 +35,8 @@ const authenticateParent = async (
 async function emitParentDeskToTenant(tenantId: number) {
   try {
     const { getIO } = await import('../socket.js');
-    getIO().to(`tenant:${tenantId}`).emit('tenant-data-changed', {
+    const io = getIO();
+    io.to(`tenant:${tenantId}`).emit('tenant-data-changed', {
       tenantId,
       entity: 'parent-desk',
       action: 'updated',
@@ -43,6 +44,33 @@ async function emitParentDeskToTenant(tenantId: number) {
     });
   } catch {
     // ignore
+  }
+}
+
+async function emitParentDeskNotification(tenantId: number, preview: string) {
+  try {
+    const unreadRow = await query(
+      `SELECT COUNT(*)::int AS c
+       FROM parent_messages m
+       WHERE m.tenant_id = $1
+         AND EXISTS (
+           SELECT 1 FROM message_replies r
+           WHERE r.message_id = m.id
+             AND r.sender_type = 'parent'
+             AND r.is_read = false
+         )`,
+      [tenantId]
+    );
+    const unreadCount = Number(unreadRow.rows[0]?.c ?? 0);
+    const { getIO } = await import('../socket.js');
+    getIO().to(`tenant:${tenantId}`).emit('new-parent-message', {
+      type: 'parent-desk',
+      count: unreadCount,
+      preview: preview.slice(0, 120),
+      timestamp: Date.now(),
+    });
+  } catch (socketErr) {
+    console.error('Parent desk notification emit error:', socketErr);
   }
 }
 
@@ -85,6 +113,7 @@ router.post('/', authenticateParent, upload.single('attachment'), async (req: Pa
     );
 
     await emitParentDeskToTenant(req.parent!.tenantId);
+    await emitParentDeskNotification(req.parent!.tenantId, String(result.rows[0].message || 'New parent desk message'));
     return res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error('Create parent message error:', error);
@@ -229,6 +258,54 @@ router.get('/admin/list', authenticate, requireTenant, setTenantContext, async (
   } catch (error) {
     console.error('Admin parent desk list error:', error);
     return res.status(500).json({ error: 'Failed to fetch parent messages' });
+  }
+});
+
+router.get('/admin/unread-count', authenticate, requireTenant, setTenantContext, async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const result = await query(
+      `SELECT COUNT(*)::int AS count
+       FROM parent_messages m
+       WHERE m.tenant_id = $1
+         AND EXISTS (
+           SELECT 1 FROM message_replies r
+           WHERE r.message_id = m.id
+             AND r.sender_type = 'parent'
+             AND r.is_read = false
+         )`,
+      [tenantId]
+    );
+    return res.json({ count: Number(result.rows[0]?.count ?? 0) });
+  } catch (error) {
+    console.error('Admin parent desk unread-count error:', error);
+    return res.status(500).json({ error: 'Failed to fetch unread count' });
+  }
+});
+
+router.post('/admin/mark-read-by-school', authenticate, requireTenant, setTenantContext, async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    await query(
+      `UPDATE message_replies
+       SET is_read = true
+       WHERE sender_type = 'parent'
+         AND message_id IN (
+           SELECT id FROM parent_messages WHERE tenant_id = $1
+         )`,
+      [tenantId]
+    );
+    await query(
+      `UPDATE parent_messages
+       SET is_read_by_school = true
+       WHERE tenant_id = $1`,
+      [tenantId]
+    );
+    await emitParentDeskToTenant(tenantId);
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Admin parent desk mark-read-by-school error:', error);
+    return res.status(500).json({ error: 'Failed to mark as read' });
   }
 });
 

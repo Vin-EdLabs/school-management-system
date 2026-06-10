@@ -4,6 +4,8 @@ import jwt from 'jsonwebtoken';
 import { query } from '../db/connection.js';
 import { getVapidPublicKey } from '../services/webPushService.js';
 import { resolveTenant, TenantRequest } from '../middleware/tenantResolver.js';
+import { authenticate, requireRole, validateTenantAccess } from '../middleware/auth.js';
+import { writeAuditLog } from '../services/auditService.js';
 import { beneficiaryAdjustedFee } from '../utils/beneficiaryFee.js';
 
 const router = express.Router();
@@ -32,7 +34,7 @@ const authenticateParent = async (
     if (decoded.role !== 'parent') return res.status(403).json({ error: 'Forbidden' });
 
     const row = await query(
-      'SELECT id, student_id, tenant_id FROM parent_portal_accounts WHERE id = $1',
+      'SELECT id, student_id, tenant_id FROM parent_portal_accounts WHERE id = $1 AND is_active = true',
       [decoded.parentAccountId]
     );
     if (row.rows.length === 0) return res.status(401).json({ error: 'Invalid token' });
@@ -84,7 +86,7 @@ router.post('/login', resolveTenant, async (req: ParentRequest & TenantRequest, 
 
     // Get or create parent account
     let accountRow = await query(
-      'SELECT id, password_hash, must_change_password FROM parent_portal_accounts WHERE tenant_id = $1 AND student_id = $2',
+      'SELECT id, password_hash, must_change_password, is_active FROM parent_portal_accounts WHERE tenant_id = $1 AND student_id = $2',
       [tenantId, student.id]
     );
 
@@ -93,13 +95,17 @@ router.post('/login', resolveTenant, async (req: ParentRequest & TenantRequest, 
       const hash = await bcrypt.hash(student.admission_number, 10);
       const inserted = await query(
         `INSERT INTO parent_portal_accounts (tenant_id, student_id, password_hash, must_change_password)
-         VALUES ($1, $2, $3, true) RETURNING id, password_hash, must_change_password`,
+         VALUES ($1, $2, $3, true) RETURNING id, password_hash, must_change_password, is_active`,
         [tenantId, student.id, hash]
       );
       accountRow = inserted;
     }
 
     const account = accountRow.rows[0];
+    if (account.is_active === false) {
+      return res.status(403).json({ error: 'Parent account is disabled. Contact your school administrator.' });
+    }
+
     const valid = await bcrypt.compare(password, account.password_hash);
     if (!valid) {
       return res.status(401).json({ error: 'Invalid student ID or password' });
@@ -449,6 +455,377 @@ router.post('/link-siblings', authenticateParent, async (req: ParentRequest, res
   }
 });
 
+function normalizeSearchTerm(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+const adminRouter = express.Router();
+adminRouter.use(authenticate, requireRole('super-admin', 'administrator'), validateTenantAccess);
+
+adminRouter.get('/accounts', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = parseInt(String(req.query.tenantId || req.user?.tenantId), 10);
+    if (!tenantId) {
+      return res.status(400).json({ error: 'tenantId is required' });
+    }
+
+    const search = normalizeSearchTerm(String(req.query.search || ''));
+    const status = String(req.query.status || 'all').toLowerCase();
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 100);
+    const offset = (page - 1) * limit;
+    const params: any[] = [tenantId];
+    let sql = `
+      SELECT pa.id AS account_id,
+             pa.student_id,
+             pa.must_change_password,
+             pa.last_login,
+             pa.is_active,
+             s.first_name,
+             s.last_name,
+             s.student_id AS admission_number,
+             s.admission_number AS admission_number_legacy,
+             s.guardian_name,
+             s.guardian_contact,
+             s.names_of_siblings,
+             s.number_of_siblings,
+             COALESCE(c.class_name, TRIM(CONCAT(COALESCE(c.level, ''), ' ', COALESCE(c.stream, '')))) AS class_name
+      FROM students s
+      LEFT JOIN parent_portal_accounts pa ON pa.student_id = s.id AND pa.tenant_id = s.tenant_id
+      LEFT JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
+      WHERE s.tenant_id = $1
+        AND (COALESCE(s.guardian_name, '') <> '' OR COALESCE(s.guardian_contact, '') <> '')
+    `;
+
+    if (status === 'active') {
+      sql += ' AND pa.is_active = true';
+    } else if (status === 'inactive') {
+      sql += ' AND pa.is_active = false';
+    }
+
+    if (search) {
+      params.push(`%${search}%`);
+      sql += ` AND (
+        LOWER(s.first_name || ' ' || s.last_name) LIKE $${params.length}
+        OR LOWER(s.student_id) LIKE $${params.length}
+        OR LOWER(s.admission_number) LIKE $${params.length}
+        OR LOWER(s.guardian_name) LIKE $${params.length}
+        OR LOWER(s.guardian_contact) LIKE $${params.length}
+        OR LOWER(s.names_of_siblings) LIKE $${params.length}
+      )`;
+    }
+
+    const countSql = `SELECT COUNT(*)::int AS total FROM (${sql}) AS count_query`;
+    const countResult = await query(countSql, params);
+    const total = Number(countResult.rows[0]?.total ?? 0);
+
+    sql += ' ORDER BY s.last_name, s.first_name, s.student_id LIMIT $' + (params.length + 1) + ' OFFSET $' + (params.length + 2);
+    const listParams = [...params, limit, offset];
+    const result = await query(sql, listParams);
+
+    const accounts = result.rows.map((row: any) => ({
+      accountId: row.account_id ?? null,
+      studentId: row.student_id,
+      admissionNumber: row.admission_number || row.admission_number_legacy,
+      studentName: `${row.first_name} ${row.last_name}`,
+      className: row.class_name || 'Unassigned',
+      guardianName: row.guardian_name,
+      guardianContact: row.guardian_contact,
+      siblingCount: Number(row.number_of_siblings) || 0,
+      siblingNames: row.names_of_siblings || '',
+      isActive: row.is_active === true,
+      mustChangePassword: row.must_change_password,
+      lastLogin: row.last_login,
+    }));
+
+    return res.json({ accounts, total, page, limit });
+  } catch (error) {
+    console.error('Admin parent accounts list error:', error);
+    return res.status(500).json({ error: 'Failed to list parent accounts' });
+  }
+});
+
+adminRouter.post('/accounts', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = parseInt(String(req.query.tenantId || req.user?.tenantId), 10);
+    if (!tenantId) {
+      return res.status(400).json({ error: 'tenantId is required' });
+    }
+
+    const studentId = Number(req.body.studentId);
+    if (!studentId || Number.isNaN(studentId)) {
+      return res.status(400).json({ error: 'studentId is required' });
+    }
+
+    const studentResult = await query(
+      'SELECT student_id FROM students WHERE id = $1 AND tenant_id = $2',
+      [studentId, tenantId]
+    );
+    if (studentResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Student not found for this tenant' });
+    }
+
+    const existing = await query(
+      'SELECT id FROM parent_portal_accounts WHERE tenant_id = $1 AND student_id = $2',
+      [tenantId, studentId]
+    );
+    if (existing.rows.length > 0) {
+      return res.status(400).json({ error: 'Parent account already exists for this student' });
+    }
+
+    const studentIdentifier = studentResult.rows[0].student_id || '';
+    const passwordHash = await bcrypt.hash(studentIdentifier, 10);
+    const inserted = await query(
+      `INSERT INTO parent_portal_accounts (tenant_id, student_id, password_hash, must_change_password)
+       VALUES ($1, $2, $3, true)
+       RETURNING id, is_active, must_change_password, last_login`,
+      [tenantId, studentId, passwordHash]
+    );
+
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      action: 'create_parent_account',
+      entityType: 'parent_portal_account',
+      entityId: inserted.rows[0].id,
+      summary: 'Admin created parent portal account',
+      details: { studentId, defaultPassword: 'student_id' },
+    });
+
+    return res.status(201).json({ success: true, accountId: inserted.rows[0].id });
+  } catch (error) {
+    console.error('Admin create parent account error:', error);
+    return res.status(500).json({ error: 'Failed to create parent account' });
+  }
+});
+
+adminRouter.get('/accounts/:accountId', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = parseInt(String(req.query.tenantId || req.user?.tenantId), 10);
+    if (!tenantId) {
+      return res.status(400).json({ error: 'tenantId is required' });
+    }
+
+    const result = await query(
+      `SELECT pa.id AS account_id,
+              pa.student_id,
+              pa.must_change_password,
+              pa.last_login,
+              pa.is_active,
+              s.first_name,
+              s.last_name,
+              s.student_id AS admission_number,
+              s.admission_number AS admission_number_legacy,
+              s.guardian_name,
+              s.guardian_contact,
+              s.names_of_siblings,
+              s.number_of_siblings,
+              COALESCE(c.class_name, TRIM(CONCAT(COALESCE(c.level, ''), ' ', COALESCE(c.stream, '')))) AS class_name
+       FROM parent_portal_accounts pa
+       JOIN students s ON s.id = pa.student_id AND s.tenant_id = pa.tenant_id
+       LEFT JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
+       WHERE pa.tenant_id = $1 AND pa.id = $2`,
+      [tenantId, Number(req.params.accountId)]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Parent account not found' });
+    }
+
+    const row = result.rows[0];
+    return res.json({
+      accountId: row.account_id,
+      studentId: row.student_id,
+      admissionNumber: row.admission_number || row.admission_number_legacy,
+      studentName: `${row.first_name} ${row.last_name}`,
+      className: row.class_name || 'Unassigned',
+      guardianName: row.guardian_name,
+      guardianContact: row.guardian_contact,
+      siblingCount: Number(row.number_of_siblings) || 0,
+      siblingNames: row.names_of_siblings || '',
+      isActive: row.is_active,
+      mustChangePassword: row.must_change_password,
+      lastLogin: row.last_login,
+    });
+  } catch (error) {
+    console.error('Admin parent account details error:', error);
+    return res.status(500).json({ error: 'Failed to fetch parent account details' });
+  }
+});
+
+adminRouter.patch('/accounts/:accountId', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = parseInt(String(req.query.tenantId || req.user?.tenantId), 10);
+    if (!tenantId) {
+      return res.status(400).json({ error: 'tenantId is required' });
+    }
+
+    const accountId = Number(req.params.accountId);
+    const { isActive, mustChangePassword, studentId } = req.body || {};
+    const updates: string[] = [];
+    const params: any[] = [];
+
+    if (typeof isActive === 'boolean') {
+      updates.push(`is_active = $${params.length + 1}`);
+      params.push(isActive);
+    }
+    if (typeof mustChangePassword === 'boolean') {
+      updates.push(`must_change_password = $${params.length + 1}`);
+      params.push(mustChangePassword);
+    }
+    if (typeof studentId === 'number' && Number.isInteger(studentId) && studentId > 0) {
+      const student = await query('SELECT id FROM students WHERE id = $1 AND tenant_id = $2', [studentId, tenantId]);
+      if (student.rows.length === 0) {
+        return res.status(400).json({ error: 'Student not found for this tenant' });
+      }
+      const conflict = await query(
+        'SELECT id FROM parent_portal_accounts WHERE tenant_id = $1 AND student_id = $2 AND id != $3',
+        [tenantId, studentId, accountId]
+      );
+      if (conflict.rows.length > 0) {
+        return res.status(400).json({ error: 'Another parent account is already linked to that student' });
+      }
+      updates.push(`student_id = $${params.length + 1}`);
+      params.push(studentId);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
+
+    const existing = await query(
+      `SELECT pa.is_active, pa.must_change_password, pa.student_id,
+              s.guardian_name, s.guardian_contact
+       FROM parent_portal_accounts pa
+       JOIN students s ON s.id = pa.student_id AND s.tenant_id = pa.tenant_id
+       WHERE pa.id = $1 AND pa.tenant_id = $2`,
+      [accountId, tenantId]
+    );
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: 'Parent account not found' });
+    }
+
+    const existingRow = existing.rows[0];
+    if (typeof studentId === 'number' && Number.isInteger(studentId) && studentId > 0) {
+      const studentTarget = await query(
+        `SELECT guardian_name, guardian_contact FROM students WHERE id = $1 AND tenant_id = $2`,
+        [studentId, tenantId]
+      );
+      if (studentTarget.rows.length === 0) {
+        return res.status(400).json({ error: 'Student not found for this tenant' });
+      }
+      const targetRow = studentTarget.rows[0];
+
+      const normalizeName = (value: string | null | undefined) => String(value || '').trim().toLowerCase();
+      const normalizePhone = (value: string | null | undefined) => String(value || '').replace(/\D/g, '');
+
+      if (
+        normalizeName(existingRow.guardian_name) !== normalizeName(targetRow.guardian_name) ||
+        normalizePhone(existingRow.guardian_contact) !== normalizePhone(targetRow.guardian_contact)
+      ) {
+        return res.status(400).json({
+          error: 'Cannot link student: guardian name or contact does not match the current parent account.',
+        });
+      }
+    }
+
+    await query(
+      `UPDATE parent_portal_accounts SET ${updates.join(', ')} WHERE id = $${params.length + 1} AND tenant_id = $${params.length + 2}`,
+      [...params, accountId, tenantId]
+    );
+
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      action: 'update_parent_account',
+      entityType: 'parent_portal_account',
+      entityId: accountId,
+      summary: 'Admin updated parent account',
+      details: {
+        before: existing.rows[0],
+        after: { isActive, mustChangePassword, studentId },
+      },
+    });
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Admin parent account update error:', error);
+    return res.status(500).json({ error: 'Failed to update parent account' });
+  }
+});
+
+adminRouter.post('/accounts/:accountId/reset-password', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = parseInt(String(req.query.tenantId || req.user?.tenantId), 10);
+    if (!tenantId) {
+      return res.status(400).json({ error: 'tenantId is required' });
+    }
+
+    const accountId = Number(req.params.accountId);
+    const result = await query(
+      `SELECT pa.id, pa.is_active, s.admission_number
+       FROM parent_portal_accounts pa
+       JOIN students s ON s.id = pa.student_id AND s.tenant_id = pa.tenant_id
+       WHERE pa.id = $1 AND pa.tenant_id = $2`,
+      [accountId, tenantId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Parent account not found' });
+    }
+
+    const row = result.rows[0];
+    const passwordHash = await bcrypt.hash(row.admission_number, 10);
+    await query(
+      `UPDATE parent_portal_accounts
+       SET password_hash = $1, must_change_password = true
+       WHERE id = $2 AND tenant_id = $3`,
+      [passwordHash, accountId, tenantId]
+    );
+
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      action: 'reset_parent_account_password',
+      entityType: 'parent_portal_account',
+      entityId: accountId,
+      summary: 'Admin reset parent account password to admission number',
+      details: { accountId, studentAdmissionNumber: row.admission_number },
+    });
+
+    return res.json({ success: true, message: 'Password has been reset to the student admission number.' });
+  } catch (error) {
+    console.error('Admin reset parent password error:', error);
+    return res.status(500).json({ error: 'Failed to reset password' });
+  }
+});
+
+adminRouter.get('/accounts/:accountId/audit', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = parseInt(String(req.query.tenantId || req.user?.tenantId), 10);
+    if (!tenantId) {
+      return res.status(400).json({ error: 'tenantId is required' });
+    }
+
+    const accountId = Number(req.params.accountId);
+    const rows = await query(
+      `SELECT al.id, al.action, al.summary, al.details, al.created_at, u.username, u.role
+       FROM audit_logs al
+       LEFT JOIN users u ON u.id = al.user_id AND u.tenant_id = al.tenant_id
+       WHERE al.tenant_id = $1 AND al.entity_type = 'parent_portal_account' AND al.entity_id = $2
+       ORDER BY al.created_at DESC
+       LIMIT 100`,
+      [tenantId, accountId]
+    );
+
+    return res.json({ audit: rows.rows });
+  } catch (error) {
+    console.error('Admin parent account audit error:', error);
+    return res.status(500).json({ error: 'Failed to fetch audit history' });
+  }
+});
+
+router.use('/admin', adminRouter);
+
 // ── GET /api/parent/grades ────────────────────────────────────────────────────
 // Returns all grades for the student grouped by subject, with assignment details
 
@@ -669,7 +1046,14 @@ router.get('/finance', authenticateParent, async (req: ParentRequest, res) => {
     let feeRow;
     try {
       feeRow = await query(
-        `SELECT total_amount, tuition_fee, pta_fee, sports_fee, library_fee, other_fee, term
+        `SELECT
+           COALESCE(total_amount, amount) AS total_amount,
+           amount AS tuition_fee,
+           0::numeric AS pta_fee,
+           0::numeric AS sports_fee,
+           0::numeric AS library_fee,
+           0::numeric AS other_fee,
+           term
          FROM fee_structures
          WHERE tenant_id = $1
            AND class_id = $2
@@ -715,7 +1099,7 @@ router.get('/finance', authenticateParent, async (req: ParentRequest, res) => {
            p.payment_date,
            p.payment_method,
            p.receipt_number,
-           p.reference_number,
+           p.receipt_number AS reference_number,
            p.notes,
            p.term,
            p.receipt_snapshot

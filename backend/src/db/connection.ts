@@ -634,6 +634,7 @@ const runMigrations = async () => {
         student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
         password_hash VARCHAR(255) NOT NULL,
         must_change_password BOOLEAN NOT NULL DEFAULT true,
+        is_active BOOLEAN NOT NULL DEFAULT true,
         last_login TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(tenant_id, student_id)
@@ -892,6 +893,10 @@ const runMigrations = async () => {
     await client.query(`
       ALTER TABLE parent_portal_accounts
       ADD COLUMN IF NOT EXISTS unread_replies_count INTEGER DEFAULT 0
+    `).catch(() => { });
+    await client.query(`
+      ALTER TABLE parent_portal_accounts
+      ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true
     `).catch(() => { });
 
     // Auto-create parent accounts for any student who doesn't have one yet

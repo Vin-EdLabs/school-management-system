@@ -92,36 +92,16 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
     const tenantId = req.user!.tenantId!;
     const studentData = req.body;
     
-    // Generate student ID
+    // Generate student ID and admission number using a single count query for this tenant.
     const year = new Date().getFullYear();
-    const existingIds = await query(
-      'SELECT student_id FROM students WHERE tenant_id = $1 AND student_id ~ $2',
-      [tenantId, `^${year}`]
-    );
-    
-    let studentId = `${year}0001`;
-    if (existingIds.rows.length > 0) {
-      const maxId = Math.max(...existingIds.rows.map(r => parseInt(r.student_id) || 0));
-      studentId = (maxId + 1).toString();
-    }
-    
-    // Generate admission number
     const yearShort = year.toString().slice(-2);
-    const existingAdmissions = await query(
-      'SELECT admission_number FROM students WHERE tenant_id = $1 AND admission_number LIKE $2',
-      [tenantId, `ADM${yearShort}%`]
+    const countRes = await query(
+      'SELECT COUNT(*) AS total FROM students WHERE tenant_id = $1',
+      [tenantId]
     );
-    
-    let admissionNumber = `ADM${yearShort}001`;
-    if (existingAdmissions.rows.length > 0) {
-      const maxAdm = Math.max(
-        ...existingAdmissions.rows.map(r => {
-          const num = parseInt(r.admission_number.slice(5)) || 0;
-          return num;
-        })
-      );
-      admissionNumber = `ADM${yearShort}${(maxAdm + 1).toString().padStart(3, '0')}`;
-    }
+    const count = parseInt(countRes.rows[0]?.total || '0', 10) + 1;
+    const studentId = `${year}${count.toString().padStart(4, '0')}`;
+    const admissionNumber = `ADM${yearShort}${count.toString().padStart(3, '0')}`;
     
     const result = await query(
       `INSERT INTO students (

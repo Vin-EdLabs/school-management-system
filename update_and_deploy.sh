@@ -19,10 +19,12 @@ echo "📦 [ScholarNerve Deploy] Building frontend..."
 npm install
 npm run build
 
-# 3. Backend Install and Restart
+# 3. Backend Install, Migrate, and Restart
 echo "⚙️  [ScholarNerve Deploy] Updating backend..."
 cd "$PROJECT_ROOT/backend"
 npm install
+npm run build
+npm run migrate
 
 if command -v pm2 &> /dev/null; then
     echo "🔄 [ScholarNerve Deploy] Restarting backend via PM2..."

@@ -27,10 +27,11 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 30 * 1000, // 30 seconds
-      refetchInterval: 45 * 1000, // 45 seconds
-      refetchOnWindowFocus: true,
-      refetchOnReconnect: true,
+      staleTime: 1000 * 60 * 2,
+      gcTime: 1000 * 60 * 10,
+      refetchInterval: 1000 * 60,
+      refetchOnWindowFocus: false,
+      refetchOnMount: false,
       retry: 1,
     },
   },

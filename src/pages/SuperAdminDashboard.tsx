@@ -255,7 +255,7 @@ const SuperAdminDashboard = () => {
   useEffect(() => {
     if (user?.role !== 'super-admin') return;
     void refreshSupportInboxUnread();
-    const id = window.setInterval(() => void refreshSupportInboxUnread(), 45000);
+    const id = window.setInterval(() => void refreshSupportInboxUnread(), 60000);
     return () => window.clearInterval(id);
   }, [user?.role, refreshSupportInboxUnread]);
 
@@ -282,7 +282,7 @@ const SuperAdminDashboard = () => {
   useEffect(() => {
     if (user?.role !== 'super-admin') return;
     void loadVisitStats();
-    const id = window.setInterval(() => void loadVisitStats(), 30000);
+    const id = window.setInterval(() => void loadVisitStats(), 60000);
     return () => window.clearInterval(id);
   }, [user?.role]);
 

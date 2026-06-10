@@ -114,25 +114,34 @@ async function notifyAssessmentPublished(
 }
 
 async function insertParsedQuestionsForQuiz(tenantId: number, quizId: number, list: ParsedQuizQuestion[]) {
-  for (const p of list) {
-    await query(
-      `INSERT INTO learning_teacher_quiz_questions
-       (tenant_id, teacher_quiz_id, question_text, option_a, option_b, option_c, option_d, correct_option, marks, question_type)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-      [
-        tenantId,
-        quizId,
-        p.questionText,
-        p.optionA,
-        p.optionB,
-        p.optionC,
-        p.optionD,
-        p.correctOption,
-        p.marks,
-        p.questionType,
-      ]
-    );
+  if (list.length === 0) {
+    return;
   }
+
+  const values = list
+    .map((_, index) => {
+      const base = 3 + index * 8;
+      return `($1,$2,$${base},$${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7})`;
+    })
+    .join(',');
+
+  const params = [tenantId, quizId, ...list.flatMap((p) => [
+    p.questionText,
+    p.optionA,
+    p.optionB,
+    p.optionC,
+    p.optionD,
+    p.correctOption,
+    p.marks,
+    p.questionType,
+  ])];
+
+  await query(
+    `INSERT INTO learning_teacher_quiz_questions
+       (tenant_id, teacher_quiz_id, question_text, option_a, option_b, option_c, option_d, correct_option, marks, question_type)
+       VALUES ${values}`,
+    params
+  );
 }
 
 async function buildQuestionListFromBody(

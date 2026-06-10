@@ -48,7 +48,7 @@ const SupportModule = () => {
   useEffect(() => {
     fetchConversations();
     if (isSuperAdmin) {
-       const interval = setInterval(fetchConversations, 45000);
+       const interval = setInterval(fetchConversations, 60000);
        return () => clearInterval(interval);
     }
   }, [isSuperAdmin]);

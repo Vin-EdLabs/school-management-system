@@ -594,7 +594,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   useEffect(() => {
     if (!token) return;
     void refreshParentDeskUnread();
-    const id = window.setInterval(() => void refreshParentDeskUnread(), 45000);
+    const id = window.setInterval(() => void refreshParentDeskUnread(), 60000);
     return () => window.clearInterval(id);
   }, [token, refreshParentDeskUnread]);
 
@@ -684,7 +684,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       parentFetch('/parent/finance', {}, token)
         .then(setFinance)
         .catch(() => undefined);
-    }, 45000);
+    }, 60000);
     return () => window.clearInterval(interval);
   }, [token, activeTab]);
 
@@ -812,7 +812,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     if (!token) return;
     const autoHardRefresh = window.setInterval(() => {
       hardRefreshApp().catch(() => undefined);
-    }, 45000);
+    }, 60000);
     return () => window.clearInterval(autoHardRefresh);
   }, [token, hardRefreshApp]);
 

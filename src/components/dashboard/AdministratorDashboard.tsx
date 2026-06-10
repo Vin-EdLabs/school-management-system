@@ -257,8 +257,8 @@ const AdministratorDashboard = () => {
                   Year: {activeAcademicYear}
                 </Badge>
                 {dataLoading && (
-                  <Badge variant="outline" className="animate-pulse font-normal">
-                    Syncing data…
+                  <Badge variant="outline" className="h-6 w-6 rounded-full p-0">
+                    <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
                   </Badge>
                 )}
               </div>

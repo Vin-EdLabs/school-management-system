@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSchool } from '../../contexts/SchoolContext';
 import { useTeacherNotifications } from '../../contexts/TeacherNotificationContext';
+import { useSocket } from '../../contexts/SocketContext';
+import { apiService } from '../../services/api';
 import { resolveLogoUrl } from '../../services/tenantService';
 import { Bell, Bot, User, Clock, Calendar, Moon, Sun } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -22,11 +24,15 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
   const { user } = useAuth();
   const { school } = useSchool();
   const { items, unreadCount, markRead, markAllRead } = useTeacherNotifications();
+  const { socket } = useSocket();
   const { theme, toggleTheme } = useTheme();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [notifOpen, setNotifOpen] = useState(false);
+  const [adminNotifications, setAdminNotifications] = useState<Array<{ id: string; type: 'parent-desk' | 'support-chat'; title: string; body: string; unread: number; timestamp: number }>>([]);
+  const [adminUnreadCount, setAdminUnreadCount] = useState(0);
   const pwaLogo = resolveLogoUrl(school?.logo_url ?? null);
   const showStaffNotifications = user?.role === 'teacher' || user?.role === 'staff';
+  const showAdminNotifications = !!user && ['administrator', 'finance', 'super-admin'].includes(user.role || '');
   const displayName = user?.fullName?.trim() || user?.username || '';
 
   useEffect(() => {
@@ -55,6 +61,91 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
       hour12: true,
     });
   };
+
+  const loadAdminNotifications = useCallback(async () => {
+    if (!showAdminNotifications) return;
+    try {
+      const results: Array<{ id: string; count: number; title: string; body: string; type: 'parent-desk' | 'support-chat' }> = [];
+      const parentRes = await apiService.get<{ count: number }>('/messages/admin/unread-count');
+      const parentCount = Number(parentRes?.count ?? 0);
+      if (parentCount > 0) {
+        results.push({
+          id: 'parent-desk',
+          type: 'parent-desk',
+          count: parentCount,
+          title: 'Parent Desk',
+          body: `${parentCount} unread parent message${parentCount === 1 ? '' : 's'}.`,
+        });
+      }
+      const supportRes = await apiService.get<{ count: number }>('/support-chat/unread-count');
+      const supportCount = Number(supportRes?.count ?? 0);
+      if (supportCount > 0) {
+        results.push({
+          id: 'support-chat',
+          type: 'support-chat',
+          count: supportCount,
+          title: 'Support Chat',
+          body: `${supportCount} unread support message${supportCount === 1 ? '' : 's'}.`,
+        });
+      }
+      setAdminNotifications(
+        results.map((item) => ({
+          id: item.id,
+          type: item.type,
+          title: item.title,
+          body: item.body,
+          unread: item.count,
+          timestamp: Date.now(),
+        }))
+      );
+      setAdminUnreadCount(results.reduce((sum, item) => sum + item.count, 0));
+    } catch (error) {
+      console.error('Load admin notifications error:', error);
+      setAdminNotifications([]);
+      setAdminUnreadCount(0);
+    }
+  }, [showAdminNotifications]);
+
+  const markAdminNotificationRead = useCallback(async (notificationType: 'parent-desk' | 'support-chat') => {
+    try {
+      if (notificationType === 'parent-desk') {
+        await apiService.post('/messages/admin/mark-read-by-school', {});
+      }
+      if (notificationType === 'support-chat') {
+        await apiService.post('/support-chat/mark-read-by-school', {});
+      }
+      await loadAdminNotifications();
+    } catch (error) {
+      console.error('Mark admin notification read error:', error);
+    }
+  }, [loadAdminNotifications]);
+
+  useEffect(() => {
+    if (!showAdminNotifications) return;
+    void loadAdminNotifications();
+  }, [showAdminNotifications, loadAdminNotifications]);
+
+  useEffect(() => {
+    if (!socket || !showAdminNotifications) return;
+    const onTenant = (evt: { entity?: string }) => {
+      const e = String(evt?.entity || '');
+      if (e === 'parent-desk' || e === 'support-chat') {
+        void loadAdminNotifications();
+      }
+    };
+    const onNew = (event: { type?: string }) => {
+      const type = String(event?.type || '');
+      if (type === 'parent-desk' || type === 'support-chat') {
+        void loadAdminNotifications();
+      }
+    };
+    socket.on('tenant-data-changed', onTenant);
+    socket.on('new-parent-message', onNew);
+    return () => {
+      socket.off('tenant-data-changed', onTenant);
+      socket.off('new-parent-message', onNew);
+    };
+  }, [socket, showAdminNotifications, loadAdminNotifications]);
 
   return (
     <div className="flex items-center justify-between w-full h-full gap-2 sm:gap-4 md:gap-6 min-w-0">
@@ -150,6 +241,55 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
                           <p className="text-sm font-semibold text-foreground">{n.title}</p>
                           <p className="mt-0.5 line-clamp-3 text-xs text-muted-foreground">{n.body}</p>
                           <p className="mt-1 text-[10px] text-muted-foreground">{new Date(n.at).toLocaleString()}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+              </PopoverContent>
+            </Popover>
+          )}
+          {showAdminNotifications && (
+            <Popover open={notifOpen} onOpenChange={setNotifOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="relative h-10 w-10 shrink-0 rounded-xl text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-indigo-950/50 touch-manipulation"
+                  title="School messages"
+                >
+                  <Bell className="h-5 w-5" />
+                  {adminUnreadCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+                      {adminUnreadCount > 9 ? '9+' : adminUnreadCount}
+                    </span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[min(100vw-1.5rem,22rem)] p-0" align="end" sideOffset={8}>
+                <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+                  <p className="text-xs font-semibold text-foreground">School Messages</p>
+                </div>
+                <ScrollArea className="max-h-[min(50vh,260px)]">
+                  {adminNotifications.length === 0 ? (
+                    <p className="p-4 text-xs text-muted-foreground">No unread school messages.</p>
+                  ) : (
+                    <div className="space-y-1 p-2">
+                      {adminNotifications.map((notification) => (
+                        <button
+                          key={notification.id}
+                          type="button"
+                          onClick={async () => {
+                            await markAdminNotificationRead(notification.type);
+                            setNotifOpen(false);
+                            setActiveModule(notification.type);
+                          }}
+                          className="w-full rounded-lg border border-border bg-card p-2.5 text-left transition-colors hover:border-emerald-300 hover:bg-emerald-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-500 dark:hover:bg-indigo-950/70"
+                        >
+                          <p className="text-sm font-semibold text-foreground">{notification.title}</p>
+                          <p className="mt-0.5 line-clamp-3 text-xs text-muted-foreground">{notification.body}</p>
+                          <p className="mt-1 text-[10px] text-muted-foreground">{new Date(notification.timestamp).toLocaleString()}</p>
                         </button>
                       ))}
                     </div>

@@ -55,11 +55,13 @@ interface AppSidebarProps {
   setActiveModule: (module: string) => void;
 }
 
-const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
+const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: string) => ({
   dashboard: [
     ...(hasAccess('dashboard') ? [{ id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }] : []),
     ...(hasAccess('financial-dashboard') ? [{ id: 'financial-dashboard', label: 'Financial', icon: DollarSign }] : []),
-    ...(hasAccess('teacher-dashboard') ? [{ id: 'teacher-dashboard', label: 'My Dashboard', icon: GraduationCap }] : []),
+    ...(hasAccess('teacher-dashboard') && userRole !== 'super-admin' && userRole !== 'administrator'
+      ? [{ id: 'teacher-dashboard', label: 'My Dashboard', icon: GraduationCap }]
+      : []),
   ],
   academic: [
     ...(hasAccess('students') || hasAccess('students-view-only') ? [{ id: 'students', label: 'Students', icon: Users }] : []),
@@ -101,6 +103,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean) => ({
   /** Users, Settings, Audit — always last before footer. */
   system: [
     ...(hasAccess('users') ? [{ id: 'users', label: 'Users', icon: UserCog }] : []),
+    ...(hasAccess('parent-accounts') ? [{ id: 'parent-accounts', label: 'Parent Accounts', icon: Users }] : []),
     ...(hasAccess('settings') || hasAccess('settings-password-only') ? [{ id: 'settings', label: 'Settings', icon: Settings }] : []),
     ...(hasAccess('audit') ? [{ id: 'audit', label: 'Audit Logs', icon: Shield }] : []),
   ],
@@ -112,7 +115,8 @@ const MenuSection: React.FC<{
   activeModule: string;
   setActiveModule: (module: string) => void;
   itemCounts?: Record<string, number>;
-}> = ({ items, label, activeModule, setActiveModule, itemCounts }) => {
+  markCommsRead: (moduleId: string) => Promise<void>;
+}> = ({ items, label, activeModule, setActiveModule, itemCounts, markCommsRead }) => {
   const { isMobile, setOpenMobile } = useSidebar();
 
   if (items.length === 0) return null;
@@ -130,7 +134,10 @@ const MenuSection: React.FC<{
               <SidebarMenuItem key={item.id} className="flex justify-center">
                 <SidebarMenuButton
                   isActive={activeModule === item.id}
-                  onClick={() => {
+                  onClick={async () => {
+                    if (item.id !== 'parent-desk') {
+                      await markCommsRead(item.id);
+                    }
                     setActiveModule(item.id);
                     if (item.id === 'transactions') {
                       const schoolMatch = window.location.pathname.match(/^\/school\/[^/]+/);
@@ -188,7 +195,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
   const [parentDeskUnread, setParentDeskUnread] = useState(0);
   const [supportUnread, setSupportUnread] = useState(0);
 
-  const menuItems = getMenuItems(hasAccess);
+  const menuItems = getMenuItems(hasAccess, user?.role);
 
   const refreshCommsBadges = useCallback(async () => {
     try {
@@ -210,10 +217,25 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
     }
   }, [hasAccess]);
 
+  const markCommsRead = useCallback(async (moduleId: string) => {
+    try {
+      if (moduleId === 'parent-desk') {
+        await apiService.post('/messages/admin/mark-read-by-school', {});
+        setParentDeskUnread(0);
+      }
+      if (moduleId === 'support-chat') {
+        await apiService.post('/support-chat/mark-read-by-school', {});
+        setSupportUnread(0);
+      }
+    } catch {
+      // ignore read marking failures; counts will refresh from socket/poll
+    }
+  }, []);
+
   useEffect(() => {
     if (!user) return;
     void refreshCommsBadges();
-    const id = window.setInterval(() => void refreshCommsBadges(), 48000);
+    const id = window.setInterval(() => void refreshCommsBadges(), 30000);
     return () => window.clearInterval(id);
   }, [user, refreshCommsBadges]);
 
@@ -223,12 +245,14 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
       const e = String(evt?.entity || '');
       if (e === 'parent-desk' || e === 'support-chat') void refreshCommsBadges();
     };
-    const onSupport = () => void refreshCommsBadges();
+    const onCountUpdate = () => void refreshCommsBadges();
     socket.on('tenant-data-changed', onTenant);
-    socket.on('new-support-message', onSupport);
+    socket.on('new-support-message', onCountUpdate);
+    socket.on('new-parent-message', onCountUpdate);
     return () => {
       socket.off('tenant-data-changed', onTenant);
-      socket.off('new-support-message', onSupport);
+      socket.off('new-support-message', onCountUpdate);
+      socket.off('new-parent-message', onCountUpdate);
     };
   }, [socket, refreshCommsBadges]);
 
@@ -261,17 +285,18 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
       </SidebarHeader>
 
       <SidebarContent className="flex-1 min-h-0 overflow-y-auto scrollbar-hide overscroll-contain px-1 py-3 gap-3 bg-transparent outline-none border-none">
-        <MenuSection items={menuItems.dashboard} label="Overview" activeModule={activeModule} setActiveModule={setActiveModule} />
-        <MenuSection items={menuItems.academic} label="Academic Central" activeModule={activeModule} setActiveModule={setActiveModule} />
-        <MenuSection items={menuItems.teaching} label="Teaching Room" activeModule={activeModule} setActiveModule={setActiveModule} />
-        <MenuSection items={menuItems.financial} label="Financial Ops" activeModule={activeModule} setActiveModule={setActiveModule} />
-        <MenuSection items={menuItems.records} label="Data Center" activeModule={activeModule} setActiveModule={setActiveModule} />
+        <MenuSection items={menuItems.dashboard} label="Overview" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} />
+        <MenuSection items={menuItems.academic} label="Academic Central" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} />
+        <MenuSection items={menuItems.teaching} label="Teaching Room" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} />
+        <MenuSection items={menuItems.financial} label="Financial Ops" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} />
+        <MenuSection items={menuItems.records} label="Data Center" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} />
         <MenuSection
           items={menuItems.announcements}
           label="Announcements & parent desk"
           activeModule={activeModule}
           setActiveModule={setActiveModule}
           itemCounts={{ 'parent-desk': parentDeskUnread }}
+          markCommsRead={markCommsRead}
         />
         <SidebarSeparator className="bg-sidebar-border mx-4 my-2" />
         <MenuSection
@@ -280,8 +305,9 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
           activeModule={activeModule}
           setActiveModule={setActiveModule}
           itemCounts={{ 'support-chat': supportUnread }}
+          markCommsRead={markCommsRead}
         />
-        <MenuSection items={menuItems.system} label="System" activeModule={activeModule} setActiveModule={setActiveModule} />
+        <MenuSection items={menuItems.system} label="System" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} />
       </SidebarContent>
 
       <SidebarFooter className="border-t border-white/10 p-3 space-y-4 bg-black/10 dark:border-sidebar-border dark:bg-sidebar-accent/50">

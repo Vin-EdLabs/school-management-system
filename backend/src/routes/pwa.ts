@@ -271,7 +271,7 @@ router.get('/logo', async (req: TenantRequest, res) => {
       return res.redirect(302, '/android-chrome-192x192.png');
     }
 
-    const sizeNum = size === '512' ? 512 : 192;
+    const sizeNum = size === '512' ? 512 : size === '180' ? 180 : 192;
     const maskable = req.query.maskable === '1';
     const background = tenant.primary_color || '#ffffff';
 

@@ -1,5 +1,5 @@
 /* ScholarNerve service worker — caching + push. Bump CACHE_VERSION on breaking cache changes. */
-const CACHE_VERSION = '2026-06-10-v14';
+const CACHE_VERSION = '2026-06-10-v15';
 const CACHE_NAME = `scholarnerve-app-${CACHE_VERSION}`;
 const APP_SHELL = ['/', '/index.html'];
 
@@ -258,7 +258,13 @@ self.addEventListener('fetch', (event) => {
 
   const isApiRequest = url.pathname.startsWith('/api/');
   if (isApiRequest) {
-    event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
+    const isPwaAsset =
+      url.pathname === '/api/pwa/logo' || url.pathname === '/api/pwa/manifest';
+    event.respondWith(
+      fetch(event.request, isPwaAsset ? { cache: 'no-store' } : undefined).catch(() =>
+        caches.match(event.request),
+      ),
+    );
     return;
   }
 

@@ -43,10 +43,10 @@
       manifest.href = '/api/pwa/manifest?' + params.toString();
       document.head.appendChild(manifest);
 
-      var isTenantHost = !!slugFromHost || schoolMatch || portalMatch || schMatch;
+      var isTenantHost = !!slugFromHost || schoolMatch || portalMatch || schMatch || path.indexOf('/portal') === 0;
 
       if (isTenantHost) {
-        var logoUrl = location.origin + '/api/pwa/logo?' + params.toString() + '&size=192';
+        var logoUrl = location.origin + '/api/pwa/logo?' + params.toString() + '&size=180';
         function upsertIcon(rel, sizes, type) {
           var selector = 'link[rel="' + rel + '"]' + (sizes ? '[sizes="' + sizes + '"]' : '');
           var el = document.querySelector(selector);

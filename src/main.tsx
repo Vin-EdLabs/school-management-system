@@ -3,8 +3,12 @@ import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
 import { detectTenantSlugFromHost } from './utils/tenantHost'
-import { resolveLogoUrl } from './services/tenantService'
 import { initSystemErrorReporter } from './utils/systemErrorReporter'
+import {
+  applyTenantPwaBranding,
+  detectPwaKind,
+  detectTenantIdFromPath,
+} from './utils/pwaBranding'
 
 const API_BASE = (() => {
   if (import.meta.env.VITE_API_BASE_URL) return import.meta.env.VITE_API_BASE_URL;
@@ -21,162 +25,39 @@ function detectSchSlugFromPath(pathname: string): string | null {
   return m ? decodeURIComponent(m[1]) : null;
 }
 
-function detectTenantIdFromPath(pathname: string = window.location.pathname): number | null {
-  const portalMatch = pathname.match(/^\/portal\/(\d+)(\/|$)/i);
-  if (portalMatch) return Number(portalMatch[1]);
-  const schoolMatch = pathname.match(/^\/school\/(\d+)(\/|$)/i);
-  if (schoolMatch) return Number(schoolMatch[1]);
-  return null;
-}
-
-function detectPwaKind(pathname: string): 'parent' | 'school' | 'super-admin' {
-  if (/^\/super-admin(\/|$)/i.test(pathname)) return 'super-admin';
-  if (/^\/portal(\/|$)/i.test(pathname)) return 'parent';
-  if (/^\/(school|sch)(\/|$)/i.test(pathname)) return 'school';
-  
-  if (detectTenantSlugFromHost()) {
-    return 'school';
-  }
-
-  return 'school';
-}
-
-function logoVersionKey(logo: string, tenantId: number): string {
-  const input = `${tenantId}:${logo.length}:${logo.slice(0, 64)}:${logo.slice(-64)}`;
-  let hash = 0;
-  for (let i = 0; i < input.length; i++) {
-    hash = ((hash << 5) - hash + input.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash).toString(36);
-}
-
-function buildPwaQueryParams(
-  slug: string | null,
-  tenantId: number | null,
-  kind: string,
-  logoUrl?: string | null,
-): URLSearchParams {
-  const params = new URLSearchParams();
-  if (tenantId) params.set('tenantId', String(tenantId));
-  else if (slug) params.set('slug', slug);
-  params.set('kind', kind);
-  params.set('host', window.location.hostname);
-  if (logoUrl && tenantId) {
-    params.set('v', logoVersionKey(logoUrl, tenantId));
-  }
-  return params;
-}
-
-function setDynamicHeadIcons(iconQuery: string) {
-  const icon192 = `${window.location.origin}/api/pwa/logo?${iconQuery}&size=192`;
-  const icon512 = `${window.location.origin}/api/pwa/logo?${iconQuery}&size=512`;
-  const upsert = (rel: string, sizes?: string, type?: string, href?: string) => {
-    const selector = sizes
-      ? `link[rel='${rel}'][sizes='${sizes}']`
-      : `link[rel='${rel}']`;
-    let el = document.querySelector(selector) as HTMLLinkElement | null;
-    if (!el) {
-      el = document.createElement('link');
-      el.rel = rel;
-      if (sizes) el.sizes = sizes;
-      if (type) el.type = type;
-      document.head.appendChild(el);
-    }
-    el.href = href || icon192;
-  };
-
-  upsert('apple-touch-icon', '180x180', undefined, icon192);
-  upsert('shortcut icon', undefined, undefined, icon192);
-  upsert('icon', '32x32', 'image/png', icon192);
-  upsert('icon', '16x16', 'image/png', icon192);
-  upsert('icon', '512x512', 'image/png', icon512);
-}
-
-function setCssBrandingVars(tenant: any) {
-  const root = document.documentElement;
-  const primary = tenant?.primary_color || '#0f766e';
-  const secondary = tenant?.secondary_color || '#14b8a6';
-  root.style.setProperty('--primary', primary);
-  root.style.setProperty('--secondary', secondary);
-  const resolvedLogo = resolveLogoUrl(tenant?.logo_url || null);
-  if (resolvedLogo) {
-    root.style.setProperty('--school-logo', `url(${resolvedLogo})`);
-  }
-
-  let themeMeta = document.querySelector("meta[name='theme-color']") as HTMLMetaElement | null;
-  if (!themeMeta) {
-    themeMeta = document.createElement('meta');
-    themeMeta.name = 'theme-color';
-    document.head.appendChild(themeMeta);
-  }
-  themeMeta.content = primary;
-}
-
-async function invalidatePwaCaches() {
-  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-    navigator.serviceWorker.controller.postMessage({ type: 'INVALIDATE_PWA_CACHE' });
-  }
-}
-
 async function bootstrapTenantBrandingAndManifest() {
   try {
     const path = window.location.pathname;
     const pathSlug = detectSchSlugFromPath(path);
     const hostSlug = detectTenantSlugFromHost();
     const slug = pathSlug || hostSlug;
-    const tenantId = detectTenantIdFromPath(path);
+    const pathTenantId = detectTenantIdFromPath(path);
     const kind = detectPwaKind(path);
     const headers: Record<string, string> = {};
     if (slug) headers['X-Tenant-Slug'] = slug;
-    if (!slug && tenantId) headers['X-Tenant-Id'] = String(tenantId);
+    if (!slug && pathTenantId) headers['X-Tenant-Id'] = String(pathTenantId);
 
     const tenantRes = slug
       ? await fetch(`${API_BASE}/tenant/resolve`, { credentials: 'include', headers })
-      : tenantId
-        ? await fetch(`${API_BASE}/tenant/by-id/${tenantId}`, { credentials: 'include' })
+      : pathTenantId
+        ? await fetch(`${API_BASE}/tenant/by-id/${pathTenantId}`, { credentials: 'include' })
         : await fetch(`${API_BASE}/tenant/resolve`, { credentials: 'include', headers });
     const tenantData = await tenantRes.json();
     const tenant = tenantData?.tenant || null;
 
     if (tenant) {
-      setCssBrandingVars(tenant);
-      let portalLabel = 'Parent Portal';
-      if (kind === 'school') {
-        portalLabel = 'School';
-      } else if (kind === 'super-admin') {
-        portalLabel = 'Super Admin';
-      }
-
-      document.title = `${tenant.name} — ${portalLabel}`;
+      applyTenantPwaBranding(
+        {
+          id: tenant.id,
+          name: tenant.name,
+          slug: tenant.slug,
+          logo_url: tenant.logo_url,
+          primary_color: tenant.primary_color,
+          secondary_color: tenant.secondary_color,
+        },
+        kind,
+      );
     }
-
-    const manifestParams = buildPwaQueryParams(slug, tenantId, kind, tenant?.logo_url);
-    const manifestUrl = `/api/pwa/manifest?${manifestParams.toString()}`;
-
-    if (tenant?.logo_url) {
-      setDynamicHeadIcons(manifestParams.toString());
-      await invalidatePwaCaches();
-    }
-
-    let link = document.querySelector("link[rel='manifest']") as HTMLLinkElement | null;
-    if (!link) {
-      link = document.createElement('link');
-      link.rel = 'manifest';
-      document.head.appendChild(link);
-    }
-    link.removeAttribute('crossorigin');
-    link.href = manifestUrl;
-
-    console.debug('[PWA] Tenant branding applied', {
-      tenantId: tenant?.id ?? tenantId,
-      slug,
-      kind,
-      manifestUrl,
-      logoUrl: tenant?.logo_url ? resolveLogoUrl(tenant.logo_url) : null,
-      icon192: tenant?.logo_url
-        ? `${window.location.origin}/api/pwa/logo?${manifestParams.toString()}&size=192`
-        : null,
-    });
   } catch (error) {
     console.warn('[PWA] Tenant branding bootstrap failed:', error);
   }
@@ -191,7 +72,6 @@ async function registerServiceWorker() {
       host.endsWith('.localhost') ||
       host.endsWith('.lvh.me');
     if (isDevHost) {
-      // index.html tears down the SW in dev; never re-register here.
       return;
     }
     try {

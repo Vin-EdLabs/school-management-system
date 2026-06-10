@@ -9,6 +9,7 @@ import ReceiptPrinter from '@/components/common/ReceiptPrinter';
 import { parseReceiptSnapshot, termsMatch } from '@/utils/feeCalculations';
 import { io, Socket } from 'socket.io-client';
 import { detectTenantSlugFromHost } from '@/utils/tenantHost';
+import { applyTenantPwaBranding } from '@/utils/pwaBranding';
 import { getFcmToken, removeFcmToken } from '@/services/firebase';
 import StudentLearningMode from '@/components/parent/StudentLearningMode';
 import { BrandedLoading, BrandedLoadingScreen } from '@/components/common/BrandedLoading';
@@ -2613,6 +2614,18 @@ export const ParentPortalRoute: React.FC = () => {
           if (d.tenant.logo_url) setSchoolLogoUrl(d.tenant.logo_url);
           if (d.tenant.primary_color) setPrimaryColor(d.tenant.primary_color);
           if (d.tenant.secondary_color) setSecondaryColor(d.tenant.secondary_color);
+
+          applyTenantPwaBranding(
+            {
+              id: d.tenant.id,
+              name: d.tenant.name,
+              slug: d.tenant.slug,
+              logo_url: d.tenant.logo_url,
+              primary_color: d.tenant.primary_color,
+              secondary_color: d.tenant.secondary_color,
+            },
+            'parent',
+          );
         }
       } catch (err) {
         console.error('Failed to resolve tenant for parent portal:', err);

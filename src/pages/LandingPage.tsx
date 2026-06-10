@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import ParentAppShowcase from '../components/landing/ParentAppShowcase';
+import ScrollToTopButton from '../components/landing/ScrollToTopButton';
 
 type IconProps = {
   className?: string;
@@ -401,6 +403,7 @@ const LandingPage = () => {
 
           <nav className="hidden items-center gap-8 text-sm font-medium text-[var(--ink-muted)] md:flex">
             <a className="transition-colors hover:text-[var(--brand)]" href="#features">Features</a>
+            <a className="transition-colors hover:text-[var(--brand)]" href="#parent-app">Mobile App</a>
             <a className="transition-colors hover:text-[var(--brand)]" href="#portals">Portals</a>
             <a className="transition-colors hover:text-[var(--brand)]" href="#about">About</a>
           </nav>
@@ -642,6 +645,8 @@ const LandingPage = () => {
             </div>
           </div>
         </section>
+
+        <ParentAppShowcase />
 
         <section id="portals" className="bg-white px-5 py-24">
           <div className="mx-auto max-w-[1100px]">
@@ -914,6 +919,8 @@ const LandingPage = () => {
           </div>
         </div>
       )}
+
+      <ScrollToTopButton />
     </div>
   );
 };

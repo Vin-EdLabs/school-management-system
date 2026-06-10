@@ -255,3 +255,538 @@ html {
   opacity: 1;
   transform: translateY(0);
 }
+
+/* Parent app showcase — landing page */
+.parent-showcase-section {
+  background: linear-gradient(165deg, #060d0a 0%, #0a1512 38%, #0f1a14 100%);
+}
+
+.parent-showcase-bg {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(13, 158, 117, 0.18), transparent 55%),
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: auto, 56px 56px, 56px 56px;
+  mask-image: radial-gradient(ellipse 90% 80% at 50% 40%, black 20%, transparent 85%);
+  -webkit-mask-image: radial-gradient(ellipse 90% 80% at 50% 40%, black 20%, transparent 85%);
+}
+
+.parent-showcase-orb {
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.45;
+}
+
+.parent-showcase-orb-a {
+  top: 10%;
+  right: -8%;
+  width: 320px;
+  height: 320px;
+  background: rgba(13, 158, 117, 0.35);
+}
+
+.parent-showcase-orb-b {
+  bottom: 5%;
+  left: -10%;
+  width: 280px;
+  height: 280px;
+  background: rgba(6, 95, 70, 0.4);
+}
+
+.parent-showcase-gallery {
+  align-items: end;
+}
+
+.parent-showcase-device {
+  position: relative;
+  width: 100%;
+  margin: 0 auto;
+  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.parent-showcase-device--clickable {
+  display: block;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: zoom-in;
+  text-align: inherit;
+  font: inherit;
+  color: inherit;
+}
+
+.parent-showcase-device--clickable:focus-visible {
+  outline: 2px solid rgba(52, 211, 153, 0.85);
+  outline-offset: 4px;
+  border-radius: 1.75rem;
+}
+
+.parent-showcase-device--hero {
+  max-width: 168px;
+}
+
+.parent-showcase-device--side {
+  max-width: 138px;
+}
+
+@media (min-width: 640px) {
+  .parent-showcase-device--hero {
+    max-width: 188px;
+  }
+
+  .parent-showcase-device--side {
+    max-width: 152px;
+  }
+}
+
+.parent-showcase-float-a {
+  animation: parentFloatA 7s ease-in-out infinite;
+}
+
+.parent-showcase-float-b {
+  animation: parentFloatB 6s ease-in-out infinite;
+  animation-delay: -1.2s;
+}
+
+.parent-showcase-float-c {
+  animation: parentFloatC 8s ease-in-out infinite;
+  animation-delay: -2.5s;
+}
+
+@keyframes parentFloatA {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(-12px); }
+}
+
+@keyframes parentFloatB {
+  0%, 100% { transform: translateY(0) rotate(0.5deg); }
+  50% { transform: translateY(-14px) rotate(-0.5deg); }
+}
+
+@keyframes parentFloatC {
+  0%, 100% { transform: translateY(0) rotate(-0.5deg); }
+  50% { transform: translateY(-10px) rotate(0.5deg); }
+}
+
+.parent-showcase-line-draw {
+  stroke-dashoffset: 100;
+  animation: parentLineDraw 2.4s ease-out forwards;
+}
+
+@keyframes parentLineDraw {
+  to { stroke-dashoffset: 0; }
+}
+
+.parent-showcase-card {
+  animation: parentCardIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  animation-delay: var(--reveal-delay, 0ms);
+}
+
+.parent-showcase-card--hero .parent-showcase-device {
+  transform: scale(1.06);
+}
+
+@media (min-width: 640px) {
+  .parent-showcase-card--hero .parent-showcase-device {
+    transform: scale(1.08);
+  }
+}
+
+@keyframes parentCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.parent-showcase-bezel {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1.75rem;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  background: #0c0c0c;
+  padding: 6px;
+  box-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+}
+
+.parent-showcase-zoom-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 1.35rem;
+  background: rgba(0, 0, 0, 0.45);
+  color: white;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.parent-showcase-device--clickable:hover .parent-showcase-zoom-hint,
+.parent-showcase-device--clickable:focus-visible .parent-showcase-zoom-hint {
+  opacity: 1;
+}
+
+.parent-showcase-device--clickable:hover,
+.parent-showcase-device--clickable:focus-visible {
+  transform: scale(1.06);
+}
+
+.parent-showcase-shot {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 1.35rem;
+  object-fit: contain;
+  object-position: center top;
+}
+
+.parent-showcase-tag {
+  position: absolute;
+  left: 50%;
+  bottom: -10px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  border-radius: 999px;
+  background: rgba(13, 158, 117, 0.95);
+  padding: 4px 10px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: white;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+}
+
+.parent-showcase-float-a:hover .parent-showcase-device,
+.parent-showcase-float-b:hover .parent-showcase-device,
+.parent-showcase-float-c:hover .parent-showcase-device {
+  filter: brightness(1.05);
+}
+
+.parent-showcase-lightbox {
+  background: rgba(2, 8, 6, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  animation: parentLightboxFade 0.28s ease-out;
+}
+
+.parent-showcase-lightbox-frame {
+  animation: parentLightboxZoom 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: center center;
+}
+
+.parent-showcase-bezel--lightbox {
+  padding: 10px;
+  border-radius: 2.25rem;
+  border-width: 3px;
+  box-shadow:
+    0 40px 80px rgba(0, 0, 0, 0.65),
+    0 0 0 1px rgba(255, 255, 255, 0.08) inset,
+    0 0 80px rgba(13, 158, 117, 0.25);
+}
+
+.parent-showcase-shot--lightbox {
+  border-radius: 1.75rem;
+  max-height: min(78dvh, 820px);
+  width: 100%;
+  object-fit: contain;
+}
+
+.parent-showcase-lightbox-caption {
+  margin-top: 1rem;
+  text-align: center;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: rgba(226, 232, 240, 0.85);
+}
+
+@keyframes parentLightboxFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes parentLightboxZoom {
+  from {
+    opacity: 0;
+    transform: scale(0.72);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.parent-showcase-pulse {
+  animation: scholarPulse 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .parent-showcase-card,
+  .parent-showcase-float-a,
+  .parent-showcase-float-b,
+  .parent-showcase-float-c,
+  .parent-showcase-line-draw,
+  .parent-showcase-pulse,
+  .parent-showcase-lightbox,
+  .parent-showcase-lightbox-frame {
+    animation: none;
+  }
+
+  .parent-showcase-float-a {
+    transform: translateX(-50%);
+  }
+}
+
+/* School registration form */
+.scholar-register-hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid rgba(13, 158, 117, 0.22);
+  background: rgba(13, 158, 117, 0.08);
+  padding: 0.4rem 0.9rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--brand-dark);
+}
+
+.scholar-register-benefit {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  border-radius: 1rem;
+  border: 1px solid var(--sn-border);
+  background: rgba(255, 255, 255, 0.72);
+  padding: 0.85rem 1rem;
+  font-size: 0.925rem;
+  color: var(--ink-muted);
+}
+
+.scholar-register-benefit-icon {
+  display: flex;
+  height: 1.5rem;
+  width: 1.5rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--brand-light);
+  color: var(--brand);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.scholar-register-form-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 28px;
+  border: 1px solid var(--sn-border);
+  background: white;
+  box-shadow:
+    0 24px 70px rgba(8, 80, 65, 0.12),
+    0 0 0 1px rgba(255, 255, 255, 0.8) inset;
+}
+
+.scholar-register-form-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--brand), #34d399, var(--brand-dark));
+}
+
+.scholar-register-form-head {
+  border-bottom: 1px solid var(--sn-border);
+  background: linear-gradient(180deg, var(--surface-3) 0%, white 100%);
+  padding: 1.5rem 1.5rem 1.25rem;
+}
+
+@media (min-width: 768px) {
+  .scholar-register-form-head {
+    padding: 2rem 2.5rem 1.5rem;
+  }
+}
+
+.scholar-register-form-body {
+  padding: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .scholar-register-form-body {
+    padding: 2rem 2.5rem 2.5rem;
+  }
+}
+
+.scholar-register-steps {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.scholar-register-step {
+  flex: 1;
+  border-radius: 999px;
+  border: 1px solid var(--sn-border);
+  background: white;
+  padding: 0.45rem 0.75rem;
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-subtle);
+}
+
+.scholar-register-step.is-active {
+  border-color: rgba(13, 158, 117, 0.35);
+  background: var(--brand-light);
+  color: var(--brand-dark);
+}
+
+.scholar-register-section {
+  border-radius: 1.25rem;
+  border: 1px solid var(--sn-border);
+  background: linear-gradient(180deg, rgba(237, 246, 241, 0.55) 0%, rgba(255, 255, 255, 0.95) 100%);
+  padding: 1.25rem;
+}
+
+.scholar-register-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.scholar-register-section-icon {
+  display: flex;
+  height: 2rem;
+  width: 2rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  background: rgba(13, 158, 117, 0.12);
+  color: var(--brand);
+}
+
+.scholar-register-field {
+  margin-top: 0.45rem;
+  height: 2.85rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(13, 158, 117, 0.18);
+  background: white;
+  padding-left: 0.95rem;
+  padding-right: 0.95rem;
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(15, 26, 20, 0.04);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.scholar-register-field::placeholder {
+  color: #94a89d;
+}
+
+.scholar-register-field:focus-visible {
+  outline: none;
+  border-color: rgba(13, 158, 117, 0.45);
+  box-shadow: 0 0 0 3px rgba(13, 158, 117, 0.14);
+}
+
+.scholar-register-textarea {
+  min-height: 6.5rem;
+  height: auto;
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+  resize: vertical;
+}
+
+.scholar-register-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+
+.scholar-register-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  border-top: 1px solid var(--sn-border);
+  margin-top: 0.5rem;
+  padding-top: 1.25rem;
+}
+
+@media (min-width: 640px) {
+  .scholar-register-actions {
+    flex-direction: row;
+  }
+}
+
+.scholar-register-submit {
+  height: 3rem;
+  flex: 1;
+  border-radius: var(--radius-pill);
+  border: none;
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
+  color: white;
+  font-weight: 600;
+  box-shadow: 0 12px 28px rgba(13, 158, 117, 0.28);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+
+.scholar-register-submit:hover:not(:disabled) {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+  box-shadow: 0 16px 32px rgba(13, 158, 117, 0.32);
+}
+
+.scholar-register-submit:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.scholar-register-trust {
+  margin-top: 0.85rem;
+  text-align: center;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--ink-subtle);
+}
+
+.scholar-register-success {
+  max-width: 32rem;
+  margin: 0 auto;
+  border-radius: 28px;
+  border: 1px solid var(--sn-border);
+  background: white;
+  padding: 2.5rem 2rem;
+  text-align: center;
+  box-shadow: 0 24px 70px rgba(8, 80, 65, 0.12);
+  animation: scholarFadeUp 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scholar-register-success-icon {
+  display: flex;
+  height: 5rem;
+  width: 5rem;
+  margin: 0 auto 1.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--brand-light), rgba(52, 211, 153, 0.35));
+  color: var(--brand);
+}

@@ -54,8 +54,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { resolveLogoUrl } from '../../services/tenantService';
+import LazyStudentAvatar from './LazyStudentAvatar';
 import StudentDetailsDialog from './StudentDetailsDialog';
 import EditStudentDialog from './EditStudentDialog';
 import StudentQuickViewSheet from './StudentQuickViewSheet';
@@ -599,19 +598,13 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-3 py-0.5">
-                              <Avatar className="h-9 w-9 rounded-lg border border-border/80 shadow-sm">
-                                {student.passportPhotoUrl ? (
-                                  <AvatarImage
-                                    src={resolveLogoUrl(student.passportPhotoUrl) || undefined}
-                                    alt=""
-                                    className="object-cover"
-                                  />
-                                ) : null}
-                                <AvatarFallback className="rounded-lg text-xs font-semibold">
-                                  {student.firstName?.[0]}
-                                  {student.lastName?.[0]}
-                                </AvatarFallback>
-                              </Avatar>
+                              <LazyStudentAvatar
+                                studentId={student.id}
+                                firstName={student.firstName}
+                                lastName={student.lastName}
+                                photoUrl={student.passportPhotoUrl}
+                                hasPassportPhoto={student.hasPassportPhoto}
+                              />
                               <div className="min-w-0">
                                 <p className="truncate font-medium leading-tight text-foreground">
                                   {student.firstName} {student.lastName}

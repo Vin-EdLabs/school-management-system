@@ -3,46 +3,17 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ChevronDown, ChevronUp, DollarSign, TrendingUp, Calculator } from 'lucide-react';
-import { useData } from '../../contexts/DataContext';
-import { getActiveAcademicTerm, getActiveAcademicYear, dateMatchesAcademicYearSetting } from '../../utils/feeCalculations';
+import { useFinancialSummary } from '@/hooks/useReportQueries';
 
 const FinancialSummary = () => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const { payments, income, expenses } = useData();
+  const { data: summary } = useFinancialSummary();
 
-  const currentTerm = getActiveAcademicTerm();
-  const currentYear = getActiveAcademicYear();
-
-  // Calculate fees collected (from payments - fee payments are NOT in income table)
-  const feesCollected = payments
-    .filter(payment => {
-      const pt = payment.term || '';
-      return pt === currentTerm || pt.includes(currentTerm) || currentTerm.includes(pt);
-    })
-    .reduce((sum, payment) => sum + payment.amount, 0);
-
-  // Calculate other income (exclude fee payments - they are in payments)
-  const otherIncome = income
-    .filter(inc => inc.category !== 'Fee Payment')
-    .filter(inc => {
-      const incomeDate = new Date(inc.date);
-      return dateMatchesAcademicYearSetting(incomeDate, currentYear);
-    })
-    .reduce((sum, inc) => sum + inc.amount, 0);
-
-  // Calculate total combined income
+  const feesCollected = summary?.collected ?? 0;
+  const otherIncome = summary?.otherIncome ?? 0;
   const totalCombinedIncome = feesCollected + otherIncome;
-
-  // Calculate total expenses
-  const totalExpenses = expenses
-    .filter(expense => {
-      const expenseDate = new Date(expense.paymentDate);
-      return dateMatchesAcademicYearSetting(expenseDate, currentYear);
-    })
-    .reduce((sum, expense) => sum + expense.amount, 0);
-
-  // Calculate balance left
-  const balanceLeft = totalCombinedIncome - totalExpenses;
+  const totalExpenses = summary?.totalExpenses ?? 0;
+  const balanceLeft = summary?.netBalance ?? totalCombinedIncome - totalExpenses;
 
   return (
     <Card className="bg-purple-500/5 dark:bg-purple-500/10 border-purple-500/20 shadow-none">
@@ -70,7 +41,6 @@ const FinancialSummary = () => {
       {isExpanded && (
         <CardContent className="pt-0 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Total Combined Income */}
             <div className="bg-card rounded-lg p-4 border border-border shadow-sm">
               <div className="flex items-center justify-between">
                 <div>
@@ -89,7 +59,6 @@ const FinancialSummary = () => {
               </div>
             </div>
 
-            {/* Balance Left */}
             <div className="bg-card rounded-lg p-4 border border-border shadow-sm">
               <div className="flex items-center justify-between">
                 <div>
@@ -111,7 +80,6 @@ const FinancialSummary = () => {
             </div>
           </div>
 
-          {/* Financial Health Indicator */}
           <div className="bg-card rounded-lg p-4 border border-border shadow-sm">
             <h4 className="font-medium text-foreground mb-2">Financial Health</h4>
             <div className="flex items-center space-x-2">

@@ -53,6 +53,21 @@ const STUDENT_SELECT_FIELDS = `
   gc.graduated_at
 `;
 
+/** List view — omit heavy passport_photo_url payload; expose has_passport_photo instead. */
+const STUDENT_LIST_SELECT_FIELDS = `
+  s.id, s.tenant_id, s.first_name, s.last_name, s.gender, s.date_of_birth, s.nationality,
+  s.student_id, s.admission_number, s.class_assigned_id, s.guardian_name, s.guardian_contact,
+  s.home_address, s.number_of_siblings, s.names_of_siblings, s.previous_school, s.date_of_admission,
+  s.notes, s.is_beneficiary, s.beneficiary_type, s.discount_type, s.discount_value, s.beneficiary_notes,
+  s.enrollment_status, s.created_at, s.updated_at,
+  (CASE WHEN s.passport_photo_url IS NOT NULL AND length(s.passport_photo_url) > 0 THEN true ELSE false END) AS has_passport_photo,
+  COALESCE(c.class_name, gc.class_name) AS class_name,
+  COALESCE(c.level, gc.level) AS level,
+  c.stream,
+  COALESCE(c.id, gc.class_id) AS resolved_class_id,
+  gc.graduated_at
+`;
+
 const STUDENT_FROM_JOINS = `
   FROM students s
   LEFT JOIN classes c ON s.class_assigned_id = c.id
@@ -78,6 +93,18 @@ const STUDENT_SELECT_LEGACY = `
   c.stream
 `;
 
+const STUDENT_LIST_SELECT_LEGACY = `
+  s.id, s.tenant_id, s.first_name, s.last_name, s.gender, s.date_of_birth, s.nationality,
+  s.student_id, s.admission_number, s.class_assigned_id, s.guardian_name, s.guardian_contact,
+  s.home_address, s.number_of_siblings, s.names_of_siblings, s.previous_school, s.date_of_admission,
+  s.notes, s.is_beneficiary, s.beneficiary_type, s.discount_type, s.discount_value, s.beneficiary_notes,
+  s.enrollment_status, s.created_at, s.updated_at,
+  (CASE WHEN s.passport_photo_url IS NOT NULL AND length(s.passport_photo_url) > 0 THEN true ELSE false END) AS has_passport_photo,
+  c.class_name,
+  c.level,
+  c.stream
+`;
+
 async function queryStudentsList(
   tenantId: number,
   status: string,
@@ -92,7 +119,7 @@ async function queryStudentsList(
 
   try {
     const result = await query(
-      `SELECT ${STUDENT_SELECT_FIELDS}
+      `SELECT ${STUDENT_LIST_SELECT_FIELDS}
        ${STUDENT_FROM_JOINS}
        WHERE s.tenant_id = $1
          AND ($2::text = 'all' OR COALESCE(s.enrollment_status, 'active') = $2)
@@ -105,7 +132,7 @@ async function queryStudentsList(
     console.warn('Students list advanced query failed, using legacy:', (advancedErr as Error)?.message);
     try {
       const result = await query(
-        `SELECT ${STUDENT_SELECT_LEGACY}
+        `SELECT ${STUDENT_LIST_SELECT_LEGACY}
          ${STUDENT_FROM_JOINS_LEGACY}
          WHERE s.tenant_id = $1
            AND ($2::text = 'all' OR COALESCE(s.enrollment_status, 'active') = $2)
@@ -116,7 +143,7 @@ async function queryStudentsList(
       return result.rows;
     } catch {
       const result = await query(
-        `SELECT ${STUDENT_SELECT_LEGACY}
+        `SELECT ${STUDENT_LIST_SELECT_LEGACY}
          ${STUDENT_FROM_JOINS_LEGACY}
          WHERE s.tenant_id = $1
          ${classFilter}
@@ -165,6 +192,28 @@ router.get('/', async (req: AuthRequest, res) => {
   } catch (error) {
     console.error('Get students error:', error);
     res.status(500).json({ error: 'Failed to fetch students' });
+  }
+});
+
+// Get student passport photo only (lazy-loaded in list views)
+router.get('/:id/photo', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const { id } = req.params;
+
+    const result = await query(
+      'SELECT passport_photo_url FROM students WHERE id = $1 AND tenant_id = $2',
+      [id, tenantId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+
+    res.json({ passport_photo_url: result.rows[0].passport_photo_url || null });
+  } catch (error) {
+    console.error('Get student photo error:', error);
+    res.status(500).json({ error: 'Failed to fetch student photo' });
   }
 });
 

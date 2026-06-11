@@ -805,4 +805,242 @@ router.get('/income-vs-expenditure', async (req: AuthRequest, res) => {
   }
 });
 
+/**
+ * GET /api/reports/admin-overview
+ * Lightweight dashboard counts — no full student/payment lists.
+ */
+router.get('/admin-overview', async (req: AuthRequest, res) => {
+  try {
+    const { tenantId, termMatch, termLike, termOnly } = await loadReportPeriod(req);
+
+    const [countsRes, enrollmentRes, feeMixRes, classesRes] = await Promise.all([
+      query(
+        `SELECT
+          COUNT(*) FILTER (WHERE s.enrollment_status IS DISTINCT FROM 'graduated')::int AS student_total,
+          COUNT(*) FILTER (WHERE s.enrollment_status IS DISTINCT FROM 'graduated' AND LOWER(TRIM(COALESCE(s.gender, ''))) = 'male')::int AS student_male,
+          COUNT(*) FILTER (WHERE s.enrollment_status IS DISTINCT FROM 'graduated' AND LOWER(TRIM(COALESCE(s.gender, ''))) = 'female')::int AS student_female,
+          (SELECT COUNT(*)::int FROM teachers t WHERE t.tenant_id = $1) AS teacher_total,
+          (SELECT COUNT(*)::int FROM teachers t WHERE t.tenant_id = $1 AND LOWER(TRIM(COALESCE(t.gender, ''))) = 'male') AS teacher_male,
+          (SELECT COUNT(*)::int FROM teachers t WHERE t.tenant_id = $1 AND LOWER(TRIM(COALESCE(t.gender, ''))) = 'female') AS teacher_female,
+          (SELECT COUNT(*)::int FROM classes c WHERE c.tenant_id = $1 AND TRIM(COALESCE(c.class_name, '')) <> '') AS class_total
+        FROM students s
+        WHERE s.tenant_id = $1`,
+        [tenantId]
+      ),
+      query(
+        `SELECT TRIM(COALESCE(c.class_name, 'Unassigned')) AS full_name, COUNT(*)::int AS count
+         FROM students s
+         LEFT JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
+         WHERE s.tenant_id = $1 AND s.enrollment_status IS DISTINCT FROM 'graduated'
+         GROUP BY 1
+         ORDER BY count DESC, full_name ASC
+         LIMIT 20`,
+        [tenantId]
+      ),
+      query(
+        `WITH class_raw_fee AS (
+          SELECT c.id AS class_id, COALESCE(SUM(fs.amount), 0)::numeric AS raw_total
+          FROM classes c
+          LEFT JOIN fee_structures fs ON fs.class_id = c.id
+            AND (fs.tenant_id = $1 OR fs.tenant_id IS NULL)
+            AND (${TERM_PRED_FS})
+          WHERE c.tenant_id = $1
+          GROUP BY c.id
+        ),
+        student_arrears AS (
+          SELECT ta.student_id, COALESCE(SUM(ta.amount), 0)::numeric AS arrears_amt
+          FROM term_arrears ta
+          WHERE ta.tenant_id = $1 AND (${TERM_PRED_TA})
+          GROUP BY ta.student_id
+        ),
+        student_payments AS (
+          SELECT p.student_id, COALESCE(SUM(COALESCE(p.amount_paid, p.amount, 0)), 0)::numeric AS paid_amt
+          FROM payments p
+          WHERE p.tenant_id = $1 AND (${TERM_PRED_PAY})
+          GROUP BY p.student_id
+        ),
+        student_fee AS (
+          SELECT
+            s.id,
+            COALESCE(crf.raw_total, 0)::numeric AS raw_fee,
+            COALESCE(sa.arrears_amt, 0)::numeric AS arrears_amt,
+            COALESCE(sp.paid_amt, 0)::numeric AS paid_amt,
+            (${DISCOUNTED_TERM_FEE_SQL})::numeric AS term_fee
+          FROM students s
+          INNER JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
+          LEFT JOIN class_raw_fee crf ON crf.class_id = s.class_assigned_id
+          LEFT JOIN student_arrears sa ON sa.student_id = s.id
+          LEFT JOIN student_payments sp ON sp.student_id = s.id
+          WHERE s.tenant_id = $1 AND s.enrollment_status IS DISTINCT FROM 'graduated'
+        ),
+        categorized AS (
+          SELECT
+            CASE
+              WHEN raw_fee <= 0 AND arrears_amt <= 0 THEN 'noFee'
+              WHEN (term_fee + arrears_amt - paid_amt) < -0.01 THEN 'credit'
+              WHEN (term_fee + arrears_amt - paid_amt) <= 0.01 THEN 'paid'
+              ELSE 'owing'
+            END AS bucket,
+            GREATEST(0, term_fee + arrears_amt - paid_amt)::numeric AS owing_amt
+          FROM student_fee
+        )
+        SELECT
+          COUNT(*) FILTER (WHERE bucket = 'paid')::int AS paid,
+          COUNT(*) FILTER (WHERE bucket = 'owing')::int AS owing,
+          COUNT(*) FILTER (WHERE bucket = 'noFee')::int AS no_fee,
+          COUNT(*) FILTER (WHERE bucket = 'credit')::int AS credit,
+          COALESCE(SUM(CASE WHEN bucket = 'owing' THEN owing_amt ELSE 0 END), 0)::numeric AS total_owing
+        FROM categorized`,
+        [tenantId, termMatch, termLike, termOnly]
+      ),
+      query(
+        `SELECT TRIM(class_name) AS class_name
+         FROM classes
+         WHERE tenant_id = $1 AND TRIM(COALESCE(class_name, '')) <> ''
+         ORDER BY class_name ASC`,
+        [tenantId]
+      ),
+    ]);
+
+    const counts = countsRes.rows[0] || {};
+    const feeMix = feeMixRes.rows[0] || {};
+    const enrollmentByClass = enrollmentRes.rows.map((row) => {
+      const fullName = String(row.full_name || 'Unassigned');
+      return {
+        fullName,
+        name: fullName.length > 14 ? `${fullName.slice(0, 12)}…` : fullName,
+        count: Number(row.count) || 0,
+      };
+    });
+
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      students: {
+        total: Number(counts.student_total) || 0,
+        male: Number(counts.student_male) || 0,
+        female: Number(counts.student_female) || 0,
+        other: Math.max(
+          0,
+          (Number(counts.student_total) || 0) -
+            (Number(counts.student_male) || 0) -
+            (Number(counts.student_female) || 0)
+        ),
+      },
+      teachers: {
+        total: Number(counts.teacher_total) || 0,
+        male: Number(counts.teacher_male) || 0,
+        female: Number(counts.teacher_female) || 0,
+      },
+      classes: { total: Number(counts.class_total) || 0 },
+      feeStatus: {
+        paid: Number(feeMix.paid) || 0,
+        owing: Number(feeMix.owing) || 0,
+        noFee: Number(feeMix.no_fee) || 0,
+        credit: Number(feeMix.credit) || 0,
+        totalOwing: parseFloat(feeMix.total_owing) || 0,
+      },
+      enrollmentByClass,
+      classNames: classesRes.rows.map((r) => String(r.class_name)).filter(Boolean),
+    });
+  } catch (error) {
+    console.error('Admin overview error:', error);
+    res.status(500).json({ error: 'Failed to fetch admin overview' });
+  }
+});
+
+/**
+ * GET /api/reports/student-fee-roster
+ * Paginated student fee status rows for administrator dashboard table.
+ */
+router.get('/student-fee-roster', async (req: AuthRequest, res) => {
+  try {
+    const { tenantId, termMatch, termLike, termOnly } = await loadReportPeriod(req);
+    const className = String(req.query.className || '').trim();
+    const search = String(req.query.search || '').trim().toLowerCase();
+
+    const rosterQuery = `
+      WITH class_raw_fee AS (
+        SELECT c.id AS class_id, COALESCE(SUM(fs.amount), 0)::numeric AS raw_total
+        FROM classes c
+        LEFT JOIN fee_structures fs ON fs.class_id = c.id
+          AND (fs.tenant_id = $1 OR fs.tenant_id IS NULL)
+          AND (${TERM_PRED_FS})
+        WHERE c.tenant_id = $1
+        GROUP BY c.id
+      ),
+      student_arrears AS (
+        SELECT ta.student_id, COALESCE(SUM(ta.amount), 0)::numeric AS arrears_amt
+        FROM term_arrears ta
+        WHERE ta.tenant_id = $1 AND (${TERM_PRED_TA})
+        GROUP BY ta.student_id
+      ),
+      student_payments AS (
+        SELECT p.student_id, COALESCE(SUM(COALESCE(p.amount_paid, p.amount, 0)), 0)::numeric AS paid_amt
+        FROM payments p
+        WHERE p.tenant_id = $1 AND (${TERM_PRED_PAY})
+        GROUP BY p.student_id
+      ),
+      roster AS (
+        SELECT
+          s.id,
+          s.student_id,
+          s.admission_number,
+          s.first_name,
+          s.last_name,
+          TRIM(COALESCE(c.class_name, 'Unassigned')) AS class_name,
+          COALESCE(s.gender, '') AS gender,
+          LOWER(COALESCE(s.enrollment_status, 'active')) AS enrollment_status,
+          COALESCE(crf.raw_total, 0)::numeric AS raw_fee,
+          COALESCE(sa.arrears_amt, 0)::numeric AS arrears_amt,
+          COALESCE(sp.paid_amt, 0)::numeric AS paid_amt,
+          (${DISCOUNTED_TERM_FEE_SQL})::numeric AS term_fee
+        FROM students s
+        LEFT JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
+        LEFT JOIN class_raw_fee crf ON crf.class_id = s.class_assigned_id
+        LEFT JOIN student_arrears sa ON sa.student_id = s.id
+        LEFT JOIN student_payments sp ON sp.student_id = s.id
+        WHERE s.tenant_id = $1 AND s.enrollment_status IS DISTINCT FROM 'graduated'
+      )
+      SELECT
+        id,
+        student_id AS "studentId",
+        admission_number AS "admissionNumber",
+        first_name AS "firstName",
+        last_name AS "lastName",
+        class_name AS "className",
+        gender,
+        enrollment_status AS "enrollmentStatus",
+        CASE
+          WHEN raw_fee <= 0 AND arrears_amt <= 0 THEN 'No Fee Set'
+          WHEN (term_fee + arrears_amt - paid_amt) < -0.01 THEN 'Credit Balance'
+          WHEN (term_fee + arrears_amt - paid_amt) <= 0.01 THEN 'Fully Paid'
+          ELSE 'Amount Owing'
+        END AS "feeStatus",
+        CASE
+          WHEN raw_fee <= 0 AND arrears_amt <= 0 THEN 0
+          WHEN (term_fee + arrears_amt - paid_amt) < -0.01 THEN ABS(term_fee + arrears_amt - paid_amt)
+          WHEN (term_fee + arrears_amt - paid_amt) <= 0.01 THEN 0
+          ELSE GREATEST(0, term_fee + arrears_amt - paid_amt)
+        END::numeric AS balance
+      FROM roster
+      WHERE ($5 = '' OR class_name = $5)
+        AND (
+          $6 = ''
+          OR LOWER(first_name || ' ' || last_name) LIKE '%' || $6 || '%'
+          OR LOWER(student_id) LIKE '%' || $6 || '%'
+          OR LOWER(COALESCE(admission_number, '')) LIKE '%' || $6 || '%'
+        )
+      ORDER BY last_name ASC, first_name ASC
+      LIMIT 200
+    `;
+
+    const result = await query(rosterQuery, [tenantId, termMatch, termLike, termOnly, className, search]);
+    res.set('Cache-Control', 'no-store');
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Student fee roster error:', error);
+    res.status(500).json({ error: 'Failed to fetch student fee roster' });
+  }
+});
+
 export default router;

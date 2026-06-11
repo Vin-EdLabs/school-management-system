@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,12 +7,13 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useData } from '../../contexts/DataContext';
+import { useSchool } from '../../contexts/SchoolContext';
 import { useAudit } from '../../contexts/AuditContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { uploadStudentPhotoInBackground } from '@/hooks/useStudentCache';
 import { toast } from '@/hooks/use-toast';
 import { Camera, Trash2, GraduationCap as ScholarshipIcon, UserPlus, X } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
-import { apiService } from '../../services/api';
 
 interface Student {
   id: string;
@@ -58,6 +60,8 @@ function resolveMediaUrl(url: string | null | undefined): string | null {
 
 const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, onClose, onSuccess }) => {
   const { classes, updateStudent, students } = useData();
+  const queryClient = useQueryClient();
+  const { schoolId } = useSchool();
   const { addAuditLog } = useAudit();
   const { verifyPassword, user } = useAuth();
   const [formData, setFormData] = useState<Student | null>(null);
@@ -124,7 +128,6 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
   // Photo state
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  const [photoUploading, setPhotoUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -190,32 +193,35 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
   };
 
 
-  const performUpdate = async () => {
+  const performUpdate = () => {
     if (!formData) return;
-    setPhotoUploading(true);
-    try {
-      // Upload photo first if a new file was selected
-      if (photoFile) {
-        const result = await apiService.uploadStudentPhoto(formData.id, photoFile) as any;
-        if (result?.passport_photo_url) {
-          formData.passportPhotoUrl = result.passport_photo_url;
-        }
-      }
-      await updateStudent(formData.id, formData);
-      addAuditLog({
-        actionType: 'Edit',
-        module: 'Students',
-        itemId: formData.id,
-        itemName: `${formData.firstName} ${formData.lastName}`,
-        reason: 'Student information updated successfully'
-      });
-      toast({ title: "Student Updated", description: `${formData.firstName} ${formData.lastName} has been updated successfully` });
-      onSuccess();
-      onClose();
-    } catch (err: any) {
+    const photoToUpload = photoFile;
+    const photoPreviewUrl = photoPreview;
+    const snapshot = { ...formData };
+
+    addAuditLog({
+      actionType: 'Edit',
+      module: 'Students',
+      itemId: snapshot.id,
+      itemName: `${snapshot.firstName} ${snapshot.lastName}`,
+      reason: 'Student information updated successfully'
+    });
+    toast({ title: "Student Updated", description: `${snapshot.firstName} ${snapshot.lastName} has been updated successfully` });
+    onSuccess();
+    onClose();
+
+    void updateStudent(snapshot.id, snapshot).catch((err: Error) => {
       toast({ title: 'Update Failed', description: err?.message || 'Failed to update student', variant: 'destructive' });
-    } finally {
-      setPhotoUploading(false);
+    });
+
+    if (photoToUpload) {
+      void uploadStudentPhotoInBackground(
+        queryClient,
+        schoolId,
+        snapshot.id,
+        photoToUpload,
+        photoPreviewUrl || undefined
+      );
     }
   };
 
@@ -751,9 +757,9 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
 
           {!showPassword && (
             <DialogFooter className="form-action-bar shrink-0 gap-2 border-t border-border/70 px-6 py-4">
-              <Button type="button" variant="outline" onClick={onClose} disabled={photoUploading}>Cancel</Button>
-              <Button type="submit" variant="primaryAction" disabled={photoUploading}>
-                {photoUploading ? 'Saving…' : 'Update Student'}
+              <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+              <Button type="submit" variant="primaryAction">
+                Update Student
               </Button>
             </DialogFooter>
           )}

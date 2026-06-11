@@ -1,9 +1,19 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { apiService } from '../services/api';
 import { useAuth } from './AuthContext';
 import { useSchool } from './SchoolContext';
 import { useSocket } from './SocketContext';
+import { mapStudent, mapStudentToBackend } from '@/utils/studentMappers';
+import {
+  appendStudentToCache,
+  bindStudentsStateSync,
+  removeStudentFromCache,
+  replaceStudentInCache,
+  setStudentsCache,
+  studentsQueryKeys,
+} from '@/hooks/useStudentCache';
 
 export interface Student {
   id: string;
@@ -25,6 +35,8 @@ export interface Student {
   dateOfAdmission: string;
   notes: string;
   passportPhotoUrl?: string;
+  /** True when a photo exists on the server (list API omits the image bytes). */
+  hasPassportPhoto?: boolean;
   isBeneficiary?: boolean;
   beneficiaryType?: string;
   discountType?: 'percentage' | 'fixed';
@@ -132,6 +144,17 @@ interface Subject {
   level?: string;
 }
 
+export type DataDomain =
+  | 'students'
+  | 'teachers'
+  | 'classes'
+  | 'fees'
+  | 'payments'
+  | 'income'
+  | 'expenses'
+  | 'arrears'
+  | 'subjects';
+
 interface DataContextType {
   students: Student[];
   teachers: Teacher[];
@@ -143,7 +166,8 @@ interface DataContextType {
   subjects: Subject[];
   arrearsBalances: Record<string, number>;
   loading: boolean;
-  refresh: () => Promise<void>;
+  loadDomains: (domains: DataDomain[], options?: { silent?: boolean; force?: boolean }) => Promise<void>;
+  refresh: (domains?: DataDomain[]) => Promise<void>;
   addStudent: (student: Omit<Student, 'id' | 'studentId' | 'admissionNumber'>) => Promise<{ id: string; studentId: string; admissionNumber: string } | void>;
   updateStudent: (id: string, updates: Partial<Student>) => Promise<void>;
   setStudentStatus: (id: string, status: 'active' | 'inactive') => Promise<void>;
@@ -199,83 +223,6 @@ const formatDateForInput = (date: any): string => {
     return '';
   }
 };
-
-// Helper function to map backend student to frontend format
-const mapStudent = (backendStudent: any): Student => ({
-  id: backendStudent.id.toString(),
-  firstName: backendStudent.first_name,
-  lastName: backendStudent.last_name,
-  gender: backendStudent.gender || '',
-  dateOfBirth: formatDateForInput(backendStudent.date_of_birth),
-  nationality: backendStudent.nationality || '',
-  studentId: backendStudent.student_id,
-  admissionNumber: backendStudent.admission_number,
-  classAssigned: backendStudent.class_name || '',
-  classAssignedId:
-    backendStudent.class_assigned_id ??
-    (backendStudent.resolved_class_id != null ? Number(backendStudent.resolved_class_id) : undefined),
-  guardianName: backendStudent.guardian_name || '',
-  guardianContact: backendStudent.guardian_contact || '',
-  homeAddress: backendStudent.home_address || '',
-  numberOfSiblings: backendStudent.number_of_siblings || 0,
-  namesOfSiblings: backendStudent.names_of_siblings || '',
-  previousSchool: backendStudent.previous_school || '',
-  dateOfAdmission: formatDateForInput(backendStudent.date_of_admission),
-  notes: backendStudent.notes || '',
-  passportPhotoUrl: backendStudent.passport_photo_url || undefined,
-  isBeneficiary: !!backendStudent.is_beneficiary,
-  beneficiaryType: backendStudent.beneficiary_type || '',
-  ...(() => {
-    const isBen = !!backendStudent.is_beneficiary;
-    const rawType =
-      backendStudent.discount_type != null ? String(backendStudent.discount_type).trim() : '';
-    if (isBen) {
-      if (!rawType) {
-        return { discountType: 'percentage' as const, discountValue: 100 };
-      }
-      const discountType = rawType === 'fixed' ? ('fixed' as const) : ('percentage' as const);
-      const discountValue =
-        backendStudent.discount_value != null && backendStudent.discount_value !== ''
-          ? parseFloat(String(backendStudent.discount_value))
-          : discountType === 'percentage'
-            ? 100
-            : 0;
-      return { discountType, discountValue: Number.isFinite(discountValue) ? discountValue : discountType === 'percentage' ? 100 : 0 };
-    }
-    return {
-      discountType: (backendStudent.discount_type as 'percentage' | 'fixed') || 'percentage',
-      discountValue: backendStudent.discount_value ? parseFloat(String(backendStudent.discount_value)) : 0,
-    };
-  })(),
-  beneficiaryNotes: backendStudent.beneficiary_notes || '',
-  enrollmentStatus: (backendStudent.enrollment_status || 'active').toLowerCase(),
-  graduatedAt: backendStudent.graduated_at ? formatDateForInput(backendStudent.graduated_at) : undefined,
-});
-
-// Helper function to map frontend student to backend format
-const mapStudentToBackend = (student: Partial<Student>): any => ({
-  first_name: student.firstName,
-  last_name: student.lastName,
-  gender: student.gender,
-  date_of_birth: student.dateOfBirth,
-  nationality: student.nationality,
-  class_assigned_id: student.classAssignedId,
-  guardian_name: student.guardianName,
-  guardian_contact: student.guardianContact,
-  home_address: student.homeAddress,
-  number_of_siblings: student.numberOfSiblings,
-  names_of_siblings: student.namesOfSiblings,
-  previous_school: student.previousSchool,
-  date_of_admission: student.dateOfAdmission,
-  notes: student.notes,
-  passport_photo_url: student.passportPhotoUrl,
-  is_beneficiary: student.isBeneficiary,
-  beneficiary_type: student.isBeneficiary ? student.beneficiaryType ?? null : null,
-  discount_type: student.isBeneficiary ? student.discountType ?? null : null,
-  discount_value: student.isBeneficiary ? student.discountValue ?? null : null,
-  beneficiary_notes: student.beneficiaryNotes,
-  enrollment_status: student.enrollmentStatus,
-});
 
 // Helper function to map backend teacher to frontend format
 const mapTeacher = (backendTeacher: any): Teacher => ({
@@ -345,6 +292,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { isAuthenticated } = useAuth();
   const { schoolId } = useSchool();
   const { socket } = useSocket();
+  const queryClient = useQueryClient();
   const [students, setStudents] = useState<Student[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
@@ -360,156 +308,231 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     arrearsBalancesRef.current = arrearsBalances;
   }, [arrearsBalances]);
   const [loading, setLoading] = useState(false);
-  const [workspaceReady, setWorkspaceReady] = useState(false);
+  const loadedDomainsRef = useRef<Set<DataDomain>>(new Set());
+  const inFlightRef = useRef<Set<DataDomain>>(new Set());
   const loadGeneration = useRef(0);
+  const skipStudentSocketRefreshUntil = useRef(0);
+
+  const markStudentMutation = useCallback(() => {
+    skipStudentSocketRefreshUntil.current = Date.now() + 4000;
+  }, []);
 
   useEffect(() => {
-    if (!isAuthenticated) setWorkspaceReady(false);
-  }, [isAuthenticated]);
+    bindStudentsStateSync(setStudents);
+    return () => bindStudentsStateSync(null);
+  }, []);
+
+  const clearAllData = useCallback(() => {
+    loadedDomainsRef.current = new Set();
+    inFlightRef.current = new Set();
+    setStudents([]);
+    setTeachers([]);
+    setClasses([]);
+    setFeeStructures([]);
+    setPayments([]);
+    setIncome([]);
+    setExpenses([]);
+    setSubjects([]);
+    setArrearsBalances({});
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
-    setWorkspaceReady(false);
-  }, [schoolId]);
-
-  const loadData = useCallback(async (isSilent = false) => {
-    if (!isAuthenticated) {
-      setLoading(false);
-      setWorkspaceReady(false);
+    if (!isAuthenticated || schoolId == null) {
+      clearAllData();
       return;
     }
-    if (schoolId != null) {
-      apiService.setTenantContext(schoolId);
-    }
-    const gen = ++loadGeneration.current;
-    if (!isSilent) {
-      setLoading(true);
-    }
-    try {
-      const [studentsRes, teachersRes, classesRes, feesRes, paymentsRes, incomeRes, expensesRes, arrearsRes, subjectsRes] = await Promise.all([
-        apiService.get('/students?status=all').catch(() => []),
-        apiService.get('/teachers').catch(() => []),
-        apiService.get('/classes').catch(() => []),
-        apiService.get('/fees').catch(() => []),
-        apiService.get('/payments').catch(() => []),
-        apiService.get('/income').catch(() => []),
-        apiService.get('/expenses').catch(() => []),
-        apiService.get('/fee-calculations/arrears-balances').catch(() => ({})),
-        apiService.get('/subjects').catch(() => []),
-      ]);
+    clearAllData();
+    apiService.setTenantContext(schoolId);
+  }, [isAuthenticated, schoolId, clearAllData]);
 
-      setStudents((Array.isArray(studentsRes) ? studentsRes : []).map(mapStudent));
-      setTeachers((Array.isArray(teachersRes) ? teachersRes : []).map(mapTeacher));
-      setClasses((Array.isArray(classesRes) ? classesRes : []).map(mapClass));
-      setFeeStructures((Array.isArray(feesRes) ? feesRes : []).map((f: any) => ({
-        id: f.id.toString(),
-        className: f.class_name || '',
-        classId: f.class_id,
-        class_id: f.class_id,
-        class_name: f.class_name || '',
-        term: f.term,
-        amount: parseFloat(f.amount),
-        dueDate: formatDateForInput(f.due_date),
-        description: f.description || '',
-      })));
-      const rawPayments = Array.isArray(paymentsRes)
-        ? paymentsRes
-        : (paymentsRes && typeof paymentsRes === 'object' && Array.isArray((paymentsRes as any).data))
-          ? (paymentsRes as any).data
-          : [];
-      setPayments(rawPayments.map((p: any) => ({
-        id: (p.id ?? p.payment_id)?.toString() ?? '',
-        studentId: (p.student_id ?? p.studentId)?.toString() || '',
-        studentIdNum: p.student_id ?? p.studentId,
-        amount: parseFloat(p.amount ?? 0),
-        date: formatDateForInput(p.payment_date ?? p.date),
-        recordedAt: p.created_at ?? p.recorded_at ?? p.payment_date ?? p.date,
-        paymentMethod: p.payment_method ?? p.paymentMethod ?? '',
-        term: p.term ?? '',
-        notes: p.notes ?? '',
-        receiptNumber: p.receipt_number ?? p.receiptNumber,
-        receiptSnapshot: p.receipt_snapshot ?? p.receiptSnapshot ?? undefined,
-      })));
-      setIncome((Array.isArray(incomeRes) ? incomeRes : []).map((i: any) => ({
-        id: i.id.toString(),
-        source: i.source,
-        amount: parseFloat(i.amount),
-        date: formatDateForInput(i.income_date),
-        recordedAt: i.created_at ?? i.recorded_at ?? i.income_date,
-        paymentMethod: i.payment_method || '',
-        receivedBy: i.received_by || '',
-        notes: i.notes || '',
-        description: i.description,
-        category: i.category,
-      })));
-      setArrearsBalances(typeof arrearsRes === 'object' && arrearsRes !== null && !Array.isArray(arrearsRes) ? arrearsRes as Record<string, number> : {});
-      setExpenses((Array.isArray(expensesRes) ? expensesRes : []).map((e: any) => ({
-        id: e.id.toString(),
-        title: e.title,
-        category: e.category || '',
-        amount: parseFloat(e.amount),
-        payeeName: e.payee_name || '',
-        paymentDate: formatDateForInput(e.payment_date),
-        recordedAt: e.created_at ?? e.recorded_at ?? e.payment_date,
-        paymentMethod: e.payment_method || '',
-        purpose: e.purpose || '',
-        notes: e.notes || '',
-        description: e.description,
-        vendor: e.vendor,
-      })));
-      setSubjects((Array.isArray(subjectsRes) ? subjectsRes : []).map((s: any) => ({
-        id: s.id.toString(),
-        name: s.name,
-        code: s.code,
-        level: s.level,
-      })));
-    } catch (error) {
-      console.error('Error loading data:', error);
-    } finally {
-      if (gen === loadGeneration.current) {
-        setLoading(false);
-        setWorkspaceReady(true);
+  const fetchDomain = useCallback(async (domain: DataDomain) => {
+    switch (domain) {
+      case 'students': {
+        const studentsRes = await apiService.get('/students?status=all').catch(() => []);
+        const mapped = (Array.isArray(studentsRes) ? studentsRes : []).map(mapStudent);
+        setStudents(mapped);
+        setStudentsCache(queryClient, schoolId, mapped);
+        break;
       }
+      case 'teachers': {
+        const teachersRes = await apiService.get('/teachers').catch(() => []);
+        setTeachers((Array.isArray(teachersRes) ? teachersRes : []).map(mapTeacher));
+        break;
+      }
+      case 'classes': {
+        const classesRes = await apiService.get('/classes').catch(() => []);
+        setClasses((Array.isArray(classesRes) ? classesRes : []).map(mapClass));
+        break;
+      }
+      case 'fees': {
+        const feesRes = await apiService.get('/fees').catch(() => []);
+        setFeeStructures((Array.isArray(feesRes) ? feesRes : []).map((f: any) => ({
+          id: f.id.toString(),
+          className: f.class_name || '',
+          classId: f.class_id,
+          class_id: f.class_id,
+          class_name: f.class_name || '',
+          term: f.term,
+          amount: parseFloat(f.amount),
+          dueDate: formatDateForInput(f.due_date),
+          description: f.description || '',
+        })));
+        break;
+      }
+      case 'payments': {
+        const paymentsRes = await apiService.get('/payments').catch(() => []);
+        const rawPayments = Array.isArray(paymentsRes)
+          ? paymentsRes
+          : (paymentsRes && typeof paymentsRes === 'object' && Array.isArray((paymentsRes as any).data))
+            ? (paymentsRes as any).data
+            : [];
+        setPayments(rawPayments.map((p: any) => ({
+          id: (p.id ?? p.payment_id)?.toString() ?? '',
+          studentId: (p.student_id ?? p.studentId)?.toString() || '',
+          studentIdNum: p.student_id ?? p.studentId,
+          amount: parseFloat(p.amount ?? 0),
+          date: formatDateForInput(p.payment_date ?? p.date),
+          recordedAt: p.created_at ?? p.recorded_at ?? p.payment_date ?? p.date,
+          paymentMethod: p.payment_method ?? p.paymentMethod ?? '',
+          term: p.term ?? '',
+          notes: p.notes ?? '',
+          receiptNumber: p.receipt_number ?? p.receiptNumber,
+          receiptSnapshot: p.receipt_snapshot ?? p.receiptSnapshot ?? undefined,
+        })));
+        break;
+      }
+      case 'income': {
+        const incomeRes = await apiService.get('/income').catch(() => []);
+        setIncome((Array.isArray(incomeRes) ? incomeRes : []).map((i: any) => ({
+          id: i.id.toString(),
+          source: i.source,
+          amount: parseFloat(i.amount),
+          date: formatDateForInput(i.income_date),
+          recordedAt: i.created_at ?? i.recorded_at ?? i.income_date,
+          paymentMethod: i.payment_method || '',
+          receivedBy: i.received_by || '',
+          notes: i.notes || '',
+          description: i.description,
+          category: i.category,
+        })));
+        break;
+      }
+      case 'expenses': {
+        const expensesRes = await apiService.get('/expenses').catch(() => []);
+        setExpenses((Array.isArray(expensesRes) ? expensesRes : []).map((e: any) => ({
+          id: e.id.toString(),
+          title: e.title,
+          category: e.category || '',
+          amount: parseFloat(e.amount),
+          payeeName: e.payee_name || '',
+          paymentDate: formatDateForInput(e.payment_date),
+          recordedAt: e.created_at ?? e.recorded_at ?? e.payment_date,
+          paymentMethod: e.payment_method || '',
+          purpose: e.purpose || '',
+          notes: e.notes || '',
+          description: e.description,
+          vendor: e.vendor,
+        })));
+        break;
+      }
+      case 'arrears': {
+        const arrearsRes = await apiService.get('/fee-calculations/arrears-balances').catch(() => ({}));
+        setArrearsBalances(
+          typeof arrearsRes === 'object' && arrearsRes !== null && !Array.isArray(arrearsRes)
+            ? (arrearsRes as Record<string, number>)
+            : {}
+        );
+        break;
+      }
+      case 'subjects': {
+        const subjectsRes = await apiService.get('/subjects').catch(() => []);
+        setSubjects((Array.isArray(subjectsRes) ? subjectsRes : []).map((s: any) => ({
+          id: s.id.toString(),
+          name: s.name,
+          code: s.code,
+          level: s.level,
+        })));
+        break;
+      }
+      default:
+        break;
     }
-  }, [isAuthenticated, schoolId]);
+  }, [queryClient, schoolId]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  const loadDomains = useCallback(
+    async (domains: DataDomain[], options?: { silent?: boolean; force?: boolean }) => {
+      if (!isAuthenticated || schoolId == null || domains.length === 0) return;
+      apiService.setTenantContext(schoolId);
 
-  useEffect(() => {
-    if (!isAuthenticated) return;
+      const unique = Array.from(new Set(domains));
+      const toLoad = unique.filter((domain) => {
+        if (options?.force) return true;
+        if (inFlightRef.current.has(domain)) return false;
+        return !loadedDomainsRef.current.has(domain);
+      });
+      if (toLoad.length === 0) return;
 
-    // Keep UI fresh when user returns to tab/focus.
-    const onFocus = () => {
-      loadData(true).catch(() => undefined);
-    };
+      const gen = ++loadGeneration.current;
+      toLoad.forEach((domain) => inFlightRef.current.add(domain));
+      if (!options?.silent) setLoading(true);
 
-    window.addEventListener('focus', onFocus);
-    document.addEventListener('visibilitychange', onFocus);
+      try {
+        await Promise.all(
+          toLoad.map(async (domain) => {
+            await fetchDomain(domain);
+            loadedDomainsRef.current.add(domain);
+          })
+        );
+      } catch (error) {
+        console.error('Error loading domains:', error);
+      } finally {
+        toLoad.forEach((domain) => inFlightRef.current.delete(domain));
+        if (gen === loadGeneration.current) {
+          setLoading(false);
+        }
+      }
+    },
+    [fetchDomain, isAuthenticated, schoolId]
+  );
 
-    // Light polling as fallback in case other modules mutate data directly.
-    const interval = window.setInterval(() => {
-      loadData(true).catch(() => undefined);
-    }, 60000);
-
-    return () => {
-      window.removeEventListener('focus', onFocus);
-      document.removeEventListener('visibilitychange', onFocus);
-      window.clearInterval(interval);
-    };
-  }, [isAuthenticated, loadData]);
+  const refresh = useCallback(
+    async (domains?: DataDomain[]) => {
+      const target =
+        domains && domains.length > 0
+          ? domains
+          : Array.from(loadedDomainsRef.current);
+      if (target.length === 0) return;
+      await loadDomains(target, { force: true });
+    },
+    [loadDomains]
+  );
 
   useEffect(() => {
     if (!socket || !isAuthenticated) return;
 
+    const entityDomains: Record<string, DataDomain[]> = {
+      student: ['students', 'classes'],
+      teacher: ['teachers'],
+      class: ['classes', 'students'],
+      fee: ['fees'],
+      payment: ['payments', 'arrears'],
+      income: ['income'],
+      expense: ['expenses'],
+      subject: ['subjects'],
+    };
+
     let debounceTimer: ReturnType<typeof setTimeout> | undefined;
     const refreshNow = (payload?: { entity?: string }) => {
-      // Payment UI updates optimistically — avoid full reload that causes ~8s delay.
       if (payload?.entity === 'payment') return;
+      const entity = String(payload?.entity || '').toLowerCase();
+      if (entity === 'student' && Date.now() < skipStudentSocketRefreshUntil.current) return;
+      const domains = entityDomains[entity]?.filter((d) => loadedDomainsRef.current.has(d)) ?? [];
+      if (domains.length === 0) return;
       if (debounceTimer != null) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         debounceTimer = undefined;
-        loadData(true).catch(() => undefined);
+        void loadDomains(domains, { silent: true, force: true });
       }, 120);
     };
 
@@ -518,28 +541,71 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (debounceTimer != null) clearTimeout(debounceTimer);
       socket.off('tenant-data-changed', refreshNow);
     };
-  }, [socket, isAuthenticated, loadData]);
-
-  const refresh = useCallback(async () => {
-    await loadData();
-  }, [loadData]);
+  }, [socket, isAuthenticated, loadDomains]);
 
   // Student functions
   const addStudent = async (studentData: Omit<Student, 'id' | 'studentId' | 'admissionNumber'>) => {
-    const backendData = mapStudentToBackend(studentData);
-    const result = await apiService.post<any>('/students', backendData);
-    await loadData();
-    return result?.id ? {
-      id: result.id.toString(),
-      studentId: result.student_id,
-      admissionNumber: result.admission_number,
-    } : undefined;
+    markStudentMutation();
+    const optimisticId = `optimistic-${Date.now()}`;
+    const className =
+      studentData.classAssigned ||
+      classes.find((c) => c.id === String(studentData.classAssignedId))?.className ||
+      '';
+
+    const optimisticStudent: Student = {
+      ...studentData,
+      id: optimisticId,
+      studentId: '…',
+      admissionNumber: '…',
+      classAssigned: className,
+      enrollmentStatus: studentData.enrollmentStatus || 'active',
+    };
+
+    const previousStudents = students;
+    appendStudentToCache(queryClient, schoolId, optimisticStudent);
+
+    try {
+      const backendData = mapStudentToBackend(studentData);
+      const result = await apiService.post<Record<string, unknown>>('/students', backendData);
+      const newStudent = mapStudent(result);
+      replaceStudentInCache(queryClient, schoolId, optimisticId, newStudent);
+      return {
+        id: newStudent.id,
+        studentId: newStudent.studentId,
+        admissionNumber: newStudent.admissionNumber,
+      };
+    } catch (error) {
+      removeStudentFromCache(queryClient, schoolId, optimisticId);
+      setStudents(previousStudents);
+      setStudentsCache(queryClient, schoolId, previousStudents);
+      throw error;
+    }
   };
 
   const updateStudent = async (id: string, updates: Partial<Student>) => {
-    const backendData = mapStudentToBackend(updates);
-    await apiService.put(`/students/${id}`, backendData);
-    await loadData();
+    markStudentMutation();
+    const previousStudents = students;
+    const existing = students.find((s) => s.id === id);
+    if (!existing) {
+      throw new Error('Student not found');
+    }
+
+    const { passportPhotoUrl: _photo, ...rest } = updates;
+    const optimisticStudent: Student = { ...existing, ...rest };
+    replaceStudentInCache(queryClient, schoolId, id, optimisticStudent);
+
+    try {
+      const backendData = mapStudentToBackend(rest);
+      await apiService.put(`/students/${id}`, backendData);
+      const fresh = await apiService.get<Record<string, unknown>>(`/students/${id}`);
+      const mapped = mapStudent(fresh);
+      replaceStudentInCache(queryClient, schoolId, id, mapped);
+      queryClient.setQueryData(studentsQueryKeys.detail(schoolId, id), mapped);
+    } catch (error) {
+      setStudents(previousStudents);
+      setStudentsCache(queryClient, schoolId, previousStudents);
+      throw error;
+    }
   };
 
   const setStudentStatus = async (id: string, status: 'active' | 'inactive') => {
@@ -584,37 +650,35 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const addTeacher = async (teacherData: Omit<Teacher, 'id' | 'staffId'>) => {
     const backendData = mapTeacherToBackend(teacherData);
     const result = await apiService.post<any>('/teachers', backendData);
-    await loadData();
-    return result ? { loginStaffId: result.loginStaffId, loginPin: result.loginPin, loginMessage: result.loginMessage } : undefined;
+    await refresh(['teachers']);
   };
 
   const updateTeacher = async (id: string, updates: Partial<Teacher>) => {
     const backendData = mapTeacherToBackend(updates);
     await apiService.put(`/teachers/${id}`, backendData);
-    await loadData();
+    await refresh(['teachers']);
   };
 
   const deleteTeacher = async (id: string) => {
     await apiService.delete(`/teachers/${id}`);
-    await loadData();
+    await refresh(['teachers']);
   };
 
   // Class functions
   const addClass = async (classData: Omit<Class, 'id'>) => {
     const backendData = mapClassToBackend(classData);
-    const result = await apiService.post('/classes', backendData);
-    await loadData();
+    await refresh(['classes']);
   };
 
   const updateClass = async (id: string, updates: Partial<Class>) => {
     const backendData = mapClassToBackend(updates);
     await apiService.put(`/classes/${id}`, backendData);
-    await loadData();
+    await refresh(['classes']);
   };
 
   const deleteClass = async (id: string) => {
     await apiService.delete(`/classes/${id}`);
-    await loadData();
+    await refresh(['classes', 'students']);
   };
 
   // Fee and Payment functions
@@ -626,7 +690,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       due_date: feeData.dueDate,
       description: feeData.description,
     });
-    await loadData();
+    await refresh(['fees']);
   };
 
   const updateFeeStructure = async (id: string, feeData: Partial<FeeStructure>) => {
@@ -637,12 +701,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (feeData.dueDate !== undefined) body.due_date = feeData.dueDate;
     if (feeData.description !== undefined) body.description = feeData.description;
     await apiService.put(`/fees/${id}`, body);
-    await loadData();
+    await refresh(['fees']);
   };
 
   const deleteFeeStructure = async (id: string) => {
     await apiService.delete(`/fees/${id}`);
-    await loadData();
+    await refresh(['fees']);
   };
 
   const addPayment = async (paymentData: Omit<Payment, 'id'> & { academicYear?: string }): Promise<{ payment: Payment; balance?: any }> => {
@@ -696,7 +760,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       description: incomeData.description,
       category: incomeData.category,
     });
-    await loadData();
+    await refresh(['income']);
   };
 
   const addExpense = async (expenseData: Omit<Expense, 'id'>) => {
@@ -712,22 +776,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       description: expenseData.description,
       vendor: expenseData.vendor,
     });
-    await loadData();
+    await refresh(['expenses']);
   };
 
   const addSubject = async (subjectData: Omit<Subject, 'id'>) => {
     await apiService.post('/subjects', subjectData);
-    await loadData();
+    await refresh(['subjects']);
   };
 
   const updateSubject = async (id: string, subjectData: Partial<Subject>) => {
     await apiService.put(`/subjects/${id}`, subjectData);
-    await loadData();
+    await refresh(['subjects']);
   };
 
   const deleteSubject = async (id: string) => {
     await apiService.delete(`/subjects/${id}`);
-    await loadData();
+    await refresh(['subjects']);
   };
 
   // Promotion functions
@@ -739,7 +803,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         current_term: currentTerm,
         academic_year: academicYear,
       });
-      await loadData();
+      await refresh(['students', 'classes']);
     }
   };
 
@@ -750,7 +814,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await apiService.post(`/classes/${currentClassObj.id}/promote`, {
         new_class_id: parseInt(newClassObj.id),
       });
-      await loadData();
+      await refresh(['students', 'classes']);
     }
   };
 
@@ -763,7 +827,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       `/classes/${currentClassObj.id}/graduate-to-alumni`,
       {}
     );
-    await loadData();
+    await refresh(['students', 'classes']);
     return { graduated: result.graduated ?? 0 };
   };
 
@@ -779,7 +843,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       subjects,
       arrearsBalances,
       loading,
-      workspaceReady,
+      loadDomains,
       refresh,
       addStudent,
       updateStudent,

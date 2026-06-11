@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import SidebarWrapper from './SidebarWrapper';
 import DashboardHome from './dashboard/DashboardHome';
 import AdministratorDashboard from './dashboard/AdministratorDashboard';
@@ -36,15 +36,12 @@ import ParentAccountsModule from './parent/ParentAccountsModule';
 import EndOfYearWizard from './academic/EndOfYearWizard';
 import SetupProgressGate from './onboarding/SetupProgressGate';
 import { useAuth } from '../contexts/AuthContext';
-import { useSchool } from '../contexts/SchoolContext';
-import { useData } from '../contexts/DataContext';
 import { useStaffPushSync } from '../hooks/useStaffPushSync';
-import { BrandedLoadingScreen } from '@/components/common/BrandedLoading';
+import { useEnsureData } from '../hooks/useEnsureData';
+import { domainsForModule } from '../config/moduleDataNeeds';
 
 const Dashboard = () => {
   const { hasAccess, user } = useAuth();
-  const { school } = useSchool();
-  const { workspaceReady, refresh } = useData();
   useStaffPushSync();
   const [activeModule, setActiveModule] = useState(() => {
     if (window.location.pathname.includes('/finance/transactions')) {
@@ -61,6 +58,9 @@ const Dashboard = () => {
       return 'dashboard'; // super-admin
     }
   });
+
+  const domains = useMemo(() => domainsForModule(activeModule), [activeModule]);
+  useEnsureData(domains);
 
   const renderActiveModule = () => {
     // Check access before rendering
@@ -155,19 +155,6 @@ const Dashboard = () => {
         return <DashboardHome />;
     }
   };
-
-  if (!workspaceReady) {
-    return (
-      <SidebarWrapper activeModule={activeModule} setActiveModule={setActiveModule}>
-        <BrandedLoadingScreen
-          logoUrl={school?.logo_url}
-          label="Loading your workspace…"
-          active={!workspaceReady}
-          onRetry={() => void refresh()}
-        />
-      </SidebarWrapper>
-    );
-  }
 
   return (
     <SidebarWrapper

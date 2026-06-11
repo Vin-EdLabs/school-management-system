@@ -809,13 +809,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     }
   }, [token, loadServerNotifications]);
 
-  useEffect(() => {
-    if (!token) return;
-    const autoHardRefresh = window.setInterval(() => {
-      hardRefreshApp().catch(() => undefined);
-    }, 60000);
-    return () => window.clearInterval(autoHardRefresh);
-  }, [token, hardRefreshApp]);
+  // Tab-scoped fetches only — no background bulk refresh of every parent endpoint.
 
   const openReceipt = (payment: any) => {
     if (!student || !finance) return;

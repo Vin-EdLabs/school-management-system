@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { GraduationCap, Search, Eye, Pencil } from 'lucide-react';
 import {
   enrollmentStatusLabel,
@@ -13,7 +12,7 @@ import {
   normalizeEnrollmentStatus,
   statusBadgeClass,
 } from './studentRegistryUtils';
-import { resolveLogoUrl } from '@/services/tenantService';
+import LazyStudentAvatar from './LazyStudentAvatar';
 import { formatDisplayDate } from '@/utils/dateFormat';
 import { cn } from '@/lib/utils';
 import StudentDetailsDialog from './StudentDetailsDialog';
@@ -124,15 +123,15 @@ const AlumniStudents: React.FC = () => {
                         }
                       }}
                     >
-                      <Avatar className="h-11 w-11 rounded-xl border border-border/80">
-                        {s.passportPhotoUrl ? (
-                          <AvatarImage src={resolveLogoUrl(s.passportPhotoUrl) || undefined} alt="" className="object-cover" />
-                        ) : null}
-                        <AvatarFallback className="rounded-xl text-xs font-semibold">
-                          {s.firstName?.[0]}
-                          {s.lastName?.[0]}
-                        </AvatarFallback>
-                      </Avatar>
+                      <LazyStudentAvatar
+                        studentId={s.id}
+                        firstName={s.firstName}
+                        lastName={s.lastName}
+                        photoUrl={s.passportPhotoUrl}
+                        hasPassportPhoto={s.hasPassportPhoto}
+                        className="h-11 w-11 rounded-xl"
+                        fallbackClassName="rounded-xl"
+                      />
                       <div className="min-w-0 flex-1">
                         <p className="font-medium text-foreground">
                           {s.firstName} {s.lastName}

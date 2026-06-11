@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { School, Users, ClipboardCheck, BookOpen, Wallet, CheckCircle, XCircle } from 'lucide-react';
 import { apiService } from '../../services/api';
 import { useSchool } from '../../contexts/SchoolContext';
-import { useData } from '../../contexts/DataContext';
 import { type TeacherMySalaryResponse, formatTeacherMoney, salaryStatusBadgeClass } from './teacherSalaryPortal';
 import { formatDisplayDate } from '../../utils/dateFormat';
 
@@ -42,7 +41,6 @@ const resolvePhotoUrl = (photoUrl?: string | null) => {
 
 const TeacherDashboard = () => {
   const { schoolId } = useSchool();
-  const { students } = useData();
   const [profile, setProfile] = useState<TeacherProfile | null>(null);
   const [teacherClasses, setTeacherClasses] = useState<TeacherClass[]>([]);
   const [salaryInfo, setSalaryInfo] = useState<SalaryInfo | null>(null);
@@ -76,10 +74,7 @@ const TeacherDashboard = () => {
     load();
   }, [schoolId]);
 
-  const teacherStudents = profile
-    ? students.filter(s => teacherClasses.some(c => s.classAssigned === c.class_name || (s.classAssignedId && String(s.classAssignedId) === String(c.id))))
-    : [];
-  const totalStudents = teacherStudents.length || teacherClasses.reduce((sum, c) => sum + parseInt(c.student_count || '0', 10), 0);
+  const totalStudents = teacherClasses.reduce((sum, c) => sum + parseInt(c.student_count || '0', 10), 0);
 
   if (loading) {
     return (
@@ -289,35 +284,24 @@ const TeacherDashboard = () => {
         </Card>
       </div>
 
-      {/* Students Overview */}
-      {teacherStudents.length > 0 && (
+      {/* Class overview — counts only; open My Classes for full rosters */}
+      {teacherClasses.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <Users className="w-5 h-5" />
-              <span>My Students ({teacherStudents.length})</span>
+              <span>My classes ({totalStudents} students)</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {teacherStudents.slice(0, 6).map((student) => (
-                <div key={student.id} className="flex items-center space-x-3 min-h-[52px] p-3 bg-gray-50 dark:bg-gray-900/40 rounded-xl">
-                  <div className="w-8 h-8 rounded-full overflow-hidden bg-blue-500 flex items-center justify-center text-white text-sm font-bold">
-                    {student.passportPhotoUrl ? (
-                      <img
-                        src={resolvePhotoUrl(student.passportPhotoUrl)}
-                        alt={`${student.firstName} ${student.lastName}`}
-                        className="w-full h-full object-cover"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <>{student.firstName.charAt(0)}{student.lastName.charAt(0)}</>
-                    )}
-                  </div>
+              {teacherClasses.map((cls) => (
+                <div key={cls.id} className="flex items-center justify-between min-h-[52px] p-3 bg-gray-50 dark:bg-gray-900/40 rounded-xl">
                   <div>
-                    <p className="font-medium text-gray-900">{student.firstName} {student.lastName}</p>
-                    <p className="text-sm text-gray-500">{student.studentId}</p>
+                    <p className="font-medium text-gray-900">{cls.class_name}</p>
+                    <p className="text-sm text-gray-500">{cls.level || 'Class'} · {cls.stream || 'Main'}</p>
                   </div>
+                  <Badge variant="secondary">{parseInt(cls.student_count || '0', 10)} students</Badge>
                 </div>
               ))}
             </div>

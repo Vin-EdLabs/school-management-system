@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -6,7 +7,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useData } from '../../contexts/DataContext';
-import { apiService } from '../../services/api';
+import { useSchool } from '../../contexts/SchoolContext';
+import { uploadStudentPhotoInBackground } from '@/hooks/useStudentCache';
 import { toast } from '@/hooks/use-toast';
 import { Loader2, Save, UserPlus, Camera, X, GraduationCap as ScholarshipIcon } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
@@ -25,6 +27,8 @@ function resolveMediaUrl(url: string | null | undefined): string | null {
 
 const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
   const { addStudent, classes, students } = useData();
+  const queryClient = useQueryClient();
+  const { schoolId } = useSchool();
   const [passportPhoto, setPassportPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [siblingSearch, setSiblingSearch] = useState('');
@@ -159,15 +163,13 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
     const classAssignedId = classObj ? parseInt(classObj.id, 10) : undefined;
 
     setIsSubmitting(true);
+    const photoToUpload = passportPhoto;
+    const photoPreviewUrl = photoPreview;
     try {
       const created = await addStudent({
         ...formData,
         classAssignedId,
       });
-
-      if (created && passportPhoto) {
-        await apiService.uploadStudentPhoto(created.id, passportPhoto);
-      }
 
       toast({
         title: "Student Added Successfully",
@@ -175,6 +177,16 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
           ? `${formData.firstName} ${formData.lastName} — Student ID: ${created.studentId}, Admission: ${created.admissionNumber}`
           : `${formData.firstName} ${formData.lastName} has been added to the system`,
       });
+
+      if (created && photoToUpload) {
+        void uploadStudentPhotoInBackground(
+          queryClient,
+          schoolId,
+          created.id,
+          photoToUpload,
+          photoPreviewUrl || undefined
+        );
+      }
 
       setFormData({
         firstName: '',

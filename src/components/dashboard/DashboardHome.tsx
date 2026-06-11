@@ -1,16 +1,13 @@
 import React, { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useData } from '../../contexts/DataContext';
 import {
   getActiveAcademicTerm,
   getActiveAcademicYear,
-  calculateStudentFeesSync,
-  dateMatchesAcademicYearSetting,
   getDashboardCalendarYearForMonthlyChart,
 } from '../../utils/feeCalculations';
-import { formatDisplayDate } from '../../utils/dateFormat';
 import FinancialSummary from './FinancialSummary';
+import { useAdminOverview, useFinancialSummary, useIncomeVsExpenditure } from '../../hooks/useReportQueries';
 import {
   Users,
   CreditCard,
@@ -59,61 +56,22 @@ function EmptyChart({ label }: { label: string }) {
 }
 
 const DashboardHome = () => {
-  const { students, teachers, classes = [], payments, expenses, feeStructures, income, arrearsBalances } = useData();
+  const { data: overview } = useAdminOverview();
+  const { data: financial } = useFinancialSummary();
+  const { data: monthlyRows = [] } = useIncomeVsExpenditure();
 
   const currentTerm = getActiveAcademicTerm();
   const currentYear = getActiveAcademicYear();
 
-  const termMatch = (term: string | undefined | null) => {
-    const pt = term || '';
-    return pt === currentTerm || pt.includes(currentTerm) || currentTerm.includes(pt);
-  };
-
   const stats = useMemo(() => {
-    const totalStudents = students.length;
-    const totalTeachers = teachers.length;
-
-    const feesCollectedThisTerm = payments
-      .filter((payment) => termMatch(payment.term))
-      .reduce((sum, payment) => sum + payment.amount, 0);
-
-    const otherIncomeThisYear = income
-      .filter((inc) => inc.category !== 'Fee Payment')
-      .filter((inc) => {
-        const d = new Date(inc.date);
-        return dateMatchesAcademicYearSetting(d, currentYear);
-      })
-      .reduce((sum, inc) => sum + inc.amount, 0);
-
+    const totalStudents = overview?.students.total ?? 0;
+    const totalTeachers = overview?.teachers.total ?? 0;
+    const feesCollectedThisTerm = financial?.collected ?? 0;
+    const otherIncomeThisYear = financial?.otherIncome ?? 0;
     const totalIncome = feesCollectedThisTerm + otherIncomeThisYear;
-
-    const expensesThisYear = expenses
-      .filter((expense) => {
-        const expenseDate = new Date(expense.paymentDate);
-        return dateMatchesAcademicYearSetting(expenseDate, currentYear);
-      })
-      .reduce((sum, expense) => sum + expense.amount, 0);
-
-    const netBalance = totalIncome - expensesThisYear;
-
-    const outstandingBalances = students.reduce((totalOwed, student) => {
-      const feeCalc = calculateStudentFeesSync(
-        student.id,
-        currentTerm,
-        student.classAssigned,
-        feeStructures || [],
-        payments || [],
-        student.classAssignedId,
-        arrearsBalances,
-        {
-          isBeneficiary: !!student.isBeneficiary,
-          discountType: student.discountType,
-          discountValue: student.discountValue,
-        }
-      );
-      const outstanding = Math.max(0, (feeCalc.totalAmountDue ?? feeCalc.currentTermFee) - feeCalc.totalPaid);
-      return totalOwed + outstanding;
-    }, 0);
+    const expensesThisYear = financial?.totalExpenses ?? 0;
+    const netBalance = financial?.netBalance ?? totalIncome - expensesThisYear;
+    const outstandingBalances = financial?.outstanding ?? 0;
 
     return {
       totalStudents,
@@ -125,90 +83,40 @@ const DashboardHome = () => {
       netBalance,
       outstandingBalances,
     };
-  }, [students, teachers, payments, income, expenses, feeStructures, arrearsBalances, currentTerm, currentYear]);
+  }, [overview, financial]);
 
-  const classFeesData = useMemo(() => {
-    const uniqueClassNames = [...new Set(classes.map((c) => c.className).filter(Boolean))];
-    return uniqueClassNames.map((className) => ({
-      name: className.length > 14 ? `${className.slice(0, 12)}…` : className,
-      fullName: className,
-      fees: payments
-        .filter((payment) => {
-          const student = students.find((s) => s.id === payment.studentId);
-          return student && student.classAssigned === className && termMatch(payment.term);
-        })
-        .reduce((sum, payment) => sum + payment.amount, 0),
-    }));
-  }, [classes, payments, students, currentTerm]);
-
-  const expenseChartData = useMemo(() => {
-    const expenseCategories = expenses
-      .filter((expense) => dateMatchesAcademicYearSetting(new Date(expense.paymentDate), currentYear))
-      .reduce(
-        (acc, expense) => {
-          const c = expense.category || 'Other';
-          acc[c] = (acc[c] || 0) + expense.amount;
-          return acc;
-        },
-        {} as Record<string, number>
-      );
-    return Object.entries(expenseCategories).map(([name, value]) => ({ name, value }));
-  }, [expenses, currentYear]);
-
-  const monthlyCash = useMemo(() => {
-    const y = getDashboardCalendarYearForMonthlyChart(currentYear);
-    return Array.from({ length: 12 }, (_, i) => {
-      const label = new Date(parseInt(y, 10), i, 1).toLocaleDateString('en-US', { month: 'short' });
-      const feesInMonth = payments
-        .filter((p) => {
-          const d = new Date(p.date);
-          return d.getMonth() === i && d.getFullYear().toString() === y;
-        })
-        .reduce((s, p) => s + p.amount, 0);
-      const otherInMonth = income
-        .filter((inc) => inc.category !== 'Fee Payment')
-        .filter((inc) => {
-          const d = new Date(inc.date);
-          return d.getMonth() === i && d.getFullYear().toString() === y;
-        })
-        .reduce((s, inc) => s + inc.amount, 0);
-      const expInMonth = expenses
-        .filter((ex) => {
-          const d = new Date(ex.paymentDate);
-          return d.getMonth() === i && d.getFullYear().toString() === y;
-        })
-        .reduce((s, ex) => s + ex.amount, 0);
-      return {
-        month: label,
-        income: feesInMonth + otherInMonth,
-        expenses: expInMonth,
-        net: feesInMonth + otherInMonth - expInMonth,
-      };
-    });
-  }, [payments, income, expenses, currentYear]);
-
-  const recentActivities = useMemo(
+  const classFeesData = useMemo(
     () =>
-      [
-        ...payments.slice(-3).map((payment) => {
-          const student = students.find((s) => s.id === payment.studentId);
-          return {
-            text: `GHS ${payment.amount.toLocaleString()} payment — ${student?.firstName} ${student?.lastName}, ${student?.classAssigned}`,
-            time: formatDisplayDate(payment.date),
-            type: 'payment' as const,
-          };
-        }),
-        ...expenses.slice(-2).map((expense) => ({
-          text: `GHS ${expense.amount.toLocaleString()} expense — ${expense.title}`,
-          time: formatDisplayDate(expense.paymentDate),
-          type: 'expense' as const,
-        })),
-      ].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()),
-    [payments, expenses, students]
+      (overview?.enrollmentByClass ?? []).map((row) => ({
+        name: row.name,
+        fullName: row.fullName,
+        fees: 0,
+        count: row.count,
+      })),
+    [overview]
   );
 
+  const expenseChartData = useMemo(() => {
+    if (!financial) return [];
+    if (financial.totalExpenses <= 0) return [];
+    return [{ name: 'Expenses', value: financial.totalExpenses }];
+  }, [financial]);
+
+  const monthlyCash = useMemo(
+    () =>
+      monthlyRows.map((row) => ({
+        month: row.name.split(' ')[0] ?? row.name,
+        income: Number(row.income) || 0,
+        expenses: Number(row.expense) || 0,
+        net: (Number(row.income) || 0) - (Number(row.expense) || 0),
+      })),
+    [monthlyRows]
+  );
+
+  const recentActivities: Array<{ text: string; time: string; type: 'payment' | 'expense' }> = [];
+
   const hasMonthly = monthlyCash.some((m) => m.income > 0 || m.expenses > 0);
-  const hasClassFees = classFeesData.some((c) => c.fees > 0);
+  const hasClassFees = classFeesData.some((c) => c.count > 0);
   const hasExpensePie = expenseChartData.length > 0;
   const monthlyChartCalendarYear = getDashboardCalendarYearForMonthlyChart(currentYear);
 
@@ -374,7 +282,7 @@ const DashboardHome = () => {
                         contentStyle={tooltipStyle}
                         labelFormatter={(_, p) => (p?.[0]?.payload as { fullName?: string })?.fullName ?? ''}
                       />
-                      <Bar dataKey="fees" name="Fees" fill="#0ea5e9" radius={[0, 6, 6, 0]} barSize={18} />
+                      <Bar dataKey="count" name="Students" fill="#0ea5e9" radius={[0, 6, 6, 0]} barSize={18} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>

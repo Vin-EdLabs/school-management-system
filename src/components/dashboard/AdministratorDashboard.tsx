@@ -7,8 +7,8 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
-import { useData, type Student } from '../../contexts/DataContext';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
+import { useAdminOverview, useStudentFeeRoster } from '../../hooks/useReportQueries';
 import {
   Users,
   GraduationCap,
@@ -21,7 +21,6 @@ import {
   Search,
   Sparkles,
 } from 'lucide-react';
-import { calculateStudentFeesSync, calculateStudentFeeStatusSync } from '../../utils/feeCalculations';
 import { cn } from '@/lib/utils';
 import { enrollmentStatusLabel } from '../students/studentRegistryUtils';
 import {
@@ -52,17 +51,6 @@ const tooltipStyle = {
   color: 'hsl(var(--foreground))',
 };
 
-function feeStatusForDashboard(sync: ReturnType<typeof calculateStudentFeeStatusSync>) {
-  if (sync.status === 'Paid') return { status: 'Fully Paid' as const, balance: 0 };
-  if (sync.status === 'Credit Balance') return { status: 'Credit Balance' as const, balance: sync.balance };
-  if (sync.status === 'No Fee Set') return { status: 'No Fee Set' as const, balance: 0 };
-  return { status: 'Amount Owing' as const, balance: sync.balance };
-}
-
-type StudentWithFee = Student & {
-  feeStatus: ReturnType<typeof feeStatusForDashboard>;
-};
-
 function EmptyState({ title, hint }: { title: string; hint: string }) {
   return (
     <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border/80 bg-muted/20 px-6 py-14 text-center">
@@ -74,87 +62,41 @@ function EmptyState({ title, hint }: { title: string; hint: string }) {
 }
 
 const AdministratorDashboard = () => {
-  const { students, teachers, classes, payments, feeStructures, arrearsBalances, loading, workspaceReady, refresh } = useData();
   const { currentTerm: activeAcademicTerm, currentYear: activeAcademicYear, isLoading: termLoading, refresh: refreshTerm } = useActiveTerm();
   const [selectedClass, setSelectedClass] = useState('all-classes');
   const [search, setSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
+  const classFilter = selectedClass === 'all-classes' ? '' : selectedClass;
+  const { data: overview, isLoading: overviewLoading, refetch: refetchOverview } = useAdminOverview();
+  const { data: roster = [], isLoading: rosterLoading, refetch: refetchRoster } = useStudentFeeRoster({
+    className: classFilter,
+    search,
+  });
+
   const handleRefreshAll = useCallback(async () => {
     setRefreshing(true);
     try {
-      await Promise.all([refresh(), refreshTerm()]);
+      await Promise.all([refetchOverview(), refetchRoster(), refreshTerm()]);
     } finally {
       setRefreshing(false);
     }
-  }, [refresh, refreshTerm]);
+  }, [refetchOverview, refetchRoster, refreshTerm]);
 
-  const dataLoading = loading || !workspaceReady;
+  const dataLoading = overviewLoading || rosterLoading;
 
-  const totalStudents = students.length;
-  const maleStudents = students.filter((s) => s.gender === 'Male').length;
-  const femaleStudents = students.filter((s) => s.gender === 'Female').length;
-  const otherGenderStudents = Math.max(0, totalStudents - maleStudents - femaleStudents);
-
-  const totalTeachers = teachers.length;
-  const maleTeachers = teachers.filter((t) => t.gender === 'Male').length;
-  const femaleTeachers = teachers.filter((t) => t.gender === 'Female').length;
-
-  const activeClasses = classes.filter((cls) => cls.className && cls.className.trim() !== '').length;
-
-  const filteredStudents = useMemo(
-    () =>
-      selectedClass === 'all-classes'
-        ? students
-        : students.filter((student) => student.classAssigned === selectedClass),
-    [students, selectedClass]
-  );
-
-  const studentsWithFeeStatus: StudentWithFee[] = useMemo(() => {
-    const term = activeAcademicTerm?.trim() || '';
-    if (!term || term === 'Not Set') {
-      return filteredStudents.map((student) => ({
-        ...student,
-        feeStatus: { status: 'No Fee Set' as const, balance: 0 },
-      }));
-    }
-    return filteredStudents.map((student) => {
-      const feeCalc = calculateStudentFeesSync(
-        student.id,
-        term,
-        student.classAssigned,
-        feeStructures,
-        payments,
-        student.classAssignedId,
-        arrearsBalances,
-        {
-          isBeneficiary: !!student.isBeneficiary,
-          discountType: student.discountType,
-          discountValue: student.discountValue,
-        }
-      );
-      const sync = calculateStudentFeeStatusSync(feeCalc);
-      return { ...student, feeStatus: feeStatusForDashboard(sync) };
-    });
-  }, [filteredStudents, activeAcademicTerm, feeStructures, payments, arrearsBalances]);
-
-  const feeCounts = useMemo(() => {
-    let paid = 0;
-    let owing = 0;
-    let noFee = 0;
-    let credit = 0;
-    for (const s of studentsWithFeeStatus) {
-      if (s.feeStatus.status === 'Fully Paid') paid++;
-      else if (s.feeStatus.status === 'Amount Owing') owing++;
-      else if (s.feeStatus.status === 'No Fee Set') noFee++;
-      else if (s.feeStatus.status === 'Credit Balance') credit++;
-    }
-    return { paid, owing, noFee, credit };
-  }, [studentsWithFeeStatus]);
-
-  const totalOwing = studentsWithFeeStatus
-    .filter((s) => s.feeStatus.status === 'Amount Owing')
-    .reduce((sum, s) => sum + s.feeStatus.balance, 0);
+  const totalStudents = overview?.students.total ?? 0;
+  const maleStudents = overview?.students.male ?? 0;
+  const femaleStudents = overview?.students.female ?? 0;
+  const otherGenderStudents = overview?.students.other ?? 0;
+  const totalTeachers = overview?.teachers.total ?? 0;
+  const maleTeachers = overview?.teachers.male ?? 0;
+  const femaleTeachers = overview?.teachers.female ?? 0;
+  const activeClasses = overview?.classes.total ?? 0;
+  const feeCounts = overview?.feeStatus ?? { paid: 0, owing: 0, noFee: 0, credit: 0, totalOwing: 0 };
+  const enrollmentByClass = overview?.enrollmentByClass ?? [];
+  const classNames = overview?.classNames ?? [];
+  const totalOwing = feeCounts.totalOwing ?? 0;
 
   const pieData = useMemo(
     () =>
@@ -166,33 +108,6 @@ const AdministratorDashboard = () => {
       ].filter((d) => d.value > 0),
     [feeCounts]
   );
-
-  const enrollmentByClass = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const s of students) {
-      const c = (s.classAssigned || 'Unassigned').trim() || 'Unassigned';
-      map.set(c, (map.get(c) || 0) + 1);
-    }
-    return Array.from(map.entries())
-      .map(([fullName, count]) => ({
-        name: fullName.length > 14 ? `${fullName.slice(0, 12)}…` : fullName,
-        fullName,
-        count,
-      }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 14);
-  }, [students]);
-
-  const searchLower = search.trim().toLowerCase();
-  const displayedStudents = useMemo(() => {
-    if (!searchLower) return studentsWithFeeStatus;
-    return studentsWithFeeStatus.filter((s) => {
-      const name = `${s.firstName} ${s.lastName}`.toLowerCase();
-      const id = (s.studentId || '').toLowerCase();
-      const adm = (s.admissionNumber || '').toLowerCase();
-      return name.includes(searchLower) || id.includes(searchLower) || adm.includes(searchLower);
-    });
-  }, [studentsWithFeeStatus, searchLower]);
 
   const kpiCards = [
     {
@@ -432,13 +347,11 @@ const AdministratorDashboard = () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all-classes">All classes</SelectItem>
-                    {classes
-                      .filter((cls) => cls.className && cls.className.trim() !== '')
-                      .map((cls) => (
-                        <SelectItem key={cls.id} value={cls.className}>
-                          {cls.className}
-                        </SelectItem>
-                      ))}
+                    {classNames.map((className) => (
+                      <SelectItem key={className} value={className}>
+                        {className}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 {!dataLoading && totalOwing > 0 && (
@@ -456,23 +369,19 @@ const AdministratorDashboard = () => {
                   <Skeleton key={i} className="h-16 w-full rounded-lg" />
                 ))}
               </div>
-            ) : displayedStudents.length === 0 ? (
+            ) : roster.length === 0 ? (
               <EmptyState
-                title={studentsWithFeeStatus.length === 0 ? 'No students in this class' : 'No matches'}
-                hint={
-                  studentsWithFeeStatus.length === 0
-                    ? 'Try “All classes” or pick another class from the filter.'
-                    : 'Clear the search or try another name or student ID.'
-                }
+                title="No students in this view"
+                hint="Try “All classes” or pick another class from the filter."
               />
             ) : (
               <>
                 <p className="mb-3 text-xs text-muted-foreground">
-                  Showing {displayedStudents.length} of {studentsWithFeeStatus.length} in this view
+                  Showing {roster.length} student{roster.length === 1 ? '' : 's'} in this view
                 </p>
                 <ScrollArea className="h-[min(520px,55vh)] pr-3">
                   <div className="space-y-2">
-                    {displayedStudents.map((student) => (
+                    {roster.map((student) => (
                       <div
                         key={student.id}
                         className="flex flex-col gap-3 rounded-xl border border-border/70 bg-card/50 p-4 transition-colors hover:bg-muted/30 sm:flex-row sm:items-center sm:justify-between"
@@ -482,7 +391,7 @@ const AdministratorDashboard = () => {
                             {student.firstName} {student.lastName}
                           </div>
                           <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-                            <span>{student.classAssigned || '—'}</span>
+                            <span>{student.className || '—'}</span>
                             <span className="text-border">·</span>
                             <span className="font-mono">ID {student.studentId}</span>
                             {student.enrollmentStatus && (
@@ -494,29 +403,29 @@ const AdministratorDashboard = () => {
                           </div>
                         </div>
                         <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
-                          {student.feeStatus.status === 'Amount Owing' && (
+                          {student.feeStatus === 'Amount Owing' && (
                             <div className="text-right">
                               <Badge variant="destructive" className="mb-1 gap-1">
                                 <AlertCircle className="h-3 w-3" />
                                 Owing
                               </Badge>
                               <div className="font-mono text-sm font-semibold text-destructive">
-                                GHS {student.feeStatus.balance.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                                GHS {student.balance.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                               </div>
                             </div>
                           )}
-                          {student.feeStatus.status === 'Fully Paid' && (
+                          {student.feeStatus === 'Fully Paid' && (
                             <Badge className="border-0 bg-emerald-600 text-white hover:bg-emerald-600">Fully paid</Badge>
                           )}
-                          {student.feeStatus.status === 'Credit Balance' && (
+                          {student.feeStatus === 'Credit Balance' && (
                             <div className="text-right">
                               <Badge className="mb-1 border-0 bg-sky-600 text-white hover:bg-sky-600">Credit</Badge>
                               <div className="font-mono text-sm font-semibold text-sky-600 dark:text-sky-400">
-                                GHS {Math.abs(student.feeStatus.balance).toLocaleString()}
+                                GHS {Math.abs(student.balance).toLocaleString()}
                               </div>
                             </div>
                           )}
-                          {student.feeStatus.status === 'No Fee Set' && (
+                          {student.feeStatus === 'No Fee Set' && (
                             <Badge variant="outline" className="text-muted-foreground">
                               No fee set
                             </Badge>

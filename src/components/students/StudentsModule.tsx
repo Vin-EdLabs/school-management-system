@@ -2,18 +2,22 @@
 import React, { useMemo, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import AddStudentForm from './AddStudentForm';
 import ViewAllStudents from './ViewAllStudents';
 import PromoteStudents from './PromoteStudents';
 import { useData } from '../../contexts/DataContext';
 import { normalizeEnrollmentStatus } from './studentRegistryUtils';
 import AlumniStudents from './AlumniStudents';
-import { Eye, UserPlus, TrendingUp, UserX, GraduationCap } from 'lucide-react';
+import { Eye, UserPlus, TrendingUp, UserX, GraduationCap, RotateCcw } from 'lucide-react';
+
 
 const StudentsModule = () => {
   const [activeTab, setActiveTab] = useState('view-all');
   const [promoteStudentIdSeed, setPromoteStudentIdSeed] = useState<string | null>(null);
-  const { students } = useData();
+  const { students, refresh } = useData();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
 
   const inactiveCount = useMemo(
     () => students.filter((s) => normalizeEnrollmentStatus(s.enrollmentStatus) === 'inactive').length,
@@ -28,9 +32,40 @@ const StudentsModule = () => {
   return (
     <div className="p-4 md:p-6 lg:p-8 animate-in fade-in duration-500">
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Students</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Manage student information, enrollment, and promotions.</p>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">Students</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Manage student information, enrollment, and promotions.</p>
+          </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9 gap-2 rounded-xl"
+            onClick={async () => {
+              setIsRefreshing(true);
+              try {
+                await refresh(['students', 'classes']);
+              } finally {
+                setIsRefreshing(false);
+              }
+            }}
+            disabled={isRefreshing}
+            aria-label="Refresh students"
+          >
+            <RotateCcw
+              className={
+                isRefreshing
+                  ? 'h-4 w-4 animate-[spin_550ms_ease-in-out]'
+                  : 'h-4 w-4'
+              }
+            />
+            Refresh
+          </Button>
+        </div>
       </div>
+
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="inline-flex w-auto flex-wrap bg-slate-100/80 dark:bg-slate-800/80 p-1 rounded-xl h-auto min-h-12 border border-slate-200/50 dark:border-slate-700/50">

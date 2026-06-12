@@ -6,8 +6,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
-import { Search, Users, Edit, Trash2, UserPlus } from 'lucide-react';
+import { Search, Users, Trash2, UserPlus } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+
 
 const ViewAllClasses = () => {
   const { classes, students, teachers, deleteClass } = useData();
@@ -62,7 +74,7 @@ const ViewAllClasses = () => {
     };
   };
 
-  const handleDeleteClass = (classItem: any) => {
+  const handleDeleteClass = async (classItem: any) => {
     const className = getResolvedClassName(classItem);
     const studentsInClass = students.filter((student) => student.classAssigned === className);
 
@@ -75,13 +87,11 @@ const ViewAllClasses = () => {
       return;
     }
 
-    if (window.confirm(`Are you sure you want to delete ${className}?`)) {
-      deleteClass(classItem.id);
-      toast({
-        title: 'Class Deleted',
-        description: `${className} has been deleted successfully.`,
-      });
-    }
+    await deleteClass(classItem.id);
+    toast({
+      title: 'Class Deleted',
+      description: `${className} has been deleted successfully.`,
+    });
   };
 
   if (classes.length === 0) {
@@ -230,21 +240,38 @@ const ViewAllClasses = () => {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center space-x-2" onClick={(e) => e.stopPropagation()}>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-green-600 hover:text-green-700 hover:bg-green-50"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                              onClick={() => handleDeleteClass(classItem)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
+
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Class</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to delete {resolvedClassName}? 
+                                    {getClassStats(classItem).studentCount > 0
+                                      ? `This class has ${getClassStats(classItem).studentCount} student(s) assigned.`
+                                      : 'This action cannot be undone.'}
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    className="bg-red-600 hover:bg-red-700"
+                                    onClick={() => handleDeleteClass(classItem)}
+                                  >
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
                           </div>
                         </TableCell>
                       </TableRow>

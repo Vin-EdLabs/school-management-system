@@ -1,4 +1,12 @@
 import React, { useMemo, useState } from 'react';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination';
 import { jsPDF } from 'jspdf';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -192,6 +200,21 @@ const TransactionsPage: React.FC<TransactionsPageProps> = ({ onNavigate }) => {
       ].some((value) => normalize(value).includes(q));
     });
   }, [transactions, fromDate, toDate, typeFilter, categoryFilter, methodFilter, searchTerm]);
+
+  // Pagination (client-side) - show only 50 rows by default.
+  const PAGE_SIZE = 50;
+  const [page, setPage] = useState(1);
+
+  // Reset to first page when filters/search changes.
+  React.useEffect(() => {
+    setPage(1);
+  }, [fromDate, toDate, typeFilter, categoryFilter, methodFilter, searchTerm]);
+
+  const pageCount = Math.max(1, Math.ceil(filteredTransactions.length / PAGE_SIZE));
+  const paginatedTransactions = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return filteredTransactions.slice(start, start + PAGE_SIZE);
+  }, [filteredTransactions, page]);
 
   const summary = useMemo(() => {
     const today = new Date();
@@ -431,7 +454,7 @@ const TransactionsPage: React.FC<TransactionsPageProps> = ({ onNavigate }) => {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredTransactions.map((row) => (
+                  paginatedTransactions.map((row) => (
                     <TableRow
                       key={row.id}
                       onClick={() => setSelected(row)}
@@ -479,6 +502,62 @@ const TransactionsPage: React.FC<TransactionsPageProps> = ({ onNavigate }) => {
               </TableBody>
             </Table>
           </div>
+
+          {filteredTransactions.length > 0 && (
+            <div className="flex items-center justify-between gap-3 border-t border-border bg-white px-4 py-3 dark:bg-card">
+              <div className="text-xs text-muted-foreground">
+                Showing{' '}
+                <span className="font-medium text-foreground">{Math.min((page - 1) * PAGE_SIZE + 1, filteredTransactions.length)}</span>
+                {' - '}
+                <span className="font-medium text-foreground">{Math.min(page * PAGE_SIZE, filteredTransactions.length)}</span>
+                {' '}of{' '}
+                <span className="font-medium text-foreground">{filteredTransactions.length}</span>
+              </div>
+
+              <Pagination>
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setPage((p) => Math.max(1, p - 1));
+                      }}
+                      aria-disabled={page <= 1}
+                      style={page <= 1 ? { pointerEvents: 'none', opacity: 0.5 } : undefined}
+                    />
+                  </PaginationItem>
+
+                  {Array.from({ length: pageCount }, (_, i) => i + 1)
+                    .slice(0, 7)
+                    .map((p) => (
+                      <PaginationItem key={p}>
+                        <PaginationLink
+                          href="#"
+                          isActive={p === page}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setPage(p);
+                          }}
+                        />
+                      </PaginationItem>
+                    ))}
+
+                  <PaginationItem>
+                    <PaginationNext
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setPage((p) => Math.min(pageCount, p + 1));
+                      }}
+                      aria-disabled={page >= pageCount}
+                      style={page >= pageCount ? { pointerEvents: 'none', opacity: 0.5 } : undefined}
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+            </div>
+          )}
         </CardContent>
       </Card>
 

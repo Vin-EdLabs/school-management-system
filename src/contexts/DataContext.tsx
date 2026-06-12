@@ -667,6 +667,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Class functions
   const addClass = async (classData: Omit<Class, 'id'>) => {
     const backendData = mapClassToBackend(classData);
+    // create directly so UI updates immediately; socket may also refresh, but this removes race conditions
+    await apiService.post('/classes', backendData);
     await refresh(['classes']);
   };
 

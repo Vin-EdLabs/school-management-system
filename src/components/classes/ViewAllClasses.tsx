@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -14,57 +13,73 @@ const ViewAllClasses = () => {
   const { classes, students, teachers, deleteClass } = useData();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterLevel, setFilterLevel] = useState('all-levels');
+  const [expandedClassId, setExpandedClassId] = useState<string | null>(null);
 
-  console.log('ViewAllClasses: classes data:', classes);
-  console.log('ViewAllClasses: students data:', students);
+  const uniqueLevels = useMemo(
+    () => [...new Set(classes.map((c) => c.level).filter((level) => level && level.trim() !== ''))],
+    [classes]
+  );
 
-  // Filter classes based on search term and level
-  const filteredClasses = classes.filter(classItem => {
-    if (!classItem.className || classItem.className.trim() === '') return false;
-    
-    const matchesSearch = searchTerm === '' || 
-      classItem.className.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      classItem.level.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      classItem.stream.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesLevel = filterLevel === 'all-levels' || classItem.level === filterLevel;
-    
-    return matchesSearch && matchesLevel;
-  });
+  const filteredClasses = useMemo(() => {
+    return classes.filter((classItem) => {
+      // Be resilient to backend/mapper differences (class_name vs name, etc.)
+      const className = (classItem.className || (classItem as any).name || '').toString();
+      const level = (classItem.level || '').toString();
+      const stream = (classItem.stream || '').toString();
 
-  // Get unique levels for filter dropdown
-  const uniqueLevels = [...new Set(classes.map(c => c.level).filter(level => level && level.trim() !== ''))];
+      if (!className || className.trim() === '') return false;
+
+      const matchesSearch =
+        searchTerm === '' ||
+        className.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        level.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        stream.toLowerCase().includes(searchTerm.toLowerCase());
+
+      const matchesLevel = filterLevel === 'all-levels' || level === filterLevel;
+
+      return matchesSearch && matchesLevel;
+    });
+  }, [classes, searchTerm, filterLevel]);
+
+  const getResolvedClassName = (classItem: any) =>
+    (classItem.className || classItem.name || '').toString();
 
   const getClassStats = (classItem: any) => {
-    const studentsInClass = students.filter(student => student.classAssigned === classItem.className);
-    const assignedTeacher = classItem.assignedTeacherId
-      ? teachers.find(t => String(t.id) === String(classItem.assignedTeacherId))
+    const className = getResolvedClassName(classItem);
+    const assignedTeacherId =
+      classItem.assignedTeacherId ?? (classItem as any).assigned_teacher_id;
+
+    const studentsInClass = students.filter((student) => student.classAssigned === className);
+    const assignedTeacher = assignedTeacherId
+      ? teachers.find((t) => String(t.id) === String(assignedTeacherId))
       : null;
-    
+
     return {
+      className,
       studentCount: studentsInClass.length,
       teacherName: assignedTeacher ? assignedTeacher.fullName : 'Not assigned',
-      hasTeacher: !!assignedTeacher
+      hasTeacher: !!assignedTeacher,
     };
   };
 
   const handleDeleteClass = (classItem: any) => {
-    const studentsInClass = students.filter(student => student.classAssigned === classItem.className);
-    
+    const className = getResolvedClassName(classItem);
+    const studentsInClass = students.filter((student) => student.classAssigned === className);
+
     if (studentsInClass.length > 0) {
       toast({
-        title: "Cannot Delete Class",
-        description: `Cannot delete ${classItem.className} because it has ${studentsInClass.length} student(s) assigned.`,
-        variant: "destructive"
+        title: 'Cannot Delete Class',
+        description: `Cannot delete ${className} because it has ${studentsInClass.length} student(s) assigned.`,
+        variant: 'destructive',
       });
       return;
     }
 
-    if (window.confirm(`Are you sure you want to delete ${classItem.className}?`)) {
+    if (window.confirm(`Are you sure you want to delete ${className}?`)) {
       deleteClass(classItem.id);
       toast({
-        title: "Class Deleted",
-        description: `${classItem.className} has been deleted successfully.`,
+        title: 'Class Deleted',
+        description: `${className} has been deleted successfully.`,
       });
     }
   };
@@ -99,6 +114,7 @@ const ViewAllClasses = () => {
           </div>
         </CardTitle>
       </CardHeader>
+
       <CardContent>
         {/* Search and Filters */}
         <div className="flex flex-col lg:flex-row gap-4 mb-6">
@@ -142,6 +158,7 @@ const ViewAllClasses = () => {
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
+
             <TableBody>
               {filteredClasses.length === 0 ? (
                 <TableRow>
@@ -152,72 +169,150 @@ const ViewAllClasses = () => {
               ) : (
                 filteredClasses.map((classItem) => {
                   const stats = getClassStats(classItem);
-                  const capacityPercentage = (stats.studentCount / classItem.maxClassSize) * 100;
-                  
+                  const capacityPercentage =
+                    classItem.maxClassSize > 0
+                      ? (stats.studentCount / classItem.maxClassSize) * 100
+                      : 0;
+
+                  const isExpanded = expandedClassId === String(classItem.id);
+                  const resolvedClassName = stats.className;
+
                   return (
-                    <TableRow key={classItem.id}>
-                      <TableCell>
-                        <div className="font-medium text-gray-900">
-                          {classItem.className}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{classItem.level}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">{classItem.stream}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center space-x-2">
-                          <Users className="w-4 h-4 text-gray-400" />
-                          <span className="font-medium">{stats.studentCount}</span>
-                          <span className="text-sm text-gray-500">
-                            / {classItem.maxClassSize}
-                          </span>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
-                          <div 
-                            className={`h-1.5 rounded-full ${
-                              capacityPercentage > 90 ? 'bg-red-500' :
-                              capacityPercentage > 75 ? 'bg-yellow-500' : 'bg-green-500'
-                            }`}
-                            style={{ width: `${Math.min(capacityPercentage, 100)}%` }}
-                          ></div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className={`text-sm ${stats.hasTeacher ? 'text-green-600' : 'text-red-600'}`}>
-                          {stats.teacherName}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge 
-                          variant={capacityPercentage > 90 ? 'destructive' : 'outline'}
-                          className="text-xs"
-                        >
-                          {Math.round(capacityPercentage)}% Full
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center space-x-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                    <React.Fragment key={classItem.id}>
+                      <TableRow
+                        onClick={() =>
+                          setExpandedClassId((prev) =>
+                            prev === String(classItem.id) ? null : String(classItem.id)
+                          )
+                        }
+                        className="cursor-pointer"
+                      >
+                        <TableCell>
+                          <div className="font-medium text-gray-900">{resolvedClassName}</div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{classItem.level}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">{classItem.stream}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center space-x-2">
+                            <Users className="w-4 h-4 text-gray-400" />
+                            <span className="font-medium">{stats.studentCount}</span>
+                            <span className="text-sm text-gray-500">/ {classItem.maxClassSize}</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+                            <div
+                              className={`h-1.5 rounded-full ${
+                                capacityPercentage > 90
+                                  ? 'bg-red-500'
+                                  : capacityPercentage > 75
+                                    ? 'bg-yellow-500'
+                                    : 'bg-green-500'
+                              }`}
+                              style={{ width: `${Math.min(capacityPercentage, 100)}%` }}
+                            />
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className={`text-sm ${stats.hasTeacher ? 'text-green-600' : 'text-red-600'}`}>
+                            {stats.teacherName}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={capacityPercentage > 90 ? 'destructive' : 'outline'}
+                            className="text-xs"
                           >
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                            onClick={() => handleDeleteClass(classItem)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
+                            {Math.round(capacityPercentage)}% Full
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center space-x-2" onClick={(e) => e.stopPropagation()}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              onClick={() => handleDeleteClass(classItem)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+
+                      {isExpanded && (
+                        <TableRow key={`${classItem.id}-expanded`} className="bg-gray-50">
+                          <TableCell colSpan={7}>
+                            <div className="p-4">
+                              <div className="font-semibold mb-3 flex items-center justify-between">
+                                <span>Class Details</span>
+                                <span className="text-sm text-gray-500">{resolvedClassName}</span>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div className="rounded border bg-white p-3">
+                                  <div className="text-xs text-gray-500">Level</div>
+                                  <div className="font-medium">{classItem.level}</div>
+                                </div>
+                                <div className="rounded border bg-white p-3">
+                                  <div className="text-xs text-gray-500">Stream</div>
+                                  <div className="font-medium">{classItem.stream}</div>
+                                </div>
+                                <div className="rounded border bg-white p-3">
+                                  <div className="text-xs text-gray-500">Capacity</div>
+                                  <div className="font-medium">
+                                    {stats.studentCount} / {classItem.maxClassSize}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="mt-4">
+                                <div className="text-sm font-semibold mb-2">Students in this class</div>
+                                <div className="rounded border overflow-hidden bg-white">
+                                  <table className="w-full text-left">
+                                    <thead className="bg-gray-100">
+                                      <tr>
+                                        <th className="px-3 py-2 text-xs text-gray-600">Student ID</th>
+                                        <th className="px-3 py-2 text-xs text-gray-600">Name</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {students
+                                        .filter((s) => s.classAssigned === resolvedClassName)
+                                        .map((s) => (
+                                          <tr key={s.id} className="border-t last:border-b">
+                                            <td className="px-3 py-2 text-sm">{s.studentId}</td>
+                                            <td className="px-3 py-2 text-sm">
+                                              {s.firstName} {s.lastName}
+                                            </td>
+                                          </tr>
+                                        ))}
+
+                                      {students.filter((s) => s.classAssigned === resolvedClassName).length === 0 && (
+                                        <tr>
+                                          <td colSpan={2} className="px-3 py-3 text-sm text-gray-500">
+                                            No students assigned
+                                          </td>
+                                        </tr>
+                                      )}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </React.Fragment>
                   );
                 })
               )}
@@ -237,3 +332,4 @@ const ViewAllClasses = () => {
 };
 
 export default ViewAllClasses;
+

@@ -24,7 +24,7 @@ export interface StudentPaymentRecord {
 }
 
 export interface StudentFeeStatus {
-  status: 'Paid' | 'Partially Paid' | 'Unpaid' | 'Fully Paid' | 'Amount Owing' | 'Credit Balance' | 'No Fee Set';
+  status: 'Paid' | 'Partially Paid' | 'Unpaid' | 'Fully Paid' | 'Amount Owing' | 'Credit Balance' | 'No Fee Set' | 'Not Set';
   balance: number;
 }
 
@@ -218,6 +218,14 @@ export type ReceiptSnapshotData = {
   arrears: number;
   balanceAfter: number;
   credit?: number;
+  /** Unified ledger snapshot fields */
+  amountPaid?: number;
+  arrearsCleared?: number;
+  termFeeCleared?: number;
+  outstandingBefore?: number;
+  outstandingAfter?: number;
+  totalPaidThisTerm?: number;
+  status?: 'Owing' | 'Cleared' | 'Credit';
 };
 
 export function parseReceiptSnapshot(raw: unknown): ReceiptSnapshotData | null {
@@ -231,13 +239,22 @@ export function parseReceiptSnapshot(raw: unknown): ReceiptSnapshotData | null {
   }
   if (typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
-  if (typeof o.balanceAfter !== 'number' && typeof o.balanceAfter !== 'string') return null;
+  const balanceAfterRaw = o.outstandingAfter ?? o.balanceAfter;
+  if (balanceAfterRaw == null && o.totalDue == null) return null;
+  const balanceAfter = Math.max(0, Number(balanceAfterRaw ?? 0));
   return {
     totalDue: Number(o.totalDue ?? 0),
     termFee: Number(o.termFee ?? 0),
     arrears: Number(o.arrears ?? 0),
-    balanceAfter: Math.max(0, Number(o.balanceAfter ?? 0)),
+    balanceAfter,
     credit: Number(o.credit ?? 0),
+    amountPaid: o.amountPaid != null ? Number(o.amountPaid) : undefined,
+    arrearsCleared: o.arrearsCleared != null ? Number(o.arrearsCleared) : undefined,
+    termFeeCleared: o.termFeeCleared != null ? Number(o.termFeeCleared) : undefined,
+    outstandingBefore: o.outstandingBefore != null ? Number(o.outstandingBefore) : undefined,
+    outstandingAfter: o.outstandingAfter != null ? Number(o.outstandingAfter) : undefined,
+    totalPaidThisTerm: o.totalPaidThisTerm != null ? Number(o.totalPaidThisTerm) : undefined,
+    status: o.status as ReceiptSnapshotData['status'],
   };
 }
 
@@ -264,7 +281,6 @@ export function receiptAmountsForPayment(
     discountValue?: number;
   },
   feeStructures: any[],
-  arrearsBalances?: Record<string, number> | null
 ): { remainingBalance: number; totalAmountDue: number; currentTermFee: number; arrears: number; creditBalance: number } {
   const snap = parseReceiptSnapshot(payment.receiptSnapshot ?? payment.receipt_snapshot);
   if (snap) {
@@ -293,7 +309,7 @@ export function receiptAmountsForPayment(
     feeStructures,
     allPayments,
     student.classAssignedId ?? undefined,
-    arrearsBalances,
+    undefined,
     {
       isBeneficiary: !!student.isBeneficiary,
       discountType: student.discountType,
@@ -415,7 +431,7 @@ export const calculateStudentFeesSync = (
   feeStructures: any[],
   payments: any[],
   studentClassId?: number | string | null,
-  arrearsBalances?: Record<string, number> | null,
+  _arrearsBalances?: Record<string, number> | null,
   studentBeneficiaryInfo?: { isBeneficiary: boolean; discountType?: string; discountValue?: number }
 ): FeeCalculation => {
   if (!currentTerm || currentTerm === 'Not Set') {
@@ -435,10 +451,7 @@ export const calculateStudentFeesSync = (
   const baseTermFee = matchingFees.reduce((sum: number, f: any) => sum + (parseFloat(f.amount) || 0), 0);
   const { currentTermFee } = applyBeneficiaryToBaseFee(baseTermFee, studentBeneficiaryInfo);
 
-  const previousArrears = Math.max(
-    0,
-    arrearsBalances && arrearsBalances[studentId] ? arrearsBalances[studentId] : 0
-  );
+  const previousArrears = 0;
   const totalPaid = (payments || [])
     .filter((p: any) => {
       const matchById = String(p.studentId) === String(studentId) || String(p.studentIdNum) === String(studentId);
@@ -463,8 +476,12 @@ export const calculateStudentFeesSync = (
 
 /** Sync fee status from fee calculation */
 export const calculateStudentFeeStatusSync = (
-  feeCalculation: FeeCalculation
+  feeCalculation: FeeCalculation,
+  currentTerm?: string
 ): StudentFeeStatus => {
+  if (!currentTerm || currentTerm === 'Not Set') {
+    return { status: 'Not Set', balance: 0 };
+  }
   if (feeCalculation.currentTermFee === 0) {
     return { status: 'No Fee Set', balance: 0 };
   }

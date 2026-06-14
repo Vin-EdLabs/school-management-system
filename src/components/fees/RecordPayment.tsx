@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -10,16 +10,21 @@ import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
 import { CreditCard, Search, Loader2 } from 'lucide-react';
 import ReceiptPrinter from '../common/ReceiptPrinter';
-import { calculateStudentFeesSync, parseReceiptSnapshot, resolveReceiptDisplayAmounts } from '../../utils/feeCalculations';
+import { parseReceiptSnapshot, resolveReceiptDisplayAmounts } from '../../utils/feeCalculations';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
 import { apiService } from '../../services/api';
 import { useRecordPayment } from '../../hooks/useRecordPayment';
 import { shouldTrackStudentFees } from '../students/studentRegistryUtils';
 import { toast } from '@/hooks/use-toast';
 import PaymentAccountSelect from '../common/PaymentAccountSelect';
+import {
+  fetchStudentBalance,
+  formatBalanceLines,
+  type StudentBalance,
+} from '../../services/studentBalance';
 
 const RecordPayment = () => {
-  const { students, feeStructures, payments, arrearsBalances } = useData();
+  const { students, payments } = useData();
   const { currentTerm, currentYear } = useActiveTerm();
   const recordPayment = useRecordPayment();
 
@@ -35,6 +40,8 @@ const RecordPayment = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showReceipt, setShowReceipt] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
+  const [studentBalance, setStudentBalance] = useState<StudentBalance | null>(null);
+  const [balanceLoading, setBalanceLoading] = useState(false);
 
   const [availableTerms, setAvailableTerms] = useState<any[]>([]);
   React.useEffect(() => {
@@ -55,6 +62,28 @@ const RecordPayment = () => {
     }
   }, [currentTerm]);
 
+  useEffect(() => {
+    if (!formData.studentId) {
+      setStudentBalance(null);
+      return;
+    }
+    let cancelled = false;
+    setBalanceLoading(true);
+    void fetchStudentBalance(formData.studentId)
+      .then((b) => {
+        if (!cancelled) setStudentBalance(b);
+      })
+      .catch(() => {
+        if (!cancelled) setStudentBalance(null);
+      })
+      .finally(() => {
+        if (!cancelled) setBalanceLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [formData.studentId, payments]);
+
   const activeStudents = useMemo(
     () => students.filter((s) => shouldTrackStudentFees(s)),
     [students]
@@ -68,27 +97,23 @@ const RecordPayment = () => {
 
   const selectedStudentFeeDetails = useMemo(() => {
     if (!formData.studentId || !currentTerm || currentTerm === 'Not Set') return null;
-    const student = students.find(s => s.id === formData.studentId);
-    if (!student) return null;
-    return calculateStudentFeesSync(
-      formData.studentId,
-      currentTerm,
-      student.classAssigned,
-      feeStructures || [],
-      payments || [],
-      student.classAssignedId,
-      arrearsBalances,
-      {
-        isBeneficiary: !!student.isBeneficiary,
-        discountType: student.discountType,
-        discountValue: student.discountValue
-      }
-    );
-  }, [formData.studentId, currentTerm, students, feeStructures, payments, arrearsBalances]);
+    if (!studentBalance) return null;
+    return {
+      currentTermFee: studentBalance.currentTermFee,
+      arrears: studentBalance.totalArrears,
+      totalAmountDue: studentBalance.totalDue,
+      totalPaid: studentBalance.totalPaid,
+      creditBalance: studentBalance.credit,
+      baseFee: studentBalance.currentTermFee,
+      discountAmount: 0,
+      arrearLines: studentBalance.arrearLines,
+      paidLines: studentBalance.paidLines,
+    };
+  }, [formData.studentId, currentTerm, studentBalance]);
 
-  const outstandingBalance = selectedStudentFeeDetails
-    ? Math.max(0, selectedStudentFeeDetails.totalAmountDue - selectedStudentFeeDetails.totalPaid)
-    : 0;
+  const breakdownDisplayLines = studentBalance ? formatBalanceLines(studentBalance) : null;
+
+  const outstandingBalance = studentBalance?.outstanding ?? 0;
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -133,20 +158,12 @@ const RecordPayment = () => {
     const paymentTerm = formData.term || currentTerm;
     const paymentNotes = formData.notes;
 
-    const feeDetails = calculateStudentFeesSync(
-      formData.studentId,
-      paymentTerm,
-      student.classAssigned,
-      feeStructures || [],
-      payments || [],
-      student.classAssignedId,
-      arrearsBalances,
-      {
-        isBeneficiary: !!student.isBeneficiary,
-        discountType: student.discountType,
-        discountValue: student.discountValue,
-      }
-    );
+    const feeDetails = selectedStudentFeeDetails ?? {
+      currentTermFee: 0,
+      totalAmountDue: 0,
+      arrears: 0,
+      totalPaid: 0,
+    };
 
     try {
       const result = await recordPayment.mutateAsync({
@@ -182,11 +199,15 @@ const RecordPayment = () => {
         year: currentYear,
         receiptNumber: createdPayment.receipt_number || createdPayment.receiptNumber || `R${Date.now().toString().slice(-8)}`,
         notes: paymentNotes,
-        remainingBalance: amounts.remainingBalance,
-        creditBalance: amounts.creditBalance,
-        arrears: amounts.arrears,
-        currentTermFee: amounts.currentTermFee,
-        totalAmountDue: amounts.totalAmountDue,
+        remainingBalance: snap?.outstandingAfter ?? amounts.remainingBalance,
+        creditBalance: snap?.credit ?? amounts.creditBalance,
+        arrears: snap?.arrears ?? amounts.arrears,
+        currentTermFee: snap?.termFee ?? amounts.currentTermFee,
+        totalAmountDue: snap?.totalDue ?? amounts.totalAmountDue,
+        arrearsCleared: snap?.arrearsCleared,
+        termFeeCleared: snap?.termFeeCleared,
+        totalPaidThisTerm: snap?.totalPaidThisTerm,
+        paymentStatus: snap?.status,
       });
       setShowReceipt(true);
       resetForm();
@@ -263,7 +284,31 @@ const RecordPayment = () => {
                   </h3>
                 </div>
                 {!selectedStudentFeeDetails ? (
-                  <div className="p-4 bg-emerald-50/60 text-sm text-slate-500 dark:bg-blue-50 dark:text-gray-500">No fee structure set for this student's class and term.</div>
+                  <div className="p-4 bg-emerald-50/60 text-sm text-slate-500 dark:bg-blue-50 dark:text-gray-500">
+                    {balanceLoading ? 'Loading fee breakdown…' : 'No fee structure set for this student\'s class and term.'}
+                  </div>
+                ) : breakdownDisplayLines ? (
+                  <div className="bg-emerald-50/70 px-4 py-3 text-sm dark:bg-blue-50">
+                    {breakdownDisplayLines.map((line, i) => (
+                      <div
+                        key={`${line.label}-${i}`}
+                        className={`flex justify-between py-1 ${
+                          line.kind === 'total' || line.kind === 'outstanding' ? 'border-t border-emerald-200 pt-2 mt-1 font-semibold dark:border-blue-200' : ''
+                        } ${line.kind === 'paid' ? 'text-emerald-700 dark:text-green-700' : line.kind === 'outstanding' ? 'text-red-700' : ''}`}
+                      >
+                        <span>{line.label}</span>
+                        <span className="font-mono tabular-nums">
+                          {line.kind === 'paid' ? '− ' : ''}GHS {Math.abs(line.amount).toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+                    {studentBalance && studentBalance.credit > 0 ? (
+                      <div className="flex justify-between py-1 text-blue-700 border-t border-blue-200 mt-1">
+                        <span>Credit Balance</span>
+                        <span className="font-mono">GHS {studentBalance.credit.toFixed(2)}</span>
+                      </div>
+                    ) : null}
+                  </div>
                 ) : (
                   <>
                     <div className="grid grid-cols-2 gap-x-6 gap-y-2 bg-emerald-50/70 px-4 py-3 text-sm dark:bg-blue-50">

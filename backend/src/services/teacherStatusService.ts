@@ -53,7 +53,8 @@ export async function suspendTeacher(options: {
     const before = await client.query(
       `SELECT t.*, c.class_name FROM teachers t
        LEFT JOIN classes c ON c.id = t.class_assigned_id
-       WHERE t.id = $1 AND t.tenant_id = $2 FOR UPDATE`,
+       WHERE t.id = $1 AND t.tenant_id = $2
+       FOR UPDATE OF t`,
       [options.teacherId, options.tenantId]
     );
     if (before.rows.length === 0) throw new Error('Teacher not found');
@@ -136,7 +137,8 @@ export async function deactivateTeacher(options: {
     const before = await client.query(
       `SELECT t.*, c.class_name FROM teachers t
        LEFT JOIN classes c ON c.id = t.class_assigned_id
-       WHERE t.id = $1 AND t.tenant_id = $2 FOR UPDATE`,
+       WHERE t.id = $1 AND t.tenant_id = $2
+       FOR UPDATE OF t`,
       [options.teacherId, options.tenantId]
     );
     if (before.rows.length === 0) throw new Error('Teacher not found');

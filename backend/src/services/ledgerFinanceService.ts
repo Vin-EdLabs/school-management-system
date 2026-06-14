@@ -2,6 +2,11 @@ import { query, getClient } from '../db/connection.js';
 import type pg from 'pg';
 import { beneficiaryAdjustedFee, SQL_BENEFICIARY_TERM_FEE_DEBIT } from '../utils/beneficiaryFee.js';
 import { z } from 'zod';
+import { getStudentFullBalance, SQL_TRUE_OUTSTANDING, SQL_TRUE_OUTSTANDING_DEBIT, SQL_EFFECTIVE_CREDIT } from './studentUnifiedBalanceService.js';
+
+function roundMoney(n: number): number {
+  return Math.round(n * 100) / 100;
+}
 
 // Consistent SQL query for calculating a student's cumulative balance.
 // This query should be the ONLY way the main balance is calculated.
@@ -134,17 +139,8 @@ export const getStudentSummary = async (tenantId: number, studentId: number) => 
   const current_term = String(settingsRow.rows[0]?.current_term || '').trim();
   const current_year = String(settingsRow.rows[0]?.current_year || '').trim();
 
-  let term_arrears = 0;
-  if (current_term) {
-    const arRes = await query(
-      `SELECT amount FROM term_arrears
-       WHERE tenant_id = $1 AND student_id = $2
-         AND (current_term = $3 OR $3 LIKE current_term || '%' OR current_term LIKE $3 || '%')`,
-      [validatedTenantId, validatedStudentId, current_term]
-    );
-    term_arrears = parseFloat(arRes.rows[0]?.amount || '0');
-    if (!Number.isFinite(term_arrears)) term_arrears = 0;
-  }
+  const fullBalance = await getStudentFullBalance(null, validatedTenantId, validatedStudentId);
+  const term_arrears = fullBalance?.totalArrears ?? 0;
 
   return {
     total_debit: parseFloat(balanceData.total_debit),
@@ -152,11 +148,11 @@ export const getStudentSummary = async (tenantId: number, studentId: number) => 
     balance,
     status,
     history: ledgerHistoryResult.rows,
-    /** School settings — active academic period */
     current_term,
     current_year,
-    /** Carried-forward arrears attributed to the current term (from `term_arrears`; refreshed after ledger changes). */
+    /** Carried-forward arrears on current term — from student_ledger (not term_arrears cache). */
     term_arrears,
+    liveBalance: fullBalance,
   };
 };
 
@@ -435,15 +431,16 @@ export const executeTermSwitchWithArrears = async (
 
       await client.query(
         `INSERT INTO student_ledger
-           (tenant_id, student_id, academic_year_id, term_id, description, entry_type, debit, credit)
-         VALUES ($1, $2, $3, $4, $5, 'arrears', $6, 0)`,
+           (tenant_id, student_id, academic_year_id, term_id, description, entry_type, debit, credit, metadata)
+         VALUES ($1, $2, $3, $4, $5, 'arrears', $6, 0, $7::jsonb)`,
         [
           tid,
           studentId,
           newAyId,
           nextTermId,
-          `Arrears carried forward from prior terms`,
+          `Arrears brought forward from prior terms`,
           balance,
+          JSON.stringify({ carried_from: 'all_prior_terms', amount: balance }),
         ]
       );
 
@@ -465,10 +462,18 @@ export const executeTermSwitchWithArrears = async (
         `total_applied=${totalApplied.toFixed(2)}`
     );
 
-    // ── STEP 3: Mark every source term bill as carried forward ─────────────────
+    // ── STEP 3: Close billable balance per source term (term_fee only, not arrears) ─
     let sourceTermsMarked = 0;
     for (const row of perTermUnpaid) {
       if (fullWaiverStudentIds.has(row.studentId)) continue;
+
+      const existingCf = await client.query(
+        `SELECT id FROM student_ledger
+         WHERE tenant_id = $1 AND student_id = $2 AND term_id = $3 AND entry_type = 'carry_forward_credit'
+         LIMIT 1`,
+        [tid, row.studentId, row.termId]
+      );
+      if (existingCf.rows.length > 0) continue;
 
       await client.query(
         `INSERT INTO term_outstanding_balances
@@ -481,23 +486,64 @@ export const executeTermSwitchWithArrears = async (
 
       await client.query(
         `INSERT INTO student_ledger
-           (tenant_id, student_id, academic_year_id, term_id, description, entry_type, debit, credit)
-         VALUES ($1, $2, $3, $4, $5, 'carry_forward_credit', 0, $6)`,
+           (tenant_id, student_id, academic_year_id, term_id, description, entry_type, debit, credit, metadata)
+         VALUES ($1, $2, $3, $4, $5, 'carry_forward_credit', 0, $6, $7::jsonb)`,
         [
           tid,
           row.studentId,
           row.academicYearId,
           row.termId,
-          `Balance carried forward to ${fullNextTermName}`,
+          `Carried forward to new term`,
           row.balance,
+          JSON.stringify({ carried_to_term_id: nextTermId, amount: row.balance, billable_only: true }),
         ]
       );
 
       sourceTermsMarked++;
     }
 
+    const creditRes = await client.query(
+      `SELECT sl.student_id,
+              (${SQL_EFFECTIVE_CREDIT} - ${SQL_TRUE_OUTSTANDING_DEBIT})::numeric AS credit_balance
+       FROM student_ledger sl
+       WHERE sl.tenant_id = $1 AND sl.term_id != $2
+       GROUP BY sl.student_id
+       HAVING (${SQL_EFFECTIVE_CREDIT} - ${SQL_TRUE_OUTSTANDING_DEBIT}) > 0`,
+      [tid, nextTermId]
+    );
+
+    let creditsCarried = 0;
+    for (const row of creditRes.rows) {
+      const studentId = Number(row.student_id);
+      if (fullWaiverStudentIds.has(studentId)) continue;
+      const creditAmount = roundMoney(parseFloat(row.credit_balance) || 0);
+      if (creditAmount <= 0) continue;
+
+      const exists = await client.query(
+        `SELECT id FROM student_ledger WHERE tenant_id = $1 AND student_id = $2 AND term_id = $3 AND entry_type = 'credit_brought_forward'`,
+        [tid, studentId, nextTermId]
+      );
+      if (exists.rows.length > 0) continue;
+
+      await client.query(
+        `INSERT INTO student_ledger
+           (tenant_id, student_id, academic_year_id, term_id, description, entry_type, debit, credit, metadata)
+         VALUES ($1, $2, $3, $4, $5, 'credit_brought_forward', 0, $6, $7::jsonb)`,
+        [
+          tid,
+          studentId,
+          newAyId,
+          nextTermId,
+          'Credit brought forward from prior terms',
+          creditAmount,
+          JSON.stringify({ carried_from: 'all_prior_terms', amount: creditAmount }),
+        ]
+      );
+      creditsCarried++;
+    }
+
     console.log(
-      `[carryForward] step3 complete source_term_marks=${sourceTermsMarked} new_term=${nextTermId}`
+      `[carryForward] step3 complete source_term_marks=${sourceTermsMarked} credits_carried=${creditsCarried} new_term=${nextTermId}`
     );
 
     // ── STEP 4: Post new term fees (skip students already billed) ─────────────
@@ -765,13 +811,13 @@ export const backfillArrearsForCurrentTerm = async (tenantId: number) => {
     // This ensures that by the time we reach Term 3, arrears reflect Term1+Term2 unpaid, etc.
     // Uses ID-based comparison: (academic_year_id < newAyId) OR (academic_year_id = newAyId AND term_id < newTermId)
     const balanceRows = await client.query(
-      `SELECT sl.student_id, (COALESCE(SUM(sl.debit),0) - COALESCE(SUM(sl.credit),0))::numeric AS balance
+      `SELECT sl.student_id, (${SQL_TRUE_OUTSTANDING})::numeric AS balance
        FROM student_ledger sl
        INNER JOIN terms tt ON tt.id = sl.term_id
        WHERE sl.tenant_id = $1
          AND (tt.academic_year_id < $2 OR (tt.academic_year_id = $2 AND tt.id < $3))
        GROUP BY sl.student_id
-       HAVING (COALESCE(SUM(sl.debit),0) - COALESCE(SUM(sl.credit),0)) != 0`,
+       HAVING (${SQL_TRUE_OUTSTANDING}) != 0`,
       [tenantId, newAyId, newTermId]
     );
 

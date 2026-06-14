@@ -3,6 +3,8 @@ import { authenticate, requireTenant, AuthRequest, requirePrimaryAdminOrSuperAdm
 import { setTenantContext } from '../middleware/tenant.js';
 import { activateAcademicTerm } from '../services/termActivationService.js';
 import { getIO } from '../socket.js';
+import { writeAuditLog } from '../services/auditService.js';
+import { getClientIp } from '../utils/clientIp.js';
 
 const router = express.Router();
 
@@ -34,6 +36,29 @@ router.post('/:id/activate', requirePrimaryAdminOrSuperAdmin, async (req: AuthRe
       emitTenantDataChanged(tenantId, 'academic-term', 'updated');
       emitTenantDataChanged(tenantId, 'settings', 'updated');
       emitTenantDataChanged(tenantId, 'finance-term-switch', 'updated');
+      emitTenantDataChanged(tenantId, 'fee', 'updated');
+      emitTenantDataChanged(tenantId, 'finance', 'updated');
+
+      const carryStep = result.steps.find((s) => s.key === 'carry_forward');
+      await writeAuditLog({
+        tenantId,
+        userId: req.user!.id,
+        userRole: req.user!.role,
+        action: 'TERM_ACTIVATED',
+        entityType: 'ACADEMIC_TERM',
+        entityId: termId,
+        module: 'finance',
+        status: 'success',
+        summary: `Activated ${result.termName} ${result.academicYear}`,
+        details: {
+          termName: result.termName,
+          academicYear: result.academicYear,
+          steps: result.steps,
+          carryForward: carryStep?.details,
+        },
+        ipAddress: getClientIp(req),
+        userAgent: req.get('user-agent') || null,
+      });
     }
 
     return res.json(result);

@@ -161,7 +161,7 @@ async function main() {
   await testGet('GET /api/messages/admin/unread-count', tq('/api/messages/admin/unread-count'), auth);
   await testGet('GET /api/finance/terms', tq('/api/finance/terms'), auth);
   await testGet('GET /api/finance/manual-adjustments', tq('/api/finance/manual-adjustments'), auth);
-  await testGet('GET /api/fee-calculations/arrears-balances', tq('/api/fee-calculations/arrears-balances'), auth);
+  await testGet('GET /api/fee-calculations/students/balances', tq('/api/fee-calculations/students/balances'), auth);
   await testGet('GET /api/records/profile-lookup?id=test', tq('/api/records/profile-lookup?id=test'), { ...auth, expect: [200, 404] });
   await testGet(`GET /api/schools/${tenantId}/setup-progress`, `/api/schools/${tenantId}/setup-progress`, { ...auth, expect: [200, 403] });
   await testGet(`GET /api/schools/${tenantId}/academic-years`, `/api/schools/${tenantId}/academic-years`, auth);

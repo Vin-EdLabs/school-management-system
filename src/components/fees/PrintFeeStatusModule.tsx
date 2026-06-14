@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { formatBalanceLines, type StudentBalance } from '../../services/studentBalance';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -23,7 +24,8 @@ interface FeeStatusStudent {
   totalFeeExpected: number;
   totalPaid: number;
   balance: number;
-  status: 'owing' | 'paid' | 'credit';
+  status: 'owing' | 'paid' | 'credit' | 'not_set' | 'no_fee';
+  liveBreakdown?: StudentBalance | null;
 }
 
 interface FeeStatusReport {
@@ -42,6 +44,14 @@ interface FeeStatusReport {
 
 type StatusFilter = 'all' | 'owing' | 'paid';
 
+function feeStatusLabel(status: FeeStatusStudent['status']): string {
+  if (status === 'owing') return 'Owing';
+  if (status === 'credit') return 'Credit';
+  if (status === 'not_set') return 'Not Set';
+  if (status === 'no_fee') return 'No Fee Set';
+  return 'Paid';
+}
+
 const PrintFeeStatusModule = () => {
   const { school, schoolId } = useSchool();
   const { socket } = useSocket();
@@ -54,6 +64,7 @@ const PrintFeeStatusModule = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [classes, setClasses] = useState<{ id: string; class_name: string }[]>([]);
+  const [expandedStudentIds, setExpandedStudentIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     if (schoolId != null) apiService.setTenantContext(schoolId);
@@ -120,8 +131,18 @@ const PrintFeeStatusModule = () => {
     return () => document.removeEventListener('visibilitychange', onVis);
   }, [selectedClassId, loadReport]);
 
+  const toggleExpanded = (studentId: number) => {
+    setExpandedStudentIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(studentId)) next.delete(studentId);
+      else next.add(studentId);
+      return next;
+    });
+  };
+
   const handleClassChange = (classId: string) => {
     setSelectedClassId(classId);
+    setExpandedStudentIds(new Set());
     const cls = classes.find((c) => c.id === classId);
     setSelectedClassName(cls?.class_name ?? '');
   };
@@ -155,7 +176,7 @@ const PrintFeeStatusModule = () => {
           <td class="amount">GHS ${(s.totalFeeExpected ?? 0).toLocaleString()}</td>
           <td class="amount">GHS ${s.totalPaid.toLocaleString()}</td>
           <td class="amount ${s.balance > 0 ? 'owing' : s.balance < 0 ? 'credit' : ''}">GHS ${s.balance.toLocaleString()}</td>
-          <td>${s.status === 'owing' ? 'Owing' : s.status === 'credit' ? 'Credit' : 'Paid'}</td>
+          <td>${feeStatusLabel(s.status)}</td>
         </tr>
       `
       )
@@ -376,6 +397,8 @@ const PrintFeeStatusModule = () => {
                 <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
               </div>
             ) : studentsToShow.length > 0 ? (
+              <>
+              <p className="text-xs text-muted-foreground mb-3 records-no-print">Click a student row to expand the live fee line breakdown.</p>
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse">
                   <thead>
@@ -392,31 +415,63 @@ const PrintFeeStatusModule = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {studentsToShow.map((s) => (
-                      <tr key={s.studentId} className="border-b border-border hover:bg-muted/30 transition-colors">
-                        <td className="p-3 text-foreground">{s.studentNumber}</td>
-                        <td className="p-3 text-foreground">{s.studentName}</td>
-                        <td className="p-3 text-foreground">{s.className}</td>
-                        <td className="p-3 text-right text-foreground">GHS {(s.termFee ?? 0).toLocaleString()}</td>
-                        <td className="p-3 text-right text-amber-700 dark:text-amber-400">GHS {(s.arrears ?? 0).toLocaleString()}</td>
-                        <td className="p-3 text-right font-medium text-foreground">GHS {(s.totalFeeExpected ?? 0).toLocaleString()}</td>
-                        <td className="p-3 text-right text-emerald-600 dark:text-emerald-400">GHS {s.totalPaid.toLocaleString()}</td>
-                        <td className={`p-3 text-right font-medium ${s.balance > 0 ? 'text-red-600 dark:text-red-400' : s.balance < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-foreground'}`}>
-                          GHS {s.balance.toLocaleString()}
-                        </td>
-                        <td className="p-3">
-                          <Badge
-                            variant={s.status === 'owing' ? 'destructive' : s.status === 'credit' ? 'secondary' : 'default'}
-                            className={s.status === 'paid' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
+                    {studentsToShow.map((s) => {
+                      const expanded = expandedStudentIds.has(s.studentId);
+                      const detailLines = s.liveBreakdown ? formatBalanceLines(s.liveBreakdown) : null;
+                      return (
+                        <React.Fragment key={s.studentId}>
+                          <tr
+                            className="border-b border-border hover:bg-muted/30 transition-colors cursor-pointer"
+                            onClick={() => toggleExpanded(s.studentId)}
                           >
-                            {s.status === 'owing' ? 'Owing' : s.status === 'credit' ? 'Credit' : 'Paid'}
-                          </Badge>
-                        </td>
-                      </tr>
-                    ))}
+                            <td className="p-3 text-foreground">{s.studentNumber}</td>
+                            <td className="p-3 text-foreground">{s.studentName}</td>
+                            <td className="p-3 text-foreground">{s.className}</td>
+                            <td className="p-3 text-right text-foreground">GHS {(s.termFee ?? 0).toLocaleString()}</td>
+                            <td className="p-3 text-right text-amber-700 dark:text-amber-400">GHS {(s.arrears ?? 0).toLocaleString()}</td>
+                            <td className="p-3 text-right font-medium text-foreground">GHS {(s.totalFeeExpected ?? 0).toLocaleString()}</td>
+                            <td className="p-3 text-right text-emerald-600 dark:text-emerald-400">GHS {s.totalPaid.toLocaleString()}</td>
+                            <td className={`p-3 text-right font-medium ${s.balance > 0 ? 'text-red-600 dark:text-red-400' : s.balance < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-foreground'}`}>
+                              GHS {s.balance.toLocaleString()}
+                            </td>
+                            <td className="p-3">
+                              <Badge
+                                variant={
+                                  s.status === 'owing'
+                                    ? 'destructive'
+                                    : s.status === 'credit'
+                                      ? 'secondary'
+                                      : s.status === 'not_set' || s.status === 'no_fee'
+                                        ? 'outline'
+                                        : 'default'
+                                }
+                                className={s.status === 'paid' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
+                              >
+                                {feeStatusLabel(s.status)}
+                              </Badge>
+                            </td>
+                          </tr>
+                          {expanded && detailLines ? (
+                            <tr className="border-b border-border bg-muted/20">
+                              <td colSpan={9} className="p-4">
+                                <div className="max-w-xl font-mono text-sm space-y-1">
+                                  {detailLines.map((line, i) => (
+                                    <div key={`${s.studentId}-${line.label}-${i}`} className={`flex justify-between gap-4 ${line.kind === 'total' || line.kind === 'outstanding' ? 'border-t pt-1 mt-1 font-semibold' : ''}`}>
+                                      <span>{line.label}</span>
+                                      <span>{line.kind === 'paid' ? '− ' : ''}GHS {Math.abs(line.amount).toLocaleString()}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </td>
+                            </tr>
+                          ) : null}
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
+              </>
             ) : (
               <p className="text-center py-8 text-muted-foreground">
                 {report ? `No students ${statusFilter === 'owing' ? 'owing' : statusFilter === 'paid' ? 'fully paid' : ''} in this class.` : 'Select a class to load the report.'}

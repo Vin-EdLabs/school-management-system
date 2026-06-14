@@ -11,8 +11,7 @@ import { apiService } from '../../services/api';
 import { resolveLogoUrl } from '../../services/tenantService';
 import { cn } from '@/lib/utils';
 import { Search, User, FileText, DollarSign, Award, UserCheck, History, Printer, FileDown, FileSpreadsheet, Receipt } from 'lucide-react';
-import { toast } from '@/hooks/use-toast';
-import './RecordsPrint.css';
+import { formatBalanceLines, type StudentBalance } from '../../services/studentBalance';
 
 type ProfileType = 'student' | 'teacher' | 'staff' | null;
 
@@ -236,6 +235,40 @@ function RecordsProfilePhoto({
   );
 }
 
+function LedgerBalanceTable({ breakdown }: { breakdown: StudentBalance | null | undefined }) {
+  if (!breakdown) {
+    return <p className="text-sm text-slate-500">No ledger balance available.</p>;
+  }
+  const lines = formatBalanceLines(breakdown);
+  return (
+    <div className="rounded-lg border bg-slate-50/80 p-4 font-mono text-sm">
+      {lines.map((line, i) => (
+        <div
+          key={`${line.label}-${i}`}
+          className={`flex justify-between gap-4 py-1 ${
+            line.kind === 'total' || line.kind === 'outstanding'
+              ? 'border-t border-slate-300 mt-2 pt-2 font-semibold'
+              : line.kind === 'paid'
+                ? 'text-emerald-700'
+                : ''
+          }`}
+        >
+          <span className={line.kind === 'outstanding' ? 'text-amber-800' : 'text-slate-700'}>{line.label}</span>
+          <span className="tabular-nums whitespace-nowrap">
+            {line.kind === 'paid' ? '− ' : ''}GHS {Math.abs(line.amount).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+          </span>
+        </div>
+      ))}
+      {breakdown.credit > 0 ? (
+        <div className="flex justify-between gap-4 py-1 mt-2 text-blue-700 border-t border-slate-200 pt-2">
+          <span>Credit balance</span>
+          <span className="tabular-nums">GHS {breakdown.credit.toLocaleString()}</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function StudentProfileView({ profile, onPrint, onExportPDF, onExportExcel }: { profile: any; onPrint: () => void; onExportPDF: () => void; onExportExcel: () => void }) {
   const school = profile.school || {};
   const h = profile.header || {};
@@ -243,6 +276,7 @@ function StudentProfileView({ profile, onPrint, onExportPDF, onExportExcel }: { 
   const ov = profile.overview || {};
   const balance = profile.balance || null;
   const fees = profile.fees || {};
+  const ledgerBalance: StudentBalance | null = fees.balance ?? fees.liveBreakdown ?? null;
   const acad = profile.academicPerformance || {};
   const att = profile.attendance || {};
   const activity = profile.activityLog || [];
@@ -433,7 +467,25 @@ function StudentProfileView({ profile, onPrint, onExportPDF, onExportExcel }: { 
 
         <TabsContent value="fees" className="space-y-6 records-tab-panel" data-print-label="Fees & Balances">
           <Card className="records-print-card">
-            <CardHeader><CardTitle>Fee Summary by Term</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Ledger Fee Breakdown</CardTitle></CardHeader>
+            <CardContent>
+              <LedgerBalanceTable breakdown={ledgerBalance} />
+            </CardContent>
+          </Card>
+          <Card className="records-print-card">
+            <CardHeader><CardTitle>Summary Columns</CardTitle></CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div><p className="text-slate-500">Term fee</p><p className="text-lg font-bold">GHS {(ledgerBalance?.currentTermFee ?? balance?.termFees ?? 0).toLocaleString()}</p></div>
+                <div><p className="text-slate-500">Arrears</p><p className="text-lg font-bold text-amber-700">GHS {(ledgerBalance?.totalArrears ?? balance?.arrears ?? 0).toLocaleString()}</p></div>
+                <div><p className="text-slate-500">Total due</p><p className="text-lg font-bold">GHS {(ledgerBalance?.totalDue ?? balance?.amountDue ?? 0).toLocaleString()}</p></div>
+                <div><p className="text-slate-500">Paid</p><p className="text-lg font-bold text-emerald-600">GHS {(ledgerBalance?.totalPaid ?? balance?.totalPaid ?? 0).toLocaleString()}</p></div>
+                <div className="col-span-2 md:col-span-4"><p className="text-slate-500">Outstanding</p><p className="text-xl font-bold text-amber-700">GHS {(ledgerBalance?.outstanding ?? balance?.outstanding ?? 0).toLocaleString()}</p></div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="records-print-card">
+            <CardHeader><CardTitle>Per-Term Ledger Lines</CardTitle></CardHeader>
             <CardContent>
               <Table>
                 <TableHeader><TableRow><TableHead>Academic Year</TableHead><TableHead>Term</TableHead><TableHead>Term Fees</TableHead><TableHead>Arrears</TableHead><TableHead>Amount Due</TableHead><TableHead>Total Paid</TableHead><TableHead>Outstanding</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>

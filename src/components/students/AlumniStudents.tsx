@@ -21,7 +21,7 @@ import StudentQuickViewSheet from './StudentQuickViewSheet';
 import EditStudentDialog from './EditStudentDialog';
 
 const AlumniStudents: React.FC = () => {
-  const { students, payments, feeStructures, arrearsBalances } = useData();
+  const { students, payments, feeStructures } = useData();
   const { currentTerm } = useActiveTerm();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
@@ -75,7 +75,7 @@ const AlumniStudents: React.FC = () => {
         feeStructures || [],
         payments || [],
         student.classAssignedId,
-        arrearsBalances,
+        undefined,
         {
           isBeneficiary: !!student.isBeneficiary,
           discountType: student.discountType,
@@ -84,7 +84,7 @@ const AlumniStudents: React.FC = () => {
       );
       return Math.max(0, (feeCalculation.totalAmountDue ?? 0) - (feeCalculation.totalPaid ?? 0));
     },
-    [currentTerm, feeStructures, payments, arrearsBalances]
+    [currentTerm, feeStructures, payments]
   );
 
   const totalPaidAllTime = useCallback(
@@ -232,7 +232,7 @@ const AlumniStudents: React.FC = () => {
                   feeStructures || [],
                   payments || [],
                   selectedStudent.classAssignedId,
-                  arrearsBalances,
+                  undefined,
                   {
                     isBeneficiary: !!selectedStudent.isBeneficiary,
                     discountType: selectedStudent.discountType,

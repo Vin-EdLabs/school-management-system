@@ -23,6 +23,11 @@ interface ReceiptData {
   arrears?: number;
   currentTermFee?: number;
   totalAmountDue?: number;
+  /** Payment allocation (unified ledger snapshot) */
+  arrearsCleared?: number;
+  termFeeCleared?: number;
+  totalPaidThisTerm?: number;
+  paymentStatus?: 'Owing' | 'Cleared' | 'Credit';
   correctionHistory?: {
     correctionCount: number;
     chain: Array<{ receiptNumber: string; amount: number; isVoided: boolean }>;
@@ -175,15 +180,23 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
               <div class="section-title">Breakdown</div>
               <table class="charges-table">
                 ${displayTermFee > 0 ? `<tr><td>Term Fee</td><td style="text-align:right">GHS ${formatMoney(displayTermFee)}</td></tr>` : ''}
-                ${arrears > 0 ? `<tr><td>Old Arrears</td><td style="text-align:right">GHS ${formatMoney(arrears)}</td></tr>` : ''}
-                <tr><td>Amount Paid (this receipt)</td><td style="text-align:right">GHS ${formatMoney(Number(receiptData.amount) || 0)}</td></tr>
+                ${arrears > 0 ? `<tr><td>Arrears</td><td style="text-align:right">GHS ${formatMoney(arrears)}</td></tr>` : ''}
+                <tr><td><strong>Total Due</strong></td><td style="text-align:right"><strong>GHS ${formatMoney(totalDue)}</strong></td></tr>
               </table>
+            </div>
+            <div class="section">
+              <div class="section-title">This Payment</div>
+              <table class="charges-table">
+                <tr><td>Amount Paid</td><td style="text-align:right">GHS ${formatMoney(Number(receiptData.amount) || 0)}</td></tr>
+                ${(receiptData.arrearsCleared ?? 0) > 0 ? `<tr><td>→ Applied to arrears</td><td style="text-align:right">GHS ${formatMoney(Number(receiptData.arrearsCleared))}</td></tr>` : ''}
+                ${(receiptData.termFeeCleared ?? 0) > 0 ? `<tr><td>→ Applied to term fee</td><td style="text-align:right">GHS ${formatMoney(Number(receiptData.termFeeCleared))}</td></tr>` : ''}
+              </table>
+            </div>
+            <div class="section">
+              <div class="section-title">Balance</div>
+              ${(receiptData.totalPaidThisTerm ?? 0) > 0 ? `<div class="row"><span>Total Paid (this term):</span><span>GHS ${formatMoney(Number(receiptData.totalPaidThisTerm))}</span></div>` : ''}
               <div class="row total-line">
-                <span>Total Due:</span>
-                <span>GHS ${formatMoney(totalDue)}</span>
-              </div>
-              <div class="row" style="margin-top:5px; font-weight:700;">
-                <span>Balance After Payment:</span>
+                <span>Outstanding Balance:</span>
                 <span style="color:#000">GHS ${formatMoney(balanceAfter)}</span>
               </div>
               ${

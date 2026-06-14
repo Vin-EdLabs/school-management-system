@@ -1,0 +1,114 @@
+.term-budget-module {
+  padding: 1rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.term-budget-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.term-budget-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.term-budget-card-value {
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.term-budget-variance.positive {
+  color: #059669;
+}
+
+.term-budget-variance.negative {
+  color: #dc2626;
+}
+
+.term-budget-section {
+  margin-bottom: 2rem;
+}
+
+.term-budget-line-row {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 1fr 1fr 1.2fr;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+@media (max-width: 900px) {
+  .term-budget-line-row {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+    padding: 1rem 0;
+  }
+}
+
+.term-budget-progress {
+  height: 8px;
+  border-radius: 999px;
+  background: hsl(var(--muted));
+  overflow: hidden;
+}
+
+.term-budget-progress-bar {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.term-budget-progress-bar.green { background: #10b981; }
+.term-budget-progress-bar.yellow { background: #eab308; }
+.term-budget-progress-bar.orange { background: #f97316; }
+.term-budget-progress-bar.red { background: #ef4444; }
+
+.term-budget-alert-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+}
+
+.term-budget-alert-badge.warning { background: #fef9c3; color: #854d0e; }
+.term-budget-alert-badge.critical { background: #ffedd5; color: #9a3412; }
+.term-budget-alert-badge.exceeded { background: #fee2e2; color: #991b1b; }
+
+.term-budget-setup-choice {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.term-budget-note {
+  font-size: 0.8rem;
+  color: hsl(var(--muted-foreground));
+  margin-top: 0.25rem;
+}
+
+.term-budget-edit-warning {
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+}
+
+.dark .term-budget-edit-warning {
+  background: rgba(234, 179, 8, 0.1);
+  border-color: rgba(234, 179, 8, 0.35);
+}

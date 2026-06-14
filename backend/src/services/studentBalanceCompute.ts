@@ -1,3 +1,7 @@
+/**
+ * @deprecated Legacy balance engine — retained for migration/reference only.
+ * All balance reads must use studentUnifiedBalanceService.getStudentFullBalance().
+ */
 import { query } from '../db/connection.js';
 import { calculateFeeBalance, SQL_ACTIVE_PAYMENT, SQL_PAYMENT_AMOUNT } from './financeCalculationService.js';
 import { beneficiaryAdjustedFee } from '../utils/beneficiaryFee.js';

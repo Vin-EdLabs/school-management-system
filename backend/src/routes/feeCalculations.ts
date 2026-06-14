@@ -2,7 +2,11 @@ import express from 'express';
 import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest, requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
-import { computeStudentBalance, resolveTermForMatch } from '../services/studentBalanceCompute.js';
+import {
+  getStudentLiveFeeBreakdown,
+  resolveActiveLedgerTerm,
+  liveBreakdownToSummary,
+} from '../services/studentLiveFeeBreakdownService.js';
 
 const router = express.Router();
 
@@ -11,48 +15,63 @@ router.use(requireTenant);
 router.use(setTenantContext);
 
 /**
- * GET /fee-calculations/arrears-balances
- * Returns { studentId: arrearsAmount } for the current active term.
- * Reads from the simple term_arrears table, matched by current_term string from school_settings.
+ * GET /fee-calculations/students/balances?classId=
+ * Batch ledger balances for fee-tracked students (Student Balances tab).
  */
-router.get('/arrears-balances', async (req: AuthRequest, res) => {
+router.get('/students/balances', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
+    const { classId } = req.query;
 
-    const settingsResult = await query(
-      'SELECT current_term, current_year FROM school_settings WHERE tenant_id = $1',
-      [tenantId]
-    );
-    if (
-      settingsResult.rows.length === 0 ||
-      !settingsResult.rows[0].current_term
-    ) {
-      return res.json({});
+    let studentsQuery = `
+      SELECT s.id FROM students s
+      WHERE s.tenant_id = $1
+        AND COALESCE(s.enrollment_status, 'active') = 'active'
+    `;
+    const params: unknown[] = [tenantId];
+    if (classId) {
+      studentsQuery += ` AND s.class_assigned_id = $2`;
+      params.push(classId);
     }
+    studentsQuery += ` ORDER BY s.first_name, s.last_name`;
 
-    const { current_term, current_year } = settingsResult.rows[0];
-    // Build both possible strings: "Term 2 2027" and "Term 2"
-    const fullTerm = current_year
-      ? `${current_term} ${current_year}`.trim()
-      : current_term;
+    const studentsRes = await query(studentsQuery, params);
 
-    const arrearsResult = await query(
-      `SELECT student_id, COALESCE(SUM(amount), 0)::numeric AS arrears
-       FROM term_arrears
-       WHERE tenant_id = $1
-         AND (current_term = $2 OR current_term = $3)
-       GROUP BY student_id`,
-      [tenantId, fullTerm, current_term]
+    const balances: Record<string, Awaited<ReturnType<typeof getStudentLiveFeeBreakdown>>> = {};
+    await Promise.all(
+      studentsRes.rows.map(async (row: { id: number }) => {
+        const b = await getStudentLiveFeeBreakdown(null, tenantId, row.id);
+        if (b) balances[String(row.id)] = b;
+      })
     );
 
-    const arrearsBalances: Record<string, number> = {};
-    for (const row of arrearsResult.rows) {
-      arrearsBalances[String(row.student_id)] = Math.max(0, parseFloat(row.arrears) || 0);
+    const { termLabel } = await resolveActiveLedgerTerm(query, tenantId);
+    res.json({ activeTermLabel: termLabel, balances });
+  } catch (error) {
+    console.error('Batch student balances error:', error);
+    res.status(500).json({ error: 'Failed to load student balances' });
+  }
+});
+
+/**
+ * GET /fee-calculations/students/:studentId/balance
+ * Single student ledger balance — source of truth for records, balance card, and fee breakdown UI.
+ */
+router.get('/students/:studentId/balance', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const studentId = parseInt(String(req.params.studentId), 10);
+    if (Number.isNaN(studentId)) {
+      return res.status(400).json({ error: 'Invalid student id' });
     }
-    return res.json(arrearsBalances);
-  } catch (e) {
-    console.error('arrears-balances error:', e);
-    return res.json({});
+    const breakdown = await getStudentLiveFeeBreakdown(null, tenantId, studentId);
+    if (!breakdown) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+    res.json(breakdown);
+  } catch (error) {
+    console.error('Student balance error:', error);
+    res.status(500).json({ error: 'Failed to load student balance' });
   }
 });
 
@@ -80,19 +99,22 @@ router.get('/student/:studentId', async (req: AuthRequest, res) => {
     }
 
     const student = studentResult.rows[0];
-    const balance = await computeStudentBalance(
-      tenantId,
-      parseInt(studentId, 10),
-      student.class_id,
-      String(term),
-      String(academicYear)
-    );
+    const breakdown = await getStudentLiveFeeBreakdown(null, tenantId, parseInt(studentId, 10));
+    const emptySummary = {
+      termFee: 0,
+      totalPaid: 0,
+      outstanding: 0,
+      arrears: 0,
+      credit: 0,
+      status: 'Cleared' as const,
+    };
+    const summary = breakdown ? liveBreakdownToSummary(breakdown) : emptySummary;
 
     const paymentHistoryResult = await query(
       `SELECT * FROM payments
-       WHERE tenant_id = $1 AND student_id = $2 AND (term = $3 OR term LIKE $4)
+       WHERE tenant_id = $1 AND student_id = $2 AND COALESCE(is_voided, false) = false
        ORDER BY payment_date DESC`,
-      [tenantId, studentId, resolveTermForMatch(String(term), String(academicYear)) || term, `${term}%`]
+      [tenantId, studentId]
     );
 
     res.json({
@@ -105,19 +127,20 @@ router.get('/student/:studentId', async (req: AuthRequest, res) => {
         level: student.level,
       },
       feeCalculation: {
-        totalFees: balance.totalFees,
-        standardFees: (balance as any).standardFees,
-        discountAmount: (balance as any).discountAmount,
-        totalPaid: balance.totalPaid,
-        outstanding: balance.outstanding,
-        arrears: balance.arrears,
-        credit: balance.credit,
-        status: balance.status,
+        totalFees: summary.termFee ?? 0,
+        standardFees: summary.termFee ?? 0,
+        discountAmount: 0,
+        totalPaid: summary.totalPaid,
+        outstanding: summary.outstanding,
+        arrears: summary.arrears,
+        credit: summary.credit,
+        status: summary.status,
         isBeneficiary: student.is_beneficiary,
         beneficiaryType: student.beneficiary_type,
         term,
         academicYear,
       },
+      balance: breakdown,
       paymentHistory: paymentHistoryResult.rows,
     });
   } catch (error) {
@@ -127,7 +150,7 @@ router.get('/student/:studentId', async (req: AuthRequest, res) => {
 });
 
 // Get all students with fee balances (dynamic)
-router.get('/students/balances', async (req: AuthRequest, res) => {
+router.get('/students/balances-by-term', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const { term, academicYear, classId } = req.query;
@@ -135,8 +158,6 @@ router.get('/students/balances', async (req: AuthRequest, res) => {
     if (!term || !academicYear) {
       return res.status(400).json({ error: 'Term and academic year are required' });
     }
-
-    const termMatch = resolveTermForMatch(String(term), String(academicYear)) || term;
 
     let queryText = `
       SELECT s.id, s.first_name, s.last_name, s.student_id, s.admission_number,
@@ -156,21 +177,16 @@ router.get('/students/balances', async (req: AuthRequest, res) => {
 
     const studentsWithBalances = await Promise.all(
       result.rows.map(async (row: any) => {
-        const balance = await computeStudentBalance(
-          tenantId,
-          row.id,
-          row.class_id,
-          String(term),
-          String(academicYear)
-        );
+        const breakdown = await getStudentLiveFeeBreakdown(null, tenantId, row.id);
+        const summary = breakdown ? liveBreakdownToSummary(breakdown) : null;
         return {
           ...row,
-          totalFees: balance.totalFees,
-          totalPaid: balance.totalPaid,
-          outstanding: balance.outstanding,
-          arrears: balance.arrears,
-          credit: balance.credit,
-          status: balance.status,
+          totalFees: summary?.termFee ?? 0,
+          totalPaid: summary?.totalPaid ?? 0,
+          outstanding: summary?.outstanding ?? 0,
+          arrears: summary?.arrears ?? 0,
+          credit: summary?.credit ?? 0,
+          status: summary?.status ?? 'Cleared',
         };
       })
     );
@@ -185,7 +201,6 @@ router.get('/students/balances', async (req: AuthRequest, res) => {
 /**
  * Class outstanding report - backend only.
  * Fetch students in class, calculate outstanding for each, show only outstanding > 0.
- * Include: Student Name, Total Fees, Total Paid, Outstanding, Status
  */
 router.get('/class-report', async (req: AuthRequest, res) => {
   try {
@@ -228,15 +243,10 @@ router.get('/class-report', async (req: AuthRequest, res) => {
     }> = [];
 
     for (const row of result.rows) {
-      const balance = await computeStudentBalance(
-        tenantId,
-        row.id,
-        row.class_id,
-        String(term),
-        String(academicYear)
-      );
+      const breakdown = await getStudentLiveFeeBreakdown(null, tenantId, row.id);
+      const outstanding = breakdown?.outstanding ?? 0;
 
-      if (balance.outstanding > 0) {
+      if (outstanding > 0) {
         rows.push({
           id: row.id,
           firstName: row.first_name,
@@ -245,11 +255,11 @@ router.get('/class-report', async (req: AuthRequest, res) => {
           studentId: row.student_id,
           admissionNumber: row.admission_number,
           className: row.class_name || '',
-          totalFees: balance.totalFees,
-          totalPaid: balance.totalPaid,
-          outstanding: balance.outstanding,
-          outstandingBalance: balance.outstanding,
-          status: balance.status.toLowerCase() as 'owing' | 'cleared' | 'credit',
+          totalFees: breakdown?.currentTermFee ?? 0,
+          totalPaid: breakdown?.totalPaid ?? 0,
+          outstanding,
+          outstandingBalance: outstanding,
+          status: (breakdown?.status ?? 'Owing').toLowerCase() as 'owing' | 'cleared' | 'credit',
         });
       }
     }
@@ -267,27 +277,19 @@ router.get('/class-report', async (req: AuthRequest, res) => {
   }
 });
 
-// Refresh arrears for all students based on global running balance
-router.post('/refresh-arrears', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
-  try {
-    const tenantId = req.user!.tenantId!;
-    const { refreshArrearsForTenant } = await import('../services/arrearsService.js');
-    const result = await refreshArrearsForTenant(tenantId);
-    res.json({ message: 'Arrears refreshed successfully', ...result });
-  } catch (error) {
-    console.error('Refresh arrears error:', error);
-    res.status(500).json({ error: 'Failed to refresh arrears' });
-  }
+router.post('/refresh-arrears', requireRole('super-admin', 'administrator'), async (_req: AuthRequest, res) => {
+  res.json({
+    message: 'Arrears are computed from the student ledger in real time.',
+    deprecated: true,
+  });
 });
 
-// No-op: balances are computed dynamically; no stored arrears/credits to carry over.
-router.post('/process-term-change', async (req: AuthRequest, res) => {
-  res.json({ message: 'Term change noted. Balances are computed dynamically.', arrearsUpdated: 0, creditsUpdated: 0 });
+router.post('/process-term-change', async (_req: AuthRequest, res) => {
+  res.json({ message: 'Term change noted. Balances are computed from the ledger.', arrearsUpdated: 0, creditsUpdated: 0 });
 });
 
-// No-op: balances are computed dynamically per term/class; no carryover needed.
-router.post('/process-class-promotion', async (req: AuthRequest, res) => {
-  res.json({ message: 'Class promotion noted. Balances are computed dynamically per term.', outstandingCarriedOver: 0 });
+router.post('/process-class-promotion', async (_req: AuthRequest, res) => {
+  res.json({ message: 'Class promotion noted. Balances are computed from the ledger.', outstandingCarriedOver: 0 });
 });
 
 export default router;

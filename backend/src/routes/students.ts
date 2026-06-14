@@ -3,7 +3,8 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { query } from '../db/connection.js';
+import { query, getClient } from '../db/connection.js';
+import { postStudentActivationTermFee } from '../services/ledgerPaymentService.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
@@ -495,6 +496,13 @@ router.patch('/:id/status', requireRole('super-admin', 'administrator'), async (
       return res.status(400).json({ error: 'Status must be active or inactive' });
     }
 
+    const existing = await queryStudentById(tenantId, id);
+    if (!existing) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+
+    const priorStatus = String(existing.enrollment_status || 'active').toLowerCase();
+
     const result = await query(
       'UPDATE students SET enrollment_status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND tenant_id = $3 RETURNING *',
       [status, id, tenantId]
@@ -504,14 +512,95 @@ router.patch('/:id/status', requireRole('super-admin', 'administrator'), async (
       return res.status(404).json({ error: 'Student not found' });
     }
 
-    const auditAction = status === 'inactive' ? 'DEACTIVATE' : 'REACTIVATE';
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id, details) VALUES ($1, $2, $3, $4, $5, $6)',
-      [tenantId, req.user!.id, auditAction, 'STUDENT', parseInt(id), JSON.stringify({ enrollment_status: status })]
-    );
+    const row = result.rows[0];
+    let billing: Awaited<ReturnType<typeof postStudentActivationTermFee>> | null = null;
+
+    if (status === 'active' && priorStatus !== 'active') {
+      const client = await getClient();
+      try {
+        billing = await postStudentActivationTermFee(
+          client,
+          tenantId,
+          parseInt(id, 10),
+          req.user!.id,
+          priorStatus === 'pending' ? 'enrollment' : 'reactivation'
+        );
+      } catch (feeErr) {
+        console.error('[reactivate] Term fee posting failed:', feeErr);
+      } finally {
+        client.release();
+      }
+
+      if (billing?.posted) {
+        await writeAuditLog({
+          tenantId,
+          userId: req.user!.id,
+          userRole: req.user!.role,
+          action: priorStatus === 'pending' ? 'STUDENT_ENROLLED_AND_BILLED' : 'STUDENT_REACTIVATED_AND_BILLED',
+          entityType: 'STUDENT',
+          entityId: parseInt(id, 10),
+          module: 'finance',
+          summary: `Term fee GHS ${billing.amount.toFixed(2)} posted for ${row.first_name} ${row.last_name} on ${billing.termName || 'current term'}`,
+          details: {
+            priorStatus,
+            termName: billing.termName,
+            amount: billing.amount,
+            className: billing.className,
+          },
+          beforeValues: existing,
+          afterValues: row,
+          ipAddress: getClientIp(req),
+          userAgent: req.get('user-agent') || null,
+        });
+        emitTenantDataChanged(tenantId, 'fee', 'updated');
+        emitTenantDataChanged(tenantId, 'finance', 'updated');
+      } else if (
+        billing &&
+        (billing.skippedReason === 'no_fee_structure' || billing.skippedReason === 'no_class')
+      ) {
+        await writeAuditLog({
+          tenantId,
+          userId: req.user!.id,
+          userRole: req.user!.role,
+          action: priorStatus === 'pending' ? 'STUDENT_ENROLLED_NO_FEE' : 'STUDENT_REACTIVATED_NO_FEE',
+          entityType: 'STUDENT',
+          entityId: parseInt(id, 10),
+          module: 'finance',
+          summary: billing.message || 'Student activated without term fee posted',
+          details: {
+            priorStatus,
+            skippedReason: billing.skippedReason,
+            termName: billing.termName,
+            className: billing.className,
+            message: billing.message,
+          },
+          beforeValues: existing,
+          afterValues: row,
+          ipAddress: getClientIp(req),
+          userAgent: req.get('user-agent') || null,
+        });
+      }
+    } else {
+      const auditAction = status === 'inactive' ? 'DEACTIVATE' : 'REACTIVATE';
+      await query(
+        'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id, details) VALUES ($1, $2, $3, $4, $5, $6)',
+        [tenantId, req.user!.id, auditAction, 'STUDENT', parseInt(id), JSON.stringify({ enrollment_status: status })]
+      );
+    }
+
     emitTenantDataChanged(tenantId, 'student', 'updated');
 
-    res.json(result.rows[0]);
+    res.json({
+      ...row,
+      billing: billing
+        ? {
+            posted: billing.posted,
+            amount: billing.amount,
+            warning: billing.message,
+            skippedReason: billing.skippedReason,
+          }
+        : null,
+    });
   } catch (error) {
     console.error('Update student status error:', error);
     res.status(500).json({ error: 'Failed to update student status' });
@@ -611,27 +700,104 @@ router.post('/:id/approve-admission', requireRole('super-admin', 'administrator'
     }
 
     const row = result.rows[0];
-    await writeAuditLog({
-      tenantId,
-      userId: req.user!.id,
-      userRole: req.user!.role,
-      action: 'STUDENT_ENROLLED',
-      entityType: 'STUDENT',
-      entityId: parseInt(id, 10),
-      module: 'academics',
-      summary: `Approved pending admission: ${row.first_name} ${row.last_name} → ${classCheck.rows[0].class_name}`,
-      details: {
-        classAssignedId,
-        className: classCheck.rows[0].class_name,
-        admissionNumber: row.admission_number,
-      },
-      beforeValues: existing,
-      afterValues: row,
-      ipAddress: getClientIp(req),
-      userAgent: req.get('user-agent') || null,
-    });
+
+    const client = await getClient();
+    let feePosted: Awaited<ReturnType<typeof postStudentActivationTermFee>> = { posted: false, amount: 0 };
+    try {
+      feePosted = await postStudentActivationTermFee(
+        client,
+        tenantId,
+        parseInt(id, 10),
+        req.user!.id,
+        'enrollment'
+      );
+    } catch (feeErr) {
+      console.error('[approve-admission] Mid-term fee posting failed:', feeErr);
+    } finally {
+      client.release();
+    }
+
+    if (feePosted.posted) {
+      await writeAuditLog({
+        tenantId,
+        userId: req.user!.id,
+        userRole: req.user!.role,
+        action: 'STUDENT_ENROLLED_AND_BILLED',
+        entityType: 'STUDENT',
+        entityId: parseInt(id, 10),
+        module: 'finance',
+        summary: `Approved admission and posted term fee GHS ${feePosted.amount.toFixed(2)} for ${row.first_name} ${row.last_name}`,
+        details: {
+          classAssignedId,
+          className: classCheck.rows[0].class_name,
+          admissionNumber: row.admission_number,
+          termFeeAmount: feePosted.amount,
+          termName: feePosted.termName,
+        },
+        beforeValues: existing,
+        afterValues: row,
+        ipAddress: getClientIp(req),
+        userAgent: req.get('user-agent') || null,
+      });
+    } else if (feePosted.skippedReason === 'no_fee_structure' || feePosted.skippedReason === 'no_class') {
+      await writeAuditLog({
+        tenantId,
+        userId: req.user!.id,
+        userRole: req.user!.role,
+        action: 'STUDENT_ENROLLED_NO_FEE',
+        entityType: 'STUDENT',
+        entityId: parseInt(id, 10),
+        module: 'finance',
+        summary: feePosted.message || `Approved admission for ${row.first_name} ${row.last_name} without term fee`,
+        details: {
+          classAssignedId,
+          className: classCheck.rows[0].class_name,
+          skippedReason: feePosted.skippedReason,
+          message: feePosted.message,
+        },
+        beforeValues: existing,
+        afterValues: row,
+        ipAddress: getClientIp(req),
+        userAgent: req.get('user-agent') || null,
+      });
+    } else {
+      await writeAuditLog({
+        tenantId,
+        userId: req.user!.id,
+        userRole: req.user!.role,
+        action: 'STUDENT_ENROLLED',
+        entityType: 'STUDENT',
+        entityId: parseInt(id, 10),
+        module: 'academics',
+        summary: `Approved pending admission: ${row.first_name} ${row.last_name} → ${classCheck.rows[0].class_name}`,
+        details: {
+          classAssignedId,
+          className: classCheck.rows[0].class_name,
+          admissionNumber: row.admission_number,
+          termFeePosted: feePosted.posted,
+          termFeeAmount: feePosted.amount,
+          skippedReason: feePosted.skippedReason,
+        },
+        beforeValues: existing,
+        afterValues: row,
+        ipAddress: getClientIp(req),
+        userAgent: req.get('user-agent') || null,
+      });
+    }
     emitTenantDataChanged(tenantId, 'student', 'updated');
-    res.json(row);
+    if (feePosted.posted) {
+      emitTenantDataChanged(tenantId, 'fee', 'updated');
+      emitTenantDataChanged(tenantId, 'finance', 'updated');
+    }
+    res.json({
+      ...row,
+      billing: {
+        posted: feePosted.posted,
+        amount: feePosted.amount,
+        warning: feePosted.message,
+        skippedReason: feePosted.skippedReason,
+      },
+    });
   } catch (error) {
     console.error('Approve admission error:', error);
     res.status(500).json({ error: 'Failed to approve admission' });

@@ -26,7 +26,6 @@ import {
 import { formatDisplayDate } from '../../utils/dateFormat';
 import { apiService } from '../../services/api';
 import { resolveLogoUrl } from '../../services/tenantService';
-import { useData } from '../../contexts/DataContext';
 import {
   classBadgeClass,
   enrollmentStatusLabel,
@@ -34,8 +33,11 @@ import {
   normalizeEnrollmentStatus,
   statusBadgeClass,
 } from './studentRegistryUtils';
-import { calculateStudentFeesSync } from '../../utils/feeCalculations';
 import { cn } from '@/lib/utils';
+import {
+  fetchStudentBalance,
+  type StudentBalance,
+} from '../../services/studentBalance';
 
 type PaymentLite = { studentId?: string; amount: number; date: string; paymentMethod?: string; term?: string };
 
@@ -71,24 +73,28 @@ const StudentQuickViewSheet: React.FC<StudentQuickViewSheetProps> = ({
   onEdit,
   onViewFull,
 }) => {
-  const { arrearsBalances } = useData();
   const [attendance, setAttendance] = useState<AttendanceRow[] | null>(null);
   const [attErr, setAttErr] = useState(false);
   const [grades, setGrades] = useState<GradeRow[] | null>(null);
   const [gradesErr, setGradesErr] = useState(false);
+  const [studentBalance, setStudentBalance] = useState<StudentBalance | null>(null);
+  const [feeErr, setFeeErr] = useState(false);
 
   useEffect(() => {
     if (!open || !student) {
       setAttendance(null);
       setGrades(null);
+      setStudentBalance(null);
       setAttErr(false);
       setGradesErr(false);
+      setFeeErr(false);
       return;
     }
     let cancelled = false;
     (async () => {
       setAttendance(null);
       setGrades(null);
+      setStudentBalance(null);
       const sid = student.id;
       const classId = student.classAssignedId;
       try {
@@ -100,6 +106,15 @@ const StudentQuickViewSheet: React.FC<StudentQuickViewSheetProps> = ({
         if (!cancelled) {
           setAttendance([]);
           setAttErr(true);
+        }
+      }
+      try {
+        const breakdown = await fetchStudentBalance(sid);
+        if (!cancelled) setStudentBalance(breakdown);
+      } catch {
+        if (!cancelled) {
+          setStudentBalance(null);
+          setFeeErr(true);
         }
       }
       if (!classId) {
@@ -132,26 +147,17 @@ const StudentQuickViewSheet: React.FC<StudentQuickViewSheetProps> = ({
   }, [open, student]);
 
   const feeSummary = useMemo(() => {
-    if (!student) return { due: 0, paid: 0, balance: 0 };
-    const feeCalculation = calculateStudentFeesSync(
-      student.id,
-      currentTerm,
-      student.classAssigned,
-      feeStructures,
-      payments,
-      student.classAssignedId,
-      arrearsBalances,
-      {
-        isBeneficiary: !!student.isBeneficiary,
-        discountType: student.discountType,
-        discountValue: student.discountValue,
-      }
-    );
-    const due = feeCalculation.totalAmountDue ?? feeCalculation.currentTermFee ?? 0;
-    const paid = feeCalculation.totalPaid ?? 0;
-    const balance = Math.max(0, due - paid);
-    return { due, paid, balance };
-  }, [student, feeStructures, currentTerm, payments, arrearsBalances]);
+    if (!studentBalance) {
+      return { termFee: 0, arrears: 0, due: 0, paid: 0, balance: 0 };
+    }
+    return {
+      termFee: studentBalance.currentTermFee,
+      arrears: studentBalance.totalArrears,
+      due: studentBalance.totalDue,
+      paid: studentBalance.totalPaid,
+      balance: studentBalance.outstanding,
+    };
+  }, [studentBalance]);
 
   const attStats = useMemo(() => {
     if (!attendance || attendance.length === 0) return { pct: null as number | null, present: 0, absent: 0, n: 0 };
@@ -295,9 +301,18 @@ const StudentQuickViewSheet: React.FC<StudentQuickViewSheetProps> = ({
                 Fees ({alumni ? 'all time' : currentTerm && currentTerm !== 'Not Set' ? currentTerm : 'all terms'})
               </h3>
               <div className="rounded-lg border bg-card/50 p-3 shadow-sm">
-                <dl className="grid grid-cols-3 gap-2 text-center text-sm">
+                {feeErr && !studentBalance ? (
+                  <p className="text-xs text-destructive mb-2">Could not load live fee breakdown.</p>
+                ) : null}
+                <dl className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-sm">
                   <div>
-                    <dt className="text-[11px] text-muted-foreground">Scheduled</dt>
+                    <dt className="text-[11px] text-muted-foreground">Arrears</dt>
+                    <dd className="font-semibold tabular-nums text-amber-700 dark:text-amber-300">
+                      GHS {feeSummary.arrears.toLocaleString()}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-[11px] text-muted-foreground">Total due</dt>
                     <dd className="font-semibold tabular-nums">GHS {feeSummary.due.toLocaleString()}</dd>
                   </div>
                   <div>

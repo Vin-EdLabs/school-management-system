@@ -3,7 +3,7 @@ import { query, getClient } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
-import { getStudentFeeBalance, buildReceiptSnapshot } from '../services/studentFeeBalanceService.js';
+import { recordPaymentWithLedger } from '../services/ledgerPaymentService.js';
 import { getIO } from '../socket.js';
 import { sendPushToStudentParents } from '../services/webPushService.js';
 import { writeAuditLog } from '../services/auditService.js';
@@ -16,6 +16,7 @@ import {
   getCorrectionHistory,
   listReceiptCorrections,
 } from '../services/receiptCorrectionService.js';
+import { evaluateBudgetAlerts } from '../services/termBudgetService.js';
 
 const router = express.Router();
 
@@ -429,99 +430,30 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
 
     const termStr = term || '';
     const yearStr = academic_year || '';
-    const termToStore = (yearStr && !termStr.includes(yearStr)) 
-      ? `${termStr} ${yearStr}`.trim() 
-      : termStr;
+    const termToStore =
+      yearStr && !termStr.includes(yearStr) ? `${termStr} ${yearStr}`.trim() : termStr;
 
-    let insertResult;
+    let result;
     try {
-      insertResult = await query(
-        `INSERT INTO payments (tenant_id, student_id, amount, payment_date, payment_method, payment_account_id, term, notes, receipt_number, base_receipt_number)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9) RETURNING *`,
-        [
-          tenantId,
-          student_id,
-          paymentAmount,
-          payment_date,
-          resolvedMethod,
-          resolvedAccountId,
-          termToStore || term || null,
-          notes || null,
-          receiptNumber,
-        ]
-      );
-    } catch {
-      try {
-        // Legacy schema fallback: payment_method may not exist.
-        insertResult = await query(
-          `INSERT INTO payments (tenant_id, student_id, amount, payment_date, term, notes, receipt_number)
-           VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-          [
-            tenantId,
-            student_id,
-            paymentAmount,
-            payment_date,
-            termToStore || term || null,
-            notes || null,
-            receiptNumber,
-          ]
-        );
-      } catch {
-        try {
-          // Legacy schema fallback: both payment_method and term may be missing.
-          insertResult = await query(
-            `INSERT INTO payments (tenant_id, student_id, amount, payment_date, notes, receipt_number)
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-            [
-              tenantId,
-              student_id,
-              paymentAmount,
-              payment_date,
-              notes || null,
-              receiptNumber,
-            ]
-          );
-        } catch {
-          // Oldest schema fallback: notes may be missing as well.
-          insertResult = await query(
-            `INSERT INTO payments (tenant_id, student_id, amount, payment_date, receipt_number)
-             VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-            [tenantId, student_id, paymentAmount, payment_date, receiptNumber]
-          );
-        }
-      }
-    }
-    const payment = insertResult.rows[0];
-
-    const client = await getClient();
-    let balance = null;
-    let receiptSnapshot: Record<string, number> | null = null;
-    try {
-      balance = await getStudentFeeBalance(
-        client,
+      result = await recordPaymentWithLedger({
         tenantId,
-        parseInt(student_id, 10),
-        termToStore || term || null
-      );
-      if (balance) {
-        receiptSnapshot = buildReceiptSnapshot(balance);
-      }
-    } finally {
-      client.release();
+        studentId: parseInt(String(student_id), 10),
+        amount: paymentAmount,
+        paymentDate: payment_date,
+        paymentMethod: resolvedMethod,
+        paymentAccountId: resolvedAccountId,
+        termLabel: termToStore || termStr || null,
+        notes: notes || null,
+        receiptNumber,
+        createdByUserId: req.user!.id,
+      });
+    } catch (ledgerErr: any) {
+      return res.status(400).json({ error: ledgerErr?.message || 'Failed to record payment on ledger' });
     }
 
-    if (receiptSnapshot) {
-      try {
-        await query(
-          `UPDATE payments SET receipt_snapshot = $1::jsonb WHERE id = $2 AND tenant_id = $3`,
-          [JSON.stringify(receiptSnapshot), payment.id, tenantId]
-        );
-      } catch (snapErr) {
-        console.error('[payments] Failed to persist receipt_snapshot:', snapErr);
-      }
-    }
-
-    const paymentOut = { ...payment, receipt_snapshot: receiptSnapshot };
+    const paymentOut = result.payment;
+    const receiptSnapshot = result.receiptSnapshot;
+    const balance = result.balance;
 
     const studentNameRes = await query(
       'SELECT first_name, last_name, student_id as school_student_code FROM students WHERE tenant_id = $1 AND id = $2',
@@ -532,74 +464,13 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
       : 'Student';
     const schoolStudentCode = studentNameRes.rows[0]?.school_student_code || '';
 
-    // Get student's class and current academic period IDs for ledger entry
-    const studentInfo = await query(
-      'SELECT class_assigned_id FROM students WHERE id = $1 AND tenant_id = $2',
-      [student_id, tenantId]
-    );
-    const classId = studentInfo.rows[0]?.class_assigned_id;
-
-    // Resolve term and academic year IDs for ledger matching
-    let termId = null;
-    let academicYearId = 1; // Default fallback for now if no hard link exists
-
-    if (termStr) {
-      // 1. Try to find the term by name/year string in academic_terms
-      const termLookup = await query(
-        `SELECT id FROM academic_terms 
-         WHERE tenant_id = $1 AND (
-           (term_name || ' ' || year) = $2 
-           OR term_name = $2 
-           OR term_name = $3
-         )
-         LIMIT 1`,
-        [tenantId, termToStore || termStr, termStr.split(' ')[0]]
-      );
-
-      if (termLookup.rows.length > 0) {
-        termId = termLookup.rows[0].id;
-      } else {
-        // 2. Fallback: If we can't find it by string, use the current active term from settings
-        const activeTermLookup = await query(
-          `SELECT t.id FROM academic_terms t
-           JOIN school_settings s ON (s.current_term = (t.term_name || ' ' || t.year) OR s.current_term = t.term_name)
-           WHERE t.tenant_id = $1 AND s.tenant_id = $1
-           LIMIT 1`,
-          [tenantId]
-        );
-        if (activeTermLookup.rows.length > 0) {
-          termId = activeTermLookup.rows[0].id;
-        }
-      }
-    }
-
-    // If we have term context, post to student_ledger
-    if (termId) {
-      try {
-        await query(
-          `INSERT INTO student_ledger (tenant_id, student_id, academic_year_id, term_id, description, debit, credit, entry_type)
-           VALUES ($1, $2, $3, $4, $5, 0, $6, 'payment')`,
-          [
-            tenantId,
-            student_id,
-            academicYearId,
-            termId,
-            `Payment - ${receiptNumber}${notes ? ': ' + notes : ''}`,
-            paymentAmount
-          ]
-        );
-      } catch (ledgerErr) {
-        console.error('[payments] Failed to post to ledger:', ledgerErr);
-      }
-    }
-
     await writeAuditLog({
       tenantId,
       userId: req.user!.id,
       userRole: req.user!.role,
-      action: 'FEE_PAYMENT',
+      action: 'PAYMENT_RECORDED',
       entityType: 'PAYMENT',
-      entityId: paymentOut.id,
+      entityId: Number(paymentOut.id),
       module: 'finance',
       status: 'success',
       summary: `Recorded fee payment GHS ${paymentAmount.toLocaleString()} for ${studentName} (receipt ${receiptNumber})`,
@@ -611,13 +482,15 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
         amount: paymentAmount,
         receiptNumber,
         term: termToStore || term || null,
-        paymentMethod: payment_method || null,
-        balanceAfter: receiptSnapshot?.balanceAfter ?? null,
+        paymentMethod: resolvedMethod,
+        allocation: receiptSnapshot,
+        outstandingAfter: receiptSnapshot.outstandingAfter,
       },
       ipAddress: getClientIp(req),
       userAgent: req.get('user-agent') || null,
     });
     emitTenantDataChanged(tenantId, 'payment', 'created');
+    evaluateBudgetAlerts(tenantId).catch(() => undefined);
     await sendPushToStudentParents(tenantId, Number(student_id), {
       title: 'Fee Payment Received',
       body: `${studentName}: GHS ${paymentAmount.toFixed(2)} was received. Receipt #${receiptNumber}.`,
@@ -626,17 +499,16 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
 
     res.status(201).json({
       payment: paymentOut,
-      balance: balance || undefined,
+      balance,
     });
 
-    // ASYNC: Refresh arrears in background so the current term balance stays correct
-    // (If payment was for a previous term, current term arrears should drop)
+    // Refresh term_arrears cache for legacy report compatibility
     (async () => {
       try {
         const { refreshArrearsForTenant } = await import('../services/arrearsService.js');
         await refreshArrearsForTenant(tenantId);
       } catch (err) {
-        console.error('[payments] Background arrears refresh failed:', err);
+        console.error('[payments] Background arrears cache refresh failed:', err);
       }
     })();
   } catch (error) {

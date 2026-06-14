@@ -155,12 +155,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Super-admin: full access including school creation
     if (user.role === 'super-admin') {
-      return ['students', 'teachers', 'classes', 'calendar', 'fees', 'income', 'expenses', 'transactions', 'cash-bank', 'payroll', 'reports', 'dashboard', 'financial-dashboard', 'settings', 'settings-full', 'payment-accounts', 'appointment-letter-settings', 'users', 'audit', 'print-fee-status', 'teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'ai-assistant', 'schools', 'records', 'subjects', 'support-chat', 'push-notifications', 'parent-desk', 'parent-accounts', 'manual-adjustments', 'end-of-year'].includes(module);
+      return ['students', 'teachers', 'classes', 'calendar', 'fees', 'income', 'expenses', 'transactions', 'cash-bank', 'payroll', 'reports', 'dashboard', 'financial-dashboard', 'term-budget', 'settings', 'settings-full', 'payment-accounts', 'appointment-letter-settings', 'users', 'audit', 'print-fee-status', 'finance-statement', 'teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'ai-assistant', 'schools', 'records', 'subjects', 'support-chat', 'push-notifications', 'parent-desk', 'parent-accounts', 'manual-adjustments', 'end-of-year'].includes(module);
     }
 
     // Primary admin: full school control except school creation (sees everything)
     if (user.role === 'administrator' && user.isPrimaryAdmin) {
-      return ['students', 'teachers', 'classes', 'calendar', 'fees', 'income', 'expenses', 'transactions', 'cash-bank', 'payroll', 'reports', 'dashboard', 'financial-dashboard', 'settings', 'settings-full', 'payment-accounts', 'appointment-letter-settings', 'users', 'audit', 'print-fee-status', 'teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'ai-assistant', 'records', 'subjects', 'support-chat', 'push-notifications', 'parent-desk', 'parent-accounts', 'manual-adjustments'].includes(module);
+      return ['students', 'teachers', 'classes', 'calendar', 'fees', 'income', 'expenses', 'transactions', 'cash-bank', 'payroll', 'reports', 'dashboard', 'financial-dashboard', 'term-budget', 'settings', 'settings-full', 'payment-accounts', 'appointment-letter-settings', 'users', 'audit', 'print-fee-status', 'finance-statement', 'teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'ai-assistant', 'records', 'subjects', 'support-chat', 'push-notifications', 'parent-desk', 'parent-accounts', 'manual-adjustments'].includes(module);
     }
 
     // Additional administrators: academic only
@@ -170,7 +170,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Finance: financial sections only (financial dashboard, not the general admin dashboard)
     if (user.role === 'finance') {
-      return ['students-view-only', 'teachers-view-only', 'fees', 'income', 'expenses', 'transactions', 'cash-bank', 'payroll', 'reports', 'financial-dashboard', 'settings', 'settings-password-only', 'print-fee-status', 'ai-assistant', 'support-chat', 'parent-desk', 'audit', 'manual-adjustments'].includes(module);
+      return ['students-view-only', 'teachers-view-only', 'fees', 'income', 'expenses', 'transactions', 'cash-bank', 'payroll', 'reports', 'financial-dashboard', 'term-budget', 'settings', 'settings-password-only', 'print-fee-status', 'finance-statement', 'ai-assistant', 'support-chat', 'parent-desk', 'audit', 'manual-adjustments'].includes(module);
     }
 
     // Teacher: teacher section + profile + payment history

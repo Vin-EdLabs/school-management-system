@@ -51,7 +51,7 @@ function canCorrectReceipt(payment: Payment, paymentById: Map<string, Payment>) 
 }
 
 const ReceiptHistory = () => {
-  const { payments, students, feeStructures, arrearsBalances, refresh } = useData();
+  const { payments, students, feeStructures, refresh } = useData();
   const { hasAccess } = useAuth();
   const queryClient = useQueryClient();
   const { schoolId } = useSchool();
@@ -85,7 +85,7 @@ const ReceiptHistory = () => {
     if (!student) return;
 
     const activePayments = payments.filter((p) => !p.isVoided);
-    const amounts = receiptAmountsForPayment(payment, activePayments, student, feeStructures, arrearsBalances);
+    const amounts = receiptAmountsForPayment(payment, activePayments, student, feeStructures);
 
     let correctionHistory: {
       correctionCount: number;

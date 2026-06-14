@@ -22,6 +22,8 @@ import CashBankModule from './finance/CashBankModule';
 import PaymentAccountsModule from './configurations/PaymentAccountsModule';
 import AppointmentLetterSettings from './configurations/AppointmentLetterSettings';
 import ManualAdjustmentsReport from './finance/ManualAdjustmentsReport';
+import TermBudgetModule from './finance/TermBudgetModule';
+import FinanceStatementModule from './finance/FinanceStatementModule';
 import TeacherDashboard from './teacher/TeacherDashboard';
 import TeacherClassesModule from './teacher/TeacherClassesModule';
 import AttendanceModule from './teacher/AttendanceModule';
@@ -38,6 +40,7 @@ import PushNotificationsModule from './notifications/PushNotificationsModule';
 import ParentDeskAdminModule from './notifications/ParentDeskAdminModule';
 import ParentAccountsModule from './parent/ParentAccountsModule';
 import EndOfYearWizard from './academic/EndOfYearWizard';
+import GlobalAnnouncementPopup from './announcements/GlobalAnnouncementPopup';
 import SetupProgressGate from './onboarding/SetupProgressGate';
 import { useAuth } from '../contexts/AuthContext';
 import { useStaffPushSync } from '../hooks/useStaffPushSync';
@@ -130,10 +133,14 @@ const Dashboard = () => {
         return <TeacherQuizModule />;
       case 'fees':
         return <FeesModule />;
+      case 'finance-statement':
+        return <FinanceStatementModule />;
       case 'income':
         return <IncomeModule />;
       case 'expenses':
         return <ExpensesModule />;
+      case 'term-budget':
+        return <TermBudgetModule />;
       case 'payroll':
         return <PayrollModule />;
       case 'reports':
@@ -185,6 +192,7 @@ const Dashboard = () => {
       activeModule={activeModule}
       setActiveModule={setActiveModule}
     >
+      <GlobalAnnouncementPopup />
       <SetupProgressGate activeModule={activeModule} setActiveModule={setActiveModule} />
       {renderActiveModule()}
     </SidebarWrapper>

@@ -26,6 +26,20 @@ const AUDIT_USER_FULL_NAME_SQL = `COALESCE(NULLIF(TRIM(u.full_name), ''), NULLIF
 
 const AUDIT_USER_DISPLAY_SEARCH = `COALESCE(NULLIF(TRIM(u.full_name), ''), NULLIF(TRIM(tch.full_name), ''), NULLIF(TRIM(stf.full_name), ''), '')`;
 
+/** Platform/super-admin data ops must not appear in school tenant audit views. */
+const TENANT_HIDDEN_AUDIT_ACTIONS = ['BACKUP_EXPORT', 'FULL_RESET', 'BACKUP_IMPORT', 'BACKUP_VALIDATE'];
+const TENANT_HIDDEN_AUDIT_MODULES = ['superadmin', 'platform'];
+
+function tenantAuditExclusionSql(alias = 'al'): string {
+  return ` AND ${alias}.action NOT IN ('${TENANT_HIDDEN_AUDIT_ACTIONS.join("','")}')
+           AND COALESCE(${alias}.module, '') NOT IN ('${TENANT_HIDDEN_AUDIT_MODULES.join("','")}')`;
+}
+
+function tenantAuditJoinExclusionSql(alias = 'al'): string {
+  return `${alias}.action NOT IN ('${TENANT_HIDDEN_AUDIT_ACTIONS.join("','")}')
+          AND COALESCE(${alias}.module, '') NOT IN ('${TENANT_HIDDEN_AUDIT_MODULES.join("','")}')`;
+}
+
 function buildTenantAuditWhere(
   tenantId: number,
   q: express.Request['query'],
@@ -72,6 +86,8 @@ function buildTenantAuditWhere(
     )`;
     params.push(s);
   }
+
+  sql += tenantAuditExclusionSql(alias);
 
   return sql;
 }
@@ -236,6 +252,7 @@ router.get('/super-admin/tracker/users', authenticate, requireRole('super-admin'
          AND stf.id = u.other_staff_id
          AND stf.tenant_id = u.tenant_id
        LEFT JOIN audit_logs al ON al.user_id = u.id AND al.tenant_id = u.tenant_id
+         AND ${tenantAuditJoinExclusionSql('al')}
        WHERE u.tenant_id = $1
        GROUP BY u.id, tch.full_name, stf.full_name
        ORDER BY last_activity_at DESC NULLS LAST, display_name ASC`,
@@ -258,7 +275,7 @@ router.get('/super-admin/tracker/timeline', authenticate, requireRole('super-adm
     }
 
     const params: any[] = [tenantId, userId];
-    let where = `WHERE al.tenant_id = $1 AND al.user_id = $2`;
+    let where = `WHERE al.tenant_id = $1 AND al.user_id = $2${tenantAuditExclusionSql('al')}`;
     const { module, action, startDate, endDate, search, order = 'desc', limit = '300', offset = '0' } = req.query;
 
     if (module && String(module).trim()) {
@@ -330,7 +347,7 @@ router.get('/summary', requireRole(...viewerRoles), async (req: AuthRequest, res
          )) AS delete_actions_today,
          COUNT(DISTINCT al.user_id) FILTER (WHERE al.created_at >= CURRENT_DATE AND al.user_id IS NOT NULL) AS active_users_today
        FROM audit_logs al
-       WHERE al.tenant_id = $1`,
+       WHERE al.tenant_id = $1${tenantAuditExclusionSql('al')}`,
       [tenantId]
     );
     res.json(result.rows[0] || {});

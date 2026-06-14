@@ -20,8 +20,20 @@ import {
 } from '@/components/ui/dialog';
 import { apiService } from '@/services/api';
 import { toast } from '@/hooks/use-toast';
-import { Activity, AlertTriangle, CheckCircle, RefreshCw, Server } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle, RefreshCw, Server, Trash2 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
+
+const PAGE_SIZE = 25;
 
 interface SchoolOption {
   id: number;
@@ -88,7 +100,11 @@ function formatUptime(seconds: number): string {
 const SystemHealthModule: React.FC<SystemHealthModuleProps> = ({ schools }) => {
   const [health, setHealth] = useState<SystemHealth | null>(null);
   const [errors, setErrors] = useState<SystemError[]>([]);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [clearOpen, setClearOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [selectedError, setSelectedError] = useState<SystemError | null>(null);
   const [filters, setFilters] = useState({
     tenantId: '',
@@ -98,7 +114,6 @@ const SystemHealthModule: React.FC<SystemHealthModuleProps> = ({ schools }) => {
     search: '',
     startDate: '',
     endDate: '',
-    limit: '200',
   });
 
   const loadData = useCallback(async () => {
@@ -114,14 +129,18 @@ const SystemHealthModule: React.FC<SystemHealthModuleProps> = ({ schools }) => {
         params.set('startDate', filters.startDate);
         params.set('endDate', filters.endDate);
       }
-      if (filters.limit) params.set('limit', filters.limit);
+      params.set('limit', String(PAGE_SIZE));
+      params.set('offset', String(offset));
 
       const [healthRes, errorsRes] = await Promise.all([
         apiService.get<SystemHealth>('/system/health'),
-        apiService.get<SystemError[]>(`/system/errors?${params.toString()}`),
+        apiService.get<{ items: SystemError[]; total: number; limit: number; offset: number }>(
+          `/system/errors?${params.toString()}`
+        ),
       ]);
       setHealth(healthRes);
-      setErrors(errorsRes);
+      setErrors(errorsRes.items || []);
+      setTotal(errorsRes.total ?? 0);
     } catch (error: any) {
       toast({
         title: 'Failed to load system health',
@@ -131,11 +150,46 @@ const SystemHealthModule: React.FC<SystemHealthModuleProps> = ({ schools }) => {
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [filters, offset]);
+
+  useEffect(() => {
+    setOffset(0);
+  }, [filters.tenantId, filters.source, filters.status, filters.severity, filters.search, filters.startDate, filters.endDate]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const maxOffset = Math.max(0, total - PAGE_SIZE);
+
+  const clearAllErrors = async () => {
+    setClearing(true);
+    try {
+      const params = new URLSearchParams();
+      if (filters.tenantId) params.set('tenantId', filters.tenantId);
+      if (filters.source) params.set('source', filters.source);
+      if (filters.status) params.set('status', filters.status);
+      if (filters.severity) params.set('severity', filters.severity);
+      if (filters.search) params.set('search', filters.search);
+      if (filters.startDate && filters.endDate) {
+        params.set('startDate', filters.startDate);
+        params.set('endDate', filters.endDate);
+      }
+      const res = await apiService.delete<{ deleted: number }>(`/system/errors/clear?${params.toString()}`);
+      toast({ title: `Cleared ${res.deleted} error(s)` });
+      setClearOpen(false);
+      setOffset(0);
+      loadData();
+    } catch (error: any) {
+      toast({
+        title: 'Clear failed',
+        description: error?.message || 'Unknown error',
+        variant: 'destructive',
+      });
+    } finally {
+      setClearing(false);
+    }
+  };
 
   const updateStatus = async (id: number, status: 'resolved' | 'ignored') => {
     try {
@@ -166,15 +220,27 @@ const SystemHealthModule: React.FC<SystemHealthModuleProps> = ({ schools }) => {
             Monitor frontend, backend, service worker, and PWA issues across all tenants.
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={loadData}
-          className="h-10 rounded-xl border-slate-200 dark:border-slate-800 font-bold text-[10px] uppercase tracking-widest px-6"
-        >
-          <RefreshCw className="w-4 h-4 mr-2" />
-          Refresh
-        </Button>
+        <div className="flex gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadData}
+            className="h-10 rounded-xl border-slate-200 dark:border-slate-800 font-bold text-[10px] uppercase tracking-widest px-6"
+          >
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Refresh
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => setClearOpen(true)}
+            disabled={total === 0}
+            className="h-10 rounded-xl font-bold text-[10px] uppercase tracking-widest px-6"
+          >
+            <Trash2 className="w-4 h-4 mr-2" />
+            Clear filtered errors
+          </Button>
+        </div>
       </div>
 
       {loading && !health ? (
@@ -415,6 +481,31 @@ const SystemHealthModule: React.FC<SystemHealthModuleProps> = ({ schools }) => {
                   ))}
                 </TableBody>
               </Table>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-3 text-sm text-slate-500">
+                <span>
+                  Showing {errors.length === 0 ? 0 : offset + 1}–{offset + errors.length} of {total}
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={offset <= 0}
+                    onClick={() => setOffset((o) => Math.max(0, o - PAGE_SIZE))}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={offset + PAGE_SIZE >= total}
+                    onClick={() => setOffset((o) => Math.min(maxOffset, o + PAGE_SIZE))}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
             </Card>
           )}
         </>
@@ -475,6 +566,23 @@ const SystemHealthModule: React.FC<SystemHealthModuleProps> = ({ schools }) => {
           )}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={clearOpen} onOpenChange={setClearOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear system errors?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes {total} error record{total === 1 ? '' : 's'} matching the current filters. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={clearing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void clearAllErrors()} disabled={clearing}>
+              {clearing ? 'Clearing…' : 'Clear all'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

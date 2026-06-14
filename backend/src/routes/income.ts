@@ -6,6 +6,8 @@ import { setTenantContext } from '../middleware/tenant.js';
 import { getIO } from '../socket.js';
 import { writeAuditLog } from '../services/auditService.js';
 import { resolvePaymentAccountForTransaction } from '../services/paymentAccountService.js';
+import { evaluateBudgetAlerts, registerTransactionCategory } from '../services/termBudgetService.js';
+import { getClientIp } from '../utils/clientIp.js';
 
 const router = express.Router();
 
@@ -133,6 +135,17 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
     );
     
     const row = result.rows[0];
+    const incomeCategory = String(category || source || '').trim();
+    if (incomeCategory) {
+      await registerTransactionCategory(
+        tenantId,
+        incomeCategory,
+        'income',
+        req.user!.id,
+        req.user!.role,
+        getClientIp(req)
+      );
+    }
     await writeAuditLog({
       tenantId,
       userId: req.user!.id,
@@ -146,6 +159,7 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
       details: { income_id: row.id, source, amount, income_date },
     });
     emitTenantDataChanged(tenantId, 'income', 'created');
+    evaluateBudgetAlerts(tenantId).catch(() => undefined);
     
     res.status(201).json(result.rows[0]);
   } catch (error) {

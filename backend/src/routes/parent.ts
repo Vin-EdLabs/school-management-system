@@ -6,9 +6,73 @@ import { getVapidPublicKey } from '../services/webPushService.js';
 import { resolveTenant, TenantRequest } from '../middleware/tenantResolver.js';
 import { authenticate, requireRole, validateTenantAccess, AuthRequest } from '../middleware/auth.js';
 import { writeAuditLog } from '../services/auditService.js';
-import { beneficiaryAdjustedFee } from '../utils/beneficiaryFee.js';
+import { beneficiaryAdjustedFee, type BeneficiaryStudentRow } from '../utils/beneficiaryFee.js';
+import { buildStudentFinanceStatement } from '../services/studentFinanceStatementService.js';
+import { getStudentLiveFeeBreakdown } from '../services/studentLiveFeeBreakdownService.js';
+import { resolveActiveLedgerTerm } from '../services/studentUnifiedBalanceService.js';
 
 const router = express.Router();
+
+function roundMoney(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+function mapParentPortalStatus(b: {
+  outstanding: number;
+  credit: number;
+  status: string;
+}): 'unpaid' | 'paid' | 'credit' | 'not_set' {
+  if (b.status === 'NotSet') return 'not_set';
+  if (b.credit > 0.001) return 'credit';
+  if (b.outstanding > 0.001) return 'unpaid';
+  return 'paid';
+}
+
+async function buildCurrentTermFeeLines(
+  tenantId: number,
+  classId: number | null,
+  termId: number | null,
+  netBilled: number,
+  beneficiary: BeneficiaryStudentRow
+): Promise<{ lines: Array<{ label: string; amount: number }>; discountAmount: number; subtotal: number }> {
+  if (!classId || !termId) {
+    return {
+      lines: netBilled > 0 ? [{ label: 'Term Fee', amount: netBilled }] : [],
+      discountAmount: 0,
+      subtotal: netBilled,
+    };
+  }
+
+  const fsRes = await query(
+    `SELECT tuition_fee, pta_fee, exam_fee, total
+     FROM ledger_fee_structures
+     WHERE tenant_id = $1 AND class_id = $2 AND term_id = $3
+     LIMIT 1`,
+    [tenantId, classId, termId]
+  );
+
+  if (fsRes.rows.length === 0) {
+    return {
+      lines: netBilled > 0 ? [{ label: 'Term Fee', amount: netBilled }] : [],
+      discountAmount: 0,
+      subtotal: netBilled,
+    };
+  }
+
+  const fs = fsRes.rows[0];
+  const lines: Array<{ label: string; amount: number }> = [];
+  const tuition = roundMoney(parseFloat(String(fs.tuition_fee)) || 0);
+  const pta = roundMoney(parseFloat(String(fs.pta_fee)) || 0);
+  const exam = roundMoney(parseFloat(String(fs.exam_fee)) || 0);
+  if (tuition > 0) lines.push({ label: 'Tuition Fee', amount: tuition });
+  if (pta > 0) lines.push({ label: 'PTA Levy', amount: pta });
+  if (exam > 0) lines.push({ label: 'Exam Fee', amount: exam });
+  const subtotal = roundMoney(
+    lines.reduce((sum, line) => sum + line.amount, 0) || parseFloat(String(fs.total)) || 0
+  );
+  const { discountAmount } = beneficiaryAdjustedFee(subtotal, beneficiary);
+  return { lines, discountAmount: roundMoney(discountAmount), subtotal };
+}
 
 function parentJwtExpiresIn(): jwt.SignOptions['expiresIn'] {
   const raw = process.env.PARENT_JWT_EXPIRES_IN?.trim();
@@ -1407,7 +1471,6 @@ router.get('/finance', authenticateParent, async (req: ParentRequest, res) => {
   try {
     const { studentId, tenantId } = req.parent!;
 
-    // Get current term from school settings
     const settingsRow = await query(
       'SELECT current_term, current_year, school_name FROM school_settings WHERE tenant_id = $1',
       [tenantId]
@@ -1416,7 +1479,6 @@ router.get('/finance', authenticateParent, async (req: ParentRequest, res) => {
     const currentYear = settingsRow.rows[0]?.current_year || '';
     const schoolName = settingsRow.rows[0]?.school_name || '';
 
-    // Get student + class info
     const studentRow = await query(
       `SELECT s.first_name, s.last_name, s.student_id AS admission_number,
               s.is_beneficiary, s.beneficiary_type, s.discount_type, s.discount_value,
@@ -1426,155 +1488,164 @@ router.get('/finance', authenticateParent, async (req: ParentRequest, res) => {
        WHERE s.id = $1 AND s.tenant_id = $2`,
       [studentId, tenantId]
     );
+    if (studentRow.rows.length === 0) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
     const student = studentRow.rows[0];
 
-    // Get fee structure for student's class + current term (legacy-safe)
-    let feeRow;
-    try {
-      feeRow = await query(
-        `SELECT
-           COALESCE(total_amount, amount) AS total_amount,
-           amount AS tuition_fee,
-           0::numeric AS pta_fee,
-           0::numeric AS sports_fee,
-           0::numeric AS library_fee,
-           0::numeric AS other_fee,
-           term
-         FROM fee_structures
-         WHERE tenant_id = $1
-           AND class_id = $2
-           AND (term = $3 OR $3 LIKE term || '%' OR term LIKE $3 || '%' OR term IS NULL OR term = '')
-         ORDER BY created_at DESC LIMIT 1`,
-        [tenantId, student?.class_id, currentTerm]
-      );
-    } catch {
-      feeRow = await query(
-        `SELECT
-           amount AS total_amount,
-           amount AS tuition_fee,
-           0::numeric AS pta_fee,
-           0::numeric AS sports_fee,
-           0::numeric AS library_fee,
-           0::numeric AS other_fee,
-           term
-         FROM fee_structures
-          WHERE (tenant_id = $1 OR tenant_id IS NULL)
-            AND class_id = $2
-            AND (term = $3 OR $3 LIKE term || '%' OR term LIKE $3 || '%' OR term IS NULL OR term = '')
-          ORDER BY created_at DESC LIMIT 1`,
-        [tenantId, student?.class_id, currentTerm]
-      );
+    const { ledgerTermId } = await resolveActiveLedgerTerm(query, tenantId);
+    const balance = await getStudentLiveFeeBreakdown(null, tenantId, studentId, ledgerTermId);
+    if (!balance) {
+      return res.status(404).json({ error: 'Student not found' });
     }
-    const feeStructure = feeRow.rows[0] || null;
 
-    // Get arrears for current term
-    const arrearsRow = await query(
-      `SELECT amount FROM term_arrears
-       WHERE tenant_id = $1 AND student_id = $2 AND (current_term = $3 OR $3 LIKE current_term || '%' OR current_term LIKE $3 || '%')`,
-      [tenantId, studentId, currentTerm]
+    const currentTermLabel =
+      balance.currentTermName ||
+      (currentTerm && currentYear ? `${currentTerm} ${currentYear}`.trim() : currentTerm);
+
+    const currentTermRow = balance.termRows.find((r) => r.isActiveTerm) ?? null;
+    const termFeeLines = await buildCurrentTermFeeLines(
+      tenantId,
+      student.class_id ? Number(student.class_id) : null,
+      currentTermRow?.termId ?? ledgerTermId,
+      balance.currentTermFee,
+      student
     );
-    const arrears = parseFloat(arrearsRow.rows[0]?.amount || '0');
 
-    // Get payments for this student (legacy-safe)
-    let paymentsRow;
-    try {
-      paymentsRow = await query(
-        `SELECT
-           p.id,
-           COALESCE(p.amount_paid, p.amount) AS amount_paid,
-           p.payment_date,
-           p.payment_method,
-           p.receipt_number,
-           p.receipt_number AS reference_number,
-           p.notes,
-           p.term,
-           p.receipt_snapshot,
-           p.corrects_payment_id,
-           orig.corrected_at AS receipt_updated_at
-         FROM payments p
-         LEFT JOIN payments orig ON orig.id = p.corrects_payment_id
-         WHERE p.tenant_id = $1 AND p.student_id = $2 AND COALESCE(p.is_voided, false) = false
-         ORDER BY p.payment_date DESC`,
-        [tenantId, studentId]
-      );
-    } catch {
-      try {
-        paymentsRow = await query(
-          `SELECT
-             p.id,
-             COALESCE(p.amount_paid, p.amount) AS amount_paid,
-             p.payment_date,
-             ''::text AS payment_method,
-             p.receipt_number,
-             ''::text AS reference_number,
-             p.notes,
-             ''::text AS term,
-             NULL::jsonb AS receipt_snapshot
-           FROM payments p
-           WHERE p.tenant_id = $1 AND p.student_id = $2
-           ORDER BY p.payment_date DESC`,
-          [tenantId, studentId]
-        );
-      } catch {
-        paymentsRow = await query(
-          `SELECT
-             p.id,
-             COALESCE(p.amount_paid, p.amount) AS amount_paid,
-             p.payment_date,
-             ''::text AS payment_method,
-             p.receipt_number,
-             ''::text AS reference_number,
-             ''::text AS notes,
-             ''::text AS term,
-             NULL::jsonb AS receipt_snapshot
-           FROM payments p
-           WHERE p.tenant_id = $1 AND p.student_id = $2
-           ORDER BY p.payment_date DESC`,
-          [tenantId, studentId]
-        );
-      }
-    }
-    const allPayments = paymentsRow.rows;
+    const portalStatus = mapParentPortalStatus(balance);
 
-    // Payments for current term (legacy-safe):
-    // if payment term is missing on old schema, treat it as current-term payment.
-    const normalizedCurrentTerm = String(currentTerm || '').trim().toLowerCase();
-    const termPayments = allPayments.filter((p: any) => {
-      const paymentTerm = String(p?.term || '').trim().toLowerCase();
-      if (!paymentTerm) return true;
-      if (!normalizedCurrentTerm) return true;
+    const paymentsRow = await query(
+      `SELECT
+         p.id,
+         COALESCE(p.amount_paid, p.amount) AS amount_paid,
+         p.amount,
+         p.payment_date,
+         p.payment_method,
+         p.receipt_number,
+         p.receipt_number AS reference_number,
+         p.notes,
+         p.term,
+         p.receipt_snapshot,
+         p.corrects_payment_id,
+         orig.receipt_number AS original_receipt_number,
+         p.corrected_at AS receipt_updated_at,
+         COALESCE(pa.account_name, p.payment_method, 'Cash') AS method_label
+       FROM payments p
+       LEFT JOIN payment_accounts pa ON pa.id = p.payment_account_id
+       LEFT JOIN payments orig ON orig.id = p.corrects_payment_id
+       WHERE p.tenant_id = $1 AND p.student_id = $2 AND COALESCE(p.is_voided, false) = false
+       ORDER BY p.payment_date DESC, p.id DESC`,
+      [tenantId, studentId]
+    );
+
+    const payments = paymentsRow.rows.map((p: Record<string, unknown>) => {
+      const isCorrected = !!p.corrects_payment_id;
+      return {
+        id: Number(p.id),
+        receipt_number: p.receipt_number ? String(p.receipt_number) : null,
+        reference_number: p.reference_number ? String(p.reference_number) : null,
+        payment_date: p.payment_date,
+        amount_paid: roundMoney(parseFloat(String(p.amount_paid)) || 0),
+        amount: roundMoney(parseFloat(String(p.amount)) || parseFloat(String(p.amount_paid)) || 0),
+        payment_method: String(p.method_label || p.payment_method || 'Cash'),
+        term: String(p.term || '—'),
+        notes: p.notes ? String(p.notes) : null,
+        receipt_snapshot: p.receipt_snapshot ?? null,
+        corrects_payment_id: p.corrects_payment_id != null ? Number(p.corrects_payment_id) : null,
+        receipt_updated_at: p.receipt_updated_at ?? null,
+        status: isCorrected ? 'corrected' : 'active',
+        replacesReceiptNumber: p.original_receipt_number ? String(p.original_receipt_number) : null,
+      };
+    });
+
+    const termPayments = payments.filter((p) => {
+      const paymentTerm = String(p.term || '').trim().toLowerCase();
+      const activeTerm = String(currentTermLabel || '').trim().toLowerCase();
+      if (!paymentTerm || paymentTerm === '—') return true;
+      if (!activeTerm) return true;
       return (
-        paymentTerm === normalizedCurrentTerm ||
-        paymentTerm.includes(normalizedCurrentTerm) ||
-        normalizedCurrentTerm.includes(paymentTerm)
+        paymentTerm === activeTerm ||
+        paymentTerm.includes(activeTerm) ||
+        activeTerm.includes(paymentTerm)
       );
     });
-    const totalPaidThisTerm = termPayments.reduce((s: number, p: any) => s + parseFloat(p.amount_paid), 0);
-    const baseTermFee = parseFloat(feeStructure?.total_amount || '0');
-    const { totalFees: termFee, discountAmount } = beneficiaryAdjustedFee(baseTermFee, student);
-    const totalDue = termFee + arrears;
-    const balance = totalDue - totalPaidThisTerm;
 
     res.json({
       schoolName,
-      currentTerm,
+      currentTerm: currentTermLabel,
+      currentTermLabel,
       currentYear,
       student,
-      feeStructure,
-      baseTermFee,
-      discountAmount,
-      termFee,
-      arrears,
-      totalDue,
-      totalPaid: totalPaidThisTerm,
-      balance,
-      status: balance <= 0 ? 'paid' : totalPaidThisTerm > 0 ? 'partial' : 'unpaid',
-      payments: allPayments,
+      liveBreakdown: balance,
+      termFee: balance.currentTermFee,
+      arrears: balance.totalArrears,
+      totalDue: balance.totalDue,
+      totalPaid: balance.totalPaid,
+      outstanding: balance.outstanding,
+      credit: balance.credit,
+      balance: balance.outstanding,
+      discountAmount: termFeeLines.discountAmount,
+      status: portalStatus,
+      feeBreakdown: {
+        termLabel: currentTermLabel,
+        termFeeLines: termFeeLines.lines,
+        arrearLines: balance.arrearLines,
+        subtotal: termFeeLines.subtotal,
+        discountAmount: termFeeLines.discountAmount,
+        termFee: balance.currentTermFee,
+        totalArrears: balance.totalArrears,
+        totalDue: balance.totalDue,
+        totalPaid: balance.totalPaid,
+        outstanding: balance.outstanding,
+        credit: balance.credit,
+      },
+      payments,
       termPayments,
     });
   } catch (error) {
     console.error('Parent finance error:', error);
     res.status(500).json({ error: 'Failed to fetch finance info' });
+  }
+});
+
+// ── GET /api/parent/finance-statement ─────────────────────────────────────────
+router.get('/finance-statement', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    const { studentId, tenantId } = req.parent!;
+
+    const statement = await buildStudentFinanceStatement(tenantId, studentId, {
+      variant: 'parent_portal',
+      generatedByName: null,
+      generatedByRole: null,
+    });
+    if (!statement) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+
+    await writeAuditLog({
+      tenantId,
+      userId: null,
+      userRole: 'parent',
+      action: 'FINANCE_STATEMENT_GENERATED',
+      entityType: 'STUDENT',
+      entityId: studentId,
+      module: 'finance',
+      status: 'success',
+      summary: `Parent portal finance statement for ${statement.header.studentName} (${statement.header.studentId})`,
+      details: {
+        studentName: statement.header.studentName,
+        studentId: statement.header.studentId,
+        generatedBy: 'Parent Portal',
+        generatedByRole: 'parent',
+        generatedAt: statement.header.dateGenerated,
+        generatedVia: 'parent_portal',
+      },
+    });
+
+    return res.json({ statement });
+  } catch (error) {
+    console.error('Parent finance statement error:', error);
+    res.status(500).json({ error: 'Failed to fetch finance statement' });
   }
 });
 

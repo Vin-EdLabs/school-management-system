@@ -225,7 +225,7 @@ async function syncClassNameReferences(
   newName: string
 ): Promise<{ feeStructureCount: number; feeStructuresLinkedByClassId: true }> {
   const feeCountRes = await query(
-    `SELECT COUNT(*)::int AS n FROM fee_structures WHERE tenant_id = $1 AND class_id = $2`,
+    `SELECT COUNT(*)::int AS n FROM ledger_fee_structures WHERE tenant_id = $1 AND class_id = $2`,
     [tenantId, classId]
   );
   const feeStructureCount = Number(feeCountRes.rows[0]?.n || 0);

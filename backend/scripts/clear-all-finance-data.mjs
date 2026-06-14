@@ -50,6 +50,33 @@ async function clearFinanceForTenant(client, tenantId) {
   await run(`DELETE FROM student_credits WHERE tenant_id = $1`).catch(() => {});
   await run(`DELETE FROM term_outstanding_balances WHERE tenant_id = $1`).catch(() => {});
 
+  // Term budgets
+  await run(
+    `DELETE FROM budget_alerts WHERE tenant_id = $1`
+  ).catch(() => {});
+  await run(
+    `DELETE FROM budget_lines WHERE tenant_id = $1`
+  ).catch(() => {});
+  await run(
+    `DELETE FROM term_budgets WHERE tenant_id = $1`
+  ).catch(() => {});
+
+  // Ledger terms / academic calendar (fresh start)
+  await run(`DELETE FROM terms WHERE tenant_id = $1`).catch(() => {});
+  await run(`DELETE FROM academic_years WHERE tenant_id = $1`).catch(() => {});
+  await run(`DELETE FROM academic_terms WHERE tenant_id = $1`).catch(() => {});
+
+  await run(
+    `UPDATE school_settings
+     SET current_term = NULL, current_year = NULL, legacy_payment_migration_completed = false
+     WHERE tenant_id = $1`
+  ).catch(() => {});
+
+  await run(
+    `UPDATE school_setup_progress SET has_terms = false, completed_at = NULL, updated_at = CURRENT_TIMESTAMP
+     WHERE school_id = $1`
+  ).catch(() => {});
+
   await run(
     `INSERT INTO receipt_number_seq (tenant_id, last_number, updated_at)
      VALUES ($1, 0, CURRENT_TIMESTAMP)
@@ -84,7 +111,7 @@ async function main() {
     }
 
     await client.query('COMMIT');
-    console.log('Done. Configure payment accounts and fee structures fresh in the app.');
+    console.log('Done. Configure payment accounts, academic terms, and fee structures fresh in the app.');
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('Failed:', err.message);

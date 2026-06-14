@@ -170,6 +170,14 @@ export async function activateAcademicTerm(
   const schoolName = String(target.school_name || 'School');
   const fullTermLabel = buildFullTermLabel(termName, academicYear);
 
+  if (target.is_active === true) {
+    return fail(
+      'activate_term',
+      `Activating term — ${termName} ${academicYear}`,
+      new Error('This term is already active. Term activation is irreversible.')
+    );
+  }
+
   const previousRes = await query(
     `SELECT * FROM academic_terms WHERE tenant_id = $1 AND is_active = true AND id != $2 LIMIT 1`,
     [tenantId, academicTermId]

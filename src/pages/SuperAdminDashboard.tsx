@@ -78,6 +78,7 @@ import {
   EyeOff,
   DollarSign,
   Activity,
+  Megaphone,
 } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import SuperAdminLoginForm from '../components/SuperAdminLoginForm';
@@ -86,6 +87,7 @@ import { resolveLogoUrl } from '../services/tenantService';
 import { useTheme } from '../contexts/ThemeContext';
 import PwaInstallButton from '../components/common/PwaInstallButton';
 import SystemHealthModule from '../components/superadmin/SystemHealthModule';
+import GlobalAnnouncementsModule from '../components/superadmin/GlobalAnnouncementsModule';
 
 interface School {
   id: number;
@@ -150,7 +152,7 @@ interface TrackerUser {
   finance_activity_count: number;
 }
 
-type Section = 'schools' | 'visits' | 'tracker' | 'registrations' | 'audit' | 'super-admins' | 'support-chat' | 'school-data' | 'system-health';
+type Section = 'schools' | 'visits' | 'tracker' | 'registrations' | 'audit' | 'super-admins' | 'support-chat' | 'school-data' | 'system-health' | 'announcements';
 
 const SuperAdminDashboard = () => {
   const navigate = useNavigate();
@@ -206,6 +208,17 @@ const SuperAdminDashboard = () => {
   const [selectedDataSchoolId, setSelectedDataSchoolId] = useState('');
   const [resetConfirm, setResetConfirm] = useState('');
   const [dataActionLoading, setDataActionLoading] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importValidation, setImportValidation] = useState<{
+    valid: boolean;
+    errors: string[];
+    warnings: string[];
+    stats: Record<string, number>;
+    schoolName?: string;
+    sourceTenantId?: number;
+  } | null>(null);
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [importConfirm, setImportConfirm] = useState('');
   const displayName = user?.fullName?.trim() || user?.username || '';
 
   useEffect(() => {
@@ -661,6 +674,88 @@ const SuperAdminDashboard = () => {
     }
   };
 
+  const handleImportFileSelect = async (file: File | null) => {
+    setImportFile(file);
+    setImportValidation(null);
+    setImportConfirm('');
+    if (!file || !selectedDataSchool) return;
+
+    if (!file.name.toLowerCase().endsWith('.json')) {
+      toast({ title: 'Invalid file', description: 'Select a JSON backup file exported from ScholarNerve.', variant: 'destructive' });
+      setImportFile(null);
+      return;
+    }
+
+    setDataActionLoading(true);
+    try {
+      const form = new FormData();
+      form.append('backup', file);
+      const validation = await apiService.postForm<{
+        valid: boolean;
+        errors: string[];
+        warnings: string[];
+        stats: Record<string, number>;
+        schoolName?: string;
+        sourceTenantId?: number;
+      }>(`/schools/${selectedDataSchool.id}/validate-backup`, form);
+      setImportValidation(validation);
+      if (validation.valid) {
+        setShowImportDialog(true);
+        toast({
+          title: 'Backup validated',
+          description: validation.warnings.length
+            ? `${validation.warnings.length} warning(s) — review before importing.`
+            : 'File looks good. Confirm import to restore data.',
+        });
+      } else {
+        toast({
+          title: 'Validation failed',
+          description: validation.errors.join(' ') || 'This backup file cannot be imported.',
+          variant: 'destructive',
+        });
+      }
+    } catch (err: any) {
+      toast({ title: 'Validation failed', description: err?.message || 'Could not validate backup file', variant: 'destructive' });
+      setImportFile(null);
+    } finally {
+      setDataActionLoading(false);
+    }
+  };
+
+  const handleSuperAdminImport = async () => {
+    if (!selectedDataSchool || !importFile) {
+      toast({ title: 'Select a school and backup file first', variant: 'destructive' });
+      return;
+    }
+    if (importConfirm !== 'IMPORT') {
+      toast({ title: 'Confirmation required', description: 'Type IMPORT to continue.', variant: 'destructive' });
+      return;
+    }
+    setDataActionLoading(true);
+    try {
+      const form = new FormData();
+      form.append('backup', importFile);
+      form.append('confirm', 'IMPORT');
+      const result = await apiService.postForm<{ message: string; imported: Record<string, number> }>(
+        `/schools/${selectedDataSchool.id}/import-data`,
+        form
+      );
+      const totalRows = Object.values(result.imported || {}).reduce((sum, n) => sum + n, 0);
+      toast({
+        title: 'Import complete',
+        description: `${selectedDataSchool.name}: ${totalRows} record(s) restored.`,
+      });
+      setShowImportDialog(false);
+      setImportFile(null);
+      setImportValidation(null);
+      setImportConfirm('');
+    } catch (err: any) {
+      toast({ title: 'Import failed', description: err?.message || 'Could not import school data', variant: 'destructive' });
+    } finally {
+      setDataActionLoading(false);
+    }
+  };
+
   const formatDate = (d: string) => new Date(d).toLocaleString();
 
   if (authLoading) return <BrandedLoadingScreen label="Loading…" active={authLoading} />;
@@ -695,6 +790,7 @@ const SuperAdminDashboard = () => {
 
   const mainItems = [
     { id: 'schools' as Section, label: 'Schools', icon: Building2 },
+    { id: 'announcements' as Section, label: 'Announcements', icon: Megaphone },
     { id: 'visits' as Section, label: 'Visitor Analytics', icon: Globe },
     { id: 'tracker' as Section, label: 'Tracker', icon: ShieldCheck },
     { id: 'school-data' as Section, label: 'School Data', icon: FileText },
@@ -813,6 +909,7 @@ const SuperAdminDashboard = () => {
             <Separator orientation="vertical" className="h-6 bg-slate-200 dark:bg-slate-700" />
             <h2 className="font-bold text-slate-900 dark:text-white text-lg">
               {section === 'schools' && 'Schools'}
+              {section === 'announcements' && 'Global Announcements'}
               {section === 'visits' && 'Visitor Analytics'}
               {section === 'tracker' && 'Tracker'}
               {section === 'school-data' && 'School Data Management'}
@@ -820,6 +917,7 @@ const SuperAdminDashboard = () => {
               {section === 'super-admins' && 'Super Admins'}
               {section === 'audit' && 'Audit Logs'}
               {section === 'system-health' && 'System Health / Errors'}
+              {section === 'announcements' && 'Global Announcements'}
               {section === 'support-chat' && 'Support Chat'}
             </h2>
             <div className="flex-1" />
@@ -1484,26 +1582,91 @@ const SuperAdminDashboard = () => {
                       </CardTitle>
                       <p className="text-xs text-slate-500">Super Admin only. Select a file for validation before any restore workflow.</p>
                     </CardHeader>
-                    <CardContent>
-                      <div className="relative">
-                        <Input
-                          type="file"
-                          accept=".json,.csv,.xlsx,.xls"
-                          disabled={!selectedDataSchool}
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (!file) return;
-                            toast({
-                              title: 'Import file selected',
-                              description: `${file.name} is ready for review. Restore/import processing requires a controlled backend workflow.`,
-                            });
-                            e.target.value = '';
-                          }}
-                          className="h-10 rounded-xl"
-                        />
-                      </div>
+                    <CardContent className="space-y-3">
+                      <Input
+                        type="file"
+                        accept=".json,application/json"
+                        disabled={!selectedDataSchool || dataActionLoading}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] || null;
+                          void handleImportFileSelect(file);
+                          e.target.value = '';
+                        }}
+                        className="h-10 rounded-xl"
+                      />
+                      {importFile && (
+                        <p className="text-xs text-slate-500 truncate">
+                          Selected: <span className="font-semibold text-slate-700 dark:text-slate-200">{importFile.name}</span>
+                        </p>
+                      )}
+                      {importValidation?.valid && (
+                        <Button
+                          onClick={() => setShowImportDialog(true)}
+                          disabled={!selectedDataSchool || dataActionLoading}
+                          className="w-full h-10 rounded-xl font-bold text-xs uppercase tracking-widest"
+                        >
+                          <Upload className="w-4 h-4 mr-2" />
+                          Restore Backup
+                        </Button>
+                      )}
                     </CardContent>
                   </Card>
+
+                  <Dialog open={showImportDialog} onOpenChange={(open) => {
+                    setShowImportDialog(open);
+                    if (!open) setImportConfirm('');
+                  }}>
+                    <DialogContent className="max-w-lg rounded-3xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                      <DialogHeader>
+                        <DialogTitle className="text-xl font-black font-outfit">Restore School Backup</DialogTitle>
+                        <DialogDescription className="text-xs font-medium">
+                          This replaces operational data for {selectedDataSchool?.name}. School users and identity are kept.
+                        </DialogDescription>
+                      </DialogHeader>
+                      {importValidation && (
+                        <div className="space-y-3 text-xs">
+                          {importValidation.warnings.length > 0 && (
+                            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+                              <p className="font-bold uppercase tracking-wider mb-1">Warnings</p>
+                              <ul className="list-disc pl-4 space-y-1">
+                                {importValidation.warnings.map((w) => <li key={w}>{w}</li>)}
+                              </ul>
+                            </div>
+                          )}
+                          <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3 max-h-40 overflow-y-auto">
+                            <p className="font-bold text-slate-600 dark:text-slate-300 mb-2 uppercase tracking-wider">Record counts</p>
+                            <div className="grid grid-cols-2 gap-1 text-slate-500">
+                              {Object.entries(importValidation.stats)
+                                .filter(([, count]) => count > 0)
+                                .slice(0, 12)
+                                .map(([table, count]) => (
+                                  <span key={table}>{table}: {count}</span>
+                                ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      <Input
+                        value={importConfirm}
+                        onChange={(e) => setImportConfirm(e.target.value)}
+                        placeholder="Type IMPORT to confirm"
+                        className="h-10 rounded-xl"
+                      />
+                      <DialogFooter className="gap-2">
+                        <Button variant="outline" onClick={() => setShowImportDialog(false)} className="rounded-xl">
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={handleSuperAdminImport}
+                          disabled={dataActionLoading || importConfirm !== 'IMPORT'}
+                          className="rounded-xl font-bold"
+                        >
+                          {dataActionLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+                          Import Backup
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
 
                   <Card className="border-red-200 dark:border-red-900/60 bg-red-50/60 dark:bg-red-950/20 shadow-sm">
                     <CardHeader>
@@ -1821,6 +1984,10 @@ const SuperAdminDashboard = () => {
 
             {section === 'system-health' && (
               <SystemHealthModule schools={schools} />
+            )}
+
+            {section === 'announcements' && (
+              <GlobalAnnouncementsModule schools={schools} />
             )}
 
             {section === 'audit' && (

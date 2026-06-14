@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -8,12 +8,13 @@ import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
 import { Search, AlertCircle, CreditCard, TrendingUp } from 'lucide-react';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
-import { getActiveAcademicTerm, calculateStudentFeesSync, calculateStudentFeeStatusSync } from '../../utils/feeCalculations';
-import { shouldTrackStudentFees } from '../students/studentRegistryUtils';
+import { getActiveAcademicTerm } from '../../utils/feeCalculations';
+import { isActiveEnrolledStudent } from '../students/studentRegistryUtils';
 import { formatDisplayDate } from '../../utils/dateFormat';
+import type { StudentBalance } from '../../services/studentBalance';
 
 const StudentBalances = () => {
-  const { students, payments, feeStructures, classes, arrearsBalances } = useData();
+  const { students, payments, classes, ledgerBalances, feeStructures } = useData();
   const { currentTerm: activeTerm } = useActiveTerm();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterClass, setFilterClass] = useState('all-classes');
@@ -21,39 +22,126 @@ const StudentBalances = () => {
 
   const currentTerm = activeTerm || getActiveAcademicTerm();
 
-  // Calculate comprehensive balance for each student (sync - uses local data)
-  const calculateStudentBalance = (student: any) => {
-    const feeCalculation = calculateStudentFeesSync(
-      student.id,
-      currentTerm,
-      student.classAssigned,
-      feeStructures || [],
-      payments || [],
-      student.classAssignedId,
-      arrearsBalances,
-      {
-        isBeneficiary: !!student.isBeneficiary,
-        discountType: student.discountType,
-        discountValue: student.discountValue
+  const classRow = filterClass !== 'all-classes' ? classes.find((c) => c.className === filterClass) : null;
+
+  const hasFeeStructureForStudent = (student: { classAssignedId?: number | string | null; classAssigned?: string }) => {
+    if (!currentTerm || currentTerm === 'Not Set') return false;
+    return (feeStructures || []).some((f) => {
+      const classMatch =
+        student.classAssignedId != null && f.classId != null
+          ? Number(f.classId) === Number(student.classAssignedId)
+          : (f.className || '').trim() === (student.classAssigned || '').trim();
+      const term = String(f.term || '').trim();
+      return classMatch && (term === currentTerm || term.startsWith(currentTerm) || currentTerm.startsWith(term));
+    });
+  };
+
+  const calculateStudentBalance = (student: any, balance: StudentBalance | undefined) => {
+    const termNotConfigured = !currentTerm || currentTerm === 'Not Set';
+
+    if (termNotConfigured) {
+      return {
+        ...student,
+        currentTermFee: 0,
+        arrears: 0,
+        creditBalance: 0,
+        totalAmountDue: 0,
+        totalPaid: 0,
+        balance: 0,
+        feeStatus: { status: 'Not Set', balance: 0 },
+        paymentCount: 0,
+      };
+    }
+
+    if (!balance) {
+      return {
+        ...student,
+        currentTermFee: 0,
+        arrears: 0,
+        creditBalance: 0,
+        totalAmountDue: 0,
+        totalPaid: 0,
+        balance: 0,
+        feeStatus: { status: 'No Fee Set', balance: 0 },
+        feeStructureMissing: true,
+        paymentCount: (payments || []).filter((p: any) => String(p.studentId) === String(student.id)).length,
+      };
+    }
+
+    if (balance.status === 'NotSet') {
+      return {
+        ...student,
+        currentTermFee: balance.currentTermFee,
+        arrears: balance.totalArrears,
+        creditBalance: balance.credit,
+        totalAmountDue: balance.totalDue,
+        totalPaid: balance.totalPaid,
+        balance: 0,
+        feeStatus: { status: 'No Fee Set', balance: 0 },
+        feeStructureMissing: !hasFeeStructureForStudent(student),
+        paymentCount: (payments || []).filter((p: any) => String(p.studentId) === String(student.id)).length,
+      };
+    }
+
+    if (balance.status === 'NotSet') {
+      return {
+        ...student,
+        currentTermFee: 0,
+        arrears: 0,
+        creditBalance: 0,
+        totalAmountDue: 0,
+        totalPaid: 0,
+        balance: 0,
+        feeStatus: { status: 'Not Set', balance: 0 },
+        paymentCount: 0,
+      };
+    }
+
+    const outstanding = balance.outstanding;
+    const hasFeeStructure = hasFeeStructureForStudent(student);
+    const feeStructureMissing = !hasFeeStructure && balance.currentTermFee <= 0;
+    const termFeePosted = balance.currentTermFee > 0;
+
+    let feeStatus: { status: string; balance: number };
+    if (!termFeePosted && balance.totalPaid <= 0 && balance.totalDue <= 0) {
+      feeStatus = { status: 'No Fee Set', balance: 0 };
+    } else if (outstanding > 0) {
+      if (balance.totalPaid > 0) {
+        feeStatus = { status: 'Partially Paid', balance: outstanding };
+      } else {
+        feeStatus = { status: 'Unpaid', balance: outstanding };
       }
-    );
-    const feeStatus = calculateStudentFeeStatusSync(feeCalculation);
-    const balance = Math.max(0, feeCalculation.totalAmountDue - feeCalculation.totalPaid);
+    } else if (balance.credit > 0) {
+      feeStatus = { status: 'Credit Balance', balance: -balance.credit };
+    } else if (termFeePosted) {
+      feeStatus = { status: 'Paid', balance: 0 };
+    } else {
+      feeStatus = { status: 'No Fee Set', balance: 0 };
+    }
 
     return {
       ...student,
-      currentTermFee: feeCalculation.currentTermFee ?? 0,
-      arrears: feeCalculation.arrears ?? 0,
-      creditBalance: feeCalculation.creditBalance ?? 0,
-      totalAmountDue: feeCalculation.totalAmountDue ?? 0,
-      totalPaid: feeCalculation.totalPaid ?? 0,
-      balance,
+      currentTermFee: balance.currentTermFee,
+      arrears: balance.totalArrears,
+      creditBalance: balance.credit,
+      totalAmountDue: balance.totalDue,
+      totalPaid: balance.totalPaid,
+      balance: outstanding,
       feeStatus,
-      paymentCount: (payments || []).filter((p: any) => String(p.studentId) === String(student.id) && (p.term === currentTerm || p.term?.includes?.(currentTerm))).length
+      feeStructureMissing,
+      paymentCount: (payments || []).filter((p: any) => String(p.studentId) === String(student.id)).length,
     };
   };
 
-  const studentsWithBalances = (students || []).filter(shouldTrackStudentFees).map(calculateStudentBalance);
+  const studentsWithBalances = useMemo(() => {
+    return (students || [])
+      .filter(isActiveEnrolledStudent)
+      .filter((student) => {
+        if (!classRow) return true;
+        return String(student.classAssignedId) === String(classRow.id) || student.classAssigned === classRow.className;
+      })
+      .map((student) => calculateStudentBalance(student, ledgerBalances[String(student.id)]));
+  }, [students, ledgerBalances, classRow, currentTerm, payments, feeStructures]);
 
   const filteredStudents = studentsWithBalances.filter(student => {
     const matchesSearch = searchTerm === '' || 
@@ -68,13 +156,12 @@ const StudentBalances = () => {
       (filterStatus === 'paid' && (student.balance === 0 && student.feeStatus?.status === 'Paid')) ||
       (filterStatus === 'partial' && student.feeStatus?.status === 'Partially Paid') ||
       (filterStatus === 'credit' && student.feeStatus?.status === 'Credit Balance') ||
-      (filterStatus === 'no-fee' && student.feeStatus?.status === 'No Fee Set') ||
+      (filterStatus === 'no-fee' && (student.feeStatus?.status === 'No Fee Set' || student.feeStatus?.status === 'Not Set')) ||
       (filterStatus === 'arrears' && student.arrears > 0);
 
     return matchesSearch && matchesClass && matchesStatus;
   });
 
-  // Calculate summary statistics
   const totalOutstanding = filteredStudents.reduce((sum, student) => sum + student.balance, 0);
   const studentsWithOutstanding = filteredStudents.filter(student => student.balance > 0).length;
   const totalArrears = filteredStudents.reduce((sum, student) => sum + student.arrears, 0);
@@ -86,7 +173,20 @@ const StudentBalances = () => {
 
   const getStatusBadge = (student: any) => {
     const status = student.feeStatus?.status;
-    if (status === 'No Fee Set') return <Badge variant="secondary">No Fee Set</Badge>;
+    if (status === 'Not Set') return <Badge variant="secondary">Not Set</Badge>;
+    if (status === 'No Fee Set') {
+      return (
+        <div className="flex flex-col items-start gap-1">
+          <Badge variant="secondary" className="flex items-center gap-1 border-amber-400 text-amber-800 bg-amber-50">
+            <AlertCircle className="w-3 h-3" />
+            No Fee Set
+          </Badge>
+          {student.feeStructureMissing ? (
+            <span className="text-[10px] text-amber-700 leading-tight">No term fee posted for this class/term</span>
+          ) : null}
+        </div>
+      );
+    }
     if (status === 'Credit Balance' || (student.creditBalance > 0 && student.balance <= 0)) {
       return <Badge variant="default" className="bg-blue-500">Credit Balance</Badge>;
     }
@@ -100,10 +200,15 @@ const StudentBalances = () => {
     if (status === 'Unpaid' || (student.balance > 0 && student.totalPaid === 0)) {
       const hasArrears = student.arrears > 0;
       return (
-        <Badge variant="destructive" className="flex items-center space-x-1">
-          <AlertCircle className="w-3 h-3" />
-          <span>{hasArrears ? 'Outstanding + Arrears' : 'Unpaid'}</span>
-        </Badge>
+        <div className="flex flex-col items-start gap-1">
+          <Badge variant="destructive" className="flex items-center space-x-1">
+            <AlertCircle className="w-3 h-3" />
+            <span>{hasArrears ? 'Outstanding + Arrears' : 'Unpaid'}</span>
+          </Badge>
+          {student.feeStructureMissing ? (
+            <span className="text-[10px] text-amber-700 leading-tight">No fee set for this class/term</span>
+          ) : null}
+        </div>
       );
     }
     return <Badge variant="default" className="bg-green-500">Paid</Badge>;
@@ -125,7 +230,6 @@ const StudentBalances = () => {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {/* Enhanced Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
             <div className="flex items-center space-x-2 mb-2">
@@ -180,7 +284,6 @@ const StudentBalances = () => {
           </div>
         </div>
 
-        {/* Search and Filters */}
         <div className="flex flex-col lg:flex-row gap-4 mb-6">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
@@ -215,12 +318,11 @@ const StudentBalances = () => {
               <SelectItem value="partial">Partially Paid</SelectItem>
               <SelectItem value="credit">Credit Balance</SelectItem>
               <SelectItem value="arrears">With Arrears</SelectItem>
-              <SelectItem value="no-fee">No Fee Set</SelectItem>
+              <SelectItem value="no-fee">Not Set / No Fee</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
-        {/* Balances Table */}
         <div className="rounded-md border overflow-x-auto">
           <Table>
             <TableHeader>
@@ -313,7 +415,6 @@ const StudentBalances = () => {
           </Table>
         </div>
 
-        {/* Summary */}
         {filteredStudents.length > 0 && (
           <div className="mt-4 p-4 bg-muted/50 rounded-lg border border-border">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">

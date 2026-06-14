@@ -16,6 +16,8 @@ import { BrandedLoading, BrandedLoadingScreen } from '@/components/common/Brande
 import { getFriendlyLoginMessage } from '@/utils/loginErrors';
 import { formatDisplayDate } from '@/utils/dateFormat';
 import { resolveSocketBaseUrl, SOCKET_IO_OPTIONS } from '@/utils/socketUrl';
+import FinanceStatementModal from '@/components/finance/FinanceStatementModal';
+import { isFinanceStatementNotificationUrl } from '@/services/studentFinanceStatementApi';
 
 function resolveApiBase(): string {
   if (import.meta.env.VITE_API_BASE_URL) return import.meta.env.VITE_API_BASE_URL;
@@ -226,9 +228,14 @@ type ParentAppNotification = {
   serverId?: number;
   title: string;
   message: string;
+  url?: string;
   at: number;
   read: boolean;
 };
+
+function isFinanceStatementNotification(n: Pick<ParentAppNotification, 'url' | 'title'>): boolean {
+  return isFinanceStatementNotificationUrl(n.url) || /finance statement/i.test(n.title);
+}
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -300,6 +307,9 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   const parentScrollRef = useRef<HTMLDivElement>(null);
   const deskComposeFileRef = useRef<HTMLInputElement>(null);
   const deskReplyFileRef = useRef<HTMLInputElement>(null);
+  /** Incremented on every student switch — stale API responses must not update state. */
+  const studentSessionRef = useRef(0);
+  const [isSwitchingStudent, setIsSwitchingStudent] = useState(false);
 
   useEffect(() => {
     if (selectedDeskMessage || deskConversation.length > 0) {
@@ -316,6 +326,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   const [showInstallHelp, setShowInstallHelp] = useState(false);
   const [hardRefreshing, setHardRefreshing] = useState(false);
   const [selectedNotification, setSelectedNotification] = useState<ParentAppNotification | null>(null);
+  const [financeStatementOpen, setFinanceStatementOpen] = useState(false);
   const [showDeskGuide, setShowDeskGuide] = useState(false);
 
   // Photo lightbox
@@ -332,6 +343,40 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     setLinkedAccounts(accounts);
     localStorage.setItem(`parent_accounts_${tenantId}`, JSON.stringify(accounts));
   };
+
+  const clearAllStudentData = useCallback(() => {
+    setGrades(null);
+    setTermReport(null);
+    setFinance(null);
+    setAttendance(null);
+    setDeskMessages([]);
+    setDeskConversation([]);
+    setSelectedDeskMessage(null);
+    setSelectedReceipt(null);
+    setShowReceipt(false);
+    setFinanceStatementOpen(false);
+    setAppNotifications([]);
+    setSelectedNotification(null);
+    setNewQuizPopup(null);
+    setParentDeskUnread(0);
+    setDeskComposeOpen(false);
+    setDeskBody('');
+    setDeskReply('');
+    setDeskAttachment(null);
+    setDeskReplyAttachment(null);
+    setIsStudentMode(false);
+    setStudentModeEntering(false);
+  }, []);
+
+  const beginStudentSessionTransition = useCallback(() => {
+    studentSessionRef.current += 1;
+    clearAllStudentData();
+    setIsSwitchingStudent(true);
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
+    return studentSessionRef.current;
+  }, [clearAllStudentData]);
 
   const persist = (t: string, s: StudentInfo) => {
     localStorage.setItem(`parent_token_${tenantId}`, t);
@@ -351,23 +396,31 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     });
   };
 
+  const switchingAccountRef = useRef(false);
+
   const handleSwitchAccount = async (acc: LinkedAccount) => {
-    // Clear current student data
-    setGrades(null);
-    setTermReport(null);
-    setFinance(null);
-    setAttendance(null);
-    setDeskMessages([]);
-    
-    // Set new context
-    setToken(acc.token);
-    setStudent(acc.student);
-    setMustChangePassword(acc.student.must_change_password);
-    localStorage.setItem(`parent_token_${tenantId}`, acc.token);
-    localStorage.setItem(`parent_student_${tenantId}`, JSON.stringify(acc.student));
-    
+    if (acc.token === token && acc.student.admission_number === student?.admission_number) {
+      setShowSwitcher(false);
+      return;
+    }
+    if (switchingAccountRef.current) return;
+
+    switchingAccountRef.current = true;
+    const sessionId = beginStudentSessionTransition();
     setShowSwitcher(false);
     setActiveTab('overview');
+
+    setToken(acc.token);
+    setStudent(acc.student);
+    setMustChangePassword(Boolean(acc.student.must_change_password));
+    localStorage.setItem(`parent_token_${tenantId}`, acc.token);
+    localStorage.setItem(`parent_student_${tenantId}`, JSON.stringify(acc.student));
+
+    try {
+      await finalizeStudentSessionTransition(sessionId, acc.token);
+    } finally {
+      switchingAccountRef.current = false;
+    }
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -393,6 +446,10 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         ? data.linkedAccounts
         : [{ token: data.token, student: studentInfo }];
       syncLinkedAccounts(linked);
+
+      void parentFetch('/parent/finance', {}, data.token)
+        .then((financeData) => setFinance(financeData))
+        .catch(() => undefined);
 
       setLoginAdmission('');
       setLoginPassword('');
@@ -460,18 +517,16 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     localStorage.setItem(`parent_accounts_${tenantId}`, JSON.stringify(updatedAccounts));
 
     if (updatedAccounts.length > 0) {
-      // Switch to the next available account
-      handleSwitchAccount(updatedAccounts[0]);
+      void handleSwitchAccount(updatedAccounts[0]);
     } else {
-      // Complete logout
+      studentSessionRef.current += 1;
+      clearAllStudentData();
       localStorage.removeItem(`parent_token_${tenantId}`);
       localStorage.removeItem(`parent_student_${tenantId}`);
       setToken(null);
       setStudent(null);
-      setGrades(null);
-      setTermReport(null);
-      setFinance(null);
-      setAttendance(null);
+      setIsSwitchingStudent(false);
+      setDataLoading(false);
       setActiveTab('overview');
       setAppNotifications([]);
       localStorage.removeItem(`parent_fcm_token_${tenantId}`);
@@ -498,20 +553,76 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     }
   }, [student?.school_logo_url, schoolLogoUrl]);
 
-  const loadServerNotifications = useCallback(async (authToken: string) => {
+  const loadServerNotifications = useCallback(async (authToken: string, expectedSessionId?: number) => {
+    const sessionId = expectedSessionId ?? studentSessionRef.current;
     const data = await parentFetch('/parent/notifications', {}, authToken).catch(() => ({ notifications: [] }));
+    if (studentSessionRef.current !== sessionId) return;
     const mapped = Array.isArray(data?.notifications)
       ? data.notifications.map((n: any) => ({
           id: `srv-${n.id}`,
           serverId: Number(n.id),
           title: n.title,
           message: n.message,
+          url: typeof n.url === 'string' ? n.url : undefined,
           at: new Date(n.created_at).getTime(),
           read: Boolean(n.is_read),
         }))
       : [];
     setAppNotifications(mapped);
   }, []);
+
+  const finalizeStudentSessionTransition = useCallback(async (sessionId: number, authToken: string) => {
+    const forceClearTimer = window.setTimeout(() => {
+      if (studentSessionRef.current === sessionId) {
+        setIsSwitchingStudent(false);
+      }
+    }, 12000);
+
+    try {
+      const me = await parentFetch('/parent/me', {}, authToken) as StudentInfo;
+      if (studentSessionRef.current !== sessionId) return;
+      setStudent((prev) => ({
+        ...me,
+        must_change_password: prev?.must_change_password ?? me.must_change_password ?? false,
+      }));
+      if (studentSessionRef.current !== sessionId) return;
+      await loadServerNotifications(authToken, sessionId);
+      if (studentSessionRef.current !== sessionId) return;
+      try {
+        const r = await parentFetch('/messages/unread-count', {}, authToken);
+        if (studentSessionRef.current !== sessionId) return;
+        setParentDeskUnread(Number(r?.count ?? 0));
+      } catch {
+        if (studentSessionRef.current === sessionId) setParentDeskUnread(0);
+      }
+      void parentFetch('/parent/finance', {}, authToken)
+        .then((financeData) => {
+          if (studentSessionRef.current !== sessionId) return;
+          setFinance(financeData);
+        })
+        .catch(() => undefined);
+    } finally {
+      window.clearTimeout(forceClearTimer);
+      if (studentSessionRef.current === sessionId) {
+        setIsSwitchingStudent(false);
+      }
+    }
+  }, [loadServerNotifications]);
+
+  const openFinanceStatementFromNotification = useCallback(async (n?: ParentAppNotification | null) => {
+    if (n?.serverId && token && !n.read) {
+      await parentFetch(`/parent/notifications/${n.serverId}/read`, { method: 'POST', body: JSON.stringify({}) }, token).catch(() => undefined);
+      setAppNotifications((prev) =>
+        prev.map((item) => (item.serverId === n.serverId ? { ...item, read: true } : item))
+      );
+    }
+    setSelectedNotification(null);
+    setShowNotifPanel(false);
+    setActiveTab('finance');
+    setFinanceStatementOpen(true);
+  }, [token]);
+
+  const unreadFinanceStatementCount = appNotifications.filter((n) => !n.read && isFinanceStatementNotification(n)).length;
 
   /** Close notifications panel when clicking outside (not on bell or panel), or on Escape. */
   useEffect(() => {
@@ -610,27 +721,35 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     return () => window.clearInterval(id);
   }, [token, refreshParentDeskUnread]);
 
-  const loadDeskMessages = useCallback(async () => {
+  const loadDeskMessages = useCallback(async (expectedSessionId?: number) => {
     if (!token) return;
+    const sessionId = expectedSessionId ?? studentSessionRef.current;
     setDeskLoading(true);
     try {
       const data = await parentFetch('/messages?page=1&limit=20', {}, token);
+      if (studentSessionRef.current !== sessionId) return;
       setDeskMessages(Array.isArray(data?.messages) ? data.messages : []);
       setDeskContact(data?.contact || {});
     } catch {
+      if (studentSessionRef.current !== sessionId) return;
       setDeskMessages([]);
     } finally {
-      setDeskLoading(false);
-      void refreshParentDeskUnread();
+      if (studentSessionRef.current === sessionId) {
+        setDeskLoading(false);
+        void refreshParentDeskUnread();
+      }
     }
   }, [token, refreshParentDeskUnread]);
 
   const openDeskConversation = useCallback(async (id: number) => {
     if (!token) return;
+    const sessionId = studentSessionRef.current;
     const data = await parentFetch(`/messages/${id}`, {}, token);
+    if (studentSessionRef.current !== sessionId) return;
     setSelectedDeskMessage(data?.message || null);
     setDeskConversation(Array.isArray(data?.replies) ? data.replies : []);
     await parentFetch(`/messages/${id}/read`, { method: 'PUT', body: JSON.stringify({}) }, token).catch(() => undefined);
+    if (studentSessionRef.current !== sessionId) return;
     setDeskMessages((prev) => prev.map((m) => (Number(m.id) === Number(id) ? { ...m, unread_replies: 0 } : m)));
     void refreshParentDeskUnread();
   }, [token, refreshParentDeskUnread]);
@@ -665,45 +784,107 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   }, [token, selectedDeskMessage, deskReply, deskReplyAttachment, openDeskConversation, loadDeskMessages, refreshParentDeskUnread]);
 
   const fetchTabData = useCallback(async (tab: Tab) => {
-    if (!token) return;
+    if (!token || !student) return;
+    const sessionId = studentSessionRef.current;
     setDataLoading(true);
     try {
-      if (tab === 'grades' && !grades) {
+      if (tab === 'grades') {
         const d = await parentFetch('/parent/grades', {}, token);
+        if (studentSessionRef.current !== sessionId) return;
         setGrades(d);
-      } else if (tab === 'position' && !termReport) {
+      } else if (tab === 'position') {
         const d = await parentFetch('/parent/term-report', {}, token);
+        if (studentSessionRef.current !== sessionId) return;
         setTermReport(d);
       } else if (tab === 'finance') {
         const d = await parentFetch('/parent/finance', {}, token);
+        if (studentSessionRef.current !== sessionId) return;
         setFinance(d);
-      } else if (tab === 'attendance' && !attendance) {
+      } else if (tab === 'attendance') {
         const d = await parentFetch('/parent/attendance', {}, token);
+        if (studentSessionRef.current !== sessionId) return;
         setAttendance(d);
       } else if (tab === 'desk') {
-        await loadDeskMessages();
+        await loadDeskMessages(sessionId);
       }
     } catch (err: any) {
       console.error(`Error loading ${tab}:`, err);
     } finally {
-      setDataLoading(false);
+      if (studentSessionRef.current === sessionId) {
+        setDataLoading(false);
+      }
     }
-  }, [token, grades, termReport, finance, attendance, loadDeskMessages]);
+  }, [token, student?.admission_number, loadDeskMessages]);
+
+  const refreshFinanceAll = useCallback(async () => {
+    if (!token || !student) return;
+    const sessionId = studentSessionRef.current;
+    setDataLoading(true);
+    try {
+      const [financeData, meData] = await Promise.all([
+        parentFetch('/parent/finance', {}, token),
+        parentFetch('/parent/me', {}, token).catch(() => null),
+      ]);
+      if (studentSessionRef.current !== sessionId) return;
+      setFinance(financeData);
+      if (meData) {
+        setStudent((prev) => ({
+          ...(meData as StudentInfo),
+          must_change_password: prev?.must_change_password ?? (meData as StudentInfo).must_change_password ?? false,
+        }));
+      }
+      await loadServerNotifications(token, sessionId);
+    } catch (err: unknown) {
+      console.error('Finance refresh error:', err);
+    } finally {
+      if (studentSessionRef.current === sessionId) {
+        setDataLoading(false);
+      }
+    }
+  }, [token, student, loadServerNotifications]);
 
   useEffect(() => {
-    if (!token || activeTab !== 'finance') return;
+    if (!token || !student?.admission_number || isSwitchingStudent) return;
+    if (activeTab === 'overview') return;
+    void fetchTabData(activeTab);
+  }, [token, student?.admission_number, activeTab, isSwitchingStudent, fetchTabData]);
+
+  useEffect(() => {
+    if (!token || !student?.admission_number || isSwitchingStudent || finance) return;
+    const sessionId = studentSessionRef.current;
+    void parentFetch('/parent/finance', {}, token)
+      .then((financeData) => {
+        if (studentSessionRef.current !== sessionId) return;
+        setFinance(financeData);
+      })
+      .catch(() => undefined);
+  }, [token, student?.admission_number, isSwitchingStudent, finance]);
+
+  useEffect(() => {
+    if (!token || activeTab !== 'finance' || isSwitchingStudent) return;
+    const sessionId = studentSessionRef.current;
     const interval = window.setInterval(() => {
       parentFetch('/parent/finance', {}, token)
-        .then(setFinance)
+        .then((d) => {
+          if (studentSessionRef.current !== sessionId) return;
+          setFinance(d);
+        })
         .catch(() => undefined);
     }, 60000);
     return () => window.clearInterval(interval);
-  }, [token, activeTab]);
+  }, [token, activeTab, isSwitchingStudent, student?.admission_number]);
 
   useEffect(() => {
     if (!token || typeof window === 'undefined') return;
     ensurePushSubscription(token, tenantId).catch(() => undefined);
-    loadServerNotifications(token).catch(() => undefined);
+    loadServerNotifications(token, studentSessionRef.current).catch(() => undefined);
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('tab') === 'finance' && params.get('openStatement') === '1') {
+      setActiveTab('finance');
+      setFinanceStatementOpen(true);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
 
     // Keep backend subscription in sync on long-lived sessions/devices.
     const syncInterval = window.setInterval(() => {
@@ -722,9 +903,11 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
     socket.on('tenant-data-changed', async (evt: any) => {
       if (evt?.tenantId && Number(evt.tenantId) !== Number(tenantId)) return;
+      const sessionId = studentSessionRef.current;
       const entity = String(evt?.entity || '');
       if (entity === 'payment' || entity === 'finance-payment') {
         const d = await parentFetch('/parent/finance', {}, token).catch(() => null);
+        if (studentSessionRef.current !== sessionId) return;
         if (d) setFinance(d);
         const isCorrection = evt?.action === 'updated';
         pushNotification(
@@ -733,12 +916,19 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             ? 'A payment receipt for your ward was corrected. Please review the updated receipt.'
             : 'A new payment receipt has been recorded for your ward.'
         );
-        await loadServerNotifications(token).catch(() => undefined);
+        await loadServerNotifications(token, studentSessionRef.current).catch(() => undefined);
       } else if (entity === 'term-report-release') {
         const d = await parentFetch('/parent/term-report', {}, token).catch(() => null);
+        if (studentSessionRef.current !== sessionId) return;
         if (d) setTermReport(d);
         pushNotification('Results Released', 'New term results are now available in your portal.');
-        await loadServerNotifications(token).catch(() => undefined);
+        await loadServerNotifications(token, studentSessionRef.current).catch(() => undefined);
+      } else if (entity === 'finance-statement-sent') {
+        pushNotification(
+          'Finance Statement Available',
+          'Your ward\'s finance statement is ready to view or download on the Finance tab.'
+        );
+        await loadServerNotifications(token, studentSessionRef.current).catch(() => undefined);
       } else if (entity === 'admin-test-push') {
         const rawIds = evt?.targetStudentIds;
         const targetStudentIds = Array.isArray(rawIds)
@@ -759,7 +949,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
           if (myClassId == null || myClassId !== targetClassId) return;
         }
         pushNotification(evt?.title || 'Test Notification', evt?.body || 'School sent a push notification test.');
-        await loadServerNotifications(token).catch(() => undefined);
+        await loadServerNotifications(token, studentSessionRef.current).catch(() => undefined);
       } else if (entity === 'learning-teacher-quiz') {
         setStudentModeSignal((v) => v + 1);
         const q = await parentFetch('/student/teacher-quizzes', {}, token).catch(() => null);
@@ -783,28 +973,51 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     return () => {
       socket.disconnect();
     };
-  }, [token, tenantId, student, pushNotification, loadServerNotifications, refreshParentDeskUnread, activeTab, loadDeskMessages]);
+  }, [token, tenantId, student?.admission_number, pushNotification, loadServerNotifications, refreshParentDeskUnread, activeTab, loadDeskMessages]);
+
+  const showTabLoading = isSwitchingStudent || dataLoading;
 
   const handleTabChange = (tab: Tab) => {
     setActiveTab(tab);
-    fetchTabData(tab);
   };
 
   const refreshTab = async () => {
     if (!token) return;
+    if (activeTab === 'finance') {
+      await refreshFinanceAll();
+      return;
+    }
+    const sessionId = studentSessionRef.current;
     setDataLoading(true);
     try {
-      if (activeTab === 'grades') { const d = await parentFetch('/parent/grades', {}, token); setGrades(d); }
-      else if (activeTab === 'position') { const d = await parentFetch('/parent/term-report', {}, token); setTermReport(d); }
-      else if (activeTab === 'finance') { const d = await parentFetch('/parent/finance', {}, token); setFinance(d); }
-      else if (activeTab === 'attendance') { const d = await parentFetch('/parent/attendance', {}, token); setAttendance(d); }
-      else if (activeTab === 'desk') { await loadDeskMessages(); }
+      if (activeTab === 'grades') {
+        const d = await parentFetch('/parent/grades', {}, token);
+        if (studentSessionRef.current !== sessionId) return;
+        setGrades(d);
+      } else if (activeTab === 'position') {
+        const d = await parentFetch('/parent/term-report', {}, token);
+        if (studentSessionRef.current !== sessionId) return;
+        setTermReport(d);
+      } else if (activeTab === 'attendance') {
+        const d = await parentFetch('/parent/attendance', {}, token);
+        if (studentSessionRef.current !== sessionId) return;
+        setAttendance(d);
+      } else if (activeTab === 'desk') {
+        await loadDeskMessages(sessionId);
+      } else if (activeTab === 'overview') {
+        await refreshFinanceAll();
+      }
     } catch { /* silent */ }
-    finally { setDataLoading(false); }
+    finally {
+      if (studentSessionRef.current === sessionId) {
+        setDataLoading(false);
+      }
+    }
   };
 
   const hardRefreshApp = useCallback(async () => {
-    if (!token) return;
+    if (!token || isSwitchingStudent) return;
+    const sessionId = studentSessionRef.current;
     try {
       setHardRefreshing(true);
       const [financeData, termData, gradesData, attendanceData, meData] = await Promise.all([
@@ -814,16 +1027,19 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         parentFetch('/parent/attendance', {}, token).catch(() => null),
         parentFetch('/parent/me', {}, token).catch(() => null),
       ]);
+      if (studentSessionRef.current !== sessionId) return;
       if (financeData) setFinance(financeData);
       if (termData) setTermReport(termData);
       if (gradesData) setGrades(gradesData);
       if (attendanceData) setAttendance(attendanceData);
-      if (meData) setStudent(meData);
-      await loadServerNotifications(token).catch(() => undefined);
+      if (meData) setStudent(meData as StudentInfo);
+      await loadServerNotifications(token, studentSessionRef.current).catch(() => undefined);
     } finally {
-      setHardRefreshing(false);
+      if (studentSessionRef.current === sessionId) {
+        setHardRefreshing(false);
+      }
     }
-  }, [token, loadServerNotifications]);
+  }, [token, isSwitchingStudent, loadServerNotifications]);
 
   // Tab-scoped fetches only — no background bulk refresh of every parent endpoint.
 
@@ -838,7 +1054,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         amount: parseFloat(payment?.amount_paid || '0'),
         date: payment?.payment_date,
         paymentMethod: payment?.payment_method || 'N/A',
-        term: payment?.term || finance.currentTerm,
+        term: payment?.term || finance.currentTermLabel || finance.currentTerm,
         receiptNumber: payment?.receipt_number || 'N/A',
         notes: payment?.notes || (payment?.reference_number ? `Ref: ${payment.reference_number}` : ''),
         remainingBalance: snap.balanceAfter,
@@ -850,7 +1066,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       return;
     }
 
-    const anchorTerm = String(payment?.term || finance.currentTerm || '').trim();
+    const anchorTerm = String(payment?.term || finance.currentTermLabel || finance.currentTerm || '').trim();
     const totalDue = Number(finance.totalDue || 0);
     const termFee = Number(finance.termFee || 0);
     const arrears = Number(finance.arrears || 0);
@@ -880,7 +1096,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       amount: parseFloat(payment?.amount_paid || '0'),
       date: payment?.payment_date,
       paymentMethod: payment?.payment_method || 'N/A',
-      term: payment?.term || finance.currentTerm,
+      term: payment?.term || finance.currentTermLabel || finance.currentTerm,
       receiptNumber: payment?.receipt_number || 'N/A',
       notes: payment?.notes || (payment?.reference_number ? `Ref: ${payment.reference_number}` : ''),
       remainingBalance: Math.max(0, totalDue - cumulative),
@@ -1219,6 +1435,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   if (isStudentMode && token && student) {
     return (
       <StudentLearningMode
+        key={`${student.admission_number}-${token}`}
         token={token}
         student={student as any}
         onExit={() => setIsStudentMode(false)}
@@ -1375,6 +1592,10 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                           await parentFetch(`/parent/notifications/${n.serverId}/read`, { method: 'POST', body: JSON.stringify({}) }, token).catch(() => undefined);
                         }
                         setAppNotifications((prev) => prev.map((item) => (item.id === n.id ? { ...item, read: true } : item)));
+                        if (isFinanceStatementNotification(n)) {
+                          await openFinanceStatementFromNotification({ ...n, read: true });
+                          return;
+                        }
                         setSelectedNotification({ ...n, read: true });
                         setShowNotifPanel(false);
                       }}
@@ -1499,6 +1720,74 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               </div>
             </section>
 
+            {/* Fee balance snapshot */}
+            <section className="rounded-[1.5rem] border border-white/70 bg-white/58 p-4 shadow-[0_14px_38px_rgba(15,23,42,0.08)] backdrop-blur-2xl">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div>
+                  <p className="text-sm font-black text-slate-950">Fee Balance</p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {isSwitchingStudent ? 'Switching student…' : finance?.currentTermLabel || finance?.currentTerm || student.current_term || 'Current term'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void refreshFinanceAll()}
+                  disabled={isSwitchingStudent || dataLoading}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${dataLoading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </button>
+              </div>
+              {isSwitchingStudent || (dataLoading && !finance) ? (
+                <div className="rounded-2xl border border-slate-100 bg-slate-50/80 px-4 py-6 text-center text-sm text-slate-500">
+                  Loading fee balance…
+                </div>
+              ) : finance ? (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="rounded-2xl border border-slate-100 bg-white/80 p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Outstanding</p>
+                    <p className="text-sm font-black text-slate-900 mt-1">
+                      {GH(Number(finance.credit ?? 0) > 0 ? finance.credit : Math.max(0, Number(finance.outstanding ?? finance.balance ?? 0)))}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-100 bg-white/80 p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Term Fee</p>
+                    <p className="text-sm font-black text-slate-900 mt-1">{GH(Number(finance.termFee ?? 0))}</p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-100 bg-white/80 p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Arrears</p>
+                    <p className="text-sm font-black text-slate-900 mt-1">{GH(Number(finance.arrears ?? 0))}</p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-100 bg-white/80 p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Paid</p>
+                    <p className="text-sm font-black text-emerald-700 mt-1">{GH(Number(finance.totalPaid ?? 0))}</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 px-4 py-5 text-center">
+                  <p className="text-sm text-slate-500">Tap Refresh to load balance, receipts, and payments.</p>
+                  <button
+                    type="button"
+                    onClick={() => void refreshFinanceAll()}
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Load Fee Data
+                  </button>
+                </div>
+              )}
+              {finance ? (
+                <button
+                  type="button"
+                  onClick={() => handleTabChange('finance')}
+                  className="mt-3 w-full text-center text-xs font-bold text-emerald-700 hover:text-emerald-800"
+                >
+                  View full fee breakdown & payment history →
+                </button>
+              ) : null}
+            </section>
+
             {/* Quick Actions */}
             <section className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {quickActions.map((action) => (
@@ -1533,7 +1822,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               </button>
             </div>
 
-            {dataLoading && !grades ? (
+            {showTabLoading ? (
               <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} onRetry={refreshTab} />
             ) : !grades?.grades?.length ? (
               <EmptyCard icon={<BookOpen className="w-10 h-10 text-gray-300" />} message="No grades recorded yet." />
@@ -1616,7 +1905,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               </button>
             </div>
 
-            {dataLoading && !termReport ? (
+            {showTabLoading ? (
               <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} onRetry={refreshTab} />
             ) : !termReport?.report ? (
               <div className="bg-white border border-gray-200 rounded-xl p-8 text-center shadow-sm">
@@ -1715,16 +2004,61 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         {/* ── Finance tab ── */}
         {activeTab === 'finance' && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            {unreadFinanceStatementCount > 0 ? (
+              <div className="rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50 p-4 shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                      <CreditCard className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-emerald-900">New finance statement from school</p>
+                      <p className="text-xs text-emerald-800 mt-0.5">
+                        {unreadFinanceStatementCount === 1
+                          ? 'A finance statement is ready for you to review and download.'
+                          : `${unreadFinanceStatementCount} finance statement alerts are waiting.`}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFinanceStatementOpen(true)}
+                    className="shrink-0 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 transition-colors"
+                  >
+                    View Statement
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            <div className="flex items-center justify-between gap-2 flex-wrap">
               <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
                 <CreditCard className="w-5 h-5 text-green-600" /> Fee Balance
               </h2>
-              <button onClick={refreshTab} disabled={dataLoading} className="text-gray-400 hover:text-purple-600 transition-colors">
-                <RefreshCw className={`w-4 h-4 ${dataLoading ? 'animate-spin' : ''}`} />
-              </button>
+              <div className="flex items-center gap-2">
+                {token ? (
+                  <button
+                    type="button"
+                    onClick={() => setFinanceStatementOpen(true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                  >
+                    <CreditCard className="h-4 w-4 text-emerald-600" />
+                    Finance Statement
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => void refreshFinanceAll()}
+                  disabled={isSwitchingStudent || dataLoading}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                  title="Refresh balance, receipts, and payments"
+                >
+                  <RefreshCw className={`h-4 w-4 ${dataLoading ? 'animate-spin' : ''}`} />
+                  Refresh All
+                </button>
+              </div>
             </div>
 
-            {dataLoading && !finance ? (
+            {showTabLoading ? (
               <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} onRetry={refreshTab} />
             ) : !finance ? (
               <EmptyCard icon={<CreditCard className="w-10 h-10 text-gray-300" />} message="No finance data available." />
@@ -1753,86 +2087,114 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                 )}
 
                 {/* Balance card */}
-                <div className={`rounded-2xl p-5 text-white shadow-lg ${
-                  finance.status === 'paid' ? 'bg-gradient-to-br from-green-500 to-emerald-700'
-                  : finance.status === 'partial' ? 'bg-gradient-to-br from-amber-500 to-orange-600'
-                  : 'bg-gradient-to-br from-red-500 to-rose-700'
-                }`}>
+                {(() => {
+                  const portalStatus = finance.status as 'unpaid' | 'paid' | 'credit' | 'not_set';
+                  const outstanding = Number(finance.outstanding ?? finance.balance ?? 0);
+                  const credit = Number(finance.credit ?? 0);
+                  const termLabel = finance.currentTermLabel || finance.currentTerm || '';
+                  const cardClass =
+                    portalStatus === 'paid' ? 'bg-gradient-to-br from-green-500 to-emerald-700'
+                    : portalStatus === 'credit' ? 'bg-gradient-to-br from-blue-500 to-indigo-700'
+                    : portalStatus === 'not_set' ? 'bg-gradient-to-br from-slate-500 to-slate-700'
+                    : 'bg-gradient-to-br from-red-500 to-rose-700';
+                  const badgeClass =
+                    portalStatus === 'paid' ? 'bg-green-400/30 text-green-100'
+                    : portalStatus === 'credit' ? 'bg-blue-400/30 text-blue-100'
+                    : portalStatus === 'not_set' ? 'bg-white/20 text-white/90'
+                    : 'bg-red-400/30 text-red-100';
+                  const badgeLabel =
+                    portalStatus === 'paid' ? '✓ Paid'
+                    : portalStatus === 'credit' ? 'Credit'
+                    : portalStatus === 'not_set' ? 'No Fee Set'
+                    : 'Unpaid';
+                  const headlineAmount = portalStatus === 'credit' ? credit : Math.max(0, outstanding);
+                  const headlineLabel = portalStatus === 'credit' ? 'Credit Balance' : 'Outstanding Balance';
+
+                  return (
+                <div className={`rounded-2xl p-5 text-white shadow-lg ${cardClass}`}>
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-white/60 text-[10px] uppercase tracking-wider font-medium">
                         {finance.schoolName || student.school_name}
                       </p>
-                      <p className="text-white/70 text-xs mb-1">
-                        {finance.currentTerm.includes(finance.currentYear) ? finance.currentTerm : `${finance.currentTerm} ${finance.currentYear}`}
-                      </p>
-                      <p className="text-3xl font-black mt-1">{GH(Math.max(0, finance.balance))}</p>
-                      <p className="text-white/80 text-sm mt-1">Outstanding Balance</p>
+                      <p className="text-white/70 text-xs mb-1">{termLabel}</p>
+                      <p className="text-3xl font-black mt-1">{GH(headlineAmount)}</p>
+                      <p className="text-white/80 text-sm mt-1">{headlineLabel}</p>
                     </div>
                     <div className="text-right">
-                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-                        finance.status === 'paid' ? 'bg-green-400/30 text-green-100'
-                        : finance.status === 'partial' ? 'bg-amber-400/30 text-amber-100'
-                        : 'bg-red-400/30 text-red-100'
-                      }`}>
-                        {finance.status === 'paid' ? '✓ Fully Paid' : finance.status === 'partial' ? 'Partially Paid' : 'Unpaid'}
+                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${badgeClass}`}>
+                        {badgeLabel}
                       </span>
                     </div>
                   </div>
                   <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-white/20">
                     <div className="text-center">
                       <p className="text-white/60 text-[10px] uppercase tracking-wide">Term Fee</p>
-                      <p className="text-xs sm:text-sm font-bold mt-0.5">{GH(finance.termFee)}</p>
+                      <p className="text-xs sm:text-sm font-bold mt-0.5">{GH(Number(finance.termFee ?? 0))}</p>
                     </div>
                     <div className="text-center">
                       <p className="text-white/60 text-[10px] uppercase tracking-wide">Arrears</p>
-                      <p className="text-xs sm:text-sm font-bold mt-0.5">{GH(finance.arrears)}</p>
+                      <p className="text-xs sm:text-sm font-bold mt-0.5">{GH(Number(finance.arrears ?? 0))}</p>
                     </div>
                     <div className="text-center">
                       <p className="text-white/60 text-[10px] uppercase tracking-wide">Paid</p>
-                      <p className="text-xs sm:text-sm font-bold mt-0.5">{GH(finance.totalPaid)}</p>
+                      <p className="text-xs sm:text-sm font-bold mt-0.5">{GH(Number(finance.totalPaid ?? 0))}</p>
                     </div>
                   </div>
                 </div>
+                  );
+                })()}
 
                 {/* Fee breakdown */}
-                {finance.feeStructure && (
+                {finance.feeBreakdown && (
                   <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
                     <div className="px-4 py-3 border-b border-gray-100">
-                      <h3 className="font-semibold text-gray-800 text-sm">Fee Breakdown — {finance.currentTerm}</h3>
+                      <h3 className="font-semibold text-gray-800 text-sm">
+                        Fee Breakdown — {finance.feeBreakdown.termLabel || finance.currentTerm}
+                      </h3>
                     </div>
                     <div className="divide-y divide-gray-50">
-                      {[
-                        { label: 'Tuition Fee', val: finance.feeStructure.tuition_fee },
-                        { label: 'PTA Fee', val: finance.feeStructure.pta_fee },
-                        { label: 'Sports Fee', val: finance.feeStructure.sports_fee },
-                        { label: 'Library Fee', val: finance.feeStructure.library_fee },
-                        { label: 'Other', val: finance.feeStructure.other_fee },
-                      ].filter(r => parseFloat(r.val || '0') > 0).map(r => (
-                        <div key={r.label} className="flex items-center justify-between px-4 py-2.5">
-                          <span className="text-sm text-gray-600">{r.label}</span>
-                          <span className="text-sm font-semibold text-gray-800">{GH(parseFloat(r.val))}</span>
+                      {(finance.feeBreakdown.termFeeLines || []).map((line: { label: string; amount: number }) => (
+                        <div key={line.label} className="flex items-center justify-between px-4 py-2.5">
+                          <span className="text-sm text-gray-600">{line.label}</span>
+                          <span className="text-sm font-semibold text-gray-800">{GH(Number(line.amount || 0))}</span>
                         </div>
                       ))}
-                      {finance.discountAmount > 0 && (
+                      {Number(finance.feeBreakdown.discountAmount || finance.discountAmount || 0) > 0 && (
                         <div className="flex items-center justify-between px-4 py-2.5 bg-amber-50">
                           <span className="text-sm text-amber-700 flex items-center gap-1.5">
                             <Medal className="w-3.5 h-3.5" /> Discount
                           </span>
-                          <span className="text-sm font-bold text-amber-700">-{GH(finance.discountAmount)}</span>
-                        </div>
-                      )}
-                      {finance.arrears > 0 && (
-                        <div className="flex items-center justify-between px-4 py-2.5 bg-red-50">
-                          <span className="text-sm text-red-600 flex items-center gap-1.5">
-                            <AlertTriangle className="w-3.5 h-3.5" /> Arrears from previous term
+                          <span className="text-sm font-bold text-amber-700">
+                            -{GH(Number(finance.feeBreakdown.discountAmount || finance.discountAmount || 0))}
                           </span>
-                          <span className="text-sm font-semibold text-red-700">{GH(finance.arrears)}</span>
                         </div>
                       )}
+                      {(finance.feeBreakdown.arrearLines || []).map((line: { termName: string; amount: number }) => (
+                        <div key={line.termName} className="flex items-center justify-between px-4 py-2.5 bg-red-50/70">
+                          <span className="text-sm text-red-700 flex items-center gap-1.5">
+                            <AlertTriangle className="w-3.5 h-3.5" /> Arrears — {line.termName}
+                          </span>
+                          <span className="text-sm font-semibold text-red-700">{GH(Number(line.amount || 0))}</span>
+                        </div>
+                      ))}
+                      <div className="flex items-center justify-between px-4 py-2.5">
+                        <span className="text-sm font-medium text-gray-700">Total Due</span>
+                        <span className="text-sm font-bold text-gray-800">{GH(Number(finance.feeBreakdown.totalDue ?? finance.totalDue ?? 0))}</span>
+                      </div>
+                      <div className="flex items-center justify-between px-4 py-2.5">
+                        <span className="text-sm font-medium text-gray-700">Amount Paid (this term)</span>
+                        <span className="text-sm font-semibold text-emerald-700">{GH(Number(finance.feeBreakdown.totalPaid ?? finance.totalPaid ?? 0))}</span>
+                      </div>
                       <div className="flex items-center justify-between px-4 py-3 bg-gray-50">
-                        <span className="text-sm font-bold text-gray-800">Total Due</span>
-                        <span className="text-sm font-bold text-gray-800">{GH(finance.totalDue)}</span>
+                        <span className="text-sm font-bold text-gray-800">
+                          {Number(finance.feeBreakdown.credit ?? finance.credit ?? 0) > 0 ? 'Credit' : 'Outstanding'}
+                        </span>
+                        <span className="text-sm font-bold text-gray-800">
+                          {Number(finance.feeBreakdown.credit ?? finance.credit ?? 0) > 0
+                            ? GH(Number(finance.feeBreakdown.credit ?? finance.credit ?? 0))
+                            : GH(Number(finance.feeBreakdown.outstanding ?? finance.outstanding ?? finance.balance ?? 0))}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -1848,11 +2210,19 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                     <div className="px-4 py-6 text-center text-sm text-gray-400">No payments recorded yet.</div>
                   ) : (
                     <div className="divide-y divide-gray-50 max-h-64 overflow-y-auto">
-                      {finance.payments.map((p: any) => (
+                      {finance.payments.map((p: any) => {
+                        const activeTerm = finance.currentTermLabel || finance.currentTerm || '';
+                        const isCurrentTerm =
+                          !p.term || p.term === '—' ||
+                          String(p.term).toLowerCase() === String(activeTerm).toLowerCase() ||
+                          String(p.term).toLowerCase().includes(String(activeTerm).toLowerCase()) ||
+                          String(activeTerm).toLowerCase().includes(String(p.term).toLowerCase());
+                        const paymentStatus = p.status === 'corrected' ? 'Corrected' : 'Active';
+                        return (
                         <div key={p.id ?? `${p.receipt_number}-${p.payment_date}`} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3">
                           <div className="flex items-start gap-3 min-w-0">
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
-                              p.term === finance.currentTerm ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                              isCurrentTerm ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
                             }`}>
                               <CheckCircle2 className="w-4 h-4" />
                             </div>
@@ -1860,11 +2230,18 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-sm font-bold text-gray-800">{GH(parseFloat(p.amount_paid))}</span>
                                 <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                                  p.term === finance.currentTerm
+                                  isCurrentTerm
                                     ? 'bg-green-100 text-green-700'
                                     : 'bg-gray-100 text-gray-500'
                                 }`}>
                                   {p.term || '—'}
+                                </span>
+                                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                                  p.status === 'corrected'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-slate-100 text-slate-600'
+                                }`}>
+                                  {paymentStatus}
                                 </span>
                               </div>
                               <p className="text-xs text-gray-400 flex items-center gap-1 flex-wrap mt-0.5">
@@ -1891,9 +2268,10 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                                   {p.notes ? `Note: ${p.notes}` : ''}
                                 </p>
                               )}
-                              {p.corrects_payment_id && p.receipt_updated_at && (
+                              {p.status === 'corrected' && p.replacesReceiptNumber && (
                                 <p className="text-[11px] text-amber-700 mt-1">
-                                  This receipt was updated on {fmtDate(p.receipt_updated_at)}
+                                  Replaces receipt #{p.replacesReceiptNumber}
+                                  {p.receipt_updated_at ? ` · updated ${fmtDate(p.receipt_updated_at)}` : ''}
                                 </p>
                               )}
                             </div>
@@ -1906,7 +2284,8 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                             View Receipt
                           </button>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -1927,7 +2306,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               </button>
             </div>
 
-            {dataLoading && !attendance ? (
+            {showTabLoading ? (
               <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} onRetry={refreshTab} />
             ) : !attendance ? (
               <EmptyCard icon={<CalendarCheck className="w-10 h-10 text-gray-300" />} message="No attendance records yet." />
@@ -2042,7 +2421,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               <button onClick={() => loadDeskMessages()} className="text-sm text-purple-700 hover:text-purple-800">Refresh</button>
             </div>
 
-            {deskLoading ? (
+            {isSwitchingStudent || deskLoading ? (
               <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} onRetry={refreshTab} />
             ) : deskMessages.length === 0 ? (
               <div className="bg-white border border-gray-200 rounded-xl p-8 text-center shadow-sm">
@@ -2383,6 +2762,16 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         </div>
       )}
 
+      {token ? (
+        <FinanceStatementModal
+          key={`${student?.admission_number || 'parent'}-${token}`}
+          open={financeStatementOpen}
+          onOpenChange={setFinanceStatementOpen}
+          parentToken={token}
+          studentLabel={student ? `${student.first_name} ${student.last_name}` : undefined}
+        />
+      ) : null}
+
       {selectedNotification && (
         <div
           className="fixed inset-0 z-50 bg-black/55 backdrop-blur-sm flex items-center justify-center p-4"
@@ -2409,7 +2798,15 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
                 {selectedNotification.message}
               </p>
-              <div className="mt-4 flex justify-end">
+              <div className="mt-4 flex flex-wrap justify-end gap-2">
+                {isFinanceStatementNotification(selectedNotification) ? (
+                  <button
+                    onClick={() => void openFinanceStatementFromNotification(selectedNotification)}
+                    className="rounded-lg px-4 py-2 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700"
+                  >
+                    View Statement
+                  </button>
+                ) : null}
                 <button
                   onClick={() => setSelectedNotification(null)}
                   className="rounded-lg px-3 py-2 text-sm font-semibold text-white"
@@ -2488,6 +2885,12 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             </div>
 
             <div className="max-h-[60dvh] overflow-y-auto [-webkit-overflow-scrolling:touch] overscroll-contain px-2 py-2">
+              {isSwitchingStudent ? (
+                <div className="px-4 py-6 text-center text-sm text-purple-600 font-medium">
+                  <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2" />
+                  Switching student…
+                </div>
+              ) : null}
               <div className="space-y-1">
                 {linkedAccounts.map((acc) => {
                   const isActive = acc.student.admission_number === student.admission_number;

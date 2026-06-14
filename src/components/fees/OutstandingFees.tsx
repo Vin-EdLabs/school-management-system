@@ -14,7 +14,7 @@ import { useActiveTerm } from '../../contexts/ActiveTermContext';
 import { shouldTrackStudentFees } from '../students/studentRegistryUtils';
 
 const OutstandingFees = () => {
-  const { students, classes, feeStructures, payments, arrearsBalances } = useData();
+  const { students, classes, feeStructures, payments } = useData();
   const { currentTerm } = useActiveTerm();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClass, setSelectedClass] = useState('All');
@@ -33,7 +33,7 @@ const OutstandingFees = () => {
         feeStructures || [],
         paymentsArray,
         student.classAssignedId,
-        arrearsBalances,
+        undefined,
         {
           isBeneficiary: !!student.isBeneficiary,
           discountType: student.discountType,
@@ -60,7 +60,7 @@ const OutstandingFees = () => {
         )
       };
     });
-  }, [students, payments, feeStructures, selectedTerm, arrearsBalances]);
+  }, [students, payments, feeStructures, selectedTerm]);
 
   // Filter students with outstanding balances
   const filteredStudents = useMemo(() => {

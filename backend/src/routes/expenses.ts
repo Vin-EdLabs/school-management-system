@@ -7,6 +7,7 @@ import { getIO } from '../socket.js';
 import { writeAuditLog } from '../services/auditService.js';
 import { getClientIp } from '../utils/clientIp.js';
 import { resolvePaymentAccountForTransaction } from '../services/paymentAccountService.js';
+import { evaluateBudgetAlerts, registerTransactionCategory } from '../services/termBudgetService.js';
 
 const router = express.Router();
 
@@ -136,6 +137,17 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
     );
     
     const row = result.rows[0];
+    const expenseCategory = String(category || '').trim();
+    if (expenseCategory) {
+      await registerTransactionCategory(
+        tenantId,
+        expenseCategory,
+        'expense',
+        req.user!.id,
+        req.user!.role,
+        getClientIp(req)
+      );
+    }
     await writeAuditLog({
       tenantId,
       userId: req.user!.id,
@@ -162,6 +174,7 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
       userAgent: req.get('user-agent') ?? null,
     });
     emitTenantDataChanged(tenantId, 'expense', 'created');
+    evaluateBudgetAlerts(tenantId).catch(() => undefined);
     
     res.status(201).json(result.rows[0]);
   } catch (error) {

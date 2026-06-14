@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -20,6 +20,7 @@ import {
   useRecentFinanceActivity,
 } from '../../hooks/useReportQueries';
 import { useFinanceRealtime } from '../../hooks/useFinanceRealtime';
+import { fetchUnreadBudgetAlerts } from '../../services/termBudgetApi';
 import { cn } from '@/lib/utils';
 import {
   CreditCard,
@@ -242,6 +243,20 @@ const FinancialDashboard = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [lastSync, setLastSync] = useState<Date | null>(null);
+  const [budgetAlerts, setBudgetAlerts] = useState<Array<Record<string, unknown>>>([]);
+
+  const loadBudgetAlerts = useCallback(async () => {
+    try {
+      const res = await fetchUnreadBudgetAlerts();
+      setBudgetAlerts(res.alerts || []);
+    } catch {
+      setBudgetAlerts([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadBudgetAlerts();
+  }, [loadBudgetAlerts]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -252,12 +267,13 @@ const FinancialDashboard = () => {
         refetchFeesByClass(),
         refetchExpenses(),
         refetchActivity(),
+        loadBudgetAlerts(),
       ]);
       setLastSync(new Date());
     } finally {
       setRefreshing(false);
     }
-  }, [refetchFinancial, refetchMonthly, refetchFeesByClass, refetchExpenses, refetchActivity]);
+  }, [refetchFinancial, refetchMonthly, refetchFeesByClass, refetchExpenses, refetchActivity, loadBudgetAlerts]);
 
   const refreshRef = useRef(handleRefresh);
   refreshRef.current = handleRefresh;
@@ -452,6 +468,30 @@ const FinancialDashboard = () => {
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_70%_45%_at_70%_-10%,hsl(var(--primary)/0.1),transparent)] dark:bg-[radial-gradient(ellipse_70%_45%_at_70%_-10%,hsl(var(--primary)/0.16),transparent)]" />
 
         <div className="relative space-y-8 p-6 md:p-8">
+          {budgetAlerts.length > 0 && (
+            <div className="rounded-xl border border-amber-300/80 bg-amber-50/90 px-4 py-3 dark:border-amber-800 dark:bg-amber-950/40">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+                    Budget alerts ({budgetAlerts.length})
+                  </p>
+                  <ul className="mt-1 space-y-1">
+                    {budgetAlerts.slice(0, 3).map((a) => (
+                      <li key={String(a.id)} className="text-xs text-amber-800 dark:text-amber-200">
+                        {String(a.message || a.category_name)}
+                      </li>
+                    ))}
+                  </ul>
+                  {budgetAlerts.length > 3 && (
+                    <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                      +{budgetAlerts.length - 3} more — open Budget for details
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="flex items-start gap-3">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/20">

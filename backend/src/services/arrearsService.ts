@@ -6,6 +6,12 @@ import {
   type BeneficiaryStudentRow,
 } from '../utils/beneficiaryFee.js';
 import { resolveStudentClassId } from './studentFeeBalanceService.js';
+import {
+  SQL_TRUE_OUTSTANDING,
+  SQL_TRUE_OUTSTANDING_DEBIT,
+  SQL_EFFECTIVE_CREDIT,
+  SQL_BILLABLE_TERM_BALANCE,
+} from './studentUnifiedBalanceService.js';
 
 type QueryFn = typeof query;
 
@@ -317,12 +323,12 @@ export async function getCumulativeUnpaidBeforeNewTerm(
 
   const ledgerRes = await run(
     `SELECT sl.student_id,
-            (COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(sl.credit), 0))::numeric AS total_arrears
+            (${SQL_TRUE_OUTSTANDING})::numeric AS total_arrears
      FROM student_ledger sl
      WHERE sl.tenant_id = $1
        AND sl.term_id != $2
      GROUP BY sl.student_id
-     HAVING (COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(sl.credit), 0)) > 0`,
+     HAVING (${SQL_TRUE_OUTSTANDING}) > 0`,
     [tenantId, newTermId]
   );
 
@@ -347,13 +353,20 @@ export async function getPerTermUnpaidBeforeNewTerm(
     `SELECT sl.student_id,
             sl.term_id,
             tt.academic_year_id,
-            (COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(sl.credit), 0))::numeric AS balance
+            (${SQL_BILLABLE_TERM_BALANCE})::numeric AS balance
      FROM student_ledger sl
      INNER JOIN terms tt ON tt.id = sl.term_id AND tt.tenant_id = sl.tenant_id
      WHERE sl.tenant_id = $1
        AND sl.term_id != $2
+       AND NOT EXISTS (
+         SELECT 1 FROM student_ledger cf
+         WHERE cf.tenant_id = sl.tenant_id
+           AND cf.student_id = sl.student_id
+           AND cf.term_id = sl.term_id
+           AND cf.entry_type = 'carry_forward_credit'
+       )
      GROUP BY sl.student_id, sl.term_id, tt.academic_year_id
-     HAVING (COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(sl.credit), 0)) > 0`,
+     HAVING (${SQL_BILLABLE_TERM_BALANCE}) > 0`,
     [tenantId, newTermId]
   );
 

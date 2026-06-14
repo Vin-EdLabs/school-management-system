@@ -8,6 +8,14 @@ import { getClient, query } from '../db/connection.js';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth.js';
 import { getIO } from '../socket.js';
 import { ensureSetupProgressRow, getSetupProgress } from '../services/setupProgressService.js';
+import { writeAuditLog } from '../services/auditService.js';
+import { getClientIp } from '../utils/clientIp.js';
+import {
+  exportSchoolBackup,
+  importSchoolBackup,
+  resetSchoolOperationalData,
+  validateSchoolBackup,
+} from '../services/schoolDataService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,52 +23,42 @@ const uploadsDir = path.join(__dirname, '../../uploads');
 
 const router = express.Router();
 
-const SCHOOL_BACKUP_TABLES = [
-  'school_settings',
-  'academic_terms',
-  'academic_years',
-  'terms',
-  'classes',
-  'subjects',
-  'students',
-  'teachers',
-  'fees',
-  'fee_structures',
-  'payments',
-  'receipts',
-  'income',
-  'expenses',
-  'student_ledger',
-  'ledger_fee_structures',
-  'student_credits',
-  'student_arrears',
-  'student_arrears_balance',
-  'term_arrears',
-  'term_outstanding_balances',
-  'attendance',
-  'grade_assignments',
-  'student_grades',
-  'grade_audit_log',
-  'salary_payments',
-  'payroll_other_staff',
-  'payroll_settings',
-  'class_teachers',
-  'parent_portal_accounts',
-  'support_messages',
-  'term_report_releases',
-  'events',
-];
+const backupUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 100 * 1024 * 1024 },
+});
 
-const SCHOOL_RESET_TABLES = [
-  'attendance', 'student_grades', 'grade_audit_log', 'grade_assignments',
-  'receipts', 'payments', 'student_credits', 'income', 'expenses',
-  'student_ledger', 'ledger_fee_structures', 'term_outstanding_balances',
-  'student_arrears', 'student_arrears_balance', 'term_arrears',
-  'salary_payments', 'payroll_other_staff', 'payroll_settings', 'class_teachers', 'students',
-  'classes', 'subjects', 'support_messages', 'term_report_releases',
-  'parent_portal_accounts', 'receipt_number_seq', 'terms', 'academic_years',
-  'academic_terms', 'events'
-];
+async function logSchoolDataAction(
+  req: AuthRequest,
+  opts: {
+    action: string;
+    targetTenantId: number;
+    schoolName: string;
+    summary: string;
+    details?: Record<string, unknown>;
+  }
+): Promise<void> {
+  const isSuperAdmin = req.user?.role === 'super-admin';
+  await writeAuditLog({
+    tenantId: isSuperAdmin ? null : opts.targetTenantId,
+    userId: req.user!.id,
+    userRole: req.user!.role,
+    action: opts.action,
+    entityType: 'TENANT_DATA',
+    entityId: opts.targetTenantId,
+    module: isSuperAdmin ? 'superadmin' : 'settings',
+    status: 'success',
+    summary: opts.summary,
+    details: {
+      targetTenantId: opts.targetTenantId,
+      schoolName: opts.schoolName,
+      performedBy: req.user!.username,
+      ...opts.details,
+    },
+    ipAddress: getClientIp(req),
+    userAgent: req.get('user-agent') || null,
+  });
+}
 
 const emitSystemDataChanged = (entity: string, action: 'created' | 'updated' | 'deleted', tenantId?: number) => {
   try {
@@ -193,38 +191,92 @@ router.get('/:id/backup', async (req: AuthRequest, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    const tenant = await query(
-      `SELECT id, name, slug, subdomain, logo_url, primary_color, secondary_color,
-              subscription_status, is_active, created_at, updated_at
-       FROM tenants WHERE id = $1`,
-      [tenantId]
-    );
-    if (tenant.rows.length === 0) return res.status(404).json({ error: 'School not found' });
+    const backup = await exportSchoolBackup(tenantId);
+    const schoolName = String((backup.school as { name?: string }).name || 'School');
 
-    const data: Record<string, unknown[]> = {};
-    for (const table of SCHOOL_BACKUP_TABLES) {
-      try {
-        const result = await query(`SELECT * FROM ${table} WHERE tenant_id = $1`, [tenantId]);
-        data[table] = result.rows;
-      } catch (err: any) {
-        console.warn(`[backup] Skipped ${table}:`, err?.message || err);
-      }
-    }
-
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, details) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'BACKUP_EXPORT', 'TENANT_DATA', JSON.stringify({ requested_by: req.user!.username, timestamp: new Date() })]
-    );
-
-    res.json({
-      version: '1.0',
-      generatedAt: new Date().toISOString(),
-      school: tenant.rows[0],
-      data,
+    await logSchoolDataAction(req, {
+      action: 'BACKUP_EXPORT',
+      targetTenantId: tenantId,
+      schoolName,
+      summary: req.user?.role === 'super-admin'
+        ? `ScholarNerve backup exported for ${schoolName}`
+        : `School backup exported for ${schoolName}`,
+      details: { timestamp: backup.generatedAt, tableCount: Object.keys(backup.data).length },
     });
+
+    res.json(backup);
   } catch (error) {
     console.error('School backup error:', error);
-    res.status(500).json({ error: 'Failed to create school backup' });
+    res.status(500).json({ error: (error as Error).message || 'Failed to create school backup' });
+  }
+});
+
+router.post('/:id/validate-backup', requireRole('super-admin'), backupUpload.single('backup'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = parseInt(req.params.id, 10);
+    if (!tenantId) return res.status(400).json({ error: 'Invalid school id' });
+
+    let payload: unknown = req.body?.backup;
+    if (req.file?.buffer) {
+      payload = JSON.parse(req.file.buffer.toString('utf8'));
+    } else if (typeof req.body?.backup === 'string') {
+      payload = JSON.parse(req.body.backup);
+    }
+
+    if (!payload) {
+      return res.status(400).json({ error: 'Upload a JSON backup file.' });
+    }
+
+    const validation = validateSchoolBackup(tenantId, payload);
+    res.json(validation);
+  } catch (error) {
+    console.error('Validate backup error:', error);
+    res.status(400).json({ error: (error as Error).message || 'Invalid backup file' });
+  }
+});
+
+router.post('/:id/import-data', requireRole('super-admin'), backupUpload.single('backup'), async (req: AuthRequest, res) => {
+  const client = await getClient();
+  try {
+    const tenantId = parseInt(req.params.id, 10);
+    const { confirm } = req.body || {};
+    if (!tenantId) return res.status(400).json({ error: 'Invalid school id' });
+    if (confirm !== 'IMPORT') return res.status(400).json({ error: 'Type IMPORT to confirm this action' });
+
+    let payload: unknown = null;
+    if (req.file?.buffer) {
+      payload = JSON.parse(req.file.buffer.toString('utf8'));
+    } else if (typeof req.body?.backup === 'string') {
+      payload = JSON.parse(req.body.backup);
+    }
+    if (!payload) {
+      return res.status(400).json({ error: 'Upload a JSON backup file.' });
+    }
+
+    const tenant = await query('SELECT id, name FROM tenants WHERE id = $1', [tenantId]);
+    if (tenant.rows.length === 0) return res.status(404).json({ error: 'School not found' });
+    const schoolName = String(tenant.rows[0].name);
+
+    await client.query('BEGIN');
+    const { imported } = await importSchoolBackup(client, tenantId, payload);
+    await client.query('COMMIT');
+
+    await logSchoolDataAction(req, {
+      action: 'BACKUP_IMPORT',
+      targetTenantId: tenantId,
+      schoolName,
+      summary: `ScholarNerve restored backup into ${schoolName}`,
+      details: { imported, timestamp: new Date().toISOString() },
+    });
+
+    emitSystemDataChanged('tenant-data', 'updated', tenantId);
+    res.json({ message: `${schoolName} data imported successfully`, imported });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    console.error('School import error:', error);
+    res.status(500).json({ error: (error as Error).message || 'Failed to import school data' });
+  } finally {
+    client.release();
   }
 });
 
@@ -241,38 +293,24 @@ router.post('/:id/reset-data', requireRole('super-admin'), async (req: AuthReque
     if (tenant.rows.length === 0) return res.status(404).json({ error: 'School not found' });
 
     await client.query('BEGIN');
-    for (const table of SCHOOL_RESET_TABLES) {
-      try {
-        await client.query(`DELETE FROM ${table} WHERE tenant_id = $1`, [tenantId]);
-      } catch (err: any) {
-        console.warn(`[super-admin reset] Skip/Fail table ${table}:`, err?.message || err);
-      }
-    }
-
-    await client.query(
-      `UPDATE school_settings 
-       SET address = NULL, contact = NULL, email = NULL,
-           current_year = $2, current_term = NULL,
-           receipt_prefix = 'R', postal_address = NULL,
-           contact_phone = NULL, receipt_footer = NULL,
-           bank_details = NULL, phone_number = NULL, whatsapp_number = NULL,
-           office_hours = NULL, physical_address = NULL, updated_at = CURRENT_TIMESTAMP
-       WHERE tenant_id = $1`,
-      [tenantId, new Date().getFullYear().toString()]
-    );
-
-    await client.query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, details) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'FULL_RESET', 'TENANT_DATA', JSON.stringify({ requested_by: req.user!.username, timestamp: new Date() })]
-    );
+    await resetSchoolOperationalData(client, tenantId);
 
     await client.query('COMMIT');
+
+    await logSchoolDataAction(req, {
+      action: 'FULL_RESET',
+      targetTenantId: tenantId,
+      schoolName: String(tenant.rows[0].name),
+      summary: `ScholarNerve reset operational data for ${tenant.rows[0].name}`,
+      details: { timestamp: new Date().toISOString() },
+    });
+
     emitSystemDataChanged('tenant-data', 'deleted', tenantId);
     res.json({ message: `${tenant.rows[0].name} data reset successfully` });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => undefined);
     console.error('Super admin school reset error:', error);
-    res.status(500).json({ error: 'Failed to reset school data' });
+    res.status(500).json({ error: (error as Error).message || 'Failed to reset school data' });
   } finally {
     client.release();
   }

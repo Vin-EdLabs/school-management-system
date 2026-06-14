@@ -13,6 +13,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import PwaInstallButton from '../common/PwaInstallButton';
 import { ModuleUserGuideDialog } from '../common/ModuleUserGuideDialog';
 import { formatDisplayDate } from '../../utils/dateFormat';
+import { fetchUnreadBudgetAlerts, markBudgetAlertRead } from '../../services/termBudgetApi';
 
 interface MainHeaderProps {
   onAiAssistantClick?: () => void;
@@ -28,7 +29,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
   const { theme, toggleTheme } = useTheme();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [notifOpen, setNotifOpen] = useState(false);
-  const [adminNotifications, setAdminNotifications] = useState<Array<{ id: string; type: 'parent-desk' | 'support-chat'; title: string; body: string; unread: number; timestamp: number }>>([]);
+  const [adminNotifications, setAdminNotifications] = useState<Array<{ id: string; type: 'parent-desk' | 'support-chat' | 'term-budget'; title: string; body: string; unread: number; timestamp: number; alertId?: number }>>([]);
   const [adminUnreadCount, setAdminUnreadCount] = useState(0);
   const pwaLogo = resolveLogoUrl(school?.logo_url ?? null);
   const showStaffNotifications = user?.role === 'teacher' || user?.role === 'staff';
@@ -65,7 +66,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
   const loadAdminNotifications = useCallback(async () => {
     if (!showAdminNotifications) return;
     try {
-      const results: Array<{ id: string; count: number; title: string; body: string; type: 'parent-desk' | 'support-chat' }> = [];
+      const results: Array<{ id: string; count: number; title: string; body: string; type: 'parent-desk' | 'support-chat' | 'term-budget' }> = [];
       const parentRes = await apiService.get<{ count: number }>('/messages/admin/unread-count');
       const parentCount = Number(parentRes?.count ?? 0);
       if (parentCount > 0) {
@@ -88,6 +89,17 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
           body: `${supportCount} unread support message${supportCount === 1 ? '' : 's'}.`,
         });
       }
+      const budgetAlerts = await fetchUnreadBudgetAlerts().catch(() => ({ alerts: [], count: 0 }));
+      for (const alert of budgetAlerts.alerts || []) {
+        const level = String(alert.alert_level || 'warning');
+        results.push({
+          id: `budget-alert-${alert.id}`,
+          type: 'term-budget',
+          count: 1,
+          title: `Budget ${level}`,
+          body: String(alert.message || alert.category_name || 'Budget alert'),
+        });
+      }
       setAdminNotifications(
         results.map((item) => ({
           id: item.id,
@@ -96,6 +108,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
           body: item.body,
           unread: item.count,
           timestamp: Date.now(),
+          alertId: item.type === 'term-budget' ? Number(String(item.id).replace('budget-alert-', '')) : undefined,
         }))
       );
       setAdminUnreadCount(results.reduce((sum, item) => sum + item.count, 0));
@@ -106,13 +119,16 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
     }
   }, [showAdminNotifications]);
 
-  const markAdminNotificationRead = useCallback(async (notificationType: 'parent-desk' | 'support-chat') => {
+  const markAdminNotificationRead = useCallback(async (notificationType: 'parent-desk' | 'support-chat' | 'term-budget', alertId?: number) => {
     try {
       if (notificationType === 'parent-desk') {
         await apiService.post('/messages/admin/mark-read-by-school', {});
       }
       if (notificationType === 'support-chat') {
         await apiService.post('/support-chat/mark-read-by-school', {});
+      }
+      if (notificationType === 'term-budget' && alertId) {
+        await markBudgetAlertRead(alertId);
       }
       await loadAdminNotifications();
     } catch (error) {
@@ -129,7 +145,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
     if (!socket || !showAdminNotifications) return;
     const onTenant = (evt: { entity?: string }) => {
       const e = String(evt?.entity || '');
-      if (e === 'parent-desk' || e === 'support-chat') {
+      if (e === 'parent-desk' || e === 'support-chat' || e === 'term-budget') {
         void loadAdminNotifications();
       }
     };
@@ -281,9 +297,9 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
                           key={notification.id}
                           type="button"
                           onClick={async () => {
-                            await markAdminNotificationRead(notification.type);
+                            await markAdminNotificationRead(notification.type, notification.alertId);
                             setNotifOpen(false);
-                            setActiveModule(notification.type);
+                            setActiveModule(notification.type === 'term-budget' ? 'term-budget' : notification.type);
                           }}
                           className="w-full rounded-lg border border-border bg-card p-2.5 text-left transition-colors hover:border-emerald-300 hover:bg-emerald-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-500 dark:hover:bg-indigo-950/70"
                         >

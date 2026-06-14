@@ -14,6 +14,8 @@ import {
   setStudentsCache,
   studentsQueryKeys,
 } from '@/hooks/useStudentCache';
+import { getActiveAcademicTerm, getActiveAcademicYear } from '@/utils/feeCalculations';
+import type { StudentBalance } from '@/services/studentBalance';
 
 export interface Student {
   id: string;
@@ -180,7 +182,6 @@ export type DataDomain =
   | 'payments'
   | 'income'
   | 'expenses'
-  | 'arrears'
   | 'subjects';
 
 interface DataContextType {
@@ -188,11 +189,11 @@ interface DataContextType {
   teachers: Teacher[];
   classes: Class[];
   feeStructures: FeeStructure[];
+  ledgerBalances: Record<string, StudentBalance>;
   payments: Payment[];
   income: Income[];
   expenses: Expense[];
   subjects: Subject[];
-  arrearsBalances: Record<string, number>;
   loading: boolean;
   loadDomains: (domains: DataDomain[], options?: { silent?: boolean; force?: boolean }) => Promise<void>;
   refresh: (domains?: DataDomain[]) => Promise<void>;
@@ -336,16 +337,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
   const [feeStructures, setFeeStructures] = useState<FeeStructure[]>([]);
+  const [ledgerBalances, setLedgerBalances] = useState<Record<string, StudentBalance>>({});
   const [payments, setPayments] = useState<Payment[]>([]);
   const [income, setIncome] = useState<Income[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [arrearsBalances, setArrearsBalances] = useState<Record<string, number>>({});
-  const paymentRollbackRef = useRef<Map<string, { payments: Payment[]; arrears: Record<string, number> }>>(new Map());
-  const arrearsBalancesRef = useRef<Record<string, number>>({});
-  useEffect(() => {
-    arrearsBalancesRef.current = arrearsBalances;
-  }, [arrearsBalances]);
+  const paymentRollbackRef = useRef<Map<string, { payments: Payment[] }>>(new Map());
   const [loading, setLoading] = useState(false);
   const loadedDomainsRef = useRef<Set<DataDomain>>(new Set());
   const inFlightRef = useRef<Set<DataDomain>>(new Set());
@@ -368,11 +365,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setTeachers([]);
     setClasses([]);
     setFeeStructures([]);
+    setLedgerBalances({});
     setPayments([]);
     setIncome([]);
     setExpenses([]);
     setSubjects([]);
-    setArrearsBalances({});
     setLoading(false);
   }, []);
 
@@ -405,7 +402,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         break;
       }
       case 'fees': {
-        const feesRes = await apiService.get('/fees').catch(() => []);
+        const [feesRes, balancesRes] = await Promise.all([
+          apiService.get('/fees').catch(() => []),
+          apiService.get('/fee-calculations/students/balances').catch(() => ({ balances: {} })),
+        ]);
         setFeeStructures((Array.isArray(feesRes) ? feesRes : []).map((f: any) => ({
           id: f.id.toString(),
           className: f.class_name || '',
@@ -417,6 +417,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           dueDate: formatDateForInput(f.due_date),
           description: f.description || '',
         })));
+        const balances =
+          balancesRes && typeof balancesRes === 'object' && balancesRes !== null && 'balances' in balancesRes
+            ? (balancesRes as { balances: Record<string, StudentBalance> }).balances
+            : {};
+        setLedgerBalances(balances || {});
         break;
       }
       case 'payments': {
@@ -482,15 +487,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           description: e.description,
           vendor: e.vendor,
         })));
-        break;
-      }
-      case 'arrears': {
-        const arrearsRes = await apiService.get('/fee-calculations/arrears-balances').catch(() => ({}));
-        setArrearsBalances(
-          typeof arrearsRes === 'object' && arrearsRes !== null && !Array.isArray(arrearsRes)
-            ? (arrearsRes as Record<string, number>)
-            : {}
-        );
         break;
       }
       case 'subjects': {
@@ -564,7 +560,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       teacher: ['teachers'],
       class: ['classes', 'students'],
       fee: ['fees'],
-      payment: ['payments', 'arrears'],
+      payment: ['payments', 'fees'],
       income: ['income'],
       expense: ['expenses'],
       subject: ['subjects'],
@@ -666,23 +662,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const applyPaymentLocally = (
     payment: Payment,
     _amount: number,
-    balance?: { outstanding?: number; arrears?: number; credit?: number }
+    _balance?: { outstanding?: number; arrears?: number; credit?: number }
   ): string => {
     const token = `pay-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     setPayments((prev) => {
-      paymentRollbackRef.current.set(token, {
-        payments: prev,
-        arrears: { ...arrearsBalancesRef.current },
-      });
+      paymentRollbackRef.current.set(token, { payments: prev });
       const withoutDup = prev.filter((p) => p.id !== payment.id && !p.id.startsWith('optimistic-'));
       return [payment, ...withoutDup];
     });
-    if (balance?.arrears !== undefined) {
-      setArrearsBalances((prev) => ({
-        ...prev,
-        [payment.studentId]: balance.arrears!,
-      }));
-    }
     return token;
   };
 
@@ -690,7 +677,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const snapshot = paymentRollbackRef.current.get(token);
     if (!snapshot) return;
     setPayments(snapshot.payments);
-    setArrearsBalances(snapshot.arrears);
     paymentRollbackRef.current.delete(token);
   };
 
@@ -805,8 +791,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Income and Expense functions
   const addIncome = async (incomeData: Omit<Income, 'id'> & { paymentAccountId?: string }) => {
+    const category = incomeData.category || incomeData.source;
     await apiService.post('/income', {
-      source: incomeData.source,
+      source: incomeData.source || category,
       amount: incomeData.amount,
       income_date: incomeData.date,
       payment_method: incomeData.paymentMethod,
@@ -814,7 +801,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       received_by: incomeData.receivedBy,
       notes: incomeData.notes,
       description: incomeData.description,
-      category: incomeData.category,
+      category,
+      term: getActiveAcademicTerm(),
+      academic_year: getActiveAcademicYear(),
     });
     await refresh(['income']);
   };
@@ -832,6 +821,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       notes: expenseData.notes,
       description: expenseData.description,
       vendor: expenseData.vendor,
+      term: getActiveAcademicTerm(),
+      academic_year: getActiveAcademicYear(),
     });
     await refresh(['expenses']);
   };
@@ -894,11 +885,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       teachers,
       classes,
       feeStructures,
+      ledgerBalances,
       payments,
       income,
       expenses,
       subjects,
-      arrearsBalances,
       loading,
       loadDomains,
       refresh,

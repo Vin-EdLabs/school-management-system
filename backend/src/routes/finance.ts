@@ -10,6 +10,7 @@ import {
   resolveLedgerTermFromSettings,
   recordManualBalanceOverride,
 } from '../services/ledgerFinanceService.js';
+import { writeOffArrears } from '../services/ledgerPaymentService.js';
 import { authenticate, requireTenant, AuthRequest, requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { z } from 'zod';
@@ -21,6 +22,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { writeAuditLog } from '../services/auditService.js';
 import { getClientIp } from '../utils/clientIp.js';
+import { buildStudentFinanceStatement } from '../services/studentFinanceStatementService.js';
 
 const router = express.Router();
 
@@ -44,6 +46,7 @@ function getTenantId(req: AuthRequest): number {
 }
 
 const financeBalanceOverrideRoles = requireRole('super-admin', 'administrator', 'finance');
+const financeStatementRoles = requireRole('super-admin', 'administrator', 'finance');
 
 const OVERRIDE_REASONS = z.enum([
   'wrong_arrears',
@@ -487,6 +490,15 @@ router.post('/clear-all-payments', requireRole('super-admin', 'administrator'), 
     await client.query('DELETE FROM student_credits WHERE tenant_id = $1', [tenantId]).catch(() => {});
     await client.query('DELETE FROM term_outstanding_balances WHERE tenant_id = $1', [tenantId]).catch(() => {});
 
+    await client.query('DELETE FROM terms WHERE tenant_id = $1', [tenantId]).catch(() => {});
+    await client.query('DELETE FROM academic_years WHERE tenant_id = $1', [tenantId]).catch(() => {});
+    await client.query('DELETE FROM academic_terms WHERE tenant_id = $1', [tenantId]).catch(() => {});
+
+    await client.query(
+      `UPDATE school_settings SET current_term = NULL, current_year = NULL, legacy_payment_migration_completed = false WHERE tenant_id = $1`,
+      [tenantId]
+    ).catch(() => {});
+
     await client.query(
       `INSERT INTO receipt_number_seq (tenant_id, last_number, updated_at)
        VALUES ($1, 0, CURRENT_TIMESTAMP)
@@ -503,7 +515,7 @@ router.post('/clear-all-payments', requireRole('super-admin', 'administrator'), 
     emitTenantDataChanged(tenantId, 'finance', 'deleted');
     return res.json({
       message:
-        'All finance data cleared: fees, payments, receipts, income, expenses, payroll payments, payment accounts, and arrears have been reset.',
+        'All finance data cleared: fees, payments, receipts, income, expenses, payroll payments, payment accounts, arrears, ledger terms, and academic terms have been reset. Set your active term and fee structures fresh in Settings.',
     });
   } catch (error: any) {
     await client.query('ROLLBACK').catch(() => {});
@@ -747,5 +759,267 @@ router.post(
     }
   }
 );
+
+const WRITE_OFF_REASONS = z.enum([
+  'Scholarship',
+  'Hardship Waiver',
+  'Data Correction',
+  'Management Decision',
+  'Other',
+]);
+
+/**
+ * POST /api/finance/student/:id/write-off-arrears
+ * Admin-only partial or full arrears write-off (ledger manual_adjustment credit).
+ */
+router.post(
+  '/student/:id/write-off-arrears',
+  requireRole('super-admin', 'administrator'),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const tenantId = getTenantId(req);
+      const studentId = parseInt(req.params.id, 10);
+      if (Number.isNaN(studentId)) {
+        return res.status(400).json({ error: 'Invalid student id.' });
+      }
+
+      const schema = z.object({
+        amount: z.coerce.number().positive('Write-off amount must be greater than zero'),
+        reason: WRITE_OFF_REASONS,
+        notes: z.string().trim().min(5, 'Notes are required (at least 5 characters).'),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: parsed.error.flatten().fieldErrors });
+      }
+
+      const stu = await query('SELECT id FROM students WHERE id = $1 AND tenant_id = $2', [studentId, tenantId]);
+      if (stu.rows.length === 0) {
+        return res.status(404).json({ error: 'Student not found.' });
+      }
+
+      const result = await writeOffArrears(
+        tenantId,
+        studentId,
+        parsed.data.amount,
+        parsed.data.reason,
+        parsed.data.notes,
+        req.user!.id
+      );
+
+      await writeAuditLog({
+        tenantId,
+        userId: req.user!.id,
+        userRole: req.user!.role,
+        action: 'ARREARS_WRITE_OFF',
+        entityType: 'STUDENT',
+        entityId: studentId,
+        module: 'finance',
+        status: 'success',
+        summary: `Arrears write-off GHS ${parsed.data.amount.toFixed(2)} — ${parsed.data.reason}`,
+        details: {
+          amount: parsed.data.amount,
+          reason: parsed.data.reason,
+          notes: parsed.data.notes,
+          newOutstanding: result.newOutstanding,
+        },
+        ipAddress: getClientIp(req),
+        userAgent: req.get('user-agent') || null,
+      });
+
+      emitTenantDataChanged(tenantId, 'finance', 'updated');
+      emitTenantDataChanged(tenantId, 'fee', 'updated');
+
+      return res.json({
+        message: `GHS ${parsed.data.amount.toFixed(2)} written off successfully.`,
+        ...result,
+      });
+    } catch (e: any) {
+      return res.status(400).json({ error: e.message || 'Failed to write off arrears.' });
+    }
+  }
+);
+
+/**
+ * POST /api/finance/ledger-backfill
+ * Backfill missing ledger entries from existing payments and fee structures.
+ */
+router.post('/ledger-backfill', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res: Response) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { runLedgerBackfill } = await import('../services/ledgerBackfillService.js');
+    const result = await runLedgerBackfill(tenantId, req.user!.id);
+
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'LEDGER_BACKFILL',
+      entityType: 'FINANCE',
+      entityId: tenantId,
+      module: 'finance',
+      status: 'success',
+      summary: `Ledger backfill: ${result.paymentsAdded} payments, ${result.termFeesAdded} term fees added`,
+      details: result,
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') || null,
+    });
+
+    return res.json(result);
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message || 'Ledger backfill failed.' });
+  }
+});
+
+/** GET /api/finance/students/:studentId/statement — full finance statement data */
+router.get('/students/:studentId/statement', financeStatementRoles, async (req: AuthRequest, res: Response) => {
+  try {
+    const tenantId = getTenantId(req);
+    const studentId = parseInt(String(req.params.studentId), 10);
+    if (Number.isNaN(studentId)) {
+      return res.status(400).json({ error: 'Invalid student ID' });
+    }
+
+    const statement = await buildStudentFinanceStatement(tenantId, studentId, {
+      variant: 'official',
+      generatedByName: req.user!.fullName || req.user!.username,
+      generatedByRole: req.user!.role,
+    });
+    if (!statement) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+
+    return res.json({ statement });
+  } catch (e: unknown) {
+    console.error('Finance statement error:', e);
+    return res.status(500).json({ error: (e as Error).message || 'Failed to build finance statement' });
+  }
+});
+
+/** POST /api/finance/students/:studentId/statement/download — audit log when PDF is downloaded */
+router.post('/students/:studentId/statement/download', financeStatementRoles, async (req: AuthRequest, res: Response) => {
+  try {
+    const tenantId = getTenantId(req);
+    const studentId = parseInt(String(req.params.studentId), 10);
+    if (Number.isNaN(studentId)) {
+      return res.status(400).json({ error: 'Invalid student ID' });
+    }
+
+    const statement = await buildStudentFinanceStatement(tenantId, studentId, {
+      variant: 'official',
+      generatedByName: req.user!.fullName || req.user!.username,
+      generatedByRole: req.user!.role,
+    });
+    if (!statement) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'FINANCE_STATEMENT_GENERATED',
+      entityType: 'STUDENT',
+      entityId: studentId,
+      module: 'finance',
+      status: 'success',
+      summary: `Finance statement downloaded for ${statement.header.studentName} (${statement.header.studentId})`,
+      details: {
+        studentName: statement.header.studentName,
+        studentId: statement.header.studentId,
+        generatedBy: statement.header.generatedBy,
+        generatedByRole: statement.header.generatedByRole,
+        generatedAt: statement.header.dateGenerated,
+        generatedVia: 'finance_statement_page',
+      },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') || null,
+    });
+
+    return res.json({ ok: true });
+  } catch (e: unknown) {
+    console.error('Finance statement download audit error:', e);
+    return res.status(500).json({ error: (e as Error).message || 'Failed to log download' });
+  }
+});
+
+/** POST /api/finance/students/:studentId/statement/send-to-parent — notify parent portal with finance statement alert */
+router.post('/students/:studentId/statement/send-to-parent', financeStatementRoles, async (req: AuthRequest, res: Response) => {
+  try {
+    const tenantId = getTenantId(req);
+    const studentId = parseInt(String(req.params.studentId), 10);
+    if (Number.isNaN(studentId)) {
+      return res.status(400).json({ error: 'Invalid student ID' });
+    }
+
+    const statement = await buildStudentFinanceStatement(tenantId, studentId, {
+      variant: 'parent_portal',
+    });
+    if (!statement) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+
+    const parentCheck = await query(
+      `SELECT COUNT(*)::int AS total
+       FROM parent_portal_accounts
+       WHERE tenant_id = $1 AND student_id = $2 AND is_active = true`,
+      [tenantId, studentId]
+    );
+    const parentAccounts = Number(parentCheck.rows[0]?.total || 0);
+    if (parentAccounts === 0) {
+      return res.status(400).json({
+        error: 'No active parent portal account for this student. Set up parent access in Parent Accounts first.',
+      });
+    }
+
+    const balanceLabel =
+      statement.accountSummary.balanceKind === 'DR'
+        ? `Balance: GHS ${statement.accountSummary.currentBalance.toFixed(2)} owing`
+        : statement.accountSummary.balanceKind === 'CR'
+          ? `Credit: GHS ${statement.accountSummary.currentBalance.toFixed(2)}`
+          : 'Fully paid';
+
+    const pushResult = await sendPushToStudentParents(tenantId, studentId, {
+      title: 'Finance Statement Available',
+      body: `${statement.header.studentName}'s finance statement is ready. ${balanceLabel}. Tap to view or download.`,
+      url: '?tab=finance&openStatement=1',
+    });
+
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'FINANCE_STATEMENT_SENT_TO_PARENT',
+      entityType: 'STUDENT',
+      entityId: studentId,
+      module: 'finance',
+      status: 'success',
+      summary: `Finance statement sent to parent for ${statement.header.studentName} (${statement.header.studentId})`,
+      details: {
+        studentName: statement.header.studentName,
+        studentId: statement.header.studentId,
+        sentBy: req.user!.fullName || req.user!.username,
+        sentByRole: req.user!.role,
+        parentAccountsNotified: pushResult.parentAccounts,
+        pushSubscribers: pushResult.subscribedAccounts,
+        currentBalance: statement.accountSummary.currentBalance,
+        balanceKind: statement.accountSummary.balanceKind,
+      },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') || null,
+    });
+
+    emitTenantDataChanged(tenantId, 'finance-statement-sent', 'created');
+
+    return res.json({
+      ok: true,
+      parentAccounts: pushResult.parentAccounts,
+      subscribedAccounts: pushResult.subscribedAccounts,
+    });
+  } catch (e: unknown) {
+    console.error('Finance statement send-to-parent error:', e);
+    return res.status(500).json({ error: (e as Error).message || 'Failed to send statement to parent' });
+  }
+});
 
 export default router;

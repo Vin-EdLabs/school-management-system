@@ -17,6 +17,7 @@ export const FINANCE_REALTIME_ENTITIES = new Set([
   'finance',
   'fee',
   'finance-arrears',
+  'term-budget',
 ]);
 
 export function invalidateFinanceQueries(

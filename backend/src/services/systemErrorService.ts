@@ -84,16 +84,12 @@ export interface SystemErrorFilters {
   endDate?: string;
   search?: string;
   limit?: number;
+  offset?: number;
 }
 
-export async function listSystemErrors(filters: SystemErrorFilters = {}): Promise<SystemErrorRow[]> {
+function buildErrorWhere(filters: SystemErrorFilters): { sql: string; params: unknown[] } {
   const params: unknown[] = [];
-  let sql = `
-    SELECT se.*, t.name AS tenant_name
-    FROM system_errors se
-    LEFT JOIN tenants t ON t.id = se.tenant_id
-    WHERE 1=1
-  `;
+  let sql = ` FROM system_errors se LEFT JOIN tenants t ON t.id = se.tenant_id WHERE 1=1 `;
 
   if (filters.tenantId) {
     params.push(Number(filters.tenantId));
@@ -120,12 +116,34 @@ export async function listSystemErrors(filters: SystemErrorFilters = {}): Promis
     sql += ` AND (se.message ILIKE $${params.length} OR COALESCE(se.endpoint, '') ILIKE $${params.length} OR COALESCE(se.action, '') ILIKE $${params.length})`;
   }
 
-  const limit = Math.min(Math.max(filters.limit || 200, 1), 1000);
-  params.push(limit);
-  sql += ` ORDER BY se.created_at DESC LIMIT $${params.length}`;
+  return { sql, params };
+}
 
-  const result = await query(sql, params);
-  return result.rows as SystemErrorRow[];
+export async function listSystemErrors(
+  filters: SystemErrorFilters = {}
+): Promise<{ items: SystemErrorRow[]; total: number; limit: number; offset: number }> {
+  const { sql: whereSql, params } = buildErrorWhere(filters);
+  const limit = Math.min(Math.max(filters.limit || 25, 1), 1000);
+  const offset = Math.max(filters.offset || 0, 0);
+
+  const countRes = await query(`SELECT COUNT(*)::int AS count ${whereSql}`, params);
+  const total = countRes.rows[0]?.count ?? 0;
+
+  const listParams = [...params, limit, offset];
+  const listSql = `
+    SELECT se.*, t.name AS tenant_name
+    ${whereSql}
+    ORDER BY se.created_at DESC
+    LIMIT $${listParams.length - 1} OFFSET $${listParams.length}
+  `;
+
+  const result = await query(listSql, listParams);
+  return {
+    items: result.rows as SystemErrorRow[],
+    total,
+    limit,
+    offset,
+  };
 }
 
 export async function updateSystemErrorStatus(
@@ -141,6 +159,16 @@ export async function updateSystemErrorStatus(
     [status, resolvedAt, id]
   );
   return (result.rows[0] as SystemErrorRow) || null;
+}
+
+export async function clearSystemErrors(filters: SystemErrorFilters = {}): Promise<number> {
+  const { sql: whereSql, params } = buildErrorWhere(filters);
+  const del = await query(
+    `DELETE FROM system_errors se
+     WHERE se.id IN (SELECT se.id ${whereSql})`,
+    params
+  );
+  return del.rowCount ?? 0;
 }
 
 export async function getSystemHealthSummary() {

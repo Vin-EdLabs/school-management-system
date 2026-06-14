@@ -16,6 +16,7 @@ import {
   TrendingDown,
   BarChart3,
   Wallet,
+  PiggyBank,
   Settings,
   Shield,
   FileText,
@@ -95,8 +96,10 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
   ],
   financial: [
     ...(hasAccess('fees') ? [{ id: 'fees', label: 'Fees', icon: DollarSign }] : []),
+    ...(hasAccess('finance-statement') ? [{ id: 'finance-statement', label: 'Finance Statement', icon: FileText }] : []),
     ...(hasAccess('income') ? [{ id: 'income', label: 'Income', icon: TrendingUp }] : []),
     ...(hasAccess('expenses') ? [{ id: 'expenses', label: 'Expenses', icon: TrendingDown }] : []),
+    ...(hasAccess('term-budget') ? [{ id: 'term-budget', label: 'Budget', icon: PiggyBank }] : []),
     ...(hasAccess('transactions') ? [{ id: 'transactions', label: 'Transactions', icon: ReceiptText }] : []),
     ...(hasAccess('cash-bank') ? [{ id: 'cash-bank', label: 'Cash & Bank', icon: Landmark }] : []),
     ...(hasAccess('payroll') ? [{ id: 'payroll', label: 'Payroll', icon: Wallet }] : []),

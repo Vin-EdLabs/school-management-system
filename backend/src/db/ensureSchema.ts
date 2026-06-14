@@ -242,6 +242,119 @@ export async function ensureSupplementalSchema(): Promise<void> {
   `,
     'ledger fk add'
   );
+  await safe(`ALTER TABLE student_ledger ADD COLUMN IF NOT EXISTS reference VARCHAR(255)`, 'ledger reference');
+  await safe(`ALTER TABLE student_ledger ADD COLUMN IF NOT EXISTS payment_id INTEGER REFERENCES payments(id)`, 'ledger payment_id');
+  await safe(`ALTER TABLE student_ledger ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id)`, 'ledger created_by');
+  await safe(`ALTER TABLE student_ledger ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'`, 'ledger metadata');
+
+  // --- term budgets ---
+  await safe(
+    `
+    CREATE TABLE IF NOT EXISTS budget_categories (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
+      name VARCHAR(255) NOT NULL,
+      type VARCHAR(50) NOT NULL,
+      is_system BOOLEAN DEFAULT false,
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `,
+    'budget_categories'
+  );
+  await safe(`CREATE INDEX IF NOT EXISTS idx_budget_categories_tenant ON budget_categories(tenant_id)`, 'idx_budget_categories_tenant');
+  await safe(
+    `
+    CREATE TABLE IF NOT EXISTS term_budgets (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
+      academic_year VARCHAR(50) NOT NULL,
+      term VARCHAR(100) NOT NULL,
+      status VARCHAR(50) DEFAULT 'active',
+      created_by INTEGER REFERENCES users(id),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(tenant_id, academic_year, term)
+    )
+  `,
+    'term_budgets'
+  );
+  await safe(
+    `
+    CREATE TABLE IF NOT EXISTS budget_lines (
+      id SERIAL PRIMARY KEY,
+      budget_id INTEGER REFERENCES term_budgets(id) ON DELETE CASCADE,
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
+      category_name VARCHAR(255) NOT NULL,
+      category_type VARCHAR(50) NOT NULL,
+      budgeted_amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+      alert_threshold INTEGER DEFAULT 90,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `,
+    'budget_lines'
+  );
+  await safe(
+    `
+    CREATE TABLE IF NOT EXISTS budget_alerts (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
+      budget_id INTEGER REFERENCES term_budgets(id) ON DELETE CASCADE,
+      budget_line_id INTEGER REFERENCES budget_lines(id) ON DELETE CASCADE,
+      alert_level VARCHAR(50) NOT NULL,
+      percentage_used NUMERIC(5,2),
+      message TEXT,
+      is_read BOOLEAN DEFAULT false,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(budget_line_id, alert_level)
+    )
+  `,
+    'budget_alerts'
+  );
+  await safe(`ALTER TABLE budget_alerts ADD COLUMN IF NOT EXISTS message TEXT`, 'budget_alerts.message');
+
+  await safe(
+    `
+    CREATE TABLE IF NOT EXISTS global_announcements (
+      id SERIAL PRIMARY KEY,
+      title VARCHAR(255) NOT NULL,
+      body TEXT NOT NULL,
+      type VARCHAR(50) NOT NULL DEFAULT 'info',
+      target VARCHAR(50) NOT NULL DEFAULT 'all',
+      target_tenant_ids INTEGER[] DEFAULT NULL,
+      scheduled_at TIMESTAMP DEFAULT NULL,
+      expires_at TIMESTAMP DEFAULT NULL,
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `,
+    'global_announcements'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_global_announcements_active ON global_announcements(is_active)`,
+    'idx_global_announcements_active'
+  );
+
+  await safe(
+    `
+    CREATE TABLE IF NOT EXISTS announcement_reads (
+      id SERIAL PRIMARY KEY,
+      announcement_id INTEGER NOT NULL REFERENCES global_announcements(id) ON DELETE CASCADE,
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      read_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(announcement_id, user_id)
+    )
+  `,
+    'announcement_reads'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_announcement_reads_user ON announcement_reads(user_id)`,
+    'idx_announcement_reads_user'
+  );
 
   const critical = [
     'subjects',

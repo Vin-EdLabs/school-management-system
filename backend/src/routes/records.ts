@@ -3,14 +3,13 @@ import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
+import { isGraduatedEnrollment } from '../services/studentFeeBalanceService.js';
 import {
-  getStudentFeeBalance,
-  getStudentTotalOutstandingBalance,
-  collectStudentFinancialTerms,
-  isGraduatedEnrollment,
-} from '../services/studentFeeBalanceService.js';
-import { resolveTermForMatch } from '../services/studentBalanceCompute.js';
-import type { FeeBalanceResult } from '../services/financeCalculationService.js';
+  getStudentFullBalance,
+  fullBalanceToLiveBreakdown,
+  resolveActiveLedgerTerm,
+  computeTermOwnOutstanding,
+} from '../services/studentUnifiedBalanceService.js';
 
 const router = express.Router();
 
@@ -79,21 +78,6 @@ router.get('/profile-lookup', requireRole('super-admin', 'administrator'), async
   }
 });
 
-function mapTermBalance(term: string, balance: FeeBalanceResult) {
-  const yearMatch = term.match(/(\d{4})\s*$/);
-  return {
-    academicYear: yearMatch?.[1] || term.split(' ').pop() || '',
-    term,
-    totalFees: balance.totalFees,
-    totalPaid: balance.totalPaid,
-    amountDue: balance.totalFees + balance.arrears,
-    outstanding: Math.max(0, balance.outstanding),
-    credit: balance.credit,
-    arrears: balance.arrears,
-    status: balance.status,
-  };
-}
-
 function buildStudentDetails(student: any) {
   return {
     gender: student.gender || '—',
@@ -116,7 +100,6 @@ function buildStudentDetails(student: any) {
 }
 
 async function buildStudentProfile(tenantId: number, student: any) {
-  const classId = student.class_assigned_id;
   const studentId = student.id;
 
   const settingsRes = await query(
@@ -126,6 +109,8 @@ async function buildStudentProfile(tenantId: number, student: any) {
   const schoolSettings = settingsRes.rows[0] || {};
   const currentTerm = schoolSettings.current_term || null;
   const currentYear = schoolSettings.current_year || null;
+  const currentTermLabel =
+    currentTerm && currentYear ? `${currentTerm} ${currentYear}`.trim() : currentTerm;
 
   const paymentsRes = await query(
     `SELECT p.*,
@@ -140,28 +125,46 @@ async function buildStudentProfile(tenantId: number, student: any) {
     [tenantId, studentId]
   );
 
-  const allTerms = await collectStudentFinancialTerms(
-    tenantId,
-    studentId,
-    currentTerm,
-    currentYear
-  );
-  const currentTermLabel = currentTerm
-    ? resolveTermForMatch(currentTerm, currentYear) || currentTerm
-    : null;
+  const { ledgerTermId } = await resolveActiveLedgerTerm(query, tenantId);
+  const fullBalance = await getStudentFullBalance(null, tenantId, studentId);
+  const ledgerBreakdown = fullBalance ? fullBalanceToLiveBreakdown(fullBalance, ledgerTermId) : null;
 
-  const feeSummaryByTerm: any[] = [];
-  for (const term of allTerms) {
-    const balance = await getStudentFeeBalance(null, tenantId, studentId, term);
-    if (!balance) continue;
-    feeSummaryByTerm.push(mapTermBalance(term, balance));
-  }
+  const feeSummaryByTerm: any[] = (fullBalance?.termRows ?? []).map((row) => {
+    const yearMatch = row.termName.match(/(\d{4})\s*$/);
+    const priorOwn = computeTermOwnOutstanding(row.termFee, row.totalPaid);
+    return {
+      academicYear: yearMatch?.[1] || row.termName.split(' ').pop() || '',
+      term: row.termName,
+      totalFees: row.termFee,
+      totalPaid: row.totalPaid,
+      amountDue: row.isCurrentTerm ? row.totalDue : row.termFee,
+      outstanding: row.isCurrentTerm ? row.outstanding : priorOwn,
+      credit: row.credit,
+      arrears: row.isCurrentTerm ? (fullBalance?.totalArrears ?? 0) : priorOwn,
+      status: row.status,
+      isActiveTerm: row.isCurrentTerm,
+    };
+  });
 
-  const currentTermBalance = await getStudentTotalOutstandingBalance(
-    tenantId,
-    studentId,
-    currentTermLabel
-  );
+  const currentTermBalance = ledgerBreakdown
+    ? {
+        totalFees: ledgerBreakdown.currentTermFee,
+        totalPaid: ledgerBreakdown.totalPaid,
+        outstanding: ledgerBreakdown.outstanding,
+        arrears: ledgerBreakdown.totalArrears,
+        credit: ledgerBreakdown.credit,
+        status: ledgerBreakdown.status,
+      }
+    : fullBalance?.status === 'NotSet'
+      ? null
+      : {
+          totalFees: fullBalance?.currentTerm?.termFee ?? 0,
+          totalPaid: fullBalance?.totalPaid ?? 0,
+          outstanding: fullBalance?.outstanding ?? 0,
+          arrears: fullBalance?.totalArrears ?? 0,
+          credit: fullBalance?.credit ?? 0,
+          status: fullBalance?.status ?? 'Cleared',
+        };
 
   const allPayments = paymentsRes.rows.map((p: any) => ({
     id: p.id,
@@ -177,13 +180,14 @@ async function buildStudentProfile(tenantId: number, student: any) {
   }));
 
   const activePayments = allPayments.filter((p) => !p.voided);
-  const totalNetFees = feeSummaryByTerm.reduce((s, r) => s + r.totalFees, 0);
-  const totalPaidAll = activePayments.reduce((s, r) => s + r.amount, 0);
-  const summedOutstanding = feeSummaryByTerm.reduce((s, r) => s + Math.max(0, r.outstanding), 0);
-  const totalOutstanding = currentTermBalance
-    ? Math.max(0, currentTermBalance.outstanding)
-    : summedOutstanding;
-  const totalCredit = currentTermBalance?.credit || feeSummaryByTerm.reduce((s, r) => s + (r.credit || 0), 0);
+  const totalNetFees = ledgerBreakdown?.currentTermFee ?? feeSummaryByTerm.reduce((s, r) => s + r.totalFees, 0);
+  const totalPaidAll = ledgerBreakdown?.totalPaid ?? activePayments.reduce((s, r) => s + r.amount, 0);
+  const totalOutstanding = ledgerBreakdown
+    ? Math.max(0, ledgerBreakdown.outstanding)
+    : currentTermBalance
+      ? Math.max(0, currentTermBalance.outstanding)
+      : feeSummaryByTerm.reduce((s, r) => s + Math.max(0, r.outstanding), 0);
+  const totalCredit = ledgerBreakdown?.credit ?? currentTermBalance?.credit ?? feeSummaryByTerm.reduce((s, r) => s + (r.credit || 0), 0);
   const studentDetails = buildStudentDetails(student);
 
   const attendanceRes = await query(
@@ -294,6 +298,7 @@ async function buildStudentProfile(tenantId: number, student: any) {
       : null,
     fees: {
       summaryByTerm: feeSummaryByTerm,
+      balance: ledgerBreakdown ?? null,
       paymentHistory: allPayments,
       receipts: allPayments,
     },

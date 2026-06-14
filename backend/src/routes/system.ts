@@ -2,10 +2,13 @@ import express from 'express';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth.js';
 import {
   captureSystemError,
+  clearSystemErrors,
   getSystemHealthSummary,
   listSystemErrors,
   updateSystemErrorStatus,
 } from '../services/systemErrorService.js';
+import { writeAuditLog } from '../services/auditService.js';
+import { getClientIp } from '../utils/clientIp.js';
 
 const router = express.Router();
 
@@ -48,7 +51,7 @@ router.get('/health', authenticate, requireRole('super-admin'), async (_req: Aut
 
 router.get('/errors', authenticate, requireRole('super-admin'), async (req: AuthRequest, res) => {
   try {
-    const errors = await listSystemErrors({
+    const result = await listSystemErrors({
       tenantId: req.query.tenantId as string,
       source: req.query.source as string,
       status: req.query.status as string,
@@ -56,12 +59,45 @@ router.get('/errors', authenticate, requireRole('super-admin'), async (req: Auth
       startDate: req.query.startDate as string,
       endDate: req.query.endDate as string,
       search: req.query.search as string,
-      limit: req.query.limit ? Number(req.query.limit) : 200,
+      limit: req.query.limit ? Number(req.query.limit) : 25,
+      offset: req.query.offset ? Number(req.query.offset) : 0,
     });
-    res.json(errors);
+    res.json(result);
   } catch (error) {
     console.error('List system errors failed:', error);
     res.status(500).json({ error: 'Failed to load system errors' });
+  }
+});
+
+router.delete('/errors/clear', authenticate, requireRole('super-admin'), async (req: AuthRequest, res) => {
+  try {
+    const deleted = await clearSystemErrors({
+      tenantId: req.query.tenantId as string,
+      source: req.query.source as string,
+      status: req.query.status as string,
+      severity: req.query.severity as string,
+      startDate: req.query.startDate as string,
+      endDate: req.query.endDate as string,
+      search: req.query.search as string,
+    });
+
+    await writeAuditLog({
+      tenantId: null,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'SYSTEM_ERRORS_CLEARED',
+      entityType: 'system_error',
+      module: 'superadmin',
+      summary: `Cleared ${deleted} system error(s)`,
+      details: { deleted, filters: req.query },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') || null,
+    });
+
+    res.json({ deleted });
+  } catch (error) {
+    console.error('Clear system errors failed:', error);
+    res.status(500).json({ error: 'Failed to clear system errors' });
   }
 });
 

@@ -109,7 +109,7 @@ function rowAdjustment(r: AdjRow): number {
 }
 
 const ManualAdjustmentsReport: React.FC = () => {
-  const { students, payments, feeStructures, arrearsBalances } = useData();
+  const { students, payments, feeStructures } = useData();
   const { currentTerm: activeTermFromContext } = useActiveTerm();
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -221,7 +221,7 @@ const ManualAdjustmentsReport: React.FC = () => {
       feeStructures || [],
       payments || [],
       matchedStudent.classAssignedId,
-      arrearsBalances,
+      undefined,
       {
         isBeneficiary: !!matchedStudent.isBeneficiary,
         discountType: matchedStudent.discountType,
@@ -235,7 +235,7 @@ const ManualAdjustmentsReport: React.FC = () => {
       paid: calc.totalPaid,
       balance: calc.totalAmountDue - calc.totalPaid,
     };
-  }, [matchedStudent, termForFees, feeStructures, payments, arrearsBalances]);
+  }, [matchedStudent, termForFees, feeStructures, payments]);
 
   const bal = summary ? Number(summary.balance) : 0;
   const feeBal = feeBreakdown?.balance ?? null;

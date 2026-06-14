@@ -12,6 +12,7 @@ import {
   getTotalOpeningBalance,
 } from '../services/financeSummaryService.js';
 import { ACTIVE_STUDENT_WHERE } from '../utils/studentEnrollment.js';
+import { getStudentLiveFeeBreakdown } from '../services/studentLiveFeeBreakdownService.js';
 
 const router = express.Router();
 
@@ -168,7 +169,7 @@ async function loadReportPeriod(req: AuthRequest): Promise<ReportPeriod> {
 /**
  * GET /api/reports/fee-status
  * Fee Status / Class Report: all students in a class for an academic period.
- * Uses live fee_structures + payments for the current period (same as Set Fees). Ledger term_fee rows are not used here so fee edits stay accurate.
+ * Uses live student_ledger breakdown (same as records / balance card). Does not read term_arrears.
  *
  * Query params:
  *   classId (required) - class id
@@ -217,121 +218,74 @@ router.get('/fee-status', async (req: AuthRequest, res) => {
       return res.status(400).json({ error: 'Academic period could not be resolved. Set current term and year in settings.' });
     }
 
-    const termMatch = resolveTermMatch(term, academicYear);
-    const termLike = `${termMatch}%`;
-    const termStr = String(term).trim();
-    const termOnly = termStr.replace(/\s+\d{4}$/, '').trim() || termStr;
+    const activeTermId = academicPeriodId
+      ? parseInt(String(academicPeriodId), 10)
+      : (await query(
+          `SELECT id FROM academic_terms WHERE tenant_id = $1 AND is_active = true LIMIT 1`,
+          [tenantId]
+        )).rows[0]?.id ?? null;
 
-    /** Same idea as fee / payment balance routes: term labels rarely match exactly ("Term 1" vs "Term 1 2026"). */
-    const termPredicateFs = `
-      (
-        TRIM(COALESCE(fs.term, '')) = ''
-        OR fs.term = $3 OR fs.term = $5 OR fs.term LIKE $4
-        OR $3 LIKE TRIM(fs.term) || '%' OR TRIM(fs.term) LIKE $3 || '%'
-        OR $5 LIKE TRIM(fs.term) || '%' OR TRIM(fs.term) LIKE $5 || '%'
-      )`;
-    const termPredicatePay = `
-      (
-        TRIM(COALESCE(p.term, '')) = ''
-        OR p.term = $3 OR p.term = $5 OR p.term LIKE $4
-        OR $3 LIKE TRIM(p.term) || '%' OR TRIM(p.term) LIKE $3 || '%'
-        OR $5 LIKE TRIM(p.term) || '%' OR TRIM(p.term) LIKE $5 || '%'
-      )`;
-    const termPredicateTa = `
-      (
-        TRIM(COALESCE(ta.current_term, '')) = ''
-        OR ta.current_term = $3 OR ta.current_term = $5 OR ta.current_term LIKE $4
-        OR $3 LIKE TRIM(ta.current_term) || '%' OR TRIM(ta.current_term) LIKE $3 || '%'
-        OR $5 LIKE TRIM(ta.current_term) || '%' OR TRIM(ta.current_term) LIKE $5 || '%'
-      )`;
+    const studentsRes = await query(
+      `SELECT s.id, s.student_id, s.first_name, s.last_name, c.class_name
+       FROM students s
+       LEFT JOIN classes c ON s.class_assigned_id = c.id
+       WHERE s.tenant_id = $1 AND s.class_assigned_id = $2 AND ${ACTIVE_STUDENT_WHERE}
+       ORDER BY s.first_name, s.last_name`,
+      [tenantId, classId]
+    );
 
-    const reportQuery = `
-      WITH class_fee AS (
-        SELECT COALESCE(SUM(fs.amount), 0)::numeric AS total_fee
-        FROM fee_structures fs
-        WHERE fs.tenant_id = $1 AND fs.class_id = $2
-          AND ${termPredicateFs}
-      ),
-      student_arrears AS (
-        SELECT ta.student_id, COALESCE(SUM(ta.amount), 0)::numeric AS arrears_amt
-        FROM term_arrears ta
-        WHERE ta.tenant_id = $1 AND ${termPredicateTa}
-        GROUP BY ta.student_id
-      ),
-      student_totals AS (
-        SELECT p.student_id, COALESCE(SUM(COALESCE(p.amount_paid, p.amount, 0)), 0)::numeric AS total_paid
-        FROM payments p
-        WHERE p.tenant_id = $1 AND COALESCE(p.is_voided, false) = false AND ${termPredicatePay}
-        GROUP BY p.student_id
-      )
-      SELECT
-        s.id AS "studentId",
-        s.student_id AS "studentNumber",
-        s.first_name AS "firstName",
-        s.last_name AS "lastName",
-        c.id AS "classId",
-        c.class_name AS "className",
-        (
-          CASE
-            WHEN s.is_beneficiary = true AND LOWER(TRIM(COALESCE(s.discount_type::text, ''))) = 'percentage'
-              THEN cf.total_fee - (cf.total_fee * COALESCE(s.discount_value, 0) / 100)
-            WHEN s.is_beneficiary = true AND LOWER(TRIM(COALESCE(s.discount_type::text, ''))) = 'fixed'
-              THEN GREATEST(0::numeric, cf.total_fee - COALESCE(s.discount_value, 0))
-            ELSE cf.total_fee
-          END
-        )::numeric AS "termFee",
-        COALESCE(sa.arrears_amt, 0)::numeric AS "arrears",
-        (
-          CASE
-            WHEN s.is_beneficiary = true AND LOWER(TRIM(COALESCE(s.discount_type::text, ''))) = 'percentage'
-              THEN cf.total_fee - (cf.total_fee * COALESCE(s.discount_value, 0) / 100)
-            WHEN s.is_beneficiary = true AND LOWER(TRIM(COALESCE(s.discount_type::text, ''))) = 'fixed'
-              THEN GREATEST(0::numeric, cf.total_fee - COALESCE(s.discount_value, 0))
-            ELSE cf.total_fee
-          END + COALESCE(sa.arrears_amt, 0)
-        )::numeric AS "totalFeeExpected",
-        COALESCE(st.total_paid, 0)::numeric AS "totalPaid",
-        (
-          CASE
-            WHEN s.is_beneficiary = true AND LOWER(TRIM(COALESCE(s.discount_type::text, ''))) = 'percentage'
-              THEN cf.total_fee - (cf.total_fee * COALESCE(s.discount_value, 0) / 100)
-            WHEN s.is_beneficiary = true AND LOWER(TRIM(COALESCE(s.discount_type::text, ''))) = 'fixed'
-              THEN GREATEST(0::numeric, cf.total_fee - COALESCE(s.discount_value, 0))
-            ELSE cf.total_fee
-          END + COALESCE(sa.arrears_amt, 0) - COALESCE(st.total_paid, 0)
-        )::numeric AS "balance"
-      FROM students s
-      LEFT JOIN classes c ON s.class_assigned_id = c.id
-      CROSS JOIN class_fee cf
-      LEFT JOIN student_arrears sa ON sa.student_id = s.id
-      LEFT JOIN student_totals st ON st.student_id = s.id
-      WHERE s.tenant_id = $1 AND s.class_assigned_id = $2 AND ${ACTIVE_STUDENT_WHERE}
-      ORDER BY s.first_name, s.last_name
-    `;
+    let students = await Promise.all(
+      studentsRes.rows.map(async (row: any) => {
+        const breakdown = await getStudentLiveFeeBreakdown(
+          null,
+          tenantId,
+          row.id,
+          activeTermId
+        );
+        const b = breakdown ?? {
+          currentTermFee: 0,
+          totalArrears: 0,
+          totalDue: 0,
+          totalPaid: 0,
+          outstanding: 0,
+          credit: 0,
+          status: 'NotSet' as const,
+          arrearLines: [],
+          paidLines: [],
+          termRows: [],
+        };
+        const balance = b.status === 'NotSet' ? 0 : b.outstanding > 0 ? b.outstanding : b.credit > 0 ? -b.credit : 0;
+        return {
+          studentId: row.id,
+          studentNumber: row.student_id,
+          studentName: `${row.first_name || ''} ${row.last_name || ''}`.trim(),
+          className: row.class_name || '',
+          termFee: b.currentTermFee,
+          arrears: b.totalArrears,
+          totalFeeExpected: b.totalDue,
+          totalPaid: b.totalPaid,
+          balance,
+          status:
+            b.status === 'NotSet'
+              ? 'not_set'
+              : b.outstanding > 0
+                ? 'owing'
+                : b.credit > 0
+                  ? 'credit'
+                  : b.currentTermFee <= 0 && b.totalDue <= 0
+                    ? 'no_fee'
+                    : 'paid',
+          liveBreakdown: breakdown,
+        };
+      })
+    );
 
-    const result = await query(reportQuery, [tenantId, classId, termMatch, termLike, termOnly]);
-    let rows = result.rows;
-
-    // Optional status filter (server-side)
     const statusFilter = (status as string).toLowerCase();
     if (statusFilter === 'owing') {
-      rows = rows.filter((r: any) => Number(r.balance) > 0);
+      students = students.filter((s) => s.balance > 0);
     } else if (statusFilter === 'paid') {
-      rows = rows.filter((r: any) => Number(r.balance) <= 0);
+      students = students.filter((s) => s.balance <= 0);
     }
-
-    const students = rows.map((r: any) => ({
-      studentId: r.studentId,
-      studentNumber: r.studentNumber,
-      studentName: `${r.firstName || ''} ${r.lastName || ''}`.trim(),
-      className: r.className || '',
-      termFee: parseFloat(r.termFee) || 0,
-      arrears: parseFloat(r.arrears) || 0,
-      totalFeeExpected: parseFloat(r.totalFeeExpected) || 0,
-      totalPaid: parseFloat(r.totalPaid) || 0,
-      balance: parseFloat(r.balance) || 0,
-      status: Number(r.balance) > 0 ? 'owing' : Number(r.balance) < 0 ? 'credit' : 'paid',
-    }));
 
     const totalTermFee = students.reduce((sum: number, s: any) => sum + s.termFee, 0);
     const totalArrearsSum = students.reduce((sum: number, s: any) => sum + s.arrears, 0);

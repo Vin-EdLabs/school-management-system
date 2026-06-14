@@ -1,3 +1,8 @@
+/**
+ * @deprecated Legacy balance engine — retained for migration/reference only.
+ * Payment snapshots should use ledgerPaymentService.buildReceiptSnapshot().
+ * All balance reads must use studentUnifiedBalanceService.
+ */
 import type pg from 'pg';
 import { query } from '../db/connection.js';
 import { calculateFeeBalance, type FeeBalanceResult } from './financeCalculationService.js';

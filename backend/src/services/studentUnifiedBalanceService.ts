@@ -476,7 +476,9 @@ export async function getCurrentTermPaymentContext(
   };
 }
 
-/** Arrears-first payment allocation (pure). */
+/** Payment allocation (current-term-first).
+ *  Allocate payment to the current term fee first, then to arrears (oldest first).
+ */
 export function allocatePayment(
   ctx: { termFee: number; arrears: number; totalDue: number; totalPaid: number },
   paymentAmount: number
@@ -487,16 +489,30 @@ export function allocatePayment(
   const totalPaidBefore = roundMoney(ctx.totalPaid);
   const outstandingBefore = roundMoney(Math.max(0, totalDue - totalPaidBefore));
 
+  // Determine how much of the current term is still unpaid
+  const termOutstanding = roundMoney(Math.max(0, termFee - totalPaidBefore));
+
+  // Payments already applied may have cleared some arrears; compute remaining arrears
   const arrearsClearedSoFar = Math.min(arrears, totalPaidBefore);
   const arrearsRemaining = roundMoney(Math.max(0, arrears - arrearsClearedSoFar));
 
-  let arrearsCleared = 0;
+  // Apply to current term first
   let termFeeCleared = 0;
-  if (paymentAmount <= arrearsRemaining + 0.001) {
-    arrearsCleared = roundMoney(paymentAmount);
+  let arrearsCleared = 0;
+  let remaining = roundMoney(paymentAmount);
+
+  if (remaining <= termOutstanding + 0.001) {
+    termFeeCleared = roundMoney(remaining);
+    remaining = 0;
   } else {
-    arrearsCleared = arrearsRemaining;
-    termFeeCleared = roundMoney(paymentAmount - arrearsRemaining);
+    termFeeCleared = termOutstanding;
+    remaining = roundMoney(remaining - termOutstanding);
+  }
+
+  // Then apply remainder to arrears (oldest first)
+  if (remaining > 0) {
+    arrearsCleared = roundMoney(Math.min(arrearsRemaining, remaining));
+    remaining = roundMoney(remaining - arrearsCleared);
   }
 
   const outstandingAfter = roundMoney(outstandingBefore - paymentAmount);
@@ -534,7 +550,8 @@ export function buildReceiptSnapshot(allocation: PaymentAllocation): ReceiptSnap
     termFeeCleared: allocation.termFeeCleared,
     outstandingBefore: allocation.outstandingBefore,
     outstandingAfter: allocation.outstandingAfter,
-    totalPaidThisTerm: roundMoney(allocation.totalPaidBefore + allocation.amountPaid),
+    // Report only the current-term portion as "paid this term"
+    totalPaidThisTerm: roundMoney(allocation.totalPaidBefore + allocation.termFeeCleared),
     status: allocation.status,
     credit: allocation.credit,
   };

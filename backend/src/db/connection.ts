@@ -196,6 +196,7 @@ const runMigrations = async () => {
     `);
     await client.query(`ALTER TABLE school_settings ALTER COLUMN logo_url TYPE TEXT`).catch(() => { });
     await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS email VARCHAR(255)`).catch(() => { });
+    await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS grade_scale JSONB DEFAULT NULL`).catch(() => { });
 
     // Create academic_terms table
     await client.query(`
@@ -662,6 +663,27 @@ const runMigrations = async () => {
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_term_report_releases_tenant
       ON term_report_releases (tenant_id, class_id, term)
+    `).catch(() => { });
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS term_report_comments (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+        class_id INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+        term VARCHAR(150) NOT NULL,
+        academic_year VARCHAR(50) NOT NULL,
+        subject VARCHAR(150),
+        remark_type VARCHAR(50) NOT NULL,
+        remark TEXT,
+        updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(tenant_id, student_id, class_id, term, academic_year, subject, remark_type)
+      )
+    `).catch(() => { });
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_term_report_comments_student
+      ON term_report_comments (tenant_id, student_id, class_id, term, academic_year, remark_type)
     `).catch(() => { });
 
     // Parent portal accounts — one per student, password defaults to their admission number

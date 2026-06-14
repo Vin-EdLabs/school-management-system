@@ -5,8 +5,13 @@ import {
   buildReceiptSnapshot,
   getCurrentTermPaymentContext,
   resolveActiveLedgerTerm,
+  getStudentFullBalance,
 } from './studentUnifiedBalanceService.js';
 import { resolveLedgerTermFromSettings } from './ledgerFinanceService.js';
+
+function roundMoney(n: number) {
+  return Math.round(n * 100) / 100;
+}
 
 export type RecordLedgerPaymentInput = {
   tenantId: number;
@@ -107,29 +112,91 @@ export async function recordPaymentWithLedger(
     const payment = insertResult.rows[0];
     const paymentId = Number(payment.id);
 
-    await client.query(
-      `INSERT INTO student_ledger (
-         tenant_id, student_id, academic_year_id, term_id, description, entry_type,
-         debit, credit, payment_method, receipt_number, reference, payment_id, created_by, metadata
-       ) VALUES ($1, $2, $3, $4, $5, 'payment', 0, $6, $7, $8, $8, $9, $10, $11::jsonb)`,
-      [
-        input.tenantId,
-        input.studentId,
-        ctx.academicYearId,
-        ctx.ledgerTermId,
-        `Payment recorded — Receipt #${input.receiptNumber}`,
-        input.amount,
-        input.paymentMethod,
-        input.receiptNumber,
-        paymentId,
-        input.createdByUserId,
-        JSON.stringify({
-          allocation: receiptSnapshot,
-          outstandingBefore: allocation.outstandingBefore,
-          outstandingAfter: allocation.outstandingAfter,
-        }),
-      ]
-    );
+    // Insert ledger entries according to allocation: current term first, then arrears (oldest first), then any residual credit
+    let remainingToAllocate = roundMoney(input.amount);
+
+    // 1) current term portion
+    if (allocation.termFeeCleared > 0) {
+      await client.query(
+        `INSERT INTO student_ledger (
+           tenant_id, student_id, academic_year_id, term_id, description, entry_type,
+           debit, credit, payment_method, receipt_number, reference, payment_id, created_by, metadata
+         ) VALUES ($1, $2, $3, $4, $5, 'payment', 0, $6, $7, $8, $8, $9, $10, $11::jsonb)`,
+        [
+          input.tenantId,
+          input.studentId,
+          ctx.academicYearId,
+          ctx.ledgerTermId,
+          `Payment recorded — Receipt #${input.receiptNumber} (term portion)`,
+          allocation.termFeeCleared,
+          input.paymentMethod,
+          input.receiptNumber,
+          paymentId,
+          input.createdByUserId,
+          JSON.stringify({ allocation: receiptSnapshot, portion: 'term', amount: allocation.termFeeCleared }),
+        ]
+      );
+      remainingToAllocate = roundMoney(remainingToAllocate - allocation.termFeeCleared);
+    }
+
+    // 2) apply to prior-term arrears (oldest first)
+    if (allocation.arrearsCleared > 0) {
+      const full = await getStudentFullBalance(client, input.tenantId, input.studentId);
+      const prior = full?.priorTerms ?? [];
+      let toClear = allocation.arrearsCleared;
+      for (const pt of prior) {
+        if (toClear <= 0) break;
+        const termOutstanding = pt.outstanding > 0 ? pt.outstanding : 0;
+        if (termOutstanding <= 0) continue;
+        const applyAmt = roundMoney(Math.min(termOutstanding, toClear));
+        if (applyAmt <= 0) continue;
+        await client.query(
+          `INSERT INTO student_ledger (
+             tenant_id, student_id, academic_year_id, term_id, description, entry_type,
+             debit, credit, payment_method, receipt_number, reference, payment_id, created_by, metadata
+           ) VALUES ($1, $2, $3, $4, $5, 'payment', 0, $6, $7, $8, $8, $9, $10, $11::jsonb)`,
+          [
+            input.tenantId,
+            input.studentId,
+            // find academic year id for this prior term by resolving ledger term
+            pt.termId ? (await resolveActiveLedgerTerm(client.query.bind(client), input.tenantId, pt.termId)).academicYearId : ctx.academicYearId,
+            pt.termId,
+            `Payment recorded — Receipt #${input.receiptNumber} (arrears)`,
+            applyAmt,
+            input.paymentMethod,
+            input.receiptNumber,
+            paymentId,
+            input.createdByUserId,
+            JSON.stringify({ allocation: receiptSnapshot, portion: 'arrears', amount: applyAmt, targetTerm: pt.termId }),
+          ]
+        );
+        toClear = roundMoney(toClear - applyAmt);
+        remainingToAllocate = roundMoney(remainingToAllocate - applyAmt);
+      }
+    }
+
+    // 3) any residual (overpayment) -> credit in current term
+    if (remainingToAllocate > 0.001) {
+      await client.query(
+        `INSERT INTO student_ledger (
+           tenant_id, student_id, academic_year_id, term_id, description, entry_type,
+           debit, credit, payment_method, receipt_number, reference, payment_id, created_by, metadata
+         ) VALUES ($1, $2, $3, $4, $5, 'payment', 0, $6, $7, $8, $8, $9, $10, $11::jsonb)`,
+        [
+          input.tenantId,
+          input.studentId,
+          ctx.academicYearId,
+          ctx.ledgerTermId,
+          `Payment recorded — Receipt #${input.receiptNumber} (credit)`,
+          remainingToAllocate,
+          input.paymentMethod,
+          input.receiptNumber,
+          paymentId,
+          input.createdByUserId,
+          JSON.stringify({ allocation: receiptSnapshot, portion: 'credit', amount: remainingToAllocate }),
+        ]
+      );
+    }
 
     await client.query('COMMIT');
 

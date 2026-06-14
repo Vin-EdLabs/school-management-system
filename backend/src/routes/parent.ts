@@ -1361,6 +1361,16 @@ router.get('/term-report', authenticateParent, async (req: ParentRequest, res) =
       });
     }
 
+    const remarksRes = await query(
+      `SELECT remark_type, remark
+       FROM term_report_comments
+       WHERE tenant_id = $1 AND student_id = $2
+         AND class_id = $3 AND term = $4 AND academic_year = $5 AND subject IS NULL`,
+      [tenantId, studentId, classId, currentTerm, currentYear]
+    );
+    const teacherRemark = remarksRes.rows.find((r: any) => r.remark_type === 'teacher')?.remark || '';
+    const headmasterRemark = remarksRes.rows.find((r: any) => r.remark_type === 'headmaster')?.remark || '';
+
     // Get all assignments for this class
     const assignmentsRes = await query(
       `SELECT id, subject, name, assignment_type, max_score
@@ -1456,6 +1466,8 @@ router.get('/term-report', authenticateParent, async (req: ParentRequest, res) =
         currentYear,
         schoolName,
         releasedAt: releaseRow.rows[0]?.released_at || null,
+        teacherRemark,
+        headmasterRemark,
       },
     });
   } catch (error) {

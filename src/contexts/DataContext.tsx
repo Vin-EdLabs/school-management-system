@@ -561,6 +561,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       class: ['classes', 'students'],
       fee: ['fees'],
       payment: ['payments', 'fees'],
+      'finance-payment': ['payments', 'fees'],
       income: ['income'],
       expense: ['expenses'],
       subject: ['subjects'],
@@ -568,7 +569,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     let debounceTimer: ReturnType<typeof setTimeout> | undefined;
     const refreshNow = (payload?: { entity?: string }) => {
-      if (payload?.entity === 'payment') return;
       const entity = String(payload?.entity || '').toLowerCase();
       if (entity === 'student' && Date.now() < skipStudentSocketRefreshUntil.current) return;
       const domains = entityDomains[entity]?.filter((d) => loadedDomainsRef.current.has(d)) ?? [];
@@ -786,6 +786,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       receiptSnapshot: created.receipt_snapshot ?? created.receiptSnapshot,
     };
     applyPaymentLocally(payment, paymentData.amount, res.balance);
+    await refresh(['payments', 'fees']);
     return { payment, balance: res.balance };
   };
 

@@ -443,15 +443,6 @@ const FinancialDashboard = () => {
       bg: metrics.balanceLeft >= 0 ? 'from-indigo-500/12 via-card to-card' : 'from-amber-500/15 via-card to-card',
     },
     {
-      key: 'salary',
-      label: 'Staff salary budget',
-      value: formatGhs(overview?.teachers.monthlySalaryBudget ?? 0),
-      sub: `${overview?.teachers.active ?? overview?.teachers.total ?? 0} active teachers`,
-      icon: Users,
-      ring: 'ring-cyan-500/25',
-      bg: 'from-cyan-500/12 via-card to-card',
-    },
-    {
       key: 'out',
       label: 'Outstanding',
       value: `GHS ${metrics.outstandingBalances.toLocaleString()}`,
@@ -509,11 +500,6 @@ const FinancialDashboard = () => {
                   <Badge variant="secondary" className="font-normal">
                     {overview?.students.total ?? 0} students
                   </Badge>
-                  {(overview?.teachers.monthlySalaryBudget ?? 0) > 0 && (
-                    <Badge variant="outline" className="font-normal">
-                      Salary budget: {formatGhs(overview?.teachers.monthlySalaryBudget ?? 0)}/mo
-                    </Badge>
-                  )}
                 </div>
               </div>
             </div>

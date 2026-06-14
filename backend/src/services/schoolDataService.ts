@@ -177,11 +177,20 @@ export async function exportSchoolBackup(tenantId: number): Promise<{
 }
 
 export async function resetSchoolOperationalData(client: pg.PoolClient, tenantId: number): Promise<void> {
-  for (const table of SCHOOL_RESET_TABLES) {
+  for (const [index, table] of SCHOOL_RESET_TABLES.entries()) {
+    const savepoint = `reset_savepoint_${index}`;
+    await client.query(`SAVEPOINT ${savepoint}`);
     try {
       await client.query(`DELETE FROM ${table} WHERE tenant_id = $1`, [tenantId]);
+      await client.query(`RELEASE SAVEPOINT ${savepoint}`);
     } catch (err: unknown) {
       console.warn(`[school reset] Skip/Fail table ${table}:`, (err as Error)?.message || err);
+      try {
+        await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+        await client.query(`RELEASE SAVEPOINT ${savepoint}`);
+      } catch (rollbackErr: unknown) {
+        console.warn(`[school reset] Failed to rollback savepoint for ${table}:`, (rollbackErr as Error)?.message || rollbackErr);
+      }
     }
   }
 
@@ -199,8 +208,22 @@ export async function resetSchoolOperationalData(client: pg.PoolClient, tenantId
 }
 
 function serializeCell(value: unknown): unknown {
-  if (value === undefined) return null;
-  if (value === null) return null;
+  if (value === undefined || value === null) return null;
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if ((trimmed.startsWith('[') && trimmed.endsWith(']')) || (trimmed.startsWith('{') && trimmed.endsWith('}'))) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed) || (typeof parsed === 'object' && parsed !== null)) {
+          return parsed;
+        }
+      } catch {
+        // Keep as-is if not valid JSON.
+      }
+    }
+    return value;
+  }
   if (typeof value === 'object' && !(value instanceof Date) && !Buffer.isBuffer(value)) {
     return JSON.stringify(value);
   }

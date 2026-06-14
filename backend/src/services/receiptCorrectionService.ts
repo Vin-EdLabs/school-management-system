@@ -392,33 +392,45 @@ async function resolveTermIdForLedger(
   client: pg.PoolClient,
   tenantId: number,
   termStr: string
-): Promise<number | null> {
+): Promise<{ termId: number; academicYearId: number } | null> {
   if (!termStr?.trim()) return null;
   const termToStore = termStr.trim();
-  const termOnly = termToStore.split(/\s+/)[0] || termToStore;
+  const termOnly = termToStore.replace(/\s+\d{4}$/, '').trim() || termToStore;
 
   const termLookup = await client.query(
-    `SELECT id FROM academic_terms
-     WHERE tenant_id = $1 AND (
-       (term_name || ' ' || year) = $2
-       OR term_name = $2
-       OR term_name = $3
+    `SELECT t.id, t.academic_year_id
+     FROM terms t
+     JOIN academic_years ay ON ay.id = t.academic_year_id
+     WHERE t.tenant_id = $1 AND (
+       t.name = $2 OR t.name = $3 OR (t.name || ' ' || ay.name) = $2
      )
      LIMIT 1`,
     [tenantId, termToStore, termOnly]
   );
   if (termLookup.rows.length > 0) {
-    return termLookup.rows[0].id;
+    return {
+      termId: Number(termLookup.rows[0].id),
+      academicYearId: Number(termLookup.rows[0].academic_year_id),
+    };
   }
 
   const activeTermLookup = await client.query(
-    `SELECT t.id FROM academic_terms t
-     JOIN school_settings s ON (s.current_term = (t.term_name || ' ' || t.year) OR s.current_term = t.term_name)
+    `SELECT t.id, t.academic_year_id
+     FROM terms t
+     JOIN academic_years ay ON ay.id = t.academic_year_id
+     JOIN school_settings s ON (s.current_term = t.name OR s.current_term = (t.name || ' ' || ay.name))
      WHERE t.tenant_id = $1 AND s.tenant_id = $1
      LIMIT 1`,
     [tenantId]
   );
-  return activeTermLookup.rows[0]?.id ?? null;
+  if (activeTermLookup.rows.length > 0) {
+    return {
+      termId: Number(activeTermLookup.rows[0].id),
+      academicYearId: Number(activeTermLookup.rows[0].academic_year_id),
+    };
+  }
+
+  return null;
 }
 
 async function postCorrectionLedgerEntry(
@@ -432,8 +444,8 @@ async function postCorrectionLedgerEntry(
   receiptNumber: string,
   reason: string
 ) {
-  const termId = await resolveTermIdForLedger(client, tenantId, termStr);
-  if (!termId) return;
+  const termInfo = await resolveTermIdForLedger(client, tenantId, termStr);
+  if (!termInfo) return;
 
   const balanceChange =
     correctionType === 'credit' ? newAmount - originalAmount : originalAmount - newAmount;
@@ -441,19 +453,20 @@ async function postCorrectionLedgerEntry(
 
   const description = `Receipt correction ${receiptNumber} (${correctionType}): ${reason}`.slice(0, 500);
 
-  if (correctionType === 'credit') {
-    await client.query(
-      `INSERT INTO student_ledger (tenant_id, student_id, academic_year_id, term_id, description, debit, credit, entry_type, receipt_number)
-       VALUES ($1, $2, 1, $3, $4, 0, $5, 'payment_correction', $6)`,
-      [tenantId, studentId, termId, description, balanceChange, receiptNumber]
-    );
-  } else {
-    await client.query(
-      `INSERT INTO student_ledger (tenant_id, student_id, academic_year_id, term_id, description, debit, credit, entry_type, receipt_number)
-       VALUES ($1, $2, 1, $3, $4, $5, 0, 'payment_correction', $6)`,
-      [tenantId, studentId, termId, description, balanceChange, receiptNumber]
-    );
-  }
+  await client.query(
+    `INSERT INTO student_ledger (tenant_id, student_id, academic_year_id, term_id, description, debit, credit, entry_type, receipt_number)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'payment_correction', $8)`,
+    [
+      tenantId,
+      studentId,
+      termInfo.academicYearId,
+      termInfo.termId,
+      description,
+      correctionType === 'credit' ? 0 : balanceChange,
+      correctionType === 'credit' ? balanceChange : 0,
+      receiptNumber,
+    ]
+  );
 }
 
 async function insertCorrectedPayment(

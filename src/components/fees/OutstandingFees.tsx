@@ -14,18 +14,40 @@ import { useActiveTerm } from '../../contexts/ActiveTermContext';
 import { shouldTrackStudentFees } from '../students/studentRegistryUtils';
 
 const OutstandingFees = () => {
-  const { students, classes, feeStructures, payments } = useData();
+  const { students, classes, feeStructures, payments, ledgerBalances } = useData();
   const { currentTerm } = useActiveTerm();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClass, setSelectedClass] = useState('All');
   const selectedTerm = currentTerm && currentTerm !== 'Not Set' ? currentTerm : getActiveAcademicTerm();
 
-  // Calculate outstanding fees for all students (sync - uses local data)
+  // Calculate outstanding fees for all students using ledger-backed balances when available.
   const outstandingData = useMemo(() => {
     const studentsArray = Array.isArray(students) ? students : [];
     const paymentsArray = Array.isArray(payments) ? payments : [];
 
     return studentsArray.filter(shouldTrackStudentFees).map(student => {
+      const ledgerBalance = ledgerBalances?.[String(student.id)];
+      const paymentHistory = paymentsArray.filter((p: any) =>
+        String(p.studentId) === String(student.id) &&
+        (p.term === selectedTerm || (p.term && (p.term.includes(selectedTerm) || selectedTerm.includes(p.term))))
+      );
+
+      if (ledgerBalance) {
+        return {
+          studentId: student.id,
+          admissionNo: student.studentId || student.admissionNumber || String(student.id),
+          studentName: `${student.firstName} ${student.lastName}`,
+          className: student.classAssigned,
+          currentTermFee: ledgerBalance.currentTermFee,
+          arrears: ledgerBalance.totalArrears,
+          creditBalance: ledgerBalance.credit,
+          totalAmountDue: ledgerBalance.totalDue,
+          totalPaid: ledgerBalance.totalPaid,
+          outstanding: Math.max(0, ledgerBalance.outstanding),
+          paymentHistory,
+        };
+      }
+
       const feeCalculation = calculateStudentFeesSync(
         student.id,
         selectedTerm,
@@ -37,7 +59,7 @@ const OutstandingFees = () => {
         {
           isBeneficiary: !!student.isBeneficiary,
           discountType: student.discountType,
-          discountValue: student.discountValue
+          discountValue: student.discountValue,
         }
       );
 
@@ -53,14 +75,11 @@ const OutstandingFees = () => {
         creditBalance: feeCalculation.creditBalance,
         totalAmountDue: feeCalculation.totalAmountDue,
         totalPaid: feeCalculation.totalPaid,
-        outstanding: outstanding,
-        paymentHistory: paymentsArray.filter((p: any) =>
-          String(p.studentId) === String(student.id) &&
-          (p.term === selectedTerm || (p.term && (p.term.includes(selectedTerm) || selectedTerm.includes(p.term))))
-        )
+        outstanding,
+        paymentHistory,
       };
     });
-  }, [students, payments, feeStructures, selectedTerm]);
+  }, [students, payments, feeStructures, selectedTerm, ledgerBalances]);
 
   // Filter students with outstanding balances
   const filteredStudents = useMemo(() => {

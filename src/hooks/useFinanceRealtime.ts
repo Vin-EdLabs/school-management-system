@@ -10,6 +10,7 @@ export const paymentAccountKeys = {
 
 export const FINANCE_REALTIME_ENTITIES = new Set([
   'payment',
+  'finance-payment',
   'income',
   'expense',
   'payment-account',

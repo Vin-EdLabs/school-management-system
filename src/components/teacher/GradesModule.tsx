@@ -17,6 +17,7 @@ import { useSchool } from '../../contexts/SchoolContext';
 import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDisplayDate, formatDisplayDateTime } from '../../utils/dateFormat';
+import { downloadTermReportCardPdf } from '../reports/buildTermReportCardPdf';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -92,6 +93,9 @@ interface TermReport {
   isReleased?: boolean;
   releasedAt?: string | null;
   releasedByName?: string | null;
+  gradeScale?: Array<{ letter: string; minPct: number; maxPct: number; description?: string }>;
+  teacherRemarks?: Record<number, string>;
+  headmasterRemarks?: Record<number, string>;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -161,6 +165,10 @@ const GradesModule = () => {
 
   const [activeTab, setActiveTab] = useState<'grades' | 'report'>('grades');
   const [termReport, setTermReport] = useState<TermReport | null>(null);
+  const [selectedReportStudentId, setSelectedReportStudentId] = useState<number | null>(null);
+  const [teacherRemarkDraft, setTeacherRemarkDraft] = useState('');
+  const [headmasterRemarkDraft, setHeadmasterRemarkDraft] = useState('');
+  const [remarkSaving, setRemarkSaving] = useState(false);
   const [reportLoading, setReportLoading] = useState(false);
   const [releaseLoading, setReleaseLoading] = useState(false);
   const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
@@ -431,6 +439,10 @@ const GradesModule = () => {
     setReportLoading(true);
     try {
       const data = await apiService.get<TermReport>(`/grades/term-report?classId=${selectedClassId}`);
+      const firstStudentId = data.students?.[0]?.studentId ?? null;
+      setSelectedReportStudentId(firstStudentId);
+      setTeacherRemarkDraft(firstStudentId ? data.teacherRemarks?.[firstStudentId] || '' : '');
+      setHeadmasterRemarkDraft(firstStudentId ? data.headmasterRemarks?.[firstStudentId] || '' : '');
       setTermReport(data);
     } catch (e: any) {
       toast({ title: 'Failed to load report', description: e?.message, variant: 'destructive' });
@@ -440,6 +452,80 @@ const GradesModule = () => {
   const handleToggleRelease = async () => {
     if (!selectedClassId || !termReport) return;
     setShowReleaseConfirm(true);
+  };
+
+  const handleSelectReportStudent = (studentId: number) => {
+    setSelectedReportStudentId(studentId);
+    setTeacherRemarkDraft(termReport?.teacherRemarks?.[studentId] || '');
+    setHeadmasterRemarkDraft(termReport?.headmasterRemarks?.[studentId] || '');
+  };
+
+  const saveReportRemarks = async () => {
+    if (!selectedClassId || !selectedReportStudentId) return;
+    setRemarkSaving(true);
+    try {
+      await apiService.post('/grades/term-report-remarks', {
+        classId: Number(selectedClassId),
+        studentId: selectedReportStudentId,
+        teacherRemark: teacherRemarkDraft,
+        headmasterRemark: headmasterRemarkDraft,
+      });
+      setTermReport(prev => prev ? {
+        ...prev,
+        teacherRemarks: { ...prev.teacherRemarks, [selectedReportStudentId]: teacherRemarkDraft },
+        headmasterRemarks: { ...prev.headmasterRemarks, [selectedReportStudentId]: headmasterRemarkDraft },
+      } : prev);
+      toast({ title: 'Saved', description: 'Term report remarks have been saved.' });
+    } catch (e: any) {
+      toast({ title: 'Error saving remarks', description: e?.message, variant: 'destructive' });
+    } finally {
+      setRemarkSaving(false);
+    }
+  };
+
+  const downloadTermReportPdf = () => {
+    if (!termReport || !selectedReportStudentId) return;
+    const student = termReport.students.find((s) => s.studentId === selectedReportStudentId);
+    if (!student) return;
+
+    // Build performance rows from subject scores
+    const performanceRows = (termReport.subjects || []).map((subject: any) => {
+      const score = student.subjectScores?.[subject.id] || {};
+      return {
+        subject: subject.name,
+        classScore: score.classScore ?? null,
+        examScore: score.examScore ?? null,
+        total: score.total ?? 0,
+        max: subject.maxScore ?? 100,
+        percentage: score.percentage ?? 0,
+        grade: score.grade || '',
+        remark: score.remark || '',
+      };
+    });
+
+    downloadTermReportCardPdf({
+      schoolName: termReport.schoolName || '',
+      className: termReport.className,
+      currentTerm: termReport.currentTerm || '',
+      currentYear: termReport.currentYear || '',
+      studentName: `${student.firstName} ${student.lastName}`,
+      admissionNumber: student.admissionNumber,
+      position: student.position,
+      totalStudents: termReport.students.length,
+      grandTotal: student.grandTotal,
+      grandMax: student.grandMax,
+      percentage: student.percentage,
+      performanceRows,
+      gradeScale: termReport.gradeScale || [
+        { letter: 'A', minPct: 80, maxPct: 100, description: 'Excellent' },
+        { letter: 'B', minPct: 70, maxPct: 79, description: 'Good' },
+        { letter: 'C', minPct: 60, maxPct: 69, description: 'Fair' },
+        { letter: 'D', minPct: 50, maxPct: 59, description: 'Pass' },
+        { letter: 'F', minPct: 0, maxPct: 49, description: 'Fail' },
+      ],
+      teacherRemark: termReport.teacherRemarks?.[selectedReportStudentId] || teacherRemarkDraft,
+      headmasterRemark: termReport.headmasterRemarks?.[selectedReportStudentId] || headmasterRemarkDraft,
+    });
   };
 
   const confirmToggleRelease = async () => {
@@ -998,6 +1084,75 @@ const GradesModule = () => {
                     )}
                   </CardHeader>
                   <CardContent>
+                    <div className="mb-4 grid gap-4 lg:grid-cols-[1fr_auto]">
+                      <div className="space-y-3">
+                        <div className="grid gap-2 sm:grid-cols-[1fr_auto] items-end">
+                          <div>
+                            <Label className="text-sm text-slate-700">Select Student for Report Card</Label>
+                            <Select value={String(selectedReportStudentId || '')} onValueChange={(value) => handleSelectReportStudent(Number(value))}>
+                              <SelectTrigger className="bg-white text-slate-900 border-slate-300 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-600">
+                                <SelectValue placeholder="Choose student…" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {termReport.students.map((student) => (
+                                  <SelectItem key={student.studentId} value={String(student.studentId)}>
+                                    {student.firstName} {student.lastName} — {student.admissionNumber}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button size="sm" variant="outline" onClick={downloadTermReportPdf} disabled={!selectedReportStudentId}>
+                              Download PDF
+                            </Button>
+                            <Button size="sm" onClick={saveReportRemarks} disabled={!selectedReportStudentId || remarkSaving}>
+                              Save Remarks
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div>
+                            <Label className="text-sm text-slate-700">Teacher Remark</Label>
+                            <textarea
+                              rows={4}
+                              value={teacherRemarkDraft}
+                              onChange={(e) => setTeacherRemarkDraft(e.target.value)}
+                              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                              placeholder="Enter a teacher comment for this student"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-sm text-slate-700">Headmaster Remark</Label>
+                            <textarea
+                              rows={4}
+                              value={headmasterRemarkDraft}
+                              onChange={(e) => setHeadmasterRemarkDraft(e.target.value)}
+                              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                              placeholder="Enter a headmaster comment for this student"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                        <p className="font-semibold text-slate-900 mb-2">Grading Scale</p>
+                        <div className="space-y-2">
+                          {(termReport.gradeScale || [
+                            { letter: 'A', minPct: 80, maxPct: 100, description: 'Excellent' },
+                            { letter: 'B', minPct: 70, maxPct: 79, description: 'Good' },
+                            { letter: 'C', minPct: 60, maxPct: 69, description: 'Fair' },
+                            { letter: 'D', minPct: 50, maxPct: 59, description: 'Pass' },
+                            { letter: 'F', minPct: 0, maxPct: 49, description: 'Fail' },
+                          ]).map((scale) => (
+                            <div key={scale.letter} className="flex items-center justify-between gap-3">
+                              <span className="font-semibold">{scale.letter}</span>
+                              <span className="text-xs text-slate-500">{scale.minPct}% - {scale.maxPct}%</span>
+                              <span className="text-xs text-slate-500">{scale.description}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
                     <div ref={printRef}>
                       <h2 style={{ textAlign: 'center' }}>Term Report — {termReport.className}</h2>
                       <p style={{ textAlign: 'center', color: '#666', fontSize: 12 }}>

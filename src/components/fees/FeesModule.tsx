@@ -11,7 +11,7 @@ import { apiService } from '../../services/api';
 import { useData } from '../../contexts/DataContext';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
 import { toast } from '@/hooks/use-toast';
-import { CreditCard, DollarSign, Eye, Users, Receipt, AlertCircle } from 'lucide-react';
+import { CreditCard, DollarSign, Eye, Users, Receipt, AlertCircle, RefreshCw, Loader2, Check } from 'lucide-react';
 
 interface AcademicTermOption {
   termLabel: string;   // e.g. "Term 1 2027"
@@ -22,6 +22,8 @@ const FeesModule = () => {
   const { refresh } = useData();
   const { currentTerm, currentYear } = useActiveTerm();
   const [activeTab, setActiveTab] = useState('record-payment');
+  const [refreshing, setRefreshing] = useState(false);
+  const [success, setSuccess] = useState(false);
 
   // Carry arrears state
   const [termOptions, setTermOptions] = useState<AcademicTermOption[]>([]);
@@ -95,6 +97,35 @@ const FeesModule = () => {
             <h1 className="text-3xl font-black tracking-tight text-[#0F172A] dark:text-gray-100">Fees Management</h1>
             <p className="text-sm font-medium text-[#64748B] dark:text-gray-400">Manage school fees, payments, and financial records</p>
           </div>
+        </div>
+        <div className="ml-4 flex items-center">
+          <button
+            type="button"
+            aria-label="Refresh fees data"
+            onClick={async () => {
+              try {
+                setRefreshing(true);
+                await refresh(['fees', 'payments', 'students']);
+                setRefreshing(false);
+                setSuccess(true);
+                setTimeout(() => setSuccess(false), 1500);
+              } catch (err: any) {
+                setRefreshing(false);
+                toast({ title: 'Refresh failed', description: err?.message || 'Could not refresh fees data', variant: 'destructive' });
+              }
+            }}
+            className={`inline-flex items-center justify-center h-9 w-9 rounded-md border transition-colors ${
+              success ? 'bg-emerald-50 border-emerald-200 text-emerald-600' : 'bg-white/60 border-white/70 text-slate-700 hover:bg-white'
+            }`}
+          >
+            {refreshing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : success ? (
+              <Check className="h-4 w-4" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+          </button>
         </div>
       </div>
 

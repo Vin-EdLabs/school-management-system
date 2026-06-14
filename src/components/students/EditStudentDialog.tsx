@@ -28,6 +28,9 @@ interface Student {
   classAssignedId?: number;
   guardianName: string;
   guardianContact: string;
+  guardian2Name?: string;
+  guardian2Contact?: string;
+  guardian2Relationship?: string;
   homeAddress: string;
   numberOfSiblings: number;
   namesOfSiblings: string;
@@ -402,6 +405,8 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
                     <SelectItem value="graduated">Alumni (graduated)</SelectItem>
                     <SelectItem value="suspended">Suspended</SelectItem>
                   </SelectContent>
@@ -487,6 +492,33 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
                   value={formData.homeAddress}
                   onChange={(e) => handleInputChange('homeAddress', e.target.value)}
                   required
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+              <div className="space-y-2">
+                <Label htmlFor="guardian2Name">Second guardian name</Label>
+                <Input
+                  id="guardian2Name"
+                  value={formData.guardian2Name || ''}
+                  onChange={(e) => handleInputChange('guardian2Name', e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="guardian2Contact">Second guardian contact</Label>
+                <Input
+                  id="guardian2Contact"
+                  value={formData.guardian2Contact || ''}
+                  onChange={(e) => handleInputChange('guardian2Contact', e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="guardian2Relationship">Relationship</Label>
+                <Input
+                  id="guardian2Relationship"
+                  value={formData.guardian2Relationship || ''}
+                  onChange={(e) => handleInputChange('guardian2Relationship', e.target.value)}
+                  placeholder="e.g. Mother, Uncle"
                 />
               </div>
             </div>

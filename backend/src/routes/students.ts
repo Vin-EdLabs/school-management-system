@@ -8,6 +8,8 @@ import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js'
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { getIO } from '../socket.js';
+import { writeAuditLog } from '../services/auditService.js';
+import { getClientIp } from '../utils/clientIp.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -57,6 +59,7 @@ const STUDENT_SELECT_FIELDS = `
 const STUDENT_LIST_SELECT_FIELDS = `
   s.id, s.tenant_id, s.first_name, s.last_name, s.gender, s.date_of_birth, s.nationality,
   s.student_id, s.admission_number, s.class_assigned_id, s.guardian_name, s.guardian_contact,
+  s.guardian_2_name, s.guardian_2_contact, s.guardian_2_relationship,
   s.home_address, s.number_of_siblings, s.names_of_siblings, s.previous_school, s.date_of_admission,
   s.notes, s.is_beneficiary, s.beneficiary_type, s.discount_type, s.discount_value, s.beneficiary_notes,
   s.enrollment_status, s.created_at, s.updated_at,
@@ -96,6 +99,7 @@ const STUDENT_SELECT_LEGACY = `
 const STUDENT_LIST_SELECT_LEGACY = `
   s.id, s.tenant_id, s.first_name, s.last_name, s.gender, s.date_of_birth, s.nationality,
   s.student_id, s.admission_number, s.class_assigned_id, s.guardian_name, s.guardian_contact,
+  s.guardian_2_name, s.guardian_2_contact, s.guardian_2_relationship,
   s.home_address, s.number_of_siblings, s.names_of_siblings, s.previous_school, s.date_of_admission,
   s.notes, s.is_beneficiary, s.beneficiary_type, s.discount_type, s.discount_value, s.beneficiary_notes,
   s.enrollment_status, s.created_at, s.updated_at,
@@ -185,7 +189,7 @@ router.get('/', async (req: AuthRequest, res) => {
     const tenantId = req.user!.tenantId!;
     const { classId } = req.query;
     const statusParam = String(req.query.status || 'active').toLowerCase();
-    const status = ['active', 'inactive', 'all', 'graduated'].includes(statusParam) ? statusParam : 'active';
+    const status = ['active', 'inactive', 'pending', 'all', 'graduated'].includes(statusParam) ? statusParam : 'active';
 
     const rows = await queryStudentsList(tenantId, status, classId ? String(classId) : undefined);
     res.json(rows);
@@ -273,6 +277,8 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
       return res.status(400).json({ error: 'School context required. Select a school first.' });
     }
     const studentData = req.body;
+    const requestedStatus = String(studentData.enrollment_status || 'active').toLowerCase().trim();
+    const enrollmentStatus = requestedStatus === 'pending' ? 'pending' : 'active';
 
     let lastError: any;
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -282,13 +288,14 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
       `INSERT INTO students (
         tenant_id, first_name, last_name, gender, date_of_birth, nationality,
         student_id, admission_number, class_assigned_id, guardian_name,
-        guardian_contact, home_address, number_of_siblings, names_of_siblings,
+        guardian_contact, guardian_2_name, guardian_2_contact, guardian_2_relationship,
+        home_address, number_of_siblings, names_of_siblings,
         previous_school, date_of_admission, notes, passport_photo_url,
         is_beneficiary, beneficiary_type, discount_type, discount_value, beneficiary_notes,
         enrollment_status
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
-        $19, $20, $21, $22, $23, 'active'
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21,
+        $22, $23, $24, $25, $26, $27
       ) RETURNING *`,
       [
         tenantId,
@@ -299,9 +306,12 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
         studentData.nationality || null,
         studentId,
         admissionNumber,
-        studentData.class_assigned_id || null,
+        enrollmentStatus === 'pending' ? studentData.class_assigned_id || null : studentData.class_assigned_id || null,
         studentData.guardian_name || null,
         studentData.guardian_contact || null,
+        studentData.guardian_2_name || null,
+        studentData.guardian_2_contact || null,
+        studentData.guardian_2_relationship || null,
         studentData.home_address || null,
         studentData.number_of_siblings || 0,
         studentData.names_of_siblings || null,
@@ -314,13 +324,35 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
         studentData.discount_type || null,
         studentData.discount_value || 0,
         studentData.beneficiary_notes || null,
+        enrollmentStatus,
       ]
         );
 
-        await query(
-          'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
-          [tenantId, req.user!.id, 'CREATE', 'STUDENT', result.rows[0].id]
-        ).catch(() => undefined);
+        const auditAction = enrollmentStatus === 'pending' ? 'STUDENT_PENDING' : 'CREATE';
+        const auditSummary =
+          enrollmentStatus === 'pending'
+            ? `Saved pending admission: ${studentData.first_name} ${studentData.last_name} (${admissionNumber})`
+            : `Registered student: ${studentData.first_name} ${studentData.last_name} (${admissionNumber})`;
+
+        await writeAuditLog({
+          tenantId,
+          userId: req.user!.id,
+          userRole: req.user!.role,
+          action: auditAction,
+          entityType: 'STUDENT',
+          entityId: result.rows[0].id,
+          module: 'academics',
+          summary: auditSummary,
+          details: {
+            studentId,
+            admissionNumber,
+            enrollmentStatus,
+            classAssignedId: studentData.class_assigned_id || null,
+          },
+          afterValues: result.rows[0],
+          ipAddress: getClientIp(req),
+          userAgent: req.get('user-agent') || null,
+        });
         emitTenantDataChanged(tenantId, 'student', 'created');
 
         return res.status(201).json(result.rows[0]);
@@ -383,7 +415,9 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
 
     const allowedFields = [
       'first_name', 'last_name', 'gender', 'date_of_birth', 'nationality',
-      'class_assigned_id', 'guardian_name', 'guardian_contact', 'home_address',
+      'class_assigned_id', 'guardian_name', 'guardian_contact',
+      'guardian_2_name', 'guardian_2_contact', 'guardian_2_relationship',
+      'home_address',
       'number_of_siblings', 'names_of_siblings', 'previous_school',
       'date_of_admission', 'notes', 'passport_photo_url',
       'is_beneficiary', 'beneficiary_type', 'discount_type', 'discount_value', 'beneficiary_notes',
@@ -414,11 +448,33 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
       return res.status(404).json({ error: 'Student not found' });
     }
 
-    // Log update
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'UPDATE', 'STUDENT', parseInt(id)]
-    );
+    const updated = result.rows[0];
+    let className = '';
+    if (updated.class_assigned_id) {
+      const classRes = await query(
+        'SELECT class_name FROM classes WHERE id = $1 AND tenant_id = $2',
+        [updated.class_assigned_id, tenantId]
+      );
+      className = classRes.rows[0]?.class_name || '';
+    }
+    const studentName = `${updated.first_name || ''} ${updated.last_name || ''}`.trim();
+    let studentLabel = studentName;
+    if (className) studentLabel += ` · ${className}`;
+    if (updated.admission_number) studentLabel += ` (${updated.admission_number})`;
+
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'UPDATE',
+      entityType: 'STUDENT',
+      entityId: parseInt(id, 10),
+      module: 'academics',
+      summary: `Updated student — ${studentLabel}`,
+      afterValues: updated,
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') || null,
+    });
     emitTenantDataChanged(tenantId, 'student', 'updated');
 
     res.json(result.rows[0]);
@@ -517,6 +573,111 @@ router.post('/:id/promote', requireRole('super-admin', 'administrator'), async (
   } catch (error) {
     console.error('Promote student error:', error);
     res.status(500).json({ error: 'Failed to promote student' });
+  }
+});
+
+// Approve pending admission → active enrolled student
+router.post('/:id/approve-admission', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const { id } = req.params;
+    const classAssignedId = parseInt(String(req.body.class_assigned_id), 10);
+    if (!classAssignedId || Number.isNaN(classAssignedId)) {
+      return res.status(400).json({ error: 'Class assignment is required to approve admission' });
+    }
+
+    const existing = await queryStudentById(tenantId, id);
+    if (!existing) return res.status(404).json({ error: 'Student not found' });
+    if (String(existing.enrollment_status || 'active').toLowerCase() !== 'pending') {
+      return res.status(400).json({ error: 'Only pending students can be approved for enrollment' });
+    }
+
+    const classCheck = await query(
+      'SELECT id, class_name FROM classes WHERE id = $1 AND tenant_id = $2',
+      [classAssignedId, tenantId]
+    );
+    if (classCheck.rows.length === 0) {
+      return res.status(400).json({ error: 'Selected class not found' });
+    }
+
+    const result = await query(
+      `UPDATE students SET enrollment_status = 'active', class_assigned_id = $1, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2 AND tenant_id = $3 AND COALESCE(enrollment_status, 'active') = 'pending'
+       RETURNING *`,
+      [classAssignedId, id, tenantId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(400).json({ error: 'Could not approve student — they may no longer be pending' });
+    }
+
+    const row = result.rows[0];
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'STUDENT_ENROLLED',
+      entityType: 'STUDENT',
+      entityId: parseInt(id, 10),
+      module: 'academics',
+      summary: `Approved pending admission: ${row.first_name} ${row.last_name} → ${classCheck.rows[0].class_name}`,
+      details: {
+        classAssignedId,
+        className: classCheck.rows[0].class_name,
+        admissionNumber: row.admission_number,
+      },
+      beforeValues: existing,
+      afterValues: row,
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') || null,
+    });
+    emitTenantDataChanged(tenantId, 'student', 'updated');
+    res.json(row);
+  } catch (error) {
+    console.error('Approve admission error:', error);
+    res.status(500).json({ error: 'Failed to approve admission' });
+  }
+});
+
+// Reject pending admission (removes pending record; logged in audit)
+router.post('/:id/reject-admission', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const { id } = req.params;
+    const reason = String(req.body.reason || '').trim();
+    if (!reason) {
+      return res.status(400).json({ error: 'Rejection reason is required' });
+    }
+
+    const existing = await queryStudentById(tenantId, id);
+    if (!existing) return res.status(404).json({ error: 'Student not found' });
+    if (String(existing.enrollment_status || 'active').toLowerCase() !== 'pending') {
+      return res.status(400).json({ error: 'Only pending students can be rejected' });
+    }
+
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'STUDENT_REJECTED',
+      entityType: 'STUDENT',
+      entityId: parseInt(id, 10),
+      module: 'academics',
+      summary: `Rejected pending admission: ${existing.first_name} ${existing.last_name}`,
+      details: { reason, admissionNumber: existing.admission_number, studentId: existing.student_id },
+      beforeValues: existing,
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') || null,
+    });
+
+    await query('DELETE FROM students WHERE id = $1 AND tenant_id = $2 AND COALESCE(enrollment_status, \'active\') = \'pending\'', [
+      id,
+      tenantId,
+    ]);
+    emitTenantDataChanged(tenantId, 'student', 'deleted');
+    res.json({ success: true, message: 'Pending admission rejected and removed' });
+  } catch (error) {
+    console.error('Reject admission error:', error);
+    res.status(500).json({ error: 'Failed to reject admission' });
   }
 });
 

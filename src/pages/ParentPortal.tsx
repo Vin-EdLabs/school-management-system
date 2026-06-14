@@ -327,13 +327,16 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     return saved ? JSON.parse(saved) : [];
   });
   const [showSwitcher, setShowSwitcher] = useState(false);
-  const [isAddingAccount, setIsAddingAccount] = useState(false);
+
+  const syncLinkedAccounts = (accounts: LinkedAccount[]) => {
+    setLinkedAccounts(accounts);
+    localStorage.setItem(`parent_accounts_${tenantId}`, JSON.stringify(accounts));
+  };
 
   const persist = (t: string, s: StudentInfo) => {
     localStorage.setItem(`parent_token_${tenantId}`, t);
     localStorage.setItem(`parent_student_${tenantId}`, JSON.stringify(s));
 
-    // Update linked accounts list
     setLinkedAccounts(prev => {
       const existingIdx = prev.findIndex(acc => acc.student.admission_number === s.admission_number);
       let updated;
@@ -375,40 +378,22 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       const data = await parentFetch('/parent/login', {
         method: 'POST',
         body: JSON.stringify({ tenantId, studentId: loginAdmission.trim(), password: loginPassword }),
-      }) as { token: string; mustChangePassword: boolean };
+      }) as { token: string; mustChangePassword: boolean; linkedAccounts?: LinkedAccount[] };
       
-      // Fetch full student info for the NEW student
       const me = await parentFetch('/parent/me', {}, data.token) as unknown as StudentInfo;
-
-      // IF we are adding an account, verify guardian name & phone matches the CURRENT student
-      if (isAddingAccount && student) {
-        const currentGuardian = (student.guardian_name || '').trim().toLowerCase();
-        const newGuardian = (me.guardian_name || '').trim().toLowerCase();
-
-        const normalizePhone = (p: string | null | undefined) => (p || '').replace(/\D/g, '');
-        const currentPhone = normalizePhone(student.guardian_contact);
-        const newPhone = normalizePhone(me.guardian_contact);
-
-        if (!currentGuardian || !newGuardian || currentGuardian !== newGuardian) {
-          throw new Error(`Guardian mismatch. This session is for ${student.guardian_name || 'N/A'}, but this child belongs to ${me.guardian_name || 'N/A'}.`);
-        }
-
-        if (!currentPhone || !newPhone || currentPhone !== newPhone) {
-          throw new Error(`Guardian contact mismatch. Phone numbers must match to link siblings automatically.`);
-        }
-
-        // Call backend to link them as siblings officially in the database
-        await parentFetch('/parent/link-siblings', {
-          method: 'POST',
-          body: JSON.stringify({ targetStudentId: me.id }),
-        }, token!); 
-      }
+      const studentInfo = { ...me, must_change_password: data.mustChangePassword };
 
       setToken(data.token);
       setMustChangePassword(data.mustChangePassword);
-      setStudent(me);
-      persist(data.token, me);
-      setIsAddingAccount(false);
+      setStudent(studentInfo);
+      localStorage.setItem(`parent_token_${tenantId}`, data.token);
+      localStorage.setItem(`parent_student_${tenantId}`, JSON.stringify(studentInfo));
+
+      const linked = data.linkedAccounts?.length
+        ? data.linkedAccounts
+        : [{ token: data.token, student: studentInfo }];
+      syncLinkedAccounts(linked);
+
       setLoginAdmission('');
       setLoginPassword('');
     } catch (err: unknown) {
@@ -549,6 +534,31 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       document.removeEventListener('keydown', onKey);
     };
   }, [showNotifPanel]);
+
+  /** Load admin-linked sibling accounts so parents can switch without logging in again. */
+  useEffect(() => {
+    if (!token || !student) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const data = await parentFetch('/parent/linked-accounts', {}, token) as { linkedAccounts?: LinkedAccount[] };
+        if (cancelled || !data.linkedAccounts?.length) return;
+        syncLinkedAccounts(data.linkedAccounts);
+        const current = data.linkedAccounts.find(
+          (acc) => acc.student.admission_number === student.admission_number
+        );
+        if (current && current.token !== token) {
+          setToken(current.token);
+          localStorage.setItem(`parent_token_${tenantId}`, current.token);
+        }
+      } catch {
+        /* keep cached linked accounts */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, student?.admission_number, tenantId]);
 
   /** Sliding session: refresh JWT periodically so parents stay signed in across PWA restarts. */
   useEffect(() => {
@@ -716,7 +726,13 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       if (entity === 'payment' || entity === 'finance-payment') {
         const d = await parentFetch('/parent/finance', {}, token).catch(() => null);
         if (d) setFinance(d);
-        pushNotification('Fee Payment Received', 'A new payment receipt has been recorded for your ward.');
+        const isCorrection = evt?.action === 'updated';
+        pushNotification(
+          isCorrection ? 'Receipt Updated' : 'Fee Payment Received',
+          isCorrection
+            ? 'A payment receipt for your ward was corrected. Please review the updated receipt.'
+            : 'A new payment receipt has been recorded for your ward.'
+        );
         await loadServerNotifications(token).catch(() => undefined);
       } else if (entity === 'term-report-release') {
         const d = await parentFetch('/parent/term-report', {}, token).catch(() => null);
@@ -944,7 +960,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   // ── SCREENS ──
 
   // ── Login screen ─────────────────────────────────────────────────────────────
-  if (!token || !student || isAddingAccount) {
+  if (!token || !student) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4" style={{ background: premiumLoginGradient }}>
         <div className="w-full max-w-md">
@@ -979,20 +995,12 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               </>
             )}
             <p className="text-slate-400 text-sm mt-3">
-              {isAddingAccount ? 'Log in to add another child account' : "Use your child's Student ID to log in"}
+              Use your child&apos;s Student ID to log in
             </p>
           </div>
 
           {/* Card */}
           <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 shadow-2xl relative">
-            {isAddingAccount && (
-              <button
-                onClick={() => setIsAddingAccount(false)}
-                className="absolute -top-12 right-0 text-white/60 hover:text-white flex items-center gap-1 text-sm transition-colors"
-              >
-                <X className="w-4 h-4" /> Cancel
-              </button>
-            )}
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-200 mb-1.5">Student ID</label>
@@ -1000,7 +1008,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                   type="text"
                   value={loginAdmission}
                   onChange={e => setLoginAdmission(e.target.value)}
-                  placeholder="e.g. 20260001"
+                  placeholder="e.g. 12345678"
                   className="w-full bg-white/10 border border-white/20 text-white placeholder-slate-400 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent"
                   required
                   autoComplete="username"
@@ -1256,8 +1264,10 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       <header className="fixed inset-x-0 top-0 z-[100] border-b border-white/40 bg-white/85 shadow-sm backdrop-blur-2xl supports-[backdrop-filter]:bg-white/75">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-5 py-4 sm:px-6">
           <button
-            onClick={() => setShowSwitcher(true)}
-            className="flex min-w-0 items-center gap-3 rounded-3xl text-left transition-transform active:scale-[0.98]"
+            onClick={() => {
+              if (linkedAccounts.length > 1) setShowSwitcher(true);
+            }}
+            className={`flex min-w-0 items-center gap-3 rounded-3xl text-left transition-transform active:scale-[0.98] ${linkedAccounts.length > 1 ? '' : 'cursor-default'}`}
           >
             <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/70 bg-white/70 shadow-[0_12px_35px_rgba(139,92,246,0.18)] backdrop-blur-xl">
               {resolvedLogo
@@ -1266,6 +1276,11 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             </div>
             <div className="min-w-0">
               <p className="truncate text-lg font-black tracking-tight text-slate-950">{greeting}</p>
+              {linkedAccounts.length > 1 ? (
+                <p className="truncate text-xs font-semibold text-slate-500">
+                  Tap to switch between {linkedAccounts.length} children
+                </p>
+              ) : null}
             </div>
           </button>
 
@@ -1874,6 +1889,11 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                                   {p.reference_number ? `Ref: ${p.reference_number}` : ''}
                                   {p.reference_number && p.notes ? ' · ' : ''}
                                   {p.notes ? `Note: ${p.notes}` : ''}
+                                </p>
+                              )}
+                              {p.corrects_payment_id && p.receipt_updated_at && (
+                                <p className="text-[11px] text-amber-700 mt-1">
+                                  This receipt was updated on {fmtDate(p.receipt_updated_at)}
                                 </p>
                               )}
                             </div>
@@ -2515,16 +2535,10 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
             <div className="p-5 bg-slate-50/50 border-t border-slate-100">
               <button
-                onClick={() => {
-                  setShowSwitcher(false);
-                  setIsAddingAccount(true);
-                }}
-                className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-white border border-slate-200 text-sm font-bold text-slate-700 hover:bg-slate-100 hover:border-slate-300 transition-all active:scale-[0.98] shadow-sm"
+                onClick={() => setShowSwitcher(false)}
+                className="w-full rounded-2xl border border-slate-200 bg-white py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
               >
-                <div className="w-6 h-6 rounded-full border-2 border-slate-200 flex items-center justify-center">
-                  <Plus className="w-3.5 h-3.5" />
-                </div>
-                Add Sibling Account
+                Close
               </button>
             </div>
           </div>

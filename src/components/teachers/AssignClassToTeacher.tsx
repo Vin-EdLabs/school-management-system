@@ -16,6 +16,7 @@ import { useData } from '../../contexts/DataContext';
 import { apiService } from '../../services/api';
 import { useSchool } from '../../contexts/SchoolContext';
 import { toast } from '@/hooks/use-toast';
+import { isAssignableTeacher, sortTeachersByName } from '@/utils/teacherFilters';
 import { Users, User, School, Plus, Trash2, Star } from 'lucide-react';
 
 interface ClassTeacher {
@@ -38,11 +39,15 @@ const AssignClassToTeacher = () => {
   const [teacherToAdd, setTeacherToAdd] = useState('');
   const [addAsMain, setAddAsMain] = useState(false);
 
-  const activeTeachers = teachers.filter(t => t.employmentStatus === 'Active');
+  const activeTeachers = teachers.filter(isAssignableTeacher).sort(sortTeachersByName);
 
   useEffect(() => {
     if (schoolId != null) apiService.setTenantContext(schoolId);
   }, [schoolId]);
+
+  useEffect(() => {
+    void refresh(['teachers']);
+  }, [schoolId, refresh]);
 
   useEffect(() => {
     if (selectedClassId) {
@@ -109,8 +114,10 @@ const AssignClassToTeacher = () => {
   };
 
   const selectedClass = classes.find(c => c.id === selectedClassId);
-  const assignedTeacherIds = classTeachers.map(ct => ct.teacher_id);
-  const availableTeachers = activeTeachers.filter(t => !assignedTeacherIds.includes(parseInt(t.id)));
+  const assignedTeacherIds = classTeachers.map((ct) => ct.teacher_id);
+  const availableTeachers = activeTeachers.filter(
+    (t) => !assignedTeacherIds.some((id) => String(id) === String(t.id))
+  );
 
   return (
     <div className="space-y-6">
@@ -216,7 +223,7 @@ const AssignClassToTeacher = () => {
                 <SelectTrigger>
                   <SelectValue placeholder="Select teacher" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-[min(320px,60dvh)]">
                   {availableTeachers.map((t) => (
                     <SelectItem key={t.id} value={t.id}>
                       {t.fullName} ({t.staffId})

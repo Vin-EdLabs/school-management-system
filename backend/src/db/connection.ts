@@ -207,10 +207,17 @@ const runMigrations = async () => {
         start_date DATE,
         end_date DATE,
         is_active BOOLEAN DEFAULT false,
+        is_archived BOOLEAN DEFAULT false,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    await client.query(
+      `ALTER TABLE academic_terms ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT false`
+    ).catch(() => { });
+    await client.query(
+      `UPDATE academic_terms SET is_archived = false WHERE is_archived IS NULL`
+    ).catch(() => { });
 
     // Create classes table
     await client.query(`
@@ -288,6 +295,9 @@ const runMigrations = async () => {
     await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS nationality VARCHAR(100)`).catch(() => { });
     await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS guardian_name VARCHAR(255)`).catch(() => { });
     await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS guardian_contact VARCHAR(100)`).catch(() => { });
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS guardian_2_name VARCHAR(255)`).catch(() => { });
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS guardian_2_contact VARCHAR(100)`).catch(() => { });
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS guardian_2_relationship VARCHAR(100)`).catch(() => { });
     await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS home_address TEXT`).catch(() => { });
     await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS number_of_siblings INTEGER DEFAULT 0`).catch(() => { });
     await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS names_of_siblings TEXT`).catch(() => { });
@@ -671,6 +681,25 @@ const runMigrations = async () => {
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_parent_portal_tenant_student
       ON parent_portal_accounts (tenant_id, student_id)
+    `).catch(() => { });
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS parent_portal_family_groups (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `).catch(() => { });
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_parent_portal_family_groups_tenant
+      ON parent_portal_family_groups (tenant_id)
+    `).catch(() => { });
+    await client.query(`
+      ALTER TABLE parent_portal_accounts
+      ADD COLUMN IF NOT EXISTS family_group_id INTEGER REFERENCES parent_portal_family_groups(id) ON DELETE SET NULL
+    `).catch(() => { });
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_parent_portal_accounts_family_group
+      ON parent_portal_accounts (tenant_id, family_group_id)
     `).catch(() => { });
     await client.query(`
       CREATE TABLE IF NOT EXISTS parent_push_subscriptions (
@@ -1078,6 +1107,46 @@ const runMigrations = async () => {
 
     // Student passport photo
     await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS passport_photo_url VARCHAR(500)`).catch(() => { });
+
+    // Teacher passport photo + status management + appointment letters
+    await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS passport_photo_url TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active'`).catch(() => { });
+    await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS status_reason TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS status_changed_at TIMESTAMP`).catch(() => { });
+    await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS status_changed_by INTEGER`).catch(() => { });
+    await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS suspension_start_date DATE`).catch(() => { });
+    await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS suspension_end_date DATE`).catch(() => { });
+    await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS deactivation_date DATE`).catch(() => { });
+    await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS deactivation_reason VARCHAR(100)`).catch(() => { });
+    await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS appointment_letter_config JSONB DEFAULT '{}'::jsonb`).catch(() => { });
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS teacher_appointment_letters (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        teacher_id INTEGER NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+        version_number INTEGER NOT NULL DEFAULT 1,
+        reference_number VARCHAR(80),
+        position_title VARCHAR(255),
+        employment_type VARCHAR(80),
+        monthly_salary NUMERIC(12, 2),
+        letter_content JSONB NOT NULL DEFAULT '{}'::jsonb,
+        pdf_data TEXT,
+        generated_by INTEGER REFERENCES users(id),
+        generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(tenant_id, teacher_id, version_number)
+      )
+    `).catch(() => { });
+    await client.query(`ALTER TABLE teacher_appointment_letters ADD COLUMN IF NOT EXISTS employee_name VARCHAR(255)`).catch(() => { });
+    await client.query(`ALTER TABLE teacher_appointment_letters ADD COLUMN IF NOT EXISTS role VARCHAR(255)`).catch(() => { });
+    await client.query(`ALTER TABLE teacher_appointment_letters ADD COLUMN IF NOT EXISTS department VARCHAR(255)`).catch(() => { });
+    await client.query(`ALTER TABLE teacher_appointment_letters ADD COLUMN IF NOT EXISTS start_date DATE`).catch(() => { });
+    await client.query(`ALTER TABLE teacher_appointment_letters ADD COLUMN IF NOT EXISTS probation_period VARCHAR(120)`).catch(() => { });
+    await client.query(`ALTER TABLE teacher_appointment_letters ADD COLUMN IF NOT EXISTS working_hours VARCHAR(120)`).catch(() => { });
+    await client.query(`ALTER TABLE teacher_appointment_letters ADD COLUMN IF NOT EXISTS leave_entitlement VARCHAR(120)`).catch(() => { });
+    await client.query(`ALTER TABLE teacher_appointment_letters ADD COLUMN IF NOT EXISTS notice_period VARCHAR(120)`).catch(() => { });
+    await client.query(`ALTER TABLE teacher_appointment_letters ADD COLUMN IF NOT EXISTS body_opening TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE teacher_appointment_letters ADD COLUMN IF NOT EXISTS body_closing TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE teacher_appointment_letters ADD COLUMN IF NOT EXISTS letter_date DATE`).catch(() => { });
 
     // payroll_other_staff: staff_id for login (like TCH001 for teachers)
     await client.query(`ALTER TABLE payroll_other_staff ADD COLUMN IF NOT EXISTS staff_id VARCHAR(100)`).catch(() => { });

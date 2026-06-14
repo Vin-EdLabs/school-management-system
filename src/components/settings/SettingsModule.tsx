@@ -14,6 +14,7 @@ import {
   GraduationCap, Copy, ExternalLink, ShieldAlert, RefreshCw,
 } from 'lucide-react';
 import AcademicTermManager from './AcademicTermManager';
+import ArrearsSyncModal from './ArrearsSyncModal';
 import SchoolManager from './SchoolManager';
 import { getTenantParentPortalUrl } from '../../utils/tenantHost';
 
@@ -42,6 +43,7 @@ const SettingsModule = () => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSyncingArrears, setIsSyncingArrears] = useState(false);
+  const [arrearsSyncOpen, setArrearsSyncOpen] = useState(false);
 
   const [schoolInfo, setSchoolInfo] = useState<SchoolSettings>({
     name: 'School',
@@ -223,39 +225,19 @@ const SettingsModule = () => {
     }
   };
 
-  const handleSyncArrears = async () => {
-    if (isSyncingArrears) return;
+  const handleSyncArrears = () => {
+    if (isSyncingArrears || arrearsSyncOpen) return;
+    setArrearsSyncOpen(true);
+  };
 
-    setIsSyncingArrears(true);
-    try {
-      const backfill = await apiService.post<{
-        message?: string;
-        arrearsRowsInserted?: number;
-        studentsProcessed?: number;
-      }>('/finance/backfill-arrears', {});
-
-      const sync = await apiService.post<{
-        message?: string;
-        studentsUpdated?: number;
-        currentTerm?: string;
-      }>('/settings/sync-arrears', {});
-
-      await refreshData();
-
-      const count = sync.studentsUpdated ?? backfill.arrearsRowsInserted ?? backfill.studentsProcessed ?? 0;
-      toast({
-        title: 'Arrears Updated',
-        description: `Arrears have been recalculated for ${sync.currentTerm || 'the active term'}${count ? ` (${count} student${count === 1 ? '' : 's'})` : ''}.`,
-      });
-    } catch (err: any) {
-      toast({
-        title: 'Arrears Sync Failed',
-        description: err?.message || 'Could not recalculate arrears. Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsSyncingArrears(false);
-    }
+  const handleArrearsSyncComplete = async () => {
+    setArrearsSyncOpen(false);
+    setIsSyncingArrears(false);
+    await refreshData();
+    toast({
+      title: 'Arrears Updated',
+      description: 'Unpaid balances have been recalculated for the active term.',
+    });
   };
 
   if (!hasSettingsFull && !hasAccess('settings-password-only')) {
@@ -598,7 +580,7 @@ const SettingsModule = () => {
                 variant="primaryAction"
                 className="w-full h-9"
                 onClick={handleSyncArrears}
-                disabled={isSyncingArrears}
+                disabled={isSyncingArrears || arrearsSyncOpen}
               >
                 <RefreshCw className={`w-4 h-4 mr-2 ${isSyncingArrears ? 'animate-spin' : ''}`} />
                 {isSyncingArrears ? 'Syncing Arrears...' : 'Sync Arrears Now'}
@@ -684,6 +666,15 @@ const SettingsModule = () => {
           </CardContent>
         </Card>
       </div>
+
+      <ArrearsSyncModal
+        open={arrearsSyncOpen}
+        onClose={() => {
+          setArrearsSyncOpen(false);
+          setIsSyncingArrears(false);
+        }}
+        onComplete={() => void handleArrearsSyncComplete()}
+      />
     </div >
   );
 };

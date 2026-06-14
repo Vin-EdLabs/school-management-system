@@ -1,14 +1,51 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
+import multer from 'multer';
+import path from 'path';
 import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { getIO } from '../socket.js';
 import { sendPushToTenantStaff } from '../services/webPushService.js';
+import { writeAuditLog } from '../services/auditService.js';
+import { getClientIp } from '../utils/clientIp.js';
+import {
+  suspendTeacher,
+  deactivateTeacher,
+  reactivateTeacher,
+  normalizeTeacherStatus,
+} from '../services/teacherStatusService.js';
+import {
+  buildLetterContent,
+  saveAppointmentLetter,
+  listAppointmentLetters,
+  getAppointmentLetterPdf,
+} from '../services/appointmentLetterService.js';
 
 function generatePin(): string {
   return String(Math.floor(10000 + Math.random() * 90000));
+}
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = /jpeg|jpg|png|gif|webp/;
+    const extOk = allowed.test(path.extname(file.originalname).toLowerCase());
+    const mimeOk = allowed.test(file.mimetype);
+    if (extOk && mimeOk) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  },
+});
+
+function stripTeacherPhotoForList(row: Record<string, unknown>) {
+  const has = !!(row.passport_photo_url && String(row.passport_photo_url).length > 0);
+  const { passport_photo_url, ...rest } = row;
+  return { ...rest, has_passport_photo: has };
 }
 
 const router = express.Router();
@@ -54,7 +91,10 @@ router.get('/me', async (req: AuthRequest, res) => {
       [teacherId, tenantId]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Teacher not found' });
-    res.json(result.rows[0]);
+    const row = result.rows[0];
+    const has = !!(row.passport_photo_url && String(row.passport_photo_url).length > 0);
+    const { passport_photo_url, ...rest } = row;
+    res.json({ ...rest, has_passport_photo: has });
   } catch (error) {
     console.error('Get me error:', error);
     res.status(500).json({ error: 'Failed to fetch profile' });
@@ -73,7 +113,7 @@ router.get('/me/classes', async (req: AuthRequest, res) => {
     const result = await query(
       `SELECT DISTINCT c.id, c.class_name, c.level, c.stream,
          COALESCE(ct.is_main, (c.assigned_teacher_id = $1::int)) as is_main,
-         (SELECT COUNT(*) FROM students s WHERE s.class_assigned_id = c.id AND s.tenant_id = $2) as student_count
+         (SELECT COUNT(*) FROM students s WHERE s.class_assigned_id = c.id AND s.tenant_id = $2 AND COALESCE(s.enrollment_status, 'active') = 'active') as student_count
        FROM classes c
        LEFT JOIN class_teachers ct ON ct.class_id = c.id AND ct.teacher_id = $1::int AND ct.tenant_id = $2
        WHERE c.tenant_id = $2
@@ -175,12 +215,130 @@ router.get('/', async (req: AuthRequest, res) => {
         throw e;
       }
     }
-    res.json(result.rows);
+    res.json(result.rows.map(stripTeacherPhotoForList));
   } catch (error) {
     console.error('Get teachers error:', error);
     res.status(500).json({ error: 'Failed to fetch teachers' });
   }
 });
+
+// Teacher portal: own appointment letters
+router.get('/me/appointment-letters', async (req: AuthRequest, res) => {
+  try {
+    const teacherId = req.user!.teacherId;
+    const role = req.user!.role;
+    if (!teacherId || (role !== 'teacher' && role !== 'staff')) {
+      return res.status(403).json({ error: 'Not a teacher account' });
+    }
+    const rows = await listAppointmentLetters(req.user!.tenantId!, Number(teacherId));
+    res.json(rows);
+  } catch (error) {
+    console.error('Get my appointment letters error:', error);
+    res.status(500).json({ error: 'Failed to fetch appointment letters' });
+  }
+});
+
+router.get('/me/appointment-letters/:letterId/download', async (req: AuthRequest, res) => {
+  try {
+    const teacherId = req.user!.teacherId;
+    const role = req.user!.role;
+    if (!teacherId || (role !== 'teacher' && role !== 'staff')) {
+      return res.status(403).json({ error: 'Not a teacher account' });
+    }
+    const tenantId = req.user!.tenantId!;
+    const letterId = parseInt(req.params.letterId, 10);
+    const row = await getAppointmentLetterPdf(tenantId, Number(teacherId), letterId);
+    if (!row) return res.status(404).json({ error: 'Letter not found' });
+
+    let letterContent = row.letter_content as Record<string, any> | null;
+    if (letterContent && typeof letterContent === 'object') {
+      const photoRes = await query(
+        'SELECT passport_photo_url FROM teachers WHERE id = $1 AND tenant_id = $2',
+        [Number(teacherId), tenantId]
+      );
+      const photoUrl = photoRes.rows[0]?.passport_photo_url || null;
+      letterContent = {
+        ...letterContent,
+        teacher: {
+          ...(letterContent.teacher || {}),
+          id: Number(teacherId),
+          photoUrl: letterContent.teacher?.photoUrl || photoUrl,
+        },
+      };
+    }
+
+    res.json({
+      id: row.id,
+      version_number: row.version_number,
+      reference_number: row.reference_number,
+      pdf_data: row.pdf_data,
+      letter_content: letterContent,
+    });
+  } catch (error) {
+    console.error('Download my appointment letter error:', error);
+    res.status(500).json({ error: 'Failed to download letter' });
+  }
+});
+
+// Get teacher passport photo (lazy-loaded)
+router.get('/:id/photo', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const { id } = req.params;
+    const result = await query(
+      'SELECT passport_photo_url FROM teachers WHERE id = $1 AND tenant_id = $2',
+      [id, tenantId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Teacher not found' });
+    res.json({ passport_photo_url: result.rows[0].passport_photo_url || null });
+  } catch (error) {
+    console.error('Get teacher photo error:', error);
+    res.status(500).json({ error: 'Failed to fetch photo' });
+  }
+});
+
+// Upload teacher passport photo
+router.post(
+  '/:id/photo',
+  requireRole('super-admin', 'administrator'),
+  upload.single('photo'),
+  async (req: AuthRequest, res) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const { id } = req.params;
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+      const base64Image = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+      const before = await query(
+        'SELECT full_name, passport_photo_url FROM teachers WHERE id = $1 AND tenant_id = $2',
+        [id, tenantId]
+      );
+      if (before.rows.length === 0) return res.status(404).json({ error: 'Teacher not found' });
+
+      const result = await query(
+        'UPDATE teachers SET passport_photo_url = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND tenant_id = $3 RETURNING id, full_name',
+        [base64Image, id, tenantId]
+      );
+
+      await writeAuditLog({
+        tenantId,
+        userId: req.user!.id,
+        userRole: req.user!.role,
+        action: 'TEACHER_PHOTO_UPDATED',
+        entityType: 'TEACHER',
+        entityId: parseInt(id, 10),
+        module: 'teachers',
+        summary: `Updated passport photo for ${before.rows[0].full_name}`,
+        ipAddress: getClientIp(req),
+        userAgent: req.get('user-agent') || null,
+      });
+      emitTenantDataChanged(tenantId, 'teacher', 'updated');
+      res.json({ id: result.rows[0].id, has_passport_photo: true });
+    } catch (error) {
+      console.error('Upload teacher photo error:', error);
+      res.status(500).json({ error: 'Failed to upload photo' });
+    }
+  }
+);
 
 // Get single teacher
 router.get('/:id', async (req: AuthRequest, res) => {
@@ -267,12 +425,17 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
         teacherData.class_assigned_id || null,
         teacherData.employment_date || null,
         teacherData.monthly_salary || null,
-        teacherData.employment_status || null,
+        teacherData.employment_status || 'Active',
         teacherData.notes || null,
       ]
     );
     
     const teacherId = result.rows[0].id;
+    
+    await query(
+      `UPDATE teachers SET status = 'active' WHERE id = $1 AND tenant_id = $2`,
+      [teacherId, tenantId]
+    ).catch(() => {});
     const loginPin = generatePin();
     const passwordHash = await bcrypt.hash(loginPin, 10);
     
@@ -365,33 +528,196 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
   }
 });
 
-// Delete teacher
-router.delete('/:id', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+router.post('/:id/suspend', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
-    const { id } = req.params;
-    
-    const result = await query(
-      'DELETE FROM teachers WHERE id = $1 AND tenant_id = $2 RETURNING id',
-      [id, tenantId]
-    );
-    
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Teacher not found' });
+    const teacherId = parseInt(req.params.id, 10);
+    const { reason, suspension_start_date, suspension_end_date, notes } = req.body;
+    if (!reason?.trim() || !suspension_start_date) {
+      return res.status(400).json({ error: 'Reason and suspension start date are required' });
     }
-    
-    // Log deletion
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'DELETE', 'TEACHER', parseInt(id)]
-    );
-    emitTenantDataChanged(tenantId, 'teacher', 'deleted');
-    
-    res.json({ message: 'Teacher deleted successfully' });
-  } catch (error) {
-    console.error('Delete teacher error:', error);
-    res.status(500).json({ error: 'Failed to delete teacher' });
+    const row = await suspendTeacher({
+      tenantId,
+      teacherId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      reason: String(reason).trim(),
+      suspensionStartDate: String(suspension_start_date),
+      suspensionEndDate: suspension_end_date ? String(suspension_end_date) : null,
+      notes: notes ? String(notes) : undefined,
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') || null,
+    });
+    emitTenantDataChanged(tenantId, 'teacher', 'updated');
+    res.json(stripTeacherPhotoForList(row));
+  } catch (error: any) {
+    res.status(400).json({ error: error.message || 'Failed to suspend teacher' });
   }
+});
+
+router.post('/:id/deactivate', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const teacherId = parseInt(req.params.id, 10);
+    const { reason, effective_date, notes } = req.body;
+    if (!reason?.trim() || !effective_date) {
+      return res.status(400).json({ error: 'Reason and effective date are required' });
+    }
+    const result = await deactivateTeacher({
+      tenantId,
+      teacherId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      reason: String(reason).trim(),
+      effectiveDate: String(effective_date),
+      notes: notes ? String(notes) : undefined,
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') || null,
+    });
+    emitTenantDataChanged(tenantId, 'teacher', 'updated');
+    emitTenantDataChanged(tenantId, 'class', 'updated');
+    res.json({
+      teacher: stripTeacherPhotoForList(result.teacher),
+      notification: result.previousClassName
+        ? `Teacher ${result.teacher.full_name} has been deactivated. Class ${result.previousClassName} needs a new teacher assigned.`
+        : `Teacher ${result.teacher.full_name} has been deactivated.`,
+    });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message || 'Failed to deactivate teacher' });
+  }
+});
+
+router.post('/:id/reactivate', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const teacherId = parseInt(req.params.id, 10);
+    const { reason } = req.body;
+    if (!reason?.trim()) {
+      return res.status(400).json({ error: 'Reactivation reason is required' });
+    }
+    const row = await reactivateTeacher({
+      tenantId,
+      teacherId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      reason: String(reason).trim(),
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') || null,
+    });
+    emitTenantDataChanged(tenantId, 'teacher', 'updated');
+    res.json(stripTeacherPhotoForList(row));
+  } catch (error: any) {
+    res.status(400).json({ error: error.message || 'Failed to reactivate teacher' });
+  }
+});
+
+router.get('/:id/appointment-letters/checklist', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const teacherId = parseInt(req.params.id, 10);
+    const built = await buildLetterContent(tenantId, teacherId);
+    res.json(built);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to validate appointment letter prerequisites' });
+  }
+});
+
+router.get('/:id/appointment-letters', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const teacherId = parseInt(req.params.id, 10);
+    const role = req.user!.role;
+    if (role === 'teacher' || role === 'staff') {
+      if (Number(req.user!.teacherId) !== teacherId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+    } else if (!['super-admin', 'administrator'].includes(role || '')) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    const rows = await listAppointmentLetters(tenantId, teacherId);
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to list appointment letters' });
+  }
+});
+
+router.post('/:id/appointment-letters', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const teacherId = parseInt(req.params.id, 10);
+    const built = await buildLetterContent(tenantId, teacherId);
+    if (!built.ready || !built.letter) {
+      return res.status(400).json({ error: 'Prerequisites not met', checklist: built.checklist });
+    }
+    const letterContent = req.body?.letter_content || built.letter;
+    const pdfData = req.body?.pdf_data || null;
+    const saved = await saveAppointmentLetter({
+      tenantId,
+      teacherId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      letterContent,
+      pdfData,
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') || null,
+    });
+    res.status(201).json(saved);
+  } catch (error) {
+    console.error('Save appointment letter error:', error);
+    res.status(500).json({ error: 'Failed to save appointment letter' });
+  }
+});
+
+router.get('/:id/appointment-letters/:letterId/download', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const teacherId = parseInt(req.params.id, 10);
+    const letterId = parseInt(req.params.letterId, 10);
+    const role = req.user!.role;
+    if (role === 'teacher' || role === 'staff') {
+      if (Number(req.user!.teacherId) !== teacherId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+    } else if (!['super-admin', 'administrator'].includes(role || '')) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    const row = await getAppointmentLetterPdf(tenantId, teacherId, letterId);
+    if (!row) return res.status(404).json({ error: 'Letter not found' });
+
+    let letterContent = row.letter_content as Record<string, any> | null;
+    if (letterContent && typeof letterContent === 'object') {
+      const photoRes = await query(
+        'SELECT passport_photo_url FROM teachers WHERE id = $1 AND tenant_id = $2',
+        [teacherId, tenantId]
+      );
+      const photoUrl = photoRes.rows[0]?.passport_photo_url || null;
+      letterContent = {
+        ...letterContent,
+        teacher: {
+          ...(letterContent.teacher || {}),
+          id: teacherId,
+          photoUrl: letterContent.teacher?.photoUrl || photoUrl,
+        },
+      };
+    }
+
+    res.json({
+      id: row.id,
+      version_number: row.version_number,
+      reference_number: row.reference_number,
+      pdf_data: row.pdf_data,
+      letter_content: letterContent,
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to download letter' });
+  }
+});
+
+// Teachers cannot be deleted — use deactivate instead
+router.delete('/:id', requireRole('super-admin', 'administrator'), async (_req: AuthRequest, res) => {
+  return res.status(403).json({
+    error: 'Teachers cannot be deleted. Suspend or deactivate the teacher instead.',
+  });
 });
 
 export default router;

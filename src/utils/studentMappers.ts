@@ -32,6 +32,9 @@ export const mapStudent = (backendStudent: Record<string, unknown>): Student => 
         : undefined,
   guardianName: (backendStudent.guardian_name as string) || '',
   guardianContact: (backendStudent.guardian_contact as string) || '',
+  guardian2Name: (backendStudent.guardian_2_name as string) || '',
+  guardian2Contact: (backendStudent.guardian_2_contact as string) || '',
+  guardian2Relationship: (backendStudent.guardian_2_relationship as string) || '',
   homeAddress: (backendStudent.home_address as string) || '',
   numberOfSiblings: Number(backendStudent.number_of_siblings) || 0,
   namesOfSiblings: (backendStudent.names_of_siblings as string) || '',
@@ -85,6 +88,9 @@ export const mapStudentToBackend = (student: Partial<Student>): Record<string, u
   if (student.classAssignedId !== undefined) out.class_assigned_id = student.classAssignedId;
   if (student.guardianName !== undefined) out.guardian_name = student.guardianName;
   if (student.guardianContact !== undefined) out.guardian_contact = student.guardianContact;
+  if (student.guardian2Name !== undefined) out.guardian_2_name = student.guardian2Name;
+  if (student.guardian2Contact !== undefined) out.guardian_2_contact = student.guardian2Contact;
+  if (student.guardian2Relationship !== undefined) out.guardian_2_relationship = student.guardian2Relationship;
   if (student.homeAddress !== undefined) out.home_address = student.homeAddress;
   if (student.numberOfSiblings !== undefined) out.number_of_siblings = student.numberOfSiblings;
   if (student.namesOfSiblings !== undefined) out.names_of_siblings = student.namesOfSiblings;

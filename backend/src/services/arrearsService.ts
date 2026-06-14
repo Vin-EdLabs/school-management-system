@@ -1,9 +1,13 @@
+import type pg from 'pg';
 import { query } from '../db/connection.js';
 import {
   beneficiaryAdjustedFee,
   isFullFeeWaiverStudentRow,
   type BeneficiaryStudentRow,
 } from '../utils/beneficiaryFee.js';
+import { resolveStudentClassId } from './studentFeeBalanceService.js';
+
+type QueryFn = typeof query;
 
 export type TermYearNumbers = {
   yearNum: number;
@@ -148,9 +152,9 @@ async function getLegacyUnpaidBeforeCurrentTerm(
     const adjusted = beneficiaryAdjustedFee(standardFees, beneficiary);
 
     const paidRes = await query(
-      `SELECT COALESCE(SUM(amount), 0)::numeric AS total
+      `SELECT COALESCE(SUM(COALESCE(amount_paid, amount, 0)), 0)::numeric AS total
        FROM payments
-       WHERE tenant_id = $1 AND student_id = $2
+       WHERE tenant_id = $1 AND student_id = $2 AND COALESCE(is_voided, false) = false
          AND (term = $3 OR term = $4 OR term ILIKE $5 OR term ILIKE $6)`,
       [tenantId, studentId, termLabel, termOnly, `${termLabel}%`, `%${termOnly}%`]
     );
@@ -265,7 +269,7 @@ export async function refreshArrearsForTenant(
     const totalArrears = await computeStudentArrearsAmount(
       tenantId,
       studentId,
-      studentRow.class_assigned_id,
+      await resolveStudentClassId(query, tenantId, studentId, studentRow.class_assigned_id),
       beneficiary,
       current_term,
       current_year
@@ -282,6 +286,233 @@ export async function refreshArrearsForTenant(
       updatedCount++;
     } else {
       await query(
+        `DELETE FROM term_arrears
+         WHERE tenant_id = $1 AND student_id = $2
+           AND (current_term = $3 OR current_term = $4 OR current_term = $5)`,
+        [tenantId, studentId, fullTerm, current_term, termOnly]
+      );
+    }
+  }
+
+  return { studentsUpdated: updatedCount, currentTerm: fullTerm };
+}
+
+export type PerTermUnpaidRow = {
+  studentId: number;
+  termId: number;
+  academicYearId: number;
+  balance: number;
+};
+
+/**
+ * Cumulative unpaid per student across ALL ledger terms except the new term being activated.
+ * Equivalent to summing every prior term bill where (billed - paid) > 0 and not yet closed.
+ */
+export async function getCumulativeUnpaidBeforeNewTerm(
+  run: QueryFn,
+  tenantId: number,
+  newTermId: number
+): Promise<Map<number, number>> {
+  const map = new Map<number, number>();
+
+  const ledgerRes = await run(
+    `SELECT sl.student_id,
+            (COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(sl.credit), 0))::numeric AS total_arrears
+     FROM student_ledger sl
+     WHERE sl.tenant_id = $1
+       AND sl.term_id != $2
+     GROUP BY sl.student_id
+     HAVING (COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(sl.credit), 0)) > 0`,
+    [tenantId, newTermId]
+  );
+
+  for (const row of ledgerRes.rows) {
+    const total = Math.max(0, parseFloat(row.total_arrears) || 0);
+    if (total > 0) map.set(Number(row.student_id), total);
+  }
+
+  return map;
+}
+
+/**
+ * Per-term unpaid rows for every student/term pair (except new term) with positive balance.
+ * Used to mark each source term as carried forward so nothing is double-counted later.
+ */
+export async function getPerTermUnpaidBeforeNewTerm(
+  run: QueryFn,
+  tenantId: number,
+  newTermId: number
+): Promise<PerTermUnpaidRow[]> {
+  const res = await run(
+    `SELECT sl.student_id,
+            sl.term_id,
+            tt.academic_year_id,
+            (COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(sl.credit), 0))::numeric AS balance
+     FROM student_ledger sl
+     INNER JOIN terms tt ON tt.id = sl.term_id AND tt.tenant_id = sl.tenant_id
+     WHERE sl.tenant_id = $1
+       AND sl.term_id != $2
+     GROUP BY sl.student_id, sl.term_id, tt.academic_year_id
+     HAVING (COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(sl.credit), 0)) > 0`,
+    [tenantId, newTermId]
+  );
+
+  return res.rows.map((row) => ({
+    studentId: Number(row.student_id),
+    termId: Number(row.term_id),
+    academicYearId: Number(row.academic_year_id),
+    balance: Math.max(0, parseFloat(row.balance) || 0),
+  }));
+}
+
+/**
+ * Unpaid balance per student for one ledger term (previous active term).
+ * Uses student_ledger debits/credits for that term_id, with legacy fee_structures/payments fallback.
+ */
+export async function getUnpaidBalancesForLedgerTerm(
+  run: QueryFn,
+  tenantId: number,
+  termId: number,
+  termLabel: string
+): Promise<Map<number, number>> {
+  const map = new Map<number, number>();
+
+  const ledgerRes = await run(
+    `SELECT sl.student_id,
+            (COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(sl.credit), 0))::numeric AS balance
+     FROM student_ledger sl
+     WHERE sl.tenant_id = $1 AND sl.term_id = $2
+     GROUP BY sl.student_id`,
+    [tenantId, termId]
+  );
+  for (const row of ledgerRes.rows) {
+    const balance = Math.max(0, parseFloat(row.balance) || 0);
+    if (balance > 0) map.set(Number(row.student_id), balance);
+  }
+
+  const termMatch = String(termLabel || '').trim();
+  const termOnly = termMatch ? termMatch.split(/\s+/)[0] : null;
+  const termPred = (col: string) =>
+    termMatch
+      ? `(${col} = $3 OR $3 LIKE ${col} || '%' OR ${col} LIKE $3 || '%' OR ${col} = $4 OR $4 LIKE ${col} || '%' OR ${col} LIKE $4 || '%')`
+      : 'TRUE';
+
+  const studentsRes = await run(
+    `SELECT id, class_assigned_id, is_beneficiary, discount_type, discount_value
+     FROM students WHERE tenant_id = $1`,
+    [tenantId]
+  );
+
+  for (const student of studentsRes.rows) {
+    const studentId = Number(student.id);
+    if (map.has(studentId)) continue;
+
+    const classId = await resolveStudentClassId(run, tenantId, studentId, student.class_assigned_id);
+    if (!classId || !termMatch) continue;
+
+    const beneficiary: BeneficiaryStudentRow = {
+      is_beneficiary: student.is_beneficiary,
+      discount_type: student.discount_type,
+      discount_value: student.discount_value,
+    };
+    if (isFullFeeWaiverStudentRow(beneficiary)) continue;
+
+    const feeRes = await run(
+      `SELECT COALESCE(SUM(amount), 0)::numeric AS total FROM fee_structures fs
+       WHERE fs.tenant_id = $1 AND fs.class_id = $2
+         AND (fs.term IS NULL OR TRIM(fs.term) = '' OR ${termPred('fs.term')})`,
+      [tenantId, classId, termMatch, termOnly]
+    );
+    const standardFees = parseFloat(feeRes.rows[0]?.total || '0') || 0;
+    const adjusted = beneficiaryAdjustedFee(standardFees, beneficiary);
+
+    const paidRes = await run(
+      `SELECT COALESCE(SUM(COALESCE(amount_paid, amount, 0)), 0)::numeric AS total FROM payments
+       WHERE tenant_id = $1 AND student_id = $2 AND COALESCE(is_voided, false) = false
+         AND ${termPred('term')}`,
+      [tenantId, studentId, termMatch, termOnly]
+    );
+    const paid = parseFloat(paidRes.rows[0]?.total || '0') || 0;
+    const outstanding = Math.max(0, adjusted.totalFees - paid);
+    if (outstanding > 0) map.set(studentId, outstanding);
+  }
+
+  return map;
+}
+
+/** Refresh term_arrears using an existing transaction client. */
+export async function refreshArrearsForTenantWithClient(
+  client: pg.PoolClient,
+  tenantId: number,
+  overrideTerm?: string,
+  overrideYear?: string
+) {
+  const run = client.query.bind(client);
+  let current_term = overrideTerm;
+  let current_year = overrideYear;
+
+  if (!current_term || !current_year) {
+    const settingsResult = await run(
+      'SELECT current_term, current_year FROM school_settings WHERE tenant_id = $1',
+      [tenantId]
+    );
+    if (settingsResult.rows.length === 0 || !settingsResult.rows[0].current_term) {
+      throw new Error('Active term not set');
+    }
+    current_term = settingsResult.rows[0].current_term;
+    current_year = settingsResult.rows[0].current_year;
+  }
+
+  if (!current_term || !current_year) throw new Error('Term and Year are required for sync');
+
+  const { termOnly, fullTerm } = buildCurrentTermLabels(current_term, current_year);
+
+  const studentsRes = await run(
+    `SELECT id, class_assigned_id, is_beneficiary, discount_type, discount_value
+     FROM students WHERE tenant_id = $1`,
+    [tenantId]
+  );
+
+  let updatedCount = 0;
+  for (const studentRow of studentsRes.rows) {
+    const studentId = studentRow.id;
+    const beneficiary: BeneficiaryStudentRow = {
+      is_beneficiary: studentRow.is_beneficiary,
+      discount_type: studentRow.discount_type,
+      discount_value: studentRow.discount_value,
+    };
+
+    if (isFullFeeWaiverStudentRow(beneficiary)) {
+      await run(
+        `DELETE FROM term_arrears
+         WHERE tenant_id = $1 AND student_id = $2
+           AND (current_term = $3 OR current_term = $4 OR current_term = $5)`,
+        [tenantId, studentId, fullTerm, current_term, termOnly]
+      );
+      continue;
+    }
+
+    const classId = await resolveStudentClassId(run, tenantId, studentId, studentRow.class_assigned_id);
+    const totalArrears = await computeStudentArrearsAmount(
+      tenantId,
+      studentId,
+      classId,
+      beneficiary,
+      current_term,
+      current_year
+    );
+
+    if (totalArrears > 0) {
+      await run(
+        `INSERT INTO term_arrears (tenant_id, student_id, current_term, amount)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (tenant_id, student_id, current_term)
+         DO UPDATE SET amount = EXCLUDED.amount, created_at = NOW()`,
+        [tenantId, studentId, fullTerm, totalArrears]
+      );
+      updatedCount++;
+    } else {
+      await run(
         `DELETE FROM term_arrears
          WHERE tenant_id = $1 AND student_id = $2
            AND (current_term = $3 OR current_term = $4 OR current_term = $5)`,
@@ -326,8 +557,8 @@ export async function getLegacyUnpaidBeforeActiveTerm(
 ): Promise<Map<number, number>> {
   const { yearNum, termNum } = parseTermYearNumbers(currentTerm, currentYear);
   const studentsRes = await query(
-    `SELECT id, class_assigned_id, is_beneficiary, discount_type, discount_value
-     FROM students WHERE tenant_id = $1 AND class_assigned_id IS NOT NULL`,
+    `SELECT s.id, s.class_assigned_id, s.is_beneficiary, s.discount_type, s.discount_value
+     FROM students s WHERE s.tenant_id = $1`,
     [tenantId]
   );
 
@@ -340,10 +571,13 @@ export async function getLegacyUnpaidBeforeActiveTerm(
     };
     if (isFullFeeWaiverStudentRow(beneficiary)) continue;
 
+    const classId = await resolveStudentClassId(query, tenantId, student.id, student.class_assigned_id);
+    if (!classId) continue;
+
     const unpaid = await getLegacyUnpaidBeforeCurrentTerm(
       tenantId,
       student.id,
-      student.class_assigned_id,
+      classId,
       beneficiary,
       yearNum,
       termNum

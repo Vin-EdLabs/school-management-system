@@ -1,4 +1,4 @@
-import { generateReceiptNumber, getActiveAcademicTerm, getActiveAcademicYear } from './feeCalculations';
+import { generateReceiptNumber, getActiveAcademicTerm, getActiveAcademicYear, isActivePayment, paymentAmountValue } from './feeCalculations';
 import { formatDisplayDate } from './dateFormat';
 
 interface Student {
@@ -194,10 +194,10 @@ export class AIProcessor {
     if (!student) return null;
 
     const currentTerm = getActiveAcademicTerm();
-    const studentPayments = this.data.payments.filter(p => p.studentId === studentId);
+    const studentPayments = this.data.payments.filter(p => p.studentId === studentId && isActivePayment(p));
     const feeStructure = this.data.feeStructures.find(f => f.className === student.classAssigned && f.term === currentTerm);
     
-    const totalPaid = studentPayments.reduce((sum, payment) => sum + payment.amount, 0);
+    const totalPaid = studentPayments.reduce((sum, payment) => sum + paymentAmountValue(payment), 0);
     const currentTermFee = feeStructure?.amount || 0;
     const balance = Math.max(0, currentTermFee - totalPaid);
     
@@ -217,8 +217,8 @@ export class AIProcessor {
     
     // Calculate financial totals using REAL data only
     const totalFees = this.data.payments
-      .filter(p => p.term === currentTerm)
-      .reduce((sum, p) => sum + p.amount, 0);
+      .filter(p => p.term === currentTerm && isActivePayment(p))
+      .reduce((sum, p) => sum + paymentAmountValue(p), 0);
     
     const totalIncome = this.data.income
       .filter(inc => new Date(inc.date).getFullYear().toString() === currentYear)
@@ -294,8 +294,8 @@ export class AIProcessor {
       const studentsInClass = this.data.students.filter(s => s.classAssigned === cls.className);
       const classPayments = this.data.payments.filter(p => {
         const student = this.data.students.find(s => s.id === p.studentId);
-        return student && student.classAssigned === cls.className && p.term === currentTerm;
-      }).reduce((sum, p) => sum + p.amount, 0);
+        return student && student.classAssigned === cls.className && p.term === currentTerm && isActivePayment(p);
+      }).reduce((sum, p) => sum + paymentAmountValue(p), 0);
       
       return {
         className: cls.className,
@@ -385,8 +385,8 @@ ${Object.keys(expenseBreakdown).length > 0
     const currentTerm = getActiveAcademicTerm();
     
     const feeIncome = this.data.payments
-      .filter(p => p.term === currentTerm)
-      .reduce((sum, p) => sum + p.amount, 0);
+      .filter(p => p.term === currentTerm && isActivePayment(p))
+      .reduce((sum, p) => sum + paymentAmountValue(p), 0);
     
     const otherIncome = this.data.income
       .filter(inc => new Date(inc.date).getFullYear().toString() === currentYear)
@@ -701,7 +701,9 @@ ${studentsText}`,
   }
 
   private handleStatisticsRequest(input: string): AIResponse {
-    const totalPaid = this.data.payments.reduce((sum, p) => sum + p.amount, 0);
+    const totalPaid = this.data.payments
+      .filter(isActivePayment)
+      .reduce((sum, p) => sum + paymentAmountValue(p), 0);
     const studentsOwing = this.data.students.filter(s => {
       const balance = this.calculateStudentBalance(s.id);
       return balance && balance.balance > 0;

@@ -3,11 +3,19 @@ import { query, getClient } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
-import { calculateFeeBalance } from '../services/financeCalculationService.js';
+import { getStudentFeeBalance, buildReceiptSnapshot } from '../services/studentFeeBalanceService.js';
 import { getIO } from '../socket.js';
 import { sendPushToStudentParents } from '../services/webPushService.js';
 import { writeAuditLog } from '../services/auditService.js';
 import { getClientIp } from '../utils/clientIp.js';
+import { resolvePaymentAccountForTransaction } from '../services/paymentAccountService.js';
+import {
+  correctReceipt,
+  getCorrectionContext,
+  getCorrectionEligibility,
+  getCorrectionHistory,
+  listReceiptCorrections,
+} from '../services/receiptCorrectionService.js';
 
 const router = express.Router();
 
@@ -23,65 +31,6 @@ const emitTenantDataChanged = (tenantId: number, entity: string, action: 'create
 router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
-
-/** Resolve term string for matching fee_structures and payments */
-function resolveTermForMatch(term: string | null, _academicYear: string | null): string | null {
-  return term ? String(term).trim() : null;
-}
-
-/** Compute total fees and total paid for a student, return balance (all backend, dynamic) */
-async function getStudentFeeBalance(
-  client: any,
-  tenantId: number,
-  studentId: number,
-  term: string | null,
-  academicYear: string | null
-) {
-  const studentRes = await client.query(
-    'SELECT class_assigned_id FROM students WHERE id = $1 AND tenant_id = $2',
-    [studentId, tenantId]
-  );
-  if (studentRes.rows.length === 0) return null;
-  const classId = studentRes.rows[0].class_assigned_id;
-  if (!classId) return calculateFeeBalance(0, 0);
-
-  const termMatch = resolveTermForMatch(term, academicYear) || term;
-  if (!termMatch) return calculateFeeBalance(0, 0);
-
-  const feeRes = await client.query(
-    `SELECT COALESCE(SUM(amount), 0) as total FROM fee_structures
-     WHERE tenant_id = $1 AND class_id = $2 AND (term = $3 OR $3 LIKE term || '%' OR term LIKE $3 || '%')`,
-    [tenantId, classId, termMatch]
-  );
-  const totalFees = parseFloat(feeRes.rows[0]?.total || '0');
-
-  let paidRes;
-  try {
-    paidRes = await client.query(
-      `SELECT COALESCE(SUM(amount), 0) as total FROM payments
-       WHERE tenant_id = $1 AND student_id = $2 AND (term = $3 OR $3 LIKE term || '%' OR term LIKE $3 || '%')`,
-      [tenantId, studentId, termMatch]
-    );
-  } catch {
-    // Legacy schema fallback: payments.term may not exist.
-    paidRes = await client.query(
-      `SELECT COALESCE(SUM(amount), 0) as total FROM payments
-       WHERE tenant_id = $1 AND student_id = $2`,
-      [tenantId, studentId]
-    );
-  }
-  const totalPaid = parseFloat(paidRes.rows[0]?.total || '0');
-
-  // Fetch arrears from term_arrears
-  const arrearsRes = await client.query(
-    `SELECT COALESCE(SUM(amount), 0) as total FROM term_arrears
-     WHERE tenant_id = $1 AND student_id = $2 AND (current_term = $3 OR $3 LIKE current_term || '%' OR current_term LIKE $3 || '%')`,
-    [tenantId, studentId, termMatch]
-  );
-  const arrears = Math.max(0, parseFloat(arrearsRes.rows[0]?.total || '0'));
-
-  return calculateFeeBalance(totalFees, totalPaid, arrears);
-}
 
 /** Generate receipt number: R + 8 digits (e.g. R00012345), unique per school */
 async function generateReceiptNumber(tenantId: number, receiptPrefix?: string): Promise<string> {
@@ -104,6 +53,31 @@ async function generateReceiptNumber(tenantId: number, receiptPrefix?: string): 
   }
 }
 
+const PAYMENT_CORRECTION_COLUMNS = `
+  p.payment_account_id, p.is_voided, p.is_locked, p.locked_at, p.base_receipt_number,
+  p.receipt_version, p.correction_reason, p.corrected_at, p.corrected_by_user_id,
+  p.corrects_payment_id, p.corrected_by_payment_id`;
+
+// Receipt corrections audit log (administrators only)
+router.get('/corrections', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const { startDate, endDate, userId, studentId, limit, offset } = req.query;
+    const result = await listReceiptCorrections(tenantId, {
+      startDate: startDate ? String(startDate) : undefined,
+      endDate: endDate ? String(endDate) : undefined,
+      userId: userId ? parseInt(String(userId), 10) : undefined,
+      studentId: studentId ? parseInt(String(studentId), 10) : undefined,
+      limit: limit ? parseInt(String(limit), 10) : 50,
+      offset: offset ? parseInt(String(offset), 10) : 0,
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('List receipt corrections error:', error);
+    res.status(500).json({ error: 'Failed to fetch receipt corrections' });
+  }
+});
+
 // Get all payments
 router.get('/', async (req: AuthRequest, res) => {
   try {
@@ -113,6 +87,7 @@ router.get('/', async (req: AuthRequest, res) => {
     let queryText = `
       SELECT p.id, p.tenant_id, p.student_id, p.amount, p.payment_date, p.payment_method,
              p.term, p.notes, p.receipt_number, p.receipt_snapshot, p.created_at, p.updated_at,
+             ${PAYMENT_CORRECTION_COLUMNS},
              s.first_name, s.last_name, s.student_id as admission_no, s.admission_number, c.class_name
       FROM payments p
       LEFT JOIN students s ON p.student_id = s.id
@@ -203,6 +178,145 @@ router.get('/', async (req: AuthRequest, res) => {
   }
 });
 
+// Check if a payment can be corrected
+router.get('/:id/correction-eligibility', requireRole('super-admin', 'administrator', 'finance'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const paymentId = parseInt(req.params.id, 10);
+    const context = await getCorrectionContext(tenantId, paymentId);
+    res.json(context.eligibility);
+  } catch (error: any) {
+    console.error('Correction eligibility error:', error);
+    res.status(error?.message === 'Payment not found' ? 404 : 500).json({
+      error: error?.message || 'Failed to check correction eligibility',
+    });
+  }
+});
+
+router.get('/:id/correction-history', requireRole('super-admin', 'administrator', 'finance'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const paymentId = parseInt(req.params.id, 10);
+    const history = await getCorrectionHistory(tenantId, paymentId);
+    res.json(history);
+  } catch (error: any) {
+    console.error('Correction history error:', error);
+    res.status(error?.message === 'Payment not found' ? 404 : 500).json({
+      error: error?.message || 'Failed to fetch correction history',
+    });
+  }
+});
+
+// Correction context for modal (student balance, original receipt, eligibility)
+router.get('/:id/correction-context', requireRole('super-admin', 'administrator', 'finance'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const paymentId = parseInt(req.params.id, 10);
+    const context = await getCorrectionContext(tenantId, paymentId);
+    res.json(context);
+  } catch (error: any) {
+    console.error('Correction context error:', error);
+    res.status(error?.message === 'Payment not found' ? 404 : 500).json({
+      error: error?.message || 'Failed to load correction context',
+    });
+  }
+});
+
+// Correct a receipt (finance staff, within 7 days)
+router.post('/:id/correct', requireRole('super-admin', 'administrator', 'finance'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const paymentId = parseInt(req.params.id, 10);
+    const {
+      amount,
+      payment_date,
+      payment_method,
+      payment_account_id,
+      student_id,
+      reason,
+      correction_type,
+      term,
+      notes,
+    } = req.body;
+
+    const result = await correctReceipt(tenantId, paymentId, req.user!.id, {
+      amount: parseFloat(amount),
+      payment_date,
+      payment_method,
+      payment_account_id: payment_account_id ? parseInt(String(payment_account_id), 10) : undefined,
+      student_id: parseInt(String(student_id), 10),
+      reason,
+      correction_type,
+      term,
+      notes,
+    });
+
+    const bv = result.beforeValues as Record<string, unknown>;
+    const av = result.afterValues as Record<string, unknown>;
+
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'RECEIPT_CORRECTION',
+      entityType: 'PAYMENT',
+      entityId: result.corrected.id,
+      module: 'finance',
+      status: 'success',
+      summary: `${String(bv.correction_type || 'Correction').toString().toUpperCase()} correction: ${bv.receipt_number} → ${av.receipt_number}`,
+      details: {
+        correctionId: result.correction.id,
+        originalPaymentId: result.beforeValues.payment_id,
+        rootReceiptNumber: bv.root_receipt_number,
+        correctedPaymentId: result.corrected.id,
+        student: bv.student_label || bv.student_name,
+        correctionType: bv.correction_type,
+        amountChange: bv.amount_change_label,
+        balanceBefore: bv.balance_outstanding_before,
+        balanceAfter: av.balance_outstanding_after,
+        methodChange: av.method_change_label,
+        dateChange: av.date_change_label,
+        reason: req.body.reason,
+        before: bv,
+        after: av,
+      },
+      beforeValues: result.beforeValues,
+      afterValues: result.afterValues,
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') || null,
+    });
+
+    emitTenantDataChanged(tenantId, 'payment', 'updated');
+    emitTenantDataChanged(tenantId, 'payment-account', 'updated');
+    emitTenantDataChanged(tenantId, 'finance', 'updated');
+
+    await sendPushToStudentParents(tenantId, result.afterValues.student_id, {
+      title: 'Receipt Updated',
+      body: "Your child's receipt has been updated. Tap to view.",
+      url: `/parent/${tenantId}`,
+    }).catch(() => {});
+
+    (async () => {
+      try {
+        const { refreshArrearsForTenant } = await import('../services/arrearsService.js');
+        await refreshArrearsForTenant(tenantId);
+      } catch (err) {
+        console.error('[payments] Background arrears refresh after correction failed:', err);
+      }
+    })();
+
+    res.json({
+      original: result.original,
+      corrected: result.corrected,
+      correction: result.correction,
+      message: `Receipt ${result.beforeValues.receipt_number} has been corrected. New receipt ${result.afterValues.receipt_number} created.`,
+    });
+  } catch (error: any) {
+    console.error('Correct receipt error:', error);
+    res.status(400).json({ error: error?.message || 'Failed to correct receipt' });
+  }
+});
+
 // Get single payment
 router.get('/:id', async (req: AuthRequest, res) => {
   try {
@@ -268,10 +382,24 @@ router.get('/:id', async (req: AuthRequest, res) => {
 router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
-    const { student_id, amount, payment_date, payment_method, term, notes, academic_year } = req.body;
+    const { student_id, amount, payment_date, payment_method, payment_account_id, term, notes, academic_year } = req.body;
 
     if (!student_id || !amount || !payment_date) {
       return res.status(400).json({ error: 'Student ID, amount, and payment date are required' });
+    }
+
+    let resolvedMethod = payment_method || null;
+    let resolvedAccountId: number | null = null;
+    try {
+      const resolved = await resolvePaymentAccountForTransaction(
+        tenantId,
+        payment_account_id ? parseInt(String(payment_account_id), 10) : null,
+        payment_method
+      );
+      resolvedAccountId = resolved.paymentAccountId;
+      resolvedMethod = resolved.paymentMethod;
+    } catch (err: any) {
+      return res.status(400).json({ error: err?.message || 'Invalid payment account' });
     }
 
     const paymentAmount = parseFloat(amount);
@@ -280,11 +408,15 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
     }
 
     const studentRes = await query(
-      'SELECT id FROM students WHERE id = $1 AND tenant_id = $2',
+      `SELECT id, COALESCE(enrollment_status, 'active') AS enrollment_status
+       FROM students WHERE id = $1 AND tenant_id = $2`,
       [student_id, tenantId]
     );
     if (studentRes.rows.length === 0) {
       return res.status(404).json({ error: 'Student not found' });
+    }
+    if (String(studentRes.rows[0].enrollment_status).toLowerCase() !== 'active') {
+      return res.status(400).json({ error: 'Payments can only be recorded for active enrolled students' });
     }
 
     const settingsRes = await query(
@@ -304,14 +436,15 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
     let insertResult;
     try {
       insertResult = await query(
-        `INSERT INTO payments (tenant_id, student_id, amount, payment_date, payment_method, term, notes, receipt_number)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+        `INSERT INTO payments (tenant_id, student_id, amount, payment_date, payment_method, payment_account_id, term, notes, receipt_number, base_receipt_number)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9) RETURNING *`,
         [
           tenantId,
           student_id,
           paymentAmount,
           payment_date,
-          payment_method || null,
+          resolvedMethod,
+          resolvedAccountId,
           termToStore || term || null,
           notes || null,
           receiptNumber,
@@ -368,20 +501,10 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
         client,
         tenantId,
         parseInt(student_id, 10),
-        term || null,
-        academic_year || null
+        termToStore || term || null
       );
       if (balance) {
-        const totalFees = Number(balance.totalFees) || 0;
-        const arrearsNum = Number(balance.arrears) || 0;
-        const outstanding = Number(balance.outstanding);
-        receiptSnapshot = {
-          totalDue: totalFees + arrearsNum,
-          termFee: totalFees,
-          arrears: arrearsNum,
-          balanceAfter: Math.max(0, Number.isFinite(outstanding) ? outstanding : 0),
-          credit: Number(balance.credit) || 0,
-        };
+        receiptSnapshot = buildReceiptSnapshot(balance);
       }
     } finally {
       client.release();

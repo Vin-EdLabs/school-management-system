@@ -3,7 +3,14 @@ import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
-import { calculateFeeBalance } from '../services/financeCalculationService.js';
+import {
+  getStudentFeeBalance,
+  getStudentTotalOutstandingBalance,
+  collectStudentFinancialTerms,
+  isGraduatedEnrollment,
+} from '../services/studentFeeBalanceService.js';
+import { resolveTermForMatch } from '../services/studentBalanceCompute.js';
+import type { FeeBalanceResult } from '../services/financeCalculationService.js';
 
 const router = express.Router();
 
@@ -72,18 +79,53 @@ router.get('/profile-lookup', requireRole('super-admin', 'administrator'), async
   }
 });
 
+function mapTermBalance(term: string, balance: FeeBalanceResult) {
+  const yearMatch = term.match(/(\d{4})\s*$/);
+  return {
+    academicYear: yearMatch?.[1] || term.split(' ').pop() || '',
+    term,
+    totalFees: balance.totalFees,
+    totalPaid: balance.totalPaid,
+    amountDue: balance.totalFees + balance.arrears,
+    outstanding: Math.max(0, balance.outstanding),
+    credit: balance.credit,
+    arrears: balance.arrears,
+    status: balance.status,
+  };
+}
+
+function buildStudentDetails(student: any) {
+  return {
+    gender: student.gender || '—',
+    dateOfBirth: student.date_of_birth || '—',
+    nationality: student.nationality || '—',
+    homeAddress: student.home_address || '—',
+    guardianName: student.guardian_name || '—',
+    guardianContact: student.guardian_contact || '—',
+    guardian2Name: student.guardian_2_name || '—',
+    guardian2Contact: student.guardian_2_contact || '—',
+    guardian2Relationship: student.guardian_2_relationship || '—',
+    numberOfSiblings: Number(student.number_of_siblings) || 0,
+    namesOfSiblings: student.names_of_siblings || '—',
+    previousSchool: student.previous_school || '—',
+    enrollmentStatus: student.enrollment_status || 'active',
+    beneficiaryType: student.beneficiary_type || null,
+    beneficiaryNotes: student.beneficiary_notes || '—',
+    notes: student.notes || '—',
+  };
+}
+
 async function buildStudentProfile(tenantId: number, student: any) {
   const classId = student.class_assigned_id;
   const studentId = student.id;
 
-  // Fee summary per term (all terms from fee_structures + payments)
-  const feeStructRes = await query(
-    `SELECT fs.term, fs.class_id, COALESCE(SUM(fs.amount), 0) as total_fees
-     FROM fee_structures fs
-     WHERE fs.tenant_id = $1 AND fs.class_id = $2
-     GROUP BY fs.term, fs.class_id`,
-    [tenantId, classId]
+  const settingsRes = await query(
+    `SELECT school_name, current_term, current_year FROM school_settings WHERE tenant_id = $1`,
+    [tenantId]
   );
+  const schoolSettings = settingsRes.rows[0] || {};
+  const currentTerm = schoolSettings.current_term || null;
+  const currentYear = schoolSettings.current_year || null;
 
   const paymentsRes = await query(
     `SELECT p.*,
@@ -94,81 +136,55 @@ async function buildStudentProfile(tenantId: number, student: any) {
         ORDER BY al.created_at DESC LIMIT 1) as recorded_by
      FROM payments p
      WHERE p.tenant_id = $1 AND p.student_id = $2
-     ORDER BY p.payment_date DESC`,
+     ORDER BY p.payment_date DESC, p.id DESC`,
     [tenantId, studentId]
   );
 
-  const paymentMap: Record<string, { total: number; records: any[] }> = {};
-  paymentsRes.rows.forEach((p: any) => {
-    const term = (p.term || 'Unknown').trim();
-    if (!paymentMap[term]) paymentMap[term] = { total: 0, records: [] };
-    paymentMap[term].total += parseFloat(p.amount || 0);
-    paymentMap[term].records.push({
-      date: p.payment_date,
-      amount: parseFloat(p.amount),
-      receiptNumber: p.receipt_number,
-      recordedBy: p.recorded_by || '—',
-    });
-  });
-
-  function getPaidForTerm(feeTerm: string): number {
-    let total = 0;
-    for (const [payTerm, data] of Object.entries(paymentMap)) {
-      if (feeTerm === payTerm || payTerm.startsWith(feeTerm) || feeTerm.startsWith(payTerm)) {
-        total += data.total;
-      }
-    }
-    return total;
-  }
+  const allTerms = await collectStudentFinancialTerms(
+    tenantId,
+    studentId,
+    currentTerm,
+    currentYear
+  );
+  const currentTermLabel = currentTerm
+    ? resolveTermForMatch(currentTerm, currentYear) || currentTerm
+    : null;
 
   const feeSummaryByTerm: any[] = [];
-  const termsSeen = new Set<string>();
-  for (const row of feeStructRes.rows) {
-    const term = (row.term || '').trim();
-    if (!term || termsSeen.has(term)) continue;
-    termsSeen.add(term);
-    const totalFees = parseFloat(row.total_fees || 0);
-    const totalPaid = getPaidForTerm(term);
-
-    // Fetch arrears for this specific term
-    const arrearsRes = await query(
-      `SELECT COALESCE(SUM(amount), 0) as total FROM term_arrears
-       WHERE tenant_id = $1 AND student_id = $2 AND current_term = $3`,
-      [tenantId, studentId, term]
-    );
-    const arrears = parseFloat(arrearsRes.rows[0]?.total || '0');
-
-    const balance = calculateFeeBalance(totalFees, totalPaid, arrears);
-    feeSummaryByTerm.push({
-      academicYear: term.split(' ').pop() || '',
-      term: term,
-      totalFees,
-      totalPaid,
-      outstanding: balance.outstanding,
-      arrears: balance.arrears,
-      status: balance.status,
-    });
+  for (const term of allTerms) {
+    const balance = await getStudentFeeBalance(null, tenantId, studentId, term);
+    if (!balance) continue;
+    feeSummaryByTerm.push(mapTermBalance(term, balance));
   }
 
+  const currentTermBalance = await getStudentTotalOutstandingBalance(
+    tenantId,
+    studentId,
+    currentTermLabel
+  );
+
   const allPayments = paymentsRes.rows.map((p: any) => ({
+    id: p.id,
     date: p.payment_date,
-    amount: parseFloat(p.amount),
-    receiptNumber: p.receipt_number,
+    amount: parseFloat(p.amount_paid ?? p.amount ?? 0),
+    term: p.term || '—',
+    academicYear: p.academic_year || null,
+    receiptNumber: p.receipt_number || null,
+    paymentMethod: p.payment_method || '—',
     recordedBy: p.recorded_by || '—',
+    voided: !!p.is_voided,
+    notes: p.notes || null,
   }));
 
-  const totalFeesAll = feeStructRes.rows.reduce((s: number, r: any) => s + parseFloat(r.total_fees || 0), 0);
-  const totalPaidAll = paymentsRes.rows.reduce((s: number, p: any) => s + parseFloat(p.amount || 0), 0);
-
-  // For overview, we sum all arrears found for this student
-  const allArrearsRes = await query(
-    `SELECT COALESCE(SUM(amount), 0) as total FROM term_arrears
-     WHERE tenant_id = $1 AND student_id = $2`,
-    [tenantId, studentId]
-  );
-  const totalArrears = parseFloat(allArrearsRes.rows[0]?.total || '0');
-
-  const overviewBalance = calculateFeeBalance(totalFeesAll, totalPaidAll, totalArrears);
+  const activePayments = allPayments.filter((p) => !p.voided);
+  const totalNetFees = feeSummaryByTerm.reduce((s, r) => s + r.totalFees, 0);
+  const totalPaidAll = activePayments.reduce((s, r) => s + r.amount, 0);
+  const summedOutstanding = feeSummaryByTerm.reduce((s, r) => s + Math.max(0, r.outstanding), 0);
+  const totalOutstanding = currentTermBalance
+    ? Math.max(0, currentTermBalance.outstanding)
+    : summedOutstanding;
+  const totalCredit = currentTermBalance?.credit || feeSummaryByTerm.reduce((s, r) => s + (r.credit || 0), 0);
+  const studentDetails = buildStudentDetails(student);
 
   const attendanceRes = await query(
     `SELECT attendance_date, present FROM attendance WHERE tenant_id = $1 AND student_id = $2 ORDER BY attendance_date DESC LIMIT 200`,
@@ -216,6 +232,11 @@ async function buildStudentProfile(tenantId: number, student: any) {
   }));
 
   return {
+    school: {
+      name: schoolSettings.school_name || 'School',
+      currentTerm,
+      currentYear,
+    },
     header: {
       id: student.id,
       firstName: student.first_name,
@@ -224,22 +245,57 @@ async function buildStudentProfile(tenantId: number, student: any) {
       studentId: student.student_id,
       admissionNumber: student.admission_number,
       class: student.class_name || '—',
-      status: student.notes?.toLowerCase().includes('suspended') ? 'Suspended' : 'Active',
-      guardianName: student.guardian_name || '—',
-      guardianContact: student.guardian_contact || '—',
+      level: student.level || '',
+      stream: student.stream || '',
+      status: student.notes?.toLowerCase().includes('suspended') ? 'Suspended' : isGraduatedEnrollment(student.enrollment_status) ? 'Alumni' : 'Active',
+      guardianName: studentDetails.guardianName,
+      guardianContact: studentDetails.guardianContact,
+      gender: studentDetails.gender,
+      dateOfBirth: studentDetails.dateOfBirth,
+      nationality: studentDetails.nationality,
+      homeAddress: studentDetails.homeAddress,
       admissionDate: student.date_of_admission || '—',
-      passportPhotoUrl: student.passport_photo_url,
+      passportPhotoUrl: student.passport_photo_url || null,
+      hasPassportPhoto: !!(student.passport_photo_url && String(student.passport_photo_url).length > 0),
+      isBeneficiary: !!student.is_beneficiary,
+      discountType: student.discount_type || null,
+      discountValue: student.discount_value != null ? Number(student.discount_value) : null,
     },
+    details: studentDetails,
     overview: {
-      totalFeesAssigned: totalFeesAll,
+      totalFeesAssigned: totalNetFees,
       totalPaid: totalPaidAll,
-      totalOutstanding: overviewBalance.outstanding,
+      totalOutstanding,
+      creditBalance: totalCredit,
+      isBeneficiary: !!student.is_beneficiary,
+      currentTermLabel,
+      currentTermOutstanding: currentTermBalance ? Math.max(0, currentTermBalance.outstanding) : totalOutstanding,
+      currentTermFees: currentTermBalance?.totalFees ?? 0,
+      currentTermPaid: currentTermBalance?.totalPaid ?? 0,
+      currentTermArrears: currentTermBalance?.arrears ?? 0,
+      currentTermAmountDue: currentTermBalance
+        ? currentTermBalance.totalFees + currentTermBalance.arrears
+        : 0,
+      currentTermStatus: currentTermBalance?.status ?? null,
       currentTermAverage: Math.round(termAverage * 10) / 10,
       attendancePercentage: attPct,
     },
+    balance: currentTermBalance
+      ? {
+          term: currentTermLabel,
+          termFees: currentTermBalance.totalFees,
+          arrears: currentTermBalance.arrears,
+          amountDue: currentTermBalance.totalFees + currentTermBalance.arrears,
+          totalPaid: currentTermBalance.totalPaid,
+          outstanding: Math.max(0, currentTermBalance.outstanding),
+          credit: currentTermBalance.credit,
+          status: currentTermBalance.status,
+        }
+      : null,
     fees: {
       summaryByTerm: feeSummaryByTerm,
       paymentHistory: allPayments,
+      receipts: allPayments,
     },
     academicPerformance: {
       grades,
@@ -261,8 +317,13 @@ async function buildStudentProfile(tenantId: number, student: any) {
 
 function formatAction(action: string, entityType: string): string {
   if (entityType === 'PAYMENT' && action === 'CREATE') return 'Payment recorded';
+  if (entityType === 'PAYMENT' && action === 'VOID') return 'Payment voided';
+  if (entityType === 'PAYMENT' && action === 'UPDATE') return 'Payment corrected';
   if (entityType === 'STUDENT' && action === 'UPDATE') return 'Student info edited';
   if (entityType === 'STUDENT' && action === 'CREATE') return 'Student registered';
+  if (entityType === 'STUDENT' && action === 'STUDENT_PENDING') return 'Saved as pending admission';
+  if (entityType === 'STUDENT' && action === 'STUDENT_ENROLLED') return 'Pending student approved & enrolled';
+  if (entityType === 'STUDENT' && action === 'STUDENT_REJECTED') return 'Pending admission rejected';
   return `${action} ${entityType}`;
 }
 
@@ -316,6 +377,8 @@ async function buildTeacherProfile(tenantId: number, teacher: any) {
       department: teacher.subjects_taught?.join(', ') || '—',
       employmentDate: teacher.employment_date || '—',
       salary: monthlySalary,
+      passportPhotoUrl: teacher.passport_photo_url || null,
+      hasPassportPhoto: !!(teacher.passport_photo_url && String(teacher.passport_photo_url).length > 0),
       employmentStatus: teacher.employment_status || 'Active',
     },
     overview: {

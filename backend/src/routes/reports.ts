@@ -2,6 +2,16 @@ import express from 'express';
 import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
+import {
+  getCashPosition,
+  getCollectionsByAccount,
+  getDirectActivityTotals,
+  getFundTransfersReport,
+  getIncomeAndExpenseTotalsAll,
+  buildAccountSnapshots,
+  getTotalOpeningBalance,
+} from '../services/financeSummaryService.js';
+import { ACTIVE_STUDENT_WHERE } from '../utils/studentEnrollment.js';
 
 const router = express.Router();
 
@@ -249,9 +259,9 @@ router.get('/fee-status', async (req: AuthRequest, res) => {
         GROUP BY ta.student_id
       ),
       student_totals AS (
-        SELECT p.student_id, COALESCE(SUM(p.amount), 0)::numeric AS total_paid
+        SELECT p.student_id, COALESCE(SUM(COALESCE(p.amount_paid, p.amount, 0)), 0)::numeric AS total_paid
         FROM payments p
-        WHERE p.tenant_id = $1 AND ${termPredicatePay}
+        WHERE p.tenant_id = $1 AND COALESCE(p.is_voided, false) = false AND ${termPredicatePay}
         GROUP BY p.student_id
       )
       SELECT
@@ -295,7 +305,7 @@ router.get('/fee-status', async (req: AuthRequest, res) => {
       CROSS JOIN class_fee cf
       LEFT JOIN student_arrears sa ON sa.student_id = s.id
       LEFT JOIN student_totals st ON st.student_id = s.id
-      WHERE s.tenant_id = $1 AND s.class_assigned_id = $2
+      WHERE s.tenant_id = $1 AND s.class_assigned_id = $2 AND ${ACTIVE_STUDENT_WHERE}
       ORDER BY s.first_name, s.last_name
     `;
 
@@ -389,7 +399,7 @@ router.get('/financial-summary', async (req: AuthRequest, res) => {
       student_payments AS (
         SELECT p.student_id, COALESCE(SUM(COALESCE(p.amount_paid, p.amount, 0)), 0)::numeric AS paid_amt
         FROM payments p
-        WHERE p.tenant_id = $1 AND (${TERM_PRED_PAY})
+        WHERE p.tenant_id = $1 AND COALESCE(p.is_voided, false) = false AND (${TERM_PRED_PAY})
         GROUP BY p.student_id
       ),
       fee_totals AS (
@@ -430,20 +440,57 @@ router.get('/financial-summary', async (req: AuthRequest, res) => {
 
     const totalExpected = parseFloat(row.total_expected) || 0;
     const collected = parseFloat(row.total_collected) || 0;
-    const expenses = parseFloat(row.total_expenses) || 0;
-    const otherIncome = parseFloat(row.total_other_income) || 0;
+
+    const [incomeExpenseAll, activity, cashPosition, collectionsByAccount, fundTransfers] = await Promise.all([
+      getIncomeAndExpenseTotalsAll(tenantId),
+      getDirectActivityTotals(tenantId, {
+        financeFrom,
+        financeTo,
+        termMatch,
+        termLike,
+        termOnly,
+      }),
+      getCashPosition(tenantId),
+      getCollectionsByAccount(tenantId, {
+        financeFrom,
+        financeTo,
+        termMatch,
+        termLike,
+        termOnly,
+      }),
+      getFundTransfersReport(tenantId, { startDate: financeFrom, endDate: financeTo }),
+    ]);
+
+    const otherIncome = incomeExpenseAll.otherIncome;
+    const expenses = incomeExpenseAll.totalExpenses;
+    const feesCollectedPeriod = activity.feesCollectedPeriod;
+    const totalIncome = collected + otherIncome;
+    const totalOpeningBalance = getTotalOpeningBalance(cashPosition.accounts);
+    const periodActivityNet = totalIncome - expenses;
     const feeOutstanding = Math.max(0, totalExpected - collected);
-    const systemNetPosition = collected + otherIncome - expenses;
+    const netBalance = totalOpeningBalance + totalIncome - expenses;
+    const accountSnapshots = buildAccountSnapshots(cashPosition.accounts);
 
     res.set('Cache-Control', 'no-store');
     res.json({
       totalExpected,
       collected,
+      feesCollectedPeriod,
       outstanding: feeOutstanding,
-      netBalance: systemNetPosition,
-      systemNetPosition,
+      netBalance,
+      systemNetPosition: netBalance,
+      cashOnHand: cashPosition.totalCashPosition,
+      periodActivityNet,
+      periodIncome: feesCollectedPeriod + otherIncome,
+      totalIncome,
       otherIncome,
       totalExpenses: expenses,
+      totalOpeningBalance,
+      accountSnapshots,
+      accountsTotal: cashPosition.accountsTotal,
+      legacyUnlinkedNet: cashPosition.legacyUnlinkedNet,
+      collectionsByAccount,
+      fundTransfers,
       collectionRate: totalExpected > 0 ? (collected / totalExpected) * 100 : 0,
       academicYear: academicYear,
       academicYearDisplay,
@@ -485,6 +532,7 @@ router.get('/fees-by-class', async (req: AuthRequest, res) => {
         SELECT p.student_id, COALESCE(SUM(COALESCE(p.amount_paid, p.amount, 0)), 0)::numeric AS paid_amt
         FROM payments p
         WHERE p.tenant_id = $1 AND (${TERM_PRED_PAY})
+          AND COALESCE(p.is_voided, false) = false
         GROUP BY p.student_id
       )
       SELECT
@@ -505,7 +553,7 @@ router.get('/fees-by-class', async (req: AuthRequest, res) => {
           END
         ), 0)::numeric AS outstanding
       FROM classes c
-      LEFT JOIN students s ON s.class_assigned_id = c.id AND s.tenant_id = c.tenant_id
+      LEFT JOIN students s ON s.class_assigned_id = c.id AND s.tenant_id = c.tenant_id AND ${ACTIVE_STUDENT_WHERE}
       LEFT JOIN class_raw_fee crf ON crf.class_id = c.id
       LEFT JOIN student_arrears sa ON sa.student_id = s.id
       LEFT JOIN student_payments sp ON sp.student_id = s.id
@@ -550,7 +598,7 @@ router.get('/outstanding-fees', async (req: AuthRequest, res) => {
       student_payments AS (
         SELECT p.student_id, COALESCE(SUM(COALESCE(p.amount_paid, p.amount, 0)), 0)::numeric AS paid_amt
         FROM payments p
-        WHERE p.tenant_id = $1 AND (${TERM_PRED_PAY})
+        WHERE p.tenant_id = $1 AND COALESCE(p.is_voided, false) = false AND (${TERM_PRED_PAY})
         GROUP BY p.student_id
       ),
       balances AS (
@@ -563,7 +611,7 @@ router.get('/outstanding-fees', async (req: AuthRequest, res) => {
             (
               SELECT EXTRACT(DAY FROM NOW() - MAX(COALESCE(p2.payment_date, p2.created_at::date)::timestamp))::int
               FROM payments p2
-              WHERE p2.tenant_id = $1 AND p2.student_id = s.id AND (${TERM_PRED_PAY.replace(/p\./g, 'p2.')})
+              WHERE p2.tenant_id = $1 AND p2.student_id = s.id AND COALESCE(p2.is_voided, false) = false AND (${TERM_PRED_PAY.replace(/p\./g, 'p2.')})
             ),
             0
           ) AS days
@@ -572,7 +620,7 @@ router.get('/outstanding-fees', async (req: AuthRequest, res) => {
         LEFT JOIN class_raw_fee crf ON crf.class_id = s.class_assigned_id
         LEFT JOIN student_arrears sa ON sa.student_id = s.id
         LEFT JOIN student_payments sp ON sp.student_id = s.id
-        WHERE s.tenant_id = $1
+        WHERE s.tenant_id = $1 AND ${ACTIVE_STUDENT_WHERE}
       )
       SELECT id, name, class, amount, days
       FROM balances
@@ -596,20 +644,33 @@ router.get('/outstanding-fees', async (req: AuthRequest, res) => {
 router.get('/expenditure', async (req: AuthRequest, res) => {
   try {
     const { tenantId, financeFrom, financeTo } = await loadReportPeriod(req);
+    const scopeAll = String(req.query.scope || '').toLowerCase() === 'all';
 
-    const expenditureQuery = `
+    const expenditureQuery = scopeAll
+      ? `
       SELECT
-        category AS name,
+        COALESCE(NULLIF(TRIM(category), ''), 'Uncategorized') AS name,
+        SUM(amount)::numeric AS value
+      FROM expenses
+      WHERE tenant_id = $1
+      GROUP BY 1
+      ORDER BY value DESC
+    `
+      : `
+      SELECT
+        COALESCE(NULLIF(TRIM(category), ''), 'Uncategorized') AS name,
         SUM(amount)::numeric AS value
       FROM expenses
       WHERE tenant_id = $1
         AND COALESCE(payment_date::date, created_at::date) >= $2::date
         AND COALESCE(payment_date::date, created_at::date) <= $3::date
-      GROUP BY category
+      GROUP BY 1
       ORDER BY value DESC
     `;
 
-    const result = await query(expenditureQuery, [tenantId, financeFrom, financeTo]);
+    const result = scopeAll
+      ? await query(expenditureQuery, [tenantId])
+      : await query(expenditureQuery, [tenantId, financeFrom, financeTo]);
     res.set('Cache-Control', 'no-store');
     res.json(result.rows);
   } catch (error) {
@@ -642,7 +703,7 @@ router.get('/payroll-summary', async (req: AuthRequest, res) => {
       LEFT JOIN classes c ON t.class_assigned_id = c.id
       CROSS JOIN payroll_settings ps
       WHERE t.tenant_id = $1 AND ps.tenant_id = $1
-        AND (LOWER(COALESCE(t.employment_status, '')) = 'active' OR t.employment_status IS NULL OR t.employment_status = '')
+        AND COALESCE(t.status, 'active') = 'active'
       UNION ALL
       SELECT 
         s.full_name as name,
@@ -751,6 +812,8 @@ router.get('/attendance-summary', async (req: AuthRequest, res) => {
 router.get('/income-vs-expenditure', async (req: AuthRequest, res) => {
   try {
     const { tenantId, financeFrom, financeTo } = await loadReportPeriod(req);
+    const startDate = ((req.query.startDate as string) || financeFrom).split('T')[0];
+    const endDate = ((req.query.endDate as string) || financeTo).split('T')[0];
 
     const monthlyQuery = `
       WITH bounds AS (
@@ -775,6 +838,7 @@ router.get('/income-vs-expenditure', async (req: AuthRequest, res) => {
           SUM(COALESCE(amount_paid, amount, 0)) AS amount
         FROM payments
         WHERE tenant_id = $1
+          AND COALESCE(is_voided, false) = false
           AND COALESCE(payment_date::date, created_at::date) BETWEEN (SELECT d0 FROM bounds) AND (SELECT d1 FROM bounds)
         GROUP BY 1
       ),
@@ -787,6 +851,8 @@ router.get('/income-vs-expenditure', async (req: AuthRequest, res) => {
       )
       SELECT
         to_char(m.month, 'Mon YYYY') AS name,
+        COALESCE(mf.amount, 0)::numeric AS fees,
+        COALESCE(mi.amount, 0)::numeric AS other_income,
         (COALESCE(mi.amount, 0) + COALESCE(mf.amount, 0))::numeric AS income,
         COALESCE(me.amount, 0)::numeric AS expense
       FROM months m
@@ -796,7 +862,7 @@ router.get('/income-vs-expenditure', async (req: AuthRequest, res) => {
       ORDER BY m.month
     `;
 
-    const result = await query(monthlyQuery, [tenantId, financeFrom, financeTo]);
+    const result = await query(monthlyQuery, [tenantId, startDate, endDate]);
     res.set('Cache-Control', 'no-store');
     res.json(result.rows);
   } catch (error) {
@@ -816,10 +882,15 @@ router.get('/admin-overview', async (req: AuthRequest, res) => {
     const [countsRes, enrollmentRes, feeMixRes, classesRes] = await Promise.all([
       query(
         `SELECT
-          COUNT(*) FILTER (WHERE s.enrollment_status IS DISTINCT FROM 'graduated')::int AS student_total,
-          COUNT(*) FILTER (WHERE s.enrollment_status IS DISTINCT FROM 'graduated' AND LOWER(TRIM(COALESCE(s.gender, ''))) = 'male')::int AS student_male,
-          COUNT(*) FILTER (WHERE s.enrollment_status IS DISTINCT FROM 'graduated' AND LOWER(TRIM(COALESCE(s.gender, ''))) = 'female')::int AS student_female,
+          COUNT(*) FILTER (WHERE ${ACTIVE_STUDENT_WHERE})::int AS student_total,
+          COUNT(*) FILTER (WHERE ${ACTIVE_STUDENT_WHERE} AND LOWER(TRIM(COALESCE(s.gender, ''))) = 'male')::int AS student_male,
+          COUNT(*) FILTER (WHERE ${ACTIVE_STUDENT_WHERE} AND LOWER(TRIM(COALESCE(s.gender, ''))) = 'female')::int AS student_female,
+          COUNT(*) FILTER (WHERE COALESCE(s.enrollment_status, 'active') = 'pending')::int AS student_pending,
+          COUNT(*) FILTER (WHERE COALESCE(s.enrollment_status, 'active') = 'inactive')::int AS student_inactive,
+          COUNT(*) FILTER (WHERE COALESCE(s.enrollment_status, 'active') IN ('graduated', 'alumni'))::int AS student_alumni,
           (SELECT COUNT(*)::int FROM teachers t WHERE t.tenant_id = $1) AS teacher_total,
+          (SELECT COUNT(*)::int FROM teachers t WHERE t.tenant_id = $1 AND COALESCE(t.status, 'active') = 'active') AS teacher_active,
+          (SELECT COALESCE(SUM(t.monthly_salary), 0)::numeric FROM teachers t WHERE t.tenant_id = $1 AND COALESCE(t.status, 'active') = 'active') AS teacher_salary_budget,
           (SELECT COUNT(*)::int FROM teachers t WHERE t.tenant_id = $1 AND LOWER(TRIM(COALESCE(t.gender, ''))) = 'male') AS teacher_male,
           (SELECT COUNT(*)::int FROM teachers t WHERE t.tenant_id = $1 AND LOWER(TRIM(COALESCE(t.gender, ''))) = 'female') AS teacher_female,
           (SELECT COUNT(*)::int FROM classes c WHERE c.tenant_id = $1 AND TRIM(COALESCE(c.class_name, '')) <> '') AS class_total
@@ -831,7 +902,7 @@ router.get('/admin-overview', async (req: AuthRequest, res) => {
         `SELECT TRIM(COALESCE(c.class_name, 'Unassigned')) AS full_name, COUNT(*)::int AS count
          FROM students s
          LEFT JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
-         WHERE s.tenant_id = $1 AND s.enrollment_status IS DISTINCT FROM 'graduated'
+         WHERE s.tenant_id = $1 AND ${ACTIVE_STUDENT_WHERE}
          GROUP BY 1
          ORDER BY count DESC, full_name ASC
          LIMIT 20`,
@@ -856,7 +927,7 @@ router.get('/admin-overview', async (req: AuthRequest, res) => {
         student_payments AS (
           SELECT p.student_id, COALESCE(SUM(COALESCE(p.amount_paid, p.amount, 0)), 0)::numeric AS paid_amt
           FROM payments p
-          WHERE p.tenant_id = $1 AND (${TERM_PRED_PAY})
+          WHERE p.tenant_id = $1 AND COALESCE(p.is_voided, false) = false AND (${TERM_PRED_PAY})
           GROUP BY p.student_id
         ),
         student_fee AS (
@@ -871,7 +942,7 @@ router.get('/admin-overview', async (req: AuthRequest, res) => {
           LEFT JOIN class_raw_fee crf ON crf.class_id = s.class_assigned_id
           LEFT JOIN student_arrears sa ON sa.student_id = s.id
           LEFT JOIN student_payments sp ON sp.student_id = s.id
-          WHERE s.tenant_id = $1 AND s.enrollment_status IS DISTINCT FROM 'graduated'
+          WHERE s.tenant_id = $1 AND ${ACTIVE_STUDENT_WHERE}
         ),
         categorized AS (
           SELECT
@@ -917,6 +988,9 @@ router.get('/admin-overview', async (req: AuthRequest, res) => {
     res.json({
       students: {
         total: Number(counts.student_total) || 0,
+        pending: Number(counts.student_pending) || 0,
+        inactive: Number(counts.student_inactive) || 0,
+        alumni: Number(counts.student_alumni) || 0,
         male: Number(counts.student_male) || 0,
         female: Number(counts.student_female) || 0,
         other: Math.max(
@@ -928,6 +1002,8 @@ router.get('/admin-overview', async (req: AuthRequest, res) => {
       },
       teachers: {
         total: Number(counts.teacher_total) || 0,
+        active: Number(counts.teacher_active) || 0,
+        monthlySalaryBudget: parseFloat(counts.teacher_salary_budget) || 0,
         male: Number(counts.teacher_male) || 0,
         female: Number(counts.teacher_female) || 0,
       },
@@ -977,7 +1053,7 @@ router.get('/student-fee-roster', async (req: AuthRequest, res) => {
       student_payments AS (
         SELECT p.student_id, COALESCE(SUM(COALESCE(p.amount_paid, p.amount, 0)), 0)::numeric AS paid_amt
         FROM payments p
-        WHERE p.tenant_id = $1 AND (${TERM_PRED_PAY})
+        WHERE p.tenant_id = $1 AND COALESCE(p.is_voided, false) = false AND (${TERM_PRED_PAY})
         GROUP BY p.student_id
       ),
       roster AS (
@@ -999,7 +1075,7 @@ router.get('/student-fee-roster', async (req: AuthRequest, res) => {
         LEFT JOIN class_raw_fee crf ON crf.class_id = s.class_assigned_id
         LEFT JOIN student_arrears sa ON sa.student_id = s.id
         LEFT JOIN student_payments sp ON sp.student_id = s.id
-        WHERE s.tenant_id = $1 AND s.enrollment_status IS DISTINCT FROM 'graduated'
+        WHERE s.tenant_id = $1 AND ${ACTIVE_STUDENT_WHERE}
       )
       SELECT
         id,
@@ -1040,6 +1116,113 @@ router.get('/student-fee-roster', async (req: AuthRequest, res) => {
   } catch (error) {
     console.error('Student fee roster error:', error);
     res.status(500).json({ error: 'Failed to fetch student fee roster' });
+  }
+});
+
+/**
+ * GET /api/reports/collections-by-account
+ */
+router.get('/collections-by-account', async (req: AuthRequest, res) => {
+  try {
+    const { tenantId, termMatch, termLike, termOnly, financeFrom, financeTo } = await loadReportPeriod(req);
+    const rows = await getCollectionsByAccount(tenantId, {
+      financeFrom,
+      financeTo,
+      termMatch,
+      termLike,
+      termOnly,
+    });
+    res.set('Cache-Control', 'no-store');
+    res.json(rows);
+  } catch (error) {
+    console.error('Collections by account error:', error);
+    res.status(500).json({ error: 'Failed to fetch collections by account' });
+  }
+});
+
+/**
+ * GET /api/reports/fund-transfers
+ */
+router.get('/fund-transfers', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const scopeAll = String(req.query.scope || '').toLowerCase() === 'all';
+    const limit = Math.min(parseInt(String(req.query.limit || '500'), 10) || 500, 1000);
+
+    let startDate: string | undefined;
+    let endDate: string | undefined;
+    if (!scopeAll) {
+      const period = await loadReportPeriod(req);
+      startDate = period.financeFrom;
+      endDate = period.financeTo;
+    }
+
+    const rows = await getFundTransfersReport(tenantId, {
+      startDate,
+      endDate,
+      limit,
+    });
+    res.set('Cache-Control', 'no-store');
+    res.json(rows);
+  } catch (error) {
+    console.error('Fund transfers report error:', error);
+    res.status(500).json({ error: 'Failed to fetch fund transfers' });
+  }
+});
+
+/**
+ * GET /api/reports/recent-finance-activity
+ */
+router.get('/recent-finance-activity', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const limit = Math.min(parseInt(String(req.query.limit || '15'), 10) || 15, 30);
+
+    const activityQuery = `
+      SELECT type, amount, label, tx_date, created_at
+      FROM (
+        SELECT
+          'payment'::text AS type,
+          COALESCE(p.amount_paid, p.amount, 0)::numeric AS amount,
+          TRIM(COALESCE(s.first_name, '') || ' ' || COALESCE(s.last_name, '')) AS label,
+          COALESCE(p.payment_date::date, p.created_at::date) AS tx_date,
+          p.created_at
+        FROM payments p
+        LEFT JOIN students s ON s.id = p.student_id AND s.tenant_id = p.tenant_id
+        WHERE p.tenant_id = $1 AND COALESCE(p.is_voided, false) = false
+
+        UNION ALL
+
+        SELECT
+          'income'::text,
+          i.amount::numeric,
+          COALESCE(NULLIF(TRIM(i.source), ''), 'Other income'),
+          COALESCE(i.income_date::date, i.created_at::date),
+          i.created_at
+        FROM income i
+        WHERE i.tenant_id = $1
+
+        UNION ALL
+
+        SELECT
+          'expense'::text,
+          e.amount::numeric,
+          COALESCE(NULLIF(TRIM(e.title), ''), NULLIF(TRIM(e.category), ''), 'Expense'),
+          COALESCE(e.payment_date::date, e.created_at::date),
+          e.created_at
+        FROM expenses e
+        WHERE e.tenant_id = $1
+      ) activity
+      ORDER BY created_at DESC
+      LIMIT $2
+    `;
+
+    const result = await query(activityQuery, [tenantId, limit]);
+    res.set('Cache-Control', 'no-store');
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Recent finance activity error:', error);
+    res.status(500).json({ error: 'Failed to fetch recent finance activity' });
   }
 });
 

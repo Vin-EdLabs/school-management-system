@@ -6,8 +6,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
-import { Search, Users, Trash2, UserPlus } from 'lucide-react';
+import { Search, Users, Trash2, UserPlus, Pencil } from 'lucide-react';
+import EditClassDialog from './EditClassDialog';
 import { toast } from '@/hooks/use-toast';
+import { isActiveEnrolledStudent } from '../students/studentRegistryUtils';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,6 +28,7 @@ const ViewAllClasses = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterLevel, setFilterLevel] = useState('all-levels');
   const [expandedClassId, setExpandedClassId] = useState<string | null>(null);
+  const [editingClass, setEditingClass] = useState<any | null>(null);
 
   const uniqueLevels = useMemo(
     () => [...new Set(classes.map((c) => c.level).filter((level) => level && level.trim() !== ''))],
@@ -61,7 +64,12 @@ const ViewAllClasses = () => {
     const assignedTeacherId =
       classItem.assignedTeacherId ?? (classItem as any).assigned_teacher_id;
 
-    const studentsInClass = students.filter((student) => student.classAssigned === className);
+    const studentsInClass = students.filter(
+      (student) =>
+        isActiveEnrolledStudent(student) &&
+        (String(student.classAssignedId) === String(classItem.id) ||
+          student.classAssigned === className)
+    );
     const assignedTeacher = assignedTeacherId
       ? teachers.find((t) => String(t.id) === String(assignedTeacherId))
       : null;
@@ -76,7 +84,12 @@ const ViewAllClasses = () => {
 
   const handleDeleteClass = async (classItem: any) => {
     const className = getResolvedClassName(classItem);
-    const studentsInClass = students.filter((student) => student.classAssigned === className);
+    const studentsInClass = students.filter(
+      (student) =>
+        isActiveEnrolledStudent(student) &&
+        (String(student.classAssignedId) === String(classItem.id) ||
+          student.classAssigned === className)
+    );
 
     if (studentsInClass.length > 0) {
       toast({
@@ -240,6 +253,15 @@ const ViewAllClasses = () => {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center space-x-2" onClick={(e) => e.stopPropagation()}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                              onClick={() => setEditingClass(classItem)}
+                              aria-label={`Edit ${resolvedClassName}`}
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </Button>
 
                             <AlertDialog>
                               <AlertDialogTrigger asChild>
@@ -314,7 +336,11 @@ const ViewAllClasses = () => {
                                     </thead>
                                     <tbody>
                                       {students
-                                        .filter((s) => s.classAssigned === resolvedClassName)
+                                        .filter(
+                                          (s) =>
+                                            String(s.classAssignedId) === String(classItem.id) ||
+                                            s.classAssigned === resolvedClassName
+                                        )
                                         .map((s) => (
                                           <tr key={s.id} className="border-t last:border-b">
                                             <td className="px-3 py-2 text-sm">{s.studentId}</td>
@@ -324,7 +350,12 @@ const ViewAllClasses = () => {
                                           </tr>
                                         ))}
 
-                                      {students.filter((s) => s.classAssigned === resolvedClassName).length === 0 && (
+                                      {students.filter(
+                                        (s) =>
+                                          (String(s.classAssignedId) === String(classItem.id) ||
+                                            s.classAssigned === resolvedClassName) &&
+                                          isActiveEnrolledStudent(s)
+                                      ).length === 0 && (
                                         <tr>
                                           <td colSpan={2} className="px-3 py-3 text-sm text-gray-500">
                                             No students assigned
@@ -354,6 +385,12 @@ const ViewAllClasses = () => {
           </div>
         )}
       </CardContent>
+
+      <EditClassDialog
+        classItem={editingClass}
+        open={!!editingClass}
+        onClose={() => setEditingClass(null)}
+      />
     </Card>
   );
 };

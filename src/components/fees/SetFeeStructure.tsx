@@ -121,7 +121,7 @@ const SetFeeStructure = () => {
   };
 
   const handleDelete = async (fee: { id: string; className: string }) => {
-    if (!confirm(`Delete fee structure for ${fee.className}?`)) return;
+    if (!confirm(`Delete fee structure for ${resolveFeeClassLabel(fee)}?`)) return;
     setIsSubmitting(true);
     try {
       await deleteFeeStructure(fee.id);
@@ -138,6 +138,16 @@ const SetFeeStructure = () => {
     f.term === currentTerm ||
     (typeof f.term === 'string' && f.term.includes(currentTerm))
   );
+
+  const resolveFeeClassLabel = (fee: { className?: string; classId?: number; class_id?: number }) => {
+    const classId = fee.classId ?? fee.class_id;
+    const cls = classId != null ? classes.find((c) => String(c.id) === String(classId)) : undefined;
+    if (cls) {
+      const levelNote = cls.level ? ` · ${cls.level}` : '';
+      return `${cls.className}${levelNote}`;
+    }
+    return fee.className || 'Unknown class';
+  };
 
   return (
     <div className="space-y-6">
@@ -166,7 +176,7 @@ const SetFeeStructure = () => {
                   <SelectContent>
                     {classes.filter(cls => cls.className && cls.className.trim() !== '').map((cls) => (
                       <SelectItem key={cls.id} value={cls.id}>
-                        {cls.className}
+                        {cls.className}{cls.level ? ` (${cls.level})` : ''}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -241,7 +251,7 @@ const SetFeeStructure = () => {
             {currentTermFees.map((fee) => (
               <div key={fee.id} className="flex flex-col gap-3 rounded-lg border border-border bg-card p-3 text-card-foreground shadow-sm sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="font-medium text-foreground">{fee.className}</p>
+                  <p className="font-medium text-foreground">{resolveFeeClassLabel(fee)}</p>
                   <p className="text-sm text-muted-foreground">{fee.term || `${currentTerm} (legacy)`}</p>
                   {fee.description && <p className="text-sm text-muted-foreground">{fee.description}</p>}
                 </div>

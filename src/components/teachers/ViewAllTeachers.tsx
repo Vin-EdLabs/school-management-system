@@ -7,17 +7,19 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useData } from '../../contexts/DataContext';
 import { useAudit } from '../../contexts/AuditContext';
-import { Search, Edit, Trash2, Users, Eye } from 'lucide-react';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Search, Edit, Users, Eye } from 'lucide-react';
+import LazyTeacherAvatar from './LazyTeacherAvatar';
+import { teacherStatusBadge } from './TeacherStatusModals';
+import type { Teacher } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
 import TeacherDetailsDialog from './TeacherDetailsDialog';
 import EditTeacherDialog from './EditTeacherDialog';
 
 const ViewAllTeachers = () => {
-  const { teachers, classes, deleteTeacher } = useData();
+  const { teachers, classes } = useData();
   const { addAuditLog } = useAudit();
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all-status');
+  const [filterStatus, setFilterStatus] = useState('active');
   const [filterClass, setFilterClass] = useState('all-classes');
   const [selectedTeacher, setSelectedTeacher] = useState<any>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
@@ -29,7 +31,10 @@ const ViewAllTeachers = () => {
       teacher.staffId.toLowerCase().includes(searchTerm.toLowerCase()) ||
       teacher.email.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesStatus = filterStatus === 'all-status' || teacher.employmentStatus === filterStatus;
+    const status = teacher.status || 'active';
+    const matchesStatus =
+      filterStatus === 'all' ||
+      filterStatus === status;
     const matchesClass = filterClass === 'all-classes' || filterClass === 'no-class' ? 
       (filterClass === 'no-class' ? !teacher.classAssigned : true) : 
       teacher.classAssigned === filterClass;
@@ -38,16 +43,8 @@ const ViewAllTeachers = () => {
   });
 
   const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Active':
-        return 'bg-green-100 text-green-800 dark:bg-green-950/50 dark:text-green-300';
-      case 'Left':
-        return 'bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-300';
-      case 'Suspended':
-        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-950/50 dark:text-yellow-300';
-      default:
-        return 'bg-muted text-muted-foreground';
-    }
+    const badge = teacherStatusBadge(status);
+    return badge?.className || 'bg-green-100 text-green-800 dark:bg-green-950/50 dark:text-green-300';
   };
 
   const handleViewTeacher = (teacher: any) => {
@@ -55,7 +52,7 @@ const ViewAllTeachers = () => {
     setShowDetailsDialog(true);
   };
 
-  const handleEditTeacher = (teacher: any) => {
+  const handleEditTeacher = (teacher: Teacher) => {
     addAuditLog({
       actionType: 'Edit',
       module: 'Teachers',
@@ -64,22 +61,6 @@ const ViewAllTeachers = () => {
     });
     setSelectedTeacher(teacher);
     setShowEditDialog(true);
-  };
-
-  const handleDeleteClick = (teacher: any) => {
-    if (window.confirm(`Are you sure you want to delete ${teacher.fullName}?`)) {
-      addAuditLog({
-        actionType: 'Delete',
-        module: 'Teachers',
-        itemId: teacher.id,
-        itemName: teacher.fullName,
-      });
-      deleteTeacher(teacher.id);
-      toast({
-        title: "Teacher Deleted",
-        description: `${teacher.fullName} has been removed from the system`,
-      });
-    }
   };
 
   return (
@@ -109,10 +90,10 @@ const ViewAllTeachers = () => {
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all-status">All Status</SelectItem>
-                  <SelectItem value="Active">Active</SelectItem>
-                  <SelectItem value="Left">Left</SelectItem>
-                  <SelectItem value="Suspended">Suspended</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="suspended">Suspended</SelectItem>
+                  <SelectItem value="deactivated">Deactivated</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={filterClass} onValueChange={setFilterClass}>
@@ -156,14 +137,18 @@ const ViewAllTeachers = () => {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredTeachers.map((teacher) => (
-                    <TableRow key={teacher.id} className="hover:bg-muted/40">
+                  filteredTeachers.map((teacher) => {
+                    const status = teacher.status || 'active';
+                    const badge = teacherStatusBadge(status);
+                    const dimmed = status !== 'active';
+                    return (
+                    <TableRow key={teacher.id} className={`hover:bg-muted/40 ${dimmed ? 'opacity-70' : ''}`}>
                       <TableCell>
-                        <Avatar className="h-10 w-10 rounded-full border border-slate-200">
-                          <AvatarFallback className="bg-slate-200 text-slate-600 text-sm font-medium">
-                            {(teacher.fullName || 'U').split(/\s+/).map(n => n[0]).join('').slice(0, 2) || '?'}
-                          </AvatarFallback>
-                        </Avatar>
+                        <LazyTeacherAvatar
+                          teacherId={teacher.id}
+                          fullName={teacher.fullName}
+                          hasPassportPhoto={teacher.hasPassportPhoto}
+                        />
                       </TableCell>
                       <TableCell>
                         <div>
@@ -202,9 +187,11 @@ const ViewAllTeachers = () => {
                         )}
                       </TableCell>
                       <TableCell>
-                        <Badge className={getStatusColor(teacher.employmentStatus)}>
-                          {teacher.employmentStatus}
-                        </Badge>
+                        {badge ? (
+                          <Badge className={badge.className}>{badge.label}</Badge>
+                        ) : (
+                          <Badge className={getStatusColor(status)}>ACTIVE</Badge>
+                        )}
                       </TableCell>
                       <TableCell>
                         {teacher.monthlySalary > 0 ? (
@@ -233,19 +220,11 @@ const ViewAllTeachers = () => {
                           >
                             <Edit className="w-4 h-4" />
                           </Button>
-                          <Button 
-                            size="sm" 
-                            variant="outline" 
-                            onClick={() => handleDeleteClick(teacher)}
-                            className="h-9 w-9 p-0 border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/40"
-                            title="Delete teacher"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))
+                    );
+                  })
                 )}
               </TableBody>
             </Table>

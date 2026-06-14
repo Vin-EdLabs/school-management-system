@@ -1,21 +1,71 @@
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useQueryClient } from '@tanstack/react-query';
 import { useData } from '../../contexts/DataContext';
-import { Search, Receipt, Eye } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
+import { Search, Receipt, Eye, Pencil, Lock } from 'lucide-react';
 import ReceiptPrinter from '../common/ReceiptPrinter';
+import ReceiptCorrectionModal from './ReceiptCorrectionModal';
 import { receiptAmountsForPayment } from '../../utils/feeCalculations';
 import { formatDisplayDate } from '../../utils/dateFormat';
+import { invalidateFinanceQueries } from '../../hooks/useFinanceRealtime';
+import { useSchool } from '../../contexts/SchoolContext';
+import { apiService } from '../../services/api';
+import type { Payment } from '../../contexts/DataContext';
+
+const CORRECTION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const LOCK_TOOLTIP = 'This receipt is locked and cannot be corrected after 7 days';
+
+type CorrectionUiState = 'voided' | 'corrected' | 'correctable' | 'locked';
+
+function getRootPayment(payment: Payment, paymentById: Map<string, Payment>): Payment {
+  let current: Payment = payment;
+  const seen = new Set<string>();
+  while (current.correctsPaymentId && !seen.has(current.correctsPaymentId)) {
+    seen.add(current.id);
+    const parent = paymentById.get(current.correctsPaymentId);
+    if (!parent) break;
+    current = parent;
+  }
+  return current;
+}
+
+function getCorrectionUiState(payment: Payment, paymentById: Map<string, Payment>): CorrectionUiState {
+  if (payment.isVoided) return 'voided';
+  if (payment.correctedByPaymentId) return 'voided';
+  const root = getRootPayment(payment, paymentById);
+  const created = new Date(root.recordedAt || '');
+  if (Number.isNaN(created.getTime())) return 'locked';
+  if (Date.now() - created.getTime() > CORRECTION_WINDOW_MS) return 'locked';
+  return 'correctable';
+}
+
+function canCorrectReceipt(payment: Payment, paymentById: Map<string, Payment>) {
+  return getCorrectionUiState(payment, paymentById) === 'correctable';
+}
 
 const ReceiptHistory = () => {
-  const { payments, students, feeStructures, arrearsBalances } = useData();
+  const { payments, students, feeStructures, arrearsBalances, refresh } = useData();
+  const { hasAccess } = useAuth();
+  const queryClient = useQueryClient();
+  const { schoolId } = useSchool();
+  const canCorrect = hasAccess('fees');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [showReceipt, setShowReceipt] = useState(false);
+  const [correctionPayment, setCorrectionPayment] = useState<Payment | null>(null);
+
+  const paymentById = useMemo(() => {
+    const map = new Map<string, Payment>();
+    payments.forEach((p) => map.set(p.id, p));
+    return map;
+  }, [payments]);
 
   const filteredPayments = payments.filter(payment => {
     const student = students.find(s => s.id === payment.studentId);
@@ -28,13 +78,37 @@ const ReceiptHistory = () => {
         student.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         student.studentId.includes(searchTerm)
       ));
-  });
+  }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-  const handleViewReceipt = (payment: any) => {
+  const handleViewReceipt = async (payment: Payment) => {
     const student = students.find(s => s.id === payment.studentId);
     if (!student) return;
 
-    const amounts = receiptAmountsForPayment(payment, payments, student, feeStructures, arrearsBalances);
+    const activePayments = payments.filter((p) => !p.isVoided);
+    const amounts = receiptAmountsForPayment(payment, activePayments, student, feeStructures, arrearsBalances);
+
+    let correctionHistory: {
+      correctionCount: number;
+      chain: Array<{ receiptNumber: string; amount: number; isVoided: boolean }>;
+      rootReceiptNumber?: string;
+    } | undefined;
+
+    try {
+      const history = await apiService.get<{
+        correctionCount: number;
+        rootReceiptNumber: string;
+        chain: Array<{ receiptNumber: string; amount: number; isVoided: boolean }>;
+      }>(`/payments/${payment.id}/correction-history`);
+      if (history.correctionCount > 0) {
+        correctionHistory = {
+          correctionCount: history.correctionCount,
+          chain: history.chain,
+          rootReceiptNumber: history.rootReceiptNumber,
+        };
+      }
+    } catch {
+      correctionHistory = undefined;
+    }
 
     const receiptData = {
       studentName: `${student.firstName} ${student.lastName}`,
@@ -50,15 +124,74 @@ const ReceiptHistory = () => {
       creditBalance: amounts.creditBalance,
       arrears: amounts.arrears,
       currentTermFee: amounts.currentTermFee,
-      totalAmountDue: amounts.totalAmountDue
+      totalAmountDue: amounts.totalAmountDue,
+      correctionHistory,
     };
 
     setSelectedReceipt(receiptData);
     setShowReceipt(true);
   };
 
+  const renderStatusBadges = (payment: Payment) => {
+    if (payment.isVoided) {
+      const replacement = payment.correctedByPaymentId
+        ? paymentById.get(payment.correctedByPaymentId)
+        : null;
+      return (
+        <div className="flex flex-wrap items-center gap-1">
+          <Badge variant="destructive">VOIDED</Badge>
+          {replacement && (
+            <Button
+              variant="link"
+              className="h-auto p-0 text-xs text-emerald-600"
+              onClick={() => handleViewReceipt(replacement)}
+            >
+              View {replacement.receiptNumber}
+            </Button>
+          )}
+        </div>
+      );
+    }
+    if (payment.correctsPaymentId && !payment.isVoided) {
+      const predecessor = paymentById.get(payment.correctsPaymentId);
+      return (
+        <div className="flex flex-wrap items-center gap-1">
+          <Badge className="bg-emerald-600 hover:bg-emerald-600">CORRECTED</Badge>
+          {predecessor && (
+            <Button
+              variant="link"
+              className="h-auto p-0 text-xs text-muted-foreground"
+              onClick={() => handleViewReceipt(predecessor)}
+            >
+              Previous {predecessor.receiptNumber}
+            </Button>
+          )}
+        </div>
+      );
+    }
+    if (getCorrectionUiState(payment, paymentById) === 'locked') {
+      return (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex items-center gap-1 text-muted-foreground">
+              <Lock className="h-3.5 w-3.5" />
+              <span className="text-xs">Locked</span>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>{LOCK_TOOLTIP}</TooltipContent>
+        </Tooltip>
+      );
+    }
+    return null;
+  };
+
+  const handleCorrected = () => {
+    refresh(['payments', 'fees']);
+    invalidateFinanceQueries(queryClient, schoolId);
+  };
+
   return (
-    <>
+    <TooltipProvider>
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
@@ -83,6 +216,7 @@ const ReceiptHistory = () => {
                 <TableHeader>
                   <TableRow className="border-border bg-muted/50">
                     <TableHead className="font-semibold text-foreground">Receipt #</TableHead>
+                    <TableHead className="font-semibold text-foreground">Status</TableHead>
                     <TableHead className="font-semibold text-foreground">Student</TableHead>
                     <TableHead className="font-semibold text-foreground">Amount</TableHead>
                     <TableHead className="font-semibold text-foreground">Date</TableHead>
@@ -93,7 +227,7 @@ const ReceiptHistory = () => {
                 <TableBody>
                   {filteredPayments.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground italic">
+                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground italic">
                         No receipts found matching your search
                       </TableCell>
                     </TableRow>
@@ -101,13 +235,17 @@ const ReceiptHistory = () => {
                     filteredPayments.map((payment) => {
                       const student = students.find(s => s.id === payment.studentId);
                       const receiptNumber = payment.receiptNumber || '-';
+                      const uiState = getCorrectionUiState(payment, paymentById);
+                      const showCorrect = canCorrect && canCorrectReceipt(payment, paymentById);
+                      const showLock = canCorrect && uiState === 'locked';
                       return (
-                        <TableRow key={payment.id}>
+                        <TableRow key={payment.id} className={payment.isVoided ? 'opacity-70' : undefined}>
                           <TableCell>
                             <span className="font-mono text-xs bg-muted text-foreground px-2 py-1 rounded-md border border-border/50">
                               {receiptNumber}
                             </span>
                           </TableCell>
+                          <TableCell>{renderStatusBadges(payment)}</TableCell>
                           <TableCell>
                             <div>
                               <div className="font-medium text-foreground">
@@ -119,7 +257,7 @@ const ReceiptHistory = () => {
                             </div>
                           </TableCell>
                           <TableCell>
-                            <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                            <span className={`font-bold ${payment.isVoided ? 'line-through text-muted-foreground' : 'text-emerald-600 dark:text-emerald-400'}`}>
                               GHS {payment.amount.toFixed(2)}
                             </span>
                           </TableCell>
@@ -128,14 +266,37 @@ const ReceiptHistory = () => {
                             <Badge variant="secondary">{payment.paymentMethod}</Badge>
                           </TableCell>
                           <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleViewReceipt(payment)}
-                              className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-500/10"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
+                            <div className="flex gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleViewReceipt(payment)}
+                                className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-500/10"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </Button>
+                              {showCorrect && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setCorrectionPayment(payment)}
+                                  className="text-amber-600 hover:text-amber-700 hover:bg-amber-500/10"
+                                  title="Correct receipt"
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </Button>
+                              )}
+                              {showLock && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="inline-flex h-8 w-8 items-center justify-center text-muted-foreground">
+                                      <Lock className="h-4 w-4" />
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>{LOCK_TOOLTIP}</TooltipContent>
+                                </Tooltip>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       );
@@ -164,7 +325,14 @@ const ReceiptHistory = () => {
           }}
         />
       )}
-    </>
+
+      <ReceiptCorrectionModal
+        open={!!correctionPayment}
+        onClose={() => setCorrectionPayment(null)}
+        payment={correctionPayment}
+        onCorrected={handleCorrected}
+      />
+    </TooltipProvider>
   );
 };
 

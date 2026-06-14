@@ -8,6 +8,7 @@ import { getIO } from '../socket.js';
 import { sendPushToStaffUser } from '../services/webPushService.js';
 import { writeAuditLog } from '../services/auditService.js';
 import { getClientIp } from '../utils/clientIp.js';
+import { resolvePaymentAccountForTransaction } from '../services/paymentAccountService.js';
 
 function generatePin(): string {
   return String(Math.floor(10000 + Math.random() * 90000));
@@ -531,7 +532,7 @@ router.get('/', async (req: AuthRequest, res) => {
       `SELECT t.id, t.full_name, t.staff_id, t.monthly_salary, t.employment_status, t.ssnit_enabled, c.class_name
        FROM teachers t
        LEFT JOIN classes c ON t.class_assigned_id = c.id
-       WHERE t.tenant_id = $1 AND (LOWER(COALESCE(t.employment_status, '')) = 'active' OR t.employment_status IS NULL OR t.employment_status = '')`,
+       WHERE t.tenant_id = $1 AND COALESCE(t.status, 'active') = 'active'`,
       [tenantId]
     );
 
@@ -884,7 +885,7 @@ router.post('/prepare-month', requireRole('super-admin', 'administrator', 'finan
 
     const teachersRes = await query(
       `SELECT id, monthly_salary, ssnit_enabled FROM teachers t
-       WHERE t.tenant_id = $1 AND (LOWER(COALESCE(t.employment_status, '')) = 'active' OR t.employment_status IS NULL OR t.employment_status = '')`,
+       WHERE t.tenant_id = $1 AND COALESCE(t.status, 'active') = 'active'`,
       [tenantId]
     );
     const staffRes = await query(
@@ -1092,7 +1093,7 @@ router.post('/pay', requireRole('super-admin', 'administrator', 'finance'), asyn
   const client = await getClient();
   const tenantId = req.user!.tenantId!;
   try {
-    const { payee_type, payee_id, month, year, paid_date, payment_method, notes, amount: amountOverride } = req.body;
+    const { payee_type, payee_id, month, year, paid_date, payment_method, payment_account_id, notes, amount: amountOverride } = req.body;
     if (!payee_type || !payee_id || !month || !year) {
       return res.status(400).json({ error: 'Payee type, payee ID, month, and year are required' });
     }
@@ -1177,11 +1178,25 @@ router.post('/pay', requireRole('super-admin', 'administrator', 'finance'), asyn
     const expenseTitle = `Salary — ${payeeName} — ${period}`;
     const payDate = paid_date || new Date().toISOString().slice(0, 10);
 
+    let resolvedMethod = payment_method || null;
+    let resolvedAccountId: number | null = null;
+    try {
+      const resolved = await resolvePaymentAccountForTransaction(
+        tenantId,
+        payment_account_id ? parseInt(String(payment_account_id), 10) : null,
+        payment_method
+      );
+      resolvedAccountId = resolved.paymentAccountId;
+      resolvedMethod = resolved.paymentMethod;
+    } catch (err: any) {
+      return res.status(400).json({ error: err?.message || 'Invalid payment account' });
+    }
+
     await client.query('BEGIN');
 
     const expenseIns = await client.query(
-      `INSERT INTO expenses (tenant_id, title, category, amount, payee_name, payment_date, payment_method, purpose, notes, description, vendor, term, academic_year)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
+      `INSERT INTO expenses (tenant_id, title, category, amount, payee_name, payment_date, payment_method, payment_account_id, purpose, notes, description, vendor, term, academic_year)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
       [
         tenantId,
         expenseTitle,
@@ -1189,7 +1204,8 @@ router.post('/pay', requireRole('super-admin', 'administrator', 'finance'), asyn
         payAmount,
         payeeName,
         payDate,
-        payment_method || null,
+        resolvedMethod,
+        resolvedAccountId,
         'Staff salary payment',
         notes ? `${notes} | salary_payment:${pt}:${pid}:${m}:${y}` : `salary_payment:${pt}:${pid}:${m}:${y}`,
         `Net salary for ${period} (${currency})`,

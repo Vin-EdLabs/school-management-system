@@ -36,6 +36,7 @@ import { apiService } from '../../services/api';
 import { useSchool } from '../../contexts/SchoolContext';
 import { useSocket } from '../../contexts/SocketContext';
 import { toast } from '@/hooks/use-toast';
+import PaymentAccountSelect from '../common/PaymentAccountSelect';
 import {
   Users,
   DollarSign,
@@ -135,7 +136,12 @@ const PayrollModule = () => {
   const [detailOpen, setDetailOpen] = useState(false);
   const [editForm, setEditForm] = useState({ full_name: '', role: '', monthly_salary: '' });
   const [newStaff, setNewStaff] = useState({ full_name: '', role: '', monthly_salary: '' });
-  const [payForm, setPayForm] = useState({ paid_date: new Date().toISOString().slice(0, 10), payment_method: 'Bank Transfer', notes: '' });
+  const [payForm, setPayForm] = useState({
+    paid_date: new Date().toISOString().slice(0, 10),
+    payment_method: 'Bank Transfer',
+    payment_account_id: '',
+    notes: '',
+  });
   const [settingsForm, setSettingsForm] = useState<Partial<PayrollSettings>>({});
   const [historyRows, setHistoryRows] = useState<HistoryRow[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -319,6 +325,7 @@ const PayrollModule = () => {
         year,
         paid_date: payForm.paid_date,
         payment_method: payForm.payment_method,
+        payment_account_id: payForm.payment_account_id ? parseInt(payForm.payment_account_id, 10) : undefined,
         notes: payForm.notes || undefined,
       });
       toast({
@@ -328,7 +335,12 @@ const PayrollModule = () => {
       setPayDialogOpen(false);
       setConfirmPayOpen(false);
       setSelectedPayee(null);
-      setPayForm({ paid_date: new Date().toISOString().slice(0, 10), payment_method: 'Bank Transfer', notes: '' });
+      setPayForm({
+        paid_date: new Date().toISOString().slice(0, 10),
+        payment_method: 'Bank Transfer',
+        payment_account_id: '',
+        notes: '',
+      });
       loadPayroll();
     } catch (e: any) {
       toast({ title: 'Error', description: e?.message || 'Failed to record payment', variant: 'destructive' });
@@ -337,7 +349,12 @@ const PayrollModule = () => {
 
   const openPayDialog = (payee: PayrollRow) => {
     setSelectedPayee(payee);
-    setPayForm({ paid_date: new Date().toISOString().slice(0, 10), payment_method: 'Bank Transfer', notes: '' });
+    setPayForm({
+      paid_date: new Date().toISOString().slice(0, 10),
+      payment_method: 'Bank Transfer',
+      payment_account_id: '',
+      notes: '',
+    });
     setPayDialogOpen(true);
   };
 
@@ -965,20 +982,13 @@ const PayrollModule = () => {
                 <Label>Payment date</Label>
                 <Input type="date" className="mt-1" value={payForm.paid_date} onChange={(e) => setPayForm({ ...payForm, paid_date: e.target.value })} />
               </div>
-              <div>
-                <Label>Method</Label>
-                <Select value={payForm.payment_method} onValueChange={(v) => setPayForm({ ...payForm, payment_method: v })}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Bank Transfer">Bank transfer</SelectItem>
-                    <SelectItem value="Cash">Cash</SelectItem>
-                    <SelectItem value="Mobile Money">Mobile money</SelectItem>
-                    <SelectItem value="Cheque">Cheque</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              <PaymentAccountSelect
+                value={payForm.payment_account_id}
+                onChange={(accountId, paymentMethod) =>
+                  setPayForm({ ...payForm, payment_account_id: accountId, payment_method: paymentMethod })
+                }
+                label="Payment Account"
+              />
               <div>
                 <Label>Payment notes (optional)</Label>
                 <Input className="mt-1" value={payForm.notes} onChange={(e) => setPayForm({ ...payForm, notes: e.target.value })} placeholder="Reference / remarks" />

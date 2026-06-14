@@ -9,6 +9,7 @@ import { useData } from '../../contexts/DataContext';
 import { Search, AlertCircle, CreditCard, TrendingUp } from 'lucide-react';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
 import { getActiveAcademicTerm, calculateStudentFeesSync, calculateStudentFeeStatusSync } from '../../utils/feeCalculations';
+import { shouldTrackStudentFees } from '../students/studentRegistryUtils';
 import { formatDisplayDate } from '../../utils/dateFormat';
 
 const StudentBalances = () => {
@@ -52,7 +53,7 @@ const StudentBalances = () => {
     };
   };
 
-  const studentsWithBalances = (students || []).map(calculateStudentBalance);
+  const studentsWithBalances = (students || []).filter(shouldTrackStudentFees).map(calculateStudentBalance);
 
   const filteredStudents = studentsWithBalances.filter(student => {
     const matchesSearch = searchTerm === '' || 

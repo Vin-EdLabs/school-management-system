@@ -2,8 +2,7 @@ import express from 'express';
 import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest, requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
-import { calculateFeeBalance } from '../services/financeCalculationService.js';
-import { beneficiaryAdjustedFee } from '../utils/beneficiaryFee.js';
+import { computeStudentBalance, resolveTermForMatch } from '../services/studentBalanceCompute.js';
 
 const router = express.Router();
 
@@ -56,81 +55,6 @@ router.get('/arrears-balances', async (req: AuthRequest, res) => {
     return res.json({});
   }
 });
-
-/** Resolve term string for matching fee_structures and payments */
-function resolveTermForMatch(term: string | null, academicYear: string | null): string | null {
-  if (!term) return null;
-  const t = String(term).trim();
-  if (academicYear) {
-    const y = String(academicYear).trim();
-    // Only append if the term string doesn't already contain the year
-    if (!t.includes(y)) {
-      return `${t} ${y}`;
-    }
-  }
-  return t;
-}
-
-/**
- * Calculate student fee balance from DB (dynamic, never stored).
- * total_fees = SUM(fee_structures.amount) for class + term + academic_year
- * total_paid = SUM(payments.amount) for student + term
- * outstanding = total_fees - total_paid
- */
-async function computeStudentBalance(
-  tenantId: number,
-  studentId: number,
-  classId: number | null,
-  term: string | null,
-  academicYear: string | null
-) {
-  const termMatch = resolveTermForMatch(term, academicYear) || term;
-  if (!termMatch || !classId) {
-    return { ...calculateFeeBalance(0, 0), standardFees: 0, discountAmount: 0 };
-  }
-
-  // 1. Fetch Student Beneficiary Details
-  const studentRes = await query(
-    `SELECT is_beneficiary, discount_type, discount_value FROM students 
-     WHERE id = $1 AND tenant_id = $2`,
-    [studentId, tenantId]
-  );
-  const student = studentRes.rows[0];
-
-  // 2. Fetch Base Fees
-  const feeRes = await query(
-    `SELECT COALESCE(SUM(amount), 0) as total FROM fee_structures
-     WHERE tenant_id = $1 AND class_id = $2 AND (term = $3 OR term LIKE $4)`,
-    [tenantId, classId, termMatch, `${termMatch}%`]
-  );
-  const standardFees = parseFloat(feeRes.rows[0]?.total || '0');
-  const adjusted = beneficiaryAdjustedFee(standardFees, student);
-  const totalFees = adjusted.totalFees;
-  const discountAmount = adjusted.discountAmount;
-
-  // 4. Fetch Payments
-  const paidRes = await query(
-    `SELECT COALESCE(SUM(amount), 0) as total FROM payments
-     WHERE tenant_id = $1 AND student_id = $2 AND (term = $3 OR term LIKE $4)`,
-    [tenantId, studentId, termMatch, `${termMatch}%`]
-  );
-  const totalPaid = parseFloat(paidRes.rows[0]?.total || '0');
-
-  // 5. Fetch Arrears
-  const arrearsRes = await query(
-    `SELECT COALESCE(SUM(amount), 0) as total FROM term_arrears
-     WHERE tenant_id = $1 AND student_id = $2 AND (current_term = $3 OR current_term = $4)`,
-    [tenantId, studentId, termMatch, term]
-  );
-  const arrears = Math.max(0, parseFloat(arrearsRes.rows[0]?.total || '0'));
-
-  const balance = calculateFeeBalance(totalFees, totalPaid, arrears);
-  return {
-    ...balance,
-    standardFees,
-    discountAmount
-  };
-}
 
 // Calculate student fees - all dynamic, no stored balances
 router.get('/student/:studentId', async (req: AuthRequest, res) => {

@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { useData, type Student } from '@/contexts/DataContext';
 import { useActiveTerm } from '@/contexts/ActiveTermContext';
+import { calculateStudentFeesSync } from '@/utils/feeCalculations';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -20,7 +21,7 @@ import StudentQuickViewSheet from './StudentQuickViewSheet';
 import EditStudentDialog from './EditStudentDialog';
 
 const AlumniStudents: React.FC = () => {
-  const { students, payments, feeStructures } = useData();
+  const { students, payments, feeStructures, arrearsBalances } = useData();
   const { currentTerm } = useActiveTerm();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
@@ -65,11 +66,32 @@ const AlumniStudents: React.FC = () => {
     setShowEditDialog(true);
   };
 
+  const outstandingForStudent = useCallback(
+    (student: Student) => {
+      const feeCalculation = calculateStudentFeesSync(
+        student.id,
+        currentTerm,
+        student.classAssigned,
+        feeStructures || [],
+        payments || [],
+        student.classAssignedId,
+        arrearsBalances,
+        {
+          isBeneficiary: !!student.isBeneficiary,
+          discountType: student.discountType,
+          discountValue: student.discountValue,
+        }
+      );
+      return Math.max(0, (feeCalculation.totalAmountDue ?? 0) - (feeCalculation.totalPaid ?? 0));
+    },
+    [currentTerm, feeStructures, payments, arrearsBalances]
+  );
+
   const totalPaidAllTime = useCallback(
     (studentId: string) =>
       (payments || [])
-        .filter((p) => String(p.studentId) === String(studentId))
-        .reduce((sum, p) => sum + (Number(p.amount) || 0), 0),
+        .filter((p) => String(p.studentId) === String(studentId) && !p.isVoided)
+        .reduce((sum, p) => sum + (Number(p.amount_paid ?? p.amount) || 0), 0),
     [payments]
   );
 
@@ -109,6 +131,7 @@ const AlumniStudents: React.FC = () => {
               {filtered.map((s) => {
                 const status = normalizeEnrollmentStatus(s.enrollmentStatus);
                 const paid = totalPaidAllTime(s.id);
+                const outstanding = outstandingForStudent(s);
                 return (
                   <li key={s.id}>
                     <div
@@ -154,6 +177,11 @@ const AlumniStudents: React.FC = () => {
                             Paid GHS {paid.toLocaleString()}
                           </Badge>
                         )}
+                        {outstanding > 0 && (
+                          <Badge variant="outline" className="text-[11px] font-medium tabular-nums border-amber-500/40 bg-amber-50 text-amber-800">
+                            Owes GHS {outstanding.toLocaleString()}
+                          </Badge>
+                        )}
                       </div>
                       <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                         <Button
@@ -194,7 +222,27 @@ const AlumniStudents: React.FC = () => {
           setSelectedStudent(null);
         }}
         payments={payments as any}
-        totalFeesForStudent={0}
+        totalFeesForStudent={
+          selectedStudent
+            ? (() => {
+                const fc = calculateStudentFeesSync(
+                  selectedStudent.id,
+                  currentTerm,
+                  selectedStudent.classAssigned,
+                  feeStructures || [],
+                  payments || [],
+                  selectedStudent.classAssignedId,
+                  arrearsBalances,
+                  {
+                    isBeneficiary: !!selectedStudent.isBeneficiary,
+                    discountType: selectedStudent.discountType,
+                    discountValue: selectedStudent.discountValue,
+                  }
+                );
+                return fc.totalAmountDue ?? fc.currentTermFee ?? 0;
+              })()
+            : 0
+        }
       />
 
       <EditStudentDialog

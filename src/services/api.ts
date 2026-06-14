@@ -248,6 +248,10 @@ export class ApiService {
     });
   }
 
+  async uploadTeacherPhoto(teacherId: string, file: File): Promise<unknown> {
+    return this.uploadFile(`/teachers/${teacherId}/photo`, file, 'photo');
+  }
+
   async uploadFile<T>(endpoint: string, file: File, fieldName: string = 'file'): Promise<T> {
     const formData = new FormData();
     formData.append(fieldName, file);

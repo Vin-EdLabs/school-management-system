@@ -55,11 +55,16 @@ export async function ensureSupplementalSchema(): Promise<void> {
       start_date DATE,
       end_date DATE,
       is_active BOOLEAN DEFAULT false,
+      is_archived BOOLEAN DEFAULT false,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `,
     'academic_terms'
+  );
+  await safe(
+    `ALTER TABLE academic_terms ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT false`,
+    'academic_terms.is_archived'
   );
 
   // --- academic_years (end-of-year cycle) ---

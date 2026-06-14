@@ -28,6 +28,27 @@ export interface StudentFeeStatus {
   balance: number;
 }
 
+/** True when payment counts toward Amount Paid (non-voided active receipt). */
+export function isActivePayment(p: { isVoided?: boolean; is_voided?: boolean | string | null }): boolean {
+  if (p.isVoided === true) return false;
+  const raw = p.is_voided;
+  if (raw === true || raw === 'true' || raw === 't' || raw === 1 || raw === '1') return false;
+  return true;
+}
+
+/** Prefer corrected receipt amount when present. */
+export function paymentAmountValue(p: { amount?: number; amount_paid?: number; amountPaid?: number }): number {
+  const paid = p.amount_paid ?? p.amountPaid ?? p.amount;
+  return Number(paid) || 0;
+}
+
+/** Sum active (non-voided) payment amounts. */
+export function sumActivePaymentAmounts(
+  payments: Array<{ isVoided?: boolean; is_voided?: boolean | string | null; amount?: number; amount_paid?: number; amountPaid?: number }>
+): number {
+  return (payments || []).filter(isActivePayment).reduce((sum, p) => sum + paymentAmountValue(p), 0);
+}
+
 export const generateReceiptNumber = (): string => {
   const prefix = 'RGS';
   const timestamp = Date.now().toString().slice(-6);
@@ -247,11 +268,19 @@ export function receiptAmountsForPayment(
 ): { remainingBalance: number; totalAmountDue: number; currentTermFee: number; arrears: number; creditBalance: number } {
   const snap = parseReceiptSnapshot(payment.receiptSnapshot ?? payment.receipt_snapshot);
   if (snap) {
+    let currentTermFee = Number(snap.termFee) || 0;
+    const arrears = Number(snap.arrears) || 0;
+    let totalAmountDue = Number(snap.totalDue) || 0;
+    if (totalAmountDue > 0 && currentTermFee <= 0 && arrears <= 0) {
+      currentTermFee = totalAmountDue;
+    } else if (totalAmountDue > 0 && currentTermFee <= 0) {
+      currentTermFee = Math.max(0, totalAmountDue - arrears);
+    }
     return {
       remainingBalance: snap.balanceAfter,
-      totalAmountDue: snap.totalDue,
-      currentTermFee: snap.termFee,
-      arrears: snap.arrears,
+      totalAmountDue,
+      currentTermFee,
+      arrears,
       creditBalance: Math.max(0, snap.credit || 0),
     };
   }
@@ -276,7 +305,7 @@ export function receiptAmountsForPayment(
     String(p.studentId) === String(payment.studentId) || String(p.studentIdNum ?? '') === String(payment.studentId);
 
   const chronological = [...allPayments]
-    .filter((p) => sameStudent(p) && termsMatch(termForCalc, p.term))
+    .filter((p) => sameStudent(p) && termsMatch(termForCalc, p.term) && isActivePayment(p))
     .sort((a, b) => {
       const ta = new Date(a.date).getTime();
       const tb = new Date(b.date).getTime();
@@ -286,7 +315,7 @@ export function receiptAmountsForPayment(
 
   let cumulative = 0;
   for (const p of chronological) {
-    cumulative += Number(p.amount) || 0;
+    cumulative += paymentAmountValue(p);
     if (String(p.id) === String(payment.id)) break;
   }
 
@@ -297,6 +326,85 @@ export function receiptAmountsForPayment(
     arrears: feeDetails.arrears,
     creditBalance: Math.max(0, cumulative - feeDetails.totalAmountDue),
   };
+}
+
+function firstPositive(...values: Array<number | undefined | null>): number {
+  for (const value of values) {
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0.0001) return n;
+  }
+  return 0;
+}
+
+/** Merge server snapshot, API balance, and local fee calc for receipt display. */
+export function resolveReceiptDisplayAmounts(options: {
+  snap: ReturnType<typeof parseReceiptSnapshot>;
+  serverBalance?: {
+    totalFees?: number;
+    arrears?: number;
+    outstanding?: number;
+    credit?: number;
+  } | null;
+  feeDetails: {
+    currentTermFee: number;
+    totalAmountDue: number;
+    arrears: number;
+    totalPaid: number;
+  };
+  paymentAmount: number;
+}) {
+  const { snap, serverBalance, feeDetails, paymentAmount } = options;
+
+  // Prefer local fee breakdown (what staff saw on screen before paying)
+  let currentTermFee = Number(feeDetails.currentTermFee) || 0;
+  let arrears = Number(feeDetails.arrears) || 0;
+  let totalAmountDue = Number(feeDetails.totalAmountDue) || 0;
+
+  if (currentTermFee <= 0) {
+    currentTermFee = firstPositive(serverBalance?.totalFees, snap?.termFee);
+  }
+  if (arrears <= 0) {
+    arrears = firstPositive(serverBalance?.arrears, snap?.arrears);
+  }
+  if (totalAmountDue <= 0) {
+    const serverTotalDue =
+      (Number(serverBalance?.totalFees) || 0) + (Number(serverBalance?.arrears) || 0);
+    totalAmountDue = firstPositive(serverTotalDue, snap?.totalDue);
+  }
+
+  // Fill gaps when only total due is known
+  if (totalAmountDue > 0 && currentTermFee <= 0 && arrears <= 0) {
+    currentTermFee = totalAmountDue;
+  } else if (totalAmountDue > 0 && currentTermFee <= 0) {
+    currentTermFee = Math.max(0, totalAmountDue - arrears);
+  }
+  if (totalAmountDue <= 0 && (currentTermFee > 0 || arrears > 0)) {
+    totalAmountDue = currentTermFee + arrears;
+  }
+
+  const paidAfter = Number(feeDetails.totalPaid) + Number(paymentAmount);
+  let remainingBalance = Math.max(0, totalAmountDue - paidAfter);
+  let creditBalance = Math.max(0, paidAfter - totalAmountDue);
+
+  if (snap) {
+    if (Number.isFinite(Number(snap.balanceAfter))) {
+      remainingBalance = Math.max(0, Number(snap.balanceAfter));
+    }
+    if (Number(snap.credit) > 0.0001) {
+      creditBalance = Math.max(0, Number(snap.credit));
+      remainingBalance = 0;
+    }
+  } else if (serverBalance) {
+    if (Number(serverBalance.outstanding) > 0.0001) {
+      remainingBalance = Math.max(0, Number(serverBalance.outstanding));
+    }
+    if (Number(serverBalance.credit) > 0.0001) {
+      creditBalance = Math.max(0, Number(serverBalance.credit));
+      remainingBalance = 0;
+    }
+  }
+
+  return { currentTermFee, arrears, totalAmountDue, remainingBalance, creditBalance };
 }
 
 /** Sync version - Matches backend: total_outstanding = previous_arrears + current_term_fee, remaining = total_outstanding - total_paid */
@@ -334,9 +442,9 @@ export const calculateStudentFeesSync = (
   const totalPaid = (payments || [])
     .filter((p: any) => {
       const matchById = String(p.studentId) === String(studentId) || String(p.studentIdNum) === String(studentId);
-      return matchById && termMatch(p.term);
+      return matchById && termMatch(p.term) && isActivePayment(p);
     })
-    .reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+    .reduce((sum: number, p: any) => sum + paymentAmountValue(p), 0);
   const totalAmountDue = Math.max(0, previousArrears + currentTermFee);
   const remainingBalance = totalAmountDue - totalPaid;
   // Arrears = carryover from previous term only, NOT the full balance

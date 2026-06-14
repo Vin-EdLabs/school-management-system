@@ -1,10 +1,16 @@
+/** SQL: only count active (non-voided) payments in fee/balance totals. */
+export const SQL_ACTIVE_PAYMENT = 'COALESCE(is_voided, false) = false';
+
+/** SQL: prefer corrected receipt amount when present. */
+export const SQL_PAYMENT_AMOUNT = 'COALESCE(amount_paid, amount, 0)';
+
 /**
  * Finance Calculation Service
  * Follows proper accounting rules. All balances are computed dynamically - never stored.
  *
  * Formulas:
  *   total_fees = SUM(assigned_amount) from fee_structure per class, term, academic_year
- *   total_paid = SUM(payments.amount) for student, term, academic_year
+ *   total_paid = SUM(active payments) for student, term, academic_year (voided excluded)
  *   outstanding = total_fees - total_paid
  *
  * Arrears = carryover from PREVIOUS term only. For new students or current-term-only view, arrears = 0.

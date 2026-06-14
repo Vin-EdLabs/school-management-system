@@ -91,8 +91,11 @@ router.post('/login', resolveTenant, async (req: ParentRequest & TenantRequest, 
     );
 
     if (accountRow.rows.length === 0) {
-      // First-ever login — create account, default password = admission number
-      const hash = await bcrypt.hash(student.admission_number, 10);
+      const loginId = defaultParentPortalPassword(student);
+      if (!loginId) {
+        return res.status(401).json({ error: 'Invalid student ID or password' });
+      }
+      const hash = await bcrypt.hash(loginId, 10);
       const inserted = await query(
         `INSERT INTO parent_portal_accounts (tenant_id, student_id, password_hash, must_change_password)
          VALUES ($1, $2, $3, true) RETURNING id, password_hash, must_change_password, is_active`,
@@ -123,9 +126,12 @@ router.post('/login', resolveTenant, async (req: ParentRequest & TenantRequest, 
       { expiresIn: parentJwtExpiresIn() }
     );
 
+    const linkedAccounts = await buildLinkedAccountsPayload(tenantId, account.id, student.id);
+
     res.json({
       token,
       mustChangePassword: account.must_change_password,
+      linkedAccounts,
       student: {
         id: student.id,
         firstName: student.first_name,
@@ -339,55 +345,30 @@ router.post('/notifications/read-all', authenticateParent, async (req: ParentReq
 router.get('/me', authenticateParent, async (req: ParentRequest, res) => {
   try {
     const { studentId, tenantId } = req.parent!;
-
-    const result = await query(
-      `SELECT
-         s.id, s.first_name, s.last_name, s.student_id AS admission_number,
-         s.gender, s.date_of_birth, s.class_assigned_id,
-         s.passport_photo_url,
-         COALESCE(c.class_name, TRIM(CONCAT(COALESCE(c.level, ''), ' ', COALESCE(c.stream, '')))) AS class_name,
-         c.level,
-         t.name AS tenant_name,
-         COALESCE(ss.logo_url, t.logo_url) AS school_logo_url,
-         COALESCE(ss.school_name, t.name) AS school_name,
-         COALESCE(
-           NULLIF(ss.current_term, ''),
-           NULLIF(at.term_name, '')
-         ) AS current_term,
-         COALESCE(
-           NULLIF(ss.current_year, ''),
-           NULLIF(at.year::text, '')
-         ) AS current_year,
-         pa.must_change_password, pa.last_login,
-         s.is_beneficiary, s.beneficiary_type, s.discount_type, s.discount_value, s.beneficiary_notes, s.guardian_name, s.guardian_contact
-       FROM students s
-       LEFT JOIN classes c ON s.class_assigned_id = c.id
-       LEFT JOIN tenants t ON s.tenant_id = t.id
-       LEFT JOIN school_settings ss ON ss.tenant_id = s.tenant_id
-       LEFT JOIN LATERAL (
-         SELECT term_name, year
-         FROM academic_terms
-         WHERE tenant_id = s.tenant_id AND is_active = true
-         ORDER BY updated_at DESC NULLS LAST, id DESC
-         LIMIT 1
-       ) at ON true
-       LEFT JOIN parent_portal_accounts pa ON pa.student_id = s.id AND pa.tenant_id = s.tenant_id
-       WHERE s.id = $1 AND s.tenant_id = $2`,
-      [studentId, tenantId]
-    );
-
-    if (result.rows.length === 0) {
+    const profile = await fetchParentStudentProfile(tenantId, studentId);
+    if (!profile) {
       return res.status(404).json({ error: 'Student not found' });
     }
-    res.json(result.rows[0]);
+    res.json(profile);
   } catch (error) {
     console.error('Parent me error:', error);
     res.status(500).json({ error: 'Failed to fetch student info' });
   }
 });
+
+router.get('/linked-accounts', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    const { accountId, studentId, tenantId } = req.parent!;
+    const linkedAccounts = await buildLinkedAccountsPayload(tenantId, accountId, studentId);
+    return res.json({ linkedAccounts });
+  } catch (error) {
+    console.error('Parent linked accounts error:', error);
+    return res.status(500).json({ error: 'Failed to fetch linked accounts' });
+  }
+});
  
 // ── POST /api/parent/link-siblings ───────────────────────────────────────────
-// Links two students as siblings in the database if they share the same guardian.
+// Links two students as siblings in the database (no guardian validation — admin controls student IDs).
  
 router.post('/link-siblings', authenticateParent, async (req: ParentRequest, res) => {
   try {
@@ -398,9 +379,8 @@ router.post('/link-siblings', authenticateParent, async (req: ParentRequest, res
       return res.status(400).json({ error: 'targetStudentId is required' });
     }
  
-    // Fetch both students
     const students = await query(
-      `SELECT id, first_name, last_name, guardian_name, guardian_contact, names_of_siblings, number_of_siblings
+      `SELECT id, first_name, last_name, names_of_siblings, number_of_siblings
        FROM students
        WHERE id IN ($1, $2) AND tenant_id = $3`,
       [currentStudentId, targetStudentId, tenantId]
@@ -413,23 +393,6 @@ router.post('/link-siblings', authenticateParent, async (req: ParentRequest, res
     const studentA = students.rows.find(s => s.id === currentStudentId);
     const studentB = students.rows.find(s => s.id === targetStudentId);
  
-    // Verify guardian name matches (case-insensitive, trimmed)
-    const gA = (studentA.guardian_name || '').trim().toLowerCase();
-    const gB = (studentB.guardian_name || '').trim().toLowerCase();
- 
-    // Verify guardian contact matches (normalized digits only)
-    const cA = (studentA.guardian_contact || '').replace(/\D/g, '');
-    const cB = (studentB.guardian_contact || '').replace(/\D/g, '');
- 
-    if (!gA || !gB || gA !== gB) {
-      return res.status(403).json({ error: 'Guardian name mismatch.' });
-    }
-    
-    if (!cA || !cB || cA !== cB) {
-      return res.status(403).json({ error: 'Guardian phone number mismatch.' });
-    }
- 
-    // Update both records
     const updateStudent = async (student: any, sibling: any) => {
       const existingSiblings = (student.names_of_siblings || '').split(',').map((s: string) => s.trim()).filter(Boolean);
       const siblingFullName = `${sibling.first_name} ${sibling.last_name}`;
@@ -491,6 +454,297 @@ function defaultParentPortalPassword(studentRow: { student_id?: string; admissio
   return String(studentRow.student_id || studentRow.admission_number || '').trim();
 }
 
+const PARENT_STUDENT_PROFILE_SQL = `
+  SELECT
+    s.id,
+    s.first_name,
+    s.last_name,
+    s.student_id AS admission_number,
+    s.gender,
+    s.date_of_birth,
+    s.class_assigned_id,
+    s.passport_photo_url,
+    COALESCE(c.class_name, TRIM(CONCAT(COALESCE(c.level, ''), ' ', COALESCE(c.stream, '')))) AS class_name,
+    c.level,
+    t.name AS tenant_name,
+    COALESCE(ss.logo_url, t.logo_url) AS school_logo_url,
+    COALESCE(ss.school_name, t.name) AS school_name,
+    COALESCE(
+      NULLIF(ss.current_term, ''),
+      NULLIF(at.term_name, '')
+    ) AS current_term,
+    COALESCE(
+      NULLIF(ss.current_year, ''),
+      NULLIF(at.year::text, '')
+    ) AS current_year,
+    pa.id AS account_id,
+    pa.must_change_password,
+    pa.last_login,
+    s.is_beneficiary,
+    s.beneficiary_type,
+    s.discount_type,
+    s.discount_value,
+    s.beneficiary_notes,
+    s.guardian_name,
+    s.guardian_contact,
+    s.names_of_siblings
+  FROM students s
+  LEFT JOIN classes c ON s.class_assigned_id = c.id
+  LEFT JOIN tenants t ON s.tenant_id = t.id
+  LEFT JOIN school_settings ss ON ss.tenant_id = s.tenant_id
+  LEFT JOIN LATERAL (
+    SELECT term_name, year
+    FROM academic_terms
+    WHERE tenant_id = s.tenant_id AND is_active = true
+    ORDER BY updated_at DESC NULLS LAST, id DESC
+    LIMIT 1
+  ) at ON true
+  LEFT JOIN parent_portal_accounts pa ON pa.student_id = s.id AND pa.tenant_id = s.tenant_id
+`;
+
+async function fetchParentStudentProfile(tenantId: number, studentPk: number) {
+  const result = await query(
+    `${PARENT_STUDENT_PROFILE_SQL}
+     WHERE s.id = $1 AND s.tenant_id = $2`,
+    [studentPk, tenantId]
+  );
+  return result.rows[0] || null;
+}
+
+async function ensureParentPortalAccount(tenantId: number, studentPk: number) {
+  const existing = await query(
+    `SELECT id, student_id, family_group_id, must_change_password, is_active
+     FROM parent_portal_accounts
+     WHERE tenant_id = $1 AND student_id = $2`,
+    [tenantId, studentPk]
+  );
+  if (existing.rows.length > 0) return existing.rows[0];
+
+  const studentResult = await query(
+    'SELECT id, student_id, admission_number FROM students WHERE id = $1 AND tenant_id = $2',
+    [studentPk, tenantId]
+  );
+  if (studentResult.rows.length === 0) {
+    throw new Error('Student not found');
+  }
+  const loginId = defaultParentPortalPassword(studentResult.rows[0]);
+  if (!loginId) {
+    throw new Error('Student has no portal login ID configured');
+  }
+  const hash = await bcrypt.hash(loginId, 10);
+  const inserted = await query(
+    `INSERT INTO parent_portal_accounts (tenant_id, student_id, password_hash, must_change_password)
+     VALUES ($1, $2, $3, true)
+     RETURNING id, student_id, family_group_id, must_change_password, is_active`,
+    [tenantId, studentPk, hash]
+  );
+  return inserted.rows[0];
+}
+
+async function createFamilyGroupId(tenantId: number): Promise<number> {
+  const result = await query(
+    'INSERT INTO parent_portal_family_groups (tenant_id) VALUES ($1) RETURNING id',
+    [tenantId]
+  );
+  return Number(result.rows[0].id);
+}
+
+async function assignAccountFamilyGroup(tenantId: number, accountId: number, groupId: number) {
+  await query(
+    'UPDATE parent_portal_accounts SET family_group_id = $1 WHERE id = $2 AND tenant_id = $3',
+    [groupId, accountId, tenantId]
+  );
+}
+
+async function mergeFamilyGroups(tenantId: number, keepGroupId: number, mergeGroupId: number) {
+  if (keepGroupId === mergeGroupId) return;
+  await query(
+    'UPDATE parent_portal_accounts SET family_group_id = $1 WHERE tenant_id = $2 AND family_group_id = $3',
+    [keepGroupId, tenantId, mergeGroupId]
+  );
+  await query(
+    'DELETE FROM parent_portal_family_groups WHERE id = $1 AND tenant_id = $2',
+    [mergeGroupId, tenantId]
+  );
+}
+
+async function linkParentAccountsInFamily(tenantId: number, accountAId: number, accountBId: number) {
+  if (accountAId === accountBId) return;
+
+  const accounts = await query(
+    `SELECT id, family_group_id
+     FROM parent_portal_accounts
+     WHERE tenant_id = $1 AND id IN ($2, $3)`,
+    [tenantId, accountAId, accountBId]
+  );
+  const accountA = accounts.rows.find((row) => Number(row.id) === accountAId);
+  const accountB = accounts.rows.find((row) => Number(row.id) === accountBId);
+  if (!accountA || !accountB) {
+    throw new Error('Parent account not found');
+  }
+
+  const groupA = accountA.family_group_id ? Number(accountA.family_group_id) : null;
+  const groupB = accountB.family_group_id ? Number(accountB.family_group_id) : null;
+
+  let keepGroupId = groupA || groupB;
+  if (!keepGroupId) {
+    keepGroupId = await createFamilyGroupId(tenantId);
+  }
+
+  if (groupA && groupB && groupA !== groupB) {
+    await mergeFamilyGroups(tenantId, keepGroupId, keepGroupId === groupA ? groupB : groupA);
+  }
+
+  await assignAccountFamilyGroup(tenantId, accountAId, keepGroupId);
+  await assignAccountFamilyGroup(tenantId, accountBId, keepGroupId);
+}
+
+function parseStudentLoginIds(body: Record<string, unknown> | null | undefined): string[] {
+  const rawList = body?.studentLoginIds;
+  if (Array.isArray(rawList)) {
+    return [...new Set(rawList.map((value) => String(value).trim()).filter(Boolean))];
+  }
+  const single = String(body?.studentLoginId || body?.studentId || '').trim();
+  if (!single) return [];
+  return [...new Set(single.split(/[\s,;]+/).map((value) => value.trim()).filter(Boolean))];
+}
+
+async function isStudentInAccountFamily(
+  tenantId: number,
+  accountId: number,
+  studentPk: number
+): Promise<boolean> {
+  const result = await query(
+    `SELECT 1
+     FROM parent_portal_accounts anchor
+     JOIN parent_portal_accounts sibling
+       ON sibling.tenant_id = anchor.tenant_id
+      AND sibling.family_group_id = anchor.family_group_id
+      AND sibling.student_id = $3
+     WHERE anchor.id = $1
+       AND anchor.tenant_id = $2
+       AND anchor.family_group_id IS NOT NULL`,
+    [accountId, tenantId, studentPk]
+  );
+  return result.rows.length > 0;
+}
+
+type LinkSiblingResult =
+  | { status: 'linked'; studentLoginId: string; studentName: string }
+  | { status: 'already_linked'; studentLoginId: string; studentName: string }
+  | { status: 'not_found'; studentLoginId: string }
+  | { status: 'self'; studentLoginId: string };
+
+async function linkSiblingStudentToAccount(
+  tenantId: number,
+  accountId: number,
+  anchorStudentPk: number,
+  studentLoginId: string
+): Promise<LinkSiblingResult> {
+  const linkedStudentPk = await resolveStudentInternalId(tenantId, studentLoginId);
+  if (!linkedStudentPk) {
+    return { status: 'not_found', studentLoginId };
+  }
+  if (linkedStudentPk === anchorStudentPk) {
+    return { status: 'self', studentLoginId };
+  }
+
+  const studentResult = await query(
+    'SELECT first_name, last_name FROM students WHERE id = $1 AND tenant_id = $2',
+    [linkedStudentPk, tenantId]
+  );
+  const studentName = studentResult.rows[0]
+    ? `${studentResult.rows[0].first_name} ${studentResult.rows[0].last_name}`.trim()
+    : studentLoginId;
+
+  if (await isStudentInAccountFamily(tenantId, accountId, linkedStudentPk)) {
+    return { status: 'already_linked', studentLoginId, studentName };
+  }
+
+  const linkedAccount = await ensureParentPortalAccount(tenantId, linkedStudentPk);
+  await linkParentAccountsInFamily(tenantId, accountId, Number(linkedAccount.id));
+  return { status: 'linked', studentLoginId, studentName };
+}
+
+async function syncFamilyFromStudentSiblingRecords(tenantId: number, anchorStudentPk: number, anchorAccountId: number) {
+  const profile = await fetchParentStudentProfile(tenantId, anchorStudentPk);
+  const namesStr = String(profile?.names_of_siblings || '');
+  const matches = [...namesStr.matchAll(/\(([^)]+)\)/g)];
+  for (const match of matches) {
+    const siblingPk = await resolveStudentInternalId(tenantId, match[1]?.trim());
+    if (!siblingPk || siblingPk === anchorStudentPk) continue;
+    const siblingAccount = await ensureParentPortalAccount(tenantId, siblingPk);
+    await linkParentAccountsInFamily(tenantId, anchorAccountId, Number(siblingAccount.id));
+  }
+}
+
+async function issueParentToken(accountId: number, studentPk: number, tenantId: number) {
+  return jwt.sign(
+    { parentAccountId: accountId, studentId: studentPk, tenantId, role: 'parent' },
+    process.env.JWT_SECRET || 'secret',
+    { expiresIn: parentJwtExpiresIn() }
+  );
+}
+
+async function buildLinkedAccountsPayload(tenantId: number, accountId: number, studentPk: number) {
+  await syncFamilyFromStudentSiblingRecords(tenantId, studentPk, accountId);
+
+  const accountRow = await query(
+    'SELECT family_group_id FROM parent_portal_accounts WHERE id = $1 AND tenant_id = $2',
+    [accountId, tenantId]
+  );
+  const groupId = accountRow.rows[0]?.family_group_id;
+  if (!groupId) return [];
+
+  const members = await query(
+    `SELECT pa.id AS account_id, pa.is_active, s.id AS student_pk
+     FROM parent_portal_accounts pa
+     JOIN students s ON s.id = pa.student_id AND s.tenant_id = pa.tenant_id
+     WHERE pa.tenant_id = $1 AND pa.family_group_id = $2 AND pa.is_active = true
+     ORDER BY s.first_name, s.last_name, s.id`,
+    [tenantId, groupId]
+  );
+
+  const linkedAccounts: Array<{ token: string; student: Record<string, unknown> }> = [];
+  for (const member of members.rows) {
+    const profile = await fetchParentStudentProfile(tenantId, Number(member.student_pk));
+    if (!profile) continue;
+    const token = await issueParentToken(Number(member.account_id), Number(member.student_pk), tenantId);
+    linkedAccounts.push({ token, student: profile });
+  }
+  return linkedAccounts;
+}
+
+async function fetchFamilyLinkedStudentsForAdmin(tenantId: number, accountId: number, anchorStudentPk: number) {
+  const accountRow = await query(
+    'SELECT family_group_id FROM parent_portal_accounts WHERE id = $1 AND tenant_id = $2',
+    [accountId, tenantId]
+  );
+  const groupId = accountRow.rows[0]?.family_group_id;
+  if (!groupId) return [];
+
+  const rows = await query(
+    `SELECT s.id AS student_id,
+            s.first_name,
+            s.last_name,
+            s.student_id AS admission_number,
+            s.admission_number AS admission_number_legacy,
+            pa.id AS account_id
+     FROM parent_portal_accounts pa
+     JOIN students s ON s.id = pa.student_id AND s.tenant_id = pa.tenant_id
+     WHERE pa.tenant_id = $1 AND pa.family_group_id = $2 AND s.id != $3
+     ORDER BY s.first_name, s.last_name, s.id`,
+    [tenantId, groupId, anchorStudentPk]
+  );
+
+  return rows.rows.map((row) => ({
+    accountId: row.account_id,
+    studentId: row.student_id,
+    admissionNumber: row.admission_number || row.admission_number_legacy,
+    studentName: `${row.first_name} ${row.last_name}`.trim(),
+  }));
+}
+
 const adminRouter = express.Router();
 adminRouter.use(authenticate, requireRole('super-admin', 'administrator'), validateTenantAccess);
 
@@ -526,7 +780,7 @@ adminRouter.get('/accounts', async (req: AuthRequest, res) => {
       LEFT JOIN parent_portal_accounts pa ON pa.student_id = s.id AND pa.tenant_id = s.tenant_id
       LEFT JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
       WHERE s.tenant_id = $1
-        AND (COALESCE(s.guardian_name, '') <> '' OR COALESCE(s.guardian_contact, '') <> '')
+        AND COALESCE(TRIM(s.student_id), '') <> ''
     `;
 
     if (status === 'active') {
@@ -590,7 +844,8 @@ adminRouter.post('/accounts', async (req: AuthRequest, res) => {
     }
 
     const studentResult = await query(
-      'SELECT id, student_id, admission_number FROM students WHERE id = $1 AND tenant_id = $2',
+      `SELECT id, student_id, admission_number, first_name, last_name
+       FROM students WHERE id = $1 AND tenant_id = $2`,
       [studentPk, tenantId]
     );
     if (studentResult.rows.length === 0) {
@@ -602,20 +857,39 @@ adminRouter.post('/accounts', async (req: AuthRequest, res) => {
       [tenantId, studentPk]
     );
     if (existing.rows.length > 0) {
-      return res.status(400).json({ error: 'Parent account already exists for this student' });
+      const linkToAccountId = Number(req.body?.linkToAccountId);
+      if (Number.isInteger(linkToAccountId) && linkToAccountId > 0) {
+        await linkParentAccountsInFamily(tenantId, linkToAccountId, Number(existing.rows[0].id));
+        return res.json({
+          success: true,
+          accountId: existing.rows[0].id,
+          message: 'Student already had a parent account — linked to this family.',
+        });
+      }
+      return res.status(400).json({
+        error: 'This student already has a parent account. Use Link Sibling on the main child account — you can link as many siblings as you need.',
+      });
     }
 
-    const defaultPassword = defaultParentPortalPassword(studentResult.rows[0]);
-    if (!defaultPassword) {
-      return res.status(400).json({ error: 'Student has no portal login ID configured' });
+    const studentRow = studentResult.rows[0];
+    const loginId = defaultParentPortalPassword(studentRow);
+    if (!loginId) {
+      return res.status(400).json({ error: 'Student has no portal login ID configured. Set Student ID on the student record first.' });
     }
 
-    const passwordHash = await bcrypt.hash(defaultPassword, 10);
+    const customPassword = String(req.body?.password || '').trim();
+    if (customPassword && customPassword.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+    const passwordToSet = customPassword || loginId;
+    const mustChangePassword = !customPassword;
+
+    const passwordHash = await bcrypt.hash(passwordToSet, 10);
     const inserted = await query(
       `INSERT INTO parent_portal_accounts (tenant_id, student_id, password_hash, must_change_password)
-       VALUES ($1, $2, $3, true)
+       VALUES ($1, $2, $3, $4)
        RETURNING id, is_active, must_change_password, last_login`,
-      [tenantId, studentPk, passwordHash]
+      [tenantId, studentPk, passwordHash, mustChangePassword]
     );
 
     await writeAuditLog({
@@ -624,11 +898,24 @@ adminRouter.post('/accounts', async (req: AuthRequest, res) => {
       action: 'create_parent_account',
       entityType: 'parent_portal_account',
       entityId: inserted.rows[0].id,
-      summary: 'Admin created parent portal account',
-      details: { studentId: studentPk, defaultPassword: 'student_login_id' },
+      summary: `Admin created parent portal account for ${studentRow.first_name} ${studentRow.last_name}`,
+      details: {
+        studentId: studentPk,
+        studentPortalId: loginId,
+        customPassword: !!customPassword,
+      },
     });
 
-    return res.status(201).json({ success: true, accountId: inserted.rows[0].id });
+    return res.status(201).json({
+      success: true,
+      accountId: inserted.rows[0].id,
+      credentials: {
+        studentPortalId: loginId,
+        defaultPassword: passwordToSet,
+        mustChangePassword,
+        studentName: `${studentRow.first_name} ${studentRow.last_name}`.trim(),
+      },
+    });
   } catch (error) {
     console.error('Admin create parent account error:', error);
     return res.status(500).json({ error: 'Failed to create parent account' });
@@ -669,6 +956,11 @@ adminRouter.get('/accounts/:accountId', async (req: AuthRequest, res) => {
     }
 
     const row = result.rows[0];
+    const linkedStudents = await fetchFamilyLinkedStudentsForAdmin(
+      tenantId,
+      Number(row.account_id),
+      Number(row.student_id)
+    );
     return res.json({
       accountId: row.account_id,
       studentId: row.student_id,
@@ -679,6 +971,7 @@ adminRouter.get('/accounts/:accountId', async (req: AuthRequest, res) => {
       guardianContact: row.guardian_contact,
       siblingCount: Number(row.number_of_siblings) || 0,
       siblingNames: row.names_of_siblings || '',
+      linkedStudents,
       isActive: row.is_active,
       mustChangePassword: row.must_change_password,
       lastLogin: row.last_login,
@@ -697,7 +990,7 @@ adminRouter.patch('/accounts/:accountId', async (req: AuthRequest, res) => {
     }
 
     const accountId = Number(req.params.accountId);
-    const { isActive, mustChangePassword, studentId, studentLoginId } = req.body || {};
+    const { isActive, mustChangePassword } = req.body || {};
     const updates: string[] = [];
     const params: any[] = [];
 
@@ -708,24 +1001,6 @@ adminRouter.patch('/accounts/:accountId', async (req: AuthRequest, res) => {
     if (typeof mustChangePassword === 'boolean') {
       updates.push(`must_change_password = $${params.length + 1}`);
       params.push(mustChangePassword);
-    }
-
-    const linkRef = studentLoginId ?? studentId;
-    let resolvedStudentPk: number | null = null;
-    if (linkRef != null && String(linkRef).trim() !== '') {
-      resolvedStudentPk = await resolveStudentInternalId(tenantId, linkRef);
-      if (!resolvedStudentPk) {
-        return res.status(400).json({ error: 'Student not found. Use the student portal login ID (e.g. 20260001).' });
-      }
-      const conflict = await query(
-        'SELECT id FROM parent_portal_accounts WHERE tenant_id = $1 AND student_id = $2 AND id != $3',
-        [tenantId, resolvedStudentPk, accountId]
-      );
-      if (conflict.rows.length > 0) {
-        return res.status(400).json({ error: 'Another parent account is already linked to that student' });
-      }
-      updates.push(`student_id = $${params.length + 1}`);
-      params.push(resolvedStudentPk);
     }
 
     if (updates.length === 0) {
@@ -744,31 +1019,6 @@ adminRouter.patch('/accounts/:accountId', async (req: AuthRequest, res) => {
       return res.status(404).json({ error: 'Parent account not found' });
     }
 
-    const existingRow = existing.rows[0];
-    if (resolvedStudentPk != null) {
-      const studentTarget = await query(
-        `SELECT guardian_name, guardian_contact FROM students WHERE id = $1 AND tenant_id = $2`,
-        [resolvedStudentPk, tenantId]
-      );
-      if (studentTarget.rows.length === 0) {
-        return res.status(400).json({ error: 'Student not found for this tenant' });
-      }
-      const targetRow = studentTarget.rows[0];
-
-      const normalizeName = (value: string | null | undefined) => String(value || '').trim().toLowerCase();
-      const normalizePhone = (value: string | null | undefined) => String(value || '').replace(/\D/g, '');
-
-      const sameGuardian =
-        normalizeName(existingRow.guardian_name) === normalizeName(targetRow.guardian_name) &&
-        normalizePhone(existingRow.guardian_contact) === normalizePhone(targetRow.guardian_contact);
-
-      if (!sameGuardian) {
-        return res.status(400).json({
-          error: 'Cannot link student: guardian name and phone must match (same parent/guardian).',
-        });
-      }
-    }
-
     await query(
       `UPDATE parent_portal_accounts SET ${updates.join(', ')} WHERE id = $${params.length + 1} AND tenant_id = $${params.length + 2}`,
       [...params, accountId, tenantId]
@@ -783,7 +1033,7 @@ adminRouter.patch('/accounts/:accountId', async (req: AuthRequest, res) => {
       summary: 'Admin updated parent account',
       details: {
         before: existing.rows[0],
-        after: { isActive, mustChangePassword, studentId: resolvedStudentPk },
+        after: { isActive, mustChangePassword },
       },
     });
 
@@ -791,6 +1041,91 @@ adminRouter.patch('/accounts/:accountId', async (req: AuthRequest, res) => {
   } catch (error) {
     console.error('Admin parent account update error:', error);
     return res.status(500).json({ error: 'Failed to update parent account' });
+  }
+});
+
+adminRouter.post('/accounts/:accountId/link-sibling', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = parseInt(String(req.query.tenantId || req.user?.tenantId), 10);
+    if (!tenantId) {
+      return res.status(400).json({ error: 'tenantId is required' });
+    }
+
+    const accountId = Number(req.params.accountId);
+    const studentLoginIds = parseStudentLoginIds(req.body);
+    if (studentLoginIds.length === 0) {
+      return res.status(400).json({ error: 'Enter at least one sibling studentLoginId' });
+    }
+
+    const accountResult = await query(
+      `SELECT pa.id, pa.student_id, s.first_name, s.last_name
+       FROM parent_portal_accounts pa
+       JOIN students s ON s.id = pa.student_id AND s.tenant_id = pa.tenant_id
+       WHERE pa.id = $1 AND pa.tenant_id = $2`,
+      [accountId, tenantId]
+    );
+    if (accountResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Parent account not found' });
+    }
+
+    const anchor = accountResult.rows[0];
+    const results: LinkSiblingResult[] = [];
+    for (const studentLoginId of studentLoginIds) {
+      results.push(
+        await linkSiblingStudentToAccount(
+          tenantId,
+          accountId,
+          Number(anchor.student_id),
+          studentLoginId
+        )
+      );
+    }
+
+    const linkedStudents = await fetchFamilyLinkedStudentsForAdmin(
+      tenantId,
+      accountId,
+      Number(anchor.student_id)
+    );
+
+    const linkedCount = results.filter((result) => result.status === 'linked').length;
+    const alreadyLinkedCount = results.filter((result) => result.status === 'already_linked').length;
+    const notFound = results.filter((result) => result.status === 'not_found');
+    const selfLinks = results.filter((result) => result.status === 'self');
+
+    if (linkedCount > 0) {
+      await writeAuditLog({
+        tenantId,
+        userId: req.user!.id,
+        action: 'link_parent_sibling_account',
+        entityType: 'parent_portal_account',
+        entityId: accountId,
+        summary: `Admin linked ${linkedCount} sibling account(s) to parent family`,
+        details: {
+          anchorStudentId: anchor.student_id,
+          linkedStudentLoginIds: results
+            .filter((result) => result.status === 'linked')
+            .map((result) => result.studentLoginId),
+        },
+      });
+    }
+
+    const parts: string[] = [];
+    if (linkedCount > 0) parts.push(`${linkedCount} sibling(s) linked`);
+    if (alreadyLinkedCount > 0) parts.push(`${alreadyLinkedCount} already linked`);
+    if (notFound.length > 0) parts.push(`${notFound.length} not found`);
+    if (selfLinks.length > 0) parts.push(`${selfLinks.length} skipped (same student)`);
+
+    return res.json({
+      success: linkedCount > 0 || alreadyLinkedCount > 0,
+      message: parts.length > 0
+        ? `${parts.join(', ')}. Parent can switch between all linked children without logging in again.`
+        : 'No siblings were linked. Check the student IDs and try again.',
+      linkedStudents,
+      results,
+    });
+  } catch (error) {
+    console.error('Admin link sibling error:', error);
+    return res.status(500).json({ error: 'Failed to link sibling student' });
   }
 });
 
@@ -836,7 +1171,14 @@ adminRouter.post('/accounts/:accountId/reset-password', async (req: AuthRequest,
       details: { accountId, studentLoginId: defaultPassword },
     });
 
-    return res.json({ success: true, message: 'Password has been reset to the student admission number.' });
+    return res.json({
+      success: true,
+      message: 'Password has been reset to the student portal ID.',
+      credentials: {
+        studentPortalId: defaultPassword,
+        defaultPassword,
+      },
+    });
   } catch (error) {
     console.error('Admin reset parent password error:', error);
     return res.status(500).json({ error: 'Failed to reset password' });
@@ -1146,9 +1488,12 @@ router.get('/finance', authenticateParent, async (req: ParentRequest, res) => {
            p.receipt_number AS reference_number,
            p.notes,
            p.term,
-           p.receipt_snapshot
+           p.receipt_snapshot,
+           p.corrects_payment_id,
+           orig.corrected_at AS receipt_updated_at
          FROM payments p
-         WHERE p.tenant_id = $1 AND p.student_id = $2
+         LEFT JOIN payments orig ON orig.id = p.corrects_payment_id
+         WHERE p.tenant_id = $1 AND p.student_id = $2 AND COALESCE(p.is_voided, false) = false
          ORDER BY p.payment_date DESC`,
         [tenantId, studentId]
       );

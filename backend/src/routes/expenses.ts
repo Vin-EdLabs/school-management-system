@@ -6,6 +6,7 @@ import { setTenantContext } from '../middleware/tenant.js';
 import { getIO } from '../socket.js';
 import { writeAuditLog } from '../services/auditService.js';
 import { getClientIp } from '../utils/clientIp.js';
+import { resolvePaymentAccountForTransaction } from '../services/paymentAccountService.js';
 
 const router = express.Router();
 
@@ -28,11 +29,17 @@ router.get('/', async (req: AuthRequest, res) => {
     const tenantId = req.user!.tenantId!;
     const { startDate, endDate, category, term, academicYear } = req.query;
     
-    let queryText = 'SELECT * FROM expenses WHERE tenant_id = $1';
+    let queryText = `
+      SELECT e.*,
+        CASE WHEN e.payment_account_id IS NULL THEN 'Unlinked'
+             ELSE COALESCE(NULLIF(TRIM(pa.nickname), ''), pa.account_name) END AS account_label
+      FROM expenses e
+      LEFT JOIN payment_accounts pa ON pa.id = e.payment_account_id
+      WHERE e.tenant_id = $1`;
     const params: any[] = [tenantId];
     
     if (startDate && endDate) {
-      queryText += ` AND payment_date BETWEEN $${params.length + 1} AND $${params.length + 2}`;
+      queryText += ` AND COALESCE(e.payment_date::date, e.created_at::date) BETWEEN $${params.length + 1} AND $${params.length + 2}`;
       params.push(startDate, endDate);
     }
     
@@ -87,15 +94,29 @@ router.get('/:id', async (req: AuthRequest, res) => {
 router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
-    const { title, category, amount, payee_name, payment_date, payment_method, purpose, notes, description, vendor, term, academic_year } = req.body;
+    const { title, category, amount, payee_name, payment_date, payment_method, payment_account_id, purpose, notes, description, vendor, term, academic_year } = req.body;
     
     if (!title || !amount || !payment_date) {
       return res.status(400).json({ error: 'Title, amount, and payment date are required' });
     }
+
+    let resolvedMethod = payment_method || null;
+    let resolvedAccountId: number | null = null;
+    try {
+      const resolved = await resolvePaymentAccountForTransaction(
+        tenantId,
+        payment_account_id ? parseInt(String(payment_account_id), 10) : null,
+        payment_method
+      );
+      resolvedAccountId = resolved.paymentAccountId;
+      resolvedMethod = resolved.paymentMethod;
+    } catch (err: any) {
+      return res.status(400).json({ error: err?.message || 'Invalid payment account' });
+    }
     
     const result = await query(
-      `INSERT INTO expenses (tenant_id, title, category, amount, payee_name, payment_date, payment_method, purpose, notes, description, vendor, term, academic_year)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+      `INSERT INTO expenses (tenant_id, title, category, amount, payee_name, payment_date, payment_method, payment_account_id, purpose, notes, description, vendor, term, academic_year)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
       [
         tenantId,
         title,
@@ -103,7 +124,8 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
         amount,
         payee_name || null,
         payment_date,
-        payment_method || null,
+        resolvedMethod,
+        resolvedAccountId,
         purpose || null,
         notes || null,
         description || null,

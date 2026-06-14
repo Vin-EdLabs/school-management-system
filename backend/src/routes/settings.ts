@@ -293,16 +293,23 @@ router.post('/logo', requirePrimaryAdminOrSuperAdmin, upload.single('logo'), asy
   }
 });
 
-// Get academic terms
+// Get academic terms (archived hidden unless include_archived=true)
 router.get('/academic-terms', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
-    
+    const includeArchived =
+      req.query.include_archived === 'true' || req.query.include_archived === '1';
+
     const result = await query(
-      'SELECT * FROM academic_terms WHERE tenant_id = $1 ORDER BY year DESC, start_date DESC',
+      includeArchived
+        ? `SELECT * FROM academic_terms WHERE tenant_id = $1 ORDER BY year DESC, start_date DESC`
+        : `SELECT * FROM academic_terms
+           WHERE tenant_id = $1
+             AND (COALESCE(is_archived, false) = false OR is_active = true)
+           ORDER BY year DESC, start_date DESC`,
       [tenantId]
     );
-    
+
     res.json(result.rows);
   } catch (error) {
     console.error('Get academic terms error:', error);
@@ -370,16 +377,31 @@ router.put('/academic-terms/:id', requirePrimaryAdminOrSuperAdmin, async (req: A
   try {
     const tenantId = req.user!.tenantId!;
     const { id } = req.params;
-    const { term_name, year, start_date, end_date, is_active } = req.body;
-    
-    // If setting as active, deactivate others
+    const { term_name, year, start_date, end_date, is_active, is_archived } = req.body;
+
+    if (is_archived === true) {
+      const current = await query(
+        'SELECT is_active FROM academic_terms WHERE id = $1 AND tenant_id = $2',
+        [id, tenantId]
+      );
+      if (current.rows.length === 0) {
+        return res.status(404).json({ error: 'Academic term not found' });
+      }
+      if (current.rows[0].is_active) {
+        return res.status(400).json({ error: 'Cannot archive the currently active term. Mark it inactive first.' });
+      }
+    }
+
     if (is_active) {
       await query(
         'UPDATE academic_terms SET is_active = false WHERE tenant_id = $1 AND id != $2',
         [tenantId, id]
       );
     }
-    
+
+    const archivedValue =
+      is_active === true ? false : is_archived === true ? true : is_archived === false ? false : null;
+
     const result = await query(
       `UPDATE academic_terms 
        SET term_name = COALESCE($1, term_name),
@@ -387,10 +409,11 @@ router.put('/academic-terms/:id', requirePrimaryAdminOrSuperAdmin, async (req: A
            start_date = COALESCE($3, start_date),
            end_date = COALESCE($4, end_date),
            is_active = COALESCE($5, is_active),
+           is_archived = COALESCE($6, is_archived),
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $6 AND tenant_id = $7
+       WHERE id = $7 AND tenant_id = $8
        RETURNING *`,
-      [term_name, year, start_date, end_date, is_active, id, tenantId]
+      [term_name, year, start_date, end_date, is_active, archivedValue, id, tenantId]
     );
     
     if (result.rows.length === 0) {
@@ -407,6 +430,33 @@ router.put('/academic-terms/:id', requirePrimaryAdminOrSuperAdmin, async (req: A
   } catch (error) {
     console.error('Update academic term error:', error);
     res.status(500).json({ error: 'Failed to update academic term' });
+  }
+});
+
+// Archive all inactive, non-archived terms (keeps active term visible)
+router.post('/academic-terms/archive-all', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+
+    const result = await query(
+      `UPDATE academic_terms
+       SET is_archived = true, updated_at = CURRENT_TIMESTAMP
+       WHERE tenant_id = $1
+         AND is_active = false
+         AND COALESCE(is_archived, false) = false
+       RETURNING id, term_name, year`,
+      [tenantId]
+    );
+
+    emitTenantDataChanged(tenantId, 'academic-term', 'updated');
+    res.json({
+      message: `${result.rowCount} term(s) archived.`,
+      archivedCount: result.rowCount,
+      terms: result.rows,
+    });
+  } catch (error) {
+    console.error('Archive all academic terms error:', error);
+    res.status(500).json({ error: 'Failed to archive terms' });
   }
 });
 
@@ -803,10 +853,11 @@ router.post('/sync-arrears', async (req: AuthRequest, res) => {
     const tenantId = req.user!.tenantId!;
     if (!tenantId) return res.status(400).json({ error: 'Tenant context required' });
 
-    const { refreshArrearsForTenant } = await import('../services/arrearsService.js');
-    const result = await refreshArrearsForTenant(tenantId);
-    
+    const { syncArrearsCarryForwardForTenant } = await import('../services/termActivationService.js');
+    const result = await syncArrearsCarryForwardForTenant(tenantId);
+
     emitTenantDataChanged(tenantId, 'finance-arrears', 'updated');
+    emitTenantDataChanged(tenantId, 'finance-term-switch', 'updated');
     res.json({ message: 'Arrears synchronized successfully', ...result });
   } catch (error: any) {
     console.error('Sync arrears error:', error);
@@ -816,6 +867,31 @@ router.post('/sync-arrears', async (req: AuthRequest, res) => {
 
 router.post('/reset-data', requirePrimaryAdminOrSuperAdmin, async (_req: AuthRequest, res) => {
   return res.status(403).json({ error: 'Data reset is managed from the Super Admin School Data page only.' });
+});
+
+// Appointment letter school-wide configuration
+router.get('/appointment-letter', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+  try {
+    const { getAppointmentLetterConfig } = await import('../services/appointmentLetterService.js');
+    const config = await getAppointmentLetterConfig(req.user!.tenantId!);
+    res.json(config);
+  } catch (error) {
+    console.error('Get appointment letter config error:', error);
+    res.status(500).json({ error: 'Failed to load appointment letter settings' });
+  }
+});
+
+router.put('/appointment-letter', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const { saveAppointmentLetterConfig } = await import('../services/appointmentLetterService.js');
+    await saveAppointmentLetterConfig(tenantId, req.body || {});
+    emitTenantDataChanged(tenantId, 'settings', 'updated');
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Save appointment letter config error:', error);
+    res.status(500).json({ error: 'Failed to save appointment letter settings' });
+  }
 });
 
 export default router;

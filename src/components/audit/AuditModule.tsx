@@ -42,6 +42,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useSocket } from '../../contexts/SocketContext';
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import ReceiptCorrectionsSection from './ReceiptCorrectionsSection';
 
 type ServerAuditRow = {
   id: number;
@@ -49,6 +51,7 @@ type ServerAuditRow = {
   action: string;
   entity_type?: string | null;
   entity_id?: number | null;
+  entity_label?: string | null;
   module?: string | null;
   status?: string | null;
   summary?: string | null;
@@ -104,6 +107,8 @@ function badgeForAction(action: string, status?: string | null) {
 
 const AuditModule = () => {
   const { user } = useAuth();
+  const isAdmin = user?.role === 'administrator' || user?.role === 'super-admin';
+  const [auditTab, setAuditTab] = useState<'logs' | 'receipt-corrections'>('logs');
   const { socket } = useSocket();
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<ServerAuditRow[]>([]);
@@ -301,6 +306,19 @@ const AuditModule = () => {
         </Card>
       </div>
 
+      {isAdmin && (
+        <Tabs value={auditTab} onValueChange={(v) => setAuditTab(v as 'logs' | 'receipt-corrections')}>
+          <TabsList>
+            <TabsTrigger value="logs">All logs</TabsTrigger>
+            <TabsTrigger value="receipt-corrections">Receipt corrections</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      )}
+
+      {auditTab === 'receipt-corrections' && isAdmin ? (
+        <ReceiptCorrectionsSection />
+      ) : (
+        <>
       <Card className="border-border/80 shadow-sm">
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Filters</CardTitle>
@@ -510,9 +528,12 @@ const AuditModule = () => {
                     <p className="font-mono text-sm">{detail.action}</p>
                   </div>
                   <div className="col-span-2">
-                    <p className="text-xs text-muted-foreground">Module / entity</p>
+                    <p className="text-xs text-muted-foreground">Module / subject</p>
                     <p>
-                      {detail.module || '—'} · {detail.entity_type || '—'} #{detail.entity_id ?? '—'}
+                      {detail.module || '—'} · {detail.entity_type ? detail.entity_type.replace(/_/g, ' ') : '—'}
+                    </p>
+                    <p className="mt-1 font-medium">
+                      {detail.entity_label || detail.summary?.split(' — ').slice(1).join(' — ') || '—'}
                     </p>
                   </div>
                 </div>
@@ -541,6 +562,8 @@ const AuditModule = () => {
           )}
         </DialogContent>
       </Dialog>
+        </>
+      )}
     </div>
   );
 };

@@ -37,6 +37,14 @@ export type FinancialReportPdfInput = {
   incomeRows: Array<Record<string, unknown>>;
   expenseRows: Array<Record<string, unknown>>;
   incomeVsExpense: Array<{ name?: string; income?: number | string; expense?: number | string }>;
+  fundTransfers?: Array<{
+    transfer_date?: string;
+    from_account_label?: string;
+    to_account_label?: string;
+    amount?: number | string;
+    note?: string;
+    transferred_by_name?: string;
+  }>;
 };
 
 export function downloadFinancialReportPdf(data: FinancialReportPdfInput) {
@@ -56,7 +64,7 @@ export function downloadFinancialReportPdf(data: FinancialReportPdfInput) {
   doc.setTextColor(60, 60, 60);
   doc.text(`Academic year: ${data.academicYearLabel}`, margin, y);
   y += 4;
-  doc.text(`Other income & expenses (by date): ${data.financeFrom} → ${data.financeTo}`, margin, y);
+  doc.text(`Other income & expenses: all recorded entries`, margin, y);
   doc.setTextColor(0, 0, 0);
   y += 8;
 
@@ -200,6 +208,29 @@ export function downloadFinancialReportPdf(data: FinancialReportPdfInput) {
   if ((data.expenseRows || []).length > 200) {
     doc.setFontSize(7);
     doc.text('(List truncated to 200 rows. Export Excel for full data.)', margin, lastY(doc) + 6);
+  }
+
+  const transfers = data.fundTransfers || [];
+  if (transfers.length > 0) {
+    doc.addPage();
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('Fund transfers (between accounts)', margin, 16);
+    autoTable(doc, {
+      startY: 22,
+      head: [['Date', 'From', 'To', 'Amount', 'Note', 'By']],
+      body: transfers.slice(0, 200).map((row) => [
+        row.transfer_date ? String(row.transfer_date).split('T')[0] : '',
+        String(row.from_account_label ?? ''),
+        String(row.to_account_label ?? ''),
+        money(Number(row.amount)),
+        String(row.note ?? '').slice(0, 40),
+        String(row.transferred_by_name ?? '—'),
+      ]),
+      theme: 'striped',
+      styles: { fontSize: 7, cellPadding: 1 },
+      margin: { left: margin, right: margin },
+    });
   }
 
   const fname = `financial-report_${data.academicYearLabel.replace(/\//g, '-')}_${data.termLabel.replace(/\s+/g, '_')}.pdf`;

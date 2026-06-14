@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiService } from '@/services/api';
 import { useSchool } from '@/contexts/SchoolContext';
-import { RefreshCw, Shield, UserCheck, Users, Lock } from 'lucide-react';
+import { Copy, RefreshCw, Shield, UserCheck, Users, Lock, UserPlus } from 'lucide-react';
+import { toast } from '@/hooks/use-toast';
 
 interface ParentAccountRow {
   accountId?: number | null;
@@ -12,6 +13,13 @@ interface ParentAccountRow {
   guardianContact?: string | null;
   isActive: boolean;
 }
+
+type PortalCredentials = {
+  studentPortalId: string;
+  defaultPassword: string;
+  studentName?: string;
+  mustChangePassword?: boolean;
+};
 
 const statusOptions = [
   { value: 'all', label: 'All statuses' },
@@ -31,8 +39,35 @@ const ParentAccountsModule: React.FC = () => {
   const [actionLoading, setActionLoading] = useState(false);
   const [feedback, setFeedback] = useState<string>('');
   const [linkStudentId, setLinkStudentId] = useState('');
+  const [createPortalId, setCreatePortalId] = useState('');
+  const [createPassword, setCreatePassword] = useState('');
+  const [detailCreatePassword, setDetailCreatePassword] = useState('');
+  const [linkedStudents, setLinkedStudents] = useState<Array<{
+    accountId: number;
+    studentId: number;
+    admissionNumber: string;
+    studentName: string;
+  }>>([]);
+  const [credentials, setCredentials] = useState<PortalCredentials | null>(null);
 
   const PAGE_SIZE = 10;
+
+  const copyText = async (label: string, value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast({ title: 'Copied', description: `${label} copied to clipboard` });
+    } catch {
+      toast({ title: 'Copy failed', variant: 'destructive' });
+    }
+  };
+
+  const showCredentials = (c: PortalCredentials, prefix?: string) => {
+    setCredentials(c);
+    setFeedback(
+      prefix ||
+        `Account ready for ${c.studentName || 'student'}. Share Student ID ${c.studentPortalId} and password ${c.defaultPassword}.`
+    );
+  };
 
   useEffect(() => {
     if (schoolId != null) {
@@ -101,9 +136,22 @@ const ParentAccountsModule: React.FC = () => {
     setActionLoading(true);
     setFeedback('');
     try {
-      await apiService.post(`/parent/admin/accounts/${account.accountId}/reset-password`, {});
+      const res = await apiService.post<{ credentials?: PortalCredentials }>(
+        `/parent/admin/accounts/${account.accountId}/reset-password`,
+        {}
+      );
       await loadAccounts();
-      setFeedback(`Password reset for ${account.studentName}.`);
+      if (res.credentials?.studentPortalId) {
+        showCredentials(
+          {
+            ...res.credentials,
+            studentName: account.studentName,
+          },
+          `Password reset for ${account.studentName}.`
+        );
+      } else {
+        setFeedback(`Password reset for ${account.studentName}.`);
+      }
     } catch (error) {
       console.error('Password reset failed', error);
       setFeedback(error instanceof Error ? error.message : 'Unable to reset password. Please try again.');
@@ -112,13 +160,22 @@ const ParentAccountsModule: React.FC = () => {
     }
   };
 
-  const createAccount = async (studentId: number) => {
+  const createAccount = async (studentRef: number | string, password?: string) => {
     setActionLoading(true);
     setFeedback('');
     try {
-      await apiService.post('/parent/admin/accounts', { studentId });
+      const body: { studentId: number | string; password?: string } = { studentId: studentRef };
+      if (password?.trim()) body.password = password.trim();
+      const res = await apiService.post<{ credentials?: PortalCredentials }>('/parent/admin/accounts', body);
       await loadAccounts();
-      setFeedback('Parent portal account created successfully.');
+      if (res.credentials?.studentPortalId) {
+        showCredentials(res.credentials, 'Parent portal account created. Share these login details with the parent.');
+        setCreatePortalId('');
+        setCreatePassword('');
+        setDetailCreatePassword('');
+      } else {
+        setFeedback('Parent portal account created successfully.');
+      }
     } catch (error) {
       console.error('Create parent account failed', error);
       setFeedback(error instanceof Error ? error.message : 'Unable to create parent account. Please try again.');
@@ -136,9 +193,62 @@ const ParentAccountsModule: React.FC = () => {
 
   useEffect(() => {
     if (selectedDetails) {
-      setLinkStudentId(selectedDetails.admissionNumber || '');
+      setLinkStudentId('');
+      setDetailCreatePassword('');
+      setLinkedStudents([]);
     }
   }, [selectedDetails]);
+
+  useEffect(() => {
+    if (!selectedDetails?.accountId || schoolId == null) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const data = await apiService.get<{ linkedStudents?: typeof linkedStudents }>(
+          `/parent/admin/accounts/${selectedDetails.accountId}?tenantId=${schoolId}`
+        );
+        if (!cancelled) {
+          setLinkedStudents(data.linkedStudents || []);
+        }
+      } catch {
+        if (!cancelled) setLinkedStudents([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDetails?.accountId, schoolId]);
+
+  const linkSiblingStudent = async () => {
+    if (!selectedDetails?.accountId) return;
+    const ids = linkStudentId
+      .split(/[\s,;]+/)
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (ids.length === 0) {
+      setFeedback('Enter at least one sibling Student ID to link.');
+      return;
+    }
+    setActionLoading(true);
+    setFeedback('');
+    try {
+      const res = await apiService.post<{ linkedStudents?: typeof linkedStudents; message?: string; success?: boolean }>(
+        `/parent/admin/accounts/${selectedDetails.accountId}/link-sibling`,
+        { studentLoginIds: ids }
+      );
+      setLinkedStudents(res.linkedStudents || []);
+      setLinkStudentId('');
+      setFeedback(
+        res.message ||
+          'Siblings linked. Parent can switch between all linked children without logging in again.'
+      );
+    } catch (error) {
+      console.error('Link sibling failed', error);
+      setFeedback(error instanceof Error ? error.message : 'Unable to link sibling student. Please try again.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   return (
     <div className="space-y-6 px-4 py-6 sm:px-6">
@@ -150,7 +260,9 @@ const ParentAccountsModule: React.FC = () => {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-slate-900">School Parent Accounts</h1>
-            <p className="text-sm text-slate-500 max-w-2xl">Manage parent portal access for your school. Search, activate or deactivate accounts, and reset passwords securely within your tenant.</p>
+            <p className="text-sm text-slate-500 max-w-2xl">
+              Parents log in with Student ID as username and password. Link sibling students here — they appear automatically in the parent switcher with no extra login.
+            </p>
           </div>
         </div>
 
@@ -187,6 +299,85 @@ const ParentAccountsModule: React.FC = () => {
           >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             <span className="ml-2">Refresh</span>
+          </button>
+        </div>
+      </div>
+
+      {credentials ? (
+        <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-4 text-sm text-indigo-950 shadow-sm">
+          <p className="font-semibold">Login credentials — share with parent</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <div className="rounded-xl border border-indigo-100 bg-white p-3">
+              <p className="text-xs uppercase tracking-wide text-slate-500">Student ID (username)</p>
+              <div className="mt-1 flex items-center justify-between gap-2">
+                <span className="font-mono font-semibold">{credentials.studentPortalId}</span>
+                <button type="button" onClick={() => void copyText('Student ID', credentials.studentPortalId)} className="rounded-lg border px-2 py-1 text-xs">
+                  <Copy className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+            <div className="rounded-xl border border-indigo-100 bg-white p-3">
+              <p className="text-xs uppercase tracking-wide text-slate-500">Password</p>
+              <div className="mt-1 flex items-center justify-between gap-2">
+                <span className="font-mono font-semibold">{credentials.defaultPassword}</span>
+                <button type="button" onClick={() => void copyText('Password', credentials.defaultPassword)} className="rounded-lg border px-2 py-1 text-xs">
+                  <Copy className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+          {credentials.studentName ? (
+            <p className="mt-2 text-xs text-indigo-900/80">Student: {credentials.studentName}</p>
+          ) : null}
+          {credentials.mustChangePassword === false ? (
+            <p className="mt-2 text-xs text-indigo-900/80">Parent can use this password directly — no forced change on first login.</p>
+          ) : (
+            <p className="mt-2 text-xs text-indigo-900/80">Parent must change password on first login.</p>
+          )}
+        </div>
+      ) : null}
+
+      <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm space-y-3">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1">
+            <label htmlFor="create-parent-portal-id" className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Student ID
+            </label>
+            <input
+              id="create-parent-portal-id"
+              type="text"
+              value={createPortalId}
+              onChange={(e) => setCreatePortalId(e.target.value.trim())}
+              placeholder="e.g. 12345678"
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+            />
+          </div>
+          <div className="space-y-1">
+            <label htmlFor="create-parent-password" className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Password (optional)
+            </label>
+            <input
+              id="create-parent-password"
+              type="text"
+              value={createPassword}
+              onChange={(e) => setCreatePassword(e.target.value)}
+              placeholder="Leave blank = same as Student ID"
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+            />
+          </div>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-slate-500">
+            Optional: set a custom password now. If left blank, password defaults to the Student ID and parent must change it on first login.
+          </p>
+          <button
+            type="button"
+            disabled={actionLoading || !createPortalId.trim()}
+            onClick={() => void createAccount(createPortalId.trim(), createPassword)}
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            <UserPlus className="h-4 w-4" />
+            Create account
           </button>
         </div>
       </div>
@@ -336,11 +527,24 @@ const ParentAccountsModule: React.FC = () => {
               {!selectedDetails.accountId ? (
                 <div className="rounded-3xl border border-slate-200 bg-white p-4 space-y-4">
                   <div className="rounded-3xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-700">
-                    This student does not yet have a parent portal account. Create one to enable parent access.
+                    Parents can also log in on their own with Student ID as username and password. Use Create below only if you want to set up the account or choose a custom password for them.
+                  </div>
+                  <div className="space-y-1">
+                    <label htmlFor="detail-create-password" className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Password (optional)
+                    </label>
+                    <input
+                      id="detail-create-password"
+                      type="text"
+                      value={detailCreatePassword}
+                      onChange={(e) => setDetailCreatePassword(e.target.value)}
+                      placeholder="Leave blank = Student ID; parent changes on first login"
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                    />
                   </div>
                   <button
                     type="button"
-                    onClick={() => createAccount(selectedDetails.studentId)}
+                    onClick={() => createAccount(selectedDetails.studentId, detailCreatePassword)}
                     disabled={actionLoading}
                     className="inline-flex w-full items-center justify-center rounded-2xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-300"
                   >
@@ -350,39 +554,41 @@ const ParentAccountsModule: React.FC = () => {
               ) : (
                 <>
                   <div className="rounded-3xl border border-slate-200 bg-white p-4 space-y-3">
-                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Linked student</p>
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Linked sibling students</p>
+                    {linkedStudents.length > 0 ? (
+                      <ul className="space-y-2">
+                        {linkedStudents.map((sibling) => (
+                          <li
+                            key={sibling.studentId}
+                            className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2 text-sm text-slate-800"
+                          >
+                            <span className="font-semibold">{sibling.studentName}</span>
+                            <span className="text-slate-500"> · ID {sibling.admissionNumber}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-slate-500">No linked siblings yet. Add a sibling below.</p>
+                    )}
                     <div className="grid gap-3 sm:grid-cols-[1fr,auto]">
                       <input
                         type="text"
                         value={linkStudentId}
-                        onChange={(e) => setLinkStudentId(e.target.value.trim())}
-                        placeholder="Student portal ID (e.g. 20260001)"
+                        onChange={(e) => setLinkStudentId(e.target.value)}
+                        placeholder="Sibling IDs — e.g. 12345678, 87654321"
                         className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
                       />
                       <button
                         type="button"
-                        onClick={async () => {
-                          if (!selectedDetails?.accountId) return;
-                          const loginId = linkStudentId.trim();
-                          if (!loginId) {
-                            setFeedback('Enter the student portal login ID to link.');
-                            return;
-                          }
-                          await updateAccount(
-                            selectedDetails.accountId,
-                            { studentLoginId: loginId },
-                            'Student link updated.'
-                          );
-                        }}
+                        onClick={() => void linkSiblingStudent()}
                         disabled={actionLoading}
                         className="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
                       >
-                        Link Student
+                        Link Sibling(s)
                       </button>
                     </div>
                     <p className="text-xs text-slate-500">
-                      Enter another student&apos;s portal login ID (same guardian) to link this account to them.
-                      Default password after reset is the student&apos;s login ID.
+                      Link as many siblings as you need — comma or space separated. If a sibling already has their own parent account, they are merged into this family automatically.
                     </p>
                   </div>
 
@@ -410,7 +616,7 @@ const ParentAccountsModule: React.FC = () => {
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-slate-900">Reset password</p>
-                        <p className="text-xs text-slate-500">Resets the password to the student's admission number and forces a password change.</p>
+                        <p className="text-xs text-slate-500">Resets the password to the student&apos;s portal ID and forces a password change on next login.</p>
                       </div>
                     </div>
                     <button

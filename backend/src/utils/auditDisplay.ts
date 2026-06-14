@@ -15,11 +15,102 @@ export function parseAuditDetails(details: unknown): JsonObject | null {
 }
 
 function pickRecordLabel(o: JsonObject): string {
-  const keys = ['full_name', 'student_name', 'name', 'title', 'username', 'payee_name', 'class_name'];
+  const keys = [
+    'full_name',
+    'fullName',
+    'student_name',
+    'studentName',
+    'name',
+    'title',
+    'username',
+    'payee_name',
+    'class_name',
+    'className',
+    'staff_id',
+    'staffId',
+    'admission_number',
+    'admissionNumber',
+  ];
   for (const k of keys) {
     const v = o[k];
     if (v != null && String(v).trim()) return String(v).trim();
   }
+  const first = String(o.first_name || o.firstName || '').trim();
+  const last = String(o.last_name || o.lastName || '').trim();
+  const full = [first, last].filter(Boolean).join(' ');
+  if (full) return full;
+  return '';
+}
+
+function studentLabelFromObject(o: JsonObject): string {
+  if (typeof o.studentName === 'string' && o.studentName.trim()) {
+    const cls = o.className || o.class_name;
+    return cls ? `${o.studentName.trim()} · ${cls}` : o.studentName.trim();
+  }
+  const name = pickRecordLabel(o);
+  if (!name) return '';
+  const cls = o.class_name || o.className;
+  const adm = o.admission_number || o.admissionNumber;
+  let label = name;
+  if (cls && String(cls).trim()) label += ` · ${String(cls).trim()}`;
+  if (adm && String(adm).trim()) label += ` (${String(adm).trim()})`;
+  return label;
+}
+
+function humanEntityType(entityType: string): string {
+  const et = entityType.trim().toUpperCase();
+  const map: Record<string, string> = {
+    STUDENT: 'student',
+    TEACHER: 'teacher',
+    CLASS: 'class',
+    USER: 'user',
+    PAYMENT: 'payment',
+    INCOME: 'income',
+    EXPENSE: 'expense',
+    FEE_STRUCTURE: 'fee structure',
+    SALARY_PAYMENT: 'salary payment',
+    PAYROLL_OTHER_STAFF: 'staff member',
+    PAYROLL_RUN: 'payroll run',
+    PAYROLL_SETTINGS: 'payroll settings',
+    PARENT_PORTAL_ACCOUNT: 'parent account',
+  };
+  return map[et] || et.toLowerCase().replace(/_/g, ' ');
+}
+
+/** Resolve a human-readable target label (name, class, etc.) — never prefer numeric IDs. */
+export function resolveEntityLabelFromRow(row: Record<string, unknown>): string {
+  const fromJoin = row.entity_label != null ? String(row.entity_label).trim() : '';
+  if (fromJoin) return fromJoin;
+
+  const sources = [
+    parseAuditDetails(row.after_values),
+    parseAuditDetails(row.before_values),
+    parseAuditDetails(row.details),
+  ];
+
+  for (const src of sources) {
+    if (!src) continue;
+    const student = studentLabelFromObject(src);
+    if (student) return student;
+    const label = pickRecordLabel(src);
+    if (label) return label;
+    if (src.deleted_record && typeof src.deleted_record === 'object') {
+      const dr = src.deleted_record as JsonObject;
+      const deleted = studentLabelFromObject(dr) || pickRecordLabel(dr);
+      if (deleted) return deleted;
+    }
+    if (src.previous && typeof src.previous === 'object') {
+      const prev = src.previous as JsonObject;
+      const pl = studentLabelFromObject(prev) || pickRecordLabel(prev);
+      if (pl) return pl;
+    }
+    if (src.new && typeof src.new === 'object') {
+      const next = src.new as JsonObject;
+      const nl = studentLabelFromObject(next) || pickRecordLabel(next);
+      if (nl) return nl;
+    }
+  }
+
   return '';
 }
 
@@ -62,6 +153,13 @@ export function inferAuditModule(row: { module?: unknown; entity_type?: unknown;
   return 'general';
 }
 
+function formatEntityTarget(row: Record<string, unknown>, entityType: string): string {
+  const label = resolveEntityLabelFromRow(row);
+  if (label) return label;
+  if (entityType) return humanEntityType(entityType);
+  return 'record';
+}
+
 /**
  * When DB `summary` is empty, build a readable line (target of change, deltas, actor suffix).
  */
@@ -70,9 +168,9 @@ export function inferAuditSummary(row: Record<string, unknown>, actorUsername: s
   if (s) return s;
   const action = String(row.action || '');
   const et = String(row.entity_type || '');
-  const eid = row.entity_id != null ? String(row.entity_id) : '';
   const d = parseAuditDetails(row.details);
   const actor = actorUsername ? ` — by ${actorUsername}` : '';
+  const target = formatEntityTarget(row, et);
 
   if (d && typeof d.studentName === 'string' && (action.includes('PAYMENT') || action.includes('FEE') || et === 'PAYMENT')) {
     const amt = d.amount != null ? ` — GHS ${d.amount}` : '';
@@ -84,15 +182,20 @@ export function inferAuditSummary(row: Record<string, unknown>, actorUsername: s
   }
   if (d?.deleted_record && typeof d.deleted_record === 'object') {
     const dr = d.deleted_record as JsonObject;
-    const label = pickRecordLabel(dr) || (eid ? `#${eid}` : '');
-    return `Deleted ${et || 'record'}: ${label}${actor}`.trim();
+    const label = studentLabelFromObject(dr) || pickRecordLabel(dr) || target;
+    return `Deleted ${humanEntityType(et) || 'record'}: ${label}${actor}`.trim();
   }
   if (d?.previous && d?.new && typeof d.previous === 'object' && typeof d.new === 'object') {
     const prev = d.previous as JsonObject;
     const next = d.new as JsonObject;
-    const who = pickRecordLabel(next) || pickRecordLabel(prev) || (eid ? `#${eid}` : et);
+    const who =
+      studentLabelFromObject(next) ||
+      studentLabelFromObject(prev) ||
+      pickRecordLabel(next) ||
+      pickRecordLabel(prev) ||
+      target;
     const delta = describeDelta(prev, next);
-    return `Updated ${et || 'record'} — ${who}${delta ? ` (${delta})` : ''}${actor}`.trim();
+    return `Updated ${humanEntityType(et) || 'record'} — ${who}${delta ? ` (${delta})` : ''}${actor}`.trim();
   }
   if (action === 'LOGIN') {
     const u = (d?.username as string) || actorUsername || 'User';
@@ -113,15 +216,29 @@ export function inferAuditSummary(row: Record<string, unknown>, actorUsername: s
     return `Password changed${actor}`;
   }
   if (action === 'CREATE' && et) {
-    return `Created ${et}${eid ? ` #${eid}` : ''}${actor}`;
+    return `Created ${humanEntityType(et)} — ${target}${actor}`.trim();
   }
   if (action === 'UPDATE' && et) {
-    return `Updated ${et}${eid ? ` #${eid}` : ''}${actor}`;
+    return `Updated ${humanEntityType(et)} — ${target}${actor}`.trim();
   }
   if (action === 'DELETE' && et) {
-    return `Deleted ${et}${eid ? ` #${eid}` : ''}${actor}`;
+    return `Deleted ${humanEntityType(et)} — ${target}${actor}`.trim();
   }
-  return `${action || 'EVENT'} · ${et || '—'}${eid ? ` #${eid}` : ''}${actor}`.trim();
+  if (/^STUDENT_/.test(action) && et === 'STUDENT') {
+    const verb = action.replace(/_/g, ' ').toLowerCase();
+    return `${verb.charAt(0).toUpperCase() + verb.slice(1)} — ${target}${actor}`.trim();
+  }
+  if (/^TEACHER_/.test(action) && et === 'TEACHER') {
+    const verb = action.replace(/_/g, ' ').toLowerCase();
+    return `${verb.charAt(0).toUpperCase() + verb.slice(1)} — ${target}${actor}`.trim();
+  }
+  if (action === 'PROMOTE' && et === 'STUDENT') {
+    return `Promoted student — ${target}${actor}`.trim();
+  }
+  if (action === 'DEACTIVATE' || action === 'REACTIVATE') {
+    return `${action.charAt(0) + action.slice(1).toLowerCase()} — ${target}${actor}`.trim();
+  }
+  return `${action || 'EVENT'} · ${target}${actor}`.trim();
 }
 
 /** API response: fill empty module/summary; normalize `details` to object when possible. */
@@ -134,7 +251,12 @@ export function enrichAuditLogRow(row: Record<string, unknown>): Record<string, 
   const details = parseAuditDetails(row.details);
   const beforeValues = parseAuditDetails(row.before_values);
   const afterValues = parseAuditDetails(row.after_values);
-  const base: Record<string, unknown> = { ...row, details: details ?? row.details };
+  const entityLabel = resolveEntityLabelFromRow(row);
+  const base: Record<string, unknown> = {
+    ...row,
+    details: details ?? row.details,
+    entity_label: entityLabel || row.entity_label || null,
+  };
   const moduleRaw = row.module != null ? String(row.module).trim() : '';
   const summaryRaw = row.summary != null ? String(row.summary).trim() : '';
   return {
@@ -145,3 +267,70 @@ export function enrichAuditLogRow(row: Record<string, unknown>): Record<string, 
     summary: summaryRaw || inferAuditSummary(base, full),
   };
 }
+
+/** SQL joins + label column for audit list queries. */
+export const AUDIT_ENTITY_JOINS = `
+  LEFT JOIN students st_ent ON UPPER(COALESCE(al.entity_type, '')) = 'STUDENT'
+    AND st_ent.id = al.entity_id AND st_ent.tenant_id = al.tenant_id
+  LEFT JOIN classes cl_st ON cl_st.id = st_ent.class_assigned_id AND cl_st.tenant_id = al.tenant_id
+  LEFT JOIN teachers t_ent ON UPPER(COALESCE(al.entity_type, '')) = 'TEACHER'
+    AND t_ent.id = al.entity_id AND t_ent.tenant_id = al.tenant_id
+  LEFT JOIN classes cl_ent ON UPPER(COALESCE(al.entity_type, '')) = 'CLASS'
+    AND cl_ent.id = al.entity_id AND cl_ent.tenant_id = al.tenant_id
+  LEFT JOIN users u_ent ON UPPER(COALESCE(al.entity_type, '')) = 'USER'
+    AND u_ent.id = al.entity_id AND (u_ent.tenant_id = al.tenant_id OR al.tenant_id IS NULL)
+  LEFT JOIN payments p_ent ON UPPER(COALESCE(al.entity_type, '')) = 'PAYMENT'
+    AND p_ent.id = al.entity_id AND p_ent.tenant_id = al.tenant_id
+  LEFT JOIN students st_pay ON st_pay.id = p_ent.student_id AND st_pay.tenant_id = al.tenant_id
+  LEFT JOIN classes cl_pay ON cl_pay.id = st_pay.class_assigned_id AND cl_pay.tenant_id = al.tenant_id
+  LEFT JOIN payroll_other_staff pos_ent ON UPPER(COALESCE(al.entity_type, '')) IN ('PAYROLL_OTHER_STAFF', 'STAFF')
+    AND pos_ent.id = al.entity_id AND pos_ent.tenant_id = al.tenant_id
+  LEFT JOIN fee_structures fs_ent ON UPPER(COALESCE(al.entity_type, '')) = 'FEE_STRUCTURE'
+    AND fs_ent.id = al.entity_id AND (fs_ent.tenant_id = al.tenant_id OR fs_ent.tenant_id IS NULL)
+  LEFT JOIN classes cl_fs ON cl_fs.id = fs_ent.class_id AND cl_fs.tenant_id = al.tenant_id
+`;
+
+export const AUDIT_ENTITY_LABEL_SQL = `
+  NULLIF(TRIM(
+    CASE
+      WHEN st_ent.id IS NOT NULL THEN
+        TRIM(BOTH FROM CONCAT(
+          TRIM(COALESCE(st_ent.first_name, '') || ' ' || COALESCE(st_ent.last_name, '')),
+          CASE WHEN cl_st.class_name IS NOT NULL AND TRIM(cl_st.class_name) <> ''
+            THEN ' · ' || TRIM(cl_st.class_name) ELSE '' END,
+          CASE WHEN st_ent.admission_number IS NOT NULL AND TRIM(st_ent.admission_number) <> ''
+            THEN ' (' || TRIM(st_ent.admission_number) || ')' ELSE '' END
+        ))
+      WHEN t_ent.id IS NOT NULL THEN
+        TRIM(BOTH FROM CONCAT(
+          TRIM(COALESCE(t_ent.full_name, '')),
+          CASE WHEN t_ent.staff_id IS NOT NULL AND TRIM(t_ent.staff_id) <> ''
+            THEN ' · ' || TRIM(t_ent.staff_id) ELSE '' END
+        ))
+      WHEN cl_ent.id IS NOT NULL THEN NULLIF(TRIM(cl_ent.class_name), '')
+      WHEN u_ent.id IS NOT NULL THEN COALESCE(NULLIF(TRIM(u_ent.full_name), ''), u_ent.username)
+      WHEN p_ent.id IS NOT NULL AND st_pay.id IS NOT NULL THEN
+        TRIM(BOTH FROM CONCAT(
+          TRIM(COALESCE(st_pay.first_name, '') || ' ' || COALESCE(st_pay.last_name, '')),
+          CASE WHEN cl_pay.class_name IS NOT NULL AND TRIM(cl_pay.class_name) <> ''
+            THEN ' · ' || TRIM(cl_pay.class_name) ELSE '' END,
+          CASE WHEN COALESCE(p_ent.amount_paid, p_ent.amount) IS NOT NULL
+            THEN ' · GHS ' || ROUND(COALESCE(p_ent.amount_paid, p_ent.amount)::numeric, 2)::text
+            ELSE '' END
+        ))
+      WHEN pos_ent.id IS NOT NULL THEN
+        TRIM(BOTH FROM CONCAT(
+          TRIM(COALESCE(pos_ent.full_name, '')),
+          CASE WHEN pos_ent.role IS NOT NULL AND TRIM(pos_ent.role) <> ''
+            THEN ' · ' || TRIM(pos_ent.role) ELSE '' END
+        ))
+      WHEN fs_ent.id IS NOT NULL THEN
+        TRIM(BOTH FROM CONCAT(
+          CASE WHEN cl_fs.class_name IS NOT NULL AND TRIM(cl_fs.class_name) <> ''
+            THEN TRIM(cl_fs.class_name) || ' · ' ELSE '' END,
+          'Fee structure'
+        ))
+      ELSE ''
+    END
+  ), '') AS entity_label
+`;

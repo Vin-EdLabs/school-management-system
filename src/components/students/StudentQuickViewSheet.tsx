@@ -26,16 +26,15 @@ import {
 import { formatDisplayDate } from '../../utils/dateFormat';
 import { apiService } from '../../services/api';
 import { resolveLogoUrl } from '../../services/tenantService';
-import type { Student, FeeStructure } from '../../contexts/DataContext';
+import { useData } from '../../contexts/DataContext';
 import {
   classBadgeClass,
   enrollmentStatusLabel,
   isAlumniStudent,
   normalizeEnrollmentStatus,
-  paymentsForStudentTerm,
   statusBadgeClass,
-  totalScheduledFeesForStudent,
 } from './studentRegistryUtils';
+import { calculateStudentFeesSync } from '../../utils/feeCalculations';
 import { cn } from '@/lib/utils';
 
 type PaymentLite = { studentId?: string; amount: number; date: string; paymentMethod?: string; term?: string };
@@ -72,6 +71,7 @@ const StudentQuickViewSheet: React.FC<StudentQuickViewSheetProps> = ({
   onEdit,
   onViewFull,
 }) => {
+  const { arrearsBalances } = useData();
   const [attendance, setAttendance] = useState<AttendanceRow[] | null>(null);
   const [attErr, setAttErr] = useState(false);
   const [grades, setGrades] = useState<GradeRow[] | null>(null);
@@ -133,14 +133,25 @@ const StudentQuickViewSheet: React.FC<StudentQuickViewSheetProps> = ({
 
   const feeSummary = useMemo(() => {
     if (!student) return { due: 0, paid: 0, balance: 0 };
-    const alumni = isAlumniStudent(student);
-    const due = alumni ? 0 : totalScheduledFeesForStudent(student, feeStructures, currentTerm);
-    const termPays = alumni
-      ? (payments || []).filter((p) => String(p.studentId) === String(student.id))
-      : paymentsForStudentTerm(student.id, payments, currentTerm);
-    const paid = termPays.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-    return { due, paid, balance: alumni ? 0 : Math.max(0, due - paid) };
-  }, [student, feeStructures, currentTerm, payments]);
+    const feeCalculation = calculateStudentFeesSync(
+      student.id,
+      currentTerm,
+      student.classAssigned,
+      feeStructures,
+      payments,
+      student.classAssignedId,
+      arrearsBalances,
+      {
+        isBeneficiary: !!student.isBeneficiary,
+        discountType: student.discountType,
+        discountValue: student.discountValue,
+      }
+    );
+    const due = feeCalculation.totalAmountDue ?? feeCalculation.currentTermFee ?? 0;
+    const paid = feeCalculation.totalPaid ?? 0;
+    const balance = Math.max(0, due - paid);
+    return { due, paid, balance };
+  }, [student, feeStructures, currentTerm, payments, arrearsBalances]);
 
   const attStats = useMemo(() => {
     if (!attendance || attendance.length === 0) return { pct: null as number | null, present: 0, absent: 0, n: 0 };

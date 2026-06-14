@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
 import { TrendingUp, Save } from 'lucide-react';
+import PaymentAccountSelect from '../common/PaymentAccountSelect';
 
 const AddIncomeForm = () => {
   const { addIncome, income } = useData();
@@ -17,6 +18,7 @@ const AddIncomeForm = () => {
     amount: '',
     date: new Date().toISOString().split('T')[0],
     paymentMethod: 'Cash',
+    paymentAccountId: '',
     receivedBy: 'Admin',
     notes: ''
   });
@@ -62,6 +64,7 @@ const AddIncomeForm = () => {
         amount: '',
         date: new Date().toISOString().split('T')[0],
         paymentMethod: 'Cash',
+        paymentAccountId: '',
         receivedBy: 'Admin',
         notes: ''
       });
@@ -150,20 +153,13 @@ const AddIncomeForm = () => {
                 required
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="paymentMethod">Payment Method</Label>
-              <Select value={formData.paymentMethod} onValueChange={(value) => handleInputChange('paymentMethod', value)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Cash">Cash</SelectItem>
-                  <SelectItem value="Mobile Money">Mobile Money</SelectItem>
-                  <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
-                  <SelectItem value="Cheque">Cheque</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <PaymentAccountSelect
+              value={formData.paymentAccountId}
+              onChange={(accountId, paymentMethod) =>
+                setFormData((prev) => ({ ...prev, paymentAccountId: accountId, paymentMethod }))
+              }
+              disabled={saving}
+            />
           </div>
 
           <div className="space-y-2">

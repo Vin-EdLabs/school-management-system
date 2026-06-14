@@ -32,6 +32,7 @@ export const MODULE_DATA_NEEDS: Record<string, DataDomain[]> = {
   attendance: ['students', 'classes'],
   grades: ['students', 'classes', 'subjects'],
   'teacher-profile': [],
+  'teacher-appointment-letters': [],
   'teacher-payment-history': [],
   'teacher-quizzes': ['classes', 'subjects'],
 };

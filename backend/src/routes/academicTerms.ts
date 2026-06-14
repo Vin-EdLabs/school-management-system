@@ -1,0 +1,50 @@
+import express from 'express';
+import { authenticate, requireTenant, AuthRequest, requirePrimaryAdminOrSuperAdmin } from '../middleware/auth.js';
+import { setTenantContext } from '../middleware/tenant.js';
+import { activateAcademicTerm } from '../services/termActivationService.js';
+import { getIO } from '../socket.js';
+
+const router = express.Router();
+
+router.use(authenticate);
+router.use(requireTenant);
+router.use(setTenantContext);
+
+const emitTenantDataChanged = (tenantId: number, entity: string, action: 'created' | 'updated' | 'deleted') => {
+  try {
+    const io = getIO();
+    io.to(`tenant:${tenantId}`).emit('tenant-data-changed', { tenantId, entity, action, at: Date.now() });
+  } catch {
+    /* socket optional */
+  }
+};
+
+/** POST /api/academic-terms/:id/activate — full term transition in one transaction */
+router.post('/:id/activate', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const termId = parseInt(String(req.params.id), 10);
+    if (!termId || Number.isNaN(termId)) {
+      return res.status(400).json({ error: 'Invalid academic term id' });
+    }
+
+    const result = await activateAcademicTerm(tenantId, termId);
+
+    if (result.success) {
+      emitTenantDataChanged(tenantId, 'academic-term', 'updated');
+      emitTenantDataChanged(tenantId, 'settings', 'updated');
+      emitTenantDataChanged(tenantId, 'finance-term-switch', 'updated');
+    }
+
+    return res.json(result);
+  } catch (error: any) {
+    console.error('[academic-terms/activate] error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error?.message || 'Failed to activate academic term',
+      steps: [],
+    });
+  }
+});
+
+export default router;

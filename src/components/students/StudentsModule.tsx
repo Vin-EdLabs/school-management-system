@@ -9,7 +9,8 @@ import PromoteStudents from './PromoteStudents';
 import { useData } from '../../contexts/DataContext';
 import { normalizeEnrollmentStatus } from './studentRegistryUtils';
 import AlumniStudents from './AlumniStudents';
-import { Eye, UserPlus, TrendingUp, UserX, GraduationCap, RotateCcw } from 'lucide-react';
+import PendingAdmissions from './PendingAdmissions';
+import { Eye, UserPlus, TrendingUp, UserX, GraduationCap, RotateCcw, Clock } from 'lucide-react';
 
 
 const StudentsModule = () => {
@@ -18,6 +19,16 @@ const StudentsModule = () => {
   const { students, refresh } = useData();
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+
+  const pendingCount = useMemo(
+    () => students.filter((s) => normalizeEnrollmentStatus(s.enrollmentStatus) === 'pending').length,
+    [students]
+  );
+
+  const activeCount = useMemo(
+    () => students.filter((s) => normalizeEnrollmentStatus(s.enrollmentStatus) === 'active').length,
+    [students]
+  );
 
   const inactiveCount = useMemo(
     () => students.filter((s) => normalizeEnrollmentStatus(s.enrollmentStatus) === 'inactive').length,
@@ -35,7 +46,12 @@ const StudentsModule = () => {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-foreground">Students</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Manage student information, enrollment, and promotions.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Manage student information, enrollment, and promotions.{' '}
+              <span className="tabular-nums">{activeCount} active</span>
+              {pendingCount > 0 && <span> · {pendingCount} pending</span>}
+              {alumniCount > 0 && <span> · {alumniCount} alumni</span>}
+            </p>
           </div>
 
           <Button
@@ -72,6 +88,15 @@ const StudentsModule = () => {
           <TabsTrigger value="view-all" className="flex items-center gap-2 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-900 data-[state=active]:text-indigo-600 dark:data-[state=active]:text-indigo-400 data-[state=active]:shadow-sm rounded-lg px-6 font-bold text-[11px] uppercase tracking-wider transition-all">
             <Eye className="w-4 h-4" />
             View All
+          </TabsTrigger>
+          <TabsTrigger value="pending" className="flex items-center gap-2 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-900 data-[state=active]:text-indigo-600 dark:data-[state=active]:text-indigo-400 data-[state=active]:shadow-sm rounded-lg px-6 font-bold text-[11px] uppercase tracking-wider transition-all">
+            <Clock className="w-4 h-4" />
+            Pending
+            {pendingCount > 0 && (
+              <Badge variant="secondary" className="ml-1 h-5 min-w-[1.25rem] rounded-full px-1.5 text-[10px] tabular-nums">
+                {pendingCount}
+              </Badge>
+            )}
           </TabsTrigger>
           <TabsTrigger value="inactive" className="flex items-center gap-2 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-900 data-[state=active]:text-indigo-600 dark:data-[state=active]:text-indigo-400 data-[state=active]:shadow-sm rounded-lg px-6 font-bold text-[11px] uppercase tracking-wider transition-all">
             <UserX className="w-4 h-4" />
@@ -111,12 +136,18 @@ const StudentsModule = () => {
           />
         </TabsContent>
 
+        <TabsContent value="pending">
+          <PendingAdmissions />
+        </TabsContent>
+
         <TabsContent value="inactive">
           <ViewAllStudents variant="inactive" />
         </TabsContent>
 
         <TabsContent value="add-student">
-          <AddStudentForm onSuccess={() => setActiveTab('view-all')} />
+          <AddStudentForm
+            onSuccess={(mode) => setActiveTab(mode === 'pending' ? 'pending' : 'view-all')}
+          />
         </TabsContent>
 
         <TabsContent value="promote">

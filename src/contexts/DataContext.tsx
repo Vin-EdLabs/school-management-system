@@ -28,6 +28,9 @@ export interface Student {
   classAssignedId?: number;
   guardianName: string;
   guardianContact: string;
+  guardian2Name?: string;
+  guardian2Contact?: string;
+  guardian2Relationship?: string;
   homeAddress: string;
   numberOfSiblings: number;
   namesOfSiblings: string;
@@ -42,13 +45,15 @@ export interface Student {
   discountType?: 'percentage' | 'fixed';
   discountValue?: number;
   beneficiaryNotes?: string;
-  /** active | graduated | suspended (and custom values from DB) */
+  /** active | pending | inactive | graduated | suspended */
   enrollmentStatus?: string;
   /** Set when student is alumni (from graduation_details). */
   graduatedAt?: string;
 }
 
-interface Teacher {
+export type TeacherStatus = 'active' | 'suspended' | 'deactivated';
+
+export interface Teacher {
   id: string;
   fullName: string;
   gender: string;
@@ -63,7 +68,21 @@ interface Teacher {
   employmentDate: string;
   monthlySalary: number;
   employmentStatus: string;
+  status: TeacherStatus;
+  hasPassportPhoto?: boolean;
+  statusReason?: string;
+  suspensionStartDate?: string;
+  suspensionEndDate?: string;
+  deactivationDate?: string;
+  deactivationReason?: string;
   notes: string;
+}
+
+function normalizeTeacherStatus(raw: string | null | undefined): TeacherStatus {
+  const s = String(raw || 'active').trim().toLowerCase();
+  if (s === 'suspended') return 'suspended';
+  if (s === 'deactivated' || s === 'left') return 'deactivated';
+  return 'active';
 }
 
 interface Class {
@@ -72,10 +91,11 @@ interface Class {
   level: string;
   stream: string;
   assignedTeacher: string;
-  assignedTeacherId?: number;
+  assignedTeacherId?: number | null;
   maxClassSize: number;
   students: string[];
   studentCount?: number;
+  isFinalClass?: boolean;
 }
 
 export interface FeeStructure {
@@ -96,9 +116,17 @@ export interface Payment {
   date: string;
   recordedAt?: string;
   paymentMethod: string;
+  paymentAccountId?: string;
   term: string;
   notes: string;
   receiptNumber?: string;
+  isVoided?: boolean;
+  isLocked?: boolean;
+  correctedByPaymentId?: string;
+  correctsPaymentId?: string;
+  correctedAt?: string;
+  correctionReason?: string;
+  receiptVersion?: number;
   /** Frozen at payment time — do not recompute from live balances for receipts */
   receiptSnapshot?: {
     totalDue: number;
@@ -177,7 +205,12 @@ interface DataContextType {
     balance?: { outstanding?: number; arrears?: number; credit?: number }
   ) => string;
   revertPaymentLocally: (token: string) => void;
-  addTeacher: (teacher: Omit<Teacher, 'id' | 'staffId'>) => Promise<{ loginStaffId?: string; loginPin?: string; loginMessage?: string } | void>;
+  addTeacher: (teacher: Omit<Teacher, 'id' | 'staffId'>) => Promise<{
+    id?: string;
+    loginStaffId?: string;
+    loginPin?: string;
+    loginMessage?: string;
+  } | void>;
   updateTeacher: (id: string, updates: Partial<Teacher>) => Promise<void>;
   deleteTeacher: (id: string) => Promise<void>;
   addClass: (classData: Omit<Class, 'id'>) => Promise<void>;
@@ -240,6 +273,13 @@ const mapTeacher = (backendTeacher: any): Teacher => ({
   employmentDate: formatDateForInput(backendTeacher.employment_date),
   monthlySalary: backendTeacher.monthly_salary || 0,
   employmentStatus: backendTeacher.employment_status || '',
+  status: normalizeTeacherStatus(backendTeacher.status || backendTeacher.employment_status),
+  hasPassportPhoto: !!backendTeacher.has_passport_photo,
+  statusReason: backendTeacher.status_reason || undefined,
+  suspensionStartDate: formatDateForInput(backendTeacher.suspension_start_date),
+  suspensionEndDate: formatDateForInput(backendTeacher.suspension_end_date),
+  deactivationDate: formatDateForInput(backendTeacher.deactivation_date),
+  deactivationReason: backendTeacher.deactivation_reason || undefined,
   notes: backendTeacher.notes || '',
 });
 
@@ -272,19 +312,18 @@ const mapClass = (backendClass: any): Class => ({
   maxClassSize: backendClass.max_class_size || 30,
   students: [],
   studentCount: backendClass.student_count || 0,
+  isFinalClass: !!backendClass.is_final_class,
 });
 
 // Helper function to map frontend class to backend format
-const mapClassToBackend = (classData: Partial<Class>): any => {
+const mapClassToBackend = (classData: Partial<Class>, options?: { includeLevel?: boolean }): any => {
   const out: Record<string, unknown> = {};
   if (classData.className !== undefined) out.class_name = classData.className;
-  if (classData.level !== undefined) out.level = classData.level;
+  if (options?.includeLevel !== false && classData.level !== undefined) out.level = classData.level;
   if (classData.stream !== undefined) out.stream = classData.stream;
   if (classData.maxClassSize !== undefined) out.max_class_size = classData.maxClassSize;
-  if (classData.assignedTeacherId !== undefined) out.assigned_teacher_id = classData.assignedTeacherId;
-  if ((classData as { isFinalClass?: boolean }).isFinalClass !== undefined) {
-    out.is_final_class = (classData as { isFinalClass?: boolean }).isFinalClass;
-  }
+  if ('assignedTeacherId' in classData) out.assigned_teacher_id = classData.assignedTeacherId ?? null;
+  if (classData.isFinalClass !== undefined) out.is_final_class = classData.isFinalClass;
   return out;
 };
 
@@ -391,13 +430,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           id: (p.id ?? p.payment_id)?.toString() ?? '',
           studentId: (p.student_id ?? p.studentId)?.toString() || '',
           studentIdNum: p.student_id ?? p.studentId,
-          amount: parseFloat(p.amount ?? 0),
+          amount: parseFloat(p.amount ?? p.amount_paid ?? 0),
+          amountPaid: parseFloat(p.amount_paid ?? p.amount ?? 0),
           date: formatDateForInput(p.payment_date ?? p.date),
           recordedAt: p.created_at ?? p.recorded_at ?? p.payment_date ?? p.date,
           paymentMethod: p.payment_method ?? p.paymentMethod ?? '',
+          paymentAccountId: p.payment_account_id != null ? String(p.payment_account_id) : undefined,
           term: p.term ?? '',
           notes: p.notes ?? '',
           receiptNumber: p.receipt_number ?? p.receiptNumber,
+          isVoided: !!p.is_voided,
+          isLocked: !!p.is_locked,
+          correctedByPaymentId: p.corrected_by_payment_id != null ? String(p.corrected_by_payment_id) : undefined,
+          correctsPaymentId: p.corrects_payment_id != null ? String(p.corrects_payment_id) : undefined,
+          correctedAt: p.corrected_at ?? undefined,
+          correctionReason: p.correction_reason ?? undefined,
+          receiptVersion: p.receipt_version != null ? Number(p.receipt_version) : undefined,
           receiptSnapshot: p.receipt_snapshot ?? p.receiptSnapshot ?? undefined,
         })));
         break;
@@ -651,6 +699,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const backendData = mapTeacherToBackend(teacherData);
     const result = await apiService.post<any>('/teachers', backendData);
     await refresh(['teachers']);
+    return {
+      id: result?.id != null ? String(result.id) : undefined,
+      loginStaffId: result?.loginStaffId,
+      loginPin: result?.loginPin,
+      loginMessage: result?.loginMessage,
+    };
   };
 
   const updateTeacher = async (id: string, updates: Partial<Teacher>) => {
@@ -666,16 +720,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Class functions
   const addClass = async (classData: Omit<Class, 'id'>) => {
-    const backendData = mapClassToBackend(classData);
-    // create directly so UI updates immediately; socket may also refresh, but this removes race conditions
+    const backendData = mapClassToBackend(classData, { includeLevel: true });
     await apiService.post('/classes', backendData);
     await refresh(['classes']);
   };
 
   const updateClass = async (id: string, updates: Partial<Class>) => {
-    const backendData = mapClassToBackend(updates);
+    const backendData = mapClassToBackend(updates, { includeLevel: false });
     await apiService.put(`/classes/${id}`, backendData);
-    await refresh(['classes']);
+    await refresh(['classes', 'fees', 'students']);
   };
 
   const deleteClass = async (id: string) => {
@@ -751,12 +804,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // Income and Expense functions
-  const addIncome = async (incomeData: Omit<Income, 'id'>) => {
+  const addIncome = async (incomeData: Omit<Income, 'id'> & { paymentAccountId?: string }) => {
     await apiService.post('/income', {
       source: incomeData.source,
       amount: incomeData.amount,
       income_date: incomeData.date,
       payment_method: incomeData.paymentMethod,
+      payment_account_id: incomeData.paymentAccountId ? parseInt(incomeData.paymentAccountId, 10) : undefined,
       received_by: incomeData.receivedBy,
       notes: incomeData.notes,
       description: incomeData.description,
@@ -765,7 +819,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await refresh(['income']);
   };
 
-  const addExpense = async (expenseData: Omit<Expense, 'id'>) => {
+  const addExpense = async (expenseData: Omit<Expense, 'id'> & { paymentAccountId?: string }) => {
     await apiService.post('/expenses', {
       title: expenseData.title,
       category: expenseData.category,
@@ -773,6 +827,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       payee_name: expenseData.payeeName,
       payment_date: expenseData.paymentDate,
       payment_method: expenseData.paymentMethod,
+      payment_account_id: expenseData.paymentAccountId ? parseInt(expenseData.paymentAccountId, 10) : undefined,
       purpose: expenseData.purpose,
       notes: expenseData.notes,
       description: expenseData.description,

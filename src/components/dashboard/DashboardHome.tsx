@@ -65,19 +65,26 @@ const DashboardHome = () => {
 
   const stats = useMemo(() => {
     const totalStudents = overview?.students.total ?? 0;
+    const pendingStudents = overview?.students.pending ?? 0;
+    const alumniStudents = overview?.students.alumni ?? 0;
     const totalTeachers = overview?.teachers.total ?? 0;
     const feesCollectedThisTerm = financial?.collected ?? 0;
     const otherIncomeThisYear = financial?.otherIncome ?? 0;
-    const totalIncome = feesCollectedThisTerm + otherIncomeThisYear;
+    const openingBalance = financial?.totalOpeningBalance ?? 0;
+    const totalIncome = financial?.totalIncome ?? feesCollectedThisTerm + otherIncomeThisYear;
     const expensesThisYear = financial?.totalExpenses ?? 0;
-    const netBalance = financial?.netBalance ?? totalIncome - expensesThisYear;
+    const netBalance =
+      financial?.netBalance ?? openingBalance + totalIncome - expensesThisYear;
     const outstandingBalances = financial?.outstanding ?? 0;
 
     return {
       totalStudents,
+      pendingStudents,
+      alumniStudents,
       totalTeachers,
       feesCollectedThisTerm,
       otherIncomeThisYear,
+      openingBalance,
       totalIncome,
       expensesThisYear,
       netBalance,
@@ -102,16 +109,20 @@ const DashboardHome = () => {
     return [{ name: 'Expenses', value: financial.totalExpenses }];
   }, [financial]);
 
-  const monthlyCash = useMemo(
-    () =>
-      monthlyRows.map((row) => ({
+  const monthlyCash = useMemo(() => {
+    let runningBalance = stats.openingBalance;
+    return monthlyRows.map((row) => {
+      const income = Number(row.income) || 0;
+      const expenses = Number(row.expense) || 0;
+      runningBalance += income - expenses;
+      return {
         month: row.name.split(' ')[0] ?? row.name,
-        income: Number(row.income) || 0,
-        expenses: Number(row.expense) || 0,
-        net: (Number(row.income) || 0) - (Number(row.expense) || 0),
-      })),
-    [monthlyRows]
-  );
+        income,
+        expenses,
+        net: runningBalance,
+      };
+    });
+  }, [monthlyRows, stats.openingBalance]);
 
   const recentActivities: Array<{ text: string; time: string; type: 'payment' | 'expense' }> = [];
 
@@ -149,9 +160,12 @@ const DashboardHome = () => {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
           {[
             {
-              label: 'Students',
+              label: 'Active Students',
               value: stats.totalStudents,
-              sub: 'Enrolled',
+              sub:
+                stats.pendingStudents || stats.alumniStudents
+                  ? `${stats.pendingStudents} pending · ${stats.alumniStudents} alumni`
+                  : 'Enrolled',
               icon: Users,
               accent: 'from-sky-500/20 to-sky-500/5 border-sky-500/25 text-sky-700 dark:text-sky-300',
             },
@@ -172,7 +186,7 @@ const DashboardHome = () => {
             {
               label: 'Net balance',
               value: `GHS ${stats.netBalance.toLocaleString()}`,
-              sub: 'Income − expenses',
+              sub: 'Opening + income − expenses',
               icon: CreditCard,
               accent:
                 stats.netBalance >= 0
@@ -246,7 +260,15 @@ const DashboardHome = () => {
                     <Legend wrapperStyle={{ fontSize: 12 }} />
                     <Area type="monotone" dataKey="income" name="Income" stroke="#059669" fill="url(#homeIncomeFill)" strokeWidth={2} />
                     <Line type="monotone" dataKey="expenses" name="Expenses" stroke="#f97316" strokeWidth={2} dot={{ r: 3 }} />
-                    <Line type="monotone" dataKey="net" name="Net" stroke="#6366f1" strokeWidth={1.5} dot={false} strokeDasharray="6 4" />
+                    <Line
+                      type="monotone"
+                      dataKey="net"
+                      name="Net balance (incl. opening)"
+                      stroke="#6366f1"
+                      strokeWidth={2}
+                      dot={{ r: 2 }}
+                      strokeDasharray="6 4"
+                    />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>

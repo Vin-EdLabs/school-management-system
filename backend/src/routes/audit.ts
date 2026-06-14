@@ -4,7 +4,7 @@ import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js'
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { writeAuditLog } from '../services/auditService.js';
-import { enrichAuditLogRow } from '../utils/auditDisplay.js';
+import { enrichAuditLogRow, AUDIT_ENTITY_JOINS, AUDIT_ENTITY_LABEL_SQL } from '../utils/auditDisplay.js';
 import { getClientIp } from '../utils/clientIp.js';
 
 const router = express.Router();
@@ -82,9 +82,11 @@ router.get('/all', authenticate, requireRole('super-admin'), async (req: AuthReq
     const { startDate, endDate, action, entityType, tenantId, username, module, status, search, limit = '500', offset = '0' } = req.query;
 
     let queryText = `
-      SELECT al.*, u.username, ${AUDIT_USER_FULL_NAME_SQL}, ten.name as tenant_name
+      SELECT al.*, u.username, ${AUDIT_USER_FULL_NAME_SQL}, ten.name as tenant_name,
+             ${AUDIT_ENTITY_LABEL_SQL}
       FROM audit_logs al
       ${AUDIT_USER_JOINS}
+      ${AUDIT_ENTITY_JOINS}
       LEFT JOIN tenants ten ON al.tenant_id = ten.id
       WHERE 1=1
     `;
@@ -168,9 +170,11 @@ router.get('/super-admin', authenticate, requireRole('super-admin'), async (req:
     const { action, status, search, limit = '500', offset = '0' } = req.query;
     const params: any[] = [];
     let queryText = `
-      SELECT al.*, u.username, ${AUDIT_USER_FULL_NAME_SQL}, NULL::text as tenant_name
+      SELECT al.*, u.username, ${AUDIT_USER_FULL_NAME_SQL}, NULL::text as tenant_name,
+             ${AUDIT_ENTITY_LABEL_SQL}
       FROM audit_logs al
       ${AUDIT_USER_JOINS}
+      ${AUDIT_ENTITY_JOINS}
       WHERE al.module = 'superadmin'
     `;
 
@@ -286,9 +290,11 @@ router.get('/super-admin/tracker/timeline', authenticate, requireRole('super-adm
     const listParams = [...params, lim, off];
 
     const result = await query(
-      `SELECT al.*, u.username, ${AUDIT_USER_FULL_NAME_SQL}, ten.name AS tenant_name
+      `SELECT al.*, u.username, ${AUDIT_USER_FULL_NAME_SQL}, ten.name AS tenant_name,
+              ${AUDIT_ENTITY_LABEL_SQL}
        FROM audit_logs al
        ${AUDIT_USER_JOINS}
+       ${AUDIT_ENTITY_JOINS}
        LEFT JOIN tenants ten ON al.tenant_id = ten.id
        ${where}
        ORDER BY al.created_at ${sort}
@@ -342,9 +348,11 @@ router.get('/export', requireRole(...viewerRoles), async (req: AuthRequest, res)
     const where = buildTenantAuditWhere(tenantId, req.query, params, 'al');
     const rows = await query(
       `SELECT al.created_at, al.action, al.status, al.module, al.entity_type, al.entity_id, al.summary,
-              al.user_role, u.username, ${AUDIT_USER_FULL_NAME_SQL}, al.ip_address, al.user_agent, al.details
+              al.user_role, u.username, ${AUDIT_USER_FULL_NAME_SQL}, al.ip_address, al.user_agent, al.details,
+              al.before_values, al.after_values, ${AUDIT_ENTITY_LABEL_SQL}
        FROM audit_logs al
        ${AUDIT_USER_JOINS}
+       ${AUDIT_ENTITY_JOINS}
        ${where}
        ORDER BY al.created_at DESC
        LIMIT 5000`,
@@ -360,7 +368,7 @@ router.get('/export', requireRole(...viewerRoles), async (req: AuthRequest, res)
       'status',
       'module',
       'entity_type',
-      'entity_id',
+      'entity_label',
       'summary',
       'user_role',
       'username',
@@ -379,7 +387,7 @@ router.get('/export', requireRole(...viewerRoles), async (req: AuthRequest, res)
           esc(r.status),
           esc(r.module),
           esc(r.entity_type),
-          esc(r.entity_id),
+          esc(r.entity_label),
           esc(r.summary),
           esc(r.user_role),
           esc(r.username),
@@ -417,9 +425,10 @@ router.get('/', requireRole(...viewerRoles), async (req: AuthRequest, res) => {
 
     const listParams = [...params, limit, offset];
     const result = await query(
-      `SELECT al.*, u.username, ${AUDIT_USER_FULL_NAME_SQL}
+      `SELECT al.*, u.username, ${AUDIT_USER_FULL_NAME_SQL}, ${AUDIT_ENTITY_LABEL_SQL}
        FROM audit_logs al
        ${AUDIT_USER_JOINS}
+       ${AUDIT_ENTITY_JOINS}
        ${where}
        ORDER BY al.created_at DESC
        LIMIT $${listParams.length - 1} OFFSET $${listParams.length}`,

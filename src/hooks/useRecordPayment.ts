@@ -1,7 +1,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiService } from '../services/api';
 import { useData, type Payment } from '../contexts/DataContext';
+import { useSchool } from '../contexts/SchoolContext';
 import { toast } from '@/hooks/use-toast';
+import { invalidateFinanceQueries } from './useFinanceRealtime';
 
 export const financeQueryKeys = {
   payments: (studentId: string) => ['payments', studentId] as const,
@@ -15,6 +17,7 @@ export type RecordPaymentInput = {
   amount: number;
   date: string;
   paymentMethod: string;
+  paymentAccountId?: string;
   term: string;
   notes: string;
   academicYear?: string;
@@ -83,6 +86,7 @@ function buildOptimisticPayment(input: RecordPaymentInput): Payment {
 
 export function useRecordPayment() {
   const queryClient = useQueryClient();
+  const { schoolId } = useSchool();
   const { applyPaymentLocally, revertPaymentLocally } = useData();
 
   return useMutation({
@@ -92,6 +96,7 @@ export function useRecordPayment() {
         amount: input.amount,
         payment_date: input.date,
         payment_method: input.paymentMethod,
+        payment_account_id: input.paymentAccountId ? parseInt(input.paymentAccountId, 10) : undefined,
         term: input.term,
         notes: input.notes,
         academic_year: input.academicYear,
@@ -149,6 +154,7 @@ export function useRecordPayment() {
       queryClient.invalidateQueries({ queryKey: financeQueryKeys.payments(studentId) });
       queryClient.invalidateQueries({ queryKey: financeQueryKeys.ledger(studentId) });
       queryClient.invalidateQueries({ queryKey: financeQueryKeys.student(studentId) });
+      invalidateFinanceQueries(queryClient, schoolId);
     },
   });
 }

@@ -11,6 +11,7 @@ import { Search, AlertTriangle, Download, DollarSign, Clock, TrendingUp } from '
 import { apiService } from '../../services/api';
 import { calculateStudentFeesSync, getActiveAcademicTerm } from '../../utils/feeCalculations';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
+import { shouldTrackStudentFees } from '../students/studentRegistryUtils';
 
 const OutstandingFees = () => {
   const { students, classes, feeStructures, payments, arrearsBalances } = useData();
@@ -24,7 +25,7 @@ const OutstandingFees = () => {
     const studentsArray = Array.isArray(students) ? students : [];
     const paymentsArray = Array.isArray(payments) ? payments : [];
 
-    return studentsArray.map(student => {
+    return studentsArray.filter(shouldTrackStudentFees).map(student => {
       const feeCalculation = calculateStudentFeesSync(
         student.id,
         selectedTerm,
@@ -76,7 +77,7 @@ const OutstandingFees = () => {
   // Calculate summary statistics
   const summaryStats = useMemo(() => {
     const outstandingStudents = outstandingData.filter(student => student.outstanding > 0);
-    const studentsArray = Array.isArray(students) ? students : [];
+    const studentsArray = Array.isArray(students) ? students.filter(shouldTrackStudentFees) : [];
     const totalStudents = studentsArray.length;
     const studentsOwing = outstandingStudents.length;
     const totalOutstanding = outstandingStudents.reduce((sum, student) => sum + student.outstanding, 0);

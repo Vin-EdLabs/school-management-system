@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
+import { isAssignableTeacher, sortTeachersByName } from '@/utils/teacherFilters';
 import { Save, Plus, Trash2, Loader2 } from 'lucide-react';
 import { apiService } from '@/services/api';
 
@@ -99,11 +100,7 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
     }
   };
 
-  const activeTeachers = teachers.filter(teacher => 
-    teacher.employmentStatus === 'Active' && 
-    teacher.fullName && 
-    teacher.fullName.trim() !== ''
-  );
+  const activeTeachers = teachers.filter(isAssignableTeacher).sort(sortTeachersByName);
 
   const handleInputChange = (field: string, value: any) => {
     setFormData(prev => ({
@@ -296,7 +293,7 @@ const CreateClassForm: React.FC<CreateClassFormProps> = ({ onSuccess }) => {
               <SelectTrigger>
                 <SelectValue placeholder="Select teacher (optional)" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-h-[min(320px,60dvh)]">
                 <SelectItem value="no-teacher">No teacher assigned</SelectItem>
                 {activeTeachers.map((teacher) => (
                   <SelectItem key={teacher.id} value={teacher.id}>

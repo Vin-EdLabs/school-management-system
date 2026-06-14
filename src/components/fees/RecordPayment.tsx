@@ -10,12 +10,13 @@ import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
 import { CreditCard, Search, Loader2 } from 'lucide-react';
 import ReceiptPrinter from '../common/ReceiptPrinter';
-import { calculateStudentFeesSync, parseReceiptSnapshot } from '../../utils/feeCalculations';
+import { calculateStudentFeesSync, parseReceiptSnapshot, resolveReceiptDisplayAmounts } from '../../utils/feeCalculations';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
 import { apiService } from '../../services/api';
 import { useRecordPayment } from '../../hooks/useRecordPayment';
-import { normalizeEnrollmentStatus } from '../students/studentRegistryUtils';
+import { shouldTrackStudentFees } from '../students/studentRegistryUtils';
 import { toast } from '@/hooks/use-toast';
+import PaymentAccountSelect from '../common/PaymentAccountSelect';
 
 const RecordPayment = () => {
   const { students, feeStructures, payments, arrearsBalances } = useData();
@@ -27,6 +28,7 @@ const RecordPayment = () => {
     amount: '',
     date: new Date().toISOString().split('T')[0],
     paymentMethod: 'Cash',
+    paymentAccountId: '',
     notes: '',
     term: currentTerm || ''
   });
@@ -54,7 +56,7 @@ const RecordPayment = () => {
   }, [currentTerm]);
 
   const activeStudents = useMemo(
-    () => students.filter((s) => normalizeEnrollmentStatus(s.enrollmentStatus) === 'active'),
+    () => students.filter((s) => shouldTrackStudentFees(s)),
     [students]
   );
 
@@ -100,6 +102,7 @@ const RecordPayment = () => {
       amount: '',
       date: new Date().toISOString().split('T')[0],
       paymentMethod: 'Cash',
+      paymentAccountId: '',
       notes: '',
       term: currentTerm || '',
     });
@@ -125,11 +128,25 @@ const RecordPayment = () => {
     }
 
     const paymentAmount = parseFloat(formData.amount);
-    const feeDetails = selectedStudentFeeDetails;
     const paymentDate = formData.date;
     const paymentMethod = formData.paymentMethod;
     const paymentTerm = formData.term || currentTerm;
     const paymentNotes = formData.notes;
+
+    const feeDetails = calculateStudentFeesSync(
+      formData.studentId,
+      paymentTerm,
+      student.classAssigned,
+      feeStructures || [],
+      payments || [],
+      student.classAssignedId,
+      arrearsBalances,
+      {
+        isBeneficiary: !!student.isBeneficiary,
+        discountType: student.discountType,
+        discountValue: student.discountValue,
+      }
+    );
 
     try {
       const result = await recordPayment.mutateAsync({
@@ -138,6 +155,7 @@ const RecordPayment = () => {
         amount: paymentAmount,
         date: paymentDate,
         paymentMethod,
+        paymentAccountId: formData.paymentAccountId,
         term: paymentTerm,
         notes: paymentNotes,
         academicYear: currentYear,
@@ -146,15 +164,12 @@ const RecordPayment = () => {
       const createdPayment = res.payment || res;
       const serverBalance = res.balance;
       const snap = parseReceiptSnapshot(createdPayment.receipt_snapshot ?? createdPayment.receiptSnapshot);
-      const finalBalance = snap
-        ? snap.balanceAfter
-        : serverBalance
-          ? Math.max(0, Number(serverBalance.outstanding) || 0)
-          : Math.max(0, feeDetails.totalAmountDue - (feeDetails.totalPaid + paymentAmount));
-      const finalTotalDue = snap ? snap.totalDue : serverBalance ? (serverBalance.totalFees + serverBalance.arrears) : feeDetails.totalAmountDue;
-      const finalArrears = snap ? snap.arrears : serverBalance ? serverBalance.arrears : feeDetails.arrears;
-      const finalTermFee = snap ? snap.termFee : serverBalance ? serverBalance.totalFees : feeDetails.currentTermFee;
-      const finalCredit = snap ? Math.max(0, snap.credit || 0) : serverBalance ? serverBalance.credit : Math.max(0, (feeDetails.totalPaid + paymentAmount) - feeDetails.totalAmountDue);
+      const amounts = resolveReceiptDisplayAmounts({
+        snap,
+        serverBalance,
+        feeDetails,
+        paymentAmount,
+      });
 
       setReceiptData({
         studentName: `${student.firstName} ${student.lastName}`,
@@ -167,12 +182,12 @@ const RecordPayment = () => {
         year: currentYear,
         receiptNumber: createdPayment.receipt_number || createdPayment.receiptNumber || `R${Date.now().toString().slice(-8)}`,
         notes: paymentNotes,
-        remainingBalance: finalBalance,
-        creditBalance: finalCredit,
-        arrears: finalArrears,
-        currentTermFee: finalTermFee,
-        totalAmountDue: finalTotalDue
-      } as any);
+        remainingBalance: amounts.remainingBalance,
+        creditBalance: amounts.creditBalance,
+        arrears: amounts.arrears,
+        currentTermFee: amounts.currentTermFee,
+        totalAmountDue: amounts.totalAmountDue,
+      });
       setShowReceipt(true);
       resetForm();
     } catch {
@@ -370,20 +385,14 @@ const RecordPayment = () => {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="paymentMethod" className="font-semibold text-slate-800 dark:text-foreground">Payment Method</Label>
-              <Select value={formData.paymentMethod} onValueChange={(value) => handleInputChange('paymentMethod', value)} disabled={isSubmitting}>
-                <SelectTrigger disabled={isSubmitting}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Cash">Cash</SelectItem>
-                  <SelectItem value="Mobile Money">Mobile Money</SelectItem>
-                  <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
-                  <SelectItem value="Cheque">Cheque</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <PaymentAccountSelect
+              value={formData.paymentAccountId}
+              onChange={(accountId, paymentMethod) =>
+                setFormData((prev) => ({ ...prev, paymentAccountId: accountId, paymentMethod }))
+              }
+              disabled={isSubmitting}
+              label="Payment Account"
+            />
 
             <div className="space-y-2">
               <Label htmlFor="notes" className="font-semibold text-slate-800 dark:text-foreground">Notes (Optional)</Label>

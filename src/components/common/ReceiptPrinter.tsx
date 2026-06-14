@@ -23,6 +23,11 @@ interface ReceiptData {
   arrears?: number;
   currentTermFee?: number;
   totalAmountDue?: number;
+  correctionHistory?: {
+    correctionCount: number;
+    chain: Array<{ receiptNumber: string; amount: number; isVoided: boolean }>;
+    rootReceiptNumber?: string;
+  };
 }
 
 interface ReceiptPrinterProps {
@@ -50,11 +55,13 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
     receipt_footer?: string;
     bank_details?: string;
   } | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
   const schoolName = schoolNameOverride || school?.name || 'School';
   const logoUrl = resolveLogoUrl(logoUrlOverride ?? school?.logo_url ?? null);
 
   useEffect(() => {
     if (show) {
+      setShowHistory(false);
       apiService.get<Record<string, unknown>>('/settings').then((s) => {
         setReceiptSettings({
           postal_address: s?.postal_address as string | undefined,
@@ -68,8 +75,28 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
 
   if (!show) return null;
 
-  const isFullPayment = (receiptData.remainingBalance || 0) <= 0;
-  const statusLabel = isFullPayment ? "FULL PAYMENT" : "PARTIAL PAYMENT";
+  const termFee = Number(receiptData.currentTermFee) || 0;
+  const arrears = Number(receiptData.arrears) || 0;
+  const totalDue =
+    Number(receiptData.totalAmountDue) ||
+    termFee + arrears ||
+    Number(receiptData.amount) ||
+    0;
+  const displayTermFee =
+    termFee > 0 ? termFee : arrears > 0 && totalDue > arrears ? Math.max(0, totalDue - arrears) : totalDue;
+  const balanceAfter = Number(receiptData.remainingBalance) || 0;
+  const creditBalance = Number(receiptData.creditBalance) || 0;
+  const formatMoney = (value: number) =>
+    value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const paymentStatus =
+    creditBalance > 0.0001
+      ? 'CREDIT BALANCE'
+      : balanceAfter > 0.0001
+        ? 'PARTIAL PAYMENT'
+        : 'FULL PAYMENT';
+  const statusColor =
+    creditBalance > 0.0001 ? '#059669' : balanceAfter > 0.0001 ? '#ea580c' : '#16a34a';
   const currentTime = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
   const buildReceiptHtml = () => `
@@ -111,7 +138,9 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
             .notes { margin-top: 8pt; font-size: 8pt; font-style: italic; border-top: 0.5pt dashed #ccc; padding-top: 4pt; }
             .footer { text-align: center; margin-top: 12pt; border-top: 1pt dashed #000; padding-top: 8pt; font-size: 8pt; }
             .footer p { margin: 2pt 0; }
-            .thanks { font-weight: bold; font-size: 9pt; margin-bottom: 4pt; }
+            .credit-box { border: 1pt solid #059669; background: #ecfdf5; padding: 6pt; margin-top: 6pt; border-radius: 2pt; }
+            .credit-box .label { color: #047857; font-weight: bold; font-size: 8pt; text-transform: uppercase; }
+            .credit-box .value { color: #047857; font-weight: bold; font-size: 11pt; }
           </style>
         </head>
         <body>
@@ -128,7 +157,7 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
               <h2>Official Receipt</h2>
               <p>#${receiptData.receiptNumber}</p>
               <div class="date">Date: ${formatDisplayDate(receiptData.date)} | ${currentTime}</div>
-              <div class="status-badge">${statusLabel}</div>
+              <div class="status-badge" style="border-color:${statusColor}; color:${statusColor}">${paymentStatus}</div>
             </div>
             <div class="section">
               <div class="section-title">Student & Academic</div>
@@ -145,22 +174,26 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
             <div class="section">
               <div class="section-title">Breakdown</div>
               <table class="charges-table">
-                ${receiptData.currentTermFee !== undefined ? `<tr><td>Current Fee</td><td style="text-align:right">${receiptData.currentTermFee.toFixed(2)}</td></tr>` : ''}
-                ${receiptData.arrears !== undefined && receiptData.arrears > 0 ? `<tr><td>Old Arrears</td><td style="text-align:right">${receiptData.arrears.toFixed(2)}</td></tr>` : ''}
+                ${displayTermFee > 0 ? `<tr><td>Term Fee</td><td style="text-align:right">GHS ${formatMoney(displayTermFee)}</td></tr>` : ''}
+                ${arrears > 0 ? `<tr><td>Old Arrears</td><td style="text-align:right">GHS ${formatMoney(arrears)}</td></tr>` : ''}
+                <tr><td>Amount Paid (this receipt)</td><td style="text-align:right">GHS ${formatMoney(Number(receiptData.amount) || 0)}</td></tr>
               </table>
               <div class="row total-line">
                 <span>Total Due:</span>
-                <span>GHS ${(receiptData.totalAmountDue || (Number(receiptData.currentTermFee || 0) + Number(receiptData.arrears || 0)) || (receiptData.amount || 0)).toFixed(2)}</span>
+                <span>GHS ${formatMoney(totalDue)}</span>
               </div>
               <div class="row" style="margin-top:5px; font-weight:700;">
-                <span>Balance:</span>
-                <span style="color:#000">GHS ${(receiptData.remainingBalance || 0).toFixed(2)}</span>
+                <span>Balance After Payment:</span>
+                <span style="color:#000">GHS ${formatMoney(balanceAfter)}</span>
               </div>
+              ${
+                creditBalance > 0.0001
+                  ? `<div class="credit-box"><div class="row" style="margin:0"><span class="label">Credit Balance</span><span class="value">GHS ${formatMoney(creditBalance)}</span></div><div style="font-size:7pt;color:#047857;margin-top:3pt">Student has overpaid for this term</div></div>`
+                  : ''
+              }
               <div class="row" style="margin-top:2px;">
                 <span>Status:</span>
-                <span style="color:${(receiptData.remainingBalance || 0) <= 0 ? '#16a34a' : '#ea580c'}; font-weight:700;">
-                  ${(receiptData.remainingBalance || 0) <= 0 ? 'FULL PAYMENT' : 'PARTIAL PAYMENT'}
-                </span>
+                <span style="color:${statusColor}; font-weight:700;">${paymentStatus}</span>
               </div>
             </div>
             ${receiptData.notes ? `<div class="notes">Note: ${receiptData.notes}</div>` : ''}
@@ -238,8 +271,8 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-800">Official Receipt</p>
               <p className="text-lg font-black leading-none mt-1 text-slate-950">#{receiptData.receiptNumber}</p>
               <p className="text-[8px] text-slate-600 mt-1 uppercase font-bold">Date: {formatDisplayDate(receiptData.date)} | {currentTime}</p>
-              <div className="inline-block mt-3 px-3 py-1 border border-slate-900 rounded text-[9px] font-black text-slate-900 uppercase">
-                {statusLabel}
+              <div className="inline-block mt-3 px-3 py-1 border border-slate-900 rounded text-[9px] font-black uppercase" style={{ borderColor: statusColor, color: statusColor }}>
+                {paymentStatus}
               </div>
             </div>
 
@@ -272,26 +305,39 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
                 <span>Breakdown</span>
                 <span>Amount</span>
               </div>
-              {receiptData.currentTermFee !== undefined && (
+              {displayTermFee > 0 && (
                 <div className="flex justify-between text-slate-700">
-                  <span className="font-medium">Current Fee:</span>
-                  <span className="font-bold">{receiptData.currentTermFee.toFixed(2)}</span>
+                  <span className="font-medium">Term Fee:</span>
+                  <span className="font-bold">GHS {formatMoney(displayTermFee)}</span>
                 </div>
               )}
-              {receiptData.arrears !== undefined && receiptData.arrears > 0 && (
+              {arrears > 0 && (
                 <div className="flex justify-between text-slate-700">
                   <span className="font-medium">Old Arrears:</span>
-                  <span className="font-bold">{receiptData.arrears.toFixed(2)}</span>
+                  <span className="font-bold">GHS {formatMoney(arrears)}</span>
                 </div>
               )}
+              <div className="flex justify-between text-slate-700">
+                <span className="font-medium">Amount Paid:</span>
+                <span className="font-bold">GHS {formatMoney(Number(receiptData.amount) || 0)}</span>
+              </div>
               <div className="flex justify-between pt-2 border-t border-slate-300 font-black text-sm text-slate-950">
                 <span>Total Due:</span>
-                <span>{(receiptData.totalAmountDue || (receiptData.amount || 0)).toFixed(2)}</span>
+                <span>GHS {formatMoney(totalDue)}</span>
               </div>
               <div className="flex justify-between font-bold pt-1 text-slate-800">
-                <span>Balance:</span>
-                <span>{(receiptData.remainingBalance || 0).toFixed(2)}</span>
+                <span>Balance After Payment:</span>
+                <span>GHS {formatMoney(balanceAfter)}</span>
               </div>
+              {creditBalance > 0.0001 && (
+                <div className="mt-2 rounded-md border border-emerald-300 bg-emerald-50 px-2 py-2">
+                  <div className="flex justify-between font-bold text-emerald-800">
+                    <span>Credit Balance:</span>
+                    <span>GHS {formatMoney(creditBalance)}</span>
+                  </div>
+                  <p className="mt-1 text-[8px] font-medium text-emerald-700">Student has overpaid for this term</p>
+                </div>
+              )}
             </div>
 
             {receiptData.notes && (
@@ -310,6 +356,42 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
           </div>
 
           <div className="flex flex-col space-y-2 mt-6">
+            {receiptData.correctionHistory && receiptData.correctionHistory.correctionCount > 0 && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50/80 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/30">
+                <p className="text-foreground">
+                  This receipt has been corrected {receiptData.correctionHistory.correctionCount}{' '}
+                  {receiptData.correctionHistory.correctionCount === 1 ? 'time' : 'times'}.{' '}
+                  <button
+                    type="button"
+                    className="font-semibold text-amber-700 underline underline-offset-2 hover:text-amber-800 dark:text-amber-300"
+                    onClick={() => setShowHistory((v) => !v)}
+                  >
+                    {showHistory ? 'Hide history' : 'View history'}
+                  </button>
+                </p>
+                {showHistory && (
+                  <div className="mt-3 space-y-2 border-t border-amber-200 pt-3 dark:border-amber-800">
+                    <p className="text-xs font-medium text-muted-foreground">Correction chain</p>
+                    <ul className="space-y-1">
+                      {receiptData.correctionHistory.chain.map((entry) => (
+                        <li
+                          key={entry.receiptNumber}
+                          className="flex items-center justify-between text-xs font-mono"
+                        >
+                          <span className={entry.isVoided ? 'line-through text-muted-foreground' : 'text-foreground'}>
+                            {entry.receiptNumber}
+                            {entry.isVoided ? ' (voided)' : ''}
+                          </span>
+                          <span className={entry.isVoided ? 'line-through text-muted-foreground' : ''}>
+                            GHS {entry.amount.toFixed(2)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
             <Button
               onClick={handleDownload}
               variant="outline"

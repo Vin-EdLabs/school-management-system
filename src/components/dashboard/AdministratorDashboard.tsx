@@ -86,6 +86,8 @@ const AdministratorDashboard = () => {
   const dataLoading = overviewLoading || rosterLoading;
 
   const totalStudents = overview?.students.total ?? 0;
+  const pendingStudents = overview?.students.pending ?? 0;
+  const alumniStudents = overview?.students.alumni ?? 0;
   const maleStudents = overview?.students.male ?? 0;
   const femaleStudents = overview?.students.female ?? 0;
   const otherGenderStudents = overview?.students.other ?? 0;
@@ -112,9 +114,11 @@ const AdministratorDashboard = () => {
   const kpiCards = [
     {
       key: 'students',
-      label: 'Students',
+      label: 'Active Students',
       value: dataLoading ? null : totalStudents,
-      sub: dataLoading ? '' : `${maleStudents} male · ${femaleStudents} female${otherGenderStudents ? ` · ${otherGenderStudents} other` : ''}`,
+      sub: dataLoading
+        ? ''
+        : `${maleStudents} male · ${femaleStudents} female${otherGenderStudents ? ` · ${otherGenderStudents} other` : ''}${pendingStudents ? ` · ${pendingStudents} pending` : ''}${alumniStudents ? ` · ${alumniStudents} alumni` : ''}`,
       icon: Users,
       ring: 'ring-sky-500/20',
       bg: 'from-sky-500/12 via-card to-card',

@@ -11,9 +11,11 @@ const FinancialSummary = () => {
 
   const feesCollected = summary?.collected ?? 0;
   const otherIncome = summary?.otherIncome ?? 0;
+  const openingBalance = summary?.totalOpeningBalance ?? 0;
   const totalCombinedIncome = feesCollected + otherIncome;
   const totalExpenses = summary?.totalExpenses ?? 0;
-  const balanceLeft = summary?.netBalance ?? totalCombinedIncome - totalExpenses;
+  const balanceLeft =
+    summary?.netBalance ?? openingBalance + totalCombinedIncome - totalExpenses;
 
   return (
     <Card className="bg-purple-500/5 dark:bg-purple-500/10 border-purple-500/20 shadow-none">
@@ -67,6 +69,7 @@ const FinancialSummary = () => {
                     GHS {balanceLeft.toLocaleString()}
                   </p>
                   <div className="text-xs text-muted-foreground mt-2 space-y-1">
+                    <p>Opening: GHS {openingBalance.toLocaleString()}</p>
                     <p>Income: GHS {totalCombinedIncome.toLocaleString()}</p>
                     <p>Expenses: GHS {totalExpenses.toLocaleString()}</p>
                   </div>

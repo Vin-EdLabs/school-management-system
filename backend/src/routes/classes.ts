@@ -218,18 +218,58 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
   }
 });
 
+async function syncClassNameReferences(
+  tenantId: number,
+  classId: number,
+  oldName: string,
+  newName: string
+): Promise<{ feeStructureCount: number; feeStructuresLinkedByClassId: true }> {
+  const feeCountRes = await query(
+    `SELECT COUNT(*)::int AS n FROM fee_structures WHERE tenant_id = $1 AND class_id = $2`,
+    [tenantId, classId]
+  );
+  const feeStructureCount = Number(feeCountRes.rows[0]?.n || 0);
+
+  if (oldName && newName && oldName !== newName) {
+    // Fee structures join classes by class_id — display names update via the classes row.
+    // Refresh linked fee rows and replace legacy descriptions that embedded the old class name.
+    await query(
+      `UPDATE fee_structures
+       SET updated_at = CURRENT_TIMESTAMP,
+           description = CASE
+             WHEN description IS NOT NULL AND TRIM(description) = $3 THEN $4
+             WHEN description IS NOT NULL AND description LIKE '%' || $3 || '%' THEN REPLACE(description, $3, $4)
+             ELSE description
+           END
+       WHERE tenant_id = $1 AND class_id = $2`,
+      [tenantId, classId, oldName, newName]
+    ).catch(() => undefined);
+  }
+
+  return { feeStructureCount, feeStructuresLinkedByClassId: true };
+}
+
 // Update class
 router.put('/:id', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const { id } = req.params;
     const updates = req.body;
+
+    const existing = await query(
+      'SELECT id, class_name, name, level FROM classes WHERE tenant_id = $1 AND id = $2',
+      [tenantId, id]
+    );
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: 'Class not found' });
+    }
+    const previousName = String(existing.rows[0].class_name || existing.rows[0].name || '').trim();
     
     const updateFields: string[] = [];
     const values: any[] = [];
     let paramCount = 1;
     
-    const allowedFields = ['class_name', 'level', 'stream', 'assigned_teacher_id', 'max_class_size', 'is_final_class'];
+    const allowedFields = ['class_name', 'stream', 'assigned_teacher_id', 'max_class_size', 'is_final_class'];
     
     for (const field of allowedFields) {
       if (updates[field] !== undefined) {
@@ -249,9 +289,8 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
     }
 
     if (updates.level !== undefined) {
-      updateFields.push(`level_order = $${paramCount}`);
-      values.push(levelOrderFromName(updates.level));
-      paramCount++;
+      // Level cannot be changed after creation — fee structures depend on class_id + level.
+      console.warn(`Class ${id}: level change ignored (level is locked after creation)`);
     }
     
     if (updateFields.length === 0) {
@@ -277,23 +316,23 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
           values
         );
       } catch (err2: any) {
-        // Legacy fallback: class_name column may not exist, update using name.
+        // Legacy fallback: class_name column may not exist, update using name (level stays locked).
         result = await query(
           `UPDATE classes
            SET name = COALESCE($1, name),
-               level = COALESCE($2, level),
-               stream = COALESCE($3, stream),
-               assigned_teacher_id = COALESCE($4, assigned_teacher_id),
-               max_class_size = COALESCE($5, max_class_size),
+               stream = COALESCE($2, stream),
+               assigned_teacher_id = COALESCE($3, assigned_teacher_id),
+               max_class_size = COALESCE($4, max_class_size),
+               is_final_class = COALESCE($5, is_final_class),
                updated_at = CURRENT_TIMESTAMP
            WHERE tenant_id = $6 AND id = $7
            RETURNING *`,
           [
             updates.class_name || updates.name,
-            updates.level,
             updates.stream,
             updates.assigned_teacher_id,
             updates.max_class_size,
+            updates.is_final_class,
             tenantId,
             id
           ]
@@ -304,6 +343,14 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Class not found' });
     }
+
+    const updatedRow = result.rows[0];
+    const newName = String(updatedRow.class_name || updatedRow.name || '').trim();
+    const nameChanged = previousName !== newName && (updates.class_name !== undefined || updates.name !== undefined);
+    let syncInfo = { feeStructureCount: 0, feeStructuresLinkedByClassId: true as const };
+    if (nameChanged) {
+      syncInfo = await syncClassNameReferences(tenantId, Number(id), previousName, newName);
+    }
     
     // Log update
     await query(
@@ -311,8 +358,16 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
       [tenantId, req.user!.id, 'UPDATE', 'CLASS', parseInt(id)]
     );
     emitTenantDataChanged(tenantId, 'class', 'updated');
+    if (nameChanged) {
+      emitTenantDataChanged(tenantId, 'fee', 'updated');
+    }
     
-    res.json(result.rows[0]);
+    res.json({
+      ...updatedRow,
+      previousClassName: previousName,
+      nameChanged,
+      ...syncInfo,
+    });
   } catch (error) {
     console.error('Update class error:', error);
     res.status(500).json({ error: 'Failed to update class' });

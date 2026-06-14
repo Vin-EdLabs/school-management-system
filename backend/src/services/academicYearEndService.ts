@@ -473,6 +473,11 @@ export async function graduateClassToAlumni(
       throw new Error('No active students in this class to graduate.');
     }
 
+    const { refreshArrearsForTenant } = await import('./arrearsService.js');
+    await refreshArrearsForTenant(tenantId).catch((err) => {
+      console.error('[graduate-to-alumni] arrears snapshot before graduation:', err);
+    });
+
     let graduated = 0;
     for (const student of studentsRes.rows) {
       const studentId = Number(student.id);

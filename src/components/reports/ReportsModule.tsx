@@ -7,7 +7,7 @@ import { toast } from '@/hooks/use-toast';
 import { BarChart3, Download, FileText, Calculator, DollarSign, TrendingUp, TrendingDown, Users, Calendar } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 import { reportService } from '../../services';
-import { getActiveAcademicTerm, getActiveAcademicYear } from '../../utils/feeCalculations';
+import { getActiveAcademicTerm, getActiveAcademicYear, isActivePayment, paymentAmountValue } from '../../utils/feeCalculations';
 import { formatDisplayDate } from '../../utils/dateFormat';
 
 const ReportsModule = () => {
@@ -26,8 +26,8 @@ const ReportsModule = () => {
     
     // Fees collected for the selected term (same as Financial Dashboard)
     const feesCollected = payments
-      .filter(payment => payment.term === selectedTerm)
-      .reduce((sum, payment) => sum + payment.amount, 0);
+      .filter(payment => payment.term === selectedTerm && isActivePayment(payment))
+      .reduce((sum, payment) => sum + paymentAmountValue(payment), 0);
 
     // Other income for the current year (same as Financial Dashboard)
     const otherIncome = income
@@ -56,7 +56,7 @@ const ReportsModule = () => {
       totalIncome,
       totalExpenses,
       balance,
-      feePayments: payments.filter(payment => payment.term === selectedTerm),
+      feePayments: payments.filter(payment => payment.term === selectedTerm && isActivePayment(payment)),
       currentYearIncome: income.filter(inc => {
         const incomeDate = new Date(inc.date);
         return incomeDate.getFullYear().toString() === currentYear;

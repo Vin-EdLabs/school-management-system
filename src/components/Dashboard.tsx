@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import SidebarWrapper from './SidebarWrapper';
 import DashboardHome from './dashboard/DashboardHome';
 import AdministratorDashboard from './dashboard/AdministratorDashboard';
@@ -18,12 +18,16 @@ import UsersModule from './users/UsersModule';
 import AuditModule from './audit/AuditModule';
 import PrintFeeStatusModule from './fees/PrintFeeStatusModule';
 import TransactionsPage from './finance/TransactionsPage';
+import CashBankModule from './finance/CashBankModule';
+import PaymentAccountsModule from './configurations/PaymentAccountsModule';
+import AppointmentLetterSettings from './configurations/AppointmentLetterSettings';
 import ManualAdjustmentsReport from './finance/ManualAdjustmentsReport';
 import TeacherDashboard from './teacher/TeacherDashboard';
 import TeacherClassesModule from './teacher/TeacherClassesModule';
 import AttendanceModule from './teacher/AttendanceModule';
 import GradesModule from './teacher/GradesModule';
 import TeacherProfileModule from './teacher/TeacherProfileModule';
+import TeacherAppointmentLettersModule from './teacher/TeacherAppointmentLettersModule';
 import TeacherPaymentHistoryModule from './teacher/TeacherPaymentHistoryModule';
 import TeacherQuizModule from './teacher/TeacherQuizModule';
 import AiChatModule from './ai/AiChatModule';
@@ -38,11 +42,13 @@ import SetupProgressGate from './onboarding/SetupProgressGate';
 import { useAuth } from '../contexts/AuthContext';
 import { useStaffPushSync } from '../hooks/useStaffPushSync';
 import { useEnsureData } from '../hooks/useEnsureData';
+import { useFinanceRealtime } from '../hooks/useFinanceRealtime';
 import { domainsForModule } from '../config/moduleDataNeeds';
 
 const Dashboard = () => {
   const { hasAccess, user } = useAuth();
   useStaffPushSync();
+  useFinanceRealtime();
   const [activeModule, setActiveModule] = useState(() => {
     if (window.location.pathname.includes('/finance/transactions')) {
       return 'transactions';
@@ -62,11 +68,18 @@ const Dashboard = () => {
   const domains = useMemo(() => domainsForModule(activeModule), [activeModule]);
   useEnsureData(domains);
 
+  useEffect(() => {
+    if (user?.role === 'finance' && activeModule === 'dashboard') {
+      setActiveModule('financial-dashboard');
+    }
+  }, [user?.role, activeModule]);
+
   const renderActiveModule = () => {
     // Check access before rendering
     const hasModuleAccess =
       hasAccess(activeModule) ||
       hasAccess(activeModule + '-view-only') ||
+      (activeModule === 'appointment-letter-settings' && hasAccess('settings-full')) ||
       (activeModule === 'teacher-quizzes' && (hasAccess('grades') || user?.role === 'teacher'));
     if (!hasModuleAccess) {
       return (
@@ -79,6 +92,9 @@ const Dashboard = () => {
 
     switch (activeModule) {
       case 'dashboard':
+        if (user?.role === 'finance') {
+          return <FinancialDashboard />;
+        }
         // Show different dashboard based on role
         if (user?.role === 'administrator') {
           return <AdministratorDashboard />;
@@ -106,6 +122,8 @@ const Dashboard = () => {
         return <GradesModule />;
       case 'teacher-profile':
         return <TeacherProfileModule />;
+      case 'teacher-appointment-letters':
+        return <TeacherAppointmentLettersModule />;
       case 'teacher-payment-history':
         return <TeacherPaymentHistoryModule />;
       case 'teacher-quizzes':
@@ -124,12 +142,18 @@ const Dashboard = () => {
         return <PrintFeeStatusModule />;
       case 'transactions':
         return <TransactionsPage onNavigate={setActiveModule} />;
+      case 'cash-bank':
+        return <CashBankModule />;
       case 'manual-adjustments':
         return <ManualAdjustmentsReport />;
       case 'users':
         return <UsersModule />;
       case 'settings':
         return <SettingsModule />;
+      case 'payment-accounts':
+        return <PaymentAccountsModule />;
+      case 'appointment-letter-settings':
+        return <AppointmentLetterSettings />;
       case 'audit':
         return <AuditModule />;
       case 'records':

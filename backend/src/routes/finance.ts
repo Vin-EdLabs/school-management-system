@@ -391,9 +391,10 @@ router.post('/carry-arrears', async (req: AuthRequest, res: Response) => {
 
     // 4. Get payments per student for the previous term
     const payRes = await client.query(
-      `SELECT student_id, COALESCE(SUM(amount), 0)::numeric AS total_paid
+      `SELECT student_id, COALESCE(SUM(COALESCE(amount_paid, amount, 0)), 0)::numeric AS total_paid
        FROM payments
        WHERE tenant_id = $1
+         AND COALESCE(is_voided, false) = false
          AND (term = $2 OR term = $3 OR term ILIKE $4 OR term ILIKE $5)
        GROUP BY student_id`,
       [tenantId, previousTerm, prevShort, `%${previousTerm}%`, `%${prevShort}%`]
@@ -453,34 +454,39 @@ router.post('/carry-arrears', async (req: AuthRequest, res: Response) => {
 });
 
 // POST /api/finance/clear-all-payments
-// Wipes ALL finance data for this tenant: fee structures, payments, receipts, arrears.
-router.post('/clear-all-payments', async (req: AuthRequest, res: Response) => {
+// Wipes ALL finance data for this tenant so admins can configure fresh.
+router.post('/clear-all-payments', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res: Response) => {
   const tenantId = getTenantId(req);
   const client = await getClient();
   try {
     await client.query('BEGIN');
 
-    // Receipts reference payments — delete first
+    await client.query(
+      `UPDATE payments SET corrects_payment_id = NULL, corrected_by_payment_id = NULL WHERE tenant_id = $1`,
+      [tenantId]
+    ).catch(() => {});
+    await client.query(
+      `UPDATE fund_transfers SET original_transfer_id = NULL WHERE tenant_id = $1`,
+      [tenantId]
+    ).catch(() => {});
+
+    await client.query('DELETE FROM receipt_corrections WHERE tenant_id = $1', [tenantId]).catch(() => {});
     await client.query('DELETE FROM receipts WHERE tenant_id = $1', [tenantId]);
-
-    // Payments
+    await client.query('DELETE FROM fund_transfers WHERE tenant_id = $1', [tenantId]).catch(() => {});
+    await client.query('DELETE FROM income WHERE tenant_id = $1', [tenantId]).catch(() => {});
+    await client.query('DELETE FROM salary_payments WHERE tenant_id = $1', [tenantId]).catch(() => {});
+    await client.query('DELETE FROM expenses WHERE tenant_id = $1', [tenantId]).catch(() => {});
     await client.query('DELETE FROM payments WHERE tenant_id = $1', [tenantId]);
-
-    // Fee structures
+    await client.query('DELETE FROM payment_accounts WHERE tenant_id = $1', [tenantId]).catch(() => {});
+    await client.query('DELETE FROM student_ledger WHERE tenant_id = $1', [tenantId]).catch(() => {});
+    await client.query('DELETE FROM ledger_fee_structures WHERE tenant_id = $1', [tenantId]).catch(() => {});
     await client.query('DELETE FROM fee_structures WHERE tenant_id = $1', [tenantId]).catch(() => {});
-
-    // Carried-forward arrears (new simple table)
     await client.query('DELETE FROM term_arrears WHERE tenant_id = $1', [tenantId]).catch(() => {});
-
-    // Legacy helper tables (may not exist — ignore errors)
     await client.query('DELETE FROM student_arrears WHERE tenant_id = $1', [tenantId]).catch(() => {});
     await client.query('DELETE FROM student_arrears_balance WHERE tenant_id = $1', [tenantId]).catch(() => {});
     await client.query('DELETE FROM student_credits WHERE tenant_id = $1', [tenantId]).catch(() => {});
     await client.query('DELETE FROM term_outstanding_balances WHERE tenant_id = $1', [tenantId]).catch(() => {});
-    await client.query('DELETE FROM ledger_fee_structures WHERE tenant_id = $1', [tenantId]).catch(() => {});
-    await client.query('DELETE FROM student_ledger WHERE tenant_id = $1', [tenantId]).catch(() => {});
 
-    // Reset receipt number sequence
     await client.query(
       `INSERT INTO receipt_number_seq (tenant_id, last_number, updated_at)
        VALUES ($1, 0, CURRENT_TIMESTAMP)
@@ -488,10 +494,16 @@ router.post('/clear-all-payments', async (req: AuthRequest, res: Response) => {
       [tenantId]
     );
 
+    await client.query(
+      `UPDATE school_settings SET legacy_payment_migration_completed = false WHERE tenant_id = $1`,
+      [tenantId]
+    ).catch(() => {});
+
     await client.query('COMMIT');
     emitTenantDataChanged(tenantId, 'finance', 'deleted');
     return res.json({
-      message: 'All finance data cleared: fee structures, payments, receipts, and arrears have been reset.',
+      message:
+        'All finance data cleared: fees, payments, receipts, income, expenses, payroll payments, payment accounts, and arrears have been reset.',
     });
   } catch (error: any) {
     await client.query('ROLLBACK').catch(() => {});

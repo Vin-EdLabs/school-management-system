@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { 
   Download, DollarSign, TrendingUp, 
@@ -25,7 +25,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import './AdvancedReports.css';
 import { formatAcademicYearLabel } from '@/utils/academicYearDisplay';
+import { normalizeFinancialSummary } from '@/hooks/useReportQueries';
 import { downloadFinancialReportPdf } from './buildFinancialReportPdf';
+import { useFinanceRealtime } from '@/hooks/useFinanceRealtime';
 
 type AcademicTermRow = {
   id: number;
@@ -168,6 +170,8 @@ const AdvancedReports = () => {
   const [incomeVsExpense, setIncomeVsExpense] = useState<any[]>([]);
   const [incomeRows, setIncomeRows] = useState<any[]>([]);
   const [expenseRows, setExpenseRows] = useState<any[]>([]);
+  const [fundTransfers, setFundTransfers] = useState<any[]>([]);
+  const [collectionsByAccount, setCollectionsByAccount] = useState<any[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -251,15 +255,10 @@ const AdvancedReports = () => {
       const base = `?${params.toString()}`;
       const bust = `&_=${Date.now()}`;
 
-      const finRes = await apiService.get<any>(`/reports/financial-summary${base}${bust}`);
+      const finRes = normalizeFinancialSummary(await apiService.get<any>(`/reports/financial-summary${base}${bust}`));
       setFinancialSummary(finRes);
 
-      const fr =
-        finRes?.financePeriodStart && finRes?.financePeriodEnd
-          ? `?startDate=${encodeURIComponent(finRes.financePeriodStart)}&endDate=${encodeURIComponent(
-              finRes.financePeriodEnd
-            )}&_=${Date.now()}`
-          : '';
+      const listBust = `?_=${Date.now()}`;
 
       const [
         classFeesRes,
@@ -271,6 +270,7 @@ const AdvancedReports = () => {
         iveRes,
         incomeList,
         expenseList,
+        fundTransfersRes,
       ] = await Promise.all([
         apiService.get<any[]>(`/reports/fees-by-class${base}${bust}`),
         apiService.get<any[]>(`/reports/outstanding-fees${base}${bust}`),
@@ -279,8 +279,9 @@ const AdvancedReports = () => {
         apiService.get<any>(`/reports/academic-performance${base}${bust}`),
         apiService.get<any[]>(`/reports/attendance-summary${base}${bust}`),
         apiService.get<any[]>(`/reports/income-vs-expenditure${base}${bust}`),
-        fr ? apiService.get<any[]>(`/income${fr}`) : Promise.resolve([]),
-        fr ? apiService.get<any[]>(`/expenses${fr}`) : Promise.resolve([]),
+        apiService.get<any[]>(`/income${listBust}`),
+        apiService.get<any[]>(`/expenses${listBust}`),
+        apiService.get<any[]>(`/reports/fund-transfers?scope=all&limit=500&_=${Date.now()}`),
       ]);
 
       setFeesByClass(classFeesRes);
@@ -298,8 +299,20 @@ const AdvancedReports = () => {
           .reverse()
       );
       setIncomeVsExpense(iveRes);
-      setIncomeRows(Array.isArray(incomeList) ? incomeList : []);
-      setExpenseRows(Array.isArray(expenseList) ? expenseList : []);
+      setIncomeRows(
+        (Array.isArray(incomeList) ? incomeList : []).map((row: any) => ({
+          ...row,
+          Account: row.account_label || 'Unlinked',
+        }))
+      );
+      setExpenseRows(
+        (Array.isArray(expenseList) ? expenseList : []).map((row: any) => ({
+          ...row,
+          Account: row.account_label || 'Unlinked',
+        }))
+      );
+      setFundTransfers(Array.isArray(fundTransfersRes) ? fundTransfersRes : []);
+      setCollectionsByAccount(Array.isArray(finRes?.collectionsByAccount) ? finRes.collectionsByAccount : []);
       setLastSync(new Date());
     } catch (err: any) {
       console.error('Failed to fetch dashboard data:', err);
@@ -308,6 +321,14 @@ const AdvancedReports = () => {
       setLoading(false);
     }
   }, [periodReady, activeYearKey, activeTerm]);
+
+  const fetchDataRef = useRef(fetchData);
+  fetchDataRef.current = fetchData;
+  useFinanceRealtime({
+    onInvalidate: () => {
+      if (periodReady) void fetchDataRef.current();
+    },
+  });
 
   useEffect(() => {
     if (!periodReady) return;
@@ -341,6 +362,7 @@ const AdvancedReports = () => {
       incomeRows,
       expenseRows,
       incomeVsExpense,
+      fundTransfers,
     });
   };
 
@@ -413,6 +435,37 @@ const AdvancedReports = () => {
     }
     if (expenseRows.length) {
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(expenseRows), 'Expense detail');
+    }
+    if (collectionsByAccount.length) {
+      XLSX.utils.book_append_sheet(
+        wb,
+        XLSX.utils.json_to_sheet(
+          collectionsByAccount.map((row) => ({
+            Account: row.accountLabel,
+            'Fees Collected': row.feesCollected,
+            'Other Income': row.otherIncome,
+            Expenses: row.expenses,
+            'Current Balance': row.currentBalance,
+          }))
+        ),
+        'By account'
+      );
+    }
+    if (fundTransfers.length) {
+      XLSX.utils.book_append_sheet(
+        wb,
+        XLSX.utils.json_to_sheet(
+          fundTransfers.map((row) => ({
+            Date: row.transfer_date,
+            From: row.from_account_label,
+            To: row.to_account_label,
+            Amount: row.amount,
+            Note: row.note,
+            By: row.transferred_by_name,
+          }))
+        ),
+        'Fund transfers'
+      );
     }
 
     XLSX.writeFile(wb, `financial-report_${safePeriod}.xlsx`);
@@ -552,7 +605,7 @@ const AdvancedReports = () => {
       </header>
 
       {/* --- HERO STATS ROW --- */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-6">
         <StatCard 
           label="Total Fees Expected"
           value={`GHS ${financialSummary?.totalExpected || 0}`}
@@ -586,10 +639,26 @@ const AdvancedReports = () => {
           delay={300}
         />
         <StatCard 
-          label="Net position (system)"
-          value={`GHS ${(financialSummary?.systemNetPosition ?? financialSummary?.netBalance) ?? 0}`}
-          subtext={`Fees collected + other income − expenses (${academicYearLabel} window)`}
-          trend={{ value: (financialSummary?.systemNetPosition ?? financialSummary?.netBalance) > 0 ? 'Surplus' : 'Deficit', positive: (financialSummary?.systemNetPosition ?? financialSummary?.netBalance) > 0 }}
+          label="Total Income"
+          value={`GHS ${financialSummary?.totalIncome ?? ((financialSummary?.feesCollectedPeriod ?? financialSummary?.collected ?? 0) + (financialSummary?.otherIncome ?? 0))}`}
+          subtext={`Fees + other income (${academicYearLabel})`}
+          trend={{ value: 'Period activity', positive: true }}
+          glowColor="emerald"
+          delay={375}
+        />
+        <StatCard 
+          label="Total Expenses"
+          value={`GHS ${financialSummary?.totalExpenses ?? 0}`}
+          subtext={`All expenses (${academicYearLabel})`}
+          trend={{ value: 'Excludes fund transfers', positive: false }}
+          glowColor="red"
+          delay={385}
+        />
+        <StatCard 
+          label="Net Cash Position"
+          value={`GHS ${(financialSummary?.netBalance ?? financialSummary?.systemNetPosition) ?? 0}`}
+          subtext="All account balances (matches Cash & Bank)"
+          trend={{ value: (financialSummary?.netBalance ?? 0) >= 0 ? 'Surplus' : 'Deficit', positive: (financialSummary?.netBalance ?? 0) >= 0 }}
           glowColor="blue"
           delay={400}
         />
@@ -722,7 +791,7 @@ const AdvancedReports = () => {
 
           <div className="luxury-card report-profit-card p-6">
             <h3 className="mb-2 text-lg font-bold text-emerald-700 dark:text-emerald-400 report-header-font">Profitability</h3>
-            <p className="mb-6 text-xs text-emerald-800/80 dark:text-emerald-400/70">Fees collected (this term) plus other income, minus expenses, all within the dated window for {academicYearLabel}</p>
+            <p className="mb-6 text-xs text-emerald-800/80 dark:text-emerald-400/70">Period activity for {academicYearLabel}. Net cash position equals all account balances combined (fund transfers excluded from income/expense totals).</p>
             
             <div className="space-y-4">
               <div className="flex justify-between items-center border-b border-emerald-500/20 pb-2 dark:border-emerald-500/10">
@@ -734,19 +803,25 @@ const AdvancedReports = () => {
                 <span className="font-bold text-sky-600 dark:text-sky-400">GHS {(financialSummary?.otherIncome ?? 0).toLocaleString()} <ArrowUpRight size={14} className="inline ml-1" /></span>
               </div>
               <div className="flex justify-between items-center border-b border-emerald-500/20 pb-2 dark:border-emerald-500/10">
-                <span className="text-sm font-medium text-[var(--report-text-primary)]">Total income (fees + other)</span>
+                <span className="text-sm font-medium text-[var(--report-text-primary)]">Total income</span>
                 <span className="font-bold text-[var(--report-text-primary)]">
-                  GHS {((financialSummary?.collected ?? 0) + (financialSummary?.otherIncome ?? 0)).toLocaleString()}
+                  GHS {(financialSummary?.totalIncome ?? ((financialSummary?.feesCollectedPeriod ?? financialSummary?.collected ?? 0) + (financialSummary?.otherIncome ?? 0))).toLocaleString()}
                 </span>
               </div>
               <div className="flex justify-between items-center border-b border-emerald-500/20 pb-2 dark:border-emerald-500/10">
                 <span className="text-sm text-[var(--report-text-primary)]">Expenses ({academicYearLabel})</span>
                 <span className="font-bold text-red-600 dark:text-red-400">GHS {(financialSummary?.totalExpenses ?? incomeVsExpense.reduce((a, b) => a + Number(b.expense || 0), 0)).toLocaleString()}</span>
               </div>
+              <div className="flex justify-between items-center border-b border-emerald-500/20 pb-2 dark:border-emerald-500/10">
+                <span className="text-sm text-[var(--report-text-primary)]">Period activity net</span>
+                <span className="font-bold text-[var(--report-text-primary)]">
+                  GHS {(financialSummary?.periodActivityNet ?? ((financialSummary?.collected ?? 0) + (financialSummary?.otherIncome ?? 0) - (financialSummary?.totalExpenses ?? 0))).toLocaleString()}
+                </span>
+              </div>
               <div className="flex justify-between items-center pt-2">
-                <span className="text-base font-bold text-[var(--report-text-primary)]">Net position</span>
-                <span className={`text-2xl font-bold ${(financialSummary?.systemNetPosition ?? financialSummary?.netBalance ?? 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-                  GHS {(financialSummary?.systemNetPosition ?? financialSummary?.netBalance ?? 0).toLocaleString()}
+                <span className="text-base font-bold text-[var(--report-text-primary)]">Net cash position</span>
+                <span className={`text-2xl font-bold ${(financialSummary?.netBalance ?? financialSummary?.systemNetPosition ?? 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                  GHS {(financialSummary?.netBalance ?? financialSummary?.systemNetPosition ?? 0).toLocaleString()}
                 </span>
               </div>
             </div>
@@ -912,6 +987,158 @@ const AdvancedReports = () => {
           </div>
         </div>
 
+      </div>
+
+      {/* COLLECTIONS BY PAYMENT ACCOUNT */}
+      <div className="luxury-card overflow-hidden">
+        <div className="border-b border-[var(--report-card-border)] p-6">
+          <h3 className="text-xl font-bold report-header-font">Collections by Payment Account</h3>
+          <p className="mt-1 text-sm text-[var(--report-text-secondary)]">
+            Term fee collections, other income, and expenses by account for {activeTerm} / {academicYearLabel}
+          </p>
+        </div>
+        <div className="overflow-x-auto p-4">
+          <table className="luxury-table">
+            <thead>
+              <tr>
+                <th>Account</th>
+                <th>Fees Collected (term)</th>
+                <th>Other Income</th>
+                <th>Expenses</th>
+                <th>Current Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {collectionsByAccount.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-[var(--report-text-secondary)] italic">
+                    No payment accounts or transactions yet.
+                  </td>
+                </tr>
+              ) : (
+                collectionsByAccount.map((row, i) => (
+                  <tr key={`${row.accountId ?? 'unlinked'}-${i}`}>
+                    <td className="font-bold">{row.accountLabel}</td>
+                    <td className="report-number-font">GHS {Number(row.feesCollected || 0).toLocaleString()}</td>
+                    <td className="report-number-font">GHS {Number(row.otherIncome || 0).toLocaleString()}</td>
+                    <td className="report-number-font">GHS {Number(row.expenses || 0).toLocaleString()}</td>
+                    <td className="report-number-font font-bold text-emerald-500">
+                      GHS {Number(row.currentBalance || 0).toLocaleString()}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* FUND TRANSFERS — separate from income/expenses */}
+      <div className="luxury-card overflow-hidden">
+        <div className="border-b border-[var(--report-card-border)] p-6">
+          <h3 className="text-xl font-bold report-header-font">Fund Transfers</h3>
+          <p className="mt-1 text-sm text-[var(--report-text-secondary)]">
+            Internal movements between accounts — not counted as income or expenses
+          </p>
+        </div>
+        <div className="overflow-x-auto p-4">
+          <table className="luxury-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>From</th>
+                <th>To</th>
+                <th>Amount</th>
+                <th>Note</th>
+                <th>By</th>
+              </tr>
+            </thead>
+            <tbody>
+              {fundTransfers.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-[var(--report-text-secondary)] italic">
+                    No fund transfers recorded yet.
+                  </td>
+                </tr>
+              ) : (
+                fundTransfers.map((row) => (
+                  <tr key={row.id}>
+                    <td>{formatDisplayDate(row.transfer_date)}</td>
+                    <td>{row.from_account_label}</td>
+                    <td>{row.to_account_label}</td>
+                    <td className="report-number-font font-bold">GHS {Number(row.amount || 0).toLocaleString()}</td>
+                    <td className="max-w-xs truncate">{row.note}</td>
+                    <td>{row.transferred_by_name || '—'}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
+        {/* INCOME DETAIL */}
+        <div className="luxury-card overflow-hidden">
+          <div className="border-b border-[var(--report-card-border)] p-6">
+            <h3 className="text-lg font-bold report-header-font">Income Detail</h3>
+          </div>
+          <div className="max-h-[360px] overflow-auto p-4">
+            <table className="luxury-table text-sm">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Source</th>
+                  <th>Account</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {incomeRows.length === 0 ? (
+                  <tr><td colSpan={4} className="py-6 text-center italic text-[var(--report-text-secondary)]">No income records</td></tr>
+                ) : incomeRows.map((row: any) => (
+                  <tr key={row.id}>
+                    <td>{formatDisplayDate(row.income_date || row.created_at)}</td>
+                    <td>{row.source || row.title || '—'}</td>
+                    <td>{row.account_label || row.Account || 'Unlinked'}</td>
+                    <td className="report-number-font">GHS {Number(row.amount || 0).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* EXPENSE DETAIL */}
+        <div className="luxury-card overflow-hidden">
+          <div className="border-b border-[var(--report-card-border)] p-6">
+            <h3 className="text-lg font-bold report-header-font">Expense Detail</h3>
+          </div>
+          <div className="max-h-[360px] overflow-auto p-4">
+            <table className="luxury-table text-sm">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Title</th>
+                  <th>Account</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {expenseRows.length === 0 ? (
+                  <tr><td colSpan={4} className="py-6 text-center italic text-[var(--report-text-secondary)]">No expense records</td></tr>
+                ) : expenseRows.map((row: any) => (
+                  <tr key={row.id}>
+                    <td>{formatDisplayDate(row.payment_date || row.created_at)}</td>
+                    <td>{row.title || row.description || '—'}</td>
+                    <td>{row.account_label || row.Account || 'Unlinked'}</td>
+                    <td className="report-number-font">GHS {Number(row.amount || 0).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
       {/* --- FOOTER / EXPORT SECTION --- */}

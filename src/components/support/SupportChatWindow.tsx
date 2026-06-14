@@ -52,49 +52,67 @@ export function resolveSupportImageUrl(url: string | null | undefined): string |
   return `${origin}${url.startsWith('/') ? url : `/${url}`}`;
 }
 
-/** Resize & re-encode as JPEG to stay under upload limits and load faster in chat. GIFs are sent as-is to preserve animation. */
-async function compressImageFile(file: File, maxEdge = 1920, quality = 0.82): Promise<Blob> {
+/** Resize & re-encode to stay under server upload limits. GIFs skip re-encoding to preserve animation. */
+async function compressImageFile(file: File, maxEdge = 1600, quality = 0.82): Promise<Blob> {
   if (!file.type.startsWith('image/')) throw new Error('Not an image');
-  const maxBytes = 1.85 * 1024 * 1024;
-  if (file.size <= maxBytes) return file;
-  if (file.type === 'image/gif') return file;
+  const maxBytes = 6 * 1024 * 1024;
+  if (file.size <= maxBytes && file.type === 'image/gif') return file;
 
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const objectUrl = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(objectUrl);
-      let w = img.naturalWidth;
-      let h = img.naturalHeight;
-      const scale = Math.min(1, maxEdge / Math.max(w, h));
-      w = Math.round(w * scale);
-      h = Math.round(h * scale);
-      const canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        reject(new Error('Could not process image'));
-        return;
-      }
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, w, h);
-      ctx.drawImage(img, 0, 0, w, h);
-      canvas.toBlob(
-        (blob) => {
-          if (blob) resolve(blob);
-          else reject(new Error('Could not compress image'));
-        },
-        'image/jpeg',
-        quality
-      );
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new Error('Could not read image'));
-    };
-    img.src = objectUrl;
-  });
+  if (file.type === 'image/gif') {
+    if (file.size > maxBytes) {
+      throw new Error('GIF must be under 6MB. Try a shorter clip or convert to JPEG.');
+    }
+    return file;
+  }
+
+  const compressOnce = (q: number) =>
+    new Promise<Blob>((resolve, reject) => {
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        let w = img.naturalWidth;
+        let h = img.naturalHeight;
+        const scale = Math.min(1, maxEdge / Math.max(w, h));
+        w = Math.round(w * scale);
+        h = Math.round(h * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Could not process image'));
+          return;
+        }
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        canvas.toBlob(
+          (blob) => {
+            if (blob) resolve(blob);
+            else reject(new Error('Could not compress image'));
+          },
+          'image/jpeg',
+          q
+        );
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error('Could not read image'));
+      };
+      img.src = objectUrl;
+    });
+
+  let blob = await compressOnce(quality);
+  let q = quality;
+  while (blob.size > maxBytes && q > 0.45) {
+    q -= 0.1;
+    blob = await compressOnce(q);
+  }
+  if (blob.size > maxBytes) {
+    throw new Error('Image is too large after compression. Try a smaller photo.');
+  }
+  return blob;
 }
 
 const SupportChatWindow: React.FC<SupportChatWindowProps> = ({ tenantId, tenantName, isSuperAdmin = false, onBack }) => {

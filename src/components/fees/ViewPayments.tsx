@@ -1,13 +1,16 @@
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { useData } from '../../contexts/DataContext';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
 import { formatDisplayDate } from '../../utils/dateFormat';
+import { isActivePayment, paymentAmountValue, sumActivePaymentAmounts } from '../../utils/feeCalculations';
 import { Search } from 'lucide-react';
 
 const ViewPayments = () => {
@@ -16,9 +19,11 @@ const ViewPayments = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterClass, setFilterClass] = useState('all-classes');
   const [filterTerm, setFilterTerm] = useState('all-terms');
+  const [showVoided, setShowVoided] = useState(false);
 
   const allPayments = Array.isArray(payments) ? payments : [];
-  const filteredPayments = allPayments.filter(payment => {
+
+  const filteredPayments = useMemo(() => allPayments.filter((payment) => {
     const student = (students || []).find((s: any) =>
       String(s?.id) === String(payment?.studentId) ||
       String(s?.id) === String(payment?.studentIdNum)
@@ -34,23 +39,47 @@ const ViewPayments = () => {
       payment.term === filterTerm ||
       (payment.term && filterTerm && (String(payment.term).includes(filterTerm) || String(filterTerm).includes(payment.term)));
     return matchesSearch && matchesClass && termsMatch;
-  });
+  }), [allPayments, students, searchTerm, filterClass, filterTerm]);
 
-  const totalAmount = filteredPayments.reduce((sum, payment) => sum + payment.amount, 0);
+  const activeFilteredPayments = useMemo(
+    () => filteredPayments.filter(isActivePayment),
+    [filteredPayments]
+  );
+
+  const displayedPayments = showVoided ? filteredPayments : activeFilteredPayments;
+
+  const totalAmount = useMemo(
+    () => sumActivePaymentAmounts(filteredPayments),
+    [filteredPayments]
+  );
+
+  const voidedHiddenCount = filteredPayments.length - activeFilteredPayments.length;
+
+  const renderStatusBadge = (payment: (typeof allPayments)[number]) => {
+    if (payment.isVoided) {
+      return <Badge variant="destructive">VOIDED</Badge>;
+    }
+    if (payment.correctsPaymentId) {
+      return <Badge className="bg-emerald-600 hover:bg-emerald-600">CORRECTED</Badge>;
+    }
+    return null;
+  };
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center justify-between">
-          <span>All Payments ({filteredPayments.length})</span>
-          <Badge variant="outline" className="text-lg px-3 py-1">
-            Total: GHS {totalAmount.toLocaleString()}
+        <CardTitle className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <span>
+            {showVoided ? 'All Payments' : 'Active Payments'} ({displayedPayments.length})
+          </span>
+          <Badge variant="outline" className="text-lg px-3 py-1 w-fit">
+            Total: GHS {totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </Badge>
         </CardTitle>
       </CardHeader>
       <CardContent>
         {/* Search and Filters */}
-        <div className="flex flex-col lg:flex-row gap-4 mb-6">
+        <div className="flex flex-col lg:flex-row gap-4 mb-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
             <Input
@@ -60,7 +89,7 @@ const ViewPayments = () => {
               className="pl-10"
             />
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Select value={filterClass} onValueChange={setFilterClass}>
               <SelectTrigger className="w-48">
                 <SelectValue placeholder="Filter by class" />
@@ -91,12 +120,29 @@ const ViewPayments = () => {
           </div>
         </div>
 
+        <div className="mb-4 flex items-center gap-2 rounded-md border border-border/60 bg-muted/30 px-3 py-2">
+          <Switch
+            id="show-voided-payments"
+            checked={showVoided}
+            onCheckedChange={setShowVoided}
+          />
+          <Label htmlFor="show-voided-payments" className="cursor-pointer text-sm font-normal">
+            Show voided receipts
+          </Label>
+          {!showVoided && voidedHiddenCount > 0 && (
+            <span className="text-xs text-muted-foreground ml-auto">
+              {voidedHiddenCount} voided receipt{voidedHiddenCount === 1 ? '' : 's'} hidden
+            </span>
+          )}
+        </div>
+
         {/* Payments Table */}
         <div className="rounded-md border overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Receipt #</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead>Student</TableHead>
                 <TableHead>Class</TableHead>
                 <TableHead>Amount</TableHead>
@@ -107,22 +153,29 @@ const ViewPayments = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredPayments.length === 0 ? (
+              {displayedPayments.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-gray-500">
-                    No payments found matching your criteria
+                  <TableCell colSpan={9} className="text-center py-8 text-gray-500">
+                    {filteredPayments.length === 0
+                      ? 'No payments found matching your criteria'
+                      : showVoided
+                        ? 'No payments found matching your criteria'
+                        : 'No active payments found. Turn on "Show voided receipts" to view voided history.'}
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredPayments.map((payment) => {
+                displayedPayments.map((payment) => {
                   const student = (students || []).find((s: any) =>
                     String(s?.id) === String(payment?.studentId) || String(s?.id) === String(payment?.studentIdNum)
                   );
+                  const voided = payment.isVoided;
+                  const displayAmount = paymentAmountValue(payment);
                   return (
-                    <TableRow key={payment.id || payment.studentId + payment.date}>
+                    <TableRow key={payment.id || payment.studentId + payment.date} className={voided ? 'opacity-70' : undefined}>
                       <TableCell>
                         <span className="font-mono text-sm">{payment.receiptNumber || '-'}</span>
                       </TableCell>
+                      <TableCell>{renderStatusBadge(payment)}</TableCell>
                       <TableCell>
                         <div>
                           <div className="font-medium">
@@ -137,8 +190,8 @@ const ViewPayments = () => {
                         <Badge variant="outline">{student?.classAssigned ?? '-'}</Badge>
                       </TableCell>
                       <TableCell>
-                        <span className="font-mono font-bold text-green-600">
-                          GHS {payment.amount.toLocaleString()}
+                        <span className={`font-mono font-bold ${voided ? 'line-through text-muted-foreground' : 'text-green-600'}`}>
+                          GHS {displayAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                       </TableCell>
                       <TableCell>
@@ -158,9 +211,15 @@ const ViewPayments = () => {
         </div>
 
         {/* Summary */}
-        <div className="mt-4 text-sm text-gray-600">
-          {filteredPayments.length > 0
-            ? `Showing ${filteredPayments.length} of ${allPayments.length} payments`
+        <div className="mt-4 text-sm text-gray-600 space-y-1">
+          <p>
+            Total reflects active receipts only (voided receipts excluded).
+            {showVoided && voidedHiddenCount > 0 && (
+              <> Showing {voidedHiddenCount} voided receipt{voidedHiddenCount === 1 ? '' : 's'} for audit history.</>
+            )}
+          </p>
+          {displayedPayments.length > 0
+            ? `Showing ${displayedPayments.length} of ${allPayments.length} payments`
             : allPayments.length === 0
               ? 'No payments recorded yet. Record a payment in the Record Payment tab.'
               : 'No payments match your current filters. Try "All Terms" and "All Classes".'}

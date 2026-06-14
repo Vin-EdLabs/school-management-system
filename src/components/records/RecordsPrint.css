@@ -1,0 +1,70 @@
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  #printable-profile,
+  #printable-profile * {
+    visibility: visible;
+  }
+
+  #printable-profile {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0;
+  }
+
+  .records-print-header {
+    display: block !important;
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 2px solid #334155;
+  }
+
+  .records-tab-list,
+  .records-no-print {
+    display: none !important;
+  }
+
+  .records-tab-panel[data-state='inactive'] {
+    display: block !important;
+    opacity: 1 !important;
+    height: auto !important;
+    overflow: visible !important;
+    page-break-inside: avoid;
+    margin-bottom: 1.5rem;
+  }
+
+  .records-tab-panel::before {
+    content: attr(data-print-label);
+    display: block;
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 0.75rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid #cbd5e1;
+  }
+
+  .records-tab-panel:first-of-type::before {
+    border-top: none;
+    padding-top: 0;
+  }
+
+  .records-print-card {
+    box-shadow: none !important;
+    border: 1px solid #e2e8f0 !important;
+    break-inside: avoid;
+  }
+
+  .records-profile-photo img {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}
+
+.records-print-header {
+  display: none;
+}

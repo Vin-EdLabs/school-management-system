@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { User, Wallet, CheckCircle, XCircle } from 'lucide-react';
+import { User, Wallet, CheckCircle, XCircle, FileText } from 'lucide-react';
 import { apiService } from '../../services/api';
 import { useSchool } from '../../contexts/SchoolContext';
 import { type TeacherMySalaryResponse, formatTeacherMoney, salaryStatusBadgeClass } from './teacherSalaryPortal';
+import LazyTeacherAvatar from '../teachers/LazyTeacherAvatar';
+import TeacherAppointmentLettersPanel from './TeacherAppointmentLettersPanel';
 
 interface TeacherProfile {
   id: number;
@@ -15,6 +17,8 @@ interface TeacherProfile {
   subjects_taught: string[];
   class_name: string | null;
   monthly_salary: number;
+  passport_photo_url?: string | null;
+  has_passport_photo?: boolean;
 }
 
 interface TeacherClass {
@@ -22,7 +26,6 @@ interface TeacherClass {
   class_name: string;
   is_main: boolean;
 }
-
 
 const TeacherProfileModule = () => {
   const { schoolId } = useSchool();
@@ -74,12 +77,18 @@ const TeacherProfileModule = () => {
     );
   }
 
+  const hasPhoto = profile.has_passport_photo ?? !!(profile.passport_photo_url && profile.passport_photo_url.length > 0);
+
   return (
     <div className="px-4 py-5 sm:p-6 space-y-5 sm:space-y-6 max-w-4xl mx-auto w-full">
       <div className="flex items-start gap-3">
-        <div className="w-11 h-11 sm:w-12 sm:h-12 shrink-0 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center">
-          <User className="w-6 h-6 text-white" />
-        </div>
+        <LazyTeacherAvatar
+          teacherId={String(profile.id)}
+          fullName={profile.full_name}
+          hasPassportPhoto={hasPhoto}
+          className="h-12 w-12"
+          eager
+        />
         <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-gray-100">My Profile</h1>
           <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400">Your account and work information</p>
@@ -94,6 +103,18 @@ const TeacherProfileModule = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4 pb-4 border-b">
+            <LazyTeacherAvatar
+              teacherId={String(profile.id)}
+              fullName={profile.full_name}
+              hasPassportPhoto={hasPhoto}
+              className="h-24 w-24"
+              eager
+            />
+            <p className="text-sm text-muted-foreground">
+              Your passport photo is managed by the school administrator. Contact them if it needs updating.
+            </p>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
             <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between sm:items-baseline py-2 border-b"><span className="text-gray-600 text-sm shrink-0">Full Name</span><span className="font-medium text-right sm:text-left break-words">{profile.full_name}</span></div>
             <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between sm:items-baseline py-2 border-b"><span className="text-gray-600 text-sm shrink-0">Staff ID</span><span className="font-mono text-right sm:text-left break-all">{profile.staff_id}</span></div>
@@ -114,6 +135,31 @@ const TeacherProfileModule = () => {
               {profile.subjects_taught?.length ? profile.subjects_taught.map((s, i) => <Badge key={i} variant="secondary">{s}</Badge>) : <span className="text-gray-500">None</span>}
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="w-5 h-5" />
+            Appointment Letters
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <TeacherAppointmentLettersPanel
+            compact
+            teacher={
+              profile
+                ? {
+                    id: profile.id,
+                    full_name: profile.full_name,
+                    staff_id: profile.staff_id,
+                    has_passport_photo: hasPhoto,
+                    passport_photo_url: profile.passport_photo_url,
+                  }
+                : null
+            }
+          />
         </CardContent>
       </Card>
 

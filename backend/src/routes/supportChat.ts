@@ -223,10 +223,35 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
 
 const ALLOWED_IMAGE = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 
-// Upload image (stored on disk) and send as message — optional caption in body field "message"
-router.post('/upload-image', authenticate, upload.single('image'), async (req: AuthRequest, res) => {
+function assertSupportChatSender(user: AuthRequest['user']) {
+  if (!user) return 'Unauthorized';
+  if (user.role === 'super-admin') return null;
+  if (!user.tenantId) return 'No school context';
+  if (user.role !== 'administrator' && user.role !== 'finance') {
+    return 'Only administrators and finance can use support chat';
+  }
+  return null;
+}
+
+function handleImageUpload(req: AuthRequest, res: express.Response, next: express.NextFunction) {
+  upload.single('image')(req, res, (err: unknown) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ error: 'Image must be under 8MB. Try a smaller photo.' });
+      }
+      return res.status(400).json({ error: err.message || 'Invalid upload' });
+    }
+    if (err) return next(err);
+    return next();
+  });
+}
+
+// Upload image and send as message — optional caption in body field "message"
+router.post('/upload-image', authenticate, handleImageUpload, async (req: AuthRequest, res) => {
   try {
     const user = req.user!;
+    const accessError = assertSupportChatSender(user);
+    if (accessError) return res.status(403).json({ error: accessError });
     if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
     if (!ALLOWED_IMAGE.has(req.file.mimetype)) {
       return res.status(400).json({ error: 'Only JPEG, PNG, GIF, or WebP images are allowed' });
@@ -244,6 +269,9 @@ router.post('/upload-image', authenticate, upload.single('image'), async (req: A
     let tenantName: string | null = null;
     if (isSuperAdmin) {
       tenantId = targetTenantId;
+      if (!tenantId) {
+        return res.status(400).json({ error: 'Select a school before uploading an image' });
+      }
       if (tenantId) {
         const t = await query('SELECT name FROM tenants WHERE id = $1', [tenantId]);
         tenantName = t.rows[0]?.name || null;
@@ -256,21 +284,7 @@ router.post('/upload-image', authenticate, upload.single('image'), async (req: A
       }
     }
 
-    const origExt = path.extname(req.file.originalname || '').toLowerCase();
-    const ext =
-      origExt && ['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(origExt)
-        ? origExt
-        : req.file.mimetype === 'image/png'
-          ? '.png'
-          : req.file.mimetype === 'image/webp'
-            ? '.webp'
-            : req.file.mimetype === 'image/gif'
-              ? '.gif'
-              : '.jpg';
-    const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${ext}`;
-    const filePath = path.join(uploadsDir, filename);
-    fs.writeFileSync(filePath, req.file.buffer);
-    const imageUrl = `/uploads/support/${filename}`;
+    const imageUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
 
     const insertResult = await query(
       `INSERT INTO support_messages (tenant_id, user_id, sender_role, sender_username, tenant_name, message, image_url, is_from_superadmin, read_at)

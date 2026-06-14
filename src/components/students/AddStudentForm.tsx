@@ -14,7 +14,7 @@ import { Loader2, Save, UserPlus, Camera, X, GraduationCap as ScholarshipIcon } 
 import { Switch } from '@/components/ui/switch';
 
 interface AddStudentFormProps {
-  onSuccess?: () => void;
+  onSuccess?: (mode?: 'active' | 'pending') => void;
 }
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api').replace('/api', '');
@@ -81,6 +81,9 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
     classAssigned: '',
     guardianName: '',
     guardianContact: '',
+    guardian2Name: '',
+    guardian2Contact: '',
+    guardian2Relationship: '',
     homeAddress: '',
     numberOfSiblings: 0,
     namesOfSiblings: '',
@@ -135,31 +138,33 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
     setPhotoPreview(null);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitStudent = async (enrollmentStatus: 'active' | 'pending') => {
     if (isSubmitting) return;
 
+    const requiresClass = enrollmentStatus === 'active';
     if (
-      !formData.firstName || 
-      !formData.lastName || 
-      !formData.gender || 
-      !formData.dateOfBirth || 
+      !formData.firstName ||
+      !formData.lastName ||
+      !formData.gender ||
+      !formData.dateOfBirth ||
       !formData.nationality ||
-      !formData.classAssigned ||
+      (requiresClass && !formData.classAssigned) ||
       !formData.dateOfAdmission ||
       !formData.guardianName ||
       !formData.guardianContact ||
       !formData.homeAddress
     ) {
       toast({
-        title: "Validation Error",
-        description: "Please fill in all required fields marked with *",
-        variant: "destructive"
+        title: 'Validation Error',
+        description: requiresClass
+          ? 'Please fill in all required fields marked with *'
+          : 'Please fill in all required fields (class can be assigned when approving admission)',
+        variant: 'destructive',
       });
       return;
     }
 
-    const classObj = classes.find(c => c.className === formData.classAssigned);
+    const classObj = formData.classAssigned ? classes.find((c) => c.className === formData.classAssigned) : undefined;
     const classAssignedId = classObj ? parseInt(classObj.id, 10) : undefined;
 
     setIsSubmitting(true);
@@ -169,13 +174,17 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
       const created = await addStudent({
         ...formData,
         classAssignedId,
+        enrollmentStatus,
       });
 
       toast({
-        title: "Student Added Successfully",
-        description: created 
-          ? `${formData.firstName} ${formData.lastName} — Student ID: ${created.studentId}, Admission: ${created.admissionNumber}`
-          : `${formData.firstName} ${formData.lastName} has been added to the system`,
+        title: enrollmentStatus === 'pending' ? 'Saved as pending' : 'Student Added Successfully',
+        description:
+          enrollmentStatus === 'pending'
+            ? `${formData.firstName} ${formData.lastName} is in pending admissions awaiting approval.`
+            : created
+              ? `${formData.firstName} ${formData.lastName} — Student ID: ${created.studentId}, Admission: ${created.admissionNumber}`
+              : `${formData.firstName} ${formData.lastName} has been added to the system`,
       });
 
       if (created && photoToUpload) {
@@ -197,6 +206,9 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
         classAssigned: '',
         guardianName: '',
         guardianContact: '',
+        guardian2Name: '',
+        guardian2Contact: '',
+        guardian2Relationship: '',
         homeAddress: '',
         numberOfSiblings: 0,
         namesOfSiblings: '',
@@ -212,7 +224,7 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
       setSelectedSiblings([]);
       clearPhoto();
 
-      if (onSuccess) onSuccess();
+      if (onSuccess) onSuccess(enrollmentStatus);
     } catch (error) {
       toast({
         title: "Error",
@@ -235,7 +247,12 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
         </CardTitle>
       </CardHeader>
       <CardContent className="p-8">
-        <form onSubmit={handleSubmit} className="space-y-10">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+          }}
+          className="space-y-10"
+        >
           {/* Passport Photo Section */}
           <div className="bg-slate-50/30 dark:bg-slate-800/20 p-6 rounded-[1.5rem] border border-slate-200/50 dark:border-slate-700/50 space-y-4">
             <Label className="text-sm font-medium text-slate-700 dark:text-slate-300 ml-1">Passport photo</Label>
@@ -372,8 +389,9 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
               </div>
               <div className="space-y-2.5">
                 <Label htmlFor="classAssigned" className="text-sm font-medium text-slate-700 dark:text-slate-300 ml-1">
-                  Class <span className="text-red-500">*</span>
+                  Class <span className="text-red-500">*</span> for active enrollment
                 </Label>
+                <p className="text-[11px] text-muted-foreground ml-1">Optional when saving as pending — assign class on approval.</p>
                 <Select value={formData.classAssigned} onValueChange={(value) => handleInputChange('classAssigned', value)}>
                   <SelectTrigger className="h-12 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl">
                     <SelectValue placeholder="Select class" />
@@ -420,6 +438,51 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
                   onChange={(e) => handleInputChange('guardianContact', e.target.value)}
                   placeholder="Phone or Email"
                   required
+                  className="h-12 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Second guardian (optional)</span>
+              <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="space-y-2.5">
+                <Label htmlFor="guardian2Name" className="text-sm font-medium text-slate-700 dark:text-slate-300 ml-1">
+                  Second guardian name
+                </Label>
+                <Input
+                  id="guardian2Name"
+                  value={formData.guardian2Name}
+                  onChange={(e) => handleInputChange('guardian2Name', e.target.value)}
+                  placeholder="Optional"
+                  className="h-12 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl"
+                />
+              </div>
+              <div className="space-y-2.5">
+                <Label htmlFor="guardian2Contact" className="text-sm font-medium text-slate-700 dark:text-slate-300 ml-1">
+                  Second guardian contact
+                </Label>
+                <Input
+                  id="guardian2Contact"
+                  value={formData.guardian2Contact}
+                  onChange={(e) => handleInputChange('guardian2Contact', e.target.value)}
+                  placeholder="Phone number"
+                  className="h-12 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl"
+                />
+              </div>
+              <div className="space-y-2.5">
+                <Label htmlFor="guardian2Relationship" className="text-sm font-medium text-slate-700 dark:text-slate-300 ml-1">
+                  Relationship
+                </Label>
+                <Input
+                  id="guardian2Relationship"
+                  value={formData.guardian2Relationship}
+                  onChange={(e) => handleInputChange('guardian2Relationship', e.target.value)}
+                  placeholder="e.g. Mother, Uncle"
                   className="h-12 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl"
                 />
               </div>
@@ -731,19 +794,32 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
             </div>
           </div>
 
-          <div className="form-action-bar flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="form-action-bar flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-muted-foreground">
-              Review the required student details before saving.
+              Save as active to enroll immediately, or as pending to review in Pending Admissions first.
             </p>
-            <Button
-              type="submit"
-              variant="primaryAction"
-              disabled={isSubmitting}
-              className="h-12 w-full rounded-xl px-8 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
-            >
-              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-              {isSubmitting ? 'Processing...' : 'Save student'}
-            </Button>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isSubmitting}
+                className="h-12 rounded-xl px-6 text-sm font-semibold"
+                onClick={() => void submitStudent('pending')}
+              >
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Save as Pending
+              </Button>
+              <Button
+                type="button"
+                variant="primaryAction"
+                disabled={isSubmitting}
+                className="h-12 rounded-xl px-8 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-70"
+                onClick={() => void submitStudent('active')}
+              >
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                {isSubmitting ? 'Processing…' : 'Save as Active'}
+              </Button>
+            </div>
           </div>
         </form>
       </CardContent>

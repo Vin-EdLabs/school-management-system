@@ -126,6 +126,7 @@ interface AuditLog {
   action: string;
   entity_type: string;
   entity_id?: number;
+  entity_label?: string | null;
   module?: string;
   status?: string;
   summary?: string;
@@ -1391,7 +1392,7 @@ const SuperAdminDashboard = () => {
                                           </div>
                                           <h4 className="font-black text-slate-900 dark:text-white">{log.summary || log.action}</h4>
                                           <p className="mt-1 text-xs font-medium text-slate-500">
-                                            {log.action.replace(/_/g, ' ')} · {log.entity_type || 'record'}{log.entity_id ? ` #${log.entity_id}` : ''}
+                                            {log.action.replace(/_/g, ' ')} · {log.entity_label || log.summary?.split(' — ').slice(1).join(' — ') || (log.entity_type || 'record').replace(/_/g, ' ')}
                                           </p>
                                           {(log.before_values || log.after_values) && (
                                             <div className="mt-3 grid gap-2 lg:grid-cols-2">
@@ -1990,7 +1991,7 @@ const SuperAdminDashboard = () => {
                                     </Badge>
                                   </TableCell>
                                   <TableCell className="whitespace-nowrap text-xs font-bold text-slate-600 dark:text-slate-300">
-                                    {log.entity_type || 'SYSTEM'}{log.entity_id ? ` #${log.entity_id}` : ''}
+                                    {log.entity_label || log.summary?.split(' — ').slice(1).join(' — ') || (log.entity_type || 'SYSTEM').replace(/_/g, ' ')}
                                   </TableCell>
                                   <TableCell className="whitespace-nowrap font-mono text-xs text-slate-500">{log.ip_address || '-'}</TableCell>
                                   <TableCell>
@@ -2044,7 +2045,7 @@ const SuperAdminDashboard = () => {
                         ['Action', selectedAuditLog.action.replace(/^SUPER_ADMIN_/, '').replace(/_/g, ' ')],
                         ['User', selectedAuditLog.user_full_name || selectedAuditLog.username || 'Visitor / not signed in'],
                         ['School', selectedAuditLog.tenant_name || (selectedAuditLog.module === 'superadmin' ? 'Super Admin Portal' : 'Platform')],
-                        ['Target', `${selectedAuditLog.entity_type || 'SYSTEM'}${selectedAuditLog.entity_id ? ` #${selectedAuditLog.entity_id}` : ''}`],
+                        ['Target', selectedAuditLog.entity_label || selectedAuditLog.summary?.split(' — ').slice(1).join(' — ') || (selectedAuditLog.entity_type || 'SYSTEM').replace(/_/g, ' ')],
                         ['IP Address', selectedAuditLog.ip_address || '-'],
                       ].map(([label, value]) => (
                         <div key={label} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/50">

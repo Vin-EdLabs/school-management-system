@@ -34,6 +34,8 @@ import {
   ClipboardList,
   Scale,
   CalendarClock,
+  Landmark,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { resolveLogoUrl } from '../services/tenantService';
 import {
@@ -59,7 +61,13 @@ interface AppSidebarProps {
 const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: string) => ({
   dashboard: [
     ...(hasAccess('dashboard') ? [{ id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }] : []),
-    ...(hasAccess('financial-dashboard') ? [{ id: 'financial-dashboard', label: 'Financial', icon: DollarSign }] : []),
+    ...(hasAccess('financial-dashboard')
+      ? [{
+          id: 'financial-dashboard',
+          label: userRole === 'finance' ? 'Dashboard' : 'Financial',
+          icon: userRole === 'finance' ? LayoutDashboard : DollarSign,
+        }]
+      : []),
     ...(hasAccess('teacher-dashboard') && userRole !== 'super-admin' && userRole !== 'administrator'
       ? [{ id: 'teacher-dashboard', label: 'My Dashboard', icon: GraduationCap }]
       : []),
@@ -80,6 +88,9 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
     ...(hasAccess('grades') ? [{ id: 'grades', label: 'Grades', icon: Award }] : []),
     ...(hasAccess('grades') ? [{ id: 'teacher-quizzes', label: 'Online assessments', icon: ClipboardList }] : []),
     ...(hasAccess('teacher-profile') ? [{ id: 'teacher-profile', label: 'My Profile', icon: User }] : []),
+    ...(hasAccess('teacher-appointment-letters')
+      ? [{ id: 'teacher-appointment-letters', label: 'Appointment Letters', icon: FileText }]
+      : []),
     ...(hasAccess('teacher-payment-history') ? [{ id: 'teacher-payment-history', label: 'Payment History', icon: History }] : []),
   ],
   financial: [
@@ -87,6 +98,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
     ...(hasAccess('income') ? [{ id: 'income', label: 'Income', icon: TrendingUp }] : []),
     ...(hasAccess('expenses') ? [{ id: 'expenses', label: 'Expenses', icon: TrendingDown }] : []),
     ...(hasAccess('transactions') ? [{ id: 'transactions', label: 'Transactions', icon: ReceiptText }] : []),
+    ...(hasAccess('cash-bank') ? [{ id: 'cash-bank', label: 'Cash & Bank', icon: Landmark }] : []),
     ...(hasAccess('payroll') ? [{ id: 'payroll', label: 'Payroll', icon: Wallet }] : []),
     ...(hasAccess('reports') ? [{ id: 'reports', label: 'Reports', icon: BarChart3 }] : []),
     ...(hasAccess('print-fee-status') ? [{ id: 'print-fee-status', label: 'Fee Status', icon: FileText }] : []),
@@ -103,6 +115,11 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
   ai: [
     ...(hasAccess('ai-assistant') ? [{ id: 'ai-assistant', label: 'AI Assistant', icon: Bot, badge: 'New' }] : []),
     ...(hasAccess('support-chat') ? [{ id: 'support-chat', label: 'Support Chat', icon: MessageCircle }] : []),
+  ],
+  /** Configurations — payment accounts and future setup items. */
+  configurations: [
+    ...(hasAccess('payment-accounts') ? [{ id: 'payment-accounts', label: 'Payment Accounts', icon: SlidersHorizontal }] : []),
+    ...(hasAccess('settings-full') ? [{ id: 'appointment-letter-settings', label: 'Appointment Letters', icon: FileText }] : []),
   ],
   /** Users, Settings, Audit — always last before footer. */
   system: [
@@ -311,6 +328,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
           itemCounts={{ 'support-chat': supportUnread }}
           markCommsRead={markCommsRead}
         />
+        <MenuSection items={menuItems.configurations} label="Configurations" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} />
         <MenuSection items={menuItems.system} label="System" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} />
       </SidebarContent>
 

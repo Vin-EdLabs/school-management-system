@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,27 +6,13 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { useData } from '../../contexts/DataContext';
+import { useData, type Teacher } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
-import { X } from 'lucide-react';
-
-interface Teacher {
-  id: string;
-  fullName: string;
-  gender: string;
-  dateOfBirth: string;
-  staffId: string;
-  phoneNumber: string;
-  email: string;
-  address: string;
-  subjectsTaught: string[];
-  classAssigned: string;
-  employmentDate: string;
-  monthlySalary: number;
-  employmentStatus: string;
-  notes: string;
-}
+import { X, Camera } from 'lucide-react';
+import { apiService } from '@/services/api';
+import LazyTeacherAvatar from './LazyTeacherAvatar';
+import { teacherStatusBadge } from './TeacherStatusModals';
 
 interface EditTeacherDialogProps {
   teacher: Teacher | null;
@@ -46,6 +32,9 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [password, setPassword] = useState('');
   const [confirming, setConfirming] = useState(false);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState({
     fullName: '',
     gender: '',
@@ -56,7 +45,6 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
     subjectsTaught: [] as string[],
     employmentDate: '',
     monthlySalary: '',
-    employmentStatus: '',
     notes: ''
   });
 
@@ -65,6 +53,8 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
       setShowPassword(false);
       setPassword('');
       setConfirming(false);
+      setPhotoFile(null);
+      setPhotoPreview(null);
     }
   }, [open]);
 
@@ -80,9 +70,10 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
         subjectsTaught: teacher.subjectsTaught,
         employmentDate: teacher.employmentDate,
         monthlySalary: teacher.monthlySalary.toString(),
-        employmentStatus: teacher.employmentStatus,
         notes: teacher.notes
       });
+      setPhotoFile(null);
+      setPhotoPreview(null);
     }
   }, [teacher]);
 
@@ -102,6 +93,13 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
     }));
   };
 
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  };
+
   const performUpdate = async () => {
     if (!teacher) return;
     const salaryValue = formData.monthlySalary.trim() === '' ? 0 : parseFloat(formData.monthlySalary) || 0;
@@ -116,9 +114,21 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
         subjectsTaught: formData.subjectsTaught,
         employmentDate: formData.employmentDate || undefined,
         monthlySalary: salaryValue,
-        employmentStatus: formData.employmentStatus,
         notes: formData.notes
       });
+
+      if (photoFile) {
+        try {
+          await apiService.uploadTeacherPhoto(teacher.id, photoFile);
+        } catch {
+          toast({
+            title: 'Photo upload failed',
+            description: 'Other details were saved. Try uploading the photo again.',
+            variant: 'destructive',
+          });
+        }
+      }
+
       toast({ title: "Teacher Updated", description: `${formData.fullName} has been updated successfully` });
       onSuccess();
       onClose();
@@ -165,15 +175,57 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
 
   if (!teacher) return null;
 
+  const statusBadge = teacherStatusBadge(teacher.status || 'active');
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="flex max-h-[90dvh] max-w-2xl flex-col gap-0 overflow-hidden p-0">
         <DialogHeader className="shrink-0 border-b border-border/70 px-6 py-4">
-          <DialogTitle>Edit Teacher Details</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            Edit Teacher Details
+            {statusBadge ? (
+              <Badge className={statusBadge.className}>{statusBadge.label}</Badge>
+            ) : null}
+          </DialogTitle>
         </DialogHeader>
 
         <DialogBody className="px-6 py-4">
         <div className="space-y-4">
+          <div className="space-y-3">
+            <Label>Passport Photo</Label>
+            <div className="flex items-center gap-4">
+              <div className="shrink-0">
+                {photoPreview ? (
+                  <img src={photoPreview} alt="" className="h-20 w-20 rounded-full object-cover border" />
+                ) : (
+                  <LazyTeacherAvatar
+                    teacherId={teacher.id}
+                    fullName={teacher.fullName}
+                    hasPassportPhoto={teacher.hasPassportPhoto}
+                    className="h-20 w-20"
+                    eager
+                  />
+                )}
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  Upload a passport-size photo (JPG, PNG). Use Suspend/Deactivate on the profile to change employment status.
+                </p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handlePhotoChange}
+                  className="hidden"
+                />
+                <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} className="gap-1.5">
+                  <Camera className="w-3.5 h-3.5" />
+                  {teacher.hasPassportPhoto || photoPreview ? 'Change Photo' : 'Upload Photo'}
+                </Button>
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Staff ID</Label>
@@ -282,29 +334,15 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="employmentStatus">Employment Status</Label>
-              <Select value={formData.employmentStatus} onValueChange={(value) => setFormData(prev => ({ ...prev, employmentStatus: value }))}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Active">Active</SelectItem>
-                  <SelectItem value="Left">Left</SelectItem>
-                  <SelectItem value="Suspended">Suspended</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label htmlFor="monthlySalary">Monthly Salary (GHS)</Label>
+              <Input
+                id="monthlySalary"
+                type="text"
+                placeholder="Enter salary amount"
+                value={formData.monthlySalary}
+                onChange={(e) => setFormData(prev => ({ ...prev, monthlySalary: e.target.value }))}
+              />
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="monthlySalary">Monthly Salary (GHS)</Label>
-            <Input
-              id="monthlySalary"
-              type="text"
-              placeholder="Enter salary amount"
-              value={formData.monthlySalary}
-              onChange={(e) => setFormData(prev => ({ ...prev, monthlySalary: e.target.value }))}
-            />
           </div>
 
           <div className="space-y-2">

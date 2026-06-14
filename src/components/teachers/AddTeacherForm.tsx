@@ -14,7 +14,12 @@ import {
 } from '@/components/ui/dialog';
 import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, UserPlus, X, Copy, KeyRound } from 'lucide-react';
+import { Loader2, UserPlus, X, Copy, KeyRound, Camera } from 'lucide-react';
+import { apiService } from '@/services/api';
+
+interface AddTeacherFormProps {
+  onSuccess: () => void;
+}
 
 const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
   const { addTeacher, subjects } = useData();
@@ -32,9 +37,10 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
     classAssigned: '',
     employmentDate: '',
     monthlySalary: '',
-    employmentStatus: 'Active',
     notes: ''
   });
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
   const handleAddSubject = (subject: string) => {
     if (!formData.subjectsTaught.includes(subject)) {
@@ -72,8 +78,18 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
     try {
       const result = await addTeacher({
         ...formData,
-        monthlySalary: salaryValue
+        monthlySalary: salaryValue,
+        employmentStatus: 'Active',
       });
+
+      const teacherId = result?.id;
+      if (photoFile && teacherId) {
+        try {
+          await apiService.uploadTeacherPhoto(String(teacherId), photoFile);
+        } catch {
+          toast({ title: 'Photo upload failed', description: 'Teacher was saved; you can add a photo when editing.', variant: 'destructive' });
+        }
+      }
 
       toast({
         title: "Teacher Added Successfully",
@@ -97,9 +113,10 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
         classAssigned: '',
         employmentDate: '',
         monthlySalary: '',
-        employmentStatus: 'Active',
         notes: ''
       });
+      setPhotoFile(null);
+      setPhotoPreview(null);
 
       onSuccess();
     } catch (error) {
@@ -114,7 +131,7 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
   };
 
   return (
-    <>
+    <div className="space-y-0">
       <Card className="border-border bg-card shadow-sm overflow-visible">
         <CardHeader className="border-b border-border/70 bg-muted/30 px-4 py-4 sm:px-6">
           <CardTitle className="flex items-center gap-2 text-lg text-card-foreground">
@@ -228,17 +245,26 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="employmentStatus">Employment Status</Label>
-                <Select value={formData.employmentStatus} onValueChange={(value) => setFormData(prev => ({ ...prev, employmentStatus: value }))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Active">Active</SelectItem>
-                    <SelectItem value="Left">Left</SelectItem>
-                    <SelectItem value="Suspended">Suspended</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Passport photo</Label>
+                <div className="flex items-center gap-4">
+                  {photoPreview ? (
+                    <img src={photoPreview} alt="" className="h-20 w-20 rounded-full object-cover border" />
+                  ) : (
+                    <div className="h-20 w-20 rounded-full bg-muted flex items-center justify-center border">
+                      <Camera className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                  )}
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setPhotoFile(file);
+                      setPhotoPreview(URL.createObjectURL(file));
+                    }}
+                  />
+                </div>
               </div>
             </div>
 
@@ -317,7 +343,7 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
           )}
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   );
 };
 

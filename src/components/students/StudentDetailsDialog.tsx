@@ -14,10 +14,11 @@ import {
   CreditCard,
   GraduationCap,
 } from 'lucide-react';
-import { enrollmentStatusLabel, isAlumniStudent, statusBadgeClass, normalizeEnrollmentStatus } from './studentRegistryUtils';
+import { enrollmentStatusLabel, isAlumniStudent, statusBadgeClass, normalizeEnrollmentStatus, guardianContactLinks } from './studentRegistryUtils';
 import { cn } from '@/lib/utils';
 import { resolveLogoUrl } from '../../services/tenantService';
 import { formatDisplayDate } from '../../utils/dateFormat';
+import { isActivePayment, paymentAmountValue } from '../../utils/feeCalculations';
 
 interface Student {
   id: string;
@@ -31,6 +32,9 @@ interface Student {
   classAssigned: string;
   guardianName: string;
   guardianContact: string;
+  guardian2Name?: string;
+  guardian2Contact?: string;
+  guardian2Relationship?: string;
   homeAddress: string;
   numberOfSiblings: number;
   namesOfSiblings: string;
@@ -51,10 +55,12 @@ interface Payment {
   id: string;
   studentId?: string;
   amount: number;
+  amount_paid?: number;
   date: string;
   paymentMethod: string;
   receiptNumber?: string;
   term?: string;
+  isVoided?: boolean;
 }
 
 interface StudentDetailsDialogProps {
@@ -76,7 +82,9 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
   const paymentsWithBalance = [...studentPayments]
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
     .map(p => {
-      runningPaid += p.amount;
+      if (isActivePayment(p)) {
+        runningPaid += paymentAmountValue(p);
+      }
       return { ...p, remainingAfter: Math.max(0, totalFeesForStudent - runningPaid) };
     })
     .reverse();
@@ -265,11 +273,73 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-500">Contact Number</label>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Phone className="w-4 h-4 text-gray-400" />
-                    <span className="font-mono">{student.guardianContact}</span>
+                    {(() => {
+                      const links = guardianContactLinks(student.guardianContact);
+                      return links.tel ? (
+                        <>
+                          <a href={links.tel} className="font-mono text-indigo-600 hover:underline">
+                            {links.display}
+                          </a>
+                          {links.whatsapp && (
+                            <a
+                              href={links.whatsapp}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs font-semibold text-emerald-600 hover:underline"
+                            >
+                              WhatsApp
+                            </a>
+                          )}
+                        </>
+                      ) : (
+                        <span className="font-mono">{links.display}</span>
+                      );
+                    })()}
                   </div>
                 </div>
+                {(student.guardian2Name || student.guardian2Contact) && (
+                  <>
+                    <div>
+                      <label className="text-sm font-medium text-gray-500">Second Guardian</label>
+                      <p className="font-medium">
+                        {student.guardian2Name || '—'}
+                        {student.guardian2Relationship ? (
+                          <span className="text-sm text-muted-foreground"> ({student.guardian2Relationship})</span>
+                        ) : null}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-500">Second Guardian Contact</label>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Phone className="w-4 h-4 text-gray-400" />
+                        {(() => {
+                          const links = guardianContactLinks(student.guardian2Contact);
+                          return links.tel ? (
+                            <>
+                              <a href={links.tel} className="font-mono text-indigo-600 hover:underline">
+                                {links.display}
+                              </a>
+                              {links.whatsapp && (
+                                <a
+                                  href={links.whatsapp}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-xs font-semibold text-emerald-600 hover:underline"
+                                >
+                                  WhatsApp
+                                </a>
+                              )}
+                            </>
+                          ) : (
+                            <span className="font-mono">{links.display}</span>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </>
+                )}
                 <div className="md:col-span-2">
                   <label className="text-sm font-medium text-gray-500">Home Address</label>
                   <div className="flex items-start space-x-2 mt-1">
@@ -359,9 +429,16 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
                     </TableHeader>
                     <TableBody>
                       {paymentsWithBalance.map((p) => (
-                        <TableRow key={p.id}>
+                        <TableRow key={p.id} className={p.isVoided ? 'opacity-70' : undefined}>
                           <TableCell>{formatDisplayDate(p.date)}</TableCell>
-                          <TableCell className="font-medium text-green-600">GHS {p.amount.toLocaleString()}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <span className={`font-medium ${p.isVoided ? 'line-through text-muted-foreground' : 'text-green-600'}`}>
+                                GHS {paymentAmountValue(p).toLocaleString()}
+                              </span>
+                              {p.isVoided && <Badge variant="destructive" className="text-[10px]">VOIDED</Badge>}
+                            </div>
+                          </TableCell>
                           <TableCell>{p.paymentMethod}</TableCell>
                           <TableCell className="font-mono text-sm">{p.receiptNumber || '-'}</TableCell>
                           <TableCell>GHS {p.remainingAfter.toLocaleString()}</TableCell>

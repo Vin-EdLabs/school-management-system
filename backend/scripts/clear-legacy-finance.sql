@@ -1,14 +1,30 @@
--- Clear legacy payments and receipts so you can test the new ledger-only finance.
+-- Clear ALL finance data for every tenant (fees, payments, accounts, income, expenses, payroll).
 -- BACKUP YOUR DATABASE BEFORE RUNNING.
--- Run as DB superuser or owner, e.g. psql -U postgres -d your_db -f clear-legacy-finance.sql
+-- Prefer: node scripts/clear-all-finance-data.mjs
 
--- Remove receipt references first (receipts reference payments)
+BEGIN;
+
+UPDATE payments SET corrects_payment_id = NULL, corrected_by_payment_id = NULL;
+UPDATE fund_transfers SET original_transfer_id = NULL;
+
+TRUNCATE TABLE receipt_corrections CASCADE;
 TRUNCATE TABLE receipts CASCADE;
-
--- Clear all payments (legacy table; new finance uses student_ledger)
+TRUNCATE TABLE fund_transfers CASCADE;
+TRUNCATE TABLE income CASCADE;
+TRUNCATE TABLE salary_payments CASCADE;
+TRUNCATE TABLE expenses CASCADE;
 TRUNCATE TABLE payments CASCADE;
+TRUNCATE TABLE payment_accounts CASCADE;
+TRUNCATE TABLE student_ledger CASCADE;
+TRUNCATE TABLE ledger_fee_structures CASCADE;
+TRUNCATE TABLE fee_structures CASCADE;
+TRUNCATE TABLE term_arrears CASCADE;
+TRUNCATE TABLE student_arrears CASCADE;
+TRUNCATE TABLE student_arrears_balance CASCADE;
+TRUNCATE TABLE student_credits CASCADE;
+TRUNCATE TABLE term_outstanding_balances CASCADE;
 
--- Optional: clear old fee_structures (new system uses ledger_fee_structures)
--- TRUNCATE TABLE fee_structures CASCADE;
+UPDATE receipt_number_seq SET last_number = 0, updated_at = CURRENT_TIMESTAMP;
+UPDATE school_settings SET legacy_payment_migration_completed = false;
 
--- student_ledger is NOT truncated; it is the new source of truth.
+COMMIT;

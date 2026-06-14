@@ -132,8 +132,13 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
     return students.filter((s) => {
       const st = normalizeEnrollmentStatus(s.enrollmentStatus);
       if (isInactiveView) return st === 'inactive';
+      if (filterStatus === 'pending') return st === 'pending';
+      if (filterStatus === 'inactive') return st === 'inactive';
       if (filterStatus === 'graduated') return st === 'graduated';
-      return st !== 'inactive' && st !== 'graduated';
+      if (filterStatus === 'active') return st === 'active';
+      if (filterStatus === 'suspended') return st === 'suspended';
+      // Default main list: active enrolled students only
+      return st === 'active';
     });
   }, [students, isInactiveView, filterStatus]);
 
@@ -416,8 +421,9 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all-status">All statuses</SelectItem>
+                <SelectItem value="all-status">Active only</SelectItem>
                 <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
                 <SelectItem value="inactive">Inactive</SelectItem>
                 <SelectItem value="graduated">Alumni</SelectItem>
                 <SelectItem value="suspended">Suspended</SelectItem>

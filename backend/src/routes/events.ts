@@ -2,7 +2,11 @@ import express from 'express';
 import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
+import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 import { getIO } from '../socket.js';
+import { writeAuditLog } from '../services/auditService.js';
+import { getClientIp } from '../utils/clientIp.js';
+import { resolveActorFromRequest, withActor } from '../utils/auditResolve.js';
 
 const router = express.Router();
 
@@ -18,6 +22,7 @@ const emitTenantDataChanged = (tenantId: number, entity: string, action: 'create
 router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
+attachWritableTermGuard(router);
 
 // Get all events
 router.get('/', async (req: AuthRequest, res) => {
@@ -100,11 +105,20 @@ router.post('/', async (req: AuthRequest, res) => {
       ]
     );
     
-    // Log creation
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'CREATE', 'EVENT', result.rows[0].id]
-    );
+    const actor = await resolveActorFromRequest(req);
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'CREATE',
+      entityType: 'EVENT',
+      entityId: result.rows[0].id,
+      module: 'general',
+      summary: withActor(`Event created — "${title}"`, actor),
+      details: { title, event_date },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
     emitTenantDataChanged(tenantId, 'event', 'created');
     
     res.status(201).json(result.rows[0]);
@@ -153,11 +167,21 @@ router.put('/:id', async (req: AuthRequest, res) => {
       return res.status(404).json({ error: 'Event not found' });
     }
     
-    // Log update
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'UPDATE', 'EVENT', parseInt(id)]
-    );
+    const updatedEvent = result.rows[0];
+    const actor = await resolveActorFromRequest(req);
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'UPDATE',
+      entityType: 'EVENT',
+      entityId: parseInt(id, 10),
+      module: 'general',
+      summary: withActor(`Event updated — "${updatedEvent.title}"`, actor),
+      details: { title: updatedEvent.title, event_date: updatedEvent.event_date },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
     emitTenantDataChanged(tenantId, 'event', 'updated');
     
     res.json(result.rows[0]);
@@ -173,6 +197,12 @@ router.delete('/:id', async (req: AuthRequest, res) => {
     const tenantId = req.user!.tenantId!;
     const { id } = req.params;
     
+    const existing = await query(
+      'SELECT title FROM events WHERE id = $1 AND tenant_id = $2',
+      [id, tenantId]
+    );
+    const eventTitle = String(existing.rows[0]?.title || 'Event').trim();
+
     const result = await query(
       'DELETE FROM events WHERE id = $1 AND tenant_id = $2 RETURNING id',
       [id, tenantId]
@@ -182,11 +212,20 @@ router.delete('/:id', async (req: AuthRequest, res) => {
       return res.status(404).json({ error: 'Event not found' });
     }
     
-    // Log deletion
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'DELETE', 'EVENT', parseInt(id)]
-    );
+    const actor = await resolveActorFromRequest(req);
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'DELETE',
+      entityType: 'EVENT',
+      entityId: parseInt(id, 10),
+      module: 'general',
+      summary: withActor(`Event deleted — "${eventTitle}"`, actor),
+      details: { title: eventTitle },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
     emitTenantDataChanged(tenantId, 'event', 'deleted');
     
     res.json({ message: 'Event deleted successfully' });

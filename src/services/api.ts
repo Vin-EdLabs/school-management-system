@@ -57,6 +57,22 @@ function resolveApiBaseUrl(): string {
   return import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 }
 
+function apiErrorMessage(payload: Record<string, unknown> | null, status: number): string {
+  if (payload?.code === 'NO_ACTIVE_TERM') {
+    return 'Please set an active academic term in Settings before continuing.';
+  }
+  let msg = String(payload?.message || payload?.error || `Request failed (${status})`);
+  if (payload?.hint) msg += ` ${String(payload.hint)}`;
+  if (payload?.detail) msg += ` (${String(payload.detail)})`;
+  return msg;
+}
+
+function throwApiError(payload: Record<string, unknown> | null, status: number): never {
+  const err = new Error(apiErrorMessage(payload, status)) as Error & { code?: string };
+  if (payload?.code) err.code = String(payload.code);
+  throw err;
+}
+
 export class ApiService {
   private baseURL: string;
   private tenantId: number | null = null;
@@ -127,9 +143,9 @@ export class ApiService {
     const response = await fetch(this.buildURL(endpoint), {
       headers: this.getAuthHeaders(),
     });
-    const data = await readResponseJson<any>(response);
+    const data = await readResponseJson<Record<string, unknown>>(response);
     if (!response.ok) {
-      throw new Error(data?.error || `Request failed (${response.status})`);
+      throwApiError(data, response.status);
     }
     return data as T;
   }
@@ -171,12 +187,9 @@ export class ApiService {
         headers,
         body: JSON.stringify(data),
       });
-      const payload = await readResponseJson<any>(response);
+      const payload = await readResponseJson<Record<string, unknown>>(response);
       if (!response.ok) {
-        let msg = payload.error || `Request failed (${response.status})`;
-        if (payload.hint) msg += ` ${payload.hint}`;
-        if (payload.detail) msg += ` (${payload.detail})`;
-        throw new Error(msg);
+        throwApiError(payload, response.status);
       }
       return payload as T;
     });
@@ -190,9 +203,9 @@ export class ApiService {
         headers: { ...this.getAuthHeaders(), 'X-Idempotency-Key': key },
         body: JSON.stringify(data),
       });
-      const payload = await readResponseJson<any>(response);
+      const payload = await readResponseJson<Record<string, unknown>>(response);
       if (!response.ok) {
-        throw new Error(payload.error || `Request failed (${response.status})`);
+        throwApiError(payload, response.status);
       }
       return payload as T;
     });
@@ -206,9 +219,9 @@ export class ApiService {
         headers: { ...this.getAuthHeaders(), 'X-Idempotency-Key': key },
         body: JSON.stringify(data),
       });
-      const payload = await readResponseJson<any>(response);
+      const payload = await readResponseJson<Record<string, unknown>>(response);
       if (!response.ok) {
-        throw new Error(payload.error || `Request failed (${response.status})`);
+        throwApiError(payload, response.status);
       }
       return payload as T;
     });
@@ -219,9 +232,9 @@ export class ApiService {
       method: 'DELETE',
       headers: this.getAuthHeaders(),
     });
-    const payload = await readResponseJson<any>(response);
+    const payload = await readResponseJson<Record<string, unknown>>(response);
     if (!response.ok) {
-      throw new Error(payload.error || `Request failed (${response.status})`);
+      throwApiError(payload, response.status);
     }
     return payload as T;
   }
@@ -252,6 +265,10 @@ export class ApiService {
     return this.uploadFile(`/teachers/${teacherId}/photo`, file, 'photo');
   }
 
+  async uploadOtherStaffPhoto(staffId: string, file: File): Promise<unknown> {
+    return this.uploadFile(`/other-staff/${staffId}/photo`, file, 'photo');
+  }
+
   async uploadFile<T>(endpoint: string, file: File, fieldName: string = 'file'): Promise<T> {
     const formData = new FormData();
     formData.append(fieldName, file);
@@ -278,7 +295,7 @@ export class ApiService {
     });
   }
 
-  async postForm<T>(endpoint: string, formData: FormData): Promise<T> {
+  async postForm<T>(endpoint: string, formData: FormData, options?: { skipTenant?: boolean }): Promise<T> {
     const token = localStorage.getItem('authToken');
     const headers: HeadersInit = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -286,16 +303,16 @@ export class ApiService {
 
     const key = this.mutationKey('POST_FORM', endpoint, formData);
     return this.withMutationGuard(key, async () => {
-      const response = await fetch(this.buildURL(endpoint), {
+      const response = await fetch(this.buildURL(endpoint, !options?.skipTenant), {
         method: 'POST',
         headers: { ...headers, 'X-Idempotency-Key': key },
         body: formData,
       });
+      const payload = await readResponseJson<{ error?: string; message?: string }>(response);
       if (!response.ok) {
-        const error = await readResponseJson<{ error?: string }>(response).catch(() => ({ error: 'Request failed' }));
-        throw new Error(error.error || `HTTP error! status: ${response.status}`);
+        throw new Error(payload.message || payload.error || `HTTP error! status: ${response.status}`);
       }
-      return readResponseJson<T>(response);
+      return payload as T;
     });
   }
 }

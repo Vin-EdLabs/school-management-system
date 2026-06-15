@@ -2,6 +2,7 @@ import express, { Response } from 'express';
 import { query } from '../db/connection.js';
 import { authenticate, requireTenant, requireRole, AuthRequest } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
+import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 import {
   getUnreadAnnouncementsForUser,
   markAnnouncementRead,
@@ -12,6 +13,7 @@ const router = express.Router();
 router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
+attachWritableTermGuard(router);
 router.use(requireRole('administrator', 'finance'));
 
 async function resolveSchoolName(tenantId: number): Promise<string> {

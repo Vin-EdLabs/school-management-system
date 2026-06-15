@@ -54,7 +54,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
                     OR (c.participant_b = u.id AND c.participant_a = $1)
        LEFT JOIN tenants t ON u.tenant_id = t.id
        LEFT JOIN teachers tr ON u.teacher_id::text = tr.id::text AND tr.tenant_id = u.tenant_id
-       LEFT JOIN payroll_other_staff pos ON u.other_staff_id = pos.id AND pos.tenant_id = u.tenant_id
+       LEFT JOIN other_staff pos ON u.other_staff_id = pos.id AND pos.tenant_id = u.tenant_id
        ORDER BY c.last_message_at DESC`,
       [userId]
     );
@@ -99,11 +99,11 @@ router.get('/:id/messages', authenticate, async (req: AuthRequest, res) => {
        FROM private_messages m
        JOIN users u ON m.sender_id = u.id
        LEFT JOIN teachers tr ON u.teacher_id::text = tr.id::text AND tr.tenant_id = u.tenant_id
-       LEFT JOIN payroll_other_staff pos ON u.other_staff_id = pos.id AND pos.tenant_id = u.tenant_id
+       LEFT JOIN other_staff pos ON u.other_staff_id = pos.id AND pos.tenant_id = u.tenant_id
        LEFT JOIN private_messages p ON m.reply_to_id = p.id
        LEFT JOIN users pu ON p.sender_id = pu.id
        LEFT JOIN teachers ptr ON pu.teacher_id::text = ptr.id::text AND ptr.tenant_id = pu.tenant_id
-       LEFT JOIN payroll_other_staff ppos ON pu.other_staff_id = ppos.id AND ppos.tenant_id = pu.tenant_id
+       LEFT JOIN other_staff ppos ON pu.other_staff_id = ppos.id AND ppos.tenant_id = pu.tenant_id
        WHERE m.conversation_id = $1
        ORDER BY m.created_at ASC
        LIMIT 100`,
@@ -141,11 +141,11 @@ router.post('/:id/messages', authenticate, async (req: AuthRequest, res) => {
        FROM private_messages m
        JOIN users u ON m.sender_id = u.id
        LEFT JOIN teachers tr ON u.teacher_id::text = tr.id::text AND tr.tenant_id = u.tenant_id
-       LEFT JOIN payroll_other_staff pos ON u.other_staff_id = pos.id AND pos.tenant_id = u.tenant_id
+       LEFT JOIN other_staff pos ON u.other_staff_id = pos.id AND pos.tenant_id = u.tenant_id
        LEFT JOIN private_messages p ON m.reply_to_id = p.id
        LEFT JOIN users pu ON p.sender_id = pu.id
        LEFT JOIN teachers ptr ON pu.teacher_id::text = ptr.id::text AND ptr.tenant_id = pu.tenant_id
-       LEFT JOIN payroll_other_staff ppos ON pu.other_staff_id = ppos.id AND ppos.tenant_id = pu.tenant_id
+       LEFT JOIN other_staff ppos ON pu.other_staff_id = ppos.id AND ppos.tenant_id = pu.tenant_id
        WHERE m.id = $1`,
       [newId]
     );

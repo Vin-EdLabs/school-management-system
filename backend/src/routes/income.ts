@@ -5,9 +5,11 @@ import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { getIO } from '../socket.js';
 import { writeAuditLog } from '../services/auditService.js';
+import { formatMoneyGhs, resolveActorFromRequest, withActor } from '../utils/auditResolve.js';
 import { resolvePaymentAccountForTransaction } from '../services/paymentAccountService.js';
 import { evaluateBudgetAlerts, registerTransactionCategory } from '../services/termBudgetService.js';
 import { getClientIp } from '../utils/clientIp.js';
+import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 
 const router = express.Router();
 
@@ -23,6 +25,7 @@ const emitTenantDataChanged = (tenantId: number, entity: string, action: 'create
 router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
+attachWritableTermGuard(router);
 
 // Get all income
 router.get('/', async (req: AuthRequest, res) => {
@@ -205,6 +208,9 @@ router.put('/:id', requireRole('super-admin', 'administrator', 'finance'), async
       return res.status(404).json({ error: 'Income record not found' });
     }
     
+    const row = result.rows[0];
+    const sourceLabel = String(row.source || 'Income').trim();
+    const actor = await resolveActorFromRequest(req);
     await writeAuditLog({
       tenantId,
       userId: req.user!.id,
@@ -214,7 +220,8 @@ router.put('/:id', requireRole('super-admin', 'administrator', 'finance'), async
       entityId: parseInt(id, 10),
       module: 'finance',
       status: 'success',
-      summary: `Income #${id} updated`,
+      summary: withActor(`Income updated — "${sourceLabel}"`, actor),
+      details: { source: sourceLabel, amount: row.amount },
     });
     emitTenantDataChanged(tenantId, 'income', 'updated');
     
@@ -231,6 +238,16 @@ router.delete('/:id', requireRole('super-admin', 'administrator', 'finance'), as
     const tenantId = req.user!.tenantId!;
     const { id } = req.params;
     
+    const existing = await query(
+      'SELECT source, amount FROM income WHERE id = $1 AND tenant_id = $2',
+      [id, tenantId]
+    );
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: 'Income record not found' });
+    }
+    const sourceLabel = String(existing.rows[0].source || 'Income').trim();
+    const amount = existing.rows[0].amount;
+
     const result = await query(
       'DELETE FROM income WHERE id = $1 AND tenant_id = $2 RETURNING id',
       [id, tenantId]
@@ -240,6 +257,7 @@ router.delete('/:id', requireRole('super-admin', 'administrator', 'finance'), as
       return res.status(404).json({ error: 'Income record not found' });
     }
     
+    const actor = await resolveActorFromRequest(req);
     await writeAuditLog({
       tenantId,
       userId: req.user!.id,
@@ -249,7 +267,8 @@ router.delete('/:id', requireRole('super-admin', 'administrator', 'finance'), as
       entityId: parseInt(id, 10),
       module: 'finance',
       status: 'success',
-      summary: `Income #${id} deleted`,
+      summary: withActor(`Income deleted — "${sourceLabel}" (${formatMoneyGhs(amount)})`, actor),
+      details: { source: sourceLabel, amount },
     });
     emitTenantDataChanged(tenantId, 'income', 'deleted');
     

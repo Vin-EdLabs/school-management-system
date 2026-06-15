@@ -7,6 +7,7 @@ import { recordPaymentWithLedger } from '../services/ledgerPaymentService.js';
 import { getIO } from '../socket.js';
 import { sendPushToStudentParents } from '../services/webPushService.js';
 import { writeAuditLog } from '../services/auditService.js';
+import { formatMoneyGhs, resolveActorFromRequest, resolveStudentLabel, withActor } from '../utils/auditResolve.js';
 import { getClientIp } from '../utils/clientIp.js';
 import { resolvePaymentAccountForTransaction } from '../services/paymentAccountService.js';
 import {
@@ -17,6 +18,9 @@ import {
   listReceiptCorrections,
 } from '../services/receiptCorrectionService.js';
 import { evaluateBudgetAlerts } from '../services/termBudgetService.js';
+import { resolveActiveLedgerTerm } from '../services/studentUnifiedBalanceService.js';
+import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
+import { requireCompleteFeeStructures } from '../middleware/requireCompleteFeeStructures.js';
 
 const router = express.Router();
 
@@ -32,6 +36,7 @@ const emitTenantDataChanged = (tenantId: number, entity: string, action: 'create
 router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
+attachWritableTermGuard(router);
 
 /** Generate receipt number: R + 8 digits (e.g. R00012345), unique per school */
 async function generateReceiptNumber(tenantId: number, receiptPrefix?: string): Promise<string> {
@@ -79,15 +84,21 @@ router.get('/corrections', requireRole('super-admin', 'administrator'), async (r
   }
 });
 
-// Get all payments
+// Get all payments — default: current term only; ?all=true for all terms; ?archived=true for prior terms
 router.get('/', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
-    const { studentId, term, startDate, endDate } = req.query;
+    const { studentId, term, startDate, endDate, archived, all, receiptNumber, receipt } = req.query;
+
+    const receiptSearch = String(receiptNumber || receipt || '').trim();
+    const showAll = String(all || '').toLowerCase() === 'true';
+    const showArchived = String(archived || '').toLowerCase() === 'true';
+
+    const { ledgerTermId } = await resolveActiveLedgerTerm(query, tenantId);
 
     let queryText = `
       SELECT p.id, p.tenant_id, p.student_id, p.amount, p.payment_date, p.payment_method,
-             p.term, p.notes, p.receipt_number, p.receipt_snapshot, p.created_at, p.updated_at,
+             p.term, p.term_id, p.notes, p.receipt_number, p.receipt_snapshot, p.created_at, p.updated_at,
              ${PAYMENT_CORRECTION_COLUMNS},
              s.first_name, s.last_name, s.student_id as admission_no, s.admission_number, c.class_name
       FROM payments p
@@ -97,15 +108,32 @@ router.get('/', async (req: AuthRequest, res) => {
     `;
     const params: any[] = [tenantId];
 
-    if (studentId) {
-      queryText += ' AND p.student_id = $2';
-      params.push(studentId);
-      if (term) {
-        queryText += ' AND (p.term = $3 OR p.term LIKE $4)';
-        params.push(term, `${term}%`);
+    if (receiptSearch) {
+      queryText += ` AND (p.receipt_number = $${params.length + 1} OR p.receipt_number ILIKE $${params.length + 2})`;
+      params.push(receiptSearch, `%${receiptSearch}%`);
+    } else if (!showAll) {
+      if (showArchived) {
+        if (ledgerTermId) {
+          queryText += ` AND (p.term_id IS NULL OR p.term_id != $${params.length + 1})`;
+          params.push(ledgerTermId);
+        }
+      } else {
+        queryText += ` AND COALESCE(p.is_voided, false) = false`;
+        if (ledgerTermId) {
+          queryText += ` AND p.term_id = $${params.length + 1}`;
+          params.push(ledgerTermId);
+        } else if (term) {
+          queryText += ` AND (p.term = $${params.length + 1} OR p.term LIKE $${params.length + 2})`;
+          params.push(term, `${term}%`);
+        }
       }
-    } else if (term) {
-      queryText += ' AND (p.term = $2 OR p.term LIKE $3)';
+    }
+
+    if (studentId) {
+      queryText += ` AND p.student_id = $${params.length + 1}`;
+      params.push(studentId);
+    } else if (!receiptSearch && !showAll && !showArchived && term && !ledgerTermId) {
+      queryText += ` AND (p.term = $${params.length + 1} OR p.term LIKE $${params.length + 2})`;
       params.push(term, `${term}%`);
     }
 
@@ -224,7 +252,11 @@ router.get('/:id/correction-context', requireRole('super-admin', 'administrator'
 });
 
 // Correct a receipt (finance staff, within 7 days)
-router.post('/:id/correct', requireRole('super-admin', 'administrator', 'finance'), async (req: AuthRequest, res) => {
+router.post(
+  '/:id/correct',
+  requireRole('super-admin', 'administrator', 'finance'),
+  requireCompleteFeeStructures,
+  async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const paymentId = parseInt(req.params.id, 10);
@@ -254,6 +286,12 @@ router.post('/:id/correct', requireRole('super-admin', 'administrator', 'finance
 
     const bv = result.beforeValues as Record<string, unknown>;
     const av = result.afterValues as Record<string, unknown>;
+    const studentLabel = await resolveStudentLabel(tenantId, parseInt(String(student_id), 10));
+    const actor = await resolveActorFromRequest(req);
+    const correctionLabel =
+      String(correction_type || bv.correction_type || 'correction').toLowerCase() === 'debit'
+        ? 'Debit correction'
+        : 'Credit correction';
 
     await writeAuditLog({
       tenantId,
@@ -264,7 +302,10 @@ router.post('/:id/correct', requireRole('super-admin', 'administrator', 'finance
       entityId: result.corrected.id,
       module: 'finance',
       status: 'success',
-      summary: `${String(bv.correction_type || 'Correction').toString().toUpperCase()} correction: ${bv.receipt_number} → ${av.receipt_number}`,
+      summary: withActor(
+        `${correctionLabel} for ${studentLabel} — receipt ${bv.receipt_number} updated to ${formatMoneyGhs(av.amount ?? amount)}`,
+        actor
+      ),
       details: {
         correctionId: result.correction.id,
         originalPaymentId: result.beforeValues.payment_id,
@@ -380,7 +421,11 @@ router.get('/:id', async (req: AuthRequest, res) => {
 
 // Create payment - adds to payments table; totals are computed dynamically on next fetch
 // Never overwrite or delete payments.
-router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (req: AuthRequest, res) => {
+router.post(
+  '/',
+  requireRole('super-admin', 'administrator', 'finance'),
+  requireCompleteFeeStructures,
+  async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const { student_id, amount, payment_date, payment_method, payment_account_id, term, notes, academic_year } = req.body;
@@ -464,6 +509,8 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
       : 'Student';
     const schoolStudentCode = studentNameRes.rows[0]?.school_student_code || '';
 
+    const actor = await resolveActorFromRequest(req);
+
     await writeAuditLog({
       tenantId,
       userId: req.user!.id,
@@ -473,7 +520,10 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
       entityId: Number(paymentOut.id),
       module: 'finance',
       status: 'success',
-      summary: `Recorded fee payment GHS ${paymentAmount.toLocaleString()} for ${studentName} (receipt ${receiptNumber})`,
+      summary: withActor(
+        `Payment of ${formatMoneyGhs(paymentAmount)} recorded for ${studentName}${schoolStudentCode ? ` (ID: ${schoolStudentCode})` : ''} — receipt ${receiptNumber}`,
+        actor
+      ),
       details: {
         paymentId: paymentOut.id,
         studentId: student_id,

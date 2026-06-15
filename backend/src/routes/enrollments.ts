@@ -2,6 +2,7 @@ import express from 'express';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth.js';
 import { requireTenant } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
+import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 import {
   getCurrentAcademicYearId,
   getEnrollmentsForYear,
@@ -14,6 +15,7 @@ const router = express.Router();
 router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
+attachWritableTermGuard(router);
 
 router.get('/', async (req: AuthRequest, res) => {
   try {

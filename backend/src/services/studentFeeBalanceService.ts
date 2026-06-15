@@ -1,13 +1,51 @@
 /**
  * @deprecated Legacy balance engine — retained for migration/reference only.
- * Payment snapshots should use ledgerPaymentService.buildReceiptSnapshot().
- * All balance reads must use studentUnifiedBalanceService.
+ * All balance reads must use studentUnifiedBalanceService or student_ledger directly.
  */
 import type pg from 'pg';
 import { query } from '../db/connection.js';
 import { calculateFeeBalance, type FeeBalanceResult } from './financeCalculationService.js';
+import { resolveLedgerTermFromSettings } from './ledgerFinanceService.js';
+import { getStudentBalanceFromLedger } from './ledgerBalanceService.js';
 
 type QueryFn = typeof query;
+
+function roundMoney(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+async function resolveTermIdForBalance(
+  run: QueryFn,
+  tenantId: number,
+  term: string | null
+): Promise<number | null> {
+  if (!term?.trim()) {
+    const settingsRes = await run(
+      `SELECT current_term, current_year FROM school_settings WHERE tenant_id = $1`,
+      [tenantId]
+    );
+    const currentTerm = settingsRes.rows[0]?.current_term;
+    const currentYear = settingsRes.rows[0]?.current_year;
+    if (!currentTerm || !currentYear) return null;
+    const resolved = await resolveLedgerTermFromSettings(tenantId, String(currentYear), String(currentTerm));
+    return resolved?.termId ?? null;
+  }
+
+  const termToStore = term.trim();
+  const termOnly = termToStore.replace(/\s+\d{4}$/, '').trim() || termToStore;
+  const termLookup = await run(
+    `SELECT t.id
+     FROM terms t
+     JOIN academic_years ay ON ay.id = t.academic_year_id
+     WHERE t.tenant_id = $1 AND (
+       t.name = $2 OR t.name = $3 OR (t.name || ' ' || ay.name) = $2
+     )
+     LIMIT 1`,
+    [tenantId, termToStore, termOnly]
+  );
+  if (termLookup.rows.length > 0) return Number(termLookup.rows[0].id);
+  return null;
+}
 
 function resolveTermForMatch(term: string | null): string | null {
   return term ? String(term).trim() : null;
@@ -74,19 +112,15 @@ export async function collectStudentFinancialTerms(
     fs.rows.forEach((r: { term: string }) => add(r.term));
   }
 
-  const pay = await query(
-    `SELECT DISTINCT TRIM(term) AS term FROM payments
-     WHERE tenant_id = $1 AND student_id = $2 AND term IS NOT NULL AND TRIM(term) <> ''`,
+  const ledger = await query(
+    `SELECT DISTINCT TRIM(t.name || ' ' || ay.name) AS term
+     FROM student_ledger sl
+     JOIN terms t ON t.id = sl.term_id
+     JOIN academic_years ay ON ay.id = t.academic_year_id
+     WHERE sl.tenant_id = $1 AND sl.student_id = $2`,
     [tenantId, studentId]
   );
-  pay.rows.forEach((r: { term: string }) => add(r.term));
-
-  const arr = await query(
-    `SELECT DISTINCT TRIM(current_term) AS term FROM term_arrears
-     WHERE tenant_id = $1 AND student_id = $2 AND current_term IS NOT NULL AND TRIM(current_term) <> ''`,
-    [tenantId, studentId]
-  );
-  arr.rows.forEach((r: { term: string }) => add(r.term));
+  ledger.rows.forEach((r: { term: string }) => add(r.term));
 
   if (currentTerm) {
     add(currentTerm);
@@ -107,20 +141,21 @@ async function termHasFinancialActivity(
   termPred: (col: string) => string
 ): Promise<boolean> {
   const res = await run(
-    `SELECT (
-       (SELECT COUNT(*)::int FROM payments
-        WHERE tenant_id = $1 AND student_id = $2 AND COALESCE(is_voided, false) = false
-          AND ${termPred('term')})
-       +
-       (SELECT COUNT(*)::int FROM term_arrears
-        WHERE tenant_id = $1 AND student_id = $2 AND ${termPred('current_term')})
-     ) AS activity_count`,
+    `SELECT COUNT(*)::int AS activity_count
+     FROM student_ledger
+     WHERE tenant_id = $1 AND student_id = $2 AND term_id IN (
+       SELECT t.id FROM terms t
+       JOIN academic_years ay ON ay.id = t.academic_year_id
+       WHERE t.tenant_id = $1 AND (
+         t.name = $3 OR t.name = $4 OR (t.name || ' ' || ay.name) = $3
+       )
+     )`,
     [tenantId, studentId, termMatch, termOnly]
   );
   return Number(res.rows[0]?.activity_count || 0) > 0;
 }
 
-/** Compute term fees, payments, and outstanding balance for a student (dynamic, not stored). */
+/** @deprecated Use getStudentBalanceFromLedger — retained for FeeBalanceResult compatibility. */
 export async function getStudentFeeBalance(
   client: pg.PoolClient | null,
   tenantId: number,
@@ -128,97 +163,31 @@ export async function getStudentFeeBalance(
   term: string | null
 ): Promise<FeeBalanceResult | null> {
   const run = client ? client.query.bind(client) : query;
-  const studentRes = await run(
-    `SELECT class_assigned_id, enrollment_status, is_beneficiary, discount_type, discount_value
-     FROM students WHERE id = $1 AND tenant_id = $2`,
-    [studentId, tenantId]
-  );
+  const studentRes = await run(`SELECT id FROM students WHERE id = $1 AND tenant_id = $2`, [
+    studentId,
+    tenantId,
+  ]);
   if (studentRes.rows.length === 0) return null;
-  const student = studentRes.rows[0];
-  const isGraduated = isGraduatedEnrollment(student.enrollment_status);
-  const classId = await resolveStudentClassId(run, tenantId, studentId, student.class_assigned_id);
 
-  const termMatch = resolveTermForMatch(term);
-  const termOnly = termMatch ? termMatch.split(/\s+/)[0] : null;
-
-  const termPred = (col: string) =>
-    termMatch
-      ? `(${col} = $3 OR $3 LIKE ${col} || '%' OR ${col} LIKE $3 || '%' OR ${col} = $4 OR $4 LIKE ${col} || '%' OR ${col} LIKE $4 || '%')`
-      : 'TRUE';
-
-  let totalFees = 0;
-  let applyFeeStructures = Boolean(classId && termMatch);
-  if (applyFeeStructures && isGraduated) {
-    applyFeeStructures = await termHasFinancialActivity(
-      run,
-      tenantId,
-      studentId,
-      termMatch!,
-      termOnly,
-      termPred
-    );
+  const termId = await resolveTermIdForBalance(run, tenantId, term);
+  if (!termId) {
+    return calculateFeeBalance(0, 0, 0);
   }
 
-  if (applyFeeStructures && classId && termMatch) {
-    const feeRes = await run(
-      `SELECT COALESCE(SUM(amount), 0) AS total FROM fee_structures fs
-       WHERE fs.tenant_id = $1 AND fs.class_id = $2
-         AND (
-           fs.term IS NULL OR TRIM(fs.term) = ''
-           OR ${termPred('fs.term')}
-         )`,
-      [tenantId, classId, termMatch, termOnly]
-    );
-    totalFees = applyBeneficiaryDiscount(parseFloat(feeRes.rows[0]?.total || '0'), student);
-  } else if (classId && !termMatch && !isGraduated) {
-    const feeRes = await run(
-      `SELECT COALESCE(SUM(amount), 0) AS total FROM fee_structures
-       WHERE tenant_id = $1 AND class_id = $2`,
-      [tenantId, classId]
-    );
-    totalFees = applyBeneficiaryDiscount(parseFloat(feeRes.rows[0]?.total || '0'), student);
-  }
-
-  const paidParams: unknown[] = [tenantId, studentId];
-  let paidWhere = 'tenant_id = $1 AND student_id = $2 AND COALESCE(is_voided, false) = false';
-  if (termMatch) {
-    paidWhere += ` AND ${termPred('term')}`;
-    paidParams.push(termMatch, termOnly);
-  }
-
-  let totalPaid = 0;
-  try {
-    const paidRes = await run(
-      `SELECT COALESCE(SUM(COALESCE(amount_paid, amount, 0)), 0) AS total FROM payments WHERE ${paidWhere}`,
-      paidParams
-    );
-    totalPaid = parseFloat(paidRes.rows[0]?.total || '0');
-  } catch {
-    const paidRes = await run(
-      `SELECT COALESCE(SUM(COALESCE(amount_paid, amount, 0)), 0) AS total FROM payments WHERE tenant_id = $1 AND student_id = $2 AND COALESCE(is_voided, false) = false`,
-      [tenantId, studentId]
-    );
-    totalPaid = parseFloat(paidRes.rows[0]?.total || '0');
-  }
-
-  let arrears = 0;
-  if (termMatch) {
-    const arrearsRes = await run(
-      `SELECT COALESCE(SUM(amount), 0) AS total FROM term_arrears
-       WHERE tenant_id = $1 AND student_id = $2 AND ${termPred('current_term')}`,
-      [tenantId, studentId, termMatch, termOnly]
-    );
-    arrears = Math.max(0, parseFloat(arrearsRes.rows[0]?.total || '0'));
+  const balance = await getStudentBalanceFromLedger(client, tenantId, studentId, termId);
+  const result = calculateFeeBalance(balance.termFee, balance.totalPaid, balance.arrears);
+  result.outstanding = balance.outstanding;
+  result.credit = balance.creditBalance;
+  if (balance.creditBalance > 0) {
+    result.status = 'Credit';
+  } else if (balance.outstanding > 0) {
+    result.status = 'Owing';
+  } else if (balance.termFee <= 0 && balance.totalPaid <= 0 && balance.arrears <= 0) {
+    result.status = 'Cleared';
   } else {
-    const arrearsRes = await run(
-      `SELECT COALESCE(SUM(amount), 0) AS total FROM term_arrears
-       WHERE tenant_id = $1 AND student_id = $2`,
-      [tenantId, studentId]
-    );
-    arrears = Math.max(0, parseFloat(arrearsRes.rows[0]?.total || '0'));
+    result.status = 'Cleared';
   }
-
-  return calculateFeeBalance(totalFees, totalPaid, arrears);
+  return result;
 }
 
 /** Best outstanding snapshot — current term first, then highest across all known terms. */

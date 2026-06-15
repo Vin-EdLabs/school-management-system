@@ -6,6 +6,7 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { getVapidPublicKey } from '../services/webPushService.js';
 import { writeAuditLog } from '../services/auditService.js';
 import { getClientIp } from '../utils/clientIp.js';
+import { resolveUserDisplayName } from '../utils/auditResolve.js';
 
 const router = express.Router();
 
@@ -56,7 +57,7 @@ router.post('/login', async (req, res) => {
                  COALESCE(t.full_name, s.full_name, u.full_name, u.username) as full_name
           FROM users u
           LEFT JOIN teachers t ON u.teacher_id::text = t.id::text AND t.tenant_id = u.tenant_id
-          LEFT JOIN payroll_other_staff s ON u.other_staff_id = s.id AND s.tenant_id = u.tenant_id
+          LEFT JOIN other_staff s ON u.other_staff_id = s.id AND s.tenant_id = u.tenant_id
           WHERE (u.username = $1 OR u.email = $1) AND u.is_active = true
           ${hasTenantId ? 'AND (u.tenant_id = $2 OR u.tenant_id IS NULL)' : 'AND u.tenant_id IS NULL'}
         `,
@@ -130,7 +131,7 @@ router.post('/login', async (req, res) => {
               entityType: 'USER',
               module: 'security',
               status: 'failed',
-              summary: 'Login blocked — account deactivated',
+              summary: `Login blocked — account deactivated (${inactiveUser.username})`,
               details: { username: inactiveUser.username },
               ipAddress: getClientIp(req),
               userAgent: req.get('user-agent') || null,
@@ -153,7 +154,9 @@ router.post('/login', async (req, res) => {
         entityType: 'USER',
         module: superAdminAttempt ? 'superadmin' : 'security',
         status: 'failed',
-        summary: superAdminAttempt ? `Super Admin failed login — unknown username` : `Failed login — unknown username`,
+        summary: superAdminAttempt
+          ? `Super Admin failed login — username "${String(username)}" not found`
+          : `Failed login attempt — username "${String(username)}" not found`,
         details: { username: String(username).slice(0, 120), reason: 'unknown_username' },
         ipAddress: getClientIp(req),
         userAgent: req.get('user-agent') || null,
@@ -207,6 +210,7 @@ router.post('/login', async (req, res) => {
              WHERE id = $1`,
         [user.id]
       ).catch(() => {});
+      const displayName = await resolveUserDisplayName(user.id);
       await writeAuditLog({
         tenantId: user.tenant_id,
         userId: user.id,
@@ -215,7 +219,9 @@ router.post('/login', async (req, res) => {
         entityType: 'USER',
         module: superAdmin ? 'superadmin' : 'security',
         status: 'failed',
-        summary: superAdmin ? `Super Admin failed login — ${user.username}` : `Failed login — wrong password`,
+        summary: superAdmin
+          ? `Super Admin failed login — ${displayName}`
+          : `Failed login attempt — ${displayName}`,
         details: {
           username: user.username,
           lockPolicy: superAdmin ? '3 failed attempts locks until the next day' : '5 failed attempts locks for 15 minutes',
@@ -235,6 +241,7 @@ router.post('/login', async (req, res) => {
     );
 
     const superAdmin = isSuperAdminUser(user.role, user.tenant_id);
+    const displayName = await resolveUserDisplayName(user.id);
     await writeAuditLog({
       tenantId: user.tenant_id,
       userId: user.id,
@@ -243,7 +250,7 @@ router.post('/login', async (req, res) => {
       entityType: 'USER',
       module: superAdmin ? 'superadmin' : 'security',
       status: 'success',
-      summary: superAdmin ? `Super Admin login — ${user.username}` : `Successful login — ${user.username}`,
+      summary: superAdmin ? `Super Admin login — ${displayName}` : `Successful login — ${displayName}`,
       details: { username: user.username, role: normalizeRole(user.role) },
       ipAddress: getClientIp(req),
       userAgent: req.get('user-agent') || null,
@@ -324,6 +331,7 @@ router.post('/change-password', authenticate, async (req: AuthRequest, res) => {
       [hashedPassword, req.user!.id]
     );
     
+    const displayName = await resolveUserDisplayName(req.user!.id);
     await writeAuditLog({
       tenantId: req.user!.tenantId,
       userId: req.user!.id,
@@ -332,8 +340,8 @@ router.post('/change-password', authenticate, async (req: AuthRequest, res) => {
       entityType: 'USER',
       module: 'security',
       status: 'success',
-      summary: 'Password changed',
-      details: { userId: req.user!.id },
+      summary: `Password changed — ${displayName}`,
+      details: { username: req.user!.username, fullName: displayName },
       ipAddress: getClientIp(req),
       userAgent: req.get('user-agent') || null,
     });
@@ -348,6 +356,7 @@ router.post('/change-password', authenticate, async (req: AuthRequest, res) => {
 // Logout - logs LOGOUT for audit
 router.post('/logout', authenticate, async (req: AuthRequest, res) => {
   try {
+    const displayName = await resolveUserDisplayName(req.user!.id);
     await writeAuditLog({
       tenantId: req.user!.tenantId,
       userId: req.user!.id,
@@ -356,8 +365,8 @@ router.post('/logout', authenticate, async (req: AuthRequest, res) => {
       entityType: 'USER',
       module: 'security',
       status: 'success',
-      summary: `Logout — ${req.user!.username}`,
-      details: { username: req.user!.username },
+      summary: `Logout — ${displayName}`,
+      details: { username: req.user!.username, fullName: displayName },
       ipAddress: getClientIp(req),
       userAgent: req.get('user-agent') || null,
     });
@@ -376,7 +385,7 @@ router.get('/me', authenticate, async (req: AuthRequest, res) => {
               COALESCE(t.full_name, s.full_name, u.full_name, u.username) as full_name
        FROM users u
        LEFT JOIN teachers t ON u.teacher_id::text = t.id::text AND t.tenant_id = u.tenant_id
-       LEFT JOIN payroll_other_staff s ON u.other_staff_id = s.id AND s.tenant_id = u.tenant_id
+       LEFT JOIN other_staff s ON u.other_staff_id = s.id AND s.tenant_id = u.tenant_id
        WHERE u.id = $1`,
       [req.user!.id]
     );

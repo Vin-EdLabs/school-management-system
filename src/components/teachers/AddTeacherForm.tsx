@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -16,6 +16,7 @@ import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
 import { Loader2, UserPlus, X, Copy, KeyRound, Camera } from 'lucide-react';
 import { apiService } from '@/services/api';
+import StaffOptionalSections from '../staff/StaffOptionalSections';
 
 interface AddTeacherFormProps {
   onSuccess: () => void;
@@ -24,7 +25,7 @@ interface AddTeacherFormProps {
 const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
   const { addTeacher, subjects } = useData();
   const [credentialsOpen, setCredentialsOpen] = useState(false);
-  const [loginCredentials, setLoginCredentials] = useState<{ staffId: string; pin: string } | null>(null);
+  const [loginCredentials, setLoginCredentials] = useState<{ staffId: string; password: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     fullName: '',
@@ -37,10 +38,20 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
     classAssigned: '',
     employmentDate: '',
     monthlySalary: '',
-    notes: ''
+    notes: '',
+    emergencyContactName: '',
+    emergencyContactPhone: '',
+    emergencyContactRelationship: '',
+    bankName: '',
+    bankAccountName: '',
+    bankAccountNumber: '',
+    bankBranch: '',
   });
+  const [showEmergency, setShowEmergency] = useState(false);
+  const [showBank, setShowBank] = useState(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const submitLock = useRef(false);
 
   const handleAddSubject = (subject: string) => {
     if (!formData.subjectsTaught.includes(subject)) {
@@ -60,7 +71,7 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSubmitting) return;
+    if (isSubmitting || submitLock.current) return;
 
     if (!formData.fullName || !formData.email || !formData.phoneNumber || !formData.gender) {
       toast({
@@ -75,11 +86,19 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
     const salaryValue = formData.monthlySalary.trim() === '' ? 0 : parseFloat(formData.monthlySalary) || 0;
 
     setIsSubmitting(true);
+    submitLock.current = true;
     try {
       const result = await addTeacher({
         ...formData,
         monthlySalary: salaryValue,
         employmentStatus: 'Active',
+        emergencyContactName: formData.emergencyContactName || undefined,
+        emergencyContactPhone: formData.emergencyContactPhone || undefined,
+        emergencyContactRelationship: formData.emergencyContactRelationship || undefined,
+        bankName: formData.bankName || undefined,
+        bankAccountName: formData.bankAccountName || undefined,
+        bankAccountNumber: formData.bankAccountNumber || undefined,
+        bankBranch: formData.bankBranch || undefined,
       });
 
       const teacherId = result?.id;
@@ -96,8 +115,11 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
         description: `${formData.fullName} has been added to the system`,
       });
 
-      if (result?.loginStaffId && result?.loginPin) {
-        setLoginCredentials({ staffId: result.loginStaffId, pin: result.loginPin });
+      if (result?.loginStaffId && (result?.loginPassword || result?.loginPin)) {
+        setLoginCredentials({
+          staffId: result.loginStaffId,
+          password: result.loginPassword || result.loginPin || result.loginStaffId,
+        });
         setCredentialsOpen(true);
       }
 
@@ -113,20 +135,31 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
         classAssigned: '',
         employmentDate: '',
         monthlySalary: '',
-        notes: ''
+        notes: '',
+        emergencyContactName: '',
+        emergencyContactPhone: '',
+        emergencyContactRelationship: '',
+        bankName: '',
+        bankAccountName: '',
+        bankAccountNumber: '',
+        bankBranch: '',
       });
+      setShowEmergency(false);
+      setShowBank(false);
       setPhotoFile(null);
       setPhotoPreview(null);
 
       onSuccess();
-    } catch (error) {
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Failed to add teacher. Please try again.';
       toast({
         title: "Error",
-        description: "Failed to add teacher. Please try again.",
+        description: msg,
         variant: "destructive"
       });
     } finally {
       setIsSubmitting(false);
+      submitLock.current = false;
     }
   };
 
@@ -289,11 +322,49 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
               />
             </div>
 
+            <StaffOptionalSections
+              showEmergency={showEmergency}
+              showBank={showBank}
+              onToggleEmergency={() => setShowEmergency((v) => !v)}
+              onToggleBank={() => setShowBank((v) => !v)}
+              emergency={{
+                name: formData.emergencyContactName,
+                phone: formData.emergencyContactPhone,
+                relationship: formData.emergencyContactRelationship,
+              }}
+              bank={{
+                bankName: formData.bankName,
+                accountName: formData.bankAccountName,
+                accountNumber: formData.bankAccountNumber,
+                branch: formData.bankBranch,
+              }}
+              onEmergencyChange={(field, value) => {
+                const key =
+                  field === 'name'
+                    ? 'emergencyContactName'
+                    : field === 'phone'
+                      ? 'emergencyContactPhone'
+                      : 'emergencyContactRelationship';
+                setFormData((prev) => ({ ...prev, [key]: value }));
+              }}
+              onBankChange={(field, value) => {
+                const key =
+                  field === 'bankName'
+                    ? 'bankName'
+                    : field === 'accountName'
+                      ? 'bankAccountName'
+                      : field === 'accountNumber'
+                        ? 'bankAccountNumber'
+                        : 'bankBranch';
+                setFormData((prev) => ({ ...prev, [key]: value }));
+              }}
+            />
+
             <div className="form-action-bar flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs text-muted-foreground">
                 Required fields are marked with *.
               </p>
-              <Button type="submit" variant="primaryAction" className="min-h-11 w-full sm:w-auto sm:min-w-40" disabled={isSubmitting}>
+              <Button type="submit" variant="primaryAction" className="min-h-11 w-full sm:w-auto sm:min-w-40" disabled={isSubmitting} aria-busy={isSubmitting}>
                 {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <UserPlus className="w-4 h-4 mr-2" />}
                 {isSubmitting ? 'Processing...' : 'Add Teacher'}
               </Button>
@@ -314,7 +385,7 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
           {loginCredentials && (
             <div className="space-y-4 py-2">
               <p className="text-sm text-slate-600 dark:text-slate-300">
-                Share these credentials with the teacher. They login using <strong>Staff ID</strong> as username and <strong>PIN</strong> as password.
+                Share these credentials with the teacher. Username and default password are both the <strong>Staff ID</strong> (e.g. TCH002). They should change their password on first login.
               </p>
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3 dark:border-slate-700 dark:bg-slate-900">
                 <div className="flex items-center justify-between gap-4">
@@ -328,16 +399,16 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
                 </div>
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                    <p className="text-xs text-slate-500 uppercase tracking-wide dark:text-slate-400">PIN (Password) — 5 digits</p>
-                    <p className="font-mono font-semibold text-slate-800 dark:text-slate-100">{loginCredentials.pin}</p>
+                    <p className="text-xs text-slate-500 uppercase tracking-wide dark:text-slate-400">Default Password</p>
+                    <p className="font-mono font-semibold text-slate-800 dark:text-slate-100">{loginCredentials.password}</p>
                   </div>
-                  <Button size="sm" variant="outline" onClick={() => { navigator.clipboard.writeText(loginCredentials.pin); toast({ title: 'Copied', description: 'PIN copied to clipboard' }); }}>
+                  <Button size="sm" variant="outline" onClick={() => { navigator.clipboard.writeText(loginCredentials.password); toast({ title: 'Copied', description: 'Password copied to clipboard' }); }}>
                     <Copy className="w-4 h-4" />
                   </Button>
                 </div>
               </div>
               <p className="text-xs text-amber-700 bg-amber-50 p-2 rounded dark:bg-amber-950/40 dark:text-amber-300">
-                Save this PIN now. It cannot be retrieved later. For Teacher/Staff login, select the school, choose &quot;Teacher / Staff&quot; role, then enter Staff ID and PIN.
+                Save these credentials now. For Teacher login, select the school, choose &quot;Teacher / Staff&quot; role, then enter Staff ID as username and password.
               </p>
             </div>
           )}

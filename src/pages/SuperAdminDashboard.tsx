@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { BrandedLoading, BrandedLoadingScreen } from '@/components/common/BrandedLoading';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -39,6 +39,7 @@ import {
 } from '@/components/ui/sidebar';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useAuth } from '../contexts/AuthContext';
 import { useSocket } from '../contexts/SocketContext';
 import { apiService } from '../services/api';
@@ -92,6 +93,7 @@ import GlobalAnnouncementsModule from '../components/superadmin/GlobalAnnounceme
 interface School {
   id: number;
   name: string;
+  settings_school_name?: string | null;
   slug?: string;
   subdomain?: string;
   logo_url?: string | null;
@@ -154,6 +156,34 @@ interface TrackerUser {
 
 type Section = 'schools' | 'visits' | 'tracker' | 'registrations' | 'audit' | 'super-admins' | 'support-chat' | 'school-data' | 'system-health' | 'announcements';
 
+/** Normalize school name for reset confirmation (trim, collapse spaces, case-insensitive). */
+function normalizeSchoolConfirmName(value: string): string {
+  return String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
+function schoolResetNameMatches(
+  school: { name: string; settings_school_name?: string | null },
+  typed: string
+): boolean {
+  const candidates = [school.name, school.settings_school_name].filter(
+    (n): n is string => typeof n === 'string' && n.trim().length > 0
+  );
+  const normalizedTyped = normalizeSchoolConfirmName(typed);
+  if (!normalizedTyped) return false;
+  return candidates.some((name) => normalizeSchoolConfirmName(name) === normalizedTyped);
+}
+
+function schoolResetDisplayName(school: { name: string; settings_school_name?: string | null }): string {
+  const settingsName = school.settings_school_name?.trim();
+  if (settingsName && normalizeSchoolConfirmName(settingsName) !== normalizeSchoolConfirmName(school.name)) {
+    return `${school.name} (or ${settingsName})`;
+  }
+  return school.name;
+}
+
 const SuperAdminDashboard = () => {
   const navigate = useNavigate();
   const { user, logout, loading: authLoading } = useAuth();
@@ -206,7 +236,6 @@ const SuperAdminDashboard = () => {
   const [visibleRegistrationPasswords, setVisibleRegistrationPasswords] = useState<Record<number, boolean>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDataSchoolId, setSelectedDataSchoolId] = useState('');
-  const [resetConfirm, setResetConfirm] = useState('');
   const [dataActionLoading, setDataActionLoading] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importValidation, setImportValidation] = useState<{
@@ -216,14 +245,44 @@ const SuperAdminDashboard = () => {
     stats: Record<string, number>;
     schoolName?: string;
     sourceTenantId?: number;
+    total_records?: number;
+    manifest?: {
+      tenant_name?: string;
+      created_at?: string;
+      total_records?: number;
+      table_counts?: Record<string, number>;
+    };
   } | null>(null);
   const [showImportDialog, setShowImportDialog] = useState(false);
-  const [importConfirm, setImportConfirm] = useState('');
+  const [restoreUnderstand, setRestoreUnderstand] = useState(false);
+  const [resetSchoolNameConfirm, setResetSchoolNameConfirm] = useState('');
+  const [selectedSchoolDetail, setSelectedSchoolDetail] = useState<School | null>(null);
+  const [schoolOverview, setSchoolOverview] = useState<{
+    stats?: Record<string, number>;
+    primary_admin?: { username?: string; email?: string; full_name?: string; phone?: string };
+    school_settings?: Record<string, unknown>;
+  } | null>(null);
+  const [schoolOverviewLoading, setSchoolOverviewLoading] = useState(false);
   const displayName = user?.fullName?.trim() || user?.username || '';
 
   useEffect(() => {
     if (user?.role === 'super-admin') loadData();
   }, [user]);
+
+  useEffect(() => {
+    if (schools.length === 0) return;
+    const hasValidSelection = schools.some((s) => String(s.id) === selectedDataSchoolId);
+    if (!hasValidSelection) {
+      setSelectedDataSchoolId(String(schools[0].id));
+    }
+  }, [schools, selectedDataSchoolId]);
+
+  useEffect(() => {
+    setResetSchoolNameConfirm('');
+    setImportFile(null);
+    setImportValidation(null);
+    setRestoreUnderstand(false);
+  }, [selectedDataSchoolId]);
 
   useEffect(() => {
     if (user?.role === 'super-admin' && section === 'audit') loadAuditLogs();
@@ -301,23 +360,35 @@ const SuperAdminDashboard = () => {
   }, [user?.role]);
 
   const loadAuditLogs = async () => {
-    const params = new URLSearchParams();
-    if (auditFilters.limit) params.set('limit', auditFilters.limit);
-    if (auditFilters.tenantId) params.set('tenantId', auditFilters.tenantId);
-    if (auditFilters.action) params.set('action', auditFilters.action);
-    if (auditFilters.status) params.set('status', auditFilters.status);
-    if (auditSuperAdminOnly) {
-      params.set('module', 'superadmin');
-    } else if (auditFilters.module) {
-      params.set('module', auditFilters.module);
+    try {
+      const params = new URLSearchParams();
+      if (auditFilters.limit) params.set('limit', auditFilters.limit);
+      if (auditFilters.tenantId) params.set('tenantId', auditFilters.tenantId);
+      if (auditFilters.action) params.set('action', auditFilters.action);
+      if (auditFilters.status) params.set('status', auditFilters.status);
+      if (auditSuperAdminOnly) {
+        params.set('module', 'superadmin');
+      } else if (auditFilters.module) {
+        params.set('module', auditFilters.module);
+      }
+      if (auditFilters.search) params.set('search', auditFilters.search);
+      if (auditFilters.startDate && auditFilters.endDate) {
+        params.set('startDate', auditFilters.startDate);
+        params.set('endDate', auditFilters.endDate);
+      }
+      const res = await apiService.get<AuditLog[]>(`/audit/all?${params}`);
+      setAuditLogs(Array.isArray(res) ? res : []);
+    } catch (err: unknown) {
+      console.warn('Audit logs load failed:', err);
+      setAuditLogs([]);
+      if (section === 'audit') {
+        toast({
+          title: 'Audit load failed',
+          description: err instanceof Error ? err.message : 'Could not load audit logs',
+          variant: 'destructive',
+        });
+      }
     }
-    if (auditFilters.search) params.set('search', auditFilters.search);
-    if (auditFilters.startDate && auditFilters.endDate) {
-      params.set('startDate', auditFilters.startDate);
-      params.set('endDate', auditFilters.endDate);
-    }
-    const res = await apiService.get<AuditLog[]>(`/audit/all?${params}`);
-    setAuditLogs(Array.isArray(res) ? res : []);
   };
 
   const loadData = async () => {
@@ -325,7 +396,7 @@ const SuperAdminDashboard = () => {
     try {
       const [schoolsList, regs, admins, visitStats] = await Promise.all([
         apiService.get<School[]>('/schools'),
-        apiService.get<Registration[]>('/school-registrations'),
+        apiService.get<Registration[]>('/school-registrations').catch(() => []),
         apiService.get<Array<{ id: number; username: string; email?: string; full_name?: string; phone?: string }>>('/schools/super-admins').catch(() => []),
         apiService.get<{ landingVisitors: number }>('/stats/visits').catch(() => ({ landingVisitors: 0 })),
       ]);
@@ -333,11 +404,13 @@ const SuperAdminDashboard = () => {
       setRegistrations(Array.isArray(regs) ? regs : []);
       setSuperAdmins(Array.isArray(admins) ? admins : []);
       setLandingVisitors(Number(visitStats?.landingVisitors ?? 0));
-      await loadAuditLogs();
-    } catch {
-      setSchools([]);
-      setRegistrations([]);
-      setAuditLogs([]);
+    } catch (err: unknown) {
+      console.error('Super admin loadData failed:', err);
+      toast({
+        title: 'Failed to load schools',
+        description: err instanceof Error ? err.message : 'Could not load tenant list',
+        variant: 'destructive',
+      });
     } finally {
       setLoading(false);
     }
@@ -621,7 +694,51 @@ const SuperAdminDashboard = () => {
     return `${window.location.origin}/school/${school.id}`;
   };
 
-  const selectedDataSchool = schools.find((s) => String(s.id) === selectedDataSchoolId) || schools[0] || null;
+  const selectedDataSchool = schools.find((s) => String(s.id) === selectedDataSchoolId) || null;
+  const resetSchoolNameMatches = selectedDataSchool
+    ? schoolResetNameMatches(selectedDataSchool, resetSchoolNameConfirm)
+    : false;
+
+  const growthStat = useMemo(() => {
+    const now = Date.now();
+    const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+    const recent = schools.filter((s) => {
+      if (!s.created_at) return false;
+      return now - new Date(s.created_at).getTime() <= thirtyDays;
+    }).length;
+    const previous = schools.filter((s) => {
+      if (!s.created_at) return false;
+      const age = now - new Date(s.created_at).getTime();
+      return age > thirtyDays && age <= thirtyDays * 2;
+    }).length;
+    if (previous === 0) {
+      return recent > 0 ? `+${recent} new` : '0%';
+    }
+    const pct = Math.round(((recent - previous) / previous) * 100);
+    return pct >= 0 ? `+${pct}%` : `${pct}%`;
+  }, [schools]);
+
+  const openSchoolDetail = async (school: School) => {
+    setSelectedSchoolDetail(school);
+    setSchoolOverview(null);
+    setSchoolOverviewLoading(true);
+    try {
+      const overview = await apiService.get<{
+        stats?: Record<string, number>;
+        primary_admin?: { username?: string; email?: string; full_name?: string; phone?: string };
+        school_settings?: Record<string, unknown>;
+      }>(`/schools/${school.id}/overview`);
+      setSchoolOverview(overview);
+    } catch (err: unknown) {
+      toast({
+        title: 'Could not load school details',
+        description: err instanceof Error ? err.message : 'Try again',
+        variant: 'destructive',
+      });
+    } finally {
+      setSchoolOverviewLoading(false);
+    }
+  };
 
   const downloadJson = (payload: unknown, filename: string) => {
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -635,17 +752,16 @@ const SuperAdminDashboard = () => {
     URL.revokeObjectURL(url);
   };
 
-  const handleSuperAdminBackup = async () => {
-    if (!selectedDataSchool) {
-      toast({ title: 'Select a school first', variant: 'destructive' });
-      return;
-    }
+  const handleSchoolBackup = async (school: School) => {
     setDataActionLoading(true);
     try {
-      const backup = await apiService.get<any>(`/schools/${selectedDataSchool.id}/backup`);
-      const safeName = selectedDataSchool.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-      downloadJson(backup, `${safeName || 'school'}_backup_${new Date().toISOString().split('T')[0]}.json`);
-      toast({ title: 'Backup created', description: `${selectedDataSchool.name} backup downloaded.` });
+      const backup = await apiService.get<any>(`/super-admin/tenants/${school.id}/backup`);
+      const safeName = (school.slug || school.name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      downloadJson(backup, `scholarnerve_backup_${safeName || 'school'}_${new Date().toISOString().split('T')[0]}.json`);
+      toast({
+        title: 'Backup created',
+        description: `${school.name}: ${backup.manifest?.total_records ?? 0} records exported.`,
+      });
     } catch (err: any) {
       toast({ title: 'Backup failed', description: err?.message || 'Could not create backup', variant: 'destructive' });
     } finally {
@@ -653,20 +769,41 @@ const SuperAdminDashboard = () => {
     }
   };
 
-  const handleSuperAdminResetData = async () => {
+  const handleSuperAdminBackup = async () => {
     if (!selectedDataSchool) {
       toast({ title: 'Select a school first', variant: 'destructive' });
       return;
     }
-    if (resetConfirm !== 'RESET') {
-      toast({ title: 'Confirmation required', description: 'Type RESET to continue.', variant: 'destructive' });
+    await handleSchoolBackup(selectedDataSchool);
+  };
+
+  const handleSuperAdminResetData = async () => {
+    const target = selectedDataSchool;
+    if (!target) {
+      toast({ title: 'Select a school first', variant: 'destructive' });
+      return;
+    }
+    if (!schoolResetNameMatches(target, resetSchoolNameConfirm)) {
+      toast({
+        title: 'Confirmation required',
+        description: `Type the school name exactly as shown: "${schoolResetDisplayName(target)}"`,
+        variant: 'destructive',
+      });
       return;
     }
     setDataActionLoading(true);
     try {
-      await apiService.post(`/schools/${selectedDataSchool.id}/reset-data`, { confirm: 'RESET' });
-      toast({ title: 'School data reset', description: `${selectedDataSchool.name} has been reset.` });
-      setResetConfirm('');
+      await apiService.post(
+        `/super-admin/tenants/${target.id}/reset`,
+        { confirmation: `RESET_TENANT_${target.id}` },
+        { skipTenant: true }
+      );
+      toast({
+        title: 'School data reset',
+        description: `${target.name} operational data has been cleared. Refresh the school dashboard to see changes.`,
+      });
+      setResetSchoolNameConfirm('');
+      await loadSchools();
     } catch (err: any) {
       toast({ title: 'Reset failed', description: err?.message || 'Could not reset school data', variant: 'destructive' });
     } finally {
@@ -675,10 +812,11 @@ const SuperAdminDashboard = () => {
   };
 
   const handleImportFileSelect = async (file: File | null) => {
+    const target = selectedDataSchool;
     setImportFile(file);
     setImportValidation(null);
-    setImportConfirm('');
-    if (!file || !selectedDataSchool) return;
+    setRestoreUnderstand(false);
+    if (!file || !target) return;
 
     if (!file.name.toLowerCase().endsWith('.json')) {
       toast({ title: 'Invalid file', description: 'Select a JSON backup file exported from ScholarNerve.', variant: 'destructive' });
@@ -697,20 +835,27 @@ const SuperAdminDashboard = () => {
         stats: Record<string, number>;
         schoolName?: string;
         sourceTenantId?: number;
-      }>(`/schools/${selectedDataSchool.id}/validate-backup`, form);
+        total_records?: number;
+        manifest?: {
+          tenant_name?: string;
+          created_at?: string;
+          total_records?: number;
+          table_counts?: Record<string, number>;
+        };
+      }>(`/super-admin/tenants/${target.id}/validate-backup`, form, { skipTenant: true });
       setImportValidation(validation);
       if (validation.valid) {
         setShowImportDialog(true);
         toast({
           title: 'Backup validated',
           description: validation.warnings.length
-            ? `${validation.warnings.length} warning(s) — review before importing.`
-            : 'File looks good. Confirm import to restore data.',
+            ? `${validation.warnings.length} warning(s) — review before restoring.`
+            : 'File looks good. Confirm restore to replace all data.',
         });
       } else {
         toast({
           title: 'Validation failed',
-          description: validation.errors.join(' ') || 'This backup file cannot be imported.',
+          description: validation.errors.join(' ') || 'This backup file cannot be restored.',
           variant: 'destructive',
         });
       }
@@ -723,34 +868,35 @@ const SuperAdminDashboard = () => {
   };
 
   const handleSuperAdminImport = async () => {
-    if (!selectedDataSchool || !importFile) {
+    const target = selectedDataSchool;
+    if (!target || !importFile) {
       toast({ title: 'Select a school and backup file first', variant: 'destructive' });
       return;
     }
-    if (importConfirm !== 'IMPORT') {
-      toast({ title: 'Confirmation required', description: 'Type IMPORT to continue.', variant: 'destructive' });
+    if (!restoreUnderstand) {
+      toast({ title: 'Confirmation required', description: 'Check the box to confirm you understand this will replace all data.', variant: 'destructive' });
       return;
     }
     setDataActionLoading(true);
     try {
       const form = new FormData();
       form.append('backup', importFile);
-      form.append('confirm', 'IMPORT');
-      const result = await apiService.postForm<{ message: string; imported: Record<string, number> }>(
-        `/schools/${selectedDataSchool.id}/import-data`,
-        form
-      );
-      const totalRows = Object.values(result.imported || {}).reduce((sum, n) => sum + n, 0);
+      const result = await apiService.postForm<{
+        success: boolean;
+        message: string;
+        total_records?: number;
+        restored?: Record<string, number>;
+      }>(`/super-admin/tenants/${target.id}/restore`, form, { skipTenant: true });
       toast({
-        title: 'Import complete',
-        description: `${selectedDataSchool.name}: ${totalRows} record(s) restored.`,
+        title: 'Restore complete',
+        description: result.message || `${target.name}: ${result.total_records ?? 0} record(s) restored.`,
       });
       setShowImportDialog(false);
       setImportFile(null);
       setImportValidation(null);
-      setImportConfirm('');
+      setRestoreUnderstand(false);
     } catch (err: any) {
-      toast({ title: 'Import failed', description: err?.message || 'Could not import school data', variant: 'destructive' });
+      toast({ title: 'Restore failed', description: err?.message || 'Could not restore school data', variant: 'destructive' });
     } finally {
       setDataActionLoading(false);
     }
@@ -952,7 +1098,7 @@ const SuperAdminDashboard = () => {
                     { label: 'Active Schools', value: schools.filter(s => s.is_active).length, icon: CheckCircle, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
                     { label: 'Pending Requests', value: registrations.filter(r => r.status === 'pending').length, icon: ClipboardList, color: 'text-amber-500', bg: 'bg-amber-500/10' },
                     { label: 'Landing Visitors', value: landingVisitors, icon: Globe, color: 'text-teal-500', bg: 'bg-teal-500/10' },
-                    { label: 'Growth', value: '+12%', icon: Zap, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
+                    { label: 'Growth (30d)', value: growthStat, icon: Zap, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
                   ].map((stat, i) => (
                     <Card key={i} className="border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm shadow-sm overflow-hidden group hover:border-indigo-500/30 transition-all">
                       <CardContent className="p-5 flex items-center justify-between">
@@ -1090,7 +1236,11 @@ const SuperAdminDashboard = () => {
                       {schools
                         .filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.id.toString().includes(searchQuery))
                         .map((school) => (
-                        <Card key={school.id} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 hover:border-indigo-500/50 transition-all group overflow-hidden shadow-sm hover:shadow-xl">
+                        <Card
+                          key={school.id}
+                          className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 hover:border-indigo-500/50 transition-all group overflow-hidden shadow-sm hover:shadow-xl cursor-pointer"
+                          onClick={() => void openSchoolDetail(school)}
+                        >
                           <CardContent className="p-0">
                             <div className="flex flex-col sm:flex-row items-center gap-6 p-6">
                               {/* Logo & ID Badge */}
@@ -1131,13 +1281,19 @@ const SuperAdminDashboard = () => {
                                   </div>
                                   <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider">
                                     <ShieldCheck className="w-3 h-3 text-emerald-500" />
-                                    Enterprise
+                                    {school.subscription_status || 'active'}
                                   </div>
+                                  {school.created_at && (
+                                    <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider">
+                                      Since {new Date(school.created_at).toLocaleDateString()}
+                                    </div>
+                                  )}
                                 </div>
+                                <p className="text-[10px] text-indigo-500 font-semibold uppercase tracking-wider">Click card for full details</p>
                               </div>
 
                               {/* Action Group */}
-                              <div className="grid grid-cols-2 gap-2 w-full sm:w-auto">
+                              <div className="grid grid-cols-2 gap-2 w-full sm:w-auto" onClick={(e) => e.stopPropagation()}>
                                 <Dialog open={!!editSchool && editSchool.id === school.id} onOpenChange={(o) => !o && setEditSchool(null)}>
                                   <Button variant="outline" size="sm" onClick={() => setEditSchool({ ...school })} className="h-10 rounded-xl border-slate-200 dark:border-slate-800 font-bold text-[10px] uppercase tracking-widest hover:bg-slate-50 dark:hover:bg-slate-800">
                                     <Pencil className="w-3.5 h-3.5 mr-2" />
@@ -1236,6 +1392,90 @@ const SuperAdminDashboard = () => {
                     </div>
                   )}
                 </div>
+
+                <Dialog open={!!selectedSchoolDetail} onOpenChange={(open) => { if (!open) { setSelectedSchoolDetail(null); setSchoolOverview(null); } }}>
+                  <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border-slate-200 dark:border-slate-800">
+                    <DialogHeader>
+                      <DialogTitle className="text-2xl font-black font-outfit flex items-center gap-3">
+                        {selectedSchoolDetail?.logo_url ? (
+                          <img src={resolveLogoUrl(selectedSchoolDetail.logo_url)!} alt="" className="w-12 h-12 rounded-xl object-contain border border-slate-200" />
+                        ) : (
+                          <Building2 className="w-8 h-8 text-indigo-500" />
+                        )}
+                        {selectedSchoolDetail?.name}
+                      </DialogTitle>
+                      <DialogDescription>
+                        Tenant #{selectedSchoolDetail?.id} · {selectedSchoolDetail?.is_active ? 'Active' : 'Inactive'}
+                      </DialogDescription>
+                    </DialogHeader>
+                    {schoolOverviewLoading ? (
+                      <BrandedLoading label="Loading school details…" className="py-10" />
+                    ) : (
+                      <div className="space-y-5 text-sm">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                          {[
+                            { label: 'Students', value: schoolOverview?.stats?.students ?? '—', icon: GraduationCap },
+                            { label: 'Teachers', value: schoolOverview?.stats?.teachers ?? '—', icon: User },
+                            { label: 'Staff', value: schoolOverview?.stats?.other_staff ?? '—', icon: User },
+                            { label: 'Classes', value: schoolOverview?.stats?.classes ?? '—', icon: Building2 },
+                            { label: 'Users', value: schoolOverview?.stats?.users ?? '—', icon: Shield },
+                            { label: 'Payments', value: schoolOverview?.stats?.payments ?? '—', icon: DollarSign },
+                          ].map((item) => (
+                            <div key={item.label} className="rounded-xl border border-slate-200 dark:border-slate-800 p-3 bg-slate-50/50 dark:bg-slate-900/50">
+                              <div className="flex items-center gap-2 text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">
+                                <item.icon className="w-3.5 h-3.5" />
+                                {item.label}
+                              </div>
+                              <p className="text-xl font-black text-slate-900 dark:text-white">{item.value}</p>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 space-y-2">
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Portal & Identity</p>
+                          <p><span className="text-slate-500">Slug:</span> <code className="text-indigo-600">{selectedSchoolDetail?.slug || '—'}</code></p>
+                          <p><span className="text-slate-500">Portal URL:</span>{' '}
+                            <a href={selectedSchoolDetail ? loginUrl(selectedSchoolDetail) : '#'} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline break-all">
+                              {selectedSchoolDetail ? loginUrl(selectedSchoolDetail) : '—'}
+                            </a>
+                          </p>
+                          <p><span className="text-slate-500">Subscription:</span> {selectedSchoolDetail?.subscription_status || 'active'}</p>
+                          <p><span className="text-slate-500">Created:</span> {selectedSchoolDetail?.created_at ? new Date(selectedSchoolDetail.created_at).toLocaleString() : '—'}</p>
+                          <p><span className="text-slate-500">Updated:</span> {selectedSchoolDetail?.updated_at ? new Date(selectedSchoolDetail.updated_at).toLocaleString() : '—'}</p>
+                        </div>
+
+                        {schoolOverview?.primary_admin && (
+                          <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 space-y-1">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">Primary Administrator</p>
+                            <p><span className="text-slate-500">Name:</span> {schoolOverview.primary_admin.full_name || '—'}</p>
+                            <p><span className="text-slate-500">Username:</span> <code>{schoolOverview.primary_admin.username}</code></p>
+                            <p><span className="text-slate-500">Email:</span> {schoolOverview.primary_admin.email || '—'}</p>
+                            <p><span className="text-slate-500">Phone:</span> {schoolOverview.primary_admin.phone || '—'}</p>
+                          </div>
+                        )}
+
+                        {schoolOverview?.school_settings && (
+                          <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 space-y-1">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">School Settings</p>
+                            <p><span className="text-slate-500">Academic year:</span> {String(schoolOverview.school_settings.current_year || '—')}</p>
+                            <p><span className="text-slate-500">Current term:</span> {String(schoolOverview.school_settings.current_term || '—')}</p>
+                            <p><span className="text-slate-500">Contact:</span> {String(schoolOverview.school_settings.phone_number || schoolOverview.school_settings.contact_phone || '—')}</p>
+                            <p><span className="text-slate-500">Address:</span> {String(schoolOverview.school_settings.physical_address || '—')}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <DialogFooter className="gap-2 flex-wrap">
+                      <Button variant="outline" onClick={() => setSelectedSchoolDetail(null)}>Close</Button>
+                      {selectedSchoolDetail && (
+                        <Button onClick={() => openSchool(selectedSchoolDetail)}>
+                          <ExternalLink className="w-4 h-4 mr-2" />
+                          Launch Portal
+                        </Button>
+                      )}
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               </div>
             )}
 
@@ -1614,17 +1854,25 @@ const SuperAdminDashboard = () => {
 
                   <Dialog open={showImportDialog} onOpenChange={(open) => {
                     setShowImportDialog(open);
-                    if (!open) setImportConfirm('');
+                    if (!open) {
+                      setRestoreUnderstand(false);
+                    }
                   }}>
                     <DialogContent className="max-w-lg rounded-3xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
                       <DialogHeader>
                         <DialogTitle className="text-xl font-black font-outfit">Restore School Backup</DialogTitle>
                         <DialogDescription className="text-xs font-medium">
-                          This replaces operational data for {selectedDataSchool?.name}. School users and identity are kept.
+                          This replaces all data for {selectedDataSchool?.name}. A safety backup of the current state is saved on the server first.
                         </DialogDescription>
                       </DialogHeader>
                       {importValidation && (
                         <div className="space-y-3 text-xs">
+                          <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3 bg-slate-50 dark:bg-slate-950/50">
+                            <p className="font-bold text-slate-700 dark:text-slate-200 mb-1">Backup details</p>
+                            <p>School: <span className="font-semibold">{importValidation.manifest?.tenant_name || importValidation.schoolName || '—'}</span></p>
+                            <p>Backup date: <span className="font-semibold">{importValidation.manifest?.created_at ? new Date(importValidation.manifest.created_at).toLocaleString() : '—'}</span></p>
+                            <p>Total records: <span className="font-semibold">{importValidation.manifest?.total_records ?? importValidation.total_records ?? '—'}</span></p>
+                          </div>
                           {importValidation.warnings.length > 0 && (
                             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
                               <p className="font-bold uppercase tracking-wider mb-1">Warnings</p>
@@ -1634,35 +1882,38 @@ const SuperAdminDashboard = () => {
                             </div>
                           )}
                           <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3 max-h-40 overflow-y-auto">
-                            <p className="font-bold text-slate-600 dark:text-slate-300 mb-2 uppercase tracking-wider">Record counts</p>
+                            <p className="font-bold text-slate-600 dark:text-slate-300 mb-2 uppercase tracking-wider">Table breakdown</p>
                             <div className="grid grid-cols-2 gap-1 text-slate-500">
-                              {Object.entries(importValidation.stats)
+                              {Object.entries(importValidation.manifest?.table_counts || importValidation.stats)
                                 .filter(([, count]) => count > 0)
-                                .slice(0, 12)
+                                .slice(0, 16)
                                 .map(([table, count]) => (
                                   <span key={table}>{table}: {count}</span>
                                 ))}
                             </div>
                           </div>
+                          <label className="flex items-start gap-2 cursor-pointer">
+                            <Checkbox
+                              checked={restoreUnderstand}
+                              onCheckedChange={(v) => setRestoreUnderstand(v === true)}
+                            />
+                            <span className="text-slate-600 dark:text-slate-300 leading-relaxed">
+                              I understand this will replace all current data for this school with the backup contents.
+                            </span>
+                          </label>
                         </div>
                       )}
-                      <Input
-                        value={importConfirm}
-                        onChange={(e) => setImportConfirm(e.target.value)}
-                        placeholder="Type IMPORT to confirm"
-                        className="h-10 rounded-xl"
-                      />
                       <DialogFooter className="gap-2">
                         <Button variant="outline" onClick={() => setShowImportDialog(false)} className="rounded-xl">
                           Cancel
                         </Button>
                         <Button
                           onClick={handleSuperAdminImport}
-                          disabled={dataActionLoading || importConfirm !== 'IMPORT'}
+                          disabled={dataActionLoading || !restoreUnderstand}
                           className="rounded-xl font-bold"
                         >
                           {dataActionLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
-                          Import Backup
+                          Restore Backup
                         </Button>
                       </DialogFooter>
                     </DialogContent>
@@ -1679,16 +1930,46 @@ const SuperAdminDashboard = () => {
                       </p>
                     </CardHeader>
                     <CardContent className="space-y-3">
+                      <p className="text-xs text-red-600/90 dark:text-red-300/90">
+                        This will permanently delete ALL data for{' '}
+                        <span className="font-semibold">{selectedDataSchool?.name || 'the selected school'}</span>.
+                        Type the school name below to confirm.
+                      </p>
+                      {selectedDataSchool && (
+                        <p className="rounded-lg border border-red-200/80 bg-white/80 px-3 py-2 text-xs text-slate-700 dark:border-red-900/50 dark:bg-slate-950/60 dark:text-slate-200">
+                          Type exactly:{' '}
+                          <span className="font-mono font-semibold text-red-700 dark:text-red-300">
+                            {schoolResetDisplayName(selectedDataSchool)}
+                          </span>
+                        </p>
+                      )}
                       <Input
-                        value={resetConfirm}
-                        onChange={(e) => setResetConfirm(e.target.value)}
-                        placeholder="Type RESET to confirm"
+                        value={resetSchoolNameConfirm}
+                        onChange={(e) => setResetSchoolNameConfirm(e.target.value)}
+                        placeholder={selectedDataSchool?.name || 'School name'}
+                        autoComplete="off"
+                        spellCheck={false}
                         className="h-10 rounded-xl bg-white dark:bg-slate-950"
                       />
+                      {resetSchoolNameConfirm.trim().length > 0 && (
+                        <p
+                          className={cn(
+                            'text-xs font-medium',
+                            resetSchoolNameMatches ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
+                          )}
+                        >
+                          {resetSchoolNameMatches
+                            ? 'School name matches — you can reset now.'
+                            : 'Name does not match yet. Check spelling and spacing.'}
+                        </p>
+                      )}
+                      <p className="text-[10px] text-muted-foreground font-mono">
+                        Code: RESET_TENANT_{selectedDataSchool?.id}
+                      </p>
                       <Button
                         variant="destructive"
-                        onClick={handleSuperAdminResetData}
-                        disabled={!selectedDataSchool || dataActionLoading || resetConfirm !== 'RESET'}
+                        onClick={() => void handleSuperAdminResetData()}
+                        disabled={!selectedDataSchool || dataActionLoading || !resetSchoolNameMatches}
                         className="w-full h-10 rounded-xl font-bold text-xs uppercase tracking-widest"
                       >
                         {dataActionLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}

@@ -28,6 +28,7 @@ import { formatAcademicYearLabel } from '@/utils/academicYearDisplay';
 import { normalizeFinancialSummary } from '@/hooks/useReportQueries';
 import { downloadFinancialReportPdf } from './buildFinancialReportPdf';
 import { useFinanceRealtime } from '@/hooks/useFinanceRealtime';
+import { useTermStatus } from '@/contexts/TermStatusContext';
 
 type AcademicTermRow = {
   id: number;
@@ -152,6 +153,7 @@ const MiniStatCard = ({ label, value, icon: Icon, delay = 0 }: { label: string; 
 const AdvancedReports = () => {
   const { theme } = useTheme();
   const { school } = useSchool();
+  const { setViewingTermLabel, isTermClosedByLabel } = useTermStatus();
   const [academicTerms, setAcademicTerms] = useState<AcademicTermRow[]>([]);
   const [activeYearKey, setActiveYearKey] = useState('');
   const [activeTerm, setActiveTerm] = useState('');
@@ -243,6 +245,19 @@ const AdvancedReports = () => {
       .sort((a, b) => String(a.start_date || '').localeCompare(String(b.start_date || '')));
     if (tfy.length) setActiveTerm(tfy[0].term_name);
   };
+
+  const fullViewingTermLabel = useMemo(
+    () => `${activeTerm} ${activeYearKey}`.trim(),
+    [activeTerm, activeYearKey]
+  );
+
+  useEffect(() => {
+    if (periodReady && fullViewingTermLabel) {
+      setViewingTermLabel(fullViewingTermLabel);
+    }
+  }, [periodReady, fullViewingTermLabel, setViewingTermLabel]);
+
+  useEffect(() => () => setViewingTermLabel(null), [setViewingTermLabel]);
 
   const fetchData = useCallback(async () => {
     if (!periodReady || !activeYearKey || !activeTerm) return;
@@ -555,10 +570,13 @@ const AdvancedReports = () => {
           </DropdownMenu>
 
           <div className="tab-switcher max-w-full flex-wrap">
-            {termTabs.map((term) => (
+            {termTabs.map((term) => {
+              const tabLabel = `${term} ${activeYearKey}`.trim();
+              const closed = isTermClosedByLabel(tabLabel);
+              return (
               <div
                 key={term}
-                className={`tab-item ${activeTerm === term ? 'active' : ''}`}
+                className={`tab-item readonly-allowed ${activeTerm === term ? 'active' : ''} ${closed ? 'opacity-70' : ''}`}
                 role="button"
                 tabIndex={0}
                 onClick={() => setActiveTerm(term)}
@@ -566,9 +584,10 @@ const AdvancedReports = () => {
                   if (e.key === 'Enter' || e.key === ' ') setActiveTerm(term);
                 }}
               >
-                {term}
+                {closed ? '🔒 ' : ''}{term}{closed ? ' (Closed)' : ''}
               </div>
-            ))}
+            );
+            })}
           </div>
 
           <div className="flex flex-wrap gap-2">

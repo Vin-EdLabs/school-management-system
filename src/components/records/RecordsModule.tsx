@@ -10,8 +10,9 @@ import { useSchool } from '../../contexts/SchoolContext';
 import { apiService } from '../../services/api';
 import { resolveLogoUrl } from '../../services/tenantService';
 import { cn } from '@/lib/utils';
-import { Search, User, FileText, DollarSign, Award, UserCheck, History, Printer, FileDown, FileSpreadsheet, Receipt } from 'lucide-react';
-import { formatBalanceLines, type StudentBalance } from '../../services/studentBalance';
+import { Search, User, FileText, DollarSign, Award, UserCheck, History, Printer, FileDown, FileSpreadsheet } from 'lucide-react';
+import { toast } from '@/hooks/use-toast';
+import { StudentLedgerStatementPanel } from './StudentLedgerStatementPanel';
 
 type ProfileType = 'student' | 'teacher' | 'staff' | null;
 
@@ -67,37 +68,7 @@ const RecordsModule = () => {
       rows.push(['Student ID', p.header?.studentId]);
       rows.push(['Class', p.header?.class]);
       rows.push(['', '']);
-      rows.push(['Fees Summary', '']);
-      rows.push(['Academic Year', 'Term', 'Term Fees', 'Arrears', 'Amount Due', 'Total Paid', 'Outstanding', 'Status']);
-      (p.fees?.summaryByTerm || []).forEach((r: any) => {
-        rows.push([
-          r.academicYear,
-          r.term,
-          String(r.totalFees),
-          String(r.arrears ?? 0),
-          String(r.amountDue ?? (r.totalFees ?? 0) + (r.arrears ?? 0)),
-          String(r.totalPaid),
-          String(r.outstanding),
-          r.status,
-        ]);
-      });
-      rows.push(['', '']);
-      rows.push(['All Receipts', '']);
-      rows.push(['Date', 'Receipt No.', 'Term', 'Academic Year', 'Amount', 'Method', 'Recorded By', 'Status']);
-      (p.fees?.receipts || p.fees?.paymentHistory || []).forEach((r: any) => {
-        rows.push([
-          r.date,
-          r.receiptNumber || '',
-          r.term || '',
-          r.academicYear || '',
-          String(r.amount),
-          r.paymentMethod || '',
-          r.recordedBy || '',
-          r.voided ? 'Voided' : 'Active',
-        ]);
-      });
-      rows.push(['', '']);
-      rows.push(['Current Term Outstanding', String(Math.max(0, p.overview?.currentTermOutstanding ?? p.overview?.totalOutstanding ?? 0))]);
+      rows.push(['Note', 'Financial data is available in the Fees tab (student ledger statement only).']);
     } else if (result.type === 'teacher' || result.type === 'staff') {
       const p = result.profile;
       rows.push(['Profile', '']);
@@ -235,52 +206,14 @@ function RecordsProfilePhoto({
   );
 }
 
-function LedgerBalanceTable({ breakdown }: { breakdown: StudentBalance | null | undefined }) {
-  if (!breakdown) {
-    return <p className="text-sm text-slate-500">No ledger balance available.</p>;
-  }
-  const lines = formatBalanceLines(breakdown);
-  return (
-    <div className="rounded-lg border bg-slate-50/80 p-4 font-mono text-sm">
-      {lines.map((line, i) => (
-        <div
-          key={`${line.label}-${i}`}
-          className={`flex justify-between gap-4 py-1 ${
-            line.kind === 'total' || line.kind === 'outstanding'
-              ? 'border-t border-slate-300 mt-2 pt-2 font-semibold'
-              : line.kind === 'paid'
-                ? 'text-emerald-700'
-                : ''
-          }`}
-        >
-          <span className={line.kind === 'outstanding' ? 'text-amber-800' : 'text-slate-700'}>{line.label}</span>
-          <span className="tabular-nums whitespace-nowrap">
-            {line.kind === 'paid' ? '− ' : ''}GHS {Math.abs(line.amount).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-          </span>
-        </div>
-      ))}
-      {breakdown.credit > 0 ? (
-        <div className="flex justify-between gap-4 py-1 mt-2 text-blue-700 border-t border-slate-200 pt-2">
-          <span>Credit balance</span>
-          <span className="tabular-nums">GHS {breakdown.credit.toLocaleString()}</span>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function StudentProfileView({ profile, onPrint, onExportPDF, onExportExcel }: { profile: any; onPrint: () => void; onExportPDF: () => void; onExportExcel: () => void }) {
   const school = profile.school || {};
   const h = profile.header || {};
   const d = profile.details || {};
   const ov = profile.overview || {};
-  const balance = profile.balance || null;
-  const fees = profile.fees || {};
-  const ledgerBalance: StudentBalance | null = fees.balance ?? fees.liveBreakdown ?? null;
   const acad = profile.academicPerformance || {};
   const att = profile.attendance || {};
   const activity = profile.activityLog || [];
-  const receipts = fees.receipts || fees.paymentHistory || [];
   const printDate = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
 
   return (
@@ -352,61 +285,17 @@ function StudentProfileView({ profile, onPrint, onExportPDF, onExportExcel }: { 
         <TabsList className="bg-slate-100 records-tab-list">
           <TabsTrigger value="overview"><User className="h-4 w-4 mr-1" /> Overview</TabsTrigger>
           <TabsTrigger value="details"><FileText className="h-4 w-4 mr-1" /> Student Details</TabsTrigger>
-          <TabsTrigger value="fees"><DollarSign className="h-4 w-4 mr-1" /> Fees</TabsTrigger>
-          <TabsTrigger value="receipts"><Receipt className="h-4 w-4 mr-1" /> Receipts</TabsTrigger>
+          <TabsTrigger value="fees"><DollarSign className="h-4 w-4 mr-1" /> Statement</TabsTrigger>
           <TabsTrigger value="academic"><Award className="h-4 w-4 mr-1" /> Academic</TabsTrigger>
           <TabsTrigger value="attendance"><UserCheck className="h-4 w-4 mr-1" /> Attendance</TabsTrigger>
           <TabsTrigger value="activity"><History className="h-4 w-4 mr-1" /> Activity Log</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4 records-tab-panel" data-print-label="Overview">
-          {ov.currentTermLabel ? (
-            <Card className="records-print-card border-amber-200 bg-amber-50/50">
-              <CardContent className="pt-4">
-                <p className="text-sm font-medium text-slate-700">
-                  Current term ({ov.currentTermLabel}) balance
-                </p>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-3">
-                  <div>
-                    <p className="text-xs text-slate-500">Term fees</p>
-                    <p className="text-lg font-bold">GHS {(balance?.termFees ?? ov.currentTermFees ?? 0).toLocaleString()}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Arrears</p>
-                    <p className="text-lg font-bold">GHS {(balance?.arrears ?? ov.currentTermArrears ?? 0).toLocaleString()}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Amount due</p>
-                    <p className="text-lg font-bold">GHS {(balance?.amountDue ?? ov.currentTermAmountDue ?? 0).toLocaleString()}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Paid this term</p>
-                    <p className="text-lg font-bold text-emerald-600">GHS {(balance?.totalPaid ?? ov.currentTermPaid ?? 0).toLocaleString()}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Outstanding</p>
-                    <p className="text-lg font-bold text-amber-700">
-                      GHS {Math.max(0, balance?.outstanding ?? ov.currentTermOutstanding ?? ov.totalOutstanding ?? 0).toLocaleString()}
-                    </p>
-                    {(balance?.status || ov.currentTermStatus) ? (
-                      <Badge className="mt-1" variant={(balance?.status || ov.currentTermStatus) === 'Owing' ? 'destructive' : 'default'}>
-                        {balance?.status || ov.currentTermStatus}
-                      </Badge>
-                    ) : null}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ) : null}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <Card><CardContent className="pt-4"><p className="text-sm text-slate-500">Term Fees (current)</p><p className="text-xl font-bold">GHS {(balance?.termFees ?? ov.currentTermFees ?? 0).toLocaleString()}</p></CardContent></Card>
-            <Card><CardContent className="pt-4"><p className="text-sm text-slate-500">Total Paid</p><p className="text-xl font-bold text-emerald-600">GHS {ov.totalPaid?.toLocaleString() || 0}</p></CardContent></Card>
-            <Card><CardContent className="pt-4"><p className="text-sm text-slate-500">Outstanding</p><p className="text-xl font-bold text-amber-600">GHS {Math.max(0, balance?.outstanding ?? ov.currentTermOutstanding ?? ov.totalOutstanding ?? 0).toLocaleString()}</p></CardContent></Card>
-            {(ov.creditBalance ?? 0) > 0 ? (
-              <Card><CardContent className="pt-4"><p className="text-sm text-slate-500">Credit Balance</p><p className="text-xl font-bold text-emerald-700">GHS {ov.creditBalance?.toLocaleString() || 0}</p></CardContent></Card>
-            ) : null}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <Card><CardContent className="pt-4"><p className="text-sm text-slate-500">Term Average</p><p className="text-xl font-bold">{(ov.currentTermAverage || 0)}%</p></CardContent></Card>
             <Card><CardContent className="pt-4"><p className="text-sm text-slate-500">Attendance</p><p className="text-xl font-bold">{ov.attendancePercentage ?? 0}%</p></CardContent></Card>
+            <Card><CardContent className="pt-4"><p className="text-sm text-slate-500">Financial records</p><p className="text-sm font-medium text-slate-700 mt-1">See the Statement tab — all balances come from the student ledger.</p></CardContent></Card>
           </div>
         </TabsContent>
 
@@ -465,118 +354,13 @@ function StudentProfileView({ profile, onPrint, onExportPDF, onExportExcel }: { 
           </Card>
         </TabsContent>
 
-        <TabsContent value="fees" className="space-y-6 records-tab-panel" data-print-label="Fees & Balances">
-          <Card className="records-print-card">
-            <CardHeader><CardTitle>Ledger Fee Breakdown</CardTitle></CardHeader>
-            <CardContent>
-              <LedgerBalanceTable breakdown={ledgerBalance} />
-            </CardContent>
-          </Card>
-          <Card className="records-print-card">
-            <CardHeader><CardTitle>Summary Columns</CardTitle></CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                <div><p className="text-slate-500">Term fee</p><p className="text-lg font-bold">GHS {(ledgerBalance?.currentTermFee ?? balance?.termFees ?? 0).toLocaleString()}</p></div>
-                <div><p className="text-slate-500">Arrears</p><p className="text-lg font-bold text-amber-700">GHS {(ledgerBalance?.totalArrears ?? balance?.arrears ?? 0).toLocaleString()}</p></div>
-                <div><p className="text-slate-500">Total due</p><p className="text-lg font-bold">GHS {(ledgerBalance?.totalDue ?? balance?.amountDue ?? 0).toLocaleString()}</p></div>
-                <div><p className="text-slate-500">Paid</p><p className="text-lg font-bold text-emerald-600">GHS {(ledgerBalance?.totalPaid ?? balance?.totalPaid ?? 0).toLocaleString()}</p></div>
-                <div className="col-span-2 md:col-span-4"><p className="text-slate-500">Outstanding</p><p className="text-xl font-bold text-amber-700">GHS {(ledgerBalance?.outstanding ?? balance?.outstanding ?? 0).toLocaleString()}</p></div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="records-print-card">
-            <CardHeader><CardTitle>Per-Term Ledger Lines</CardTitle></CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader><TableRow><TableHead>Academic Year</TableHead><TableHead>Term</TableHead><TableHead>Term Fees</TableHead><TableHead>Arrears</TableHead><TableHead>Amount Due</TableHead><TableHead>Total Paid</TableHead><TableHead>Outstanding</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
-                <TableBody>
-                  {(fees.summaryByTerm || []).map((r: any, i: number) => (
-                    <TableRow key={i}>
-                      <TableCell>{r.academicYear}</TableCell>
-                      <TableCell>{r.term}</TableCell>
-                      <TableCell>GHS {r.totalFees?.toLocaleString()}</TableCell>
-                      <TableCell>GHS {(r.arrears ?? 0).toLocaleString()}</TableCell>
-                      <TableCell>GHS {(r.amountDue ?? (r.totalFees ?? 0) + (r.arrears ?? 0)).toLocaleString()}</TableCell>
-                      <TableCell>GHS {r.totalPaid?.toLocaleString()}</TableCell>
-                      <TableCell className="font-semibold text-amber-700">GHS {Math.max(0, r.outstanding ?? 0).toLocaleString()}</TableCell>
-                      <TableCell><Badge variant={r.status === 'Owing' ? 'destructive' : r.status === 'Credit' ? 'secondary' : 'default'}>{r.status}</Badge></TableCell>
-                    </TableRow>
-                  ))}
-                  {(!fees.summaryByTerm || fees.summaryByTerm.length === 0) && (
-                    <TableRow><TableCell colSpan={8} className="text-center text-slate-500">No fee data</TableCell></TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-          <Card className="records-print-card">
-            <CardHeader><CardTitle>Payment History</CardTitle></CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Term</TableHead><TableHead>Amount</TableHead><TableHead>Receipt</TableHead><TableHead>Recorded By</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
-                <TableBody>
-                  {(fees.paymentHistory || []).map((r: any, i: number) => (
-                    <TableRow key={i} className={r.voided ? 'opacity-60' : undefined}>
-                      <TableCell>{r.date}</TableCell>
-                      <TableCell>{r.term || '—'}</TableCell>
-                      <TableCell>GHS {r.amount?.toLocaleString()}</TableCell>
-                      <TableCell>{r.receiptNumber || '—'}</TableCell>
-                      <TableCell>{r.recordedBy}</TableCell>
-                      <TableCell>
-                        <Badge variant={r.voided ? 'outline' : 'default'}>{r.voided ? 'Voided' : 'Active'}</Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {(!fees.paymentHistory || fees.paymentHistory.length === 0) && (
-                    <TableRow><TableCell colSpan={6} className="text-center text-slate-500">No payments</TableCell></TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="receipts" className="space-y-4 records-tab-panel" data-print-label="All Receipts">
-          <Card className="records-print-card">
-            <CardHeader>
-              <CardTitle>All Student Receipts ({receipts.length})</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Receipt No.</TableHead>
-                    <TableHead>Term</TableHead>
-                    <TableHead>Academic Year</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Method</TableHead>
-                    <TableHead>Recorded By</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {receipts.map((r: any, i: number) => (
-                    <TableRow key={r.id ?? i} className={r.voided ? 'opacity-60' : undefined}>
-                      <TableCell>{r.date}</TableCell>
-                      <TableCell className="font-medium">{r.receiptNumber || '—'}</TableCell>
-                      <TableCell>{r.term || '—'}</TableCell>
-                      <TableCell>{r.academicYear || '—'}</TableCell>
-                      <TableCell>GHS {r.amount?.toLocaleString()}</TableCell>
-                      <TableCell>{r.paymentMethod || '—'}</TableCell>
-                      <TableCell>{r.recordedBy}</TableCell>
-                      <TableCell>
-                        <Badge variant={r.voided ? 'outline' : 'default'}>{r.voided ? 'Voided' : 'Active'}</Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {receipts.length === 0 && (
-                    <TableRow><TableCell colSpan={8} className="text-center text-slate-500">No receipts on record</TableCell></TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+        <TabsContent value="fees" className="space-y-6 records-tab-panel" data-print-label="Student Statement">
+          <StudentLedgerStatementPanel
+            studentDbId={h.id}
+            studentName={h.fullName}
+            studentCode={h.studentId}
+            className={h.class}
+          />
         </TabsContent>
 
         <TabsContent value="academic" className="space-y-4 records-tab-panel" data-print-label="Academic Performance">

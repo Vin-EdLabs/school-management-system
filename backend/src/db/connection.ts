@@ -447,6 +447,13 @@ const runMigrations = async () => {
     await client.query(`UPDATE payments SET amount_paid = amount WHERE amount_paid IS NULL AND amount IS NOT NULL`).catch(() => { });
     await client.query(`UPDATE payments SET payment_date = created_at WHERE payment_date IS NULL AND created_at IS NOT NULL`).catch(() => { });
     await client.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS receipt_snapshot JSONB`).catch(() => { });
+    await client.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS term_id INTEGER REFERENCES terms(id) ON DELETE SET NULL`).catch(() => { });
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_payments_term ON payments(tenant_id, term_id)`).catch(() => { });
+    await client.query(`
+      UPDATE payments p SET term_id = sl.term_id
+      FROM student_ledger sl
+      WHERE sl.payment_id = p.id AND p.term_id IS NULL AND sl.term_id IS NOT NULL
+    `).catch(() => { });
 
     // Create receipts table
     await client.query(`
@@ -559,18 +566,39 @@ const runMigrations = async () => {
       )
     `);
 
-    // Payroll: other staff (non-teachers)
+    // Non-teaching staff (other_staff)
     await client.query(`
-      CREATE TABLE IF NOT EXISTS payroll_other_staff (
+      CREATE TABLE IF NOT EXISTS other_staff (
         id SERIAL PRIMARY KEY,
         tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
+        staff_id VARCHAR(100) NOT NULL,
         full_name VARCHAR(255) NOT NULL,
-        role VARCHAR(255),
+        gender VARCHAR(50),
+        date_of_birth DATE,
+        passport_photo_url TEXT,
+        phone_number VARCHAR(100),
+        email VARCHAR(255),
+        home_address TEXT,
+        national_id VARCHAR(100),
+        position VARCHAR(255),
+        department VARCHAR(255),
+        employment_type VARCHAR(50),
+        employment_date DATE,
         monthly_salary DECIMAL(10, 2) NOT NULL DEFAULT 0,
+        ssnit_number VARCHAR(100),
+        ssnit_enabled BOOLEAN DEFAULT false,
+        emergency_contact_name VARCHAR(255),
+        emergency_contact_phone VARCHAR(100),
+        emergency_contact_relationship VARCHAR(100),
+        bank_name VARCHAR(255),
+        bank_account_number VARCHAR(100),
+        bank_branch VARCHAR(255),
+        bank_account_name VARCHAR(255),
         employment_status VARCHAR(50) DEFAULT 'active',
         notes TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(tenant_id, staff_id)
       )
     `);
 
@@ -1057,7 +1085,7 @@ const runMigrations = async () => {
       CREATE INDEX IF NOT EXISTS idx_student_arrears_balance_student ON student_arrears_balance(student_id);
       CREATE INDEX IF NOT EXISTS idx_student_credits_tenant ON student_credits(tenant_id);
       CREATE INDEX IF NOT EXISTS idx_student_credits_student ON student_credits(student_id);
-      CREATE INDEX IF NOT EXISTS idx_payroll_other_staff_tenant ON payroll_other_staff(tenant_id);
+      CREATE INDEX IF NOT EXISTS idx_other_staff_tenant ON other_staff(tenant_id);
       CREATE INDEX IF NOT EXISTS idx_salary_payments_tenant ON salary_payments(tenant_id);
     `).catch(() => { });
 
@@ -1170,9 +1198,14 @@ const runMigrations = async () => {
     await client.query(`ALTER TABLE teacher_appointment_letters ADD COLUMN IF NOT EXISTS body_closing TEXT`).catch(() => { });
     await client.query(`ALTER TABLE teacher_appointment_letters ADD COLUMN IF NOT EXISTS letter_date DATE`).catch(() => { });
 
-    // payroll_other_staff: staff_id for login (like TCH001 for teachers)
-    await client.query(`ALTER TABLE payroll_other_staff ADD COLUMN IF NOT EXISTS staff_id VARCHAR(100)`).catch(() => { });
-    // users: other_staff_id for payroll staff login
+    await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS emergency_contact_name VARCHAR(255)`).catch(() => { });
+    await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS emergency_contact_phone VARCHAR(100)`).catch(() => { });
+    await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS emergency_contact_relationship VARCHAR(100)`).catch(() => { });
+    await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS bank_name VARCHAR(255)`).catch(() => { });
+    await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS bank_account_number VARCHAR(100)`).catch(() => { });
+    await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS bank_branch VARCHAR(255)`).catch(() => { });
+    await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS bank_account_name VARCHAR(255)`).catch(() => { });
+    // users: other_staff_id for non-teaching staff login
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS other_staff_id INTEGER`).catch(() => { });
     // Relax users role check to include 'staff'
     await client.query(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`).catch(() => { });
@@ -1194,7 +1227,7 @@ const runMigrations = async () => {
     `).catch(() => { });
 
     await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS ssnit_enabled BOOLEAN NOT NULL DEFAULT true`).catch(() => { });
-    await client.query(`ALTER TABLE payroll_other_staff ADD COLUMN IF NOT EXISTS ssnit_enabled BOOLEAN NOT NULL DEFAULT true`).catch(() => { });
+    await client.query(`ALTER TABLE other_staff ADD COLUMN IF NOT EXISTS ssnit_enabled BOOLEAN NOT NULL DEFAULT true`).catch(() => { });
 
     await client.query(`ALTER TABLE salary_payments ADD COLUMN IF NOT EXISTS gross_salary NUMERIC(12, 2)`).catch(() => { });
     await client.query(`ALTER TABLE salary_payments ADD COLUMN IF NOT EXISTS ssnit_percent NUMERIC(8, 4)`).catch(() => { });
@@ -1386,6 +1419,29 @@ const runMigrations = async () => {
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_terms_tenant ON terms(tenant_id)`).catch(() => { });
     await client.query(`CREATE INDEX IF NOT EXISTS idx_terms_academic_year ON terms(academic_year_id)`).catch(() => { });
+    await client.query(`ALTER TABLE terms ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active'`).catch(() => { });
+    await client.query(`ALTER TABLE terms ADD COLUMN IF NOT EXISTS closed_at TIMESTAMP`).catch(() => { });
+    await client.query(`ALTER TABLE terms ADD COLUMN IF NOT EXISTS closed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL`).catch(() => { });
+    await client.query(`ALTER TABLE terms ADD COLUMN IF NOT EXISTS snapshot_completed_at TIMESTAMP`).catch(() => { });
+    await client.query(`UPDATE terms SET status = 'active' WHERE status IS NULL`).catch(() => { });
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS term_snapshots (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
+        term_id INTEGER REFERENCES terms(id) ON DELETE CASCADE,
+        academic_year_id INTEGER REFERENCES academic_years(id) ON DELETE SET NULL,
+        snapshot_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+        total_students INTEGER,
+        total_fees_billed NUMERIC(12, 2),
+        total_collected NUMERIC(12, 2),
+        total_outstanding NUMERIC(12, 2),
+        total_credits NUMERIC(12, 2),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
+      )
+    `).catch(() => { });
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_term_snapshots_tenant_term ON term_snapshots(tenant_id, term_id)`).catch(() => { });
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS ledger_fee_structures (

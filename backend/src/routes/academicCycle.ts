@@ -1,6 +1,7 @@
 import express from 'express';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
+import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 import { getIO } from '../socket.js';
 import { writeAuditLog } from '../services/auditService.js';
 import { notifySetupProgressChanged } from '../services/setupProgressService.js';
@@ -46,6 +47,7 @@ function assertSchoolScope(req: AuthRequest, schoolId: number) {
 router.use(authenticate);
 router.use(requireRole('super-admin', 'administrator'));
 router.use(setTenantContext);
+attachWritableTermGuard(router);
 
 router.get('/:schoolId/academic-years', async (req: AuthRequest, res) => {
   try {

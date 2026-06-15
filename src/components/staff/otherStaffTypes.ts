@@ -1,0 +1,28 @@
+export type OtherStaffRecord = {
+  id: number;
+  staff_id: string;
+  full_name: string;
+  gender?: string;
+  date_of_birth?: string;
+  passport_photo_url?: string;
+  phone_number?: string;
+  email?: string;
+  home_address?: string;
+  national_id?: string;
+  position?: string;
+  department?: string;
+  employment_type?: string;
+  employment_date?: string;
+  monthly_salary?: number;
+  ssnit_number?: string;
+  ssnit_enabled?: boolean;
+  emergency_contact_name?: string;
+  emergency_contact_phone?: string;
+  emergency_contact_relationship?: string;
+  bank_name?: string;
+  bank_account_number?: string;
+  bank_branch?: string;
+  bank_account_name?: string;
+  employment_status?: string;
+  notes?: string;
+};

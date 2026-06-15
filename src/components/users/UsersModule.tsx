@@ -83,6 +83,7 @@ const UsersModule = () => {
   const [users, setUsers] = useState<SchoolUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
+  const [staffUserOpen, setStaffUserOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<SchoolUser | null>(null);
   const [newUser, setNewUser] = useState({
@@ -93,6 +94,24 @@ const UsersModule = () => {
     role: 'administrator' as 'administrator' | 'finance' | 'teacher' | 'staff',
   });
   const [resetPassword, setResetPassword] = useState('');
+
+  type StaffWithoutUser = {
+    id: number;
+    staff_id: string;
+    full_name: string;
+    position?: string;
+    department?: string;
+    passport_photo_url?: string;
+  };
+
+  const [staffCandidates, setStaffCandidates] = useState<StaffWithoutUser[]>([]);
+  const [staffUserForm, setStaffUserForm] = useState({
+    staffId: '',
+    username: '',
+    password: '',
+    role: 'staff' as 'staff' | 'finance' | 'administrator',
+  });
+  const [loadingStaffCandidates, setLoadingStaffCandidates] = useState(false);
 
   useEffect(() => {
     if (schoolId != null) apiService.setTenantContext(schoolId);
@@ -114,6 +133,59 @@ const UsersModule = () => {
   useEffect(() => {
     loadUsers();
   }, [schoolId]);
+
+  const loadStaffCandidates = async () => {
+    setLoadingStaffCandidates(true);
+    try {
+      const data = await apiService.get<StaffWithoutUser[]>('/other-staff/without-users');
+      setStaffCandidates(Array.isArray(data) ? data : []);
+    } catch (e: unknown) {
+      toast({
+        title: 'Error',
+        description: e instanceof Error ? e.message : 'Failed to load staff',
+        variant: 'destructive',
+      });
+      setStaffCandidates([]);
+    } finally {
+      setLoadingStaffCandidates(false);
+    }
+  };
+
+  const openStaffUserDialog = () => {
+    setStaffUserForm({ staffId: '', username: '', password: '', role: 'staff' });
+    setStaffUserOpen(true);
+    loadStaffCandidates();
+  };
+
+  const handleCreateStaffUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const staffIdNum = parseInt(staffUserForm.staffId, 10);
+    if (!staffIdNum || !staffUserForm.username || !staffUserForm.password) {
+      toast({ title: 'Error', description: 'Select staff, username, and password', variant: 'destructive' });
+      return;
+    }
+    if (staffUserForm.password.length < 5) {
+      toast({ title: 'Error', description: 'Password must be at least 5 characters', variant: 'destructive' });
+      return;
+    }
+    try {
+      await apiService.post(`/other-staff/${staffIdNum}/create-user`, {
+        username: staffUserForm.username.trim(),
+        password: staffUserForm.password,
+        role: staffUserForm.role,
+      });
+      toast({ title: 'User Created', description: `Account created for selected staff member` });
+      setStaffUserOpen(false);
+      loadUsers();
+      loadStaffCandidates();
+    } catch (e: unknown) {
+      toast({
+        title: 'Error',
+        description: e instanceof Error ? e.message : 'Failed to create user',
+        variant: 'destructive',
+      });
+    }
+  };
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -201,20 +273,23 @@ const UsersModule = () => {
           </h1>
           <p className="text-muted-foreground mt-1">All staff with system access. Create users and reset passwords.</p>
         </div>
-        <Button
-          onClick={() => setCreateOpen(true)}
-          variant="primaryAction"
-        >
-          <UserPlus className="w-4 h-4 mr-2" />
-          Create User
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={openStaffUserDialog} variant="outline">
+            <UserCheck className="w-4 h-4 mr-2" />
+            Add Staff as User
+          </Button>
+          <Button onClick={() => setCreateOpen(true)} variant="primaryAction">
+            <UserPlus className="w-4 h-4 mr-2" />
+            Create User
+          </Button>
+        </div>
       </div>
 
       {/* Info card */}
       <div className="rounded-xl border border-indigo-500/20 bg-gradient-to-r from-indigo-500/10 to-violet-500/10 p-4 flex items-start gap-3">
         <Shield className="w-5 h-5 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
         <div className="text-sm text-foreground/80">
-          <strong className="text-indigo-700 dark:text-indigo-300">Teachers and Staff appear automatically.</strong> When you add a teacher or payroll staff, they get login credentials (Staff ID + PIN). Use &quot;Create User&quot; to add Administrators or Finance officers manually.
+          <strong className="text-indigo-700 dark:text-indigo-300">Teachers get accounts automatically</strong> when added (username and password = Staff ID). Other staff need explicit access via &quot;Add Staff as User&quot;. Use &quot;Create User&quot; for Administrators or Finance officers without a staff profile.
         </div>
       </div>
 
@@ -342,6 +417,96 @@ const UsersModule = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Add Staff as User Dialog */}
+      <Dialog open={staffUserOpen} onOpenChange={setStaffUserOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserCheck className="w-5 h-5 text-indigo-600" />
+              Add Staff as User
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCreateStaffUser} className="space-y-4">
+            <div>
+              <Label>Staff Member *</Label>
+              {loadingStaffCandidates ? (
+                <p className="text-sm text-muted-foreground mt-2">Loading...</p>
+              ) : staffCandidates.length === 0 ? (
+                <p className="text-sm text-muted-foreground mt-2">All active other staff already have user accounts.</p>
+              ) : (
+                <Select
+                  value={staffUserForm.staffId}
+                  onValueChange={(v) => {
+                    const s = staffCandidates.find((x) => String(x.id) === v);
+                    setStaffUserForm({
+                      ...staffUserForm,
+                      staffId: v,
+                      username: s?.staff_id || '',
+                    });
+                  }}
+                >
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Select staff member" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {staffCandidates.map((s) => (
+                      <SelectItem key={s.id} value={String(s.id)}>
+                        {s.full_name} — {s.staff_id}
+                        {s.position ? ` (${s.position})` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+            <div>
+              <Label>Username *</Label>
+              <Input
+                className="mt-1 font-mono"
+                value={staffUserForm.username}
+                onChange={(e) => setStaffUserForm({ ...staffUserForm, username: e.target.value })}
+                required
+              />
+            </div>
+            <div>
+              <Label>Initial Password * (min 5 characters)</Label>
+              <Input
+                type="password"
+                className="mt-1"
+                value={staffUserForm.password}
+                onChange={(e) => setStaffUserForm({ ...staffUserForm, password: e.target.value })}
+                required
+                minLength={5}
+              />
+            </div>
+            <div>
+              <Label>Role</Label>
+              <Select
+                value={staffUserForm.role}
+                onValueChange={(v: 'staff' | 'finance' | 'administrator') =>
+                  setStaffUserForm({ ...staffUserForm, role: v })
+                }
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="staff">Staff</SelectItem>
+                  <SelectItem value="finance">Finance</SelectItem>
+                  <SelectItem value="administrator">Administrator</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setStaffUserOpen(false)}>Cancel</Button>
+              <Button type="submit" variant="primaryAction" disabled={!staffUserForm.staffId || staffCandidates.length === 0}>
+                Create Account
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Create User Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>

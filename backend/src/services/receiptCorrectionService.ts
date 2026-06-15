@@ -2,7 +2,8 @@ import type pg from 'pg';
 import { query, getClient } from '../db/connection.js';
 import { type FeeBalanceResult } from './financeCalculationService.js';
 import { resolvePaymentAccountForTransaction } from './paymentAccountService.js';
-import { getStudentFeeBalance, buildReceiptSnapshot } from './studentFeeBalanceService.js';
+import { getStudentBalanceFromLedger } from './ledgerBalanceService.js';
+import { resolveActiveLedgerTerm } from './studentUnifiedBalanceService.js';
 
 const CORRECTION_WINDOW_DAYS = 7;
 
@@ -124,6 +125,68 @@ export function extractBalanceSnapshot(balance: FeeBalanceResult) {
     total_due: Math.round(totalDue * 100) / 100,
     has_fees_assigned: totalDue > 0.0001,
     has_payments_recorded: totalPaid > 0.0001,
+  };
+}
+
+/** Map getStudentBalanceFromLedger into FeeBalanceResult compatible shape. */
+async function getLedgerFeeBalance(
+  client: pg.PoolClient | null,
+  tenantId: number,
+  studentId: number,
+  termStr: string | null
+): Promise<FeeBalanceResult | null> {
+  const run = client ? client.query.bind(client) : query;
+  const studentRes = await run(`SELECT id FROM students WHERE id = $1 AND tenant_id = $2`, [
+    studentId,
+    tenantId,
+  ]);
+  if (studentRes.rows.length === 0) return null;
+
+  let ledgerTermId: number | null = null;
+  if (termStr?.trim()) {
+    const termToStore = termStr.trim();
+    const termOnly = termToStore.replace(/\s+\d{4}$/, '').trim() || termToStore;
+    const termLookup = await run(
+      `SELECT t.id FROM terms t
+       JOIN academic_years ay ON ay.id = t.academic_year_id
+       WHERE t.tenant_id = $1 AND (t.name = $2 OR t.name = $3 OR (t.name || ' ' || ay.name) = $2)
+       LIMIT 1`,
+      [tenantId, termToStore, termOnly]
+    );
+    if (termLookup.rows.length > 0) ledgerTermId = Number(termLookup.rows[0].id);
+  }
+  if (!ledgerTermId) {
+    const active = await resolveActiveLedgerTerm(run, tenantId);
+    ledgerTermId = active.ledgerTermId;
+  }
+  if (!ledgerTermId) return null;
+
+  const balance = await getStudentBalanceFromLedger(client, tenantId, studentId, ledgerTermId);
+  return {
+    totalFees: balance.termFee,
+    totalPaid: balance.totalPaid,
+    arrears: balance.arrears,
+    outstanding: balance.outstanding,
+    credit: balance.creditBalance,
+    status:
+      balance.creditBalance > 0
+        ? 'Credit'
+        : balance.outstanding > 0
+          ? 'Owing'
+          : 'Cleared',
+  };
+}
+
+function buildReceiptSnapshotFromFeeBalance(balance: FeeBalanceResult) {
+  const totalFees = Number(balance.totalFees) || 0;
+  const arrearsNum = Number(balance.arrears) || 0;
+  const outstanding = Number(balance.outstanding);
+  return {
+    totalDue: totalFees + arrearsNum,
+    termFee: totalFees,
+    arrears: arrearsNum,
+    balanceAfter: Math.max(0, Number.isFinite(outstanding) ? outstanding : 0),
+    credit: Number(balance.credit) || 0,
   };
 }
 
@@ -316,8 +379,32 @@ export async function getCorrectionContext(tenantId: number, paymentId: number) 
   const paymentRow = res.rows[0];
   const rootCreatedAt = String(root.created_at);
   const eligibility = getCorrectionEligibility(paymentRow, rootCreatedAt);
-  const balance = await getStudentFeeBalance(null, tenantId, paymentRow.student_id, paymentRow.term ?? null);
-  const totalDue = balance ? Number(balance.totalFees) + Number(balance.arrears) : 0;
+  const balance = await getLedgerFeeBalance(null, tenantId, paymentRow.student_id, paymentRow.term ?? null);
+
+  let ledgerTermId: number | null = null;
+  if (paymentRow.term) {
+    const termToStore = String(paymentRow.term).trim();
+    const termOnly = termToStore.replace(/\s+\d{4}$/, '').trim() || termToStore;
+    const termLookup = await query(
+      `SELECT t.id FROM terms t
+       JOIN academic_years ay ON ay.id = t.academic_year_id
+       WHERE t.tenant_id = $1 AND (t.name = $2 OR t.name = $3 OR (t.name || ' ' || ay.name) = $2)
+       LIMIT 1`,
+      [tenantId, termToStore, termOnly]
+    );
+    if (termLookup.rows.length > 0) ledgerTermId = Number(termLookup.rows[0].id);
+  }
+  if (!ledgerTermId) {
+    const active = await resolveActiveLedgerTerm(query, tenantId);
+    ledgerTermId = active.ledgerTermId;
+  }
+
+  const ledgerBalance = ledgerTermId
+    ? await getStudentBalanceFromLedger(null, tenantId, paymentRow.student_id, ledgerTermId)
+    : null;
+
+  const outstandingFromLedger = ledgerBalance?.outstanding ?? balance?.outstanding ?? 0;
+  const totalDue = ledgerBalance?.totalDue ?? 0;
   const history = await getCorrectionHistory(tenantId, paymentId);
 
   return {
@@ -350,7 +437,7 @@ export async function getCorrectionContext(tenantId: number, paymentId: number) 
           totalFees: Number(balance.totalFees),
           totalPaid: Number(balance.totalPaid),
           totalDue,
-          outstanding: Math.max(0, Number(balance.outstanding)),
+          outstanding: outstandingFromLedger,
           credit: Number(balance.credit),
           status: balance.status,
           maxPaymentAmount: totalDue,
@@ -442,7 +529,8 @@ async function postCorrectionLedgerEntry(
   originalAmount: number,
   newAmount: number,
   receiptNumber: string,
-  reason: string
+  reason: string,
+  correctedPaymentId?: number | null
 ) {
   const termInfo = await resolveTermIdForLedger(client, tenantId, termStr);
   if (!termInfo) return;
@@ -454,8 +542,8 @@ async function postCorrectionLedgerEntry(
   const description = `Receipt correction ${receiptNumber} (${correctionType}): ${reason}`.slice(0, 500);
 
   await client.query(
-    `INSERT INTO student_ledger (tenant_id, student_id, academic_year_id, term_id, description, debit, credit, entry_type, receipt_number)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, 'payment_correction', $8)`,
+    `INSERT INTO student_ledger (tenant_id, student_id, academic_year_id, term_id, description, debit, credit, entry_type, receipt_number, payment_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'payment_correction', $8, $9)`,
     [
       tenantId,
       studentId,
@@ -465,6 +553,7 @@ async function postCorrectionLedgerEntry(
       correctionType === 'credit' ? 0 : balanceChange,
       correctionType === 'credit' ? balanceChange : 0,
       receiptNumber,
+      correctedPaymentId ?? null,
     ]
   );
 }
@@ -580,7 +669,7 @@ export async function correctReceipt(
     validateCorrectionTypeAmount(input.correction_type, originalAmount, input.amount);
 
     const termToStore = String(input.term ?? original.term ?? '').trim();
-    const balanceBeforeRaw = await getStudentFeeBalance(
+    const balanceBeforeRaw = await getLedgerFeeBalance(
       client,
       tenantId,
       input.student_id,
@@ -718,12 +807,13 @@ export async function correctReceipt(
       originalAmount,
       input.amount,
       receiptNumber,
-      input.reason.trim()
+      input.reason.trim(),
+      corrected.id
     );
 
     const balanceAfterSnap = buildAfterBalanceSnap(balanceBeforeRaw, projectedAfter);
 
-    const balanceAfterRaw = await getStudentFeeBalance(
+    const balanceAfterRaw = await getLedgerFeeBalance(
       client,
       tenantId,
       input.student_id,
@@ -754,7 +844,7 @@ export async function correctReceipt(
 
     let receiptSnapshot: Record<string, number> | null = null;
     if (balanceAfterRaw) {
-      receiptSnapshot = buildReceiptSnapshot(balanceAfterRaw);
+      receiptSnapshot = buildReceiptSnapshotFromFeeBalance(balanceAfterRaw);
     } else {
       const syntheticBalance: FeeBalanceResult = {
         totalFees: Number(balanceBeforeRaw.totalFees) || 0,
@@ -769,7 +859,7 @@ export async function correctReceipt(
               ? 'Owing'
               : 'Cleared',
       };
-      receiptSnapshot = buildReceiptSnapshot(syntheticBalance);
+      receiptSnapshot = buildReceiptSnapshotFromFeeBalance(syntheticBalance);
     }
     if (receiptSnapshot) {
       await client.query(

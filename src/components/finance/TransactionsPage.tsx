@@ -39,6 +39,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from '@/hooks/use-toast';
 import { useData } from '../../contexts/DataContext';
+import { useActiveTerm } from '../../contexts/ActiveTermContext';
 import { reportService } from '../../services/reportService';
 import { formatDisplayDate, formatDisplayDateTime, formatDisplayTime } from '../../utils/dateFormat';
 import {
@@ -99,14 +100,24 @@ const isSameDate = (a: Date, b: Date) =>
 
 const TransactionsPage: React.FC<TransactionsPageProps> = ({ onNavigate }) => {
   const { payments, income, expenses, students } = useData();
+  const { currentTerm } = useActiveTerm();
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [typeFilter, setTypeFilter] = useState(ALL);
   const [categoryFilter, setCategoryFilter] = useState(ALL);
   const [methodFilter, setMethodFilter] = useState(ALL);
+  const [termFilter, setTermFilter] = useState(ALL);
   const [searchTerm, setSearchTerm] = useState('');
   const [selected, setSelected] = useState<TransactionRow | null>(null);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+
+  const feeTerms = useMemo(
+    () =>
+      [...new Set(payments.map((p) => p.term).filter(Boolean))].sort((a, b) =>
+        String(b).localeCompare(String(a))
+      ),
+    [payments]
+  );
 
   const transactions = useMemo<TransactionRow[]>(() => {
     const feePayments = payments.map((payment) => {
@@ -185,8 +196,17 @@ const TransactionsPage: React.FC<TransactionsPageProps> = ({ onNavigate }) => {
       if (typeFilter !== ALL && row.type !== typeFilter) return false;
       if (categoryFilter !== ALL && row.category !== categoryFilter) return false;
       if (!methodMatches(row.paymentMethod, methodFilter)) return false;
+      if (termFilter !== ALL && row.sourceModule === 'fees') {
+        const payment = payments.find((p) => p.id === row.rawId);
+        if (!payment?.term || payment.term !== termFilter) return false;
+      }
 
       if (!q) return true;
+      const receiptMatch =
+        row.sourceModule === 'fees' &&
+        payments.find((p) => p.id === row.rawId)?.receiptNumber &&
+        normalize(payments.find((p) => p.id === row.rawId)?.receiptNumber).includes(q);
+      if (receiptMatch) return true;
       return [
         row.id,
         row.date,
@@ -199,7 +219,7 @@ const TransactionsPage: React.FC<TransactionsPageProps> = ({ onNavigate }) => {
         String(row.amount),
       ].some((value) => normalize(value).includes(q));
     });
-  }, [transactions, fromDate, toDate, typeFilter, categoryFilter, methodFilter, searchTerm]);
+  }, [transactions, fromDate, toDate, typeFilter, categoryFilter, methodFilter, termFilter, searchTerm, payments]);
 
   // Pagination (client-side) - show only 50 rows by default.
   const PAGE_SIZE = 50;
@@ -208,7 +228,7 @@ const TransactionsPage: React.FC<TransactionsPageProps> = ({ onNavigate }) => {
   // Reset to first page when filters/search changes.
   React.useEffect(() => {
     setPage(1);
-  }, [fromDate, toDate, typeFilter, categoryFilter, methodFilter, searchTerm]);
+  }, [fromDate, toDate, typeFilter, categoryFilter, methodFilter, termFilter, searchTerm]);
 
   const pageCount = Math.max(1, Math.ceil(filteredTransactions.length / PAGE_SIZE));
   const paginatedTransactions = useMemo(() => {
@@ -406,6 +426,27 @@ const TransactionsPage: React.FC<TransactionsPageProps> = ({ onNavigate }) => {
                   <SelectItem value="cash">Cash</SelectItem>
                   <SelectItem value="momo">MoMo</SelectItem>
                   <SelectItem value="bank">Bank</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Academic Term</Label>
+              <Select value={termFilter} onValueChange={setTermFilter}>
+                <SelectTrigger className="h-9 bg-white dark:bg-slate-950">
+                  <SelectValue placeholder="All terms" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All Terms</SelectItem>
+                  {currentTerm && currentTerm !== 'Not Set' ? (
+                    <SelectItem value={currentTerm}>{currentTerm} (current)</SelectItem>
+                  ) : null}
+                  {feeTerms
+                    .filter((t) => t !== currentTerm)
+                    .map((term) => (
+                      <SelectItem key={term} value={term}>
+                        {term}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>

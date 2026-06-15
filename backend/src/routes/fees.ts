@@ -6,8 +6,11 @@ import { setTenantContext } from '../middleware/tenant.js';
 import { getIO } from '../socket.js';
 import { postFeesForClass, resolveLedgerTermFromSettings } from '../services/ledgerFinanceService.js';
 import { writeAuditLog } from '../services/auditService.js';
+import { formatMoneyGhs, resolveActorFromRequest, resolveClassName, withActor } from '../utils/auditResolve.js';
 import { getClientIp } from '../utils/clientIp.js';
 import { sqlBeneficiaryAdjustedAmount } from '../utils/beneficiaryFee.js';
+import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
+import { checkFeeStructureCompleteness } from '../services/feeStructureCheckService.js';
 
 const router = express.Router();
 
@@ -66,6 +69,7 @@ async function resolveTermIds(
 router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
+attachWritableTermGuard(router);
 
 // Get all fee structures (ledger-only)
 router.get('/', async (req: AuthRequest, res) => {
@@ -92,6 +96,34 @@ router.get('/', async (req: AuthRequest, res) => {
   } catch (error) {
     console.error('Get fee structures error:', error);
     res.status(500).json({ error: 'Failed to fetch fee structures' });
+  }
+});
+
+// GET /api/fees/structure-check?term_id= — verify all classes have fee structures for the term
+router.get('/structure-check', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const rawTermId = req.query.term_id ?? req.query.termId;
+    const termId =
+      rawTermId != null && String(rawTermId).trim() !== ''
+        ? parseInt(String(rawTermId), 10)
+        : undefined;
+
+    const result = await checkFeeStructureCompleteness(
+      tenantId,
+      termId != null && !Number.isNaN(termId) ? termId : undefined
+    );
+
+    return res.json({
+      complete: result.complete,
+      total_classes: result.total_classes,
+      configured_classes: result.configured_classes,
+      missing_classes: result.missing_classes,
+      term_id: result.term_id,
+    });
+  } catch (error) {
+    console.error('Fee structure check error:', error);
+    res.status(500).json({ error: 'Failed to check fee structure completeness' });
   }
 });
 
@@ -155,7 +187,11 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
       result.rows[0].id,
       tenantId,
     ]);
-    const fs = mapFeeRow(rowRes.rows[0] ?? result.rows[0]);
+    const mappedRow = rowRes.rows[0] ?? result.rows[0];
+    const fs = mapFeeRow(mappedRow);
+    const className = String((mappedRow as Record<string, unknown>).class_name || (await resolveClassName(tenantId, classIdNum))).trim();
+    const termLabel = String(fs.term || term).trim();
+    const actor = await resolveActorFromRequest(req);
 
     await writeAuditLog({
       tenantId,
@@ -166,8 +202,11 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
       entityId: Number(result.rows[0].id),
       module: 'finance',
       status: 'success',
-      summary: `Fee structure created — class ${class_id}, term ${term}, GHS ${amount}`,
-      details: { fee_structure: fs, description: description ?? null },
+      summary: withActor(
+        `Fee structure created for ${className} — ${formatMoneyGhs(amount)} for ${termLabel}`,
+        actor
+      ),
+      details: { fee_structure: fs, className, term: termLabel, description: description ?? null },
       ipAddress: getClientIp(req),
       userAgent: req.get('user-agent') ?? null,
     });
@@ -244,6 +283,14 @@ router.put('/:id', requireRole('super-admin', 'administrator', 'finance'), async
     const next = mapFeeRow(rowRes.rows[0] ?? result.rows[0]);
     const prevAmt = previous.total != null ? Number(previous.total) : null;
     const nextAmt = next.amount != null ? Number(next.amount) : null;
+    const mappedNext = rowRes.rows[0] ?? result.rows[0];
+    const className = String(
+      (mappedNext as Record<string, unknown>).class_name ||
+        previous.class_name ||
+        (await resolveClassName(tenantId, classIdNum))
+    ).trim();
+    const termLabel = String(next.term || termStr).trim();
+    const actor = await resolveActorFromRequest(req);
 
     await writeAuditLog({
       tenantId,
@@ -254,11 +301,13 @@ router.put('/:id', requireRole('super-admin', 'administrator', 'finance'), async
       entityId: parseInt(id, 10),
       module: 'finance',
       status: 'success',
-      summary:
+      summary: withActor(
         prevAmt != null && nextAmt != null && prevAmt !== nextAmt
-          ? `Fee structure amount changed from GHS ${prevAmt} to GHS ${nextAmt}`
-          : `Fee structure #${id} updated`,
-      details: { fee_structure_id: parseInt(id, 10), previous, new: next },
+          ? `Fee structure updated for ${className} — amount changed from ${formatMoneyGhs(prevAmt)} to ${formatMoneyGhs(nextAmt)} (${termLabel})`
+          : `Fee structure updated for ${className} — ${termLabel}`,
+        actor
+      ),
+      details: { fee_structure_id: parseInt(id, 10), className, term: termLabel, previous, new: next },
       ipAddress: getClientIp(req),
       userAgent: req.get('user-agent') ?? null,
     });
@@ -326,6 +375,10 @@ router.delete('/:id', requireRole('super-admin', 'administrator', 'finance'), as
       return res.status(404).json({ error: 'Fee structure not found' });
     }
 
+    const className = String(deleted.class_name || 'Unknown class').trim();
+    const termLabel = String(deleted.term || '').trim();
+    const actor = await resolveActorFromRequest(req);
+
     await writeAuditLog({
       tenantId,
       userId: req.user!.id,
@@ -335,8 +388,11 @@ router.delete('/:id', requireRole('super-admin', 'administrator', 'finance'), as
       entityId: parseInt(id, 10),
       module: 'finance',
       status: 'success',
-      summary: `Fee structure deleted (class ${String(classId ?? '')}, term ${String(deleted.term ?? '')})`,
-      details: { fee_structure_id: parseInt(id, 10), deleted_record: deleted },
+      summary: withActor(
+        `Fee structure deleted for ${className}${termLabel ? ` — ${termLabel}` : ''}`,
+        actor
+      ),
+      details: { fee_structure_id: parseInt(id, 10), className, term: termLabel, deleted_record: deleted },
       ipAddress: getClientIp(req),
       userAgent: req.get('user-agent') ?? null,
     });

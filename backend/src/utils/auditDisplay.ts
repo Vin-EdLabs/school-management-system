@@ -70,6 +70,7 @@ function humanEntityType(entityType: string): string {
     FEE_STRUCTURE: 'fee structure',
     SALARY_PAYMENT: 'salary payment',
     PAYROLL_OTHER_STAFF: 'staff member',
+    OTHER_STAFF: 'staff member',
     PAYROLL_RUN: 'payroll run',
     PAYROLL_SETTINGS: 'payroll settings',
     PARENT_PORTAL_ACCOUNT: 'parent account',
@@ -241,6 +242,54 @@ export function inferAuditSummary(row: Record<string, unknown>, actorUsername: s
   return `${action || 'EVENT'} · ${target}${actor}`.trim();
 }
 
+/** Improve stored summaries that still contain raw numeric IDs (legacy rows). */
+export function polishStoredSummary(
+  row: Record<string, unknown>,
+  rawSummary: string,
+  entityLabel: string | null,
+  actorName: string | null
+): string {
+  let s = rawSummary.trim();
+  if (!s) return s;
+
+  const actionOnly = /^[A-Z][A-Z0-9_]+(\s*[·—-]\s*.*)?$/.test(s) && !/\b(for|to|from|—|·)\b/i.test(s);
+  if (actionOnly && entityLabel) {
+    return inferAuditSummary({ ...row, summary: '' }, actorName);
+  }
+
+  if (entityLabel) {
+    const classPart = entityLabel.split(' · ')[0].trim();
+    if (classPart) {
+      s = s.replace(/\bclass\s+#?\d+\b/gi, classPart);
+      s = s.replace(/\(class\s+\d+/gi, `(${classPart}`);
+      s = s.replace(/— class \d+,/gi, `— ${classPart},`);
+    }
+    s = s.replace(/Fee structure #\d+/gi, `Fee structure for ${entityLabel}`);
+  }
+
+  if (actorName) {
+    s = s.replace(/\buser\s+#?\d+\b/gi, actorName);
+    s = s.replace(/\bby user\s+\d+\b/gi, `by ${actorName}`);
+  }
+
+  const details = parseAuditDetails(row.details);
+  if (details?.source && /\bIncome #\d+/i.test(s)) {
+    s = s.replace(/\bIncome #\d+[^"]*/i, `Income "${String(details.source)}"`);
+  }
+  if (details?.title && /\bExpense deleted/i.test(s)) {
+    s = s.replace(/Expense deleted[^"]*/i, `Expense deleted — "${String(details.title)}"`);
+  }
+
+  s = s
+    .replace(/\bstudent_id:\s*\d+/gi, '')
+    .replace(/\btenant_id:\s*\d+/gi, '')
+    .replace(/\bentity_id:\s*\d+/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  return s;
+}
+
 /** API response: fill empty module/summary; normalize `details` to object when possible. */
 export function enrichAuditLogRow(row: Record<string, unknown>): Record<string, unknown> {
   const username = row.username != null ? String(row.username) : null;
@@ -259,12 +308,15 @@ export function enrichAuditLogRow(row: Record<string, unknown>): Record<string, 
   };
   const moduleRaw = row.module != null ? String(row.module).trim() : '';
   const summaryRaw = row.summary != null ? String(row.summary).trim() : '';
+  const summary = summaryRaw
+    ? polishStoredSummary(base, summaryRaw, entityLabel || null, full)
+    : inferAuditSummary(base, full);
   return {
     ...base,
     before_values: beforeValues ?? row.before_values,
     after_values: afterValues ?? row.after_values,
     module: moduleRaw || inferAuditModule(row),
-    summary: summaryRaw || inferAuditSummary(base, full),
+    summary,
   };
 }
 
@@ -283,11 +335,16 @@ export const AUDIT_ENTITY_JOINS = `
     AND p_ent.id = al.entity_id AND p_ent.tenant_id = al.tenant_id
   LEFT JOIN students st_pay ON st_pay.id = p_ent.student_id AND st_pay.tenant_id = al.tenant_id
   LEFT JOIN classes cl_pay ON cl_pay.id = st_pay.class_assigned_id AND cl_pay.tenant_id = al.tenant_id
-  LEFT JOIN payroll_other_staff pos_ent ON UPPER(COALESCE(al.entity_type, '')) IN ('PAYROLL_OTHER_STAFF', 'STAFF')
+  LEFT JOIN other_staff pos_ent ON UPPER(COALESCE(al.entity_type, '')) IN ('PAYROLL_OTHER_STAFF', 'OTHER_STAFF', 'STAFF')
     AND pos_ent.id = al.entity_id AND pos_ent.tenant_id = al.tenant_id
   LEFT JOIN fee_structures fs_ent ON UPPER(COALESCE(al.entity_type, '')) = 'FEE_STRUCTURE'
     AND fs_ent.id = al.entity_id AND (fs_ent.tenant_id = al.tenant_id OR fs_ent.tenant_id IS NULL)
-  LEFT JOIN classes cl_fs ON cl_fs.id = fs_ent.class_id AND cl_fs.tenant_id = al.tenant_id
+  LEFT JOIN ledger_fee_structures lfs_ent ON UPPER(COALESCE(al.entity_type, '')) = 'FEE_STRUCTURE'
+    AND lfs_ent.id = al.entity_id AND lfs_ent.tenant_id = al.tenant_id
+  LEFT JOIN classes cl_fs ON cl_fs.id = COALESCE(lfs_ent.class_id, fs_ent.class_id)
+    AND cl_fs.tenant_id = al.tenant_id
+  LEFT JOIN terms t_fs ON t_fs.id = lfs_ent.term_id AND t_fs.tenant_id = al.tenant_id
+  LEFT JOIN academic_years ay_fs ON ay_fs.id = lfs_ent.academic_year_id AND ay_fs.tenant_id = al.tenant_id
 `;
 
 export const AUDIT_ENTITY_LABEL_SQL = `
@@ -321,14 +378,24 @@ export const AUDIT_ENTITY_LABEL_SQL = `
       WHEN pos_ent.id IS NOT NULL THEN
         TRIM(BOTH FROM CONCAT(
           TRIM(COALESCE(pos_ent.full_name, '')),
-          CASE WHEN pos_ent.role IS NOT NULL AND TRIM(pos_ent.role) <> ''
-            THEN ' · ' || TRIM(pos_ent.role) ELSE '' END
+          CASE WHEN pos_ent.position IS NOT NULL AND TRIM(pos_ent.position) <> ''
+            THEN ' · ' || TRIM(pos_ent.position) ELSE '' END
         ))
-      WHEN fs_ent.id IS NOT NULL THEN
+      WHEN fs_ent.id IS NOT NULL OR lfs_ent.id IS NOT NULL THEN
         TRIM(BOTH FROM CONCAT(
           CASE WHEN cl_fs.class_name IS NOT NULL AND TRIM(cl_fs.class_name) <> ''
             THEN TRIM(cl_fs.class_name) || ' · ' ELSE '' END,
-          'Fee structure'
+          CASE WHEN t_fs.name IS NOT NULL AND ay_fs.name IS NOT NULL
+            THEN TRIM(t_fs.name || ' ' || ay_fs.name) || ' · '
+            WHEN fs_ent.term IS NOT NULL AND TRIM(fs_ent.term) <> ''
+            THEN TRIM(fs_ent.term) || ' · '
+            ELSE '' END,
+          'Fee structure',
+          CASE WHEN lfs_ent.total IS NOT NULL
+            THEN ' · GHS ' || ROUND(lfs_ent.total::numeric, 2)::text
+            WHEN fs_ent.amount IS NOT NULL
+            THEN ' · GHS ' || ROUND(fs_ent.amount::numeric, 2)::text
+            ELSE '' END
         ))
       ELSE ''
     END

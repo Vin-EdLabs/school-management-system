@@ -1,9 +1,7 @@
 import { query } from '../db/connection.js';
-import {
-  getStudentFullBalance,
-  computeTermOwnOutstanding,
-  type StudentTermBalance,
-} from './studentUnifiedBalanceService.js';
+import type { StudentTermBalance } from './studentUnifiedBalanceService.js';
+import { resolveActiveLedgerTerm } from './studentUnifiedBalanceService.js';
+import { getTermByTermLedgerSummary } from './ledgerBalanceService.js';
 import { beneficiaryAdjustedFee, type BeneficiaryStudentRow } from '../utils/beneficiaryFee.js';
 
 function roundMoney(n: number): number {
@@ -47,6 +45,17 @@ export type ArrearsHistoryLine = {
 export type ArrearsHistory = {
   lines: ArrearsHistoryLine[];
   totalCarriedForward: number;
+};
+
+export type CreditHistoryLine = {
+  termLabel: string;
+  creditAmount: number;
+  description: string;
+};
+
+export type CreditHistory = {
+  lines: CreditHistoryLine[];
+  totalCreditAvailable: number;
 };
 
 export type StatementPaymentRow = {
@@ -99,6 +108,7 @@ export type StudentFinanceStatement = {
   termSummary: TermSummaryRow[];
   termSummaryTotals: Omit<TermSummaryRow, 'termLabel' | 'status'>;
   arrearsHistory: ArrearsHistory;
+  creditHistory: CreditHistory;
   payments: StatementPaymentRow[];
   paymentsTotal: number;
   adjustments: StatementAdjustmentRow[];
@@ -128,8 +138,8 @@ function buildTermSummaryRows(termRows: StudentTermBalance[]): TermSummaryRow[] 
   return termRows.map((row) => {
     const feeBilled = row.termFee;
     const amountPaid = row.totalPaid;
-    const outstanding = roundMoney(Math.max(0, feeBilled - amountPaid));
-    const credit = roundMoney(Math.max(0, amountPaid - feeBilled));
+    const outstanding = roundMoney(Math.max(0, row.outstanding));
+    const credit = roundMoney(row.credit > 0 ? row.credit : Math.max(0, amountPaid - feeBilled));
     return {
       termLabel: row.termName,
       feeBilled,
@@ -141,36 +151,231 @@ function buildTermSummaryRows(termRows: StudentTermBalance[]): TermSummaryRow[] 
   });
 }
 
+/** All terms from ledger + fee structures — full history for official finance statement. */
+async function loadAllTermRowsFromLedger(
+  tenantId: number,
+  studentId: number,
+  classId: number | null
+): Promise<StudentTermBalance[]> {
+  const summary = await getTermByTermLedgerSummary(null, tenantId, studentId);
+  const summaryByTerm = new Map(summary.map((r) => [r.termId, r]));
+
+  let extraTermIds: number[] = [];
+  if (classId) {
+    const fsRes = await query(
+      `SELECT DISTINCT lfs.term_id
+       FROM ledger_fee_structures lfs
+       WHERE lfs.tenant_id = $1 AND lfs.class_id = $2`,
+      [tenantId, classId]
+    );
+    extraTermIds = fsRes.rows.map((r) => Number(r.term_id));
+  }
+
+  const allTermIds = [
+    ...new Set([...summary.map((r) => r.termId), ...extraTermIds]),
+  ].filter((id) => !Number.isNaN(id));
+
+  if (allTermIds.length === 0) return [];
+
+  const labelsRes = await query(
+    `SELECT t.id, TRIM(t.name || ' ' || ay.name) AS term_label
+     FROM terms t
+     JOIN academic_years ay ON ay.id = t.academic_year_id
+     WHERE t.tenant_id = $1 AND t.id = ANY($2::int[])
+     ORDER BY ay.name ASC, t.name ASC`,
+    [tenantId, allTermIds]
+  );
+
+  return labelsRes.rows.map((row) => {
+    const termId = Number(row.id);
+    const s = summaryByTerm.get(termId);
+    const feeBilled = s?.feeBilled ?? 0;
+    const amountPaid = s?.amountPaid ?? 0;
+    const outstanding = s?.outstanding ?? 0;
+    const credit = s?.credit ?? 0;
+    return {
+      termId,
+      termName: String(row.term_label || '').trim(),
+      academicYear: '',
+      termFee: feeBilled,
+      arrearsBroughtForward: 0,
+      totalDue: roundMoney(feeBilled + outstanding - credit),
+      totalPaid: amountPaid,
+      outstanding,
+      credit,
+      status:
+        s?.status === 'Owing'
+          ? 'Owing'
+          : s?.status === 'Credit'
+            ? 'Credit'
+            : s?.status === 'NotSet'
+              ? 'NotSet'
+              : 'Cleared',
+      isCurrentTerm: false,
+      entries: [],
+    };
+  });
+}
+
 function sumTermSummary(rows: TermSummaryRow[]): Omit<TermSummaryRow, 'termLabel' | 'status'> {
   return rows.reduce(
     (acc, r) => ({
       feeBilled: roundMoney(acc.feeBilled + r.feeBilled),
       amountPaid: roundMoney(acc.amountPaid + r.amountPaid),
-      outstanding: roundMoney(acc.outstanding + r.outstanding),
-      credit: roundMoney(acc.credit + r.credit),
+      // Per-term outstanding and credit must not be summed across terms.
+      outstanding: 0,
+      credit: 0,
     }),
     { feeBilled: 0, amountPaid: 0, outstanding: 0, credit: 0 }
   );
 }
 
-/** Informational only — shows which prior terms had unpaid balances carried to the next term. */
-function buildArrearsHistory(termSummary: TermSummaryRow[]): ArrearsHistory {
-  const lines: ArrearsHistoryLine[] = [];
-  for (let i = 0; i < termSummary.length - 1; i++) {
-    const row = termSummary[i];
-    const unpaid = computeTermOwnOutstanding(row.feeBilled, row.amountPaid);
-    if (unpaid > 0) {
-      lines.push({
-        termLabel: row.termLabel,
-        unpaidAmount: unpaid,
-        carriedToLabel: termSummary[i + 1]?.termLabel ?? null,
-      });
-    }
+function parseCarriedFromLabel(description: string, kind: 'arrears' | 'credit'): string | null {
+  const text = String(description || '').trim();
+  const re =
+    kind === 'arrears'
+      ? /^Arrears brought forward from\s+(.+)$/i
+      : /^Credit carried forward from\s+(.+)$/i;
+  const m = text.match(re);
+  if (m) return m[1].trim();
+  if (kind === 'arrears' && /arrears from previous term/i.test(text)) return 'Previous term';
+  if (kind === 'credit' && /credit from previous term/i.test(text)) return 'Previous term';
+  return null;
+}
+
+function originDedupeKey(
+  metadata: Record<string, unknown> | undefined,
+  description: string,
+  kind: 'arrears' | 'credit'
+): string {
+  if (metadata?.carried_from_term_id != null && !Number.isNaN(Number(metadata.carried_from_term_id))) {
+    return `term:${Number(metadata.carried_from_term_id)}`;
   }
-  return {
-    lines,
-    totalCarriedForward: roundMoney(lines.reduce((s, l) => s + l.unpaidAmount, 0)),
-  };
+  const parsed = parseCarriedFromLabel(description, kind);
+  return parsed ? `label:${parsed.toLowerCase()}` : `desc:${description}`;
+}
+
+/** Arrears history — current term only, one line per originating term, no duplicates. */
+async function buildArrearsHistoryFromLedger(
+  tenantId: number,
+  studentId: number,
+  currentTermId: number | null
+): Promise<ArrearsHistory> {
+  if (!currentTermId) {
+    return { lines: [], totalCarriedForward: 0 };
+  }
+
+  const res = await query(
+    `SELECT sl.description, sl.debit, sl.metadata, sl.term_id,
+            TRIM(t.name || ' ' || ay.name) AS term_label
+     FROM student_ledger sl
+     JOIN terms t ON t.id = sl.term_id AND t.tenant_id = sl.tenant_id
+     JOIN academic_years ay ON ay.id = t.academic_year_id
+     WHERE sl.tenant_id = $1 AND sl.student_id = $2
+       AND sl.term_id = $3
+       AND sl.entry_type = 'arrears'
+       AND sl.debit > 0
+     ORDER BY sl.created_at ASC, sl.id ASC`,
+    [tenantId, studentId, currentTermId]
+  );
+
+  const seenOrigins = new Set<string>();
+  const lines: ArrearsHistoryLine[] = [];
+
+  for (const row of res.rows) {
+    const meta = (row.metadata && typeof row.metadata === 'object' ? row.metadata : {}) as Record<
+      string,
+      unknown
+    >;
+    const description = String(row.description || '');
+    const originKey = originDedupeKey(meta, description, 'arrears');
+    if (seenOrigins.has(originKey)) continue;
+    seenOrigins.add(originKey);
+
+    const amount = roundMoney(parseFloat(String(row.debit)) || 0);
+    if (amount <= 0) continue;
+
+    const originatedFrom = parseCarriedFromLabel(description, 'arrears') || 'Prior term';
+    const carriedToLabel = String(row.term_label || '').trim() || null;
+
+    lines.push({
+      termLabel: originatedFrom,
+      unpaidAmount: amount,
+      carriedToLabel,
+    });
+  }
+
+  const totalCarriedForward = roundMoney(
+    lines.reduce((s, l) => s + l.unpaidAmount, 0)
+  );
+
+  return { lines, totalCarriedForward };
+}
+
+/** Credit history — current term only, carry_forward_credit with credit > 0, net remaining total. */
+async function buildCreditHistoryFromLedger(
+  tenantId: number,
+  studentId: number,
+  currentTermId: number | null
+): Promise<CreditHistory> {
+  if (!currentTermId) {
+    return { lines: [], totalCreditAvailable: 0 };
+  }
+
+  const netRes = await query(
+    `SELECT
+       COALESCE(SUM(CASE WHEN entry_type = 'carry_forward_credit' THEN credit ELSE 0 END), 0)
+       - COALESCE(SUM(CASE WHEN entry_type = 'credit_applied' THEN credit ELSE 0 END), 0) AS net_credit
+     FROM student_ledger
+     WHERE tenant_id = $1 AND student_id = $2 AND term_id = $3`,
+    [tenantId, studentId, currentTermId]
+  );
+  const netCredit = roundMoney(parseFloat(String(netRes.rows[0]?.net_credit)) || 0);
+  if (netCredit <= 0.001) {
+    return { lines: [], totalCreditAvailable: 0 };
+  }
+
+  const res = await query(
+    `SELECT sl.description, sl.credit, sl.metadata,
+            TRIM(t.name || ' ' || ay.name) AS term_label
+     FROM student_ledger sl
+     JOIN terms t ON t.id = sl.term_id AND t.tenant_id = sl.tenant_id
+     JOIN academic_years ay ON ay.id = t.academic_year_id
+     WHERE sl.tenant_id = $1 AND sl.student_id = $2
+       AND sl.term_id = $3
+       AND sl.entry_type = 'carry_forward_credit'
+       AND sl.credit > 0
+     ORDER BY sl.created_at ASC, sl.id ASC`,
+    [tenantId, studentId, currentTermId]
+  );
+
+  const seenOrigins = new Set<string>();
+  const lines: CreditHistoryLine[] = [];
+
+  for (const row of res.rows) {
+    const meta = (row.metadata && typeof row.metadata === 'object' ? row.metadata : {}) as Record<
+      string,
+      unknown
+    >;
+    const description = String(row.description || '');
+    const originKey = originDedupeKey(meta, description, 'credit');
+    if (seenOrigins.has(originKey)) continue;
+    seenOrigins.add(originKey);
+
+    const creditAmount = roundMoney(parseFloat(String(row.credit)) || 0);
+    if (creditAmount <= 0) continue;
+
+    const originatedFrom = parseCarriedFromLabel(description, 'credit');
+    lines.push({
+      termLabel: originatedFrom || String(row.term_label || 'Term').trim(),
+      creditAmount,
+      description: originatedFrom
+        ? `${originatedFrom} credit (overpayment carried forward)`
+        : 'Credit (overpayment carried forward)',
+    });
+  }
+
+  return { lines, totalCreditAvailable: netCredit };
 }
 
 function mapAdjustmentType(row: Record<string, unknown>): string {
@@ -237,11 +442,13 @@ export async function buildStudentFinanceStatement(
   );
   const settings = settingsRes.rows[0] || {};
 
-  const fullBalance = await getStudentFullBalance(null, tenantId, studentId);
-  const termRows = fullBalance?.termRows ?? [];
+  const termRows = await loadAllTermRowsFromLedger(tenantId, studentId, classId);
   const termSummary = buildTermSummaryRows(termRows);
   const termSummaryTotals = sumTermSummary(termSummary);
-  const arrearsHistory = buildArrearsHistory(termSummary);
+
+  const { ledgerTermId } = await resolveActiveLedgerTerm(query, tenantId);
+  const arrearsHistory = await buildArrearsHistoryFromLedger(tenantId, studentId, ledgerTermId);
+  const creditHistory = await buildCreditHistoryFromLedger(tenantId, studentId, ledgerTermId);
 
   const termIds = termRows.map((r) => r.termId);
   let feeStructureRows: Array<Record<string, unknown>> = [];
@@ -387,7 +594,7 @@ export async function buildStudentFinanceStatement(
   const adjustmentsTotal = roundMoney(adjustments.reduce((s, a) => s + a.amount, 0));
 
   const totalFeesBilled = termSummaryTotals.feeBilled;
-  const totalAmountPaid = paymentsTotal;
+  const totalAmountPaid = termSummaryTotals.amountPaid;
   const balanceDelta = roundMoney(totalFeesBilled - totalAmountPaid);
   let accountStatus: AccountSummary['accountStatus'] = 'CLEARED';
   let balanceKind: AccountSummary['balanceKind'] = 'NONE';
@@ -447,6 +654,7 @@ export async function buildStudentFinanceStatement(
     termSummary,
     termSummaryTotals,
     arrearsHistory,
+    creditHistory,
     payments,
     paymentsTotal,
     adjustments,

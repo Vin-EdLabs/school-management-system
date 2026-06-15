@@ -2,8 +2,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '../contexts/AuthContext';
 import { useSchool } from '../contexts/SchoolContext';
+import { useActiveTerm } from '../contexts/ActiveTermContext';
 import { useSocket } from '../contexts/SocketContext';
 import { apiService } from '../services/api';
+import { ACTIVE_TERM_EXEMPT_MODULES } from './common/ActiveTermRequiredShell';
+import { toast } from '@/hooks/use-toast';
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -76,6 +79,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
   academic: [
     ...(hasAccess('students') || hasAccess('students-view-only') ? [{ id: 'students', label: 'Students', icon: Users }] : []),
     ...(hasAccess('teachers') || hasAccess('teachers-view-only') ? [{ id: 'teachers', label: 'Teachers', icon: GraduationCap }] : []),
+    ...(hasAccess('teachers') || hasAccess('teachers-view-only') ? [{ id: 'other-staff', label: 'Other Staff', icon: UserCog }] : []),
     ...(hasAccess('classes') ? [{ id: 'classes', label: 'Classes', icon: BookOpen }] : []),
     ...(hasAccess('subjects') ? [{ id: 'subjects', label: 'Subjects', icon: BookOpen }] : []),
     ...(hasAccess('calendar') ? [{ id: 'calendar', label: 'Calendar', icon: Calendar }] : []),
@@ -140,7 +144,8 @@ const MenuSection: React.FC<{
   setActiveModule: (module: string) => void;
   itemCounts?: Record<string, number>;
   markCommsRead: (moduleId: string) => Promise<void>;
-}> = ({ items, label, activeModule, setActiveModule, itemCounts, markCommsRead }) => {
+  termNavigationBlocked: boolean;
+}> = ({ items, label, activeModule, setActiveModule, itemCounts, markCommsRead, termNavigationBlocked }) => {
   const { isMobile, setOpenMobile } = useSidebar();
 
   if (items.length === 0) return null;
@@ -159,6 +164,14 @@ const MenuSection: React.FC<{
                 <SidebarMenuButton
                   isActive={activeModule === item.id}
                   onClick={async () => {
+                    if (termNavigationBlocked && !ACTIVE_TERM_EXEMPT_MODULES.has(item.id)) {
+                      toast({
+                        title: 'Set your active term first',
+                        description:
+                          'Welcome! Please open Settings → Academic Terms and activate a term before using this feature.',
+                      });
+                      return;
+                    }
                     if (item.id !== 'parent-desk') {
                       await markCommsRead(item.id);
                     }
@@ -174,7 +187,7 @@ const MenuSection: React.FC<{
                   }}
                   tooltip={item.label}
                   className={cn(
-                    "relative rounded-xl mx-auto w-[calc(100%-12px)] h-10 text-emerald-50/72 transition-all duration-300 group-data-[collapsible=icon]:w-9 group-data-[collapsible=icon]:h-9 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:mx-0 dark:h-9 dark:text-sidebar-foreground/70",
+                    "readonly-allowed relative rounded-xl mx-auto w-[calc(100%-12px)] h-10 text-emerald-50/72 transition-all duration-300 group-data-[collapsible=icon]:w-9 group-data-[collapsible=icon]:h-9 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:mx-0 dark:h-9 dark:text-sidebar-foreground/70",
                     activeModule === item.id
                       ? "bg-gradient-to-r from-emerald-500 to-green-500 text-white shadow-lg shadow-emerald-400/25 ring-1 ring-white/15 before:absolute before:left-1 before:top-1/2 before:h-5 before:w-1 before:-translate-y-1/2 before:rounded-full before:bg-white/80 dark:bg-sidebar-primary dark:bg-none dark:text-sidebar-primary-foreground dark:shadow-sidebar-primary/20 dark:before:hidden"
                       : "hover:bg-white/10 hover:text-white dark:hover:bg-sidebar-accent dark:hover:text-sidebar-foreground"
@@ -213,6 +226,8 @@ const MenuSection: React.FC<{
 
 export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveModule }) => {
   const { logout, hasAccess, user } = useAuth();
+  const { hasActiveTerm, isLoading: activeTermLoading } = useActiveTerm();
+  const termNavigationBlocked = !activeTermLoading && !hasActiveTerm;
   const { school } = useSchool();
   const { isMobile, setOpenMobile } = useSidebar();
   const { socket } = useSocket();
@@ -309,11 +324,11 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
       </SidebarHeader>
 
       <SidebarContent className="flex-1 min-h-0 overflow-y-auto scrollbar-hide overscroll-contain px-1 py-3 gap-3 bg-transparent outline-none border-none">
-        <MenuSection items={menuItems.dashboard} label="Overview" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} />
-        <MenuSection items={menuItems.academic} label="Academic Central" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} />
-        <MenuSection items={menuItems.teaching} label="Teaching Room" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} />
-        <MenuSection items={menuItems.financial} label="Financial Ops" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} />
-        <MenuSection items={menuItems.records} label="Data Center" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} />
+        <MenuSection items={menuItems.dashboard} label="Overview" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} />
+        <MenuSection items={menuItems.academic} label="Academic Central" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} />
+        <MenuSection items={menuItems.teaching} label="Teaching Room" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} />
+        <MenuSection items={menuItems.financial} label="Financial Ops" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} />
+        <MenuSection items={menuItems.records} label="Data Center" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} />
         <MenuSection
           items={menuItems.announcements}
           label="Announcements & parent desk"
@@ -321,6 +336,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
           setActiveModule={setActiveModule}
           itemCounts={{ 'parent-desk': parentDeskUnread }}
           markCommsRead={markCommsRead}
+          termNavigationBlocked={termNavigationBlocked}
         />
         <SidebarSeparator className="bg-sidebar-border mx-4 my-2" />
         <MenuSection
@@ -330,9 +346,10 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
           setActiveModule={setActiveModule}
           itemCounts={{ 'support-chat': supportUnread }}
           markCommsRead={markCommsRead}
+          termNavigationBlocked={termNavigationBlocked}
         />
-        <MenuSection items={menuItems.configurations} label="Configurations" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} />
-        <MenuSection items={menuItems.system} label="System" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} />
+        <MenuSection items={menuItems.configurations} label="Configurations" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} />
+        <MenuSection items={menuItems.system} label="System" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} />
       </SidebarContent>
 
       <SidebarFooter className="border-t border-white/10 p-3 space-y-4 bg-black/10 dark:border-sidebar-border dark:bg-sidebar-accent/50">

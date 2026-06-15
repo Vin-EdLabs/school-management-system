@@ -22,7 +22,15 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { writeAuditLog } from '../services/auditService.js';
 import { getClientIp } from '../utils/clientIp.js';
+import {
+  formatMoneyGhs,
+  resolveActorFromRequest,
+  resolveStudentLabel,
+  withActor,
+} from '../utils/auditResolve.js';
 import { buildStudentFinanceStatement } from '../services/studentFinanceStatementService.js';
+import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
+import { requireCompleteFeeStructures } from '../middleware/requireCompleteFeeStructures.js';
 
 const router = express.Router();
 
@@ -38,6 +46,7 @@ const emitTenantDataChanged = (tenantId: number, entity: string, action: 'create
 router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
+attachWritableTermGuard(router, { skipActiveTermPaths: ['/switch-term'] });
 
 function getTenantId(req: AuthRequest): number {
   const id = req.user!.tenantId!;
@@ -178,7 +187,7 @@ router.post('/post-fees', async (req: AuthRequest, res: Response) => {
 });
 
 // POST /api/finance/payment
-router.post('/payment', async (req: AuthRequest, res: Response) => {
+router.post('/payment', requireCompleteFeeStructures, async (req: AuthRequest, res: Response) => {
   try {
     const schema = z.object({
       studentId: z.number().int(),
@@ -240,7 +249,8 @@ router.get('/terms', async (req: AuthRequest, res: Response) => {
     const tenantId = getTenantId(req);
     const { query } = await import('../db/connection.js');
     const result = await query(
-      `SELECT t.id, t.name, t.is_current, ay.id as academic_year_id, ay.name as academic_year_name
+      `SELECT t.id, t.name, t.is_current, t.status, t.closed_at,
+              ay.id as academic_year_id, ay.name as academic_year_name
        FROM terms t
        INNER JOIN academic_years ay ON ay.id = t.academic_year_id
        WHERE t.tenant_id = $1
@@ -277,6 +287,17 @@ router.post('/switch-term', async (req: AuthRequest, res: Response) => {
     const validatedBody = schema.parse(req.body);
     const tenantId = getTenantId(req);
     
+    if (validatedBody.currentTermId) {
+      const { isLedgerTermClosed } = await import('../services/termCloseService.js');
+      const closed = await isLedgerTermClosed(tenantId, validatedBody.currentTermId);
+      if (!closed) {
+        return res.status(400).json({
+          error:
+            'Close the current term before switching to a new one. Go to Settings → Academic Terms → Close Term.',
+        });
+      }
+    }
+
     // If no currentTermId, this is the first term ever - just post fees, no arrears to carry
     if (!validatedBody.currentTermId) {
       console.log(`[switch-term] First term detected (no currentTermId). Posting fees only for term ${validatedBody.newTermId}`);
@@ -712,6 +733,9 @@ router.post(
         periodLabel,
       });
 
+      const studentLabel = await resolveStudentLabel(tenantId, studentId);
+      const actor = await resolveActorFromRequest(req);
+
       await writeAuditLog({
         tenantId,
         userId: req.user!.id,
@@ -721,7 +745,10 @@ router.post(
         entityId: studentId,
         module: 'finance',
         status: 'success',
-        summary: `Manual balance override GH₵${currentBalance.toFixed(2)} → GH₵${targetBalance.toFixed(2)} (adj ${adjustmentAmount.toFixed(2)})`,
+        summary: withActor(
+          `Manual balance adjustment for ${studentLabel} — ${formatMoneyGhs(currentBalance)} → ${formatMoneyGhs(targetBalance)} (${reasonCategory})`,
+          actor
+        ),
         details: {
           ledgerEntryId: row.id,
           reasonCategory,
@@ -807,6 +834,9 @@ router.post(
         req.user!.id
       );
 
+      const studentLabel = await resolveStudentLabel(tenantId, studentId);
+      const actor = await resolveActorFromRequest(req);
+
       await writeAuditLog({
         tenantId,
         userId: req.user!.id,
@@ -816,7 +846,10 @@ router.post(
         entityId: studentId,
         module: 'finance',
         status: 'success',
-        summary: `Arrears write-off GHS ${parsed.data.amount.toFixed(2)} — ${parsed.data.reason}`,
+        summary: withActor(
+          `Arrears write-off of ${formatMoneyGhs(parsed.data.amount)} for ${studentLabel} — ${parsed.data.reason}`,
+          actor
+        ),
         details: {
           amount: parsed.data.amount,
           reason: parsed.data.reason,

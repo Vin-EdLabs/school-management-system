@@ -9,6 +9,7 @@ import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js'
 import { requireRole, requirePrimaryAdminOrSuperAdmin } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { resolveLedgerTermFromSettings, postFeesForNewTerm, postFeesForNewTermWithArrears } from '../services/ledgerFinanceService.js';
+import { isLedgerTermClosed } from '../services/termCloseService.js';
 import { getIO } from '../socket.js';
 import {
   sendPushToTenantParents,
@@ -18,6 +19,9 @@ import {
 } from '../services/webPushService.js';
 import { isFcmConfigured } from '../services/fcmService.js';
 import { notifySetupProgressChanged } from '../services/setupProgressService.js';
+import { writeAuditLog } from '../services/auditService.js';
+import { getClientIp } from '../utils/clientIp.js';
+import { resolveActorFromRequest, resolveUserDisplayName, withActor } from '../utils/auditResolve.js';
 
 const router = express.Router();
 
@@ -62,6 +66,8 @@ const upload = multer({
 router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
+
+// Settings is never term-locked — admins must always manage school identity and academic terms here.
 
 // Get school settings
 router.get('/', async (req: AuthRequest, res) => {
@@ -186,15 +192,27 @@ router.put('/', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, res) =
       return res.json(saved);
     }
     
-    // Log update
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type) VALUES ($1, $2, $3, $4)',
-      [tenantId, req.user!.id, 'UPDATE', 'SETTINGS']
-    );
-
     const saved = result.rows[0];
     const newYear = saved?.current_year ?? current_year;
     const newTerm = saved?.current_term ?? current_term;
+
+    const actor = await resolveActorFromRequest(req);
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'UPDATE',
+      entityType: 'SETTINGS',
+      module: 'settings',
+      summary: withActor(
+        `School settings updated${newTerm && newYear ? ` — active term set to ${newTerm} ${newYear}` : ''}`,
+        actor
+      ),
+      details: { current_term: newTerm, current_year: newYear },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
+
     const currentTermId = req.body.current_term_id ? parseInt(String(req.body.current_term_id), 10) : null;
     const newTermId = req.body.new_term_id ? parseInt(String(req.body.new_term_id), 10) : null;
 
@@ -280,11 +298,18 @@ router.post('/logo', requirePrimaryAdminOrSuperAdmin, upload.single('logo'), asy
       [base64Image, tenantId]
     );
     
-    // Log update
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type) VALUES ($1, $2, $3, $4)',
-      [tenantId, req.user!.id, 'UPDATE', 'SETTINGS']
-    );
+    const actor = await resolveActorFromRequest(req);
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'UPDATE',
+      entityType: 'SETTINGS',
+      module: 'settings',
+      summary: withActor('School logo updated', actor),
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
     emitTenantDataChanged(tenantId, 'settings', 'updated');
     res.json({ logoUrl: base64Image });
   } catch (error) {
@@ -358,11 +383,20 @@ router.post('/academic-terms', requirePrimaryAdminOrSuperAdmin, async (req: Auth
       throw new Error(`CRITICAL: Cannot create academic term without corresponding ledger term. ${err?.message || 'Unknown error'}`);
     }
     
-    // Log creation
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'CREATE', 'ACADEMIC_TERM', result.rows[0].id]
-    );
+    const actor = await resolveActorFromRequest(req);
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'CREATE',
+      entityType: 'ACADEMIC_TERM',
+      entityId: result.rows[0].id,
+      module: 'settings',
+      summary: withActor(`Academic term created — ${term_name} ${year}`, actor),
+      details: { term_name, year },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
     emitTenantDataChanged(tenantId, 'academic-term', 'created');
     notifySetupProgressChanged(tenantId);
     res.status(201).json(result.rows[0]);
@@ -393,6 +427,28 @@ router.put('/academic-terms/:id', requirePrimaryAdminOrSuperAdmin, async (req: A
     }
 
     if (is_active) {
+      const previousActive = await query(
+        `SELECT term_name, year FROM academic_terms
+         WHERE tenant_id = $1 AND is_active = true AND id != $2`,
+        [tenantId, id]
+      );
+      if (previousActive.rows.length > 0) {
+        const prev = previousActive.rows[0];
+        const year = String(prev.year || '').trim();
+        const termName = String(prev.term_name || '').trim();
+        const fullLabel = year && !termName.includes(year) ? `${termName} ${year}`.trim() : termName;
+        const resolved = await resolveLedgerTermFromSettings(tenantId, year, fullLabel);
+        if (resolved?.termId) {
+          const closed = await isLedgerTermClosed(tenantId, resolved.termId);
+          if (!closed) {
+            return res.status(400).json({
+              error:
+                'Close the current term before activating another. Go to Settings → Academic Terms → Close Term.',
+            });
+          }
+        }
+      }
+
       await query(
         'UPDATE academic_terms SET is_active = false WHERE tenant_id = $1 AND id != $2',
         [tenantId, id]
@@ -420,11 +476,24 @@ router.put('/academic-terms/:id', requirePrimaryAdminOrSuperAdmin, async (req: A
       return res.status(404).json({ error: 'Academic term not found' });
     }
     
-    // Log update
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'UPDATE', 'ACADEMIC_TERM', parseInt(id)]
-    );
+    const updatedTerm = result.rows[0];
+    const actor = await resolveActorFromRequest(req);
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'UPDATE',
+      entityType: 'ACADEMIC_TERM',
+      entityId: parseInt(id, 10),
+      module: 'settings',
+      summary: withActor(
+        `Academic term updated — ${updatedTerm.term_name} ${updatedTerm.year}`,
+        actor
+      ),
+      details: { term_name: updatedTerm.term_name, year: updatedTerm.year },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
     emitTenantDataChanged(tenantId, 'academic-term', 'updated');
     res.json(result.rows[0]);
   } catch (error) {
@@ -477,7 +546,7 @@ router.get('/users', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, r
         COALESCE(t.staff_id, s.staff_id) as staff_id
        FROM users u
        LEFT JOIN teachers t ON u.teacher_id::text = t.id::text AND t.tenant_id = u.tenant_id
-       LEFT JOIN payroll_other_staff s ON u.other_staff_id = s.id AND s.tenant_id = u.tenant_id
+       LEFT JOIN other_staff s ON u.other_staff_id = s.id AND s.tenant_id = u.tenant_id
        WHERE u.tenant_id = $1
        ORDER BY 
          CASE u.role WHEN 'super-admin' THEN 0 WHEN 'administrator' THEN 1 WHEN 'finance' THEN 2 WHEN 'teacher' THEN 3 WHEN 'staff' THEN 4 ELSE 5 END,
@@ -499,16 +568,16 @@ router.post('/users/:id/reset-password', requirePrimaryAdminOrSuperAdmin, async 
     const { newPassword } = req.body;
     
     // Get target user role to decide minLength
-    const userCheck = await query(
-      'SELECT id, role FROM users WHERE id = $1 AND tenant_id = $2',
+    const targetUser = await query(
+      'SELECT id, role, username, full_name FROM users WHERE id = $1 AND tenant_id = $2',
       [id, tenantId]
     );
     
-    if (userCheck.rows.length === 0) {
+    if (targetUser.rows.length === 0) {
       return res.status(404).json({ error: 'User teacher not found' });
     }
     
-    const targetRole = userCheck.rows[0].role;
+    const targetRole = targetUser.rows[0].role;
     const minLength = targetRole === 'teacher' || targetRole === 'staff' ? 5 : 6;
 
     if (!newPassword || newPassword.length < minLength) {
@@ -520,10 +589,23 @@ router.post('/users/:id/reset-password', requirePrimaryAdminOrSuperAdmin, async 
       'UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
       [hashed, id]
     );
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'RESET_PASSWORD', 'USER', parseInt(id)]
-    );
+    const targetLabel =
+      String(targetUser.rows[0].full_name || '').trim() ||
+      (await resolveUserDisplayName(parseInt(id, 10)));
+    const actor = await resolveActorFromRequest(req);
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'RESET_PASSWORD',
+      entityType: 'USER',
+      entityId: parseInt(id, 10),
+      module: 'settings',
+      summary: withActor(`Password reset for ${targetLabel}`, actor),
+      details: { username: targetUser.rows[0].username, fullName: targetLabel },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
     emitTenantDataChanged(tenantId, 'user', 'updated');
     res.json({ message: 'Password reset successfully' });
   } catch (error) {
@@ -559,10 +641,22 @@ router.post('/users', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, 
       [tenantId, username, String(fullName || '').trim() || null, email || null, hashedPassword, role, teacherId || null, req.body.otherStaffId || null]
     );
 
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'CREATE', 'USER', result.rows[0].id]
-    );
+    const created = result.rows[0];
+    const userLabel = String(created.full_name || created.username || username).trim();
+    const actor = await resolveActorFromRequest(req);
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'CREATE',
+      entityType: 'USER',
+      entityId: created.id,
+      module: 'settings',
+      summary: withActor(`User account created — ${userLabel} (${role})`, actor),
+      details: { username: created.username, fullName: userLabel, role },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
     emitTenantDataChanged(tenantId, 'user', 'created');
     res.status(201).json(result.rows[0]);
   } catch (error: any) {
@@ -636,10 +730,22 @@ router.patch('/users/:id', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequ
       values
     );
 
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id, details) VALUES ($1, $2, $3, $4, $5, $6)',
-      [tenantId, req.user!.id, 'UPDATE_USER', 'USER', parseInt(id), JSON.stringify({ role, isActive })]
-    ).catch(() => {});
+    const updated = result.rows[0];
+    const userLabel = String(updated.full_name || updated.username || '').trim();
+    const actor = await resolveActorFromRequest(req);
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'UPDATE_USER',
+      entityType: 'USER',
+      entityId: parseInt(id, 10),
+      module: 'settings',
+      summary: withActor(`User account updated — ${userLabel}`, actor),
+      details: { role: updated.role, isActive: updated.is_active, fullName: userLabel },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
     emitTenantDataChanged(tenantId, 'user', 'updated');
     res.json(result.rows[0]);
   } catch (error: any) {

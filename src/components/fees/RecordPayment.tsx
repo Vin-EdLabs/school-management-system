@@ -4,15 +4,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
 import { CreditCard, Search, Loader2 } from 'lucide-react';
 import ReceiptPrinter from '../common/ReceiptPrinter';
 import { parseReceiptSnapshot, resolveReceiptDisplayAmounts } from '../../utils/feeCalculations';
-import { useActiveTerm } from '../../contexts/ActiveTermContext';
-import { apiService } from '../../services/api';
+import { useTermReadOnly } from '../../contexts/TermStatusContext';
+import { useActiveTerm } from '../../hooks/useActiveTerm';
 import { useRecordPayment } from '../../hooks/useRecordPayment';
 import { shouldTrackStudentFees } from '../students/studentRegistryUtils';
 import { toast } from '@/hooks/use-toast';
@@ -23,9 +22,22 @@ import {
   type StudentBalance,
 } from '../../services/studentBalance';
 
-const RecordPayment = () => {
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+
+type RecordPaymentProps = {
+  paymentOpsDisabled?: boolean;
+  paymentDisabledReason?: string | null;
+  onBlockedSubmit?: () => void;
+};
+
+const RecordPayment: React.FC<RecordPaymentProps> = ({
+  paymentOpsDisabled = false,
+  paymentDisabledReason = null,
+  onBlockedSubmit,
+}) => {
   const { students, payments } = useData();
   const { currentTerm, currentYear } = useActiveTerm();
+  const { readOnly: termReadOnly } = useTermReadOnly();
   const recordPayment = useRecordPayment();
 
   const [formData, setFormData] = useState({
@@ -35,32 +47,12 @@ const RecordPayment = () => {
     paymentMethod: 'Cash',
     paymentAccountId: '',
     notes: '',
-    term: currentTerm || ''
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [showReceipt, setShowReceipt] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
   const [studentBalance, setStudentBalance] = useState<StudentBalance | null>(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
-
-  const [availableTerms, setAvailableTerms] = useState<any[]>([]);
-  React.useEffect(() => {
-    const fetchTerms = async () => {
-      try {
-        const terms = await apiService.get<any[]>('/finance/terms');
-        setAvailableTerms(terms || []);
-      } catch (err) {
-        console.error('Failed to fetch terms:', err);
-      }
-    };
-    fetchTerms();
-  }, []);
-
-  React.useEffect(() => {
-    if (currentTerm && !formData.term) {
-      setFormData(prev => ({ ...prev, term: currentTerm }));
-    }
-  }, [currentTerm]);
 
   useEffect(() => {
     if (!formData.studentId) {
@@ -101,6 +93,7 @@ const RecordPayment = () => {
     return {
       currentTermFee: studentBalance.currentTermFee,
       arrears: studentBalance.totalArrears,
+      creditBroughtForward: studentBalance.creditBroughtForward ?? 0,
       totalAmountDue: studentBalance.totalDue,
       totalPaid: studentBalance.totalPaid,
       creditBalance: studentBalance.credit,
@@ -119,7 +112,9 @@ const RecordPayment = () => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const isSubmitting = recordPayment.isPending;
+  const isSubmitting = recordPayment.isPending || termReadOnly;
+  const submitDisabled =
+    !formData.studentId || !formData.amount || isSubmitting || paymentOpsDisabled;
 
   const resetForm = () => {
     setFormData({
@@ -129,13 +124,16 @@ const RecordPayment = () => {
       paymentMethod: 'Cash',
       paymentAccountId: '',
       notes: '',
-      term: currentTerm || '',
     });
     setSearchTerm('');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (paymentOpsDisabled) {
+      onBlockedSubmit?.();
+      return;
+    }
     if (isSubmitting) return;
 
     if (!formData.studentId || !formData.amount) {
@@ -155,7 +153,7 @@ const RecordPayment = () => {
     const paymentAmount = parseFloat(formData.amount);
     const paymentDate = formData.date;
     const paymentMethod = formData.paymentMethod;
-    const paymentTerm = formData.term || currentTerm;
+    const paymentTerm = currentTerm;
     const paymentNotes = formData.notes;
 
     const feeDetails = selectedStudentFeeDetails ?? {
@@ -237,7 +235,7 @@ const RecordPayment = () => {
         </CardHeader>
         <CardContent className="p-6">
           <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="space-y-2">
+            <div className="readonly-view-allow space-y-2">
               <Label htmlFor="studentSearch" className="font-semibold text-slate-800 dark:text-foreground">Search Student</Label>
               <div className="relative">
                 <Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-400 dark:top-3 dark:text-muted-foreground" />
@@ -294,17 +292,24 @@ const RecordPayment = () => {
                         key={`${line.label}-${i}`}
                         className={`flex justify-between py-1 ${
                           line.kind === 'total' || line.kind === 'outstanding' ? 'border-t border-emerald-200 pt-2 mt-1 font-semibold dark:border-blue-200' : ''
-                        } ${line.kind === 'paid' ? 'text-emerald-700 dark:text-green-700' : line.kind === 'outstanding' ? 'text-red-700' : ''}`}
+                        } ${line.kind === 'paid' || line.kind === 'credit' ? 'text-emerald-700 dark:text-green-700' : line.kind === 'outstanding' ? 'text-red-700' : ''}`}
                       >
                         <span>{line.label}</span>
                         <span className="font-mono tabular-nums">
-                          {line.kind === 'paid' ? '− ' : ''}GHS {Math.abs(line.amount).toFixed(2)}
+                          {line.kind === 'paid' ? '− ' : line.kind === 'credit' ? '' : ''}GHS {Math.abs(line.amount).toFixed(2)}
                         </span>
                       </div>
                     ))}
-                    {studentBalance && studentBalance.credit > 0 ? (
-                      <div className="flex justify-between py-1 text-blue-700 border-t border-blue-200 mt-1">
+                    {studentBalance && (studentBalance.netBalance ?? 0) < -0.001 ? (
+                      <div className="flex justify-between py-1 text-green-700 border-t border-green-200 mt-1">
                         <span>Credit Balance</span>
+                        <span className="font-mono">
+                          GHS {(studentBalance.credit > 0 ? studentBalance.credit : Math.abs(studentBalance.netBalance ?? 0)).toFixed(2)}
+                        </span>
+                      </div>
+                    ) : studentBalance && studentBalance.credit > 0 ? (
+                      <div className="flex justify-between py-1 text-green-700 border-t border-green-200 mt-1">
+                        <span>Credit Available</span>
                         <span className="font-mono">GHS {studentBalance.credit.toFixed(2)}</span>
                       </div>
                     ) : null}
@@ -367,30 +372,6 @@ const RecordPayment = () => {
               </div>
             )}
 
-            <div className="space-y-2">
-                <Label htmlFor="term" className="font-semibold text-slate-800 dark:text-foreground">Academic Term</Label>
-              <Select
-                value={formData.term}
-                onValueChange={(value) => handleInputChange('term', value)}
-                disabled={isSubmitting}
-              >
-                <SelectTrigger id="term" disabled={isSubmitting}>
-                  <SelectValue placeholder="Select Term" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableTerms.length > 0 ? (
-                    availableTerms.map((t) => (
-                      <SelectItem key={t.id} value={`${t.name} ${t.academic_year_name}`}>
-                        {t.name} {t.academic_year_name}
-                      </SelectItem>
-                    ))
-                  ) : (
-                    <SelectItem value={currentTerm}>{currentTerm}</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="amount" className="font-semibold text-slate-800 dark:text-foreground">
@@ -452,21 +433,35 @@ const RecordPayment = () => {
             </div>
 
             <div className="flex justify-end border-t border-slate-100 pt-5 dark:border-border">
-              <Button
-                type="submit"
-                variant="primaryAction"
-                className="w-full rounded-xl px-6 font-bold shadow-lg md:w-auto dark:rounded-md"
-                disabled={!formData.studentId || !formData.amount || isSubmitting}
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Recording payment…
-                  </>
-                ) : (
-                  'Record Payment'
-                )}
-              </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex w-full md:w-auto">
+                      <Button
+                        type="submit"
+                        variant="primaryAction"
+                        className="w-full rounded-xl px-6 font-bold shadow-lg md:w-auto dark:rounded-md"
+                        disabled={submitDisabled}
+                      >
+                        {isSubmitting ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Recording payment…
+                          </>
+                        ) : (
+                          <>
+                            <CreditCard className="mr-2 h-4 w-4" />
+                            Record Payment
+                          </>
+                        )}
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {paymentOpsDisabled && paymentDisabledReason && (
+                    <TooltipContent>{paymentDisabledReason}</TooltipContent>
+                  )}
+                </Tooltip>
+              </TooltipProvider>
             </div>
           </form>
         </CardContent>

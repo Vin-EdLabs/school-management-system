@@ -4,13 +4,21 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { query, getClient } from '../db/connection.js';
-import { postStudentActivationTermFee } from '../services/ledgerPaymentService.js';
+import { postStudentActivationTermFee, tryPostStudentActivationTermFee } from '../services/ledgerPaymentService.js';
+import { getStudentLedgerStatement } from '../services/studentLedgerStatementService.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { getIO } from '../socket.js';
 import { writeAuditLog } from '../services/auditService.js';
 import { getClientIp } from '../utils/clientIp.js';
+import {
+  resolveActorFromRequest,
+  resolveClassName,
+  resolveStudentLabel,
+  withActor,
+} from '../utils/auditResolve.js';
+import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -34,6 +42,7 @@ const emitTenantDataChanged = (tenantId: number, entity: string, action: 'create
 router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
+attachWritableTermGuard(router);
 
 function resolveTenantId(req: AuthRequest): number {
   const fromUser = req.user?.tenantId;
@@ -222,6 +231,77 @@ router.get('/:id/photo', async (req: AuthRequest, res) => {
   }
 });
 
+// Student ledger statement — sole financial source for records page
+router.get('/:id/ledger-statement', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const studentId = parseInt(req.params.id, 10);
+    if (Number.isNaN(studentId)) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+
+    const rawTermId = req.query.term_id;
+    const rawYearId = req.query.academic_year_id;
+    const allTerms = String(req.query.all_terms || '').toLowerCase() === 'true';
+    const currentTermOnly = String(req.query.current_term || '').toLowerCase() === 'true';
+    const termId =
+      rawTermId != null && String(rawTermId).trim() !== ''
+        ? parseInt(String(rawTermId), 10)
+        : null;
+    const academicYearId =
+      rawYearId != null && String(rawYearId).trim() !== ''
+        ? parseInt(String(rawYearId), 10)
+        : null;
+
+    const statement = await getStudentLedgerStatement(null, tenantId, studentId, {
+      allTerms,
+      currentTermOnly,
+      termId: termId != null && !Number.isNaN(termId) ? termId : null,
+      academicYearId:
+        academicYearId != null && !Number.isNaN(academicYearId) ? academicYearId : null,
+    });
+
+    if (!statement) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+
+    return res.json(statement);
+  } catch (error) {
+    console.error('Student ledger statement error:', error);
+    res.status(500).json({ error: 'Failed to load ledger statement' });
+  }
+});
+
+// Get student ledger statement with running balance per entry (legacy alias)
+router.get('/:id/statement', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const studentId = parseInt(req.params.id, 10);
+    if (Number.isNaN(studentId)) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+
+    const termId = req.query.term_id != null ? parseInt(String(req.query.term_id), 10) : null;
+    const academicYearId =
+      req.query.academic_year_id != null ? parseInt(String(req.query.academic_year_id), 10) : null;
+
+    const statement = await getStudentLedgerStatement(null, tenantId, studentId, {
+      termId: termId != null && !Number.isNaN(termId) ? termId : null,
+      academicYearId:
+        academicYearId != null && !Number.isNaN(academicYearId) ? academicYearId : null,
+    });
+
+    if (!statement) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+
+    return res.json({ statement });
+  } catch (error) {
+    console.error('Student ledger statement error:', error);
+    res.status(500).json({ error: 'Failed to load student statement' });
+  }
+});
+
 // Get single student
 router.get('/:id', async (req: AuthRequest, res) => {
   try {
@@ -356,7 +436,34 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
         });
         emitTenantDataChanged(tenantId, 'student', 'created');
 
-        return res.status(201).json(result.rows[0]);
+        let billing: Awaited<ReturnType<typeof tryPostStudentActivationTermFee>> | null = null;
+        if (enrollmentStatus === 'active' && result.rows[0].class_assigned_id) {
+          try {
+            billing = await tryPostStudentActivationTermFee(
+              tenantId,
+              result.rows[0].id,
+              req.user!.id,
+              'enrollment'
+            );
+            if (billing.posted) {
+              emitTenantDataChanged(tenantId, 'finance', 'updated');
+            }
+          } catch (feeErr) {
+            console.error('[create-student] Term fee posting failed:', feeErr);
+          }
+        }
+
+        return res.status(201).json({
+          ...result.rows[0],
+          billing: billing
+            ? {
+                posted: billing.posted,
+                amount: billing.amount,
+                warning: billing.message,
+                skippedReason: billing.skippedReason,
+              }
+            : null,
+        });
       } catch (insertErr: any) {
         lastError = insertErr;
         if (insertErr.code === '23505' && attempt < 2) continue;
@@ -409,6 +516,11 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
     const tenantId = req.user!.tenantId!;
     const { id } = req.params;
     const updates = req.body;
+
+    const existing = await queryStudentById(tenantId, id);
+    if (!existing) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
 
     const updateFields: string[] = [];
     const values: any[] = [];
@@ -478,7 +590,40 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
     });
     emitTenantDataChanged(tenantId, 'student', 'updated');
 
-    res.json(result.rows[0]);
+    let billing: Awaited<ReturnType<typeof tryPostStudentActivationTermFee>> | null = null;
+    const priorClassId = existing.class_assigned_id != null ? Number(existing.class_assigned_id) : null;
+    const newClassId =
+      updated.class_assigned_id != null ? Number(updated.class_assigned_id) : null;
+    const isActive = String(updated.enrollment_status || existing.enrollment_status || 'active').toLowerCase() === 'active';
+    const classChanged = updates.class_assigned_id !== undefined && newClassId !== priorClassId;
+
+    if (isActive && classChanged && newClassId) {
+      try {
+        billing = await tryPostStudentActivationTermFee(
+          tenantId,
+          parseInt(id, 10),
+          req.user!.id,
+          'enrollment'
+        );
+        if (billing.posted) {
+          emitTenantDataChanged(tenantId, 'finance', 'updated');
+        }
+      } catch (feeErr) {
+        console.error('[update-student] Term fee posting failed:', feeErr);
+      }
+    }
+
+    res.json({
+      ...updated,
+      billing: billing
+        ? {
+            posted: billing.posted,
+            amount: billing.amount,
+            warning: billing.message,
+            skippedReason: billing.skippedReason,
+          }
+        : null,
+    });
   } catch (error) {
     console.error('Update student error:', error);
     res.status(500).json({ error: 'Failed to update student' });
@@ -582,10 +727,26 @@ router.patch('/:id/status', requireRole('super-admin', 'administrator'), async (
       }
     } else {
       const auditAction = status === 'inactive' ? 'DEACTIVATE' : 'REACTIVATE';
-      await query(
-        'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id, details) VALUES ($1, $2, $3, $4, $5, $6)',
-        [tenantId, req.user!.id, auditAction, 'STUDENT', parseInt(id), JSON.stringify({ enrollment_status: status })]
-      );
+      const studentLabel = await resolveStudentLabel(tenantId, parseInt(id, 10));
+      const actor = await resolveActorFromRequest(req);
+      await writeAuditLog({
+        tenantId,
+        userId: req.user!.id,
+        userRole: req.user!.role,
+        action: auditAction,
+        entityType: 'STUDENT',
+        entityId: parseInt(id, 10),
+        module: 'academics',
+        summary: withActor(
+          status === 'inactive'
+            ? `Student deactivated — ${studentLabel}`
+            : `Student reactivated — ${studentLabel}`,
+          actor
+        ),
+        details: { enrollment_status: status, studentName: studentLabel },
+        ipAddress: getClientIp(req),
+        userAgent: req.get('user-agent') ?? null,
+      });
     }
 
     emitTenantDataChanged(tenantId, 'student', 'updated');
@@ -646,11 +807,34 @@ router.post('/:id/promote', requireRole('super-admin', 'administrator'), async (
 
       await client.query('COMMIT');
 
-      // Log promotion
-      await query(
-        'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id, details) VALUES ($1, $2, $3, $4, $5, $6)',
-        [tenantId, req.user!.id, 'PROMOTE', 'STUDENT', parseInt(id), JSON.stringify({ new_class_id, old_class_id: oldClassId })]
-      );
+      const studentLabel = await resolveStudentLabel(tenantId, parseInt(id, 10));
+      const oldClassName = oldClassId
+        ? await resolveClassName(tenantId, Number(oldClassId))
+        : 'Unassigned';
+      const newClassName = await resolveClassName(tenantId, Number(new_class_id));
+      const actor = await resolveActorFromRequest(req);
+      await writeAuditLog({
+        tenantId,
+        userId: req.user!.id,
+        userRole: req.user!.role,
+        action: 'PROMOTE',
+        entityType: 'STUDENT',
+        entityId: parseInt(id, 10),
+        module: 'academics',
+        summary: withActor(
+          `Student promoted — ${studentLabel}: ${oldClassName} → ${newClassName}`,
+          actor
+        ),
+        details: {
+          studentName: studentLabel,
+          oldClassName,
+          newClassName,
+          new_class_id,
+          old_class_id: oldClassId,
+        },
+        ipAddress: getClientIp(req),
+        userAgent: req.get('user-agent') ?? null,
+      });
 
       res.json(result.rows[0]);
     } catch (error) {

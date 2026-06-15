@@ -24,7 +24,7 @@ router.get('/public-stats', async (_req, res) => {
       query(`SELECT COUNT(*)::int AS count FROM tenants WHERE is_active = true`).catch(() => ({ rows: [{ count: 0 }] })),
       query(`SELECT COUNT(*)::int AS count FROM students`).catch(() => ({ rows: [{ count: 0 }] })),
       query(`SELECT COUNT(*)::int AS count FROM teachers`).catch(() => ({ rows: [{ count: 0 }] })),
-      query(`SELECT COUNT(*)::int AS count FROM payroll_other_staff`).catch(() => ({ rows: [{ count: 0 }] })),
+      query(`SELECT COUNT(*)::int AS count FROM other_staff`).catch(() => ({ rows: [{ count: 0 }] })),
       query(`SELECT COALESCE(SUM(COALESCE(amount_paid, amount, 0)), 0)::numeric AS total FROM payments WHERE COALESCE(is_voided, false) = false`).catch(() => ({ rows: [{ total: 0 }] })),
     ]);
 

@@ -3,9 +3,14 @@ import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
+import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
+import { tryPostStudentActivationTermFee } from '../services/ledgerPaymentService.js';
 import { getIO } from '../socket.js';
 import { levelOrderFromName, isJhs3Class, graduateClassToAlumni } from '../services/academicYearEndService.js';
 import { notifySetupProgressChanged } from '../services/setupProgressService.js';
+import { writeAuditLog } from '../services/auditService.js';
+import { getClientIp } from '../utils/clientIp.js';
+import { resolveActorFromRequest, resolveClassName, withActor } from '../utils/auditResolve.js';
 
 const router = express.Router();
 
@@ -21,6 +26,7 @@ const emitTenantDataChanged = (tenantId: number, entity: string, action: 'create
 router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
+attachWritableTermGuard(router);
 
 async function listClasses(tenantId: number, academicYearId: number | null) {
   const orderBy =
@@ -204,10 +210,20 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
     }
     
     // Log creation
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'CREATE', 'CLASS', result.rows[0].id]
-    );
+    const actor = await resolveActorFromRequest(req);
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'CREATE',
+      entityType: 'CLASS',
+      entityId: result.rows[0].id,
+      module: 'academics',
+      summary: withActor(`Class created — ${class_name}`, actor),
+      details: { className: class_name, level: level || null, stream: stream || null },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
     emitTenantDataChanged(tenantId, 'class', 'created');
     notifySetupProgressChanged(tenantId);
     
@@ -353,10 +369,24 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
     }
     
     // Log update
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'UPDATE', 'CLASS', parseInt(id)]
-    );
+    const actor = await resolveActorFromRequest(req);
+    const displayName = newName || previousName || (await resolveClassName(tenantId, parseInt(id, 10)));
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'UPDATE',
+      entityType: 'CLASS',
+      entityId: parseInt(id, 10),
+      module: 'academics',
+      summary: withActor(
+        nameChanged ? `Class renamed — ${previousName} → ${displayName}` : `Class updated — ${displayName}`,
+        actor
+      ),
+      details: { className: displayName, previousName, nameChanged },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
     emitTenantDataChanged(tenantId, 'class', 'updated');
     if (nameChanged) {
       emitTenantDataChanged(tenantId, 'fee', 'updated');
@@ -390,6 +420,14 @@ router.delete('/:id', requireRole('super-admin', 'administrator'), async (req: A
       return res.status(400).json({ error: 'Cannot delete class with assigned students' });
     }
     
+    const deletedClass = await query(
+      'SELECT class_name FROM classes WHERE id = $1 AND tenant_id = $2',
+      [id, tenantId]
+    );
+    const className =
+      String(deletedClass.rows[0]?.class_name || '').trim() ||
+      (await resolveClassName(tenantId, parseInt(id, 10)));
+
     const result = await query(
       'DELETE FROM classes WHERE id = $1 AND tenant_id = $2 RETURNING id',
       [id, tenantId]
@@ -399,11 +437,20 @@ router.delete('/:id', requireRole('super-admin', 'administrator'), async (req: A
       return res.status(404).json({ error: 'Class not found' });
     }
     
-    // Log deletion
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'DELETE', 'CLASS', parseInt(id)]
-    );
+    const actor = await resolveActorFromRequest(req);
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'DELETE',
+      entityType: 'CLASS',
+      entityId: parseInt(id, 10),
+      module: 'academics',
+      summary: withActor(`Class deleted — ${className}`, actor),
+      details: { className },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
     emitTenantDataChanged(tenantId, 'class', 'deleted');
     
     res.json({ message: 'Class deleted successfully' });
@@ -532,14 +579,51 @@ router.post('/:id/assign-students', requireRole('super-admin', 'administrator'),
        WHERE id = ANY($2::int[]) AND tenant_id = $3`,
       [id, student_ids, tenantId]
     );
+
+    const billingResults: Array<{ studentId: number; posted: boolean; amount: number }> = [];
+    for (const studentId of student_ids) {
+      try {
+        const billing = await tryPostStudentActivationTermFee(
+          tenantId,
+          Number(studentId),
+          req.user!.id,
+          'enrollment'
+        );
+        if (billing.posted) {
+          billingResults.push({ studentId: Number(studentId), posted: true, amount: billing.amount });
+        }
+      } catch (feeErr) {
+        console.error(`[assign-students] Term fee posting failed for student ${studentId}:`, feeErr);
+      }
+    }
+    if (billingResults.length > 0) {
+      emitTenantDataChanged(tenantId, 'finance', 'updated');
+    }
     
-    // Log assignment
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id, details) VALUES ($1, $2, $3, $4, $5, $6)',
-      [tenantId, req.user!.id, 'ASSIGN_STUDENTS', 'CLASS', parseInt(id), JSON.stringify({ student_ids })]
-    );
+    const className = await resolveClassName(tenantId, parseInt(id, 10));
+    const actor = await resolveActorFromRequest(req);
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'ASSIGN_STUDENTS',
+      entityType: 'CLASS',
+      entityId: parseInt(id, 10),
+      module: 'academics',
+      summary: withActor(
+        `${student_ids.length} student(s) assigned to ${className}`,
+        actor
+      ),
+      details: { className, studentCount: student_ids.length, student_ids },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
     
-    res.json({ message: 'Students assigned successfully' });
+    res.json({
+      message: 'Students assigned successfully',
+      billed: billingResults.length,
+      billing: billingResults,
+    });
   } catch (error) {
     console.error('Assign students error:', error);
     res.status(500).json({ error: 'Failed to assign students' });
@@ -567,6 +651,7 @@ router.post('/:id/promote', requireRole('super-admin', 'administrator'), async (
     }
 
     const sourceClass = classesCheck.rows.find((r) => String(r.id) === String(id));
+    const targetClass = classesCheck.rows.find((r) => String(r.id) === String(new_class_id));
     if (sourceClass && isJhs3Class(sourceClass)) {
       return res.status(400).json({
         error: 'JHS 3 cannot be promoted to another class. Use Move to Alumni instead.',
@@ -578,10 +663,27 @@ router.post('/:id/promote', requireRole('super-admin', 'administrator'), async (
       [new_class_id, id, tenantId]
     );
 
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id, details) VALUES ($1, $2, $3, $4, $5, $6)',
-      [tenantId, req.user!.id, 'PROMOTE_CLASS', 'CLASS', parseInt(id), JSON.stringify({ new_class_id })]
-    );
+    const actor = await resolveActorFromRequest(req);
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'PROMOTE_CLASS',
+      entityType: 'CLASS',
+      entityId: parseInt(id, 10),
+      module: 'academics',
+      summary: withActor(
+        `Class promoted — ${sourceClass?.class_name || 'Class'} → ${targetClass?.class_name || 'next class'}`,
+        actor
+      ),
+      details: {
+        fromClass: sourceClass?.class_name,
+        toClass: targetClass?.class_name,
+        new_class_id,
+      },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
 
     emitTenantDataChanged(tenantId, 'class', 'updated');
     res.json({ message: 'Class promoted successfully' });
@@ -602,17 +704,23 @@ router.post('/:id/graduate-to-alumni', requireRole('super-admin', 'administrator
 
     const result = await graduateClassToAlumni(tenantId, classId);
 
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id, details) VALUES ($1, $2, $3, $4, $5, $6)',
-      [
-        tenantId,
-        req.user!.id,
-        'GRADUATE_CLASS',
-        'CLASS',
-        classId,
-        JSON.stringify({ graduated: result.graduated, className: result.className }),
-      ]
-    );
+    const actor = await resolveActorFromRequest(req);
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'GRADUATE_CLASS',
+      entityType: 'CLASS',
+      entityId: classId,
+      module: 'academics',
+      summary: withActor(
+        `${result.graduated} student(s) graduated from ${result.className} to Alumni`,
+        actor
+      ),
+      details: { graduated: result.graduated, className: result.className },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
 
     emitTenantDataChanged(tenantId, 'student', 'updated');
     res.json({

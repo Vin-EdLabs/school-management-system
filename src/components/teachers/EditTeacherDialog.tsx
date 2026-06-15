@@ -13,6 +13,7 @@ import { X, Camera } from 'lucide-react';
 import { apiService } from '@/services/api';
 import LazyTeacherAvatar from './LazyTeacherAvatar';
 import { teacherStatusBadge } from './TeacherStatusModals';
+import StaffOptionalSections from '../staff/StaffOptionalSections';
 
 interface EditTeacherDialogProps {
   teacher: Teacher | null;
@@ -45,8 +46,17 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
     subjectsTaught: [] as string[],
     employmentDate: '',
     monthlySalary: '',
-    notes: ''
+    notes: '',
+    emergencyContactName: '',
+    emergencyContactPhone: '',
+    emergencyContactRelationship: '',
+    bankName: '',
+    bankAccountName: '',
+    bankAccountNumber: '',
+    bankBranch: '',
   });
+  const [showEmergency, setShowEmergency] = useState(false);
+  const [showBank, setShowBank] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -70,8 +80,17 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
         subjectsTaught: teacher.subjectsTaught,
         employmentDate: teacher.employmentDate,
         monthlySalary: teacher.monthlySalary.toString(),
-        notes: teacher.notes
+        notes: teacher.notes,
+        emergencyContactName: teacher.emergencyContactName || '',
+        emergencyContactPhone: teacher.emergencyContactPhone || '',
+        emergencyContactRelationship: teacher.emergencyContactRelationship || '',
+        bankName: teacher.bankName || '',
+        bankAccountName: teacher.bankAccountName || '',
+        bankAccountNumber: teacher.bankAccountNumber || '',
+        bankBranch: teacher.bankBranch || '',
       });
+      setShowEmergency(!!(teacher.emergencyContactName || teacher.emergencyContactPhone));
+      setShowBank(!!(teacher.bankName || teacher.bankAccountNumber));
       setPhotoFile(null);
       setPhotoPreview(null);
     }
@@ -114,7 +133,14 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
         subjectsTaught: formData.subjectsTaught,
         employmentDate: formData.employmentDate || undefined,
         monthlySalary: salaryValue,
-        notes: formData.notes
+        notes: formData.notes,
+        emergencyContactName: showEmergency ? formData.emergencyContactName : '',
+        emergencyContactPhone: showEmergency ? formData.emergencyContactPhone : '',
+        emergencyContactRelationship: showEmergency ? formData.emergencyContactRelationship : '',
+        bankName: showBank ? formData.bankName : '',
+        bankAccountName: showBank ? formData.bankAccountName : '',
+        bankAccountNumber: showBank ? formData.bankAccountNumber : '',
+        bankBranch: showBank ? formData.bankBranch : '',
       });
 
       if (photoFile) {
@@ -354,6 +380,44 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
               rows={3}
             />
           </div>
+
+          <StaffOptionalSections
+            showEmergency={showEmergency}
+            showBank={showBank}
+            onToggleEmergency={() => setShowEmergency((v) => !v)}
+            onToggleBank={() => setShowBank((v) => !v)}
+            emergency={{
+              name: formData.emergencyContactName,
+              phone: formData.emergencyContactPhone,
+              relationship: formData.emergencyContactRelationship,
+            }}
+            bank={{
+              bankName: formData.bankName,
+              accountName: formData.bankAccountName,
+              accountNumber: formData.bankAccountNumber,
+              branch: formData.bankBranch,
+            }}
+            onEmergencyChange={(field, value) => {
+              const key =
+                field === 'name'
+                  ? 'emergencyContactName'
+                  : field === 'phone'
+                    ? 'emergencyContactPhone'
+                    : 'emergencyContactRelationship';
+              setFormData((prev) => ({ ...prev, [key]: value }));
+            }}
+            onBankChange={(field, value) => {
+              const key =
+                field === 'bankName'
+                  ? 'bankName'
+                  : field === 'accountName'
+                    ? 'bankAccountName'
+                    : field === 'accountNumber'
+                      ? 'bankAccountNumber'
+                      : 'bankBranch';
+              setFormData((prev) => ({ ...prev, [key]: value }));
+            }}
+          />
 
           {showPassword && (
             <div className="border-t pt-4 space-y-4">

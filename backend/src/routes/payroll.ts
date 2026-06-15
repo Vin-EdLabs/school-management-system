@@ -4,9 +4,11 @@ import { query, getClient } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
+import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 import { getIO } from '../socket.js';
 import { sendPushToStaffUser } from '../services/webPushService.js';
 import { writeAuditLog } from '../services/auditService.js';
+import { formatMoneyGhs, resolveActorFromRequest, resolveTeacherLabel, withActor } from '../utils/auditResolve.js';
 import { getClientIp } from '../utils/clientIp.js';
 import { resolvePaymentAccountForTransaction } from '../services/paymentAccountService.js';
 
@@ -104,6 +106,7 @@ async function refreshOpenPayrollRowsForSsnitFlag(
 router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
+attachWritableTermGuard(router);
 
 router.get('/settings', requireRole('super-admin', 'administrator', 'finance'), async (req: AuthRequest, res) => {
   try {
@@ -346,7 +349,7 @@ router.get('/history', requireRole('super-admin', 'administrator', 'finance'), a
       FROM salary_payments sp
       LEFT JOIN teachers t ON sp.payee_type = 'teacher' AND sp.payee_id = t.id AND t.tenant_id = sp.tenant_id
       LEFT JOIN classes c ON t.class_assigned_id = c.id
-      LEFT JOIN payroll_other_staff s ON sp.payee_type = 'staff' AND sp.payee_id = s.id AND s.tenant_id = sp.tenant_id
+      LEFT JOIN other_staff s ON sp.payee_type = 'staff' AND sp.payee_id = s.id AND s.tenant_id = sp.tenant_id
       WHERE sp.tenant_id = $1
     `;
     const params: unknown[] = [tenantId];
@@ -442,7 +445,7 @@ router.get('/detail', requireRole('super-admin', 'administrator', 'finance'), as
       };
     } else {
       const sr = await query(
-        'SELECT * FROM payroll_other_staff WHERE tenant_id = $1 AND id = $2',
+        'SELECT * FROM other_staff WHERE tenant_id = $1 AND id = $2',
         [tenantId, payeeId]
       );
       if (sr.rows.length === 0) return res.status(404).json({ error: 'Staff not found' });
@@ -529,7 +532,8 @@ router.get('/', async (req: AuthRequest, res) => {
     const currency = String(settings.currency || 'GHS');
 
     const teachersRes = await query(
-      `SELECT t.id, t.full_name, t.staff_id, t.monthly_salary, t.employment_status, t.ssnit_enabled, c.class_name
+      `SELECT t.id, t.full_name, t.staff_id, t.monthly_salary, t.employment_status, t.ssnit_enabled, c.class_name,
+              t.bank_name, t.bank_account_number, t.bank_account_name, t.bank_branch
        FROM teachers t
        LEFT JOIN classes c ON t.class_assigned_id = c.id
        WHERE t.tenant_id = $1 AND COALESCE(t.status, 'active') = 'active'`,
@@ -537,8 +541,9 @@ router.get('/', async (req: AuthRequest, res) => {
     );
 
     const otherStaffRes = await query(
-      `SELECT id, full_name, role, monthly_salary, employment_status, staff_id, ssnit_enabled
-       FROM payroll_other_staff
+      `SELECT id, full_name, position, monthly_salary, employment_status, staff_id, ssnit_enabled,
+              bank_name, bank_account_number, bank_account_name, bank_branch
+       FROM other_staff
        WHERE tenant_id = $1 AND (employment_status = 'active' OR employment_status IS NULL)`,
       [tenantId]
     );
@@ -564,6 +569,10 @@ router.get('/', async (req: AuthRequest, res) => {
       role: string;
       monthlySalary: number;
       ssnitEnabled: boolean;
+      bankName?: string | null;
+      bankAccountNumber?: string | null;
+      bankAccountName?: string | null;
+      bankBranch?: string | null;
     }) => {
       const key = `${base.payeeType}-${base.id}`;
       const paidRow = paymentMap[key];
@@ -599,6 +608,10 @@ router.get('/', async (req: AuthRequest, res) => {
         paymentNotes: paidRow?.notes || '',
         expenseId: paidRow?.expense_id || null,
         status,
+        bankName: base.bankName || null,
+        bankAccountNumber: base.bankAccountNumber || null,
+        bankAccountName: base.bankAccountName || null,
+        bankBranch: base.bankBranch || null,
       };
     };
 
@@ -612,6 +625,10 @@ router.get('/', async (req: AuthRequest, res) => {
           role: t.class_name || 'Teacher',
           monthlySalary: parseFloat(t.monthly_salary || 0),
           ssnitEnabled: t.ssnit_enabled !== false,
+          bankName: t.bank_name,
+          bankAccountNumber: t.bank_account_number,
+          bankAccountName: t.bank_account_name,
+          bankBranch: t.bank_branch,
         })
       ),
       ...otherStaffRes.rows.map((s: any) =>
@@ -620,9 +637,13 @@ router.get('/', async (req: AuthRequest, res) => {
           payeeType: 'staff',
           name: s.full_name,
           staffId: s.staff_id || null,
-          role: s.role || 'Staff',
+          role: s.position || 'Staff',
           monthlySalary: parseFloat(s.monthly_salary || 0),
           ssnitEnabled: s.ssnit_enabled !== false,
+          bankName: s.bank_name,
+          bankAccountNumber: s.bank_account_number,
+          bankAccountName: s.bank_account_name,
+          bankBranch: s.bank_branch,
         })
       ),
     ];
@@ -696,7 +717,7 @@ router.patch('/staff/:payeeType/:id', requireRole('super-admin', 'administrator'
         entityId: pid,
         module: 'finance',
         status: 'success',
-        summary: `SSNIT flag updated for teacher ${result.rows[0].full_name}`,
+        summary: `SSNIT contribution setting updated for ${result.rows[0].full_name}`,
         details: { payeeType: 'teacher', payee_id: pid, ssnit_enabled: Boolean(ssnit_enabled) },
         ipAddress: getClientIp(req),
         userAgent: req.get('user-agent') ?? null,
@@ -707,7 +728,7 @@ router.patch('/staff/:payeeType/:id', requireRole('super-admin', 'administrator'
     if (payeeType === 'staff') {
       if (ssnit_enabled === undefined) return res.status(400).json({ error: 'ssnit_enabled required' });
       const result = await query(
-        `UPDATE payroll_other_staff SET ssnit_enabled = $1, updated_at = CURRENT_TIMESTAMP
+        `UPDATE other_staff SET ssnit_enabled = $1, updated_at = CURRENT_TIMESTAMP
          WHERE tenant_id = $2 AND id = $3 RETURNING *`,
         [Boolean(ssnit_enabled), tenantId, pid]
       );
@@ -729,7 +750,7 @@ router.patch('/staff/:payeeType/:id', requireRole('super-admin', 'administrator'
         entityId: pid,
         module: 'finance',
         status: 'success',
-        summary: `SSNIT flag updated for staff ${String(st.full_name ?? pid)}`,
+        summary: `SSNIT contribution setting updated for ${String(st.full_name || 'staff member')}`,
         details: { payeeType: 'staff', payee_id: pid, ssnit_enabled: Boolean(ssnit_enabled) },
         ipAddress: getClientIp(req),
         userAgent: req.get('user-agent') ?? null,
@@ -777,7 +798,7 @@ router.patch('/line', requireRole('super-admin', 'administrator', 'finance'), as
       grossBase = parseFloat(tr.rows[0].monthly_salary || 0);
       ssnitEnabled = tr.rows[0].ssnit_enabled !== false;
     } else {
-      const sr = await query('SELECT monthly_salary, ssnit_enabled FROM payroll_other_staff WHERE tenant_id = $1 AND id = $2', [tenantId, pid]);
+      const sr = await query('SELECT monthly_salary, ssnit_enabled FROM other_staff WHERE tenant_id = $1 AND id = $2', [tenantId, pid]);
       if (sr.rows.length === 0) return res.status(404).json({ error: 'Staff not found' });
       grossBase = parseFloat(sr.rows[0].monthly_salary || 0);
       ssnitEnabled = sr.rows[0].ssnit_enabled !== false;
@@ -843,6 +864,20 @@ router.patch('/line', requireRole('super-admin', 'administrator', 'finance'), as
 
     const prevLine = existing.rows[0] ? (existing.rows[0] as Record<string, unknown>) : null;
     const newLine = result.rows[0] as Record<string, unknown>;
+    const monthNames = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    let payeeLabel = 'Staff member';
+    if (pt === 'teacher') {
+      payeeLabel = await resolveTeacherLabel(tenantId, pid);
+    } else {
+      const staffRes = await query(
+        `SELECT full_name FROM other_staff WHERE id = $1 AND tenant_id = $2`,
+        [pid, tenantId]
+      );
+      payeeLabel = staffRes.rows[0]?.full_name
+        ? String(staffRes.rows[0].full_name)
+        : 'Staff member';
+    }
+    const actor = await resolveActorFromRequest(req);
     await writeAuditLog({
       tenantId,
       userId: req.user!.id,
@@ -852,7 +887,10 @@ router.patch('/line', requireRole('super-admin', 'administrator', 'finance'), as
       entityId: Number(newLine.id),
       module: 'finance',
       status: 'success',
-      summary: `Payroll line ${prevLine ? 'updated' : 'created'} — ${pt} #${pid} (${m}/${y})`,
+      summary: withActor(
+        `Payroll ${prevLine ? 'updated' : 'prepared'} for ${payeeLabel} — ${monthNames[m] || m} ${y}`,
+        actor
+      ),
       details: {
         salary_payment_id: newLine.id,
         payee_type: pt,
@@ -889,7 +927,7 @@ router.post('/prepare-month', requireRole('super-admin', 'administrator', 'finan
       [tenantId]
     );
     const staffRes = await query(
-      `SELECT id, monthly_salary, ssnit_enabled FROM payroll_other_staff
+      `SELECT id, monthly_salary, ssnit_enabled FROM other_staff
        WHERE tenant_id = $1 AND (employment_status = 'active' OR employment_status IS NULL)`,
       [tenantId]
     );
@@ -981,7 +1019,7 @@ router.get('/other-staff', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const result = await query(
-      'SELECT * FROM payroll_other_staff WHERE tenant_id = $1 ORDER BY full_name',
+      'SELECT * FROM other_staff WHERE tenant_id = $1 ORDER BY full_name',
       [tenantId]
     );
     res.json(result.rows);
@@ -991,27 +1029,35 @@ router.get('/other-staff', async (req: AuthRequest, res) => {
   }
 });
 
-// Add other staff (generates staff_id + 5-digit PIN, creates login user)
+// Legacy payroll other-staff endpoints — delegates to other_staff table (no auto user creation)
 router.post('/other-staff', requireRole('super-admin', 'administrator', 'finance'), async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
-    const { full_name, role, monthly_salary, employment_status, notes, ssnit_enabled } = req.body;
+    const { full_name, role, position, monthly_salary, employment_status, notes, ssnit_enabled } = req.body;
     if (!full_name || monthly_salary == null) {
       return res.status(400).json({ error: 'Full name and monthly salary are required' });
     }
-    const existing = await query('SELECT staff_id FROM payroll_other_staff WHERE tenant_id = $1 AND staff_id LIKE $2', [tenantId, 'STAFF%']);
-    let staffId = 'STAFF001';
+    const existing = await query(
+      `SELECT staff_id FROM other_staff WHERE tenant_id = $1
+       AND (staff_id LIKE 'STF%' OR staff_id LIKE 'OTH%' OR staff_id LIKE 'STAFF%')`,
+      [tenantId]
+    );
+    const parseStaffNum = (id: string) => {
+      const m = String(id).match(/^(?:STF|OTH|STAFF)(\d+)$/i);
+      return m ? parseInt(m[1], 10) || 0 : 0;
+    };
+    let staffId = 'STF001';
     if (existing.rows.length > 0) {
-      const maxId = Math.max(...existing.rows.map((r: any) => parseInt(String(r.staff_id).replace('STAFF', '')) || 0));
-      staffId = `STAFF${(maxId + 1).toString().padStart(3, '0')}`;
+      const maxId = Math.max(...existing.rows.map((r: { staff_id: string }) => parseStaffNum(r.staff_id)));
+      staffId = `STF${(maxId + 1).toString().padStart(3, '0')}`;
     }
     const result = await query(
-      `INSERT INTO payroll_other_staff (tenant_id, full_name, role, monthly_salary, employment_status, notes, staff_id, ssnit_enabled)
+      `INSERT INTO other_staff (tenant_id, full_name, position, monthly_salary, employment_status, notes, staff_id, ssnit_enabled)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
       [
         tenantId,
         full_name,
-        role || null,
+        position || role || null,
         parseFloat(monthly_salary),
         employment_status || 'active',
         notes || null,
@@ -1019,19 +1065,7 @@ router.post('/other-staff', requireRole('super-admin', 'administrator', 'finance
         ssnit_enabled === false ? false : true,
       ]
     );
-    const staffRow = result.rows[0];
-    const loginPin = generatePin();
-    const passwordHash = await bcrypt.hash(loginPin, 10);
-    await query(
-      `INSERT INTO users (tenant_id, username, password_hash, role, other_staff_id) VALUES ($1, $2, $3, 'staff', $4)`,
-      [tenantId, staffId, passwordHash, staffRow.id]
-    );
-    res.status(201).json({
-      ...staffRow,
-      loginStaffId: staffId,
-      loginPin,
-      loginMessage: `Staff can login with Staff ID: ${staffId} and PIN: ${loginPin}`,
-    });
+    res.status(201).json(result.rows[0]);
     emitTenantDataChanged(tenantId, 'payroll-staff', 'created');
   } catch (error) {
     console.error('Add other staff error:', error);
@@ -1044,7 +1078,7 @@ router.put('/other-staff/:id', requireRole('super-admin', 'administrator', 'fina
   try {
     const tenantId = req.user!.tenantId!;
     const { id } = req.params;
-    const { full_name, role, monthly_salary, employment_status, notes, ssnit_enabled } = req.body;
+    const { full_name, role, position, monthly_salary, employment_status, notes, ssnit_enabled } = req.body;
     const updates: string[] = [];
     const values: any[] = [];
     let p = 1;
@@ -1052,9 +1086,9 @@ router.put('/other-staff/:id', requireRole('super-admin', 'administrator', 'fina
       updates.push(`full_name = $${p++}`);
       values.push(full_name);
     }
-    if (role !== undefined) {
-      updates.push(`role = $${p++}`);
-      values.push(role);
+    if (role !== undefined || position !== undefined) {
+      updates.push(`position = $${p++}`);
+      values.push(position ?? role);
     }
     if (monthly_salary !== undefined) {
       updates.push(`monthly_salary = $${p++}`);
@@ -1076,7 +1110,7 @@ router.put('/other-staff/:id', requireRole('super-admin', 'administrator', 'fina
     updates.push(`updated_at = CURRENT_TIMESTAMP`);
     values.push(tenantId, id);
     const result = await query(
-      `UPDATE payroll_other_staff SET ${updates.join(', ')} WHERE tenant_id = $${p} AND id = $${p + 1} RETURNING *`,
+      `UPDATE other_staff SET ${updates.join(', ')} WHERE tenant_id = $${p} AND id = $${p + 1} RETURNING *`,
       values
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Staff not found' });
@@ -1129,7 +1163,7 @@ router.post('/pay', requireRole('super-admin', 'administrator', 'finance'), asyn
       ssnitEnabled = tr.rows[0].ssnit_enabled !== false;
     } else {
       const sr = await client.query(
-        `SELECT full_name, monthly_salary, ssnit_enabled, staff_id FROM payroll_other_staff WHERE tenant_id = $1 AND id = $2`,
+        `SELECT full_name, monthly_salary, ssnit_enabled, staff_id FROM other_staff WHERE tenant_id = $1 AND id = $2`,
         [tenantId, pid]
       );
       if (sr.rows.length === 0) {
@@ -1290,6 +1324,7 @@ router.post('/pay', requireRole('super-admin', 'administrator', 'finance'), asyn
 
     const payRow = payRes.rows[0];
     const staffSummary = staffRef || payeeName;
+    const actor = await resolveActorFromRequest(req);
     await writeAuditLog({
       tenantId,
       userId: req.user!.id,
@@ -1299,7 +1334,7 @@ router.post('/pay', requireRole('super-admin', 'administrator', 'finance'), asyn
       entityId: payRow.id,
       module: 'finance',
       status: 'success',
-      summary: `${currency} ${payAmount} salary paid to ${staffSummary}`,
+      summary: withActor(`Salary of ${formatMoneyGhs(payAmount)} paid to ${staffSummary}`, actor),
       details: {
         transaction_id: payRow.id,
         expense_id: expenseId,

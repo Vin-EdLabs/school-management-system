@@ -390,22 +390,55 @@ router.get('/term-report', async (req: AuthRequest, res) => {
 
     // 8. Build per-student report rows
     const reportRows = allStudents.map((s: any) => {
-      const subjectScores: Record<string, { score: number; maxScore: number }> = {};
+      const subjectScores: Record<string, { score: number; maxScore: number; classScore: number; examScore: number }> = {};
       let grandTotal = 0;
       let grandMax = 0;
 
       for (const subj of subjectOrder) {
         const subjectAssignments = assignmentsBySubject[subj];
-        let subjectScore = 0;
-        let subjectMax = 0;
+        let classScoreSum = 0;
+        let classMaxSum = 0;
+        let examScoreSum = 0;
+        let examMaxSum = 0;
+
         for (const a of subjectAssignments) {
           const scored = gradeMap[s.id]?.[a.id] ?? 0;
-          subjectScore += scored;
-          subjectMax += parseFloat(a.max_score);
+          const isExam = a.assignment_type.toLowerCase() === 'exam' || a.name.toLowerCase().includes('exam');
+          if (isExam) {
+            examScoreSum += scored;
+            examMaxSum += parseFloat(a.max_score);
+          } else {
+            classScoreSum += scored;
+            classMaxSum += parseFloat(a.max_score);
+          }
         }
-        subjectScores[subj] = { score: subjectScore, maxScore: subjectMax };
-        grandTotal += subjectScore;
-        grandMax += subjectMax;
+
+        let classScoreVal = 0;
+        let examScoreVal = 0;
+
+        if (classMaxSum > 0 && examMaxSum > 0) {
+          classScoreVal = (classScoreSum / classMaxSum) * 40;
+          examScoreVal = (examScoreSum / examMaxSum) * 60;
+        } else if (classMaxSum > 0) {
+          const pct = classScoreSum / classMaxSum;
+          classScoreVal = pct * 40;
+          examScoreVal = pct * 60;
+        } else if (examMaxSum > 0) {
+          const pct = examScoreSum / examMaxSum;
+          classScoreVal = pct * 40;
+          examScoreVal = pct * 60;
+        }
+
+        const totalScore = classScoreVal + examScoreVal;
+
+        subjectScores[subj] = {
+          score: Math.round(totalScore * 10) / 10,
+          maxScore: 100,
+          classScore: Math.round(classScoreVal * 10) / 10,
+          examScore: Math.round(examScoreVal * 10) / 10,
+        };
+        grandTotal += totalScore;
+        grandMax += 100;
       }
 
       return {
@@ -416,8 +449,8 @@ router.get('/term-report', async (req: AuthRequest, res) => {
         passportPhotoUrl: s.passport_photo_url || null,
         hasMoved: s.hasMoved,
         subjectScores,
-        grandTotal: Math.round(grandTotal * 100) / 100,
-        grandMax: Math.round(grandMax * 100) / 100,
+        grandTotal: Math.round(grandTotal * 10) / 10,
+        grandMax: Math.round(grandMax * 10) / 10,
         percentage: grandMax > 0 ? Math.round((grandTotal / grandMax) * 100) : 0,
         position: 0,
       };

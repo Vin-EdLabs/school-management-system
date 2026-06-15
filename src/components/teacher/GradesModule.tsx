@@ -74,7 +74,7 @@ interface TermReportStudent {
   lastName: string;
   admissionNumber: string;
   hasMoved: boolean;
-  subjectScores: Record<string, { score: number; maxScore: number }>;
+  subjectScores: Record<string, { score: number; maxScore: number; classScore?: number | null; examScore?: number | null; total?: number; percentage?: number; grade?: string | number; remark?: string }>;
   grandTotal: number;
   grandMax: number;
   percentage: number;
@@ -113,6 +113,60 @@ const getLetterGrade = (pct: number) => {
 const positionSuffix = (n: number) =>
   n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`;
 
+const getBECEGradeInfo = (score: number) => {
+  if (score >= 80) return 1;
+  if (score >= 70) return 2;
+  if (score >= 60) return 3;
+  if (score >= 45) return 4;
+  if (score >= 40) return 5;
+  if (score >= 35) return 6;
+  if (score >= 30) return 7;
+  if (score >= 25) return 8;
+  return 9;
+};
+
+const getGhanaianGradeInfo = (score: number) => {
+  if (score >= 80) return { grade: 'A', remark: 'Excellent' };
+  if (score >= 70) return { grade: 'B', remark: 'Very Good' };
+  if (score >= 60) return { grade: 'C', remark: 'Good' };
+  if (score >= 45) return { grade: 'D', remark: 'Credit' };
+  if (score >= 35) return { grade: 'E', remark: 'Pass' };
+  return { grade: 'F', remark: 'Fail' };
+};
+
+const calculateBECE = (subjectScores: Record<string, { score: number }>) => {
+  const cores = { english: 9, science: 9, maths: 9, social: 9 };
+  const electives: number[] = [];
+
+  Object.entries(subjectScores || {}).forEach(([subj, info]) => {
+    const sName = subj.toLowerCase();
+    const g = getBECEGradeInfo(info?.score || 0);
+    if (sName.includes('english')) {
+      cores.english = g;
+    } else if (sName.includes('science')) {
+      cores.science = g;
+    } else if (sName.includes('math')) {
+      cores.maths = g;
+    } else if (sName.includes('social')) {
+      cores.social = g;
+    } else {
+      electives.push(g);
+    }
+  });
+
+  electives.sort((a, b) => a - b);
+  const bestElectives = electives.slice(0, 2);
+  while (bestElectives.length < 2) {
+    bestElectives.push(9);
+  }
+
+  const coreSum = cores.english + cores.science + cores.maths + cores.social;
+  const electiveSum = bestElectives.reduce((sum, val) => sum + val, 0);
+  const aggregate = coreSum + electiveSum;
+
+  return { cores, bestElectives, aggregate };
+};
+
 const relativeTime = (isoString: string | null): string => {
   if (!isoString) return '';
   const diff = Date.now() - new Date(isoString).getTime();
@@ -138,11 +192,12 @@ const resolvePhotoUrl = (photoUrl?: string | null) => {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 const GradesModule = () => {
-  const { schoolId } = useSchool();
+  const { schoolId, school } = useSchool();
   const { students, classes, subjects: globalSubjects } = useData();
   const { user } = useAuth();
   const isAdminViewer = user?.role === 'administrator' || user?.role === 'super-admin';
   const printRef = useRef<HTMLDivElement>(null);
+  const reportCardRef = useRef<HTMLDivElement>(null);
 
   const [teacherClasses, setTeacherClasses] = useState<TeacherClass[]>([]);
   const [selectedClassId, setSelectedClassId] = useState('');
@@ -172,6 +227,13 @@ const GradesModule = () => {
   const [reportLoading, setReportLoading] = useState(false);
   const [releaseLoading, setReleaseLoading] = useState(false);
   const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
+
+  const [sigPadType, setSigPadType] = useState<'teacher' | 'head'>('teacher');
+  const [isSigPadOpen, setIsSigPadOpen] = useState(false);
+  const [classTeacherSig, setClassTeacherSig] = useState(() => localStorage.getItem('class_teacher_sig') || '');
+  const [headTeacherSig, setHeadTeacherSig] = useState(() => localStorage.getItem('head_teacher_sig') || '');
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const isDrawingRef = useRef(false);
 
   // Grade history dropdown — key is `${studentId}-${assignmentId}`
   const [expandedHistory, setExpandedHistory] = useState<Set<string>>(new Set());
@@ -432,6 +494,105 @@ const GradesModule = () => {
     }
   };
 
+  // Ghanaian basic school report sheet fields
+  const [conductDraft, setConductDraft] = useState('Humble');
+  const [attitudeDraft, setAttitudeDraft] = useState('Dependable');
+  const [interestDraft, setInterestDraft] = useState('Sports');
+  const [attendanceDraft, setAttendanceDraft] = useState('');
+  const [attendanceOutOfDraft, setAttendanceOutOfDraft] = useState('67');
+  const [promotedToDraft, setPromotedToDraft] = useState('');
+  const [reopeningDateDraft, setReopeningDateDraft] = useState('21st April, 2026');
+
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.strokeStyle = '#0000ff';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    
+    const rect = canvas.getBoundingClientRect();
+    const x = ('touches' in e) ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
+    const y = ('touches' in e) ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
+    
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    isDrawingRef.current = true;
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDrawingRef.current) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const x = ('touches' in e) ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
+    const y = ('touches' in e) ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
+    
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+
+  const stopDrawing = () => {
+    isDrawingRef.current = false;
+  };
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  };
+
+  const saveSignature = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dataUrl = canvas.toDataURL();
+    if (sigPadType === 'teacher') {
+      localStorage.setItem('class_teacher_sig', dataUrl);
+      setClassTeacherSig(dataUrl);
+    } else {
+      localStorage.setItem('head_teacher_sig', dataUrl);
+      setHeadTeacherSig(dataUrl);
+    }
+    setIsSigPadOpen(false);
+    toast({ title: 'Signature saved' });
+  };
+
+  const parseTeacherRemarkDetails = (rawRemark: string) => {
+    try {
+      if (rawRemark && rawRemark.trim().startsWith('{')) {
+        const parsed = JSON.parse(rawRemark);
+        return {
+          text: parsed.text ?? '',
+          conduct: parsed.conduct ?? 'Humble',
+          attitude: parsed.attitude ?? 'Dependable',
+          interest: parsed.interest ?? 'Sports',
+          attendance: parsed.attendance ?? '',
+          attendanceOutOf: parsed.attendanceOutOf ?? '67',
+          promotedTo: parsed.promotedTo ?? '',
+          reopeningDate: parsed.reopeningDate ?? '21st April, 2026',
+        };
+      }
+    } catch (e) {
+      // fallback
+    }
+    return {
+      text: rawRemark ?? '',
+      conduct: 'Humble',
+      attitude: 'Dependable',
+      interest: 'Sports',
+      attendance: '',
+      attendanceOutOf: '67',
+      promotedTo: '',
+      reopeningDate: '21st April, 2026',
+    };
+  };
+
   // ── Term report ──────────────────────────────────────────────────────────────
 
   const handleLoadReport = async () => {
@@ -441,8 +602,22 @@ const GradesModule = () => {
       const data = await apiService.get<TermReport>(`/grades/term-report?classId=${selectedClassId}`);
       const firstStudentId = data.students?.[0]?.studentId ?? null;
       setSelectedReportStudentId(firstStudentId);
-      setTeacherRemarkDraft(firstStudentId ? data.teacherRemarks?.[firstStudentId] || '' : '');
-      setHeadmasterRemarkDraft(firstStudentId ? data.headmasterRemarks?.[firstStudentId] || '' : '');
+      if (firstStudentId) {
+        const rawRemark = data.teacherRemarks?.[firstStudentId] || '';
+        const parsed = parseTeacherRemarkDetails(rawRemark);
+        setTeacherRemarkDraft(parsed.text);
+        setConductDraft(parsed.conduct);
+        setAttitudeDraft(parsed.attitude);
+        setInterestDraft(parsed.interest);
+        setAttendanceDraft(parsed.attendance);
+        setAttendanceOutOfDraft(parsed.attendanceOutOf);
+        setPromotedToDraft(parsed.promotedTo);
+        setReopeningDateDraft(parsed.reopeningDate);
+        setHeadmasterRemarkDraft(data.headmasterRemarks?.[firstStudentId] || '');
+      } else {
+        setTeacherRemarkDraft('');
+        setHeadmasterRemarkDraft('');
+      }
       setTermReport(data);
     } catch (e: any) {
       toast({ title: 'Failed to load report', description: e?.message, variant: 'destructive' });
@@ -456,18 +631,37 @@ const GradesModule = () => {
 
   const handleSelectReportStudent = (studentId: number) => {
     setSelectedReportStudentId(studentId);
-    setTeacherRemarkDraft(termReport?.teacherRemarks?.[studentId] || '');
+    const rawRemark = termReport?.teacherRemarks?.[studentId] || '';
+    const parsed = parseTeacherRemarkDetails(rawRemark);
+    setTeacherRemarkDraft(parsed.text);
+    setConductDraft(parsed.conduct);
+    setAttitudeDraft(parsed.attitude);
+    setInterestDraft(parsed.interest);
+    setAttendanceDraft(parsed.attendance);
+    setAttendanceOutOfDraft(parsed.attendanceOutOf);
+    setPromotedToDraft(parsed.promotedTo);
+    setReopeningDateDraft(parsed.reopeningDate);
     setHeadmasterRemarkDraft(termReport?.headmasterRemarks?.[studentId] || '');
   };
 
   const saveReportRemarks = async () => {
     if (!selectedClassId || !selectedReportStudentId) return;
     setRemarkSaving(true);
+    const serializedTeacherRemark = JSON.stringify({
+      text: teacherRemarkDraft,
+      conduct: conductDraft,
+      attitude: attitudeDraft,
+      interest: interestDraft,
+      attendance: attendanceDraft,
+      attendanceOutOf: attendanceOutOfDraft,
+      promotedTo: promotedToDraft,
+      reopeningDate: reopeningDateDraft
+    });
     try {
       await apiService.post('/grades/term-report-remarks', {
         classId: Number(selectedClassId),
         studentId: selectedReportStudentId,
-        teacherRemark: teacherRemarkDraft,
+        teacherRemark: serializedTeacherRemark,
         headmasterRemark: headmasterRemarkDraft,
       });
       setTermReport(prev => prev ? {
@@ -490,7 +684,7 @@ const GradesModule = () => {
 
     // Build performance rows from subject scores
     const performanceRows = (termReport.subjects || []).map((subject: any) => {
-      const score = student.subjectScores?.[subject.id] || {};
+      const score = (student.subjectScores?.[subject.id] || {}) as any;
       return {
         subject: subject.name,
         classScore: score.classScore ?? null,
@@ -569,6 +763,103 @@ const GradesModule = () => {
     `);
     win.document.close();
     win.print();
+  };
+
+  const handlePrintReportCard = () => {
+    const content = reportCardRef.current;
+    if (!content) return;
+    const win = window.open('', '_blank');
+    if (!win) return;
+    const student = termReport?.students?.find(s => s.studentId === selectedReportStudentId);
+
+    // Clone the report card and remove all no-print elements
+    const clone = content.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll('.no-print, button, [type="button"]').forEach(el => el.remove());
+    // Make hidden print-only spans visible
+    clone.querySelectorAll('.hidden').forEach(el => {
+      (el as HTMLElement).style.display = 'inline';
+      el.classList.remove('hidden');
+    });
+
+    // Copy all style and link elements from the parent document's head
+    const headStylesheets = Array.from(document.head.querySelectorAll('link[rel="stylesheet"], style'))
+      .map(el => el.outerHTML)
+      .join('\n');
+
+    win.document.write(`
+      <html>
+        <head>
+          <title>Terminal Report Card - ${student ? student.firstName + ' ' + student.lastName : 'Student'}</title>
+          ${headStylesheets}
+          <style>
+            @media print {
+              body, body * {
+                visibility: visible !important;
+              }
+              .no-print, .no-print *, button, button * {
+                display: none !important;
+                visibility: hidden !important;
+              }
+              body { 
+                margin: 0 !important; 
+                padding: 0 !important; 
+                -webkit-print-color-adjust: exact; 
+                print-color-adjust: exact;
+                position: static !important;
+                width: auto !important;
+                height: auto !important;
+              }
+            }
+            body {
+              font-family: 'Times New Roman', Times, serif;
+              color: #000;
+              background: #fff;
+              margin: 10px !important;
+              font-size: 13px;
+              position: static !important;
+              width: auto !important;
+              height: auto !important;
+              display: block !important;
+            }
+            .report-wrapper {
+              max-width: 800px;
+              margin: 0 auto;
+              display: block !important;
+              opacity: 1 !important;
+              visibility: visible !important;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+            }
+            td, th {
+              padding: 6px;
+              vertical-align: middle;
+            }
+            input, textarea, select {
+              border: none !important;
+              outline: none !important;
+              font-family: 'Times New Roman', Times, serif;
+              font-size: 13px;
+              background: transparent !important;
+              font-weight: bold;
+              text-transform: uppercase;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="report-wrapper">
+            ${clone.outerHTML}
+          </div>
+          <script>
+            setTimeout(function() {
+              window.print();
+            }, 500);
+          </script>
+        </body>
+      </html>
+    `);
+    win.document.close();
   };
 
 
@@ -1084,74 +1375,359 @@ const GradesModule = () => {
                     )}
                   </CardHeader>
                   <CardContent>
-                    <div className="mb-4 grid gap-4 lg:grid-cols-[1fr_auto]">
-                      <div className="space-y-3">
-                        <div className="grid gap-2 sm:grid-cols-[1fr_auto] items-end">
-                          <div>
-                            <Label className="text-sm text-slate-700">Select Student for Report Card</Label>
-                            <Select value={String(selectedReportStudentId || '')} onValueChange={(value) => handleSelectReportStudent(Number(value))}>
-                              <SelectTrigger className="bg-white text-slate-900 border-slate-300 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-600">
-                                <SelectValue placeholder="Choose student…" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {termReport.students.map((student) => (
-                                  <SelectItem key={student.studentId} value={String(student.studentId)}>
-                                    {student.firstName} {student.lastName} — {student.admissionNumber}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Button size="sm" variant="outline" onClick={downloadTermReportPdf} disabled={!selectedReportStudentId}>
-                              Download PDF
-                            </Button>
-                            <Button size="sm" onClick={saveReportRemarks} disabled={!selectedReportStudentId || remarkSaving}>
-                              Save Remarks
-                            </Button>
-                          </div>
+                    <div className="mb-6 space-y-6">
+                      <div className="flex flex-col sm:flex-row gap-3 items-end justify-between bg-slate-50 dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+                        <div className="flex-1 min-w-[200px]">
+                          <Label className="text-sm text-slate-700 dark:text-slate-300 font-semibold mb-1.5 block">Select Student for Report Card</Label>
+                          <Select value={String(selectedReportStudentId || '')} onValueChange={(value) => handleSelectReportStudent(Number(value))}>
+                            <SelectTrigger className="bg-white text-slate-900 border-slate-300 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-600 h-10">
+                              <SelectValue placeholder="Choose student…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {termReport.students.map((student) => (
+                                <SelectItem key={student.studentId} value={String(student.studentId)}>
+                                  {student.firstName} {student.lastName} — {student.admissionNumber}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div>
-                            <Label className="text-sm text-slate-700">Teacher Remark</Label>
-                            <textarea
-                              rows={4}
-                              value={teacherRemarkDraft}
-                              onChange={(e) => setTeacherRemarkDraft(e.target.value)}
-                              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
-                              placeholder="Enter a teacher comment for this student"
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-sm text-slate-700">Headmaster Remark</Label>
-                            <textarea
-                              rows={4}
-                              value={headmasterRemarkDraft}
-                              onChange={(e) => setHeadmasterRemarkDraft(e.target.value)}
-                              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
-                              placeholder="Enter a headmaster comment for this student"
-                            />
-                          </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Button size="sm" variant="outline" onClick={handlePrintReportCard} disabled={!selectedReportStudentId}>
+                            <Printer className="w-4 h-4 mr-1.5" /> Print Report Card
+                          </Button>
+                          <Button size="sm" onClick={saveReportRemarks} disabled={!selectedReportStudentId || remarkSaving}>
+                            <Save className="w-4 h-4 mr-1.5" /> {remarkSaving ? 'Saving...' : 'Save Report Details'}
+                          </Button>
                         </div>
                       </div>
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-                        <p className="font-semibold text-slate-900 mb-2">Grading Scale</p>
-                        <div className="space-y-2">
-                          {(termReport.gradeScale || [
-                            { letter: 'A', minPct: 80, maxPct: 100, description: 'Excellent' },
-                            { letter: 'B', minPct: 70, maxPct: 79, description: 'Good' },
-                            { letter: 'C', minPct: 60, maxPct: 69, description: 'Fair' },
-                            { letter: 'D', minPct: 50, maxPct: 59, description: 'Pass' },
-                            { letter: 'F', minPct: 0, maxPct: 49, description: 'Fail' },
-                          ]).map((scale) => (
-                            <div key={scale.letter} className="flex items-center justify-between gap-3">
-                              <span className="font-semibold">{scale.letter}</span>
-                              <span className="text-xs text-slate-500">{scale.minPct}% - {scale.maxPct}%</span>
-                              <span className="text-xs text-slate-500">{scale.description}</span>
+
+                      {selectedReportStudentId && (() => {
+                        const student = termReport.students.find(s => s.studentId === selectedReportStudentId);
+                        if (!student) return null;
+                        const bece = calculateBECE(student.subjectScores);
+                        const sourceStudent = students.find(st => Number(st.id) === Number(student.studentId));
+                        const photoUrl = sourceStudent?.passportPhotoUrl || (student as any).passportPhotoUrl || '';
+
+                        return (
+                          <div className="space-y-4">
+                            {/* Beautiful Report Card Container */}
+                            <div 
+                              ref={reportCardRef} 
+                              className="bg-white text-slate-950 p-6 md:p-8 border-2 border-black rounded shadow-lg max-w-4xl mx-auto space-y-4"
+                              style={{ fontFamily: "'Times New Roman', Times, serif" }}
+                            >
+                              {/* Header Layout */}
+                              <table className="w-full border-collapse">
+                                <tbody>
+                                  <tr className="border-none">
+                                    {/* School Logo */}
+                                    <td className="w-20 align-middle border-none p-0">
+                                      <div className="w-20 h-20 border-2 border-black inline-block overflow-hidden bg-slate-100">
+                                        {school?.logo_url ? (
+                                          <img 
+                                            src={resolvePhotoUrl(school.logo_url)} 
+                                            alt="School Logo"
+                                            className="w-full h-full object-contain p-1"
+                                          />
+                                        ) : (
+                                          <div className="w-full h-full flex items-center justify-center text-[10px] font-bold text-slate-400">LOGO</div>
+                                        )}
+                                      </div>
+                                    </td>
+                                    
+                                    {/* School Info */}
+                                    <td className="text-center align-middle border-none px-4 p-0">
+                                      <h1 className="text-2xl font-black uppercase tracking-normal m-0" style={{ fontFamily: "'Times New Roman', Georgia, serif" }}>
+                                        {school?.name || termReport.schoolName || 'SIRBUS ROMAN CATHOLIC JHS'}
+                                      </h1>
+                                    </td>
+
+                                    {/* Student Photo */}
+                                    <td className="w-20 align-middle border-none text-right p-0">
+                                      <div className="w-20 h-24 border-2 border-black inline-block overflow-hidden bg-slate-100">
+                                        {photoUrl ? (
+                                          <img 
+                                            src={resolvePhotoUrl(photoUrl)} 
+                                            alt={`${student.firstName} ${student.lastName}`}
+                                            className="w-full h-full object-cover"
+                                          />
+                                        ) : (
+                                          <div className="w-full h-full flex items-center justify-center text-[10px] font-bold text-slate-400">PHOTO</div>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                </tbody>
+                              </table>
+
+                              {/* Title Box */}
+                              <div className="border-2 border-black py-1 px-8 text-center font-bold tracking-widest text-base uppercase my-2 max-w-xs mx-auto">
+                                TERMINAL REPORT SHEET
+                              </div>
+
+                              {/* Details Grid */}
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2.5 gap-x-6 mb-4 text-xs">
+                                <div className="flex items-center">
+                                  <span className="font-bold uppercase min-w-[130px]">NAME:</span>
+                                  <span className="flex-grow border-b border-black font-extrabold text-sm pl-2 uppercase">{student.firstName} {student.lastName}</span>
+                                </div>
+                                <div className="flex items-center">
+                                  <span className="font-bold uppercase min-w-[130px]">BASIC:</span>
+                                  <span className="flex-grow border-b border-black font-extrabold text-sm pl-2 uppercase">{termReport.className}</span>
+                                </div>
+                                <div className="flex items-center">
+                                  <span className="font-bold uppercase min-w-[130px]">ACADEMIC YEAR:</span>
+                                  <span className="flex-grow border-b border-black font-extrabold text-sm pl-2">{termReport.currentYear}</span>
+                                </div>
+                                <div className="flex items-center">
+                                  <span className="font-bold uppercase min-w-[130px]">TERM:</span>
+                                  <span className="flex-grow border-b border-black font-extrabold text-sm pl-2">{termReport.currentTerm}</span>
+                                </div>
+                                <div className="flex items-center">
+                                  <span className="font-bold uppercase min-w-[130px]">POSITION:</span>
+                                  <span className="flex-grow border-b border-black font-extrabold text-sm pl-2">{positionSuffix(student.position)}</span>
+                                </div>
+                                <div className="flex items-center">
+                                  <span className="font-bold uppercase min-w-[130px]">TOTAL MARKS:</span>
+                                  <span className="flex-grow border-b border-black font-extrabold text-sm pl-2">{student.grandTotal}</span>
+                                </div>
+                                <div className="flex items-center">
+                                  <span className="font-bold uppercase min-w-[130px]">NO. ON ROLL:</span>
+                                  <span className="flex-grow border-b border-black font-extrabold text-sm pl-2">{termReport.students.length}</span>
+                                </div>
+                                <div className="flex items-center">
+                                  <span className="font-bold uppercase min-w-[130px]">REOPENING DATE:</span>
+                                  <input 
+                                    type="text" 
+                                    value={reopeningDateDraft} 
+                                    onChange={(e) => setReopeningDateDraft(e.target.value)}
+                                    className="flex-grow border-b border-black font-extrabold text-sm pl-2 bg-transparent focus:outline-none uppercase border-none py-0 m-0 no-print"
+                                  />
+                                  <span className="hidden print:inline flex-grow border-b border-black font-extrabold text-sm pl-2 uppercase">{reopeningDateDraft}</span>
+                                </div>
+                              </div>
+
+                              {/* Subjects Table */}
+                              <table className="w-full border-collapse mb-4 text-xs border-all">
+                                <thead>
+                                  <tr>
+                                    <th className="border-2 border-black bg-slate-50 p-2 text-left font-bold uppercase w-1/3">SUBJECTS</th>
+                                    <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase w-20">Class Score<br/>40%</th>
+                                    <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase w-20">Exams Score<br/>60%</th>
+                                    <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase w-20">Total Score<br/>100%</th>
+                                    <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase w-14">Grade</th>
+                                    <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase w-16">Position</th>
+                                    <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase">Remarks</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {termReport.subjects.map(subj => {
+                                    const sScore = student.subjectScores[subj];
+                                    const gr = sScore ? getGhanaianGradeInfo(sScore.score) : { grade: '', remark: '—' };
+                                    // Subject position calculation
+                                    const sortedList = [...termReport.students].sort((a,b) => (b.subjectScores[subj]?.score || 0) - (a.subjectScores[subj]?.score || 0));
+                                    let subPos = 1;
+                                    for (let i = 0; i < sortedList.length; i++) {
+                                      if (sortedList[i].studentId === student.studentId) {
+                                        break;
+                                      }
+                                      if (sortedList[i].subjectScores[subj]?.score > (sScore?.score || 0)) {
+                                        subPos++;
+                                      }
+                                    }
+
+                                    return (
+                                      <tr key={subj}>
+                                        <td className="border-2 border-black p-2 font-bold text-left uppercase">{subj}</td>
+                                        <td className="border-2 border-black p-2 font-bold text-center">{sScore ? sScore.classScore?.toFixed(1) : '—'}</td>
+                                        <td className="border-2 border-black p-2 font-bold text-center">{sScore ? sScore.examScore?.toFixed(1) : '—'}</td>
+                                        <td className="border-2 border-black p-2 font-extrabold text-center">{sScore ? sScore.score?.toFixed(1) : '—'}</td>
+                                        <td className="border-2 border-black p-2 font-bold text-center">{gr.grade}</td>
+                                        <td className="border-2 border-black p-2 font-bold text-center">{sScore ? positionSuffix(subPos) : '—'}</td>
+                                        <td className="border-2 border-black p-2 font-bold uppercase text-[10px] text-left">{gr.remark}</td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+
+                              {/* Remarks Section */}
+                              <div className="space-y-3 mb-4">
+                                <div className="flex flex-wrap items-center gap-y-2 text-xs">
+                                  <span className="font-bold uppercase min-w-[100px]">ATTENDANCE:</span>
+                                  <input 
+                                    type="text" 
+                                    value={attendanceDraft} 
+                                    onChange={(e) => setAttendanceDraft(e.target.value)}
+                                    placeholder="e.g. 60"
+                                    className="border-b border-black font-bold pl-2 bg-transparent focus:outline-none w-16 no-print text-center"
+                                  />
+                                  <span className="hidden print:inline border-b border-black font-bold pl-2 w-16 text-center">{attendanceDraft || '—'}</span>
+
+                                  <span className="font-bold uppercase mx-2">OUT OF:</span>
+                                  <input 
+                                    type="text" 
+                                    value={attendanceOutOfDraft} 
+                                    onChange={(e) => setAttendanceOutOfDraft(e.target.value)}
+                                    className="border-b border-black font-bold pl-2 bg-transparent focus:outline-none w-16 no-print text-center"
+                                  />
+                                  <span className="hidden print:inline border-b border-black font-bold pl-2 w-16 text-center">{attendanceOutOfDraft || '—'}</span>
+
+                                  <span className="font-bold uppercase mx-2">PROMOTED TO:</span>
+                                  <input 
+                                    type="text" 
+                                    value={promotedToDraft} 
+                                    onChange={(e) => setPromotedToDraft(e.target.value)}
+                                    placeholder="Next class name if promoted"
+                                    className="flex-grow border-b border-black font-bold pl-2 bg-transparent focus:outline-none no-print uppercase"
+                                  />
+                                  <span className="hidden print:inline flex-grow border-b border-black font-bold pl-2 uppercase">{promotedToDraft || '—'}</span>
+                                </div>
+
+                                <div className="flex items-center text-xs">
+                                  <span className="font-bold uppercase min-w-[100px]">CONDUCT:</span>
+                                  <input 
+                                    type="text" 
+                                    value={conductDraft} 
+                                    onChange={(e) => setConductDraft(e.target.value)}
+                                    className="flex-grow border-b border-black font-bold pl-2 bg-transparent focus:outline-none no-print uppercase"
+                                  />
+                                  <span className="hidden print:inline flex-grow border-b border-black font-bold pl-2 uppercase">{conductDraft}</span>
+                                </div>
+
+                                <div className="flex items-center text-xs">
+                                  <span className="font-bold uppercase min-w-[100px]">ATTITUDE:</span>
+                                  <input 
+                                    type="text" 
+                                    value={attitudeDraft} 
+                                    onChange={(e) => setAttitudeDraft(e.target.value)}
+                                    className="flex-grow border-b border-black font-bold pl-2 bg-transparent focus:outline-none no-print uppercase"
+                                  />
+                                  <span className="hidden print:inline flex-grow border-b border-black font-bold pl-2 uppercase">{attitudeDraft}</span>
+                                </div>
+
+                                <div className="flex items-center text-xs">
+                                  <span className="font-bold uppercase min-w-[100px]">INTEREST:</span>
+                                  <input 
+                                    type="text" 
+                                    value={interestDraft} 
+                                    onChange={(e) => setInterestDraft(e.target.value)}
+                                    className="flex-grow border-b border-black font-bold pl-2 bg-transparent focus:outline-none no-print uppercase"
+                                  />
+                                  <span className="hidden print:inline flex-grow border-b border-black font-bold pl-2 uppercase">{interestDraft}</span>
+                                </div>
+
+                                <div className="flex items-start text-xs">
+                                  <span className="font-bold uppercase min-w-[180px] pt-1">CLASS TEACHER'S REMARKS:</span>
+                                  <textarea
+                                    value={teacherRemarkDraft} 
+                                    onChange={(e) => setTeacherRemarkDraft(e.target.value)}
+                                    rows={2}
+                                    className="flex-grow border-b border-black font-bold pl-2 bg-transparent focus:outline-none no-print resize-none uppercase"
+                                  />
+                                  <span className="hidden print:inline flex-grow border-b border-black font-bold pl-2 uppercase">{teacherRemarkDraft || '—'}</span>
+                                </div>
+                              </div>
+
+                              {/* Signatures Area */}
+                              <div className="grid grid-cols-2 gap-12 mt-12 mb-4 text-center text-xs">
+                                <div className="flex flex-col items-center justify-end min-h-[85px]">
+                                  {classTeacherSig ? (
+                                    <div className="relative group">
+                                      <img src={classTeacherSig} alt="Teacher Signature" className="h-12 object-contain" />
+                                      <button 
+                                        onClick={() => { setClassTeacherSig(''); localStorage.removeItem('class_teacher_sig'); }}
+                                        className="absolute -top-4 -right-4 bg-red-100 text-red-600 rounded-full p-0.5 text-[8px] no-print hover:bg-red-200"
+                                      >
+                                        ✕
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div className="h-12" />
+                                  )}
+                                  <div className="w-full border-t border-black pt-1 font-bold uppercase text-[10px] tracking-wider">
+                                    CLASS TEACHER'S SIGNATURE
+                                  </div>
+                                  <button 
+                                    onClick={() => { setSigPadType('teacher'); setIsSigPadOpen(true); }}
+                                    className="no-print mt-1 text-[9px] text-purple-600 hover:underline font-bold uppercase"
+                                  >
+                                    {classTeacherSig ? 'Redraw' : 'Draw Sign'}
+                                  </button>
+                                </div>
+                                <div className="flex flex-col items-center justify-end min-h-[85px]">
+                                  {headTeacherSig ? (
+                                    <div className="relative group">
+                                      <img src={headTeacherSig} alt="Head Teacher Signature" className="h-12 object-contain" />
+                                      <button 
+                                        onClick={() => { setHeadTeacherSig(''); localStorage.removeItem('head_teacher_sig'); }}
+                                        className="absolute -top-4 -right-4 bg-red-100 text-red-600 rounded-full p-0.5 text-[8px] no-print hover:bg-red-200"
+                                      >
+                                        ✕
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div className="h-12" />
+                                  )}
+                                  <div className="w-full border-t border-black pt-1 font-bold uppercase text-[10px] tracking-wider">
+                                    HEAD TEACHER'S SIGNATURE
+                                  </div>
+                                  <button 
+                                    onClick={() => { setSigPadType('head'); setIsSigPadOpen(true); }}
+                                    className="no-print mt-1 text-[9px] text-purple-600 hover:underline font-bold uppercase"
+                                  >
+                                    {headTeacherSig ? 'Redraw' : 'Draw Sign'}
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Grading Scale Legend */}
+                              <div className="border-t border-black pt-3 mb-3">
+                                <p className="font-extrabold uppercase text-center text-[10px] tracking-wider mb-2">GRADING SCALE</p>
+                                <div className="grid grid-cols-3 gap-y-1.5 gap-x-2 text-[9px] font-bold">
+                                  <div>Grade A &nbsp; 80 - 100 &nbsp; <span className="italic text-slate-600">Excellent</span></div>
+                                  <div>Grade B &nbsp; 70 - 79 &nbsp; <span className="italic text-slate-600">Very Good</span></div>
+                                  <div>Grade C &nbsp; 60 - 69 &nbsp; <span className="italic text-slate-600">Good</span></div>
+                                  <div>Grade D &nbsp; 45 - 59 &nbsp; <span className="italic text-slate-600">Credit</span></div>
+                                  <div>Grade E &nbsp; 35 - 44 &nbsp; <span className="italic text-slate-600">Pass</span></div>
+                                  <div>Grade F &nbsp; Below 35 &nbsp; <span className="italic text-slate-600">Fail</span></div>
+                                </div>
+                              </div>
+
+                              {/* BECE AGGREGATE CALCULATION */}
+                              <div className="border-t border-black pt-3">
+                                <p className="font-extrabold uppercase text-center text-[10px] tracking-wider mb-2">BECE AGGREGATE CALCULATION</p>
+                                <div className="grid grid-cols-2 gap-4 text-[10px]">
+                                  <div>
+                                    <p className="font-bold text-slate-800 underline mb-1">Core Subjects:</p>
+                                    <div className="flex justify-between max-w-xs font-semibold mb-0.5"><span>English</span> <span>Grade {bece.cores.english}</span></div>
+                                    <div className="flex justify-between max-w-xs font-semibold mb-0.5"><span>Science</span> <span>Grade {bece.cores.science}</span></div>
+                                    <div className="flex justify-between max-w-xs font-semibold mb-0.5"><span>MATHS</span> <span>Grade {bece.cores.maths}</span></div>
+                                    <div className="flex justify-between max-w-xs font-semibold mb-0.5"><span>Social</span> <span>Grade {bece.cores.social}</span></div>
+                                  </div>
+                                  <div>
+                                    <p className="font-bold text-slate-800 underline mb-1">Best 2 Electives:</p>
+                                    {bece.bestElectives.map((val, idx) => (
+                                      <div key={idx} className="flex justify-between max-w-xs font-semibold mb-0.5">
+                                        <span>Elective {idx + 1}</span> <span>Grade {val}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                                <div className="text-center font-extrabold uppercase text-xs mt-3 tracking-wide">
+                                  AGGREGATE: <span className="text-sm text-purple-700 bg-purple-50 border border-purple-200 px-3 py-1 rounded ml-1 font-mono">{bece.aggregate}</span>
+                                </div>
+                              </div>
+
+                              <div className="footer-text mt-4 border-t border-slate-200 pt-2 text-[8px] text-center text-slate-500 uppercase tracking-widest">
+                                Generated by ScholarNerve
+                              </div>
+
                             </div>
-                          ))}
-                        </div>
-                      </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                     <div ref={printRef}>
                       <h2 style={{ textAlign: 'center' }}>Term Report — {termReport.className}</h2>
@@ -1403,6 +1979,47 @@ const GradesModule = () => {
                     ? 'Yes, Hide Results'
                     : 'Yes, Release Results'}
               </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isSigPadOpen} onOpenChange={setIsSigPadOpen}>
+        <DialogContent className="max-w-md bg-white text-slate-900 border-slate-200">
+          <DialogHeader>
+            <DialogTitle>Draw Digital Signature</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <p className="text-xs text-gray-500">
+              Draw your signature in the box below using your mouse or touch screen.
+            </p>
+            <div className="border border-gray-300 rounded-lg bg-gray-50 overflow-hidden">
+              <canvas
+                ref={canvasRef}
+                width={400}
+                height={200}
+                onMouseDown={startDrawing}
+                onMouseMove={draw}
+                onMouseUp={stopDrawing}
+                onMouseLeave={stopDrawing}
+                onTouchStart={startDrawing}
+                onTouchMove={draw}
+                onTouchEnd={stopDrawing}
+                className="w-full h-[200px] cursor-crosshair touch-none"
+              />
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <Button type="button" variant="outline" onClick={clearCanvas}>
+                Clear
+              </Button>
+              <div className="flex items-center gap-2">
+                <Button type="button" variant="outline" onClick={() => setIsSigPadOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="button" onClick={saveSignature} className="bg-purple-600 hover:bg-purple-700 text-white">
+                  Save Signature
+                </Button>
+              </div>
             </div>
           </div>
         </DialogContent>

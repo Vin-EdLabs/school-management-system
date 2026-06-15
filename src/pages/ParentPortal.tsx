@@ -139,6 +139,94 @@ const positionLabel = (n: number) => {
 
 const fmtDate = (d: string) => formatDisplayDate(d);
 
+const getBECEGradeInfo = (score: number) => {
+  if (score >= 80) return 1;
+  if (score >= 70) return 2;
+  if (score >= 60) return 3;
+  if (score >= 45) return 4;
+  if (score >= 40) return 5;
+  if (score >= 35) return 6;
+  if (score >= 30) return 7;
+  if (score >= 25) return 8;
+  return 9;
+};
+
+const getGhanaianGradeInfo = (score: number) => {
+  if (score >= 80) return { grade: 'A', remark: 'Excellent' };
+  if (score >= 70) return { grade: 'B', remark: 'Very Good' };
+  if (score >= 60) return { grade: 'C', remark: 'Good' };
+  if (score >= 45) return { grade: 'D', remark: 'Credit' };
+  if (score >= 35) return { grade: 'E', remark: 'Pass' };
+  return { grade: 'F', remark: 'Fail' };
+};
+
+const calculateBECE = (subjectScores: Record<string, { score: number }>) => {
+  const cores = { english: 9, science: 9, maths: 9, social: 9 };
+  const electives: number[] = [];
+
+  Object.entries(subjectScores || {}).forEach(([subj, info]) => {
+    const sName = subj.toLowerCase();
+    const g = getBECEGradeInfo(info?.score || 0);
+    if (sName.includes('english')) {
+      cores.english = g;
+    } else if (sName.includes('science')) {
+      cores.science = g;
+    } else if (sName.includes('math')) {
+      cores.maths = g;
+    } else if (sName.includes('social')) {
+      cores.social = g;
+    } else {
+      electives.push(g);
+    }
+  });
+
+  electives.sort((a, b) => a - b);
+  const bestElectives = electives.slice(0, 2);
+  while (bestElectives.length < 2) {
+    bestElectives.push(9);
+  }
+
+  const coreSum = cores.english + cores.science + cores.maths + cores.social;
+  const electiveSum = bestElectives.reduce((sum, val) => sum + val, 0);
+  const aggregate = coreSum + electiveSum;
+
+  return { cores, bestElectives, aggregate };
+};
+
+const parseTeacherRemarkDetails = (rawRemark: string) => {
+  try {
+    if (rawRemark && rawRemark.trim().startsWith('{')) {
+      const parsed = JSON.parse(rawRemark);
+      return {
+        text: parsed.text ?? '',
+        conduct: parsed.conduct ?? 'Humble',
+        attitude: parsed.attitude ?? 'Dependable',
+        interest: parsed.interest ?? 'Sports',
+        attendance: parsed.attendance ?? '',
+        attendanceOutOf: parsed.attendanceOutOf ?? '67',
+        promotedTo: parsed.promotedTo ?? '',
+        reopeningDate: parsed.reopeningDate ?? '21st April, 2026',
+      };
+    }
+  } catch (e) {
+    // fallback
+  }
+  return {
+    text: rawRemark ?? '',
+    conduct: 'Humble',
+    attitude: 'Dependable',
+    interest: 'Sports',
+    attendance: '',
+    attendanceOutOf: '67',
+    promotedTo: '',
+    reopeningDate: '21st April, 2026',
+  };
+};
+
+const positionSuffix = (n: number) =>
+  n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`;
+
+
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -307,6 +395,63 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   const parentScrollRef = useRef<HTMLDivElement>(null);
   const deskComposeFileRef = useRef<HTMLInputElement>(null);
   const deskReplyFileRef = useRef<HTMLInputElement>(null);
+  const reportCardRef = useRef<HTMLDivElement>(null);
+
+  const handlePrintReportCard = () => {
+    const content = reportCardRef.current;
+    if (!content) return;
+    const win = window.open('', '_blank');
+    if (!win) return;
+    const studentName = student ? `${student.first_name} ${student.last_name}` : 'Student';
+    win.document.write(`
+      <html>
+        <head>
+          <title>Terminal Report Card - ${studentName}</title>
+          <style>
+            @media print {
+              body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+              .no-print { display: none !important; }
+            }
+            body {
+              font-family: 'Times New Roman', Times, serif;
+              color: #000;
+              background: #fff;
+              margin: 10px;
+              font-size: 13px;
+            }
+            .report-card {
+              max-width: 800px;
+              margin: 0 auto;
+              padding: 20px;
+              border: 1px solid #000;
+              background: #fff;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+            }
+            td, th {
+              padding: 6px;
+              vertical-align: middle;
+            }
+            .border-none td {
+              border: none;
+            }
+            .border-all th, .border-all td {
+              border: 2px solid #000;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="report-card">
+            ${content.innerHTML}
+          </div>
+        </body>
+      </html>
+    `);
+    win.document.close();
+    win.print();
+  };
   /** Incremented on every student switch — stale API responses must not update state. */
   const studentSessionRef = useRef(0);
   const [isSwitchingStudent, setIsSwitchingStudent] = useState(false);
@@ -579,7 +724,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     }, 12000);
 
     try {
-      const me = await parentFetch('/parent/me', {}, authToken) as StudentInfo;
+      const me = await parentFetch('/parent/me', {}, authToken) as unknown as StudentInfo;
       if (studentSessionRef.current !== sessionId) return;
       setStudent((prev) => ({
         ...me,
@@ -1898,11 +2043,22 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                <Trophy className="w-5 h-5 text-yellow-500" /> Class Position
+                <Trophy className="w-5 h-5 text-yellow-500" /> Terminal Report
               </h2>
-              <button onClick={refreshTab} disabled={dataLoading} className="text-gray-400 hover:text-purple-600 transition-colors">
-                <RefreshCw className={`w-4 h-4 ${dataLoading ? 'animate-spin' : ''}`} />
-              </button>
+              <div className="flex items-center gap-2">
+                {termReport?.report && (
+                  <button
+                    type="button"
+                    onClick={handlePrintReportCard}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-sm"
+                  >
+                    Print Report Card
+                  </button>
+                )}
+                <button onClick={refreshTab} disabled={dataLoading} className="text-gray-400 hover:text-purple-600 transition-colors">
+                  <RefreshCw className={`w-4 h-4 ${dataLoading ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
             </div>
 
             {showTabLoading ? (
@@ -1916,102 +2072,248 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             ) : (() => {
               const { report } = termReport;
               const myRecord = report.students.find((s: any) => s.isCurrentStudent);
+              if (!myRecord) return null;
+              
+              const bece = calculateBECE(myRecord.subjectScores);
+              const photoUrl = resolveMediaUrl(myRecord.passportPhotoUrl);
+              const parsedRemarks = parseTeacherRemarkDetails(report.teacherRemark || '');
+
               return (
                 <div className="space-y-4">
-                  {/* My position card */}
-                  {myRecord && (
-                    <div className={`rounded-2xl p-5 text-white shadow-lg ${
-                      myRecord.position === 1 ? 'bg-gradient-to-br from-yellow-500 to-amber-600' :
-                      myRecord.position === 2 ? 'bg-gradient-to-br from-slate-400 to-slate-600' :
-                      myRecord.position === 3 ? 'bg-gradient-to-br from-amber-600 to-orange-700' :
-                      'bg-gradient-to-br from-purple-600 to-indigo-700'
-                    }`}>
-                      {/* Report metadata */}
-                      {report.schoolName && (
-                        <p className="text-white/60 text-[10px] uppercase tracking-wider mb-3 font-medium">
-                          {report.schoolName} · {report.currentTerm.includes(report.currentYear) ? report.currentTerm : `${report.currentTerm} ${report.currentYear}`}
-                        </p>
-                      )}
-                      <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4">
-                        {/* Passport photo */}
-                        <div className="w-16 h-20 rounded-lg overflow-hidden bg-white/20 shrink-0 flex items-center justify-center text-white font-bold text-lg border-2 border-white/30">
-                          {myRecord.passportPhotoUrl
-                            ? <img src={resolveMediaUrl(myRecord.passportPhotoUrl) || ''} alt="" className="w-full h-full object-cover" />
-                            : `${myRecord.firstName[0]}${myRecord.lastName[0]}`}
-                        </div>
-                        <div className="flex-1 text-center sm:text-left">
-                          <p className="text-white/70 text-xs mb-0.5">Position in {report.className}</p>
-                          <span className="text-5xl font-black leading-none block sm:inline">{positionLabel(myRecord.position)}</span>
-                          <p className="text-white/80 text-sm mt-1.5">
-                            Out of <strong>{report.totalStudents}</strong> students
-                          </p>
-                        </div>
-                        <div className="text-center sm:text-right w-full sm:w-auto border-t border-white/20 sm:border-t-0 pt-3 sm:pt-0 shrink-0">
-                          <p className="text-white/70 text-xs">Total Score</p>
-                          <p className="text-3xl font-bold mt-1">{Math.round(myRecord.grandTotal)} <span className="text-xs text-white/70 font-normal">out of {myRecord.grandMax}</span></p>
-                          <p className="text-2xl font-bold mt-0.5">{myRecord.percentage}%</p>
-                        </div>
+                  {/* Beautiful Report Card Container */}
+                  <div 
+                    ref={reportCardRef} 
+                    className="bg-white text-slate-950 p-6 md:p-8 border-2 border-black rounded shadow-lg max-w-4xl mx-auto space-y-4"
+                    style={{ fontFamily: "'Times New Roman', Times, serif" }}
+                  >
+                    {/* Header Layout */}
+                    <table className="w-full border-collapse">
+                      <tbody>
+                        <tr className="border-none">
+                          {/* School Logo */}
+                          <td className="w-20 align-middle border-none p-0">
+                            <div className="w-20 h-20 border-2 border-black inline-block overflow-hidden bg-slate-100">
+                              {resolvedLogo ? (
+                                <img 
+                                  src={resolvedLogo} 
+                                  alt="School Logo"
+                                  className="w-full h-full object-contain p-1"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-[10px] font-bold text-slate-400">LOGO</div>
+                              )}
+                            </div>
+                          </td>
+                          
+                          {/* School Info */}
+                          <td className="text-center align-middle border-none px-4 p-0">
+                            <h1 className="text-2xl font-black uppercase tracking-normal m-0" style={{ fontFamily: "'Times New Roman', Georgia, serif" }}>
+                              {report.schoolName || student?.school_name || 'School'}
+                            </h1>
+                          </td>
+
+                          {/* Student Photo */}
+                          <td className="w-20 align-middle border-none text-right p-0">
+                            <div className="w-20 h-24 border-2 border-black inline-block overflow-hidden bg-slate-100">
+                              {photoUrl ? (
+                                <img 
+                                  src={photoUrl} 
+                                  alt={`${myRecord.firstName} ${myRecord.lastName}`}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-[10px] font-bold text-slate-400">PHOTO</div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+
+                    {/* Title Box */}
+                    <div className="border-2 border-black py-1 px-8 text-center font-bold tracking-widest text-base uppercase my-2 max-w-xs mx-auto">
+                      TERMINAL REPORT SHEET
+                    </div>
+
+                    {/* Details Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2.5 gap-x-6 mb-4 text-xs">
+                      <div className="flex items-center">
+                        <span className="font-bold uppercase min-w-[130px]">NAME:</span>
+                        <span className="flex-grow border-b border-black font-extrabold text-sm pl-2 uppercase">{myRecord.firstName} {myRecord.lastName}</span>
+                      </div>
+                      <div className="flex items-center">
+                        <span className="font-bold uppercase min-w-[130px]">BASIC:</span>
+                        <span className="flex-grow border-b border-black font-extrabold text-sm pl-2 uppercase">{report.className}</span>
+                      </div>
+                      <div className="flex items-center">
+                        <span className="font-bold uppercase min-w-[130px]">ACADEMIC YEAR:</span>
+                        <span className="flex-grow border-b border-black font-extrabold text-sm pl-2">{report.currentYear}</span>
+                      </div>
+                      <div className="flex items-center">
+                        <span className="font-bold uppercase min-w-[130px]">TERM:</span>
+                        <span className="flex-grow border-b border-black font-extrabold text-sm pl-2">{report.currentTerm}</span>
+                      </div>
+                      <div className="flex items-center">
+                        <span className="font-bold uppercase min-w-[130px]">POSITION:</span>
+                        <span className="flex-grow border-b border-black font-extrabold text-sm pl-2">{positionSuffix(myRecord.position)}</span>
+                      </div>
+                      <div className="flex items-center">
+                        <span className="font-bold uppercase min-w-[130px]">TOTAL MARKS:</span>
+                        <span className="flex-grow border-b border-black font-extrabold text-sm pl-2">{myRecord.grandTotal}</span>
+                      </div>
+                      <div className="flex items-center">
+                        <span className="font-bold uppercase min-w-[130px]">NO. ON ROLL:</span>
+                        <span className="flex-grow border-b border-black font-extrabold text-sm pl-2">{report.totalStudents}</span>
+                      </div>
+                      <div className="flex items-center">
+                        <span className="font-bold uppercase min-w-[130px]">REOPENING DATE:</span>
+                        <span className="flex-grow border-b border-black font-extrabold text-sm pl-2 uppercase">{parsedRemarks.reopeningDate}</span>
                       </div>
                     </div>
-                  )}
 
-                  {/* Subject breakdown */}
-                  {myRecord && (
-                    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                      <div className="px-4 py-3 border-b border-gray-100">
-                        <h3 className="font-semibold text-gray-800 text-sm flex items-center gap-1.5">
-                          <TrendingUp className="w-4 h-4 text-purple-600" /> Subject Performance
-                        </h3>
-                      </div>
-                      <div className="divide-y divide-gray-50">
+                    {/* Subjects Table */}
+                    <table className="w-full border-collapse mb-4 text-xs border-all">
+                      <thead>
+                        <tr>
+                          <th className="border-2 border-black bg-slate-50 p-2 text-left font-bold uppercase w-1/3">SUBJECTS</th>
+                          <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase w-20">Class Score<br/>40%</th>
+                          <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase w-20">Exams Score<br/>60%</th>
+                          <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase w-20">Total Score<br/>100%</th>
+                          <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase w-14">Grade</th>
+                          <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase w-16">Position</th>
+                          <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase">Remarks</th>
+                        </tr>
+                      </thead>
+                      <tbody>
                         {report.subjects.map((subj: string) => {
-                          const s = myRecord.subjectScores[subj];
-                          if (!s) return null;
-                          const p = s.maxScore > 0 ? Math.round((s.score / s.maxScore) * 100) : 0;
-                          const lg = getLetterGrade(p);
+                          const sScore = myRecord.subjectScores[subj];
+                          const gr = sScore ? getGhanaianGradeInfo(sScore.score) : { grade: '', remark: '—' };
+                          
+                          // Calculate position in subject
+                          const sortedList = [...report.students].sort((a,b) => (b.subjectScores[subj]?.score || 0) - (a.subjectScores[subj]?.score || 0));
+                          let subPos = 1;
+                          for (let i = 0; i < sortedList.length; i++) {
+                            if (sortedList[i].studentId === myRecord.studentId) {
+                              break;
+                            }
+                            if (sortedList[i].subjectScores[subj]?.score > (sScore?.score || 0)) {
+                              subPos++;
+                            }
+                          }
+
                           return (
-                            <div key={subj} className="px-4 py-3">
-                              <div className="flex items-center justify-between mb-1.5">
-                                <p className="text-sm font-medium text-gray-800">{subj}</p>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm font-bold text-gray-700">{Math.round(s.score)}/{s.maxScore}</span>
-                                  <span className={`text-xs font-bold px-2 py-0.5 rounded border ${lg.color}`}>{lg.letter}</span>
-                                  <span className="text-xs text-gray-500 w-8 text-right">{p}%</span>
-                                </div>
-                              </div>
-                              <div className="h-1.5 bg-gray-100 rounded-full">
-                                <div className={`h-full rounded-full ${p >= 70 ? 'bg-green-500' : p >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`}
-                                  style={{ width: `${p}%` }} />
-                              </div>
-                            </div>
+                            <tr key={subj}>
+                              <td className="border-2 border-black p-2 font-bold text-left uppercase">{subj}</td>
+                              <td className="border-2 border-black p-2 font-bold text-center">{sScore ? sScore.classScore?.toFixed(1) : '—'}</td>
+                              <td className="border-2 border-black p-2 font-bold text-center">{sScore ? sScore.examScore?.toFixed(1) : '—'}</td>
+                              <td className="border-2 border-black p-2 font-extrabold text-center">{sScore ? sScore.score?.toFixed(1) : '—'}</td>
+                              <td className="border-2 border-black p-2 font-bold text-center">{gr.grade}</td>
+                              <td className="border-2 border-black p-2 font-bold text-center">{sScore ? positionSuffix(subPos) : '—'}</td>
+                              <td className="border-2 border-black p-2 font-bold uppercase text-[10px] text-left">{gr.remark}</td>
+                            </tr>
                           );
                         })}
+                      </tbody>
+                    </table>
+
+                    {/* Remarks Section */}
+                    <div className="space-y-3 mb-4">
+                      <div className="flex flex-wrap items-center gap-y-2 text-xs">
+                        <span className="font-bold uppercase min-w-[100px]">ATTENDANCE:</span>
+                        <span className="border-b border-black font-bold pl-2 w-16 text-center">{parsedRemarks.attendance || '—'}</span>
+
+                        <span className="font-bold uppercase mx-2">OUT OF:</span>
+                        <span className="border-b border-black font-bold pl-2 w-16 text-center">{parsedRemarks.attendanceOutOf || '—'}</span>
+
+                        <span className="font-bold uppercase mx-2">PROMOTED TO:</span>
+                        <span className="flex-grow border-b border-black font-bold pl-2 uppercase">{parsedRemarks.promotedTo || '—'}</span>
+                      </div>
+
+                      <div className="flex items-center text-xs">
+                        <span className="font-bold uppercase min-w-[100px]">CONDUCT:</span>
+                        <span className="flex-grow border-b border-black font-bold pl-2 uppercase">{parsedRemarks.conduct}</span>
+                      </div>
+
+                      <div className="flex items-center text-xs">
+                        <span className="font-bold uppercase min-w-[100px]">ATTITUDE:</span>
+                        <span className="flex-grow border-b border-black font-bold pl-2 uppercase">{parsedRemarks.attitude}</span>
+                      </div>
+
+                      <div className="flex items-center text-xs">
+                        <span className="font-bold uppercase min-w-[100px]">INTEREST:</span>
+                        <span className="flex-grow border-b border-black font-bold pl-2 uppercase">{parsedRemarks.interest}</span>
+                      </div>
+
+                      <div className="flex items-start text-xs">
+                        <span className="font-bold uppercase min-w-[180px] pt-1">CLASS TEACHER'S REMARKS:</span>
+                        <span className="flex-grow border-b border-black font-bold pl-2 uppercase">{parsedRemarks.text || '—'}</span>
+                      </div>
+
+                      {report.headmasterRemark && (
+                        <div className="flex items-start text-xs">
+                          <span className="font-bold uppercase min-w-[180px] pt-1">HEADMASTER'S REMARKS:</span>
+                          <span className="flex-grow border-b border-black font-bold pl-2 uppercase">{report.headmasterRemark || '—'}</span>
+                        </div>
+                      )}
+                    </div>
+                    {/* Signatures Area */}
+                    <div className="grid grid-cols-2 gap-12 mt-12 mb-4 text-center text-xs">
+                      <div className="flex flex-col items-center">
+                        <div className="h-12" />
+                        <div className="w-full border-t border-black pt-1 font-bold uppercase text-[10px] tracking-wider">
+                          CLASS TEACHER'S SIGNATURE
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-center">
+                        <div className="h-12" />
+                        <div className="w-full border-t border-black pt-1 font-bold uppercase text-[10px] tracking-wider">
+                          HEAD TEACHER'S SIGNATURE
+                        </div>
                       </div>
                     </div>
-                  )}
 
-                  {report.teacherRemark || report.headmasterRemark ? (
-                    <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-                      <h3 className="text-sm font-semibold text-gray-800 mb-3">Teacher & Headmaster Remarks</h3>
-                      {report.teacherRemark ? (
-                        <div className="mb-3">
-                          <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">Teacher Comment</p>
-                          <p className="text-sm text-slate-700 whitespace-pre-wrap">{report.teacherRemark}</p>
-                        </div>
-                      ) : null}
-                      {report.headmasterRemark ? (
-                        <div>
-                          <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">Headmaster Comment</p>
-                          <p className="text-sm text-slate-700 whitespace-pre-wrap">{report.headmasterRemark}</p>
-                        </div>
-                      ) : null}
+                    {/* Grading Scale Legend */}
+                    <div className="border-t border-black pt-3 mb-3">
+                      <p className="font-extrabold uppercase text-center text-[10px] tracking-wider mb-2">GRADING SCALE</p>
+                      <div className="grid grid-cols-3 gap-y-1.5 gap-x-2 text-[9px] font-bold">
+                        <div>Grade A &nbsp; 80 - 100 &nbsp; <span className="italic text-slate-600">Excellent</span></div>
+                        <div>Grade B &nbsp; 70 - 79 &nbsp; <span className="italic text-slate-600">Very Good</span></div>
+                        <div>Grade C &nbsp; 60 - 69 &nbsp; <span className="italic text-slate-600">Good</span></div>
+                        <div>Grade D &nbsp; 45 - 59 &nbsp; <span className="italic text-slate-600">Credit</span></div>
+                        <div>Grade E &nbsp; 35 - 44 &nbsp; <span className="italic text-slate-600">Pass</span></div>
+                        <div>Grade F &nbsp; Below 35 &nbsp; <span className="italic text-slate-600">Fail</span></div>
+                      </div>
                     </div>
-                  ) : null}
 
-                  {/* Class size info only — no names of other students */}
-                  <div className="bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 flex items-center gap-2 text-sm text-gray-500">
-                    <Medal className="w-4 h-4 text-yellow-500 shrink-0" />
-                    <span>Class of <strong className="text-gray-700">{report.totalStudents}</strong> students · {report.className}</span>
+                    {/* BECE AGGREGATE CALCULATION */}
+                    <div className="border-t border-black pt-3">
+                      <p className="font-extrabold uppercase text-center text-[10px] tracking-wider mb-2">BECE AGGREGATE CALCULATION</p>
+                      <div className="grid grid-cols-2 gap-4 text-[10px]">
+                        <div>
+                          <p className="font-bold text-slate-800 underline mb-1">Core Subjects:</p>
+                          <div className="flex justify-between max-w-xs font-semibold mb-0.5"><span>English</span> <span>Grade {bece.cores.english}</span></div>
+                          <div className="flex justify-between max-w-xs font-semibold mb-0.5"><span>Science</span> <span>Grade {bece.cores.science}</span></div>
+                          <div className="flex justify-between max-w-xs font-semibold mb-0.5"><span>MATHS</span> <span>Grade {bece.cores.maths}</span></div>
+                          <div className="flex justify-between max-w-xs font-semibold mb-0.5"><span>Social</span> <span>Grade {bece.cores.social}</span></div>
+                        </div>
+                        <div>
+                          <p className="font-bold text-slate-800 underline mb-1">Best 2 Electives:</p>
+                          {bece.bestElectives.map((val, idx) => (
+                            <div key={idx} className="flex justify-between max-w-xs font-semibold mb-0.5">
+                              <span>Elective {idx + 1}</span> <span>Grade {val}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="text-center font-extrabold uppercase text-xs mt-3 tracking-wide">
+                        AGGREGATE: <span className="text-sm text-purple-700 bg-purple-50 border border-purple-200 px-3 py-1 rounded ml-1 font-mono">{bece.aggregate}</span>
+                      </div>
+                    </div>
+
+                    <div className="footer-text mt-4 border-t border-slate-200 pt-2 text-[8px] text-center text-slate-500 uppercase tracking-widest">
+                      Generated by ScholarNerve
+                    </div>
+
                   </div>
                 </div>
               );

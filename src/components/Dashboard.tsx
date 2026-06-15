@@ -6,6 +6,7 @@ import AdministratorDashboard from './dashboard/AdministratorDashboard';
 import FinancialDashboard from './dashboard/FinancialDashboard';
 import StudentsModule from './students/StudentsModule';
 import TeachersModule from './teachers/TeachersModule';
+import OtherStaffModule from './staff/OtherStaffModule';
 import ClassesModule from './classes/ClassesModule';
 import CalendarModule from './CalendarModule';
 import FeesModule from './fees/FeesModule';
@@ -42,6 +43,10 @@ import ParentAccountsModule from './parent/ParentAccountsModule';
 import EndOfYearWizard from './academic/EndOfYearWizard';
 import GlobalAnnouncementPopup from './announcements/GlobalAnnouncementPopup';
 import SetupProgressGate from './onboarding/SetupProgressGate';
+import ActiveTermWelcomeGate from './onboarding/ActiveTermWelcomeGate';
+import TermReadOnlyShell from './common/TermReadOnlyShell';
+import ActiveTermRequiredShell from './common/ActiveTermRequiredShell';
+import { useTermStatus } from '../contexts/TermStatusContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useStaffPushSync } from '../hooks/useStaffPushSync';
 import { useEnsureData } from '../hooks/useEnsureData';
@@ -70,6 +75,13 @@ const Dashboard = () => {
 
   const domains = useMemo(() => domainsForModule(activeModule), [activeModule]);
   useEnsureData(domains);
+  const { setViewingTermLabel } = useTermStatus();
+
+  useEffect(() => {
+    if (activeModule !== 'reports') {
+      setViewingTermLabel(null);
+    }
+  }, [activeModule, setViewingTermLabel]);
 
   useEffect(() => {
     if (user?.role === 'finance' && activeModule === 'dashboard') {
@@ -82,6 +94,7 @@ const Dashboard = () => {
     const hasModuleAccess =
       hasAccess(activeModule) ||
       hasAccess(activeModule + '-view-only') ||
+      (activeModule === 'other-staff' && (hasAccess('teachers') || hasAccess('teachers-view-only'))) ||
       (activeModule === 'appointment-letter-settings' && hasAccess('settings-full')) ||
       (activeModule === 'teacher-quizzes' && (hasAccess('grades') || user?.role === 'teacher'));
     if (!hasModuleAccess) {
@@ -113,6 +126,8 @@ const Dashboard = () => {
         return <StudentsModule />;
       case 'teachers':
         return <TeachersModule />;
+      case 'other-staff':
+        return <OtherStaffModule />;
       case 'classes':
         return <ClassesModule />;
       case 'calendar':
@@ -132,7 +147,7 @@ const Dashboard = () => {
       case 'teacher-quizzes':
         return <TeacherQuizModule />;
       case 'fees':
-        return <FeesModule />;
+        return <FeesModule onNavigate={setActiveModule} />;
       case 'finance-statement':
         return <FinanceStatementModule />;
       case 'income':
@@ -193,8 +208,14 @@ const Dashboard = () => {
       setActiveModule={setActiveModule}
     >
       <GlobalAnnouncementPopup />
+      <ActiveTermWelcomeGate activeModule={activeModule} setActiveModule={setActiveModule} />
       <SetupProgressGate activeModule={activeModule} setActiveModule={setActiveModule} />
-      {renderActiveModule()}
+      <ActiveTermRequiredShell
+        activeModule={activeModule}
+        onOpenSettings={() => setActiveModule('settings')}
+      >
+        <TermReadOnlyShell activeModule={activeModule}>{renderActiveModule()}</TermReadOnlyShell>
+      </ActiveTermRequiredShell>
     </SidebarWrapper>
   );
 };

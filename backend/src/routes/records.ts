@@ -3,19 +3,15 @@ import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
+import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 import { isGraduatedEnrollment } from '../services/studentFeeBalanceService.js';
-import {
-  getStudentFullBalance,
-  fullBalanceToLiveBreakdown,
-  resolveActiveLedgerTerm,
-  computeTermOwnOutstanding,
-} from '../services/studentUnifiedBalanceService.js';
 
 const router = express.Router();
 
 router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
+attachWritableTermGuard(router);
 
 /** Profile lookup - Admin and Superadmin only. Search by Student ID, Teacher Staff ID, or Staff ID */
 router.get('/profile-lookup', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
@@ -61,9 +57,9 @@ router.get('/profile-lookup', requireRole('super-admin', 'administrator'), async
       return res.json({ type: 'teacher', profile });
     }
 
-    // Try Staff (payroll_other_staff staff_id)
+    // Try Staff (other_staff staff_id)
     const staffRes = await query(
-      `SELECT * FROM payroll_other_staff WHERE tenant_id = $1 AND LOWER(staff_id) = LOWER($2)`,
+      `SELECT * FROM other_staff WHERE tenant_id = $1 AND LOWER(staff_id) = LOWER($2)`,
       [tenantId, searchId]
     );
     if (staffRes.rows.length > 0) {
@@ -109,85 +105,7 @@ async function buildStudentProfile(tenantId: number, student: any) {
   const schoolSettings = settingsRes.rows[0] || {};
   const currentTerm = schoolSettings.current_term || null;
   const currentYear = schoolSettings.current_year || null;
-  const currentTermLabel =
-    currentTerm && currentYear ? `${currentTerm} ${currentYear}`.trim() : currentTerm;
 
-  const paymentsRes = await query(
-    `SELECT p.*,
-       (SELECT u.username FROM audit_logs al
-        JOIN users u ON al.user_id = u.id
-        WHERE al.entity_type = 'PAYMENT' AND al.entity_id = p.id AND al.action = 'CREATE'
-        AND al.tenant_id = p.tenant_id
-        ORDER BY al.created_at DESC LIMIT 1) as recorded_by
-     FROM payments p
-     WHERE p.tenant_id = $1 AND p.student_id = $2
-     ORDER BY p.payment_date DESC, p.id DESC`,
-    [tenantId, studentId]
-  );
-
-  const { ledgerTermId } = await resolveActiveLedgerTerm(query, tenantId);
-  const fullBalance = await getStudentFullBalance(null, tenantId, studentId);
-  const ledgerBreakdown = fullBalance ? fullBalanceToLiveBreakdown(fullBalance, ledgerTermId) : null;
-
-  const feeSummaryByTerm: any[] = (fullBalance?.termRows ?? []).map((row) => {
-    const yearMatch = row.termName.match(/(\d{4})\s*$/);
-    const priorOwn = computeTermOwnOutstanding(row.termFee, row.totalPaid);
-    return {
-      academicYear: yearMatch?.[1] || row.termName.split(' ').pop() || '',
-      term: row.termName,
-      totalFees: row.termFee,
-      totalPaid: row.totalPaid,
-      amountDue: row.isCurrentTerm ? row.totalDue : row.termFee,
-      outstanding: row.isCurrentTerm ? row.outstanding : priorOwn,
-      credit: row.credit,
-      arrears: row.isCurrentTerm ? (fullBalance?.totalArrears ?? 0) : priorOwn,
-      status: row.status,
-      isActiveTerm: row.isCurrentTerm,
-    };
-  });
-
-  const currentTermBalance = ledgerBreakdown
-    ? {
-        totalFees: ledgerBreakdown.currentTermFee,
-        totalPaid: ledgerBreakdown.totalPaid,
-        outstanding: ledgerBreakdown.outstanding,
-        arrears: ledgerBreakdown.totalArrears,
-        credit: ledgerBreakdown.credit,
-        status: ledgerBreakdown.status,
-      }
-    : fullBalance?.status === 'NotSet'
-      ? null
-      : {
-          totalFees: fullBalance?.currentTerm?.termFee ?? 0,
-          totalPaid: fullBalance?.totalPaid ?? 0,
-          outstanding: fullBalance?.outstanding ?? 0,
-          arrears: fullBalance?.totalArrears ?? 0,
-          credit: fullBalance?.credit ?? 0,
-          status: fullBalance?.status ?? 'Cleared',
-        };
-
-  const allPayments = paymentsRes.rows.map((p: any) => ({
-    id: p.id,
-    date: p.payment_date,
-    amount: parseFloat(p.amount_paid ?? p.amount ?? 0),
-    term: p.term || '—',
-    academicYear: p.academic_year || null,
-    receiptNumber: p.receipt_number || null,
-    paymentMethod: p.payment_method || '—',
-    recordedBy: p.recorded_by || '—',
-    voided: !!p.is_voided,
-    notes: p.notes || null,
-  }));
-
-  const activePayments = allPayments.filter((p) => !p.voided);
-  const totalNetFees = ledgerBreakdown?.currentTermFee ?? feeSummaryByTerm.reduce((s, r) => s + r.totalFees, 0);
-  const totalPaidAll = ledgerBreakdown?.totalPaid ?? activePayments.reduce((s, r) => s + r.amount, 0);
-  const totalOutstanding = ledgerBreakdown
-    ? Math.max(0, ledgerBreakdown.outstanding)
-    : currentTermBalance
-      ? Math.max(0, currentTermBalance.outstanding)
-      : feeSummaryByTerm.reduce((s, r) => s + Math.max(0, r.outstanding), 0);
-  const totalCredit = ledgerBreakdown?.credit ?? currentTermBalance?.credit ?? feeSummaryByTerm.reduce((s, r) => s + (r.credit || 0), 0);
   const studentDetails = buildStudentDetails(student);
 
   const attendanceRes = await query(
@@ -267,40 +185,9 @@ async function buildStudentProfile(tenantId: number, student: any) {
     },
     details: studentDetails,
     overview: {
-      totalFeesAssigned: totalNetFees,
-      totalPaid: totalPaidAll,
-      totalOutstanding,
-      creditBalance: totalCredit,
       isBeneficiary: !!student.is_beneficiary,
-      currentTermLabel,
-      currentTermOutstanding: currentTermBalance ? Math.max(0, currentTermBalance.outstanding) : totalOutstanding,
-      currentTermFees: currentTermBalance?.totalFees ?? 0,
-      currentTermPaid: currentTermBalance?.totalPaid ?? 0,
-      currentTermArrears: currentTermBalance?.arrears ?? 0,
-      currentTermAmountDue: currentTermBalance
-        ? currentTermBalance.totalFees + currentTermBalance.arrears
-        : 0,
-      currentTermStatus: currentTermBalance?.status ?? null,
       currentTermAverage: Math.round(termAverage * 10) / 10,
       attendancePercentage: attPct,
-    },
-    balance: currentTermBalance
-      ? {
-          term: currentTermLabel,
-          termFees: currentTermBalance.totalFees,
-          arrears: currentTermBalance.arrears,
-          amountDue: currentTermBalance.totalFees + currentTermBalance.arrears,
-          totalPaid: currentTermBalance.totalPaid,
-          outstanding: Math.max(0, currentTermBalance.outstanding),
-          credit: currentTermBalance.credit,
-          status: currentTermBalance.status,
-        }
-      : null,
-    fees: {
-      summaryByTerm: feeSummaryByTerm,
-      balance: ledgerBreakdown ?? null,
-      paymentHistory: allPayments,
-      receipts: allPayments,
     },
     academicPerformance: {
       grades,

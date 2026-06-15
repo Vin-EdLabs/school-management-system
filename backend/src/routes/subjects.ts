@@ -2,6 +2,7 @@ import express from 'express';
 import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
+import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 import { getIO } from '../socket.js';
 import { notifySetupProgressChanged } from '../services/setupProgressService.js';
 
@@ -19,6 +20,7 @@ const emitTenantDataChanged = (tenantId: number, entity: string, action: 'create
 router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
+attachWritableTermGuard(router);
 
 /**
  * GET /api/subjects

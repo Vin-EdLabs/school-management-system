@@ -1,6 +1,10 @@
 import type pg from 'pg';
 import { query } from '../db/connection.js';
 import { resolveLedgerTermFromSettings } from './ledgerFinanceService.js';
+import {
+  getStudentBalanceFromLedger,
+  getArrearsBreakdownFromLedger,
+} from './ledgerBalanceService.js';
 
 type QueryFn = typeof query;
 
@@ -71,11 +75,13 @@ export type StudentFullBalance = {
   priorTerms: StudentTermBalance[];
   arrearLines: { termName: string; amount: number }[];
   totalArrears: number;
+  creditBroughtForward: number;
   totalDue: number;
   totalPaid: number;
   lifetimePaid: number;
   outstanding: number;
   credit: number;
+  netBalance: number;
   status: BalanceStatus;
   termRows: StudentTermBalance[];
 };
@@ -320,8 +326,7 @@ function buildSyntheticCurrentTerm(
 }
 
 /**
- * Single source of truth for all student balance calculations.
- * Reads exclusively from student_ledger — no legacy fallbacks.
+ * Full balance view — delegates to getStudentBalanceFromLedger for the active term.
  */
 export async function getStudentFullBalance(
   client: pg.PoolClient | null,
@@ -342,104 +347,68 @@ export async function getStudentFullBalance(
       priorTerms: [],
       arrearLines: [],
       totalArrears: 0,
+      creditBroughtForward: 0,
       totalDue: 0,
       totalPaid: 0,
       lifetimePaid: 0,
       outstanding: 0,
       credit: 0,
+      netBalance: 0,
       status: 'NotSet',
       termRows: [],
     };
   }
 
-  const aggregates = await fetchTermAggregates(run, tenantId, studentId);
+  const balance = await getStudentBalanceFromLedger(client, tenantId, studentId, ledgerTermId);
+  const arrearsLines = await getArrearsBreakdownFromLedger(client, tenantId, studentId, ledgerTermId);
+  const arrearLines = arrearsLines.map((line) => ({
+    termName: line.description,
+    amount: line.amount,
+  }));
 
-  if (aggregates.length === 0) {
-    const syntheticCurrent = buildSyntheticCurrentTerm(ledgerTermId, termLabel);
-    return {
-      currentTerm: syntheticCurrent,
-      priorTerms: [],
-      arrearLines: [],
-      totalArrears: 0,
-      totalDue: 0,
-      totalPaid: 0,
-      lifetimePaid: 0,
-      outstanding: 0,
-      credit: 0,
-      status: 'NotSet',
-      termRows: [syntheticCurrent],
-    };
+  let status: BalanceStatus = 'Cleared';
+  if (balance.termFee <= 0 && balance.paymentsMade <= 0 && balance.arrears <= 0 && balance.creditFromCarryForward <= 0) {
+    status = 'NotSet';
+  } else if (balance.netBalance < -0.001) {
+    status = 'Credit';
+  } else if (balance.netBalance > 0.001) {
+    status = 'Owing';
   }
 
-  const termRows: StudentTermBalance[] = [];
-  for (const agg of aggregates) {
-    const entries = await fetchTermEntries(run, tenantId, studentId, agg.termId);
-    const isCurrent = agg.termId === ledgerTermId;
-    termRows.push(buildTermBalance(agg, isCurrent, entries));
-  }
-
-  if (!termRows.some((r) => r.termId === ledgerTermId)) {
-    termRows.forEach((r) => {
-      r.isCurrentTerm = false;
-    });
-    termRows.push(buildSyntheticCurrentTerm(ledgerTermId, termLabel));
-  }
-
-  const currentTerm = termRows.find((r) => r.isCurrentTerm) ?? null;
-
-  const arrearLines: { termName: string; amount: number }[] = [];
-  for (const row of termRows) {
-    if (row.isCurrentTerm) continue;
-    const termOwnOutstanding = computeTermOwnOutstanding(row.termFee, row.totalPaid);
-    row.outstanding = termOwnOutstanding;
-    row.totalDue = row.termFee;
-    row.credit = roundMoney(Math.max(0, row.totalPaid - row.termFee));
-    row.status = deriveStatus(termOwnOutstanding, row.credit);
-    if (termOwnOutstanding > 0) {
-      arrearLines.push({ termName: row.termName, amount: termOwnOutstanding });
-    }
-  }
-
-  const priorTerms = termRows.filter((r) => !r.isCurrentTerm);
-  const totalArrears = roundMoney(arrearLines.reduce((sum, line) => sum + line.amount, 0));
-  const totalDue = roundMoney((currentTerm?.termFee ?? 0) + totalArrears);
-  const totalPaid = currentTerm?.totalPaid ?? 0;
-  const outstanding = roundMoney(Math.max(0, totalDue - totalPaid));
-  const credit = roundMoney(Math.max(0, totalPaid - totalDue));
-
-  if (currentTerm) {
-    currentTerm.totalDue = totalDue;
-    currentTerm.outstanding = outstanding;
-    currentTerm.credit = credit;
-    if (currentTerm.termFee <= 0 && currentTerm.totalPaid <= 0) {
-      currentTerm.status = 'NotSet';
-    } else {
-      currentTerm.status = deriveStatus(outstanding, credit);
-    }
-  }
-
-  const lifetimePaid = roundMoney(termRows.reduce((s, r) => s + r.totalPaid, 0));
-  const overallStatus: BalanceStatus =
-    currentTerm?.status === 'NotSet'
-      ? 'NotSet'
-      : currentTerm?.status ?? 'NotSet';
+  const label = termLabel || 'Current term';
+  const currentTerm: StudentTermBalance = {
+    termId: ledgerTermId,
+    termName: label,
+    academicYear: '',
+    termFee: balance.termFee,
+    arrearsBroughtForward: balance.arrears,
+    totalDue: balance.totalDue,
+    totalPaid: balance.paymentsMade,
+    outstanding: balance.outstanding,
+    credit: balance.creditBalance,
+    status,
+    isCurrentTerm: true,
+    entries: [],
+  };
 
   return {
     currentTerm,
-    priorTerms,
+    priorTerms: [],
     arrearLines,
-    totalArrears,
-    totalDue,
-    totalPaid,
-    lifetimePaid,
-    outstanding,
-    credit,
-    status: overallStatus,
-    termRows,
+    totalArrears: balance.arrears,
+    creditBroughtForward: balance.creditFromCarryForward,
+    totalDue: balance.totalDue,
+    totalPaid: balance.paymentsMade,
+    lifetimePaid: balance.paymentsMade,
+    outstanding: balance.outstanding,
+    credit: balance.creditBalance,
+    netBalance: balance.netBalance,
+    status,
+    termRows: [currentTerm],
   };
 }
 
-/** Payment allocation context for the current active term (arrears-first). */
+/** Payment allocation context for the current active term — ledger-only. */
 export async function getCurrentTermPaymentContext(
   client: pg.PoolClient | null,
   tenantId: number,
@@ -453,66 +422,57 @@ export async function getCurrentTermPaymentContext(
   totalDue: number;
   totalPaid: number;
   outstandingBefore: number;
+  creditBroughtForward: number;
 } | null> {
-  const balance = await getStudentFullBalance(client, tenantId, studentId);
-  if (!balance?.currentTerm) return null;
-
-  const { ledgerTermId, academicYearId, termLabel } = await resolveActiveLedgerTerm(
-    client ? client.query.bind(client) : query,
-    tenantId
-  );
+  const run: QueryFn = client ? client.query.bind(client) : query;
+  const { ledgerTermId, academicYearId, termLabel } = await resolveActiveLedgerTerm(run, tenantId);
   if (!ledgerTermId || !academicYearId || !termLabel) return null;
 
-  const ct = balance.currentTerm;
+  const balance = await getStudentBalanceFromLedger(client, tenantId, studentId, ledgerTermId);
+
   return {
     ledgerTermId,
     academicYearId,
     termLabel,
-    termFee: ct.termFee,
-    arrears: balance.totalArrears,
+    termFee: balance.termFee,
+    arrears: balance.arrears,
     totalDue: balance.totalDue,
-    totalPaid: ct.totalPaid,
-    outstandingBefore: roundMoney(Math.max(0, balance.totalDue - ct.totalPaid)),
+    totalPaid: balance.paymentsMade,
+    outstandingBefore: balance.outstanding,
+    creditBroughtForward: balance.creditFromCarryForward,
   };
 }
 
-/** Payment allocation (current-term-first).
- *  Allocate payment to the current term fee first, then to arrears (oldest first).
- */
+/** Arrears-first payment allocation (pure). Uses ledger net outstanding when provided. */
 export function allocatePayment(
-  ctx: { termFee: number; arrears: number; totalDue: number; totalPaid: number },
+  ctx: {
+    termFee: number;
+    arrears: number;
+    totalDue: number;
+    totalPaid: number;
+    outstandingBefore?: number;
+  },
   paymentAmount: number
 ): PaymentAllocation {
   const termFee = roundMoney(ctx.termFee);
   const arrears = roundMoney(ctx.arrears);
   const totalDue = roundMoney(ctx.totalDue);
   const totalPaidBefore = roundMoney(ctx.totalPaid);
-  const outstandingBefore = roundMoney(Math.max(0, totalDue - totalPaidBefore));
+  const outstandingBefore =
+    ctx.outstandingBefore != null
+      ? roundMoney(Math.max(0, ctx.outstandingBefore))
+      : roundMoney(Math.max(0, totalDue - totalPaidBefore));
 
-  // Determine how much of the current term is still unpaid
-  const termOutstanding = roundMoney(Math.max(0, termFee - totalPaidBefore));
-
-  // Payments already applied may have cleared some arrears; compute remaining arrears
   const arrearsClearedSoFar = Math.min(arrears, totalPaidBefore);
   const arrearsRemaining = roundMoney(Math.max(0, arrears - arrearsClearedSoFar));
 
-  // Apply to current term first
-  let termFeeCleared = 0;
   let arrearsCleared = 0;
-  let remaining = roundMoney(paymentAmount);
-
-  if (remaining <= termOutstanding + 0.001) {
-    termFeeCleared = roundMoney(remaining);
-    remaining = 0;
+  let termFeeCleared = 0;
+  if (paymentAmount <= arrearsRemaining + 0.001) {
+    arrearsCleared = roundMoney(paymentAmount);
   } else {
-    termFeeCleared = termOutstanding;
-    remaining = roundMoney(remaining - termOutstanding);
-  }
-
-  // Then apply remainder to arrears (oldest first)
-  if (remaining > 0) {
-    arrearsCleared = roundMoney(Math.min(arrearsRemaining, remaining));
-    remaining = roundMoney(remaining - arrearsCleared);
+    arrearsCleared = arrearsRemaining;
+    termFeeCleared = roundMoney(paymentAmount - arrearsRemaining);
   }
 
   const outstandingAfter = roundMoney(outstandingBefore - paymentAmount);
@@ -550,8 +510,7 @@ export function buildReceiptSnapshot(allocation: PaymentAllocation): ReceiptSnap
     termFeeCleared: allocation.termFeeCleared,
     outstandingBefore: allocation.outstandingBefore,
     outstandingAfter: allocation.outstandingAfter,
-    // Report only the current-term portion as "paid this term"
-    totalPaidThisTerm: roundMoney(allocation.totalPaidBefore + allocation.termFeeCleared),
+    totalPaidThisTerm: roundMoney(allocation.totalPaidBefore + allocation.amountPaid),
     status: allocation.status,
     credit: allocation.credit,
   };
@@ -569,12 +528,16 @@ export function fullBalanceToLiveBreakdown(
     activeTermId,
     arrearLines: balance.arrearLines,
     totalArrears: balance.totalArrears,
+    creditBroughtForward: balance.creditBroughtForward,
     totalDue: balance.totalDue,
     paidLines: ct && ct.totalPaid > 0 ? [{ termName: ct.termName, amount: ct.totalPaid }] : [],
     totalPaid: balance.totalPaid,
     outstanding: balance.outstanding,
     credit: balance.credit,
-    status: balance.status,
+    netBalance: balance.netBalance,
+    status: balance.status === 'NotSet' ? 'Cleared' : balance.status,
+    paymentsMade: balance.currentTerm ? balance.totalPaid : 0,
+    totalCharged: balance.totalDue,
     termRows: balance.termRows.map((r) => {
       const displayOutstanding = r.isCurrentTerm
         ? r.outstanding

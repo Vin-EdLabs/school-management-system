@@ -70,6 +70,7 @@ const SettingsModule = () => {
 
   const isSuperAdmin = hasAccess('schools');
   const hasSettingsFull = hasAccess('settings-full');
+  const canBackupSchool = hasSettingsFull || (user?.role === 'administrator' && !!school?.id);
 
   const getParentPortalUrl = () =>
     getTenantParentPortalUrl(school?.slug ?? null, school?.id);
@@ -206,7 +207,7 @@ const SettingsModule = () => {
       const link = document.createElement('a');
       link.href = url;
       const safeName = (school.name || 'school').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-      link.download = `${safeName || 'school'}_backup_${new Date().toISOString().split('T')[0]}.json`;
+      link.download = `scholarnerve_backup_${safeName || 'school'}_${new Date().toISOString().split('T')[0]}.json`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -245,7 +246,8 @@ const SettingsModule = () => {
   }
 
   if (!hasSettingsFull) {
-    // Regular user settings view
+    const isSchoolAdmin = user?.role === 'administrator';
+    // Regular user settings view (password + optional backup for school admins)
     return (
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between">
@@ -255,10 +257,35 @@ const SettingsModule = () => {
             </div>
             <div>
               <h1 className="text-3xl font-bold text-foreground">Account Settings</h1>
-              <p className="text-muted-foreground">Change your password</p>
+              <p className="text-muted-foreground">
+                {isSchoolAdmin ? 'Change your password and manage school backup' : 'Change your password'}
+              </p>
             </div>
           </div>
         </div>
+
+        {isSchoolAdmin && canBackupSchool && (
+          <Card className="shadow-sm max-w-md">
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Download className="w-5 h-5" />
+                <span>School Backup</span>
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Download a complete backup of your school&apos;s data as a JSON file.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <Button variant="outline" className="w-full h-9" onClick={handleExportJSON}>
+                <Download className="w-4 h-4 mr-2" />
+                Create Backup
+              </Button>
+              <p className="mt-3 text-[11px] text-muted-foreground">
+                Restore and reset are managed by Super Admin only.
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         <Card className="max-w-md">
           <CardHeader>
@@ -653,7 +680,7 @@ const SettingsModule = () => {
               <Download className="w-4 h-4" />
               <span>School Backup</span>
             </CardTitle>
-            <p className="text-xs text-muted-foreground">Create a read-only backup of this school's current data.</p>
+            <p className="text-xs text-muted-foreground">Create a full backup of this school&apos;s data (all tables).</p>
           </CardHeader>
           <CardContent className="px-4 pb-4">
             <Button variant="outline" className="w-full h-9" onClick={handleExportJSON}>

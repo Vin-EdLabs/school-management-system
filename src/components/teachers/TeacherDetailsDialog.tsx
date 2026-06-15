@@ -8,6 +8,7 @@ import { User, Mail, Phone, MapPin, Calendar, Briefcase, DollarSign, FileText, B
 import { formatDisplayDate } from '../../utils/dateFormat';
 import type { Teacher } from '../../contexts/DataContext';
 import LazyTeacherAvatar from './LazyTeacherAvatar';
+import StaffPhotoLightbox from '../staff/StaffPhotoLightbox';
 import { TeacherStatusModals, teacherStatusBadge } from './TeacherStatusModals';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiService } from '../../services/api';
@@ -38,6 +39,7 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
   const [generating, setGenerating] = useState(false);
   const [letterPreview, setLetterPreview] = useState<AppointmentLetterData | null>(null);
   const [showLetterGenerator, setShowLetterGenerator] = useState(false);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
 
   const status = teacher?.status || 'active';
   const badge = teacher ? teacherStatusBadge(status) : null;
@@ -60,6 +62,23 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
       }
     })();
   }, [open, teacher, isAdmin]);
+
+  useEffect(() => {
+    if (!open || !teacher?.hasPassportPhoto) {
+      setPhotoUrl(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await apiService.get<{ passport_photo_url?: string }>(`/teachers/${teacher.id}/photo`);
+        if (!cancelled && res.passport_photo_url) setPhotoUrl(res.passport_photo_url);
+      } catch {
+        if (!cancelled) setPhotoUrl(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open, teacher?.id, teacher?.hasPassportPhoto]);
 
   if (!teacher) return null;
 
@@ -112,10 +131,15 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
         <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3">
-              <LazyTeacherAvatar teacherId={teacher.id} fullName={teacher.fullName} hasPassportPhoto={teacher.hasPassportPhoto} eager />
+              {photoUrl ? (
+                <StaffPhotoLightbox src={photoUrl} name={teacher.fullName} size="sm" />
+              ) : (
+                <LazyTeacherAvatar teacherId={teacher.id} fullName={teacher.fullName} hasPassportPhoto={teacher.hasPassportPhoto} eager />
+              )}
               <span>Teacher Profile</span>
               {badge ? <Badge className={badge.className}>{badge.label}</Badge> : null}
             </DialogTitle>
+            {photoUrl && <p className="text-xs text-muted-foreground pl-1">Click photo to view full size</p>}
           </DialogHeader>
 
           <div className="space-y-6">
@@ -168,6 +192,24 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
                     {teacher.monthlySalary > 0 ? `GHS ${teacher.monthlySalary.toLocaleString()}` : 'Not set'}
                   </p>
                 </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <h4 className="text-sm font-semibold mb-2">Emergency Contact</h4>
+                <p className="text-sm"><span className="text-muted-foreground">Name: </span>{teacher.emergencyContactName || '—'}</p>
+                <p className="text-sm"><span className="text-muted-foreground">Relationship: </span>{teacher.emergencyContactRelationship || '—'}</p>
+                <p className="text-sm"><span className="text-muted-foreground">Phone: </span>{teacher.emergencyContactPhone || '—'}</p>
+              </div>
+              <div>
+                <h4 className="text-sm font-semibold mb-2">Bank Details</h4>
+                <p className="text-sm"><span className="text-muted-foreground">Bank: </span>{teacher.bankName || '—'}</p>
+                <p className="text-sm"><span className="text-muted-foreground">Account Name: </span>{teacher.bankAccountName || '—'}</p>
+                <p className="text-sm font-mono"><span className="text-muted-foreground font-sans">Account No: </span>{teacher.bankAccountNumber || '—'}</p>
+                <p className="text-sm"><span className="text-muted-foreground">Branch: </span>{teacher.bankBranch || '—'}</p>
               </div>
             </div>
 

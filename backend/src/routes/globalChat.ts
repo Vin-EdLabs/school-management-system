@@ -317,7 +317,7 @@ router.get('/mentions', authenticate, async (req: AuthRequest, res) => {
          LEFT JOIN tenants t ON u.tenant_id = t.id
          -- Link to Faculty/Staff profiles
          LEFT JOIN teachers tr ON u.teacher_id::text = tr.id::text AND tr.tenant_id = u.tenant_id
-         LEFT JOIN payroll_other_staff pos ON u.other_staff_id = pos.id AND pos.tenant_id = u.tenant_id
+         LEFT JOIN other_staff pos ON u.other_staff_id = pos.id AND pos.tenant_id = u.tenant_id
          -- Metadata from assigned class
          LEFT JOIN classes c ON tr.class_assigned_id = c.id
          WHERE (tr.full_name ILIKE $1 OR pos.full_name ILIKE $1 OR u.username ILIKE $1)

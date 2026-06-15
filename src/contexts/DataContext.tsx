@@ -78,6 +78,13 @@ export interface Teacher {
   deactivationDate?: string;
   deactivationReason?: string;
   notes: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+  emergencyContactRelationship?: string;
+  bankName?: string;
+  bankAccountNumber?: string;
+  bankBranch?: string;
+  bankAccountName?: string;
 }
 
 function normalizeTeacherStatus(raw: string | null | undefined): TeacherStatus {
@@ -120,6 +127,7 @@ export interface Payment {
   paymentMethod: string;
   paymentAccountId?: string;
   term: string;
+  termId?: number | null;
   notes: string;
   receiptNumber?: string;
   isVoided?: boolean;
@@ -190,6 +198,15 @@ interface DataContextType {
   classes: Class[];
   feeStructures: FeeStructure[];
   ledgerBalances: Record<string, StudentBalance>;
+  ledgerBalanceSummary: {
+    studentsOwing: number;
+    studentsCredit: number;
+    studentsWithArrears: number;
+    totalOutstanding: number;
+    totalCredit: number;
+    totalArrears: number;
+    totalStudents: number;
+  } | null;
   payments: Payment[];
   income: Income[];
   expenses: Expense[];
@@ -210,6 +227,7 @@ interface DataContextType {
     id?: string;
     loginStaffId?: string;
     loginPin?: string;
+    loginPassword?: string;
     loginMessage?: string;
   } | void>;
   updateTeacher: (id: string, updates: Partial<Teacher>) => Promise<void>;
@@ -282,6 +300,13 @@ const mapTeacher = (backendTeacher: any): Teacher => ({
   deactivationDate: formatDateForInput(backendTeacher.deactivation_date),
   deactivationReason: backendTeacher.deactivation_reason || undefined,
   notes: backendTeacher.notes || '',
+  emergencyContactName: backendTeacher.emergency_contact_name || undefined,
+  emergencyContactPhone: backendTeacher.emergency_contact_phone || undefined,
+  emergencyContactRelationship: backendTeacher.emergency_contact_relationship || undefined,
+  bankName: backendTeacher.bank_name || undefined,
+  bankAccountNumber: backendTeacher.bank_account_number || undefined,
+  bankBranch: backendTeacher.bank_branch || undefined,
+  bankAccountName: backendTeacher.bank_account_name || undefined,
 });
 
 // Helper function to map frontend teacher to backend format (only defined fields for partial updates)
@@ -299,6 +324,13 @@ const mapTeacherToBackend = (teacher: Partial<Teacher>): any => {
   if (teacher.monthlySalary !== undefined) out.monthly_salary = teacher.monthlySalary;
   if (teacher.employmentStatus !== undefined) out.employment_status = teacher.employmentStatus;
   if (teacher.notes !== undefined) out.notes = teacher.notes;
+  if (teacher.emergencyContactName !== undefined) out.emergency_contact_name = teacher.emergencyContactName;
+  if (teacher.emergencyContactPhone !== undefined) out.emergency_contact_phone = teacher.emergencyContactPhone;
+  if (teacher.emergencyContactRelationship !== undefined) out.emergency_contact_relationship = teacher.emergencyContactRelationship;
+  if (teacher.bankName !== undefined) out.bank_name = teacher.bankName;
+  if (teacher.bankAccountNumber !== undefined) out.bank_account_number = teacher.bankAccountNumber;
+  if (teacher.bankBranch !== undefined) out.bank_branch = teacher.bankBranch;
+  if (teacher.bankAccountName !== undefined) out.bank_account_name = teacher.bankAccountName;
   return out;
 };
 
@@ -338,6 +370,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [classes, setClasses] = useState<Class[]>([]);
   const [feeStructures, setFeeStructures] = useState<FeeStructure[]>([]);
   const [ledgerBalances, setLedgerBalances] = useState<Record<string, StudentBalance>>({});
+  const [ledgerBalanceSummary, setLedgerBalanceSummary] = useState<DataContextType['ledgerBalanceSummary']>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [income, setIncome] = useState<Income[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -422,10 +455,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             ? (balancesRes as { balances: Record<string, StudentBalance> }).balances
             : {};
         setLedgerBalances(balances || {});
+        const summary =
+          balancesRes && typeof balancesRes === 'object' && balancesRes !== null && 'summary' in balancesRes
+            ? (balancesRes as { summary: DataContextType['ledgerBalanceSummary'] }).summary
+            : null;
+        setLedgerBalanceSummary(summary ?? null);
         break;
       }
       case 'payments': {
-        const paymentsRes = await apiService.get('/payments').catch(() => []);
+        const paymentsRes = await apiService.get('/payments?all=true').catch(() => []);
         const rawPayments = Array.isArray(paymentsRes)
           ? paymentsRes
           : (paymentsRes && typeof paymentsRes === 'object' && Array.isArray((paymentsRes as any).data))
@@ -442,6 +480,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           paymentMethod: p.payment_method ?? p.paymentMethod ?? '',
           paymentAccountId: p.payment_account_id != null ? String(p.payment_account_id) : undefined,
           term: p.term ?? '',
+          termId: p.term_id != null ? Number(p.term_id) : null,
           notes: p.notes ?? '',
           receiptNumber: p.receipt_number ?? p.receiptNumber,
           isVoided: !!p.is_voided,
@@ -561,7 +600,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       class: ['classes', 'students'],
       fee: ['fees'],
       payment: ['payments', 'fees'],
-      'finance-payment': ['payments', 'fees'],
       income: ['income'],
       expense: ['expenses'],
       subject: ['subjects'],
@@ -569,6 +607,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     let debounceTimer: ReturnType<typeof setTimeout> | undefined;
     const refreshNow = (payload?: { entity?: string }) => {
+      if (payload?.entity === 'payment') return;
       const entity = String(payload?.entity || '').toLowerCase();
       if (entity === 'student' && Date.now() < skipStudentSocketRefreshUntil.current) return;
       const domains = entityDomains[entity]?.filter((d) => loadedDomainsRef.current.has(d)) ?? [];
@@ -684,11 +723,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const addTeacher = async (teacherData: Omit<Teacher, 'id' | 'staffId'>) => {
     const backendData = mapTeacherToBackend(teacherData);
     const result = await apiService.post<any>('/teachers', backendData);
-    await refresh(['teachers']);
+    try {
+      await refresh(['teachers']);
+    } catch (refreshErr) {
+      console.warn('Teacher list refresh after add failed:', refreshErr);
+    }
     return {
       id: result?.id != null ? String(result.id) : undefined,
-      loginStaffId: result?.loginStaffId,
-      loginPin: result?.loginPin,
+      loginStaffId: result?.loginStaffId ?? result?.staff_id,
+      loginPin: result?.loginPassword ?? result?.loginPin,
+      loginPassword: result?.loginPassword ?? result?.loginPin,
       loginMessage: result?.loginMessage,
     };
   };
@@ -786,7 +830,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       receiptSnapshot: created.receipt_snapshot ?? created.receiptSnapshot,
     };
     applyPaymentLocally(payment, paymentData.amount, res.balance);
-    await refresh(['payments', 'fees']);
     return { payment, balance: res.balance };
   };
 
@@ -887,6 +930,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       classes,
       feeStructures,
       ledgerBalances,
+      ledgerBalanceSummary,
       payments,
       income,
       expenses,

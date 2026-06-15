@@ -70,6 +70,10 @@ type PayrollRow = PayrollRowSummary & {
   paidDate?: string | null;
   paymentMethod?: string | null;
   payrollNotes?: string;
+  bankName?: string | null;
+  bankAccountNumber?: string | null;
+  bankAccountName?: string | null;
+  bankBranch?: string | null;
 };
 
 type PayrollOverview = {
@@ -263,7 +267,7 @@ const PayrollModule = () => {
     }
     try {
       const addedName = newStaff.full_name;
-      const res = await apiService.post<any>('/payroll/other-staff', {
+      await apiService.post<any>('/payroll/other-staff', {
         full_name: addedName,
         role: newStaff.role || null,
         monthly_salary: parseFloat(newStaff.monthly_salary),
@@ -272,10 +276,6 @@ const PayrollModule = () => {
       setNewStaff({ full_name: '', role: '', monthly_salary: '' });
       setAddStaffOpen(false);
       loadPayroll();
-      if (res?.loginStaffId && res?.loginPin) {
-        setLoginCredentials({ staffId: res.loginStaffId, pin: res.loginPin, name: addedName });
-        setCredentialsOpen(true);
-      }
     } catch (e: any) {
       toast({ title: 'Error', description: e?.message || 'Failed to add staff', variant: 'destructive' });
     }
@@ -989,6 +989,20 @@ const PayrollModule = () => {
                 }
                 label="Payment Account"
               />
+              {payForm.payment_method === 'Bank Transfer' &&
+                (selectedPayee.bankName || selectedPayee.bankAccountNumber) && (
+                  <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground uppercase">Bank details (from profile)</p>
+                    {selectedPayee.bankName && <p>{selectedPayee.bankName}</p>}
+                    {selectedPayee.bankAccountName && <p>{selectedPayee.bankAccountName}</p>}
+                    {selectedPayee.bankAccountNumber && (
+                      <p className="font-mono">{selectedPayee.bankAccountNumber}</p>
+                    )}
+                    {selectedPayee.bankBranch && (
+                      <p className="text-muted-foreground">{selectedPayee.bankBranch}</p>
+                    )}
+                  </div>
+                )}
               <div>
                 <Label>Payment notes (optional)</Label>
                 <Input className="mt-1" value={payForm.notes} onChange={(e) => setPayForm({ ...payForm, notes: e.target.value })} placeholder="Reference / remarks" />

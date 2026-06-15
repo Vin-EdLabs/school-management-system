@@ -12,6 +12,7 @@ import { getActiveAcademicTerm } from '../../utils/feeCalculations';
 import { isActiveEnrolledStudent } from '../students/studentRegistryUtils';
 import { formatDisplayDate } from '../../utils/dateFormat';
 import type { StudentBalance } from '../../services/studentBalance';
+import type { Payment } from '../../contexts/DataContext';
 
 const StudentBalances = () => {
   const { students, payments, classes, ledgerBalances, feeStructures } = useData();
@@ -35,6 +36,17 @@ const StudentBalances = () => {
       return classMatch && (term === currentTerm || term.startsWith(currentTerm) || currentTerm.startsWith(term));
     });
   };
+
+  const currentTermPayments = useMemo(() => {
+    const activeTermId = Object.values(ledgerBalances || {})[0]?.activeTermId ?? null;
+    return (payments || []).filter((p: Payment) => {
+      if (activeTermId != null && p.termId != null) return p.termId === activeTermId;
+      return !currentTerm || p.term === currentTerm || (p.term || '').startsWith(currentTerm);
+    });
+  }, [payments, ledgerBalances, currentTerm]);
+
+  const countTermPayments = (studentId: string | number) =>
+    currentTermPayments.filter((p) => String(p.studentId) === String(studentId)).length;
 
   const calculateStudentBalance = (student: any, balance: StudentBalance | undefined) => {
     const termNotConfigured = !currentTerm || currentTerm === 'Not Set';
@@ -64,7 +76,7 @@ const StudentBalances = () => {
         balance: 0,
         feeStatus: { status: 'No Fee Set', balance: 0 },
         feeStructureMissing: true,
-        paymentCount: (payments || []).filter((p: any) => String(p.studentId) === String(student.id)).length,
+        paymentCount: countTermPayments(student.id),
       };
     }
 
@@ -73,63 +85,53 @@ const StudentBalances = () => {
         ...student,
         currentTermFee: balance.currentTermFee,
         arrears: balance.totalArrears,
+        creditBroughtForward: balance.creditBroughtForward ?? 0,
         creditBalance: balance.credit,
         totalAmountDue: balance.totalDue,
         totalPaid: balance.totalPaid,
         balance: 0,
         feeStatus: { status: 'No Fee Set', balance: 0 },
         feeStructureMissing: !hasFeeStructureForStudent(student),
-        paymentCount: (payments || []).filter((p: any) => String(p.studentId) === String(student.id)).length,
+        paymentCount: countTermPayments(student.id),
       };
     }
 
-    if (balance.status === 'NotSet') {
-      return {
-        ...student,
-        currentTermFee: 0,
-        arrears: 0,
-        creditBalance: 0,
-        totalAmountDue: 0,
-        totalPaid: 0,
-        balance: 0,
-        feeStatus: { status: 'Not Set', balance: 0 },
-        paymentCount: 0,
-      };
-    }
-
+    const netBalance = balance.netBalance ?? 0;
     const outstanding = balance.outstanding;
     const hasFeeStructure = hasFeeStructureForStudent(student);
     const feeStructureMissing = !hasFeeStructure && balance.currentTermFee <= 0;
     const termFeePosted = balance.currentTermFee > 0;
 
     let feeStatus: { status: string; balance: number };
-    if (!termFeePosted && balance.totalPaid <= 0 && balance.totalDue <= 0) {
+    if (!termFeePosted && balance.totalPaid <= 0 && balance.totalDue <= 0 && balance.credit <= 0) {
       feeStatus = { status: 'No Fee Set', balance: 0 };
-    } else if (outstanding > 0) {
-      if (balance.totalPaid > 0) {
-        feeStatus = { status: 'Partially Paid', balance: outstanding };
-      } else {
-        feeStatus = { status: 'Unpaid', balance: outstanding };
-      }
-    } else if (balance.credit > 0) {
-      feeStatus = { status: 'Credit Balance', balance: -balance.credit };
-    } else if (termFeePosted) {
+    } else if (netBalance < -0.001) {
+      feeStatus = { status: 'Credit', balance: balance.credit > 0 ? balance.credit : Math.abs(netBalance) };
+    } else if (Math.abs(netBalance) < 0.001) {
       feeStatus = { status: 'Paid', balance: 0 };
+    } else if (netBalance > 0 && balance.totalPaid > 0) {
+      feeStatus = { status: 'Partially Paid', balance: outstanding };
+    } else if (netBalance > 0 && balance.totalArrears > 0 && balance.totalPaid === 0) {
+      feeStatus = { status: 'Outstanding + Arrears', balance: outstanding };
+    } else if (netBalance > 0) {
+      feeStatus = { status: 'Outstanding', balance: outstanding };
     } else {
-      feeStatus = { status: 'No Fee Set', balance: 0 };
+      feeStatus = { status: 'Paid', balance: 0 };
     }
 
     return {
       ...student,
       currentTermFee: balance.currentTermFee,
       arrears: balance.totalArrears,
+      creditBroughtForward: balance.creditBroughtForward ?? 0,
       creditBalance: balance.credit,
       totalAmountDue: balance.totalDue,
       totalPaid: balance.totalPaid,
       balance: outstanding,
+      netBalance,
       feeStatus,
       feeStructureMissing,
-      paymentCount: (payments || []).filter((p: any) => String(p.studentId) === String(student.id)).length,
+      paymentCount: countTermPayments(student.id),
     };
   };
 
@@ -141,7 +143,7 @@ const StudentBalances = () => {
         return String(student.classAssignedId) === String(classRow.id) || student.classAssigned === classRow.className;
       })
       .map((student) => calculateStudentBalance(student, ledgerBalances[String(student.id)]));
-  }, [students, ledgerBalances, classRow, currentTerm, payments, feeStructures]);
+  }, [students, ledgerBalances, classRow, currentTerm, currentTermPayments, feeStructures]);
 
   const filteredStudents = studentsWithBalances.filter(student => {
     const matchesSearch = searchTerm === '' || 
@@ -153,23 +155,30 @@ const StudentBalances = () => {
     
     const matchesStatus = filterStatus === 'all-status' || 
       (filterStatus === 'outstanding' && student.balance > 0) ||
-      (filterStatus === 'paid' && (student.balance === 0 && student.feeStatus?.status === 'Paid')) ||
+      (filterStatus === 'paid' && student.balance === 0 && student.creditBalance === 0 && student.feeStatus?.status === 'Paid') ||
       (filterStatus === 'partial' && student.feeStatus?.status === 'Partially Paid') ||
-      (filterStatus === 'credit' && student.feeStatus?.status === 'Credit Balance') ||
+      (filterStatus === 'credit' && (student.creditBalance > 0 || (student.netBalance ?? 0) < -0.001)) ||
       (filterStatus === 'no-fee' && (student.feeStatus?.status === 'No Fee Set' || student.feeStatus?.status === 'Not Set')) ||
       (filterStatus === 'arrears' && student.arrears > 0);
 
     return matchesSearch && matchesClass && matchesStatus;
   });
 
-  const totalOutstanding = filteredStudents.reduce((sum, student) => sum + student.balance, 0);
-  const studentsWithOutstanding = filteredStudents.filter(student => student.balance > 0).length;
-  const totalArrears = filteredStudents.reduce((sum, student) => sum + student.arrears, 0);
-  const studentsWithArrears = filteredStudents.filter(student => student.arrears > 0).length;
-  const totalCreditBalance = filteredStudents
-    .filter(student => student.feeStatus?.status === 'Credit Balance')
-    .reduce((sum, student) => sum + Math.abs(student.feeStatus?.balance ?? 0), 0);
-  const studentsWithCredit = filteredStudents.filter(student => student.feeStatus?.status === 'Credit Balance').length;
+  const totalOutstanding = filteredStudents.reduce(
+    (sum, student) => sum + (student.balance > 0 ? student.balance : 0),
+    0
+  );
+  const studentsWithOutstanding = filteredStudents.filter((student) => student.balance > 0).length;
+  const totalArrears = filteredStudents.reduce(
+    (sum, student) => sum + (student.arrears > 0 ? student.arrears : 0),
+    0
+  );
+  const studentsWithArrears = filteredStudents.filter((student) => student.arrears > 0).length;
+  const totalCreditBalance = filteredStudents.reduce(
+    (sum, student) => sum + (student.creditBalance > 0 ? student.creditBalance : 0),
+    0
+  );
+  const studentsWithCredit = filteredStudents.filter((student) => student.creditBalance > 0).length;
 
   const getStatusBadge = (student: any) => {
     const status = student.feeStatus?.status;
@@ -187,8 +196,8 @@ const StudentBalances = () => {
         </div>
       );
     }
-    if (status === 'Credit Balance' || (student.creditBalance > 0 && student.balance <= 0)) {
-      return <Badge variant="default" className="bg-blue-500">Credit Balance</Badge>;
+    if (status === 'Credit' || (student.netBalance ?? 0) < -0.001 || student.creditBalance > 0) {
+      return <Badge variant="default" className="bg-green-600">Credit</Badge>;
     }
     if (status === 'Partially Paid' || (student.balance > 0 && student.totalPaid > 0)) {
       return (
@@ -197,13 +206,13 @@ const StudentBalances = () => {
         </Badge>
       );
     }
-    if (status === 'Unpaid' || (student.balance > 0 && student.totalPaid === 0)) {
+    if (status === 'Outstanding' || status === 'Outstanding + Arrears' || (student.balance > 0 && student.totalPaid === 0)) {
       const hasArrears = student.arrears > 0;
       return (
         <div className="flex flex-col items-start gap-1">
           <Badge variant="destructive" className="flex items-center space-x-1">
             <AlertCircle className="w-3 h-3" />
-            <span>{hasArrears ? 'Outstanding + Arrears' : 'Unpaid'}</span>
+            <span>{hasArrears ? 'Outstanding + Arrears' : 'Outstanding'}</span>
           </Badge>
           {student.feeStructureMissing ? (
             <span className="text-[10px] text-amber-700 leading-tight">No fee set for this class/term</span>
@@ -331,6 +340,7 @@ const StudentBalances = () => {
                 <TableHead>Class</TableHead>
                 <TableHead>Term Fee</TableHead>
                 <TableHead>Arrears</TableHead>
+                <TableHead>Credit</TableHead>
                 <TableHead>Total Due</TableHead>
                 <TableHead>Amount Paid</TableHead>
                 <TableHead>Balance</TableHead>
@@ -341,7 +351,7 @@ const StudentBalances = () => {
             <TableBody>
               {filteredStudents.length === 0 ? (
                 <TableRow className="border-border">
-                  <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                     No students found matching your criteria
                   </TableCell>
                 </TableRow>
@@ -379,8 +389,15 @@ const StudentBalances = () => {
                       </span>
                     </TableCell>
                     <TableCell>
+                      <span className={`font-mono ${
+                        (student.creditBalance ?? 0) > 0 ? 'text-green-600 font-bold' : 'text-gray-500'
+                      }`}>
+                        GHS {(student.creditBalance ?? 0).toLocaleString()}
+                      </span>
+                    </TableCell>
+                    <TableCell>
                       <span className="font-mono text-foreground">
-                        GHS {(student.totalAmountDue ?? 0).toLocaleString()}
+                        GHS {Math.max(0, student.totalAmountDue ?? 0).toLocaleString()}
                       </span>
                     </TableCell>
                     <TableCell>
@@ -392,13 +409,8 @@ const StudentBalances = () => {
                       <span className={`font-mono font-bold ${
                         (student.balance ?? 0) > 0 ? 'text-red-600' : 'text-green-600'
                       }`}>
-                        GHS {(student.balance ?? 0).toLocaleString()}
+                        GHS {Math.max(0, student.balance ?? 0).toLocaleString()}
                       </span>
-                      {student.feeStatus?.status === 'Credit Balance' && (
-                        <div className="text-xs text-blue-600 mt-1">
-                          Credit: GHS {Math.abs(student.feeStatus.balance ?? 0).toLocaleString()}
-                        </div>
-                      )}
                     </TableCell>
                     <TableCell>
                       {getStatusBadge(student)}

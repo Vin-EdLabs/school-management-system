@@ -34,6 +34,17 @@ export type ArrearsHistory = {
   totalCarriedForward: number;
 };
 
+export type CreditHistoryLine = {
+  termLabel: string;
+  creditAmount: number;
+  description: string;
+};
+
+export type CreditHistory = {
+  lines: CreditHistoryLine[];
+  totalCreditAvailable: number;
+};
+
 export type StatementPaymentRow = {
   id: number;
   receiptNumber: string;
@@ -84,6 +95,7 @@ export type StudentFinanceStatement = {
   termSummary: TermSummaryRow[];
   termSummaryTotals: Omit<TermSummaryRow, 'termLabel' | 'status'>;
   arrearsHistory: ArrearsHistory;
+  creditHistory: CreditHistory;
   payments: StatementPaymentRow[];
   paymentsTotal: number;
   adjustments: StatementAdjustmentRow[];

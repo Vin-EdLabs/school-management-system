@@ -2,6 +2,7 @@ import express from 'express';
 import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest, requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
+import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 import { getIO } from '../socket.js';
 
 const router = express.Router();
@@ -43,6 +44,7 @@ const emitLevelsChanged = (tenantId: number) => {
 router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
+attachWritableTermGuard(router);
 
 router.get('/', async (req: AuthRequest, res) => {
   try {

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -13,13 +14,15 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { useData } from '../../contexts/DataContext';
-import { useActiveTerm } from '../../contexts/ActiveTermContext';
+import { useActiveTerm } from '../../hooks/useActiveTerm';
+import { feeStructureCheckKey } from '../../hooks/useFeeStructureCheck';
 import { toast } from '@/hooks/use-toast';
 import { DollarSign, Save, Pencil, Trash2 } from 'lucide-react';
 
 const SetFeeStructure = () => {
+  const queryClient = useQueryClient();
   const { classes, addFeeStructure, updateFeeStructure, deleteFeeStructure, feeStructures } = useData();
-  const { currentTerm, currentYear, isLoading } = useActiveTerm();
+  const { currentTerm, currentYear, isLoading, activeAcademicTermId } = useActiveTerm();
   const [formData, setFormData] = useState({
     classId: '',
     amount: '',
@@ -71,6 +74,8 @@ const SetFeeStructure = () => {
         description: formData.description
       });
 
+      void queryClient.invalidateQueries({ queryKey: feeStructureCheckKey(activeAcademicTermId) });
+
       toast({
         title: "Fee Structure Set",
         description: `Fees set for ${className} - ${currentTerm}`,
@@ -111,6 +116,7 @@ const SetFeeStructure = () => {
         dueDate: editForm.dueDate || undefined,
         description: editForm.description || undefined
       });
+      void queryClient.invalidateQueries({ queryKey: feeStructureCheckKey(activeAcademicTermId) });
       toast({ title: 'Fee structure updated' });
       setEditingId(null);
     } catch {
@@ -125,6 +131,7 @@ const SetFeeStructure = () => {
     setIsSubmitting(true);
     try {
       await deleteFeeStructure(fee.id);
+      void queryClient.invalidateQueries({ queryKey: feeStructureCheckKey(activeAcademicTermId) });
       toast({ title: 'Fee structure deleted' });
     } catch (err: any) {
       toast({ title: 'Cannot delete', description: err?.message || 'Failed to delete', variant: 'destructive' });

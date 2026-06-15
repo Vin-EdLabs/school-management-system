@@ -2,6 +2,7 @@ import express from 'express';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
+import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 import { getClientIp } from '../utils/clientIp.js';
 import {
   addBudgetCategory,
@@ -27,6 +28,7 @@ const adminOnly = requireRole('super-admin', 'administrator');
 router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
+attachWritableTermGuard(router);
 
 router.get('/categories', budgetRoles, async (req: AuthRequest, res) => {
   try {

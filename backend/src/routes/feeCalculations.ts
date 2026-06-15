@@ -2,51 +2,131 @@ import express from 'express';
 import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest, requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
+import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
+import { resolveActiveLedgerTerm } from '../services/studentUnifiedBalanceService.js';
 import {
-  getStudentLiveFeeBreakdown,
-  resolveActiveLedgerTerm,
-  liveBreakdownToSummary,
-} from '../services/studentLiveFeeBreakdownService.js';
+  getBatchStudentBalancesFromLedger,
+  ledgerBalanceToApiShape,
+  getStudentBalanceFromLedger,
+  getArrearsBreakdownFromLedger,
+} from '../services/ledgerBalanceService.js';
 
 const router = express.Router();
 
 router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
+attachWritableTermGuard(router);
+
+function roundMoney(n: number): number {
+  return Math.round(n * 100) / 100;
+}
 
 /**
  * GET /fee-calculations/students/balances?classId=
- * Batch ledger balances for fee-tracked students (Student Balances tab).
+ * Batch ledger balances — single SQL query, student_ledger only.
  */
 router.get('/students/balances', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const { classId } = req.query;
 
-    let studentsQuery = `
-      SELECT s.id FROM students s
-      WHERE s.tenant_id = $1
-        AND COALESCE(s.enrollment_status, 'active') = 'active'
-    `;
-    const params: unknown[] = [tenantId];
-    if (classId) {
-      studentsQuery += ` AND s.class_assigned_id = $2`;
-      params.push(classId);
+    const { ledgerTermId, termLabel } = await resolveActiveLedgerTerm(query, tenantId);
+    if (!ledgerTermId) {
+      return res.json({ activeTermLabel: termLabel, balances: {}, summary: {} });
     }
-    studentsQuery += ` ORDER BY s.first_name, s.last_name`;
 
-    const studentsRes = await query(studentsQuery, params);
+    const classIdNum =
+      classId != null && String(classId).trim() !== '' ? parseInt(String(classId), 10) : null;
 
-    const balances: Record<string, Awaited<ReturnType<typeof getStudentLiveFeeBreakdown>>> = {};
-    await Promise.all(
-      studentsRes.rows.map(async (row: { id: number }) => {
-        const b = await getStudentLiveFeeBreakdown(null, tenantId, row.id);
-        if (b) balances[String(row.id)] = b;
-      })
+    const rows = await getBatchStudentBalancesFromLedger(
+      null,
+      tenantId,
+      ledgerTermId,
+      classIdNum != null && !Number.isNaN(classIdNum) ? classIdNum : null
     );
 
-    const { termLabel } = await resolveActiveLedgerTerm(query, tenantId);
-    res.json({ activeTermLabel: termLabel, balances });
+    const balances: Record<string, Awaited<ReturnType<typeof ledgerBalanceToApiShape>>> = {};
+    let studentsOwing = 0;
+    let studentsCredit = 0;
+    let studentsWithArrears = 0;
+    let totalOutstanding = 0;
+    let totalCredit = 0;
+    let totalArrearsAmount = 0;
+
+    for (const row of rows) {
+      if (row.outstanding > 0) {
+        studentsOwing++;
+        totalOutstanding += row.outstanding;
+      }
+      if (row.netBalance < -0.001) {
+        studentsCredit++;
+        totalCredit += row.creditBalance > 0 ? row.creditBalance : roundMoney(Math.abs(row.netBalance));
+      } else if (row.creditBalance > 0) {
+        studentsCredit++;
+        totalCredit += row.creditBalance;
+      }
+      if (row.arrears > 0) {
+        studentsWithArrears++;
+        totalArrearsAmount += row.arrears;
+      }
+
+      balances[String(row.id)] = {
+        currentTermFee: row.termFee,
+        currentTermName: termLabel,
+        activeTermId: ledgerTermId,
+        arrearLines: row.arrears > 0 ? [{ termName: 'Arrears', amount: row.arrears }] : [],
+        totalArrears: row.arrears,
+        creditBroughtForward: row.creditBroughtForward,
+        totalDue: row.totalDue,
+        paidLines:
+          row.amountPaidThisTerm > 0
+            ? [{ termName: `${termLabel || 'Current term'} (this term)`, amount: row.amountPaidThisTerm }]
+            : [],
+        totalPaid: row.amountPaidThisTerm,
+        outstanding: row.outstanding,
+        credit: row.creditBalance,
+        netBalance: row.netBalance,
+        status:
+          row.termFee <= 0 &&
+          row.amountPaidThisTerm <= 0 &&
+          row.arrears <= 0 &&
+          row.creditBroughtForward <= 0
+            ? 'NotSet'
+            : row.netBalance < -0.001
+              ? 'Credit'
+              : row.netBalance > 0.001
+                ? 'Owing'
+                : 'Cleared',
+        paymentsMade: row.amountPaidThisTerm,
+        totalCharged: row.totalDue,
+        termRows: [
+          {
+            termId: ledgerTermId,
+            termName: termLabel || 'Current term',
+            termFee: row.termFee,
+            amountPaid: row.amountPaidThisTerm,
+            outstanding: row.outstanding,
+            displayOutstanding: row.outstanding,
+            isActiveTerm: true,
+          },
+        ],
+      };
+    }
+
+    res.json({
+      activeTermLabel: termLabel,
+      balances,
+      summary: {
+        studentsOwing,
+        studentsCredit,
+        studentsWithArrears,
+        totalOutstanding: roundMoney(totalOutstanding),
+        totalCredit: roundMoney(totalCredit),
+        totalArrears: roundMoney(totalArrearsAmount),
+        totalStudents: rows.length,
+      },
+    });
   } catch (error) {
     console.error('Batch student balances error:', error);
     res.status(500).json({ error: 'Failed to load student balances' });
@@ -55,7 +135,7 @@ router.get('/students/balances', async (req: AuthRequest, res) => {
 
 /**
  * GET /fee-calculations/students/:studentId/balance
- * Single student ledger balance — source of truth for records, balance card, and fee breakdown UI.
+ * Single student balance from student_ledger only.
  */
 router.get('/students/:studentId/balance', async (req: AuthRequest, res) => {
   try {
@@ -64,18 +144,34 @@ router.get('/students/:studentId/balance', async (req: AuthRequest, res) => {
     if (Number.isNaN(studentId)) {
       return res.status(400).json({ error: 'Invalid student id' });
     }
-    const breakdown = await getStudentLiveFeeBreakdown(null, tenantId, studentId);
-    if (!breakdown) {
+
+    const { ledgerTermId, termLabel } = await resolveActiveLedgerTerm(query, tenantId);
+    const shape = await ledgerBalanceToApiShape(null, tenantId, studentId, ledgerTermId);
+    if (!shape) {
       return res.status(404).json({ error: 'Student not found' });
     }
-    res.json(breakdown);
+
+    const arrearsBreakdown = ledgerTermId
+      ? await getArrearsBreakdownFromLedger(null, tenantId, studentId, ledgerTermId)
+      : [];
+
+    res.json({
+      ...shape,
+      arrearsBreakdown: arrearsBreakdown.map((line) => ({
+        description: line.description,
+        amount: line.amount,
+        entryType: line.entryType,
+        date: line.date,
+      })),
+      totalCharged: shape.totalCharged,
+      paymentsMade: shape.paymentsMade,
+    });
   } catch (error) {
     console.error('Student balance error:', error);
     res.status(500).json({ error: 'Failed to load student balance' });
   }
 });
 
-// Calculate student fees - all dynamic, no stored balances
 router.get('/student/:studentId', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
@@ -99,23 +195,8 @@ router.get('/student/:studentId', async (req: AuthRequest, res) => {
     }
 
     const student = studentResult.rows[0];
-    const breakdown = await getStudentLiveFeeBreakdown(null, tenantId, parseInt(studentId, 10));
-    const emptySummary = {
-      termFee: 0,
-      totalPaid: 0,
-      outstanding: 0,
-      arrears: 0,
-      credit: 0,
-      status: 'Cleared' as const,
-    };
-    const summary = breakdown ? liveBreakdownToSummary(breakdown) : emptySummary;
-
-    const paymentHistoryResult = await query(
-      `SELECT * FROM payments
-       WHERE tenant_id = $1 AND student_id = $2 AND COALESCE(is_voided, false) = false
-       ORDER BY payment_date DESC`,
-      [tenantId, studentId]
-    );
+    const { ledgerTermId } = await resolveActiveLedgerTerm(query, tenantId);
+    const shape = await ledgerBalanceToApiShape(null, tenantId, parseInt(studentId, 10), ledgerTermId);
 
     res.json({
       student: {
@@ -126,22 +207,24 @@ router.get('/student/:studentId', async (req: AuthRequest, res) => {
         className: student.class_name,
         level: student.level,
       },
-      feeCalculation: {
-        totalFees: summary.termFee ?? 0,
-        standardFees: summary.termFee ?? 0,
-        discountAmount: 0,
-        totalPaid: summary.totalPaid,
-        outstanding: summary.outstanding,
-        arrears: summary.arrears,
-        credit: summary.credit,
-        status: summary.status,
-        isBeneficiary: student.is_beneficiary,
-        beneficiaryType: student.beneficiary_type,
-        term,
-        academicYear,
-      },
-      balance: breakdown,
-      paymentHistory: paymentHistoryResult.rows,
+      feeCalculation: shape
+        ? {
+            totalFees: shape.currentTermFee,
+            standardFees: shape.currentTermFee,
+            discountAmount: 0,
+            totalPaid: shape.totalPaid,
+            outstanding: shape.outstanding,
+            arrears: shape.totalArrears,
+            credit: shape.credit,
+            status: shape.status,
+            isBeneficiary: student.is_beneficiary,
+            beneficiaryType: student.beneficiary_type,
+            term,
+            academicYear,
+          }
+        : null,
+      balance: shape,
+      paymentHistory: [],
     });
   } catch (error) {
     console.error('Calculate student fees error:', error);
@@ -149,59 +232,47 @@ router.get('/student/:studentId', async (req: AuthRequest, res) => {
   }
 });
 
-// Get all students with fee balances (dynamic)
 router.get('/students/balances-by-term', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
-    const { term, academicYear, classId } = req.query;
-
-    if (!term || !academicYear) {
-      return res.status(400).json({ error: 'Term and academic year are required' });
+    const { classId } = req.query;
+    const { ledgerTermId } = await resolveActiveLedgerTerm(query, tenantId);
+    if (!ledgerTermId) {
+      return res.json([]);
     }
 
-    let queryText = `
-      SELECT s.id, s.first_name, s.last_name, s.student_id, s.admission_number,
-             c.id as class_id, c.class_name, c.level, c.stream
-      FROM students s
-      LEFT JOIN classes c ON s.class_assigned_id = c.id
-      WHERE s.tenant_id = $1
-    `;
-    const params: any[] = [tenantId];
-    if (classId) {
-      queryText += ' AND s.class_assigned_id = $2';
-      params.push(classId);
-    }
-    queryText += ' ORDER BY s.first_name, s.last_name';
+    const classIdNum =
+      classId != null && String(classId).trim() !== '' ? parseInt(String(classId), 10) : null;
 
-    const result = await query(queryText, params);
-
-    const studentsWithBalances = await Promise.all(
-      result.rows.map(async (row: any) => {
-        const breakdown = await getStudentLiveFeeBreakdown(null, tenantId, row.id);
-        const summary = breakdown ? liveBreakdownToSummary(breakdown) : null;
-        return {
-          ...row,
-          totalFees: summary?.termFee ?? 0,
-          totalPaid: summary?.totalPaid ?? 0,
-          outstanding: summary?.outstanding ?? 0,
-          arrears: summary?.arrears ?? 0,
-          credit: summary?.credit ?? 0,
-          status: summary?.status ?? 'Cleared',
-        };
-      })
+    const rows = await getBatchStudentBalancesFromLedger(
+      null,
+      tenantId,
+      ledgerTermId,
+      classIdNum != null && !Number.isNaN(classIdNum) ? classIdNum : null
     );
 
-    res.json(studentsWithBalances);
+    res.json(
+      rows.map((row) => ({
+        id: row.id,
+        first_name: row.firstName,
+        last_name: row.lastName,
+        student_id: row.studentId,
+        admission_number: row.admissionNumber,
+        class_name: row.className,
+        totalFees: row.termFee,
+        totalPaid: row.amountPaidThisTerm,
+        outstanding: row.outstanding,
+        arrears: row.arrears,
+        credit: row.creditBalance,
+        status: row.creditBalance > 0 ? 'Credit' : row.outstanding > 0 ? 'Owing' : 'Cleared',
+      }))
+    );
   } catch (error) {
     console.error('Get student balances error:', error);
     res.status(500).json({ error: 'Failed to get student balances' });
   }
 });
 
-/**
- * Class outstanding report - backend only.
- * Fetch students in class, calculate outstanding for each, show only outstanding > 0.
- */
 router.get('/class-report', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
@@ -211,65 +282,42 @@ router.get('/class-report', async (req: AuthRequest, res) => {
       return res.status(400).json({ error: 'Term and academic year are required' });
     }
 
-    let queryText = `
-      SELECT s.id, s.first_name, s.last_name, s.student_id, s.admission_number,
-             c.id as class_id, c.class_name
-      FROM students s
-      LEFT JOIN classes c ON s.class_assigned_id = c.id
-      WHERE s.tenant_id = $1
-    `;
-    const params: any[] = [tenantId];
-    if (classId) {
-      queryText += ' AND s.class_assigned_id = $2';
-      params.push(classId);
+    const { ledgerTermId } = await resolveActiveLedgerTerm(query, tenantId);
+    if (!ledgerTermId) {
+      return res.json({ term, academicYear, classId: classId || null, students: [], totalOutstanding: 0 });
     }
-    queryText += ' ORDER BY s.first_name, s.last_name';
 
-    const result = await query(queryText, params);
+    const classIdNum =
+      classId != null && String(classId).trim() !== '' ? parseInt(String(classId), 10) : null;
 
-    const rows: Array<{
-      id: number;
-      firstName: string;
-      lastName: string;
-      studentName: string;
-      studentId: string;
-      admissionNumber: string;
-      className: string;
-      totalFees: number;
-      totalPaid: number;
-      outstanding: number;
-      outstandingBalance: number;
-      status: string;
-    }> = [];
+    const rows = await getBatchStudentBalancesFromLedger(
+      null,
+      tenantId,
+      ledgerTermId,
+      classIdNum != null && !Number.isNaN(classIdNum) ? classIdNum : null
+    );
 
-    for (const row of result.rows) {
-      const breakdown = await getStudentLiveFeeBreakdown(null, tenantId, row.id);
-      const outstanding = breakdown?.outstanding ?? 0;
-
-      if (outstanding > 0) {
-        rows.push({
-          id: row.id,
-          firstName: row.first_name,
-          lastName: row.last_name,
-          studentName: `${row.first_name} ${row.last_name}`,
-          studentId: row.student_id,
-          admissionNumber: row.admission_number,
-          className: row.class_name || '',
-          totalFees: breakdown?.currentTermFee ?? 0,
-          totalPaid: breakdown?.totalPaid ?? 0,
-          outstanding,
-          outstandingBalance: outstanding,
-          status: (breakdown?.status ?? 'Owing').toLowerCase() as 'owing' | 'cleared' | 'credit',
-        });
-      }
-    }
+    const owing = rows.filter((r) => r.outstanding > 0);
 
     res.json({
       term,
       academicYear,
       classId: classId || null,
-      students: rows,
-      totalOutstanding: rows.reduce((sum, s) => sum + s.outstanding, 0),
+      students: owing.map((row) => ({
+        id: row.id,
+        firstName: row.firstName,
+        lastName: row.lastName,
+        studentName: `${row.firstName} ${row.lastName}`,
+        studentId: row.studentId,
+        admissionNumber: row.admissionNumber,
+        className: row.className,
+        totalFees: row.termFee,
+        totalPaid: row.amountPaidThisTerm,
+        outstanding: row.outstanding,
+        outstandingBalance: row.outstanding,
+        status: 'owing' as const,
+      })),
+      totalOutstanding: owing.reduce((s, r) => s + r.outstanding, 0),
     });
   } catch (error) {
     console.error('Class report error:', error);

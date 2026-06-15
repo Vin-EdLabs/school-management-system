@@ -8,6 +8,7 @@ import { writeAuditLog } from '../services/auditService.js';
 import { getClientIp } from '../utils/clientIp.js';
 import { resolvePaymentAccountForTransaction } from '../services/paymentAccountService.js';
 import { evaluateBudgetAlerts, registerTransactionCategory } from '../services/termBudgetService.js';
+import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 
 const router = express.Router();
 
@@ -23,6 +24,7 @@ const emitTenantDataChanged = (tenantId: number, entity: string, action: 'create
 router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
+attachWritableTermGuard(router);
 
 // Get all expenses
 router.get('/', async (req: AuthRequest, res) => {

@@ -165,17 +165,136 @@ function ChartSummaryStrip({
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
       {items.map((item) => (
         <div
           key={item.label}
-          className="rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-center sm:text-left"
+          className="rounded-2xl border border-border/60 bg-card/80 px-5 py-4 shadow-sm"
         >
-          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{item.label}</p>
-          <p className={`mt-1 text-lg font-bold tabular-nums ${item.color}`}>{formatGhs(item.value)}</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{item.label}</p>
+          <p className={`mt-2 text-xl font-bold tabular-nums sm:text-2xl ${item.color}`}>{formatGhs(item.value)}</p>
         </div>
       ))}
     </div>
+  );
+}
+
+type FinanceMetricAccent = 'emerald' | 'sky' | 'violet' | 'teal' | 'orange' | 'indigo' | 'amber' | 'rose';
+
+const METRIC_ACCENT: Record<
+  FinanceMetricAccent,
+  { iconWrap: string; bar: string; ring: string; gradient: string }
+> = {
+  emerald: {
+    iconWrap: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
+    bar: 'bg-emerald-500',
+    ring: 'ring-emerald-500/15',
+    gradient: 'from-emerald-500/[0.07] via-card to-card',
+  },
+  sky: {
+    iconWrap: 'bg-sky-500/15 text-sky-600 dark:text-sky-400',
+    bar: 'bg-sky-500',
+    ring: 'ring-sky-500/15',
+    gradient: 'from-sky-500/[0.07] via-card to-card',
+  },
+  violet: {
+    iconWrap: 'bg-violet-500/15 text-violet-600 dark:text-violet-400',
+    bar: 'bg-violet-500',
+    ring: 'ring-violet-500/15',
+    gradient: 'from-violet-500/[0.07] via-card to-card',
+  },
+  teal: {
+    iconWrap: 'bg-teal-500/15 text-teal-600 dark:text-teal-400',
+    bar: 'bg-teal-500',
+    ring: 'ring-teal-500/15',
+    gradient: 'from-teal-500/[0.07] via-card to-card',
+  },
+  orange: {
+    iconWrap: 'bg-orange-500/15 text-orange-600 dark:text-orange-400',
+    bar: 'bg-orange-500',
+    ring: 'ring-orange-500/15',
+    gradient: 'from-orange-500/[0.07] via-card to-card',
+  },
+  indigo: {
+    iconWrap: 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400',
+    bar: 'bg-indigo-500',
+    ring: 'ring-indigo-500/15',
+    gradient: 'from-indigo-500/[0.07] via-card to-card',
+  },
+  amber: {
+    iconWrap: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
+    bar: 'bg-amber-500',
+    ring: 'ring-amber-500/15',
+    gradient: 'from-amber-500/[0.09] via-card to-card',
+  },
+  rose: {
+    iconWrap: 'bg-rose-500/15 text-rose-600 dark:text-rose-400',
+    bar: 'bg-rose-500',
+    ring: 'ring-rose-500/15',
+    gradient: 'from-rose-500/[0.07] via-card to-card',
+  },
+};
+
+function FinanceMetricCard({
+  label,
+  value,
+  sub,
+  icon: Icon,
+  accent,
+}: {
+  label: string;
+  value: number;
+  sub: string;
+  icon: React.ComponentType<{ className?: string }>;
+  accent: FinanceMetricAccent;
+}) {
+  const styles = METRIC_ACCENT[accent];
+  return (
+    <Card
+      className={cn(
+        'group relative min-h-[148px] overflow-hidden rounded-2xl border-border/70 bg-gradient-to-br shadow-sm ring-1 transition-shadow hover:shadow-md',
+        styles.gradient,
+        styles.ring
+      )}
+    >
+      <div className={cn('absolute inset-x-0 top-0 h-1', styles.bar)} />
+      <CardContent className="flex h-full flex-col justify-between p-5 sm:p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 flex-1 space-y-1">
+            <p className="text-sm font-medium text-muted-foreground">{label}</p>
+            <p className="text-2xl font-bold tabular-nums tracking-tight text-foreground sm:text-[1.65rem]">
+              {formatGhs(value)}
+            </p>
+          </div>
+          <div
+            className={cn(
+              'flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ring-1 ring-black/5 dark:ring-white/10',
+              styles.iconWrap
+            )}
+          >
+            <Icon className="h-5 w-5" aria-hidden />
+          </div>
+        </div>
+        <p className="mt-4 text-xs font-medium text-muted-foreground/90">{sub}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function FinanceMetricCardSkeleton() {
+  return (
+    <Card className="min-h-[148px] overflow-hidden rounded-2xl border-border/70 shadow-sm">
+      <CardContent className="space-y-4 p-5 sm:p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="h-8 w-36" />
+          </div>
+          <Skeleton className="h-11 w-11 shrink-0 rounded-xl" />
+        </div>
+        <Skeleton className="h-3 w-24" />
+      </CardContent>
+    </Card>
   );
 }
 
@@ -387,69 +506,69 @@ const FinancialDashboard = () => {
 
   const termLabel = currentTerm.includes(currentYear) ? currentTerm : `${currentTerm} · ${currentYear}`;
 
-  const kpi = [
+  const kpi: Array<{
+    key: string;
+    label: string;
+    value: number;
+    sub: string;
+    icon: React.ComponentType<{ className?: string }>;
+    accent: FinanceMetricAccent;
+  }> = [
     {
       key: 'fees',
       label: 'Fees collected',
-      value: `GHS ${metrics.feesCollected.toLocaleString()}`,
+      value: metrics.feesCollected,
       sub: 'Current term',
       icon: CreditCard,
-      ring: 'ring-emerald-500/25',
-      bg: 'from-emerald-500/12 via-card to-card',
+      accent: 'emerald',
     },
     {
       key: 'other',
       label: 'Other income',
-      value: `GHS ${metrics.otherIncome.toLocaleString()}`,
+      value: metrics.otherIncome,
       sub: `Year ${currentYear}`,
       icon: TrendingUp,
-      ring: 'ring-sky-500/25',
-      bg: 'from-sky-500/12 via-card to-card',
+      accent: 'sky',
     },
     {
       key: 'total',
       label: 'Total income',
-      value: `GHS ${metrics.totalCombinedIncome.toLocaleString()}`,
+      value: metrics.totalCombinedIncome,
       sub: 'Fees + other',
       icon: TrendingUp,
-      ring: 'ring-violet-500/25',
-      bg: 'from-violet-500/12 via-card to-card',
+      accent: 'violet',
     },
     {
       key: 'opening',
       label: 'Opening balance',
-      value: `GHS ${metrics.openingBalance.toLocaleString()}`,
+      value: metrics.openingBalance,
       sub: 'Payment accounts',
       icon: Landmark,
-      ring: 'ring-teal-500/25',
-      bg: 'from-teal-500/12 via-card to-card',
+      accent: 'teal',
     },
     {
       key: 'exp',
       label: 'Total expenses',
-      value: `GHS ${metrics.totalExpenses.toLocaleString()}`,
+      value: metrics.totalExpenses,
       sub: `Year ${currentYear}`,
       icon: TrendingDown,
-      ring: 'ring-orange-500/25',
-      bg: 'from-orange-500/12 via-card to-card',
+      accent: 'orange',
     },
     {
       key: 'net',
       label: 'Net balance',
-      value: `GHS ${metrics.balanceLeft.toLocaleString()}`,
+      value: metrics.balanceLeft,
       sub: 'Opening + income − expenses',
       icon: Calculator,
-      ring: metrics.balanceLeft >= 0 ? 'ring-indigo-500/25' : 'ring-amber-500/30',
-      bg: metrics.balanceLeft >= 0 ? 'from-indigo-500/12 via-card to-card' : 'from-amber-500/15 via-card to-card',
+      accent: metrics.balanceLeft >= 0 ? 'indigo' : 'amber',
     },
     {
       key: 'out',
       label: 'Outstanding',
-      value: `GHS ${metrics.outstandingBalances.toLocaleString()}`,
+      value: metrics.outstandingBalances,
       sub: 'Pending fees',
       icon: AlertCircle,
-      ring: 'ring-rose-500/25',
-      bg: 'from-rose-500/12 via-card to-card',
+      accent: 'rose',
     },
   ];
 
@@ -518,9 +637,9 @@ const FinancialDashboard = () => {
                 Outstanding fees
                 {sidebarOpen ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
               </Button>
-              <div className="rounded-xl border border-border/80 bg-card/90 px-4 py-2.5 text-right shadow-sm backdrop-blur-sm">
+              <div className="rounded-2xl border border-border/80 bg-card/90 px-5 py-3.5 text-right shadow-sm backdrop-blur-sm">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Billing term</p>
-                <p className="text-sm font-semibold text-foreground">{termLabel}</p>
+                <p className="mt-1 text-sm font-semibold text-foreground">{termLabel}</p>
                 {lastSync && (
                   <p className="mt-0.5 text-[10px] text-muted-foreground">
                     Updated {lastSync.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
@@ -532,38 +651,31 @@ const FinancialDashboard = () => {
 
           <FinancialSummary />
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-8">
-            {financialLoading
-              ? Array.from({ length: 8 }).map((_, i) => (
-                  <Card key={i} className="border-border/80 shadow-md">
-                    <CardHeader className="pb-2 pt-4">
-                      <Skeleton className="h-3 w-24" />
-                    </CardHeader>
-                    <CardContent className="pb-4">
-                      <Skeleton className="h-7 w-32" />
-                      <Skeleton className="mt-2 h-3 w-20" />
-                    </CardContent>
-                  </Card>
-                ))
-              : kpi.map((k) => (
-              <Card
-                key={k.key}
-                className={`overflow-hidden border-border/80 bg-gradient-to-br ${k.bg} shadow-md ring-1 ${k.ring}`}
-              >
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4">
-                  <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{k.label}</CardTitle>
-                  <k.icon className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent className="pb-4">
-                  <div className="text-lg font-bold tabular-nums tracking-tight text-foreground md:text-xl">{k.value}</div>
-                  <p className="mt-1 text-xs text-muted-foreground">{k.sub}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          <section className="space-y-4">
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight text-foreground">Key metrics</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Snapshot of income, expenses, and balances for {termLabel}
+              </p>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+              {financialLoading
+                ? Array.from({ length: 7 }).map((_, i) => <FinanceMetricCardSkeleton key={i} />)
+                : kpi.map((k) => (
+                    <FinanceMetricCard
+                      key={k.key}
+                      label={k.label}
+                      value={k.value}
+                      sub={k.sub}
+                      icon={k.icon}
+                      accent={k.accent}
+                    />
+                  ))}
+            </div>
+          </section>
 
-          <Card className="overflow-hidden border-border/80 shadow-md ring-1 ring-border/40">
-            <CardHeader className="border-b border-border/60 bg-gradient-to-r from-indigo-500/8 via-card to-violet-500/8">
+          <Card className="overflow-hidden rounded-2xl border-border/80 shadow-sm ring-1 ring-border/40">
+            <CardHeader className="border-b border-border/60 bg-gradient-to-r from-indigo-500/8 via-card to-violet-500/8 px-6 py-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <CardTitle className="flex items-center gap-2 text-lg">
@@ -580,7 +692,7 @@ const FinancialDashboard = () => {
                 </Badge>
               </div>
             </CardHeader>
-            <CardContent className="space-y-6 pt-6">
+            <CardContent className="space-y-6 px-6 py-6">
               {monthlyLoading ? (
                 <ChartSkeleton />
               ) : hasMonthly ? (
@@ -720,15 +832,15 @@ const FinancialDashboard = () => {
           </Card>
 
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-            <Card className="overflow-hidden border-border/80 shadow-md ring-1 ring-border/40">
-              <CardHeader className="border-b border-border/60 bg-gradient-to-r from-emerald-500/8 via-card to-teal-500/8">
+            <Card className="overflow-hidden rounded-2xl border-border/80 shadow-sm ring-1 ring-border/40">
+              <CardHeader className="border-b border-border/60 bg-gradient-to-r from-emerald-500/8 via-card to-teal-500/8 px-6 py-5">
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <BarChart3 className="h-5 w-5 text-emerald-500" />
                   Fees by class
                 </CardTitle>
                 <CardDescription>Collected in {currentTerm}</CardDescription>
               </CardHeader>
-              <CardContent className="pt-6">
+              <CardContent className="px-6 py-6">
                 {feesByClassLoading ? (
                   <ChartSkeleton />
                 ) : hasClassFees ? (
@@ -766,15 +878,15 @@ const FinancialDashboard = () => {
               </CardContent>
             </Card>
 
-            <Card className="overflow-hidden border-border/80 shadow-md ring-1 ring-border/40">
-              <CardHeader className="border-b border-border/60 bg-gradient-to-r from-orange-500/8 via-card to-rose-500/8">
+            <Card className="overflow-hidden rounded-2xl border-border/80 shadow-sm ring-1 ring-border/40">
+              <CardHeader className="border-b border-border/60 bg-gradient-to-r from-orange-500/8 via-card to-rose-500/8 px-6 py-5">
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <PieChartIcon className="h-5 w-5 text-orange-500" />
                   Expense breakdown
                 </CardTitle>
                 <CardDescription>By category (all recorded expenses)</CardDescription>
               </CardHeader>
-              <CardContent className="pt-6">
+              <CardContent className="px-6 py-6">
                 {expenseCategoriesLoading ? (
                   <ChartSkeleton />
                 ) : hasExpensePie ? (
@@ -810,15 +922,15 @@ const FinancialDashboard = () => {
           </div>
 
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-            <Card className="overflow-hidden border-border/80 shadow-md ring-1 ring-border/40">
-              <CardHeader className="border-b border-border/60 bg-gradient-to-r from-violet-500/8 via-card to-indigo-500/8">
+            <Card className="overflow-hidden rounded-2xl border-border/80 shadow-sm ring-1 ring-border/40">
+              <CardHeader className="border-b border-border/60 bg-gradient-to-r from-violet-500/8 via-card to-indigo-500/8 px-6 py-5">
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <PieChartIcon className="h-5 w-5 text-violet-500" />
                   Income composition
                 </CardTitle>
                 <CardDescription>Fees vs other income</CardDescription>
               </CardHeader>
-              <CardContent className="pt-6">
+              <CardContent className="px-6 py-6">
                 {financialLoading ? (
                   <ChartSkeleton />
                 ) : hasIncomePie ? (
@@ -852,12 +964,12 @@ const FinancialDashboard = () => {
               </CardContent>
             </Card>
 
-            <Card className="overflow-hidden border-border/80 shadow-md ring-1 ring-border/40">
-              <CardHeader className="border-b border-border/60 bg-muted/30">
+            <Card className="overflow-hidden rounded-2xl border-border/80 shadow-sm ring-1 ring-border/40">
+              <CardHeader className="border-b border-border/60 bg-muted/30 px-6 py-5">
                 <CardTitle className="text-lg">Recent activity</CardTitle>
                 <CardDescription>Latest payments, income, and expenses</CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="px-6 py-6">
                 {activityLoading ? (
                   <div className="space-y-2">
                     {Array.from({ length: 5 }).map((_, i) => (
@@ -907,27 +1019,27 @@ const FinancialDashboard = () => {
             </Card>
           </div>
 
-          <Card className="border-border/80 shadow-md ring-1 ring-border/40">
-            <CardHeader>
+          <Card className="overflow-hidden rounded-2xl border-border/80 shadow-sm ring-1 ring-border/40">
+            <CardHeader className="px-6 py-5">
               <CardTitle className="text-lg">Quick actions</CardTitle>
               <CardDescription>Common finance workflows</CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                <Button className="h-11 justify-start border border-emerald-500/25 bg-emerald-500/10 text-emerald-900 shadow-none hover:bg-emerald-500/15 dark:text-emerald-100">
-                  <Receipt className="mr-2 h-4 w-4" />
+            <CardContent className="px-6 pb-6">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <Button className="h-12 justify-start gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 text-emerald-900 shadow-none hover:bg-emerald-500/15 dark:text-emerald-100">
+                  <Receipt className="h-4 w-4 shrink-0" />
                   Record fee payment
                 </Button>
-                <Button className="h-11 justify-start border border-sky-500/25 bg-sky-500/10 text-sky-900 shadow-none hover:bg-sky-500/15 dark:text-sky-100">
-                  <Plus className="mr-2 h-4 w-4" />
+                <Button className="h-12 justify-start gap-3 rounded-xl border border-sky-500/25 bg-sky-500/10 px-4 text-sky-900 shadow-none hover:bg-sky-500/15 dark:text-sky-100">
+                  <Plus className="h-4 w-4 shrink-0" />
                   Add other income
                 </Button>
-                <Button className="h-11 justify-start border border-rose-500/25 bg-rose-500/10 text-rose-900 shadow-none hover:bg-rose-500/15 dark:text-rose-100">
-                  <FileText className="mr-2 h-4 w-4" />
+                <Button className="h-12 justify-start gap-3 rounded-xl border border-rose-500/25 bg-rose-500/10 px-4 text-rose-900 shadow-none hover:bg-rose-500/15 dark:text-rose-100">
+                  <FileText className="h-4 w-4 shrink-0" />
                   Record expense
                 </Button>
-                <Button className="h-11 justify-start border border-violet-500/25 bg-violet-500/10 text-violet-900 shadow-none hover:bg-violet-500/15 dark:text-violet-100">
-                  <Calculator className="mr-2 h-4 w-4" />
+                <Button className="h-12 justify-start gap-3 rounded-xl border border-violet-500/25 bg-violet-500/10 px-4 text-violet-900 shadow-none hover:bg-violet-500/15 dark:text-violet-100">
+                  <Calculator className="h-4 w-4 shrink-0" />
                   Open reports
                 </Button>
               </div>

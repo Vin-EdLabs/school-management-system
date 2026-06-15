@@ -1990,24 +1990,6 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                     </div>
                   )}
 
-                  {report.teacherRemark || report.headmasterRemark ? (
-                    <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-                      <h3 className="text-sm font-semibold text-gray-800 mb-3">Teacher & Headmaster Remarks</h3>
-                      {report.teacherRemark ? (
-                        <div className="mb-3">
-                          <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">Teacher Comment</p>
-                          <p className="text-sm text-slate-700 whitespace-pre-wrap">{report.teacherRemark}</p>
-                        </div>
-                      ) : null}
-                      {report.headmasterRemark ? (
-                        <div>
-                          <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">Headmaster Comment</p>
-                          <p className="text-sm text-slate-700 whitespace-pre-wrap">{report.headmasterRemark}</p>
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
-
                   {/* Class size info only — no names of other students */}
                   <div className="bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 flex items-center gap-2 text-sm text-gray-500">
                     <Medal className="w-4 h-4 text-yellow-500 shrink-0" />

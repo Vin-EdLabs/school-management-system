@@ -7,30 +7,23 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
-import { Search, AlertTriangle, Download, DollarSign, Clock, TrendingUp } from 'lucide-react';
-import { apiService } from '../../services/api';
-import { calculateStudentFeesSync, getActiveAcademicTerm } from '../../utils/feeCalculations';
+import { Search, AlertTriangle, Download, DollarSign, Clock, TrendingUp, Wallet } from 'lucide-react';
+import { getActiveAcademicTerm } from '../../utils/feeCalculations';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
 import { shouldTrackStudentFees } from '../students/studentRegistryUtils';
 
 const OutstandingFees = () => {
-  const { students, classes, feeStructures, payments, ledgerBalances } = useData();
+  const { students, classes, ledgerBalances } = useData();
   const { currentTerm } = useActiveTerm();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClass, setSelectedClass] = useState('All');
   const selectedTerm = currentTerm && currentTerm !== 'Not Set' ? currentTerm : getActiveAcademicTerm();
 
-  // Calculate outstanding fees for all students using ledger-backed balances when available.
   const outstandingData = useMemo(() => {
     const studentsArray = Array.isArray(students) ? students : [];
-    const paymentsArray = Array.isArray(payments) ? payments : [];
 
     return studentsArray.filter(shouldTrackStudentFees).map(student => {
       const ledgerBalance = ledgerBalances?.[String(student.id)];
-      const paymentHistory = paymentsArray.filter((p: any) =>
-        String(p.studentId) === String(student.id) &&
-        (p.term === selectedTerm || (p.term && (p.term.includes(selectedTerm) || selectedTerm.includes(p.term))))
-      );
 
       if (ledgerBalance) {
         return {
@@ -44,42 +37,25 @@ const OutstandingFees = () => {
           totalAmountDue: ledgerBalance.totalDue,
           totalPaid: ledgerBalance.totalPaid,
           outstanding: Math.max(0, ledgerBalance.outstanding),
-          paymentHistory,
+          paymentHistory: [],
         };
       }
-
-      const feeCalculation = calculateStudentFeesSync(
-        student.id,
-        selectedTerm,
-        student.classAssigned,
-        feeStructures || [],
-        paymentsArray,
-        student.classAssignedId,
-        undefined,
-        {
-          isBeneficiary: !!student.isBeneficiary,
-          discountType: student.discountType,
-          discountValue: student.discountValue,
-        }
-      );
-
-      const outstanding = Math.max(0, (feeCalculation.totalAmountDue ?? feeCalculation.currentTermFee) - feeCalculation.totalPaid);
 
       return {
         studentId: student.id,
         admissionNo: student.studentId || student.admissionNumber || String(student.id),
         studentName: `${student.firstName} ${student.lastName}`,
         className: student.classAssigned,
-        currentTermFee: feeCalculation.currentTermFee,
-        arrears: feeCalculation.arrears,
-        creditBalance: feeCalculation.creditBalance,
-        totalAmountDue: feeCalculation.totalAmountDue,
-        totalPaid: feeCalculation.totalPaid,
-        outstanding,
-        paymentHistory,
+        currentTermFee: 0,
+        arrears: 0,
+        creditBalance: 0,
+        totalAmountDue: 0,
+        totalPaid: 0,
+        outstanding: 0,
+        paymentHistory: [],
       };
     });
-  }, [students, payments, feeStructures, selectedTerm, ledgerBalances]);
+  }, [students, ledgerBalances, selectedTerm]);
 
   // Filter students with outstanding balances
   const filteredStudents = useMemo(() => {
@@ -93,21 +69,29 @@ const OutstandingFees = () => {
       .sort((a, b) => b.outstanding - a.outstanding);
   }, [outstandingData, searchTerm, selectedClass]);
 
-  // Calculate summary statistics
+  // Calculate summary statistics — all figures from ledger balances
   const summaryStats = useMemo(() => {
-    const outstandingStudents = outstandingData.filter(student => student.outstanding > 0);
     const studentsArray = Array.isArray(students) ? students.filter(shouldTrackStudentFees) : [];
     const totalStudents = studentsArray.length;
-    const studentsOwing = outstandingStudents.length;
-    const totalOutstanding = outstandingStudents.reduce((sum, student) => sum + student.outstanding, 0);
-    const hasPartialPayments = outstandingStudents.some(student => student.totalPaid > 0);
+    const owingStudents = outstandingData.filter(student => student.outstanding > 0);
+    const creditStudents = outstandingData.filter(student => student.creditBalance > 0);
+    const arrearsStudents = outstandingData.filter(student => student.arrears > 0);
+    const studentsOwing = owingStudents.length;
+    const studentsCredit = creditStudents.length;
+    const studentsWithArrears = arrearsStudents.length;
+    const totalOutstanding = owingStudents.reduce((sum, student) => sum + student.outstanding, 0);
+    const totalCredit = creditStudents.reduce((sum, student) => sum + student.creditBalance, 0);
+    const totalArrears = arrearsStudents.reduce((sum, student) => sum + student.arrears, 0);
+    const hasPartialPayments = owingStudents.some(student => student.totalPaid > 0);
     const averageOutstanding = studentsOwing > 0 ? totalOutstanding / studentsOwing : 0;
-    const totalArrears = outstandingStudents.reduce((sum, student) => sum + student.arrears, 0);
 
     return {
       totalStudents,
       studentsOwing,
+      studentsCredit,
+      studentsWithArrears,
       totalOutstanding,
+      totalCredit,
       hasPartialPayments,
       averageOutstanding,
       totalArrears
@@ -156,17 +140,30 @@ const OutstandingFees = () => {
   return (
     <div className="space-y-6">
       {/* Header with summary stats */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <div className="bg-orange-500/5 border border-orange-500/10 rounded-2xl p-4 flex flex-col justify-between shadow-sm backdrop-blur-sm group hover:border-orange-500/30 transition-all">
           <div className="flex items-center justify-between mb-3">
             <div className="bg-orange-500/10 p-2 rounded-xl text-orange-500">
               <AlertTriangle className="w-5 h-5" />
             </div>
-            <p className="text-[9px] uppercase tracking-[0.1em] font-black text-orange-500/60">Students</p>
+            <p className="text-[9px] uppercase tracking-[0.1em] font-black text-orange-500/60">Outstanding</p>
           </div>
           <div>
             <p className="text-2xl font-black text-foreground tracking-tight">{summaryStats.studentsOwing}</p>
             <p className="text-[10px] text-muted-foreground font-medium">of {summaryStats.totalStudents} students owing</p>
+          </div>
+        </div>
+
+        <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-2xl p-4 flex flex-col justify-between shadow-sm backdrop-blur-sm group hover:border-emerald-500/30 transition-all">
+          <div className="flex items-center justify-between mb-3">
+            <div className="bg-emerald-500/10 p-2 rounded-xl text-emerald-500">
+              <Wallet className="w-5 h-5" />
+            </div>
+            <p className="text-[9px] uppercase tracking-[0.1em] font-black text-emerald-500/60">Credit</p>
+          </div>
+          <div>
+            <p className="text-2xl font-black text-foreground tracking-tight">{summaryStats.studentsCredit}</p>
+            <p className="text-[10px] text-muted-foreground font-medium">GHS {summaryStats.totalCredit.toLocaleString()} credit balance</p>
           </div>
         </div>
 
@@ -175,11 +172,11 @@ const OutstandingFees = () => {
             <div className="bg-red-500/10 p-2 rounded-xl text-red-500">
               <DollarSign className="w-5 h-5" />
             </div>
-            <p className="text-[9px] uppercase tracking-[0.1em] font-black text-red-500/60">Outstanding</p>
+            <p className="text-[9px] uppercase tracking-[0.1em] font-black text-red-500/60">Total Due</p>
           </div>
           <div>
             <p className="text-xl font-black text-foreground tracking-tight">GHS {summaryStats.totalOutstanding.toLocaleString()}</p>
-            <p className="text-[10px] text-muted-foreground font-medium">total amount due</p>
+            <p className="text-[10px] text-muted-foreground font-medium">total outstanding balance</p>
           </div>
         </div>
 
@@ -192,7 +189,7 @@ const OutstandingFees = () => {
           </div>
           <div>
             <p className="text-xl font-black text-foreground tracking-tight">GHS {summaryStats.totalArrears.toLocaleString()}</p>
-            <p className="text-[10px] text-muted-foreground font-medium">from previous terms</p>
+            <p className="text-[10px] text-muted-foreground font-medium">{summaryStats.studentsWithArrears} students with arrears</p>
           </div>
         </div>
 

@@ -18,6 +18,63 @@ select {
   -webkit-overflow-scrolling: touch;
 }
 
+/* Closed term — block create/edit; keep search, filters, browse, and view usable */
+
+/* Write forms (browse zones inside forms stay interactive) */
+.term-read-only form:not(.readonly-view-allow) input,
+.term-read-only form:not(.readonly-view-allow) select,
+.term-read-only form:not(.readonly-view-allow) textarea,
+.term-read-only form:not(.readonly-view-allow) [role="combobox"],
+.term-read-only form:not(.readonly-view-allow) button:not(.readonly-allowed):not([data-readonly-allow]) {
+  pointer-events: none !important;
+  opacity: 0.55;
+  cursor: not-allowed !important;
+}
+
+/* Edit dialogs */
+.term-read-only [role="dialog"] input:not([data-readonly-allow]),
+.term-read-only [role="dialog"] select:not([data-readonly-allow]),
+.term-read-only [role="dialog"] textarea:not([data-readonly-allow]),
+.term-read-only [role="dialog"] [role="combobox"]:not([data-readonly-allow]),
+.term-read-only [role="alertdialog"] button:not([data-readonly-allow]):not(.readonly-allowed) {
+  pointer-events: none !important;
+  opacity: 0.55;
+  cursor: not-allowed !important;
+}
+
+/* Write action buttons */
+.term-read-only button:not(.readonly-allowed):not([data-readonly-allow]):not([role="tab"]):not([role="combobox"]) {
+  pointer-events: none !important;
+  opacity: 0.55;
+  cursor: not-allowed !important;
+}
+
+/* Browse: search, filters, tabs, view/print/download */
+.term-read-only [data-readonly-allow],
+.term-read-only .readonly-allowed,
+.term-read-only .readonly-view-allow input,
+.term-read-only .readonly-view-allow select,
+.term-read-only .readonly-view-allow textarea,
+.term-read-only .readonly-view-allow [role="combobox"],
+.term-read-only .readonly-view-allow button,
+.term-read-only .readonly-view-allow .cursor-pointer,
+.term-read-only button:has(svg[class*="lucide-eye"]):not(:has(svg[class*="lucide-eye-off"])),
+.term-read-only button:has(svg[class*="lucide-search"]),
+.term-read-only button:has(svg[class*="lucide-refresh-cw"]),
+.term-read-only button:has(svg[class*="lucide-printer"]),
+.term-read-only button:has(svg[class*="lucide-download"]),
+.term-read-only button:has(svg[class*="lucide-chevron-left"]),
+.term-read-only button:has(svg[class*="lucide-chevron-right"]),
+.term-read-only button:has(svg[class*="lucide-filter"]) {
+  pointer-events: auto !important;
+  opacity: 1 !important;
+  cursor: pointer !important;
+}
+
+.term-read-only .readonly-view-allow .cursor-pointer {
+  cursor: pointer !important;
+}
+
 @layer utilities {
   .scrollbar-hide {
     -ms-overflow-style: none;

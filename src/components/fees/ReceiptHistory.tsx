@@ -1,5 +1,5 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,7 @@ import { invalidateFinanceQueries } from '../../hooks/useFinanceRealtime';
 import { useSchool } from '../../contexts/SchoolContext';
 import { apiService } from '../../services/api';
 import type { Payment } from '../../contexts/DataContext';
+import { useActiveTerm } from '../../contexts/ActiveTermContext';
 
 const CORRECTION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const LOCK_TOOLTIP = 'This receipt is locked and cannot be corrected after 7 days';
@@ -51,34 +52,120 @@ function canCorrectReceipt(payment: Payment, paymentById: Map<string, Payment>) 
 }
 
 const ReceiptHistory = () => {
-  const { payments, students, feeStructures, refresh } = useData();
+  const { payments, students, feeStructures, refresh, ledgerBalances } = useData();
   const { hasAccess } = useAuth();
+  const { currentTerm } = useActiveTerm();
   const queryClient = useQueryClient();
   const { schoolId } = useSchool();
   const canCorrect = hasAccess('fees');
   const [searchTerm, setSearchTerm] = useState('');
+  const [viewMode, setViewMode] = useState<'current' | 'archived'>('current');
+  const [archivedPayments, setArchivedPayments] = useState<Payment[]>([]);
+  const [archivedLoading, setArchivedLoading] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [showReceipt, setShowReceipt] = useState(false);
   const [correctionPayment, setCorrectionPayment] = useState<Payment | null>(null);
 
+  const activeTermId = useMemo(() => {
+    const first = Object.values(ledgerBalances || {})[0];
+    return first?.activeTermId ?? null;
+  }, [ledgerBalances]);
+
+  const mapPaymentRow = useCallback((p: any): Payment => ({
+    id: (p.id ?? p.payment_id)?.toString() ?? '',
+    studentId: (p.student_id ?? p.studentId)?.toString() || '',
+    studentIdNum: p.student_id ?? p.studentId,
+    amount: parseFloat(p.amount ?? p.amount_paid ?? 0),
+    date: p.payment_date?.split?.('T')?.[0] ?? p.date ?? '',
+    recordedAt: p.created_at ?? p.recorded_at ?? p.payment_date ?? p.date,
+    paymentMethod: p.payment_method ?? p.paymentMethod ?? '',
+    paymentAccountId: p.payment_account_id != null ? String(p.payment_account_id) : undefined,
+    term: p.term ?? '',
+    termId: p.term_id != null ? Number(p.term_id) : null,
+    notes: p.notes ?? '',
+    receiptNumber: p.receipt_number ?? p.receiptNumber,
+    isVoided: !!p.is_voided,
+    isLocked: !!p.is_locked,
+    correctedByPaymentId: p.corrected_by_payment_id != null ? String(p.corrected_by_payment_id) : undefined,
+    correctsPaymentId: p.corrects_payment_id != null ? String(p.corrects_payment_id) : undefined,
+    correctedAt: p.corrected_at ?? undefined,
+    correctionReason: p.correction_reason ?? undefined,
+    receiptVersion: p.receipt_version != null ? Number(p.receipt_version) : undefined,
+    receiptSnapshot: p.receipt_snapshot ?? p.receiptSnapshot ?? undefined,
+  }), []);
+
+  useEffect(() => {
+    if (viewMode !== 'archived') return;
+    let cancelled = false;
+    setArchivedLoading(true);
+    void apiService
+      .get<any[]>('/payments?archived=true')
+      .then((rows) => {
+        if (!cancelled) {
+          setArchivedPayments((Array.isArray(rows) ? rows : []).map(mapPaymentRow));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setArchivedPayments([]);
+      })
+      .finally(() => {
+        if (!cancelled) setArchivedLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [viewMode, mapPaymentRow, payments.length]);
+
+  const sourcePayments = viewMode === 'archived' ? archivedPayments : payments;
+
   const paymentById = useMemo(() => {
     const map = new Map<string, Payment>();
-    payments.forEach((p) => map.set(p.id, p));
+    [...payments, ...archivedPayments].forEach((p) => map.set(p.id, p));
     return map;
-  }, [payments]);
+  }, [payments, archivedPayments]);
 
-  const filteredPayments = payments.filter(payment => {
-    const student = students.find(s => s.id === payment.studentId);
-    const receiptNumber = payment.receiptNumber || '';
-    
-    return searchTerm === '' || 
-      receiptNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (student && (
-        student.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        student.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        student.studentId.includes(searchTerm)
-      ));
-  }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const isReceiptSearch = /^r\d/i.test(searchTerm.trim());
+
+  const filteredPayments = useMemo(() => {
+    const base = isReceiptSearch
+      ? [...payments, ...archivedPayments]
+      : sourcePayments;
+
+    const termFiltered = isReceiptSearch
+      ? base
+      : viewMode === 'current'
+        ? base.filter((p) => {
+            if (p.isVoided) return false;
+            if (activeTermId != null && p.termId != null) return p.termId === activeTermId;
+            return !currentTerm || p.term === currentTerm || p.term?.startsWith(currentTerm);
+          })
+        : base;
+
+    return termFiltered
+      .filter((payment) => {
+        const student = students.find((s) => s.id === payment.studentId);
+        const receiptNumber = payment.receiptNumber || '';
+        return (
+          searchTerm === '' ||
+          receiptNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (student &&
+            (student.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+              student.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+              student.studentId.includes(searchTerm)))
+        );
+      })
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [
+    sourcePayments,
+    payments,
+    archivedPayments,
+    students,
+    searchTerm,
+    viewMode,
+    activeTermId,
+    currentTerm,
+    isReceiptSearch,
+  ]);
 
   const handleViewReceipt = async (payment: Payment) => {
     const student = students.find(s => s.id === payment.studentId);
@@ -144,6 +231,7 @@ const ReceiptHistory = () => {
             <Button
               variant="link"
               className="h-auto p-0 text-xs text-emerald-600"
+              data-readonly-allow="view"
               onClick={() => handleViewReceipt(replacement)}
             >
               View {replacement.receiptNumber}
@@ -161,6 +249,7 @@ const ReceiptHistory = () => {
             <Button
               variant="link"
               className="h-auto p-0 text-xs text-muted-foreground"
+              data-readonly-allow="view"
               onClick={() => handleViewReceipt(predecessor)}
             >
               Previous {predecessor.receiptNumber}
@@ -194,14 +283,32 @@ const ReceiptHistory = () => {
     <TooltipProvider>
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Receipt className="w-5 h-5" />
-            <span>Receipt History</span>
+          <CardTitle className="flex items-center justify-between gap-4">
+            <div className="flex items-center space-x-2">
+              <Receipt className="w-5 h-5" />
+              <span>Receipt History</span>
+            </div>
+            <div className="readonly-view-allow flex rounded-lg border border-border overflow-hidden text-sm">
+              <button
+                type="button"
+                className={`px-3 py-1.5 ${viewMode === 'current' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground'}`}
+                onClick={() => setViewMode('current')}
+              >
+                Current Term
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-1.5 ${viewMode === 'archived' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground'}`}
+                onClick={() => setViewMode('archived')}
+              >
+                Archived
+              </button>
+            </div>
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <div className="relative">
+            <div className="readonly-view-allow relative">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search by receipt number, student name, or ID..."
@@ -225,7 +332,13 @@ const ReceiptHistory = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredPayments.length === 0 ? (
+                  {archivedLoading && viewMode === 'archived' ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground italic">
+                        Loading archived receipts…
+                      </TableCell>
+                    </TableRow>
+                  ) : filteredPayments.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={7} className="text-center py-8 text-muted-foreground italic">
                         No receipts found matching your search
@@ -270,6 +383,7 @@ const ReceiptHistory = () => {
                               <Button
                                 variant="ghost"
                                 size="sm"
+                                data-readonly-allow="view"
                                 onClick={() => handleViewReceipt(payment)}
                                 className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-500/10"
                               >

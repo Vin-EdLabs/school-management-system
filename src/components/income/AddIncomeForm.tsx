@@ -10,9 +10,12 @@ import { toast } from '@/hooks/use-toast';
 import { TrendingUp, Save } from 'lucide-react';
 import PaymentAccountSelect from '../common/PaymentAccountSelect';
 import BudgetCategorySelect, { persistBudgetCategory } from '../common/BudgetCategorySelect';
+import { isReservedCategoryName } from '../../constants/financeCategories';
+import { useBudgetCategories } from '../../hooks/useBudgetCategories';
 
 const AddIncomeForm = () => {
   const { addIncome } = useData();
+  const { refresh: refreshCategories } = useBudgetCategories('income');
   const [formData, setFormData] = useState({
     category: '',
     amount: '',
@@ -23,15 +26,18 @@ const AddIncomeForm = () => {
     notes: ''
   });
   const [saving, setSaving] = useState(false);
+  const [categorySelectKey, setCategorySelectKey] = useState(0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const finalCategory = formData.category.trim();
     
-    if (!finalCategory || !formData.amount) {
+    if (!finalCategory || !formData.amount || isReservedCategoryName(finalCategory)) {
       toast({
         title: "Validation Error",
-        description: "Please fill in category and amount",
+        description: isReservedCategoryName(finalCategory)
+          ? "Please type a category name under Other"
+          : "Please fill in category and amount",
         variant: "destructive"
       });
       return;
@@ -51,6 +57,8 @@ const AddIncomeForm = () => {
         notes: formData.notes,
       });
 
+      await refreshCategories();
+
       toast({
         title: "Income Added",
         description: `GHS ${formData.amount} recorded under ${finalCategory}. Budget updated automatically.`,
@@ -65,6 +73,7 @@ const AddIncomeForm = () => {
         receivedBy: 'Admin',
         notes: ''
       });
+      setCategorySelectKey((k) => k + 1);
     } finally {
       setSaving(false);
     }
@@ -82,6 +91,7 @@ const AddIncomeForm = () => {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <BudgetCategorySelect
+              key={categorySelectKey}
               type="income"
               id="category"
               label="Income Category *"
@@ -146,7 +156,7 @@ const AddIncomeForm = () => {
 
           <div className="form-action-bar flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-muted-foreground">
-              Categories are shared with Budget. New categories appear in all dropdowns instantly.
+              Pick a category from the list, or choose Other and type a new one — it will appear in the list next time.
             </p>
             <Button type="submit" variant="primaryAction" className="min-h-10 w-full sm:w-auto" disabled={saving}>
               <Save className="w-4 h-4 mr-2" />

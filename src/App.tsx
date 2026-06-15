@@ -12,6 +12,7 @@ import { AuditProvider } from "./contexts/AuditContext";
 import { DataProvider } from "./contexts/DataContext";
 import { SchoolProvider } from "./contexts/SchoolContext";
 import { ActiveTermProvider } from "./contexts/ActiveTermContext";
+import { TermStatusProvider } from "./contexts/TermStatusContext";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import SchoolSelector from "./pages/SchoolSelector";
@@ -224,9 +225,11 @@ const IndexWithSchool = () => {
     <SchoolProvider schoolIdFromUrl={resolvedId}>
       <DataProvider>
         <ActiveTermProvider>
+          <TermStatusProvider>
           <AuditProvider>
             <Index />
           </AuditProvider>
+          </TermStatusProvider>
         </ActiveTermProvider>
       </DataProvider>
     </SchoolProvider>

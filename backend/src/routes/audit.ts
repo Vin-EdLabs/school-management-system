@@ -17,7 +17,7 @@ const AUDIT_USER_JOINS = `
   LEFT JOIN teachers tch ON TRIM(COALESCE(u.teacher_id::text, '')) <> ''
     AND tch.id::text = TRIM(u.teacher_id::text)
     AND tch.tenant_id = COALESCE(u.tenant_id, al.tenant_id)
-  LEFT JOIN payroll_other_staff stf ON u.other_staff_id IS NOT NULL
+  LEFT JOIN other_staff stf ON u.other_staff_id IS NOT NULL
     AND stf.id = u.other_staff_id
     AND stf.tenant_id = COALESCE(u.tenant_id, al.tenant_id)
 `;
@@ -149,9 +149,9 @@ router.get('/all', authenticate, requireRole('super-admin'), async (req: AuthReq
 
     const result = await query(queryText, params);
     res.json((result.rows as Record<string, unknown>[]).map((r) => enrichAuditLogRow(r)));
-  } catch (error) {
+  } catch (error: any) {
     console.error('Get all audit logs error:', error);
-    res.status(500).json({ error: 'Failed to fetch audit logs' });
+    res.status(500).json({ error: 'Failed to fetch audit logs', detail: error?.message });
   }
 });
 
@@ -248,7 +248,7 @@ router.get('/super-admin/tracker/users', authenticate, requireRole('super-admin'
        LEFT JOIN teachers tch ON TRIM(COALESCE(u.teacher_id::text, '')) <> ''
          AND tch.id::text = TRIM(u.teacher_id::text)
          AND tch.tenant_id = u.tenant_id
-       LEFT JOIN payroll_other_staff stf ON u.other_staff_id IS NOT NULL
+       LEFT JOIN other_staff stf ON u.other_staff_id IS NOT NULL
          AND stf.id = u.other_staff_id
          AND stf.tenant_id = u.tenant_id
        LEFT JOIN audit_logs al ON al.user_id = u.id AND al.tenant_id = u.tenant_id

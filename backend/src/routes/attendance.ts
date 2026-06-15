@@ -2,6 +2,7 @@ import express from 'express';
 import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
+import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 import { getIO } from '../socket.js';
 
 const router = express.Router();
@@ -18,6 +19,7 @@ const emitTenantDataChanged = (tenantId: number, entity: string, action: 'create
 router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
+attachWritableTermGuard(router);
 
 // Track all attendance records for a specific student (across all dates)
 router.get('/student', async (req: AuthRequest, res) => {

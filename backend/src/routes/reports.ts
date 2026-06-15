@@ -667,7 +667,7 @@ router.get('/payroll-summary', async (req: AuthRequest, res) => {
           ELSE round((s.monthly_salary * COALESCE(ps.default_ssnit_percent, 5.5) / 100)::numeric, 2) END as ssnit,
         CASE WHEN COALESCE(s.ssnit_enabled, true) = false THEN s.monthly_salary::numeric
           ELSE round((s.monthly_salary - (s.monthly_salary * COALESCE(ps.default_ssnit_percent, 5.5) / 100))::numeric, 2) END as net
-      FROM payroll_other_staff s
+      FROM other_staff s
       CROSS JOIN payroll_settings ps
       WHERE s.tenant_id = $1 AND ps.tenant_id = $1
         AND (s.employment_status = 'active' OR s.employment_status IS NULL)

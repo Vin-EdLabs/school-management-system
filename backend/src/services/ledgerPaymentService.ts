@@ -5,13 +5,9 @@ import {
   buildReceiptSnapshot,
   getCurrentTermPaymentContext,
   resolveActiveLedgerTerm,
-  getStudentFullBalance,
 } from './studentUnifiedBalanceService.js';
+import { getStudentBalanceFromLedger } from './ledgerBalanceService.js';
 import { resolveLedgerTermFromSettings } from './ledgerFinanceService.js';
-
-function roundMoney(n: number) {
-  return Math.round(n * 100) / 100;
-}
 
 export type RecordLedgerPaymentInput = {
   tenantId: number;
@@ -72,8 +68,8 @@ export async function recordPaymentWithLedger(
     let insertResult;
     try {
       insertResult = await client.query(
-        `INSERT INTO payments (tenant_id, student_id, amount, payment_date, payment_method, payment_account_id, term, notes, receipt_number, base_receipt_number, receipt_snapshot)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9, $10::jsonb) RETURNING *`,
+        `INSERT INTO payments (tenant_id, student_id, amount, payment_date, payment_method, payment_account_id, term, term_id, notes, receipt_number, base_receipt_number, receipt_snapshot)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, $11::jsonb) RETURNING *`,
         [
           input.tenantId,
           input.studentId,
@@ -82,6 +78,7 @@ export async function recordPaymentWithLedger(
           input.paymentMethod,
           input.paymentAccountId,
           termToStore,
+          ctx.ledgerTermId,
           input.notes,
           input.receiptNumber,
           JSON.stringify(receiptSnapshot),
@@ -89,8 +86,8 @@ export async function recordPaymentWithLedger(
       );
     } catch {
       insertResult = await client.query(
-        `INSERT INTO payments (tenant_id, student_id, amount, payment_date, payment_method, payment_account_id, term, notes, receipt_number, base_receipt_number)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9) RETURNING *`,
+        `INSERT INTO payments (tenant_id, student_id, amount, payment_date, payment_method, payment_account_id, term, term_id, notes, receipt_number, base_receipt_number)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10) RETURNING *`,
         [
           input.tenantId,
           input.studentId,
@@ -99,6 +96,7 @@ export async function recordPaymentWithLedger(
           input.paymentMethod,
           input.paymentAccountId,
           termToStore,
+          ctx.ledgerTermId,
           input.notes,
           input.receiptNumber,
         ]
@@ -112,91 +110,40 @@ export async function recordPaymentWithLedger(
     const payment = insertResult.rows[0];
     const paymentId = Number(payment.id);
 
-    // Insert ledger entries according to allocation: current term first, then arrears (oldest first), then any residual credit
-    let remainingToAllocate = roundMoney(input.amount);
+    await client.query(
+      `INSERT INTO student_ledger (
+         tenant_id, student_id, academic_year_id, term_id, description, entry_type,
+         debit, credit, payment_method, receipt_number, reference, payment_id, created_by, metadata
+       ) VALUES ($1, $2, $3, $4, $5, 'payment', 0, $6, $7, $8, $8, $9, $10, $11::jsonb)`,
+      [
+        input.tenantId,
+        input.studentId,
+        ctx.academicYearId,
+        ctx.ledgerTermId,
+        `Payment recorded — Receipt #${input.receiptNumber}`,
+        input.amount,
+        input.paymentMethod,
+        input.receiptNumber,
+        paymentId,
+        input.createdByUserId,
+        JSON.stringify({
+          allocation: receiptSnapshot,
+          outstandingBefore: allocation.outstandingBefore,
+          outstandingAfter: allocation.outstandingAfter,
+        }),
+      ]
+    );
 
-    // 1) current term portion
-    if (allocation.termFeeCleared > 0) {
-      await client.query(
-        `INSERT INTO student_ledger (
-           tenant_id, student_id, academic_year_id, term_id, description, entry_type,
-           debit, credit, payment_method, receipt_number, reference, payment_id, created_by, metadata
-         ) VALUES ($1, $2, $3, $4, $5, 'payment', 0, $6, $7, $8, $8, $9, $10, $11::jsonb)`,
-        [
-          input.tenantId,
-          input.studentId,
-          ctx.academicYearId,
-          ctx.ledgerTermId,
-          `Payment recorded — Receipt #${input.receiptNumber} (term portion)`,
-          allocation.termFeeCleared,
-          input.paymentMethod,
-          input.receiptNumber,
-          paymentId,
-          input.createdByUserId,
-          JSON.stringify({ allocation: receiptSnapshot, portion: 'term', amount: allocation.termFeeCleared }),
-        ]
-      );
-      remainingToAllocate = roundMoney(remainingToAllocate - allocation.termFeeCleared);
-    }
+    const afterBalance = await getStudentBalanceFromLedger(
+      client,
+      input.tenantId,
+      input.studentId,
+      ctx.ledgerTermId
+    );
 
-    // 2) apply to prior-term arrears (oldest first)
-    if (allocation.arrearsCleared > 0) {
-      const full = await getStudentFullBalance(client, input.tenantId, input.studentId);
-      const prior = full?.priorTerms ?? [];
-      let toClear = allocation.arrearsCleared;
-      for (const pt of prior) {
-        if (toClear <= 0) break;
-        const termOutstanding = pt.outstanding > 0 ? pt.outstanding : 0;
-        if (termOutstanding <= 0) continue;
-        const applyAmt = roundMoney(Math.min(termOutstanding, toClear));
-        if (applyAmt <= 0) continue;
-        await client.query(
-          `INSERT INTO student_ledger (
-             tenant_id, student_id, academic_year_id, term_id, description, entry_type,
-             debit, credit, payment_method, receipt_number, reference, payment_id, created_by, metadata
-           ) VALUES ($1, $2, $3, $4, $5, 'payment', 0, $6, $7, $8, $8, $9, $10, $11::jsonb)`,
-          [
-            input.tenantId,
-            input.studentId,
-            // find academic year id for this prior term by resolving ledger term
-            pt.termId ? (await resolveActiveLedgerTerm(client.query.bind(client), input.tenantId, pt.termId)).academicYearId : ctx.academicYearId,
-            pt.termId,
-            `Payment recorded — Receipt #${input.receiptNumber} (arrears)`,
-            applyAmt,
-            input.paymentMethod,
-            input.receiptNumber,
-            paymentId,
-            input.createdByUserId,
-            JSON.stringify({ allocation: receiptSnapshot, portion: 'arrears', amount: applyAmt, targetTerm: pt.termId }),
-          ]
-        );
-        toClear = roundMoney(toClear - applyAmt);
-        remainingToAllocate = roundMoney(remainingToAllocate - applyAmt);
-      }
-    }
-
-    // 3) any residual (overpayment) -> credit in current term
-    if (remainingToAllocate > 0.001) {
-      await client.query(
-        `INSERT INTO student_ledger (
-           tenant_id, student_id, academic_year_id, term_id, description, entry_type,
-           debit, credit, payment_method, receipt_number, reference, payment_id, created_by, metadata
-         ) VALUES ($1, $2, $3, $4, $5, 'payment', 0, $6, $7, $8, $8, $9, $10, $11::jsonb)`,
-        [
-          input.tenantId,
-          input.studentId,
-          ctx.academicYearId,
-          ctx.ledgerTermId,
-          `Payment recorded — Receipt #${input.receiptNumber} (credit)`,
-          remainingToAllocate,
-          input.paymentMethod,
-          input.receiptNumber,
-          paymentId,
-          input.createdByUserId,
-          JSON.stringify({ allocation: receiptSnapshot, portion: 'credit', amount: remainingToAllocate }),
-        ]
-      );
-    }
+    let balanceStatus = 'Cleared';
+    if (afterBalance.creditBalance > 0) balanceStatus = 'Credit';
+    else if (afterBalance.outstanding > 0) balanceStatus = 'Owing';
 
     await client.query('COMMIT');
 
@@ -205,13 +152,13 @@ export async function recordPaymentWithLedger(
       receiptSnapshot,
       allocation,
       balance: {
-        termFee: allocation.termFee,
-        arrears: allocation.arrears,
-        totalDue: allocation.totalDue,
-        totalPaid: receiptSnapshot.totalPaidThisTerm ?? allocation.totalPaidBefore + input.amount,
-        outstanding: allocation.outstandingAfter,
-        credit: allocation.credit,
-        status: allocation.status,
+        termFee: afterBalance.termFee,
+        arrears: afterBalance.arrears,
+        totalDue: afterBalance.totalDue,
+        totalPaid: afterBalance.totalPaid,
+        outstanding: afterBalance.outstanding,
+        credit: afterBalance.creditBalance,
+        status: balanceStatus,
       },
     };
   } catch (err) {
@@ -355,6 +302,21 @@ export async function postStudentActivationTermFee(
   return { posted: true, amount: feeAmount, termName: termLabel, className: className || undefined };
 }
 
+/** Convenience wrapper — acquires its own DB client for route handlers. */
+export async function tryPostStudentActivationTermFee(
+  tenantId: number,
+  studentId: number,
+  createdByUserId?: number,
+  reason: 'enrollment' | 'reactivation' = 'enrollment'
+): Promise<ActivationFeeResult> {
+  const client = await getClient();
+  try {
+    return await postStudentActivationTermFee(client, tenantId, studentId, createdByUserId, reason);
+  } finally {
+    client.release();
+  }
+}
+
 /** @deprecated Use postStudentActivationTermFee — class must already be assigned on the student row. */
 export async function postMidTermEnrollmentFee(
   client: pg.PoolClient,
@@ -409,13 +371,13 @@ export async function writeOffArrears(
       ]
     );
 
-    const { getStudentFullBalance } = await import('./studentUnifiedBalanceService.js');
-    const after = await getStudentFullBalance(client, tenantId, studentId);
+    const { getStudentBalanceFromLedger } = await import('./ledgerBalanceService.js');
+    const after = await getStudentBalanceFromLedger(client, tenantId, studentId, ctx.ledgerTermId);
 
     await client.query('COMMIT');
     return {
       writtenOff: writeOffAmount,
-      newOutstanding: after?.outstanding ?? 0,
+      newOutstanding: after.outstanding,
     };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});

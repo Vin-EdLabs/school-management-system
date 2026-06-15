@@ -43,7 +43,7 @@ export const authenticate = async (
                      COALESCE(t.full_name, s.full_name, u.full_name, u.username) as full_name
               FROM users u
               LEFT JOIN teachers t ON u.teacher_id::text = t.id::text AND t.tenant_id = u.tenant_id
-              LEFT JOIN payroll_other_staff s ON u.other_staff_id = s.id AND s.tenant_id = u.tenant_id
+              LEFT JOIN other_staff s ON u.other_staff_id = s.id AND s.tenant_id = u.tenant_id
               WHERE u.id = $1 AND u.is_active = true`,
         params: [decoded.userId]
       },

@@ -3,6 +3,11 @@ import { writeAuditLog } from './auditService.js';
 import { getActiveTeachersSalaryTotal } from './teacherStatusService.js';
 import { ACTIVE_STUDENT_WHERE } from '../utils/studentEnrollment.js';
 import { getIO } from '../socket.js';
+import {
+  DEFAULT_INCOME_CATEGORIES,
+  DEFAULT_EXPENSE_CATEGORIES,
+  OTHER_CATEGORY,
+} from '../constants/financeCategories.js';
 
 export const EXPECTED_FEE_INCOME = 'Expected Fee Income';
 export const SALARIES_CATEGORY = 'Salaries';
@@ -217,7 +222,17 @@ export async function syncActiveBudgetLines(tenantId: number): Promise<void> {
   }
 }
 
+async function seedDefaultCategories(tenantId: number, type: 'income' | 'expense'): Promise<void> {
+  const list = type === 'income' ? DEFAULT_INCOME_CATEGORIES : DEFAULT_EXPENSE_CATEGORIES;
+  for (const name of list) {
+    if (name === OTHER_CATEGORY) continue;
+    await ensureBudgetCategory(tenantId, name, type, true);
+  }
+}
+
 async function syncSystemCategories(tenantId: number, type: 'income' | 'expense'): Promise<void> {
+  await seedDefaultCategories(tenantId, type);
+
   if (type === 'income') {
     const distinct = await query(
       `SELECT DISTINCT TRIM(COALESCE(NULLIF(TRIM(category), ''), NULLIF(TRIM(source), ''))) AS name

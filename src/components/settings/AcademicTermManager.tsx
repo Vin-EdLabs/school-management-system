@@ -1,16 +1,20 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from '@/hooks/use-toast';
-import { Calendar, Plus, Edit2, PowerOff, CheckCircle, Archive, ArchiveRestore } from 'lucide-react';
+import { Calendar, Plus, Edit2, PowerOff, CheckCircle, Archive, ArchiveRestore, Lock } from 'lucide-react';
 import { apiService } from '../../services/api';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
+import { useTermStatus } from '../../contexts/TermStatusContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
 import { formatDisplayDate } from '../../utils/dateFormat';
 import TermActivationModal from './TermActivationModal';
 import ArrearsSyncModal from './ArrearsSyncModal';
+import CloseTermModal from './CloseTermModal';
+import CloseTermBeforeSwitchModal from './CloseTermBeforeSwitchModal';
 
 interface AcademicTerm {
   id: string;
@@ -26,12 +30,15 @@ interface LedgerTerm {
   id: number;
   name: string;
   is_current: boolean;
+  status?: string;
   academic_year_id: number;
   academic_year_name: string;
 }
 
 const AcademicTermManager = () => {
   const { refresh: refreshActiveTerm } = useActiveTerm();
+  const { refresh: refreshTermStatus } = useTermStatus();
+  const { user } = useAuth();
   const { refresh: refreshData } = useData();
   const [terms, setTerms] = useState<AcademicTerm[]>([]);
   const [ledgerTerms, setLedgerTerms] = useState<LedgerTerm[]>([]);
@@ -42,6 +49,10 @@ const AcademicTermManager = () => {
   const [arrearsSyncOpen, setArrearsSyncOpen] = useState(false);
   const [arrearsSyncTermLabel, setArrearsSyncTermLabel] = useState('');
   const [showArchived, setShowArchived] = useState(false);
+  const [closeTermOpen, setCloseTermOpen] = useState(false);
+  const [closeBeforeSwitchOpen, setCloseBeforeSwitchOpen] = useState(false);
+  const [pendingActivationTerm, setPendingActivationTerm] = useState<AcademicTerm | null>(null);
+  const closingFromSwitchRef = useRef(false);
   const [isArchivingAll, setIsArchivingAll] = useState(false);
   const [newTerm, setNewTerm] = useState({
     name: '',
@@ -75,6 +86,7 @@ const AcademicTermManager = () => {
         id: parseInt(String(t.id), 10),
         name: t.name || '',
         is_current: t.is_current || false,
+        status: t.status || 'active',
         academic_year_id: parseInt(String(t.academic_year_id), 10),
         academic_year_name: t.academic_year_name || ''
       })));
@@ -90,6 +102,17 @@ const AcademicTermManager = () => {
   useEffect(() => {
     void loadTerms(showArchived);
   }, [showArchived]);
+
+  const findLedgerForAcademic = (term: AcademicTerm) => {
+    const cleanName = term.term_name.replace(/\s+\d{4}$/, '').trim();
+    return ledgerTerms.find(
+      (lt) =>
+        (lt.name === term.term_name ||
+          lt.name === cleanName ||
+          `${lt.name} ${lt.academic_year_name}` === term.term_name) &&
+        lt.academic_year_name === term.year
+    );
+  };
 
   const handleArchiveTerm = async (termId: string) => {
     const term = terms.find((t) => t.id === termId);
@@ -201,7 +224,18 @@ const AcademicTermManager = () => {
 
   const handleSetActiveTerm = (termId: string) => {
     const term = terms.find((t) => t.id === termId);
-    if (!term) return;
+    if (!term || term.is_active) return;
+
+    const currentActive = terms.find((t) => t.is_active);
+    if (currentActive && currentActive.id !== termId) {
+      const activeLedger = findLedgerForAcademic(currentActive);
+      if (activeLedger && activeLedger.status !== 'closed') {
+        setPendingActivationTerm(term);
+        setCloseBeforeSwitchOpen(true);
+        return;
+      }
+    }
+
     setActivationTerm(term);
   };
 
@@ -369,6 +403,9 @@ const AcademicTermManager = () => {
     }
   };
 
+  const canCloseTerm =
+    user?.role === 'super-admin' || (user?.role === 'administrator' && user?.isPrimaryAdmin);
+
   const activeTerm = terms.find((t) => t.is_active);
   const visibleTerms = showArchived ? terms : terms.filter((t) => !t.is_archived || t.is_active);
   const archivableCount = terms.filter((t) => !t.is_active && !t.is_archived).length;
@@ -389,6 +426,69 @@ const AcademicTermManager = () => {
         onClose={() => setArrearsSyncOpen(false)}
         onComplete={() => void handleArrearsSyncComplete()}
       />
+      {activeTerm ? (
+        <CloseTermModal
+          open={closeTermOpen}
+          onOpenChange={setCloseTermOpen}
+          academicTermId={activeTerm.id}
+          onClosed={async ({ closedTermLabel, nextTermLabel }) => {
+            const pending = pendingActivationTerm;
+            setPendingActivationTerm(null);
+
+            toast({
+              title: 'Term closed',
+              description: nextTermLabel
+                ? `${closedTermLabel} has been closed. Carry-forward entries created for ${nextTermLabel}.`
+                : `${closedTermLabel} has been closed.`,
+            });
+            await loadTerms(showArchived);
+            await refreshActiveTerm();
+            await refreshTermStatus();
+            await refreshData();
+
+            if (pending) {
+              const refreshed = await apiService
+                .get<AcademicTerm[]>('/settings/academic-terms')
+                .catch(() => []);
+              const list = Array.isArray(refreshed) ? refreshed : [];
+              const pendingRow = list.find((t: any) => String(t.id) === pending.id);
+              if (pendingRow?.is_active) {
+                toast({
+                  title: 'Term activated',
+                  description: `${pending.term_name} ${pending.year} is now active.`,
+                });
+              } else if (nextTermLabel) {
+                toast({
+                  title: 'Next term activated',
+                  description: `${nextTermLabel} is now active. Close it before switching to ${pending.term_name} ${pending.year}.`,
+                });
+              }
+            }
+          }}
+        />
+      ) : null}
+      {activeTerm && pendingActivationTerm ? (
+        <CloseTermBeforeSwitchModal
+          open={closeBeforeSwitchOpen}
+          onOpenChange={(open) => {
+            setCloseBeforeSwitchOpen(open);
+            if (!open && !closingFromSwitchRef.current) setPendingActivationTerm(null);
+            if (!open) closingFromSwitchRef.current = false;
+          }}
+          onCancel={() => {
+            setCloseBeforeSwitchOpen(false);
+            setPendingActivationTerm(null);
+          }}
+          currentTermLabel={`${activeTerm.term_name} ${activeTerm.year}`}
+          targetTermLabel={`${pendingActivationTerm.term_name} ${pendingActivationTerm.year}`}
+          canCloseTerm={canCloseTerm}
+          onCloseCurrentTerm={() => {
+            closingFromSwitchRef.current = true;
+            setCloseBeforeSwitchOpen(false);
+            setCloseTermOpen(true);
+          }}
+        />
+      ) : null}
       <Card className="shadow-sm overflow-hidden">
       <CardHeader className="px-4 py-3 border-b bg-muted/20">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -398,7 +498,7 @@ const AcademicTermManager = () => {
               <span>Academic Terms</span>
             </CardTitle>
             <p className="mt-1 text-xs text-muted-foreground">
-              Create terms, activate the current term, or archive old terms to hide them from this list.
+              Create terms, close the current term to switch, or archive old terms to hide them from this list.
             </p>
           </div>
           <div className="flex flex-wrap gap-2 shrink-0">
@@ -444,10 +544,24 @@ const AcademicTermManager = () => {
                   </p>
                 )}
               </div>
-              <Badge className="bg-green-500">
-                <CheckCircle className="w-3 h-3 mr-1" />
-                Active
-              </Badge>
+              <div className="flex items-center gap-2 shrink-0">
+                <Badge className="bg-green-500">
+                  <CheckCircle className="w-3 h-3 mr-1" />
+                  Active
+                </Badge>
+                {canCloseTerm ? (
+            <Button
+              size="sm"
+              variant="destructive"
+              className="h-8 readonly-allowed"
+              data-readonly-allow="view"
+              onClick={() => setCloseTermOpen(true)}
+            >
+                    <Lock className="w-3 h-3 mr-1" />
+                    Close Term
+                  </Button>
+                ) : null}
+              </div>
             </div>
           </div>
         )}
@@ -547,6 +661,12 @@ const AcademicTermManager = () => {
                           )}
                           {term.is_archived && (
                             <span className="px-2 py-0.5 text-xs font-medium bg-slate-500/15 text-slate-600 dark:text-slate-300 rounded">Archived</span>
+                          )}
+                          {findLedgerForAcademic(term)?.status === 'closed' && (
+                            <span className="px-2 py-0.5 text-xs font-medium bg-amber-500/15 text-amber-800 dark:text-amber-200 rounded inline-flex items-center gap-1">
+                              <Lock className="w-3 h-3" />
+                              Closed
+                            </span>
                           )}
                         </div>
                         {ledgerTerms

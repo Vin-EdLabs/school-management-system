@@ -10,12 +10,14 @@ import { getIO } from '../socket.js';
 import { sendPushToTenantStaff } from '../services/webPushService.js';
 import { writeAuditLog } from '../services/auditService.js';
 import { getClientIp } from '../utils/clientIp.js';
+import { resolveActorFromRequest, withActor } from '../utils/auditResolve.js';
 import {
   suspendTeacher,
   deactivateTeacher,
   reactivateTeacher,
   normalizeTeacherStatus,
 } from '../services/teacherStatusService.js';
+import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 import {
   buildLetterContent,
   saveAppointmentLetter,
@@ -73,8 +75,9 @@ const emitTenantDataChanged = (
 router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
+attachWritableTermGuard(router);
 
-// Get current teacher profile (teacher role) - must be before /:id
+// Get current teacher profile
 router.get('/me', async (req: AuthRequest, res) => {
   try {
     const teacherId = req.user!.teacherId;
@@ -408,9 +411,12 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
       `INSERT INTO teachers (
         tenant_id, full_name, gender, date_of_birth, staff_id, phone_number,
         email, address, subjects_taught, class_assigned_id, employment_date,
-        monthly_salary, employment_status, notes
+        monthly_salary, employment_status, notes,
+        emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
+        bank_name, bank_account_number, bank_branch, bank_account_name
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+        $15, $16, $17, $18, $19, $20, $21
       ) RETURNING *`,
       [
         tenantId,
@@ -427,42 +433,76 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
         teacherData.monthly_salary || null,
         teacherData.employment_status || 'Active',
         teacherData.notes || null,
+        teacherData.emergency_contact_name || null,
+        teacherData.emergency_contact_phone || null,
+        teacherData.emergency_contact_relationship || null,
+        teacherData.bank_name || null,
+        teacherData.bank_account_number || null,
+        teacherData.bank_branch || null,
+        teacherData.bank_account_name || null,
       ]
     );
     
     const teacherId = result.rows[0].id;
-    
+    const created = result.rows[0];
+
     await query(
       `UPDATE teachers SET status = 'active' WHERE id = $1 AND tenant_id = $2`,
       [teacherId, tenantId]
     ).catch(() => {});
-    const loginPin = generatePin();
-    const passwordHash = await bcrypt.hash(loginPin, 10);
-    
-    await query(
-      `INSERT INTO users (tenant_id, username, full_name, email, password_hash, role, teacher_id)
-       VALUES ($1, $2, $3, $4, $5, 'teacher', $6)`,
-      [tenantId, staffId, teacherData.full_name, teacherData.email || null, passwordHash, String(teacherId)]
-    );
-    
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'CREATE', 'TEACHER', teacherId]
-    );
-    emitTenantDataChanged(tenantId, 'teacher', 'created');
-    
+
+    try {
+      const passwordHash = await bcrypt.hash(staffId, 10);
+      await query(
+        `INSERT INTO users (tenant_id, username, full_name, email, password_hash, role, teacher_id)
+         VALUES ($1, $2, $3, $4, $5, 'teacher', $6)
+         ON CONFLICT (tenant_id, username) DO NOTHING`,
+        [tenantId, staffId, teacherData.full_name, teacherData.email || null, passwordHash, String(teacherId)]
+      );
+    } catch (userErr) {
+      console.error('Teacher user account creation warning (teacher saved):', userErr);
+    }
+
+    try {
+      const actor = await resolveActorFromRequest(req);
+      await writeAuditLog({
+        tenantId,
+        userId: req.user!.id,
+        userRole: req.user!.role,
+        action: 'CREATE',
+        entityType: 'TEACHER',
+        entityId: teacherId,
+        module: 'academics',
+        summary: withActor(`Teacher added — ${teacherData.full_name} (${staffId}) — user account auto-created`, actor),
+        details: { fullName: teacherData.full_name, staffId },
+        ipAddress: getClientIp(req),
+        userAgent: req.get('user-agent') ?? null,
+      });
+    } catch (auditErr) {
+      console.error('Teacher audit log warning:', auditErr);
+    }
+
+    try {
+      emitTenantDataChanged(tenantId, 'teacher', 'created');
+    } catch {
+      /* noop */
+    }
+
     res.status(201).json({
-      ...result.rows[0],
+      id: created.id,
+      staff_id: staffId,
+      full_name: created.full_name,
       loginStaffId: staffId,
-      loginPin,
-      loginMessage: `Teacher can login with Staff ID: ${staffId} and PIN: ${loginPin}`,
+      loginPassword: staffId,
+      loginMessage: `Teacher can login with Staff ID: ${staffId} and Password: ${staffId} (must change on first login)`,
     });
   } catch (error: any) {
     console.error('Create teacher error:', error);
     if (error.code === '23505') {
       return res.status(409).json({ error: 'Staff ID already exists' });
     }
-    res.status(500).json({ error: 'Failed to create teacher' });
+    const detail = error?.message || 'Unknown error';
+    res.status(500).json({ error: 'Failed to create teacher', detail });
   }
 });
 
@@ -480,7 +520,9 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
     const allowedFields = [
       'full_name', 'gender', 'date_of_birth', 'phone_number', 'email',
       'address', 'subjects_taught', 'class_assigned_id', 'employment_date',
-      'monthly_salary', 'employment_status', 'notes'
+      'monthly_salary', 'employment_status', 'notes',
+      'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
+      'bank_name', 'bank_account_number', 'bank_branch', 'bank_account_name',
     ];
     
     for (const field of allowedFields) {
@@ -514,11 +556,20 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
       [result.rows[0].full_name, result.rows[0].email || null, tenantId, id]
     ).catch(() => {});
     
-    // Log update
-    await query(
-      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES ($1, $2, $3, $4, $5)',
-      [tenantId, req.user!.id, 'UPDATE', 'TEACHER', parseInt(id)]
-    );
+    const actor = await resolveActorFromRequest(req);
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'UPDATE',
+      entityType: 'TEACHER',
+      entityId: parseInt(id, 10),
+      module: 'academics',
+      summary: withActor(`Teacher profile updated — ${result.rows[0].full_name}`, actor),
+      details: { fullName: result.rows[0].full_name, staffId: result.rows[0].staff_id },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
     emitTenantDataChanged(tenantId, 'teacher', 'updated');
     
     res.json(result.rows[0]);

@@ -147,8 +147,8 @@ export const FinanceStatementPreview = forwardRef<HTMLDivElement, FinanceStateme
               <td>TOTALS</td>
               <td className="fs-num">{money(statement.termSummaryTotals.feeBilled)}</td>
               <td className="fs-num">{money(statement.termSummaryTotals.amountPaid)}</td>
-              <td className="fs-num">{money(statement.termSummaryTotals.outstanding)}</td>
-              <td className="fs-num">{money(statement.termSummaryTotals.credit)}</td>
+              <td className="fs-num">—</td>
+              <td className="fs-num">—</td>
               <td />
             </tr>
           </tbody>
@@ -159,21 +159,37 @@ export const FinanceStatementPreview = forwardRef<HTMLDivElement, FinanceStateme
         <section className="fs-arrears-history">
           <h3>Arrears History</h3>
           <p className="text-sm text-muted-foreground mb-2">
-            The following terms have unpaid balances carried forward:
+            The following terms have unpaid balances:
           </p>
           <ul className="fs-arrears-list">
-            {statement.arrearsHistory.lines.map((line) => (
-              <li key={line.termLabel}>
+            {statement.arrearsHistory.lines.map((line, idx) => (
+              <li key={`${line.termLabel}-${idx}`}>
                 {line.termLabel}: {money(line.unpaidAmount)} unpaid
                 {line.carriedToLabel ? ` → carried to ${line.carriedToLabel}` : ''}
               </li>
             ))}
           </ul>
           <p className="font-semibold text-sm">
-            Total Carried Forward: {money(statement.arrearsHistory.totalCarriedForward)}
+            Total Arrears Carried Forward: {money(statement.arrearsHistory.totalCarriedForward)}
           </p>
-          <p className="text-xs text-muted-foreground mt-2">
-            Note: Carried forward amounts are included in the outstanding balances shown in the table above.
+        </section>
+      ) : null}
+
+      {statement.creditHistory && statement.creditHistory.totalCreditAvailable > 0.001 ? (
+        <section className="fs-credit-history">
+          <h3>Credit History</h3>
+          <p className="text-sm text-muted-foreground mb-2">
+            The following terms have credit balances:
+          </p>
+          <ul className="fs-arrears-list">
+            {statement.creditHistory.lines.map((line, idx) => (
+              <li key={`${line.termLabel}-${idx}`}>
+                {line.termLabel}: {money(line.creditAmount)} credit ({line.description})
+              </li>
+            ))}
+          </ul>
+          <p className="font-semibold text-sm text-green-700">
+            Total Credit Available: {money(statement.creditHistory.totalCreditAvailable)}
           </p>
         </section>
       ) : null}

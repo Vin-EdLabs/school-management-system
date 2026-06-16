@@ -9,6 +9,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { jsPDF } from 'jspdf';
+import { autoTable } from 'jspdf-autotable';
 import {
   Table,
   TableBody,
@@ -39,6 +41,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useData, type Student } from '../../contexts/DataContext';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
 import { useAudit } from '../../contexts/AuditContext';
+import { useSchool } from '../../contexts/SchoolContext';
+import { resolveLogoUrl } from '../../services/tenantService';
 import {
   Search,
   Eye,
@@ -106,11 +110,13 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
   const { students, classes, setStudentStatus, payments, feeStructures, loading } = useData();
   const { currentTerm } = useActiveTerm();
   const { addAuditLog } = useAudit();
+  const { school } = useSchool();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterClass, setFilterClass] = useState('all-classes');
   const [filterGender, setFilterGender] = useState('all-genders');
   const [filterStatus, setFilterStatus] = useState('all-status');
+  const [filterDiscount, setFilterDiscount] = useState<'all-discounts' | 'discounted' | 'full-discount' | 'partial-discount' | 'no-discount'>('all-discounts');
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [page, setPage] = useState(1);
@@ -150,6 +156,53 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
     });
   }, [payments, currentTerm]);
 
+  const loadImageDataUrl = async (url?: string | null): Promise<string | null> => {
+    if (!url) return null;
+    try {
+      const response = await fetch(url);
+      if (!response.ok) return null;
+      const blob = await response.blob();
+      return await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (typeof reader.result === 'string') resolve(reader.result);
+          else reject(new Error('Image conversion failed'));
+        };
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(blob);
+      });
+    } catch {
+      return null;
+    }
+  };
+
+  const hasDiscount = (student: Student) => {
+    if (student.isBeneficiary) return true;
+    const value = Number(student.discountValue ?? 0);
+    return Boolean(student.discountType && value > 0);
+  };
+
+  const isFullDiscount = (student: Student) => {
+    if (!student.isBeneficiary) return false;
+    const type = student.discountType;
+    const value = Number(student.discountValue ?? 0);
+    if (!type) return true;
+    if (type === 'percentage' && value >= 100) return true;
+    return false;
+  };
+
+  const isPartialDiscount = (student: Student) => {
+    return hasDiscount(student) && !isFullDiscount(student);
+  };
+
+  const discountLabel = (student: Student) => {
+    if (!hasDiscount(student)) return 'No discount';
+    if (isFullDiscount(student)) return 'Full waiver';
+    if (student.discountType === 'percentage') return `Percentage ${Number(student.discountValue ?? 0)}%`;
+    if (student.discountType === 'fixed') return `Fixed GHS ${Number(student.discountValue ?? 0).toLocaleString()}`;
+    return 'Discount';
+  };
+
   const filteredStudents = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     return registryStudents.filter((student) => {
@@ -163,9 +216,15 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
       const matchesGender = filterGender === 'all-genders' || student.gender === filterGender;
       const st = normalizeEnrollmentStatus(student.enrollmentStatus);
       const matchesStatus = filterStatus === 'all-status' || st === filterStatus;
-      return matchesSearch && matchesClass && matchesGender && matchesStatus;
+      const matchesDiscount =
+        filterDiscount === 'all-discounts' ||
+        (filterDiscount === 'discounted' && hasDiscount(student)) ||
+        (filterDiscount === 'full-discount' && isFullDiscount(student)) ||
+        (filterDiscount === 'partial-discount' && isPartialDiscount(student)) ||
+        (filterDiscount === 'no-discount' && !hasDiscount(student));
+      return matchesSearch && matchesClass && matchesGender && matchesStatus && matchesDiscount;
     });
-  }, [registryStudents, searchTerm, filterClass, filterGender, filterStatus]);
+  }, [registryStudents, searchTerm, filterClass, filterGender, filterStatus, filterDiscount]);
 
   const sortedStudents = useMemo(
     () => sortStudents(filteredStudents, sortKey, sortDir),
@@ -181,7 +240,7 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
 
   useEffect(() => {
     setPage(1);
-  }, [searchTerm, filterClass, filterGender, filterStatus, pageSize]);
+  }, [searchTerm, filterClass, filterGender, filterStatus, filterDiscount, pageSize]);
 
   useEffect(() => {
     setPage((p) => Math.min(p, totalPages));
@@ -192,6 +251,7 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
     setFilterClass('all-classes');
     setFilterGender('all-genders');
     setFilterStatus('all-status');
+    setFilterDiscount('all-discounts');
     setSortKey('name');
     setSortDir('asc');
   };
@@ -309,6 +369,80 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
     toast({ title: 'Export ready', description: `${rows.length} student(s) exported.` });
   };
 
+  const exportSelectedPdf = async () => {
+    const rows = registryStudents.filter((s) => selected.has(s.id));
+    if (rows.length === 0) {
+      toast({ title: 'Nothing selected', description: 'Select at least one student to export.', variant: 'destructive' });
+      return;
+    }
+
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const margin = 14;
+    const logoUrl = resolveLogoUrl(school?.logo_url ?? null);
+    const logoDataUrl = await loadImageDataUrl(logoUrl);
+    const headerTop = 18;
+    const headerHeight = 24;
+
+    if (logoDataUrl) {
+      const logoTypeMatch = logoDataUrl.match(/^data:image\/(png|jpeg|jpg);base64,/i);
+      const logoType = logoTypeMatch ? (logoTypeMatch[1].toUpperCase() === 'JPG' ? 'JPEG' : logoTypeMatch[1].toUpperCase()) : 'PNG';
+      doc.addImage(logoDataUrl, logoType as 'PNG' | 'JPEG', margin, headerTop - 2, 24, 24);
+    }
+
+    const schoolTitle = school?.name?.trim() || 'School Name';
+    const titleX = logoDataUrl ? margin + 32 : margin;
+
+    doc.setFont('times', 'bold');
+    doc.setFontSize(16);
+    doc.text(schoolTitle, titleX, headerTop + 6);
+    doc.setFont('times', 'normal');
+    doc.setFontSize(10);
+    doc.text('Discount allocation report', titleX, headerTop + 12);
+    doc.setFontSize(9);
+    doc.text(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, margin, headerTop + headerHeight + 4);
+    doc.text(`Students selected: ${rows.length}`, margin, headerTop + headerHeight + 10);
+    doc.setLineWidth(0.35);
+    doc.setDrawColor(45, 45, 45);
+    doc.line(margin, headerTop + headerHeight + 12, 210 - margin, headerTop + headerHeight + 12);
+
+    autoTable(doc, {
+      startY: headerTop + headerHeight + 18,
+      head: [['#', 'Name', 'Student ID', 'Class', 'Discount kind', 'Discount value']],
+      body: rows.map((student, index) => [
+        String(index + 1),
+        `${student.firstName} ${student.lastName}`,
+        student.studentId,
+        student.classAssigned || '—',
+        isFullDiscount(student)
+          ? 'Full waiver'
+          : student.discountType === 'percentage'
+          ? 'Percentage'
+          : student.discountType === 'fixed'
+          ? 'Fixed amount'
+          : student.isBeneficiary
+          ? 'Full waiver'
+          : 'None',
+        discountLabel(student),
+      ]),
+      theme: 'grid',
+      headStyles: { fillColor: [242, 242, 242], textColor: 34, halign: 'center' },
+      bodyStyles: { valign: 'middle' },
+      styles: { fontSize: 9, cellPadding: 3, textColor: 55 },
+      margin: { left: margin, right: margin },
+      tableLineColor: [180, 180, 180],
+      tableLineWidth: 0.15,
+      columnStyles: {
+        0: { cellWidth: 10 },
+        2: { cellWidth: 28 },
+        3: { cellWidth: 25 },
+        4: { cellWidth: 33 },
+      },
+    });
+
+    doc.save(`discounted-students-${new Date().toISOString().split('T')[0]}.pdf`);
+    toast({ title: 'PDF export ready', description: `${rows.length} student(s) exported to PDF.` });
+  };
+
   const bulkPromote = () => {
     const ids = Array.from(selected);
     if (ids.length === 0) {
@@ -350,12 +484,23 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
               </h2>
               <p className="text-xs text-muted-foreground">
                 {filteredStudents.length} of {registryStudents.length} {isInactiveView ? 'inactive' : 'active'} students
-                {searchTerm || filterClass !== 'all-classes' || filterGender !== 'all-genders' || filterStatus !== 'all-status'
+                {searchTerm || filterClass !== 'all-classes' || filterGender !== 'all-genders' || filterStatus !== 'all-status' || filterDiscount !== 'all-discounts'
                   ? ' · filters active'
                   : ''}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={exportSelectedPdf}
+                disabled={selected.size === 0}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Export PDF
+              </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="gap-1.5" disabled={selected.size === 0}>
@@ -367,6 +512,10 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
                   <DropdownMenuItem onClick={exportSelectedCsv}>
                     <Download className="mr-2 h-4 w-4" />
                     Export CSV
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={exportSelectedPdf}>
+                    <Download className="mr-2 h-4 w-4" />
+                    Export PDF
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={bulkPromote}>
                     <TrendingUp className="mr-2 h-4 w-4" />
@@ -427,6 +576,18 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
                 <SelectItem value="inactive">Inactive</SelectItem>
                 <SelectItem value="graduated">Alumni</SelectItem>
                 <SelectItem value="suspended">Suspended</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={filterDiscount} onValueChange={setFilterDiscount}>
+              <SelectTrigger className="h-9 lg:col-span-2" aria-label="Filter by discount">
+                <SelectValue placeholder="Discount" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all-discounts">All students</SelectItem>
+                <SelectItem value="discounted">Discounted only</SelectItem>
+                <SelectItem value="full-discount">Full discount</SelectItem>
+                <SelectItem value="partial-discount">Partial discount</SelectItem>
+                <SelectItem value="no-discount">No discount</SelectItem>
               </SelectContent>
             </Select>
             <div className="flex flex-wrap gap-2 lg:col-span-2">

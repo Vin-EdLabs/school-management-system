@@ -160,6 +160,7 @@ const AdvancedReports = () => {
   const [periodReady, setPeriodReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // financial-only reports component (academic reporting moved to separate module)
   const [lastSync, setLastSync] = useState(new Date());
 
   const [financialSummary, setFinancialSummary] = useState<any>(null);
@@ -524,9 +525,7 @@ const AdvancedReports = () => {
             <GraduationCap className="text-white" size={32} />
           </div>
           <div>
-            <h1 className="text-3xl font-bold report-header-font tracking-tight">
-              Financial reports <span className="text-[var(--report-accent-gold)]">&amp; analytics</span>
-            </h1>
+            <h1 className="text-3xl font-bold report-header-font tracking-tight">Financial reports <span className="text-[var(--report-accent-gold)]">&amp; analytics</span></h1>
             <p className="mt-0.5 text-sm text-[var(--report-text-secondary)]">
               {school?.name ? `${school.name} · ` : ''}
               <span className="font-semibold text-[var(--report-text-primary)]">{activeTerm}</span>
@@ -623,8 +622,8 @@ const AdvancedReports = () => {
         </div>
       </header>
 
-      {/* --- HERO STATS ROW --- */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-6">
+          {/* --- HERO STATS ROW --- */}
+          <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-6">
         <StatCard 
           label="Total Fees Expected"
           value={`GHS ${financialSummary?.totalExpected || 0}`}
@@ -683,19 +682,19 @@ const AdvancedReports = () => {
         />
       </section>
 
-      {/* --- SECOND STATS ROW --- */}
-      <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          {/* --- SECOND STATS ROW --- */}
+          <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         <MiniStatCard label="Active Students" value={feesByClass.reduce((a, b) => a + b.students, 0).toString()} icon={Users} delay={500} />
         <MiniStatCard label="Staff on Payroll" value={payroll.length.toString()} icon={Wallet} delay={600} />
         <MiniStatCard label="Monthly Payroll" value={`GHS ${payroll.reduce((a, b) => a + parseFloat(b.net), 0).toLocaleString()}`} icon={DollarSign} delay={700} />
         <MiniStatCard label="School Performance" value={`${Math.round(performance?.schoolAverage || 0)}%`} icon={GraduationCap} delay={800} />
         <MiniStatCard label="Attendance Rate" value={`${Math.round(attendance[attendance.length - 1]?.rate || 0)}%`} icon={UserCheck} delay={900} />
-      </section>
+          </section>
 
-      {/* --- MAIN CONTENT GRID --- */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* INCOME VS EXPENSE CHART */}
+      <>
+          {/* --- MAIN CONTENT GRID --- */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* INCOME VS EXPENSE CHART */}
         <div className="lg:col-span-2 luxury-card p-6 flex flex-col">
           <div className="flex justify-between items-center mb-8">
             <div>
@@ -1159,6 +1158,7 @@ const AdvancedReports = () => {
           </div>
         </div>
       </div>
+      </>
 
       {/* --- FOOTER / EXPORT SECTION --- */}
       <footer className="border-t border-[var(--report-card-border)] pt-8 text-center text-xs text-[var(--report-text-secondary)]">

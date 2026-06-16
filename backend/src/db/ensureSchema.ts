@@ -445,6 +445,150 @@ export async function ensureSupplementalSchema(): Promise<void> {
     );
   }
 
+  // --- transport management schema ---
+  await safe(
+    `ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`,
+    'users.role_check drop'
+  );
+  await safe(
+    `ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('super-admin', 'administrator', 'finance', 'teacher', 'staff', 'driver'))`,
+    'users.role_check add driver'
+  );
+
+  await safe(
+    `
+    CREATE TABLE IF NOT EXISTS vehicles (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      plate_number VARCHAR(100) NOT NULL,
+      vehicle_name VARCHAR(255) NOT NULL,
+      capacity INT NOT NULL,
+      model VARCHAR(255),
+      color VARCHAR(100),
+      status VARCHAR(50) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'maintenance', 'retired')),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT unique_tenant_plate UNIQUE (tenant_id, plate_number)
+    )
+  `,
+    'vehicles'
+  );
+  await safe(
+    `ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS instructor_id INTEGER REFERENCES teachers(id) ON DELETE SET NULL`,
+    'vehicles.instructor_id'
+  );
+  await safe(`CREATE INDEX IF NOT EXISTS idx_vehicles_tenant ON vehicles(tenant_id)`, 'idx_vehicles_tenant');
+
+  await safe(
+    `
+    CREATE TABLE IF NOT EXISTS routes (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      name VARCHAR(255) NOT NULL,
+      time_of_day VARCHAR(50) NOT NULL DEFAULT 'both' CHECK (time_of_day IN ('morning', 'afternoon', 'both')),
+      vehicle_id UUID REFERENCES vehicles(id) ON DELETE SET NULL,
+      driver_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      status VARCHAR(50) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended')),
+      color VARCHAR(50) NOT NULL DEFAULT '#3b82f6',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `,
+    'routes'
+  );
+  await safe(`CREATE INDEX IF NOT EXISTS idx_routes_tenant ON routes(tenant_id)`, 'idx_routes_tenant');
+  await safe(
+    `ALTER TABLE routes ADD COLUMN IF NOT EXISTS driver_staff_id INTEGER REFERENCES other_staff(id) ON DELETE SET NULL`,
+    'routes.driver_staff_id'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_routes_driver_staff ON routes(driver_staff_id)`,
+    'idx_routes_driver_staff'
+  );
+
+  await safe(
+    `
+    CREATE TABLE IF NOT EXISTS transport_drivers (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      full_name VARCHAR(255) NOT NULL,
+      phone VARCHAR(50),
+      license_number VARCHAR(100),
+      email VARCHAR(255),
+      notes TEXT,
+      status VARCHAR(50) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `,
+    'transport_drivers'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_transport_drivers_tenant ON transport_drivers(tenant_id)`,
+    'idx_transport_drivers_tenant'
+  );
+  await safe(
+    `ALTER TABLE transport_drivers ADD COLUMN IF NOT EXISTS vehicle_id UUID REFERENCES vehicles(id) ON DELETE SET NULL`,
+    'transport_drivers.vehicle_id'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_transport_drivers_vehicle ON transport_drivers(vehicle_id)`,
+    'idx_transport_drivers_vehicle'
+  );
+  await safe(
+    `ALTER TABLE routes ADD COLUMN IF NOT EXISTS transport_driver_id INTEGER REFERENCES transport_drivers(id) ON DELETE SET NULL`,
+    'routes.transport_driver_id'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_routes_transport_driver ON routes(transport_driver_id)`,
+    'idx_routes_transport_driver'
+  );
+
+  await safe(
+    `
+    CREATE TABLE IF NOT EXISTS stops (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      route_id UUID NOT NULL REFERENCES routes(id) ON DELETE CASCADE,
+      name VARCHAR(255) NOT NULL,
+      latitude NUMERIC(10, 7) NOT NULL,
+      longitude NUMERIC(10, 7) NOT NULL,
+      order_index INT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `,
+    'stops'
+  );
+  await safe(`CREATE INDEX IF NOT EXISTS idx_stops_route ON stops(route_id)`, 'idx_stops_route');
+
+  await safe(
+    `
+    CREATE TABLE IF NOT EXISTS student_transport (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+      route_id UUID NOT NULL REFERENCES routes(id) ON DELETE CASCADE,
+      stop_id UUID REFERENCES stops(id) ON DELETE SET NULL,
+      enrolled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      status VARCHAR(50) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+      CONSTRAINT unique_student_route UNIQUE (student_id, route_id)
+    )
+  `,
+    'student_transport'
+  );
+  await safe(`CREATE INDEX IF NOT EXISTS idx_student_transport_student ON student_transport(student_id)`, 'idx_student_transport_student');
+  await safe(`CREATE INDEX IF NOT EXISTS idx_student_transport_route ON student_transport(route_id)`, 'idx_student_transport_route');
+
+  await safe(
+    `
+    CREATE TABLE IF NOT EXISTS driver_profiles (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      license_number VARCHAR(100) NOT NULL,
+      photo_url TEXT,
+      notes TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `,
+    'driver_profiles'
+  );
+
+
   const critical = [
     'subjects',
     'classes',

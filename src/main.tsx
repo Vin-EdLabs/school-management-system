@@ -2,6 +2,16 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
+import 'leaflet/dist/leaflet.css'
+import L from 'leaflet'
+import markerIcon from 'leaflet/dist/images/marker-icon.png'
+import markerShadow from 'leaflet/dist/images/marker-shadow.png'
+
+L.Icon.Default.mergeOptions({
+  iconUrl: markerIcon,
+  shadowUrl: markerShadow,
+})
+
 import { detectTenantSlugFromHost } from './utils/tenantHost'
 import { initSystemErrorReporter } from './utils/systemErrorReporter'
 import {

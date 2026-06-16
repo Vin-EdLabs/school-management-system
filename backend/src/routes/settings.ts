@@ -629,10 +629,10 @@ router.post('/users', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, 
     if (!username || !password || !role) {
       return res.status(400).json({ error: 'Username, password, and role are required' });
     }
-    if (!['administrator', 'finance', 'teacher', 'staff'].includes(role)) {
-      return res.status(400).json({ error: 'Role must be administrator, finance, teacher, or staff' });
+    if (!['administrator', 'finance', 'teacher', 'staff', 'driver'].includes(role)) {
+      return res.status(400).json({ error: 'Role must be administrator, finance, teacher, staff, or driver' });
     }
-    const minLength = role === 'teacher' || role === 'staff' ? 5 : 6;
+    const minLength = role === 'teacher' || role === 'staff' || role === 'driver' ? 5 : 6;
     if (password.length < minLength) {
       return res.status(400).json({ error: `Password must be at least ${minLength} characters` });
     }

@@ -14,6 +14,7 @@ import IncomeModule from './income/IncomeModule';
 import ExpensesModule from './expenses/ExpensesModule';
 import PayrollModule from './payroll/PayrollModule';
 import AdvancedReports from './reports/AdvancedReports';
+import AcademicReports from './reports/AcademicReports';
 import SettingsModule from './settings/SettingsModule';
 import UsersModule from './users/UsersModule';
 import AuditModule from './audit/AuditModule';
@@ -37,6 +38,12 @@ import AiChatModule from './ai/AiChatModule';
 import RecordsModule from './records/RecordsModule';
 import SubjectsModule from './subjects/SubjectsModule';
 import SupportModule from './support/SupportModule';
+import TransportOverview from './transport/TransportOverview';
+import TransportMap from './transport/TransportMap';
+import TransportRoutes from './transport/TransportRoutes';
+import TransportVehicles from './transport/TransportVehicles';
+import TransportDrivers from './transport/TransportDrivers';
+import TransportStudents from './transport/TransportStudents';
 import PushNotificationsModule from './notifications/PushNotificationsModule';
 import ParentDeskAdminModule from './notifications/ParentDeskAdminModule';
 import ParentAccountsModule from './parent/ParentAccountsModule';
@@ -58,9 +65,14 @@ const Dashboard = () => {
   useStaffPushSync();
   useFinanceRealtime();
   const [activeModule, setActiveModule] = useState(() => {
-    if (window.location.pathname.includes('/finance/transactions')) {
-      return 'transactions';
-    }
+    const path = window.location.pathname;
+    if (path.includes('/finance/transactions')) return 'transactions';
+    if (path.endsWith('/transport')) return 'transport-overview';
+    if (path.includes('/transport/map')) return 'transport-map';
+    if (path.includes('/transport/routes')) return 'transport-routes';
+    if (path.includes('/transport/vehicles')) return 'transport-vehicles';
+    if (path.includes('/transport/drivers')) return 'transport-drivers';
+    if (path.includes('/transport/students')) return 'transport-students';
     // Set default module based on user role
     if (user?.role === 'finance') {
       return 'financial-dashboard';
@@ -96,7 +108,8 @@ const Dashboard = () => {
       hasAccess(activeModule + '-view-only') ||
       (activeModule === 'other-staff' && (hasAccess('teachers') || hasAccess('teachers-view-only'))) ||
       (activeModule === 'appointment-letter-settings' && hasAccess('settings-full')) ||
-      (activeModule === 'teacher-quizzes' && (hasAccess('grades') || user?.role === 'teacher'));
+      (activeModule === 'teacher-quizzes' && (hasAccess('grades') || user?.role === 'teacher')) ||
+      (activeModule === 'academic-reports' && hasAccess('reports'));
     if (!hasModuleAccess) {
       return (
         <div className="p-6 text-center">
@@ -160,6 +173,8 @@ const Dashboard = () => {
         return <PayrollModule />;
       case 'reports':
         return <AdvancedReports />;
+      case 'academic-reports':
+        return <AcademicReports />;
       case 'print-fee-status':
         return <PrintFeeStatusModule />;
       case 'transactions':
@@ -192,6 +207,18 @@ const Dashboard = () => {
         return <ParentAccountsModule />;
       case 'end-of-year':
         return <EndOfYearWizard />;
+      case 'transport-overview':
+        return <TransportOverview onNavigate={setActiveModule} />;
+      case 'transport-map':
+        return <TransportMap />;
+      case 'transport-routes':
+        return <TransportRoutes onNavigate={setActiveModule} />;
+      case 'transport-vehicles':
+        return <TransportVehicles />;
+      case 'transport-drivers':
+        return <TransportDrivers />;
+      case 'transport-students':
+        return <TransportStudents />;
       default:
         if (user?.role === 'teacher') {
           return <TeacherDashboard />;

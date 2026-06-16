@@ -237,7 +237,7 @@ const OtherStaffFormDialog: React.FC<Props> = ({ open, onClose, staff, onSuccess
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Position</Label>
-              <Input value={form.position} onChange={(e) => set('position', e.target.value)} placeholder="e.g. Accountant" />
+              <Input value={form.position} onChange={(e) => set('position', e.target.value)} placeholder="e.g. Bus Driver, Accountant" />
             </div>
             <div className="space-y-2">
               <Label>Department</Label>

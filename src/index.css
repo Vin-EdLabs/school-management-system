@@ -1235,3 +1235,125 @@ html {
   background: linear-gradient(135deg, var(--brand-light), rgba(52, 211, 153, 0.35));
   color: var(--brand);
 }
+
+/* Transport map — polished Leaflet popups & markers */
+.leaflet-popup-content-wrapper {
+  border-radius: 12px !important;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.18) !important;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  padding: 0 !important;
+}
+.leaflet-popup-content {
+  margin: 12px 14px !important;
+  line-height: 1.4;
+}
+.leaflet-popup-tip {
+  box-shadow: none !important;
+}
+.custom-leaflet-marker-stop {
+  background: transparent !important;
+  border: none !important;
+}
+.leaflet-control-scale {
+  background: rgba(255, 255, 255, 0.92) !important;
+  border-radius: 6px !important;
+  padding: 2px 6px !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* Transport map — school hub marker */
+.transport-school-marker {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.transport-school-marker-pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(124, 58, 237, 0.35);
+  animation: transport-school-pulse 2.2s ease-out infinite;
+}
+.transport-school-marker-core {
+  position: relative;
+  z-index: 1;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, #7c3aed 0%, #4f46e5 100%);
+  border: 3px solid #fff;
+  box-shadow: 0 8px 28px rgba(79, 70, 229, 0.45), 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+@keyframes transport-school-pulse {
+  0% { transform: scale(0.85); opacity: 0.7; }
+  70% { transform: scale(1.35); opacity: 0; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+.custom-leaflet-marker-school {
+  background: transparent !important;
+  border: none !important;
+}
+
+/* School hub — logo pin with blink ring */
+.transport-school-marker--logo {
+  width: 56px;
+  height: 56px;
+}
+.transport-school-marker-blink {
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  border: 2px solid rgba(124, 58, 237, 0.85);
+  animation: transport-school-blink 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
+.transport-school-marker-core--logo {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  padding: 3px;
+  background: linear-gradient(145deg, #ffffff 0%, #f5f3ff 100%);
+  border: 3px solid #fff;
+  box-shadow: 0 10px 32px rgba(79, 70, 229, 0.5), 0 0 0 1px rgba(124, 58, 237, 0.15);
+  overflow: hidden;
+}
+.transport-school-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+  animation: transport-school-logo-glow 2s ease-in-out infinite;
+}
+.transport-school-logo-fallback {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, #7c3aed 0%, #4f46e5 100%);
+}
+@keyframes transport-school-blink {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.55);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(1.12);
+    box-shadow: 0 0 0 10px rgba(124, 58, 237, 0);
+  }
+}
+@keyframes transport-school-logo-glow {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.08); }
+}

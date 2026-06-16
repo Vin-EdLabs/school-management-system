@@ -3,7 +3,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { apiService } from '../services/api';
 import { clearActiveTermWelcomeDismiss } from '../components/onboarding/ActiveTermWelcomeModal';
 
-export type UserRole = 'administrator' | 'finance' | 'super-admin' | 'teacher' | 'staff';
+export type UserRole = 'administrator' | 'finance' | 'super-admin' | 'teacher' | 'staff' | 'driver';
 
 interface User {
   id: number;
@@ -161,17 +161,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Super-admin: full access including school creation
     if (user.role === 'super-admin') {
-      return ['students', 'teachers', 'other-staff', 'classes', 'calendar', 'fees', 'income', 'expenses', 'transactions', 'cash-bank', 'payroll', 'reports', 'dashboard', 'financial-dashboard', 'term-budget', 'settings', 'settings-full', 'payment-accounts', 'appointment-letter-settings', 'users', 'audit', 'print-fee-status', 'finance-statement', 'teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'ai-assistant', 'schools', 'records', 'subjects', 'support-chat', 'push-notifications', 'parent-desk', 'parent-accounts', 'manual-adjustments', 'end-of-year'].includes(module);
+      return ['students', 'teachers', 'other-staff', 'classes', 'calendar', 'fees', 'income', 'expenses', 'transactions', 'cash-bank', 'payroll', 'reports', 'dashboard', 'financial-dashboard', 'term-budget', 'settings', 'settings-full', 'payment-accounts', 'appointment-letter-settings', 'users', 'audit', 'print-fee-status', 'finance-statement', 'teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'ai-assistant', 'schools', 'records', 'subjects', 'support-chat', 'push-notifications', 'parent-desk', 'parent-accounts', 'manual-adjustments', 'end-of-year', 'transport-overview', 'transport-map', 'transport-routes', 'transport-vehicles', 'transport-drivers', 'transport-students'].includes(module);
     }
 
     // Primary admin: full school control except school creation (sees everything)
     if (user.role === 'administrator' && user.isPrimaryAdmin) {
-      return ['students', 'teachers', 'other-staff', 'classes', 'calendar', 'fees', 'income', 'expenses', 'transactions', 'cash-bank', 'payroll', 'reports', 'dashboard', 'financial-dashboard', 'term-budget', 'settings', 'settings-full', 'payment-accounts', 'appointment-letter-settings', 'users', 'audit', 'print-fee-status', 'finance-statement', 'teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'ai-assistant', 'records', 'subjects', 'support-chat', 'push-notifications', 'parent-desk', 'parent-accounts', 'manual-adjustments'].includes(module);
+      return ['students', 'teachers', 'other-staff', 'classes', 'calendar', 'fees', 'income', 'expenses', 'transactions', 'cash-bank', 'payroll', 'reports', 'dashboard', 'financial-dashboard', 'term-budget', 'settings', 'settings-full', 'payment-accounts', 'appointment-letter-settings', 'users', 'audit', 'print-fee-status', 'finance-statement', 'teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'ai-assistant', 'records', 'subjects', 'support-chat', 'push-notifications', 'parent-desk', 'parent-accounts', 'manual-adjustments', 'transport-overview', 'transport-map', 'transport-routes', 'transport-vehicles', 'transport-drivers', 'transport-students'].includes(module);
     }
 
     // Additional administrators: academic only
     if (user.role === 'administrator') {
-      return ['students', 'teachers', 'other-staff', 'classes', 'calendar', 'dashboard', 'settings', 'settings-password-only', 'print-fee-status', 'records', 'support-chat', 'parent-desk', 'push-notifications', 'audit', 'parent-accounts'].includes(module);
+      return ['students', 'teachers', 'other-staff', 'classes', 'calendar', 'dashboard', 'settings', 'settings-password-only', 'print-fee-status', 'records', 'support-chat', 'parent-desk', 'push-notifications', 'audit', 'parent-accounts', 'transport-overview', 'transport-map', 'transport-routes', 'transport-vehicles', 'transport-drivers', 'transport-students'].includes(module);
     }
 
     // Finance: financial sections only (financial dashboard, not the general admin dashboard)
@@ -187,6 +187,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Staff (non-teaching): similar to teacher
     if (user.role === 'staff') {
       return ['teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'calendar', 'teacher-profile', 'teacher-appointment-letters', 'teacher-payment-history', 'settings', 'settings-password-only'].includes(module);
+    }
+
+    // Driver: driver role
+    if (user.role === 'driver') {
+      return ['settings', 'settings-password-only'].includes(module);
     }
 
     return false;

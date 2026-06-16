@@ -1147,6 +1147,9 @@ const runMigrations = async () => {
     await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS whatsapp_number VARCHAR(100)`).catch(() => { });
     await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS office_hours VARCHAR(150)`).catch(() => { });
     await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS physical_address TEXT`).catch(() => { });
+    await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS school_latitude NUMERIC(10, 7)`).catch(() => { });
+    await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS school_longitude NUMERIC(10, 7)`).catch(() => { });
+    await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS school_location_label VARCHAR(255)`).catch(() => { });
 
     // Term/academic_year for income and expenses (term-scoped reporting)
     await client.query(`ALTER TABLE income ADD COLUMN IF NOT EXISTS term VARCHAR(100)`).catch(() => { });

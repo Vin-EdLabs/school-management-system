@@ -227,7 +227,7 @@ const AddOtherStaffForm: React.FC<AddOtherStaffFormProps> = ({ onSuccess }) => {
                 id="position"
                 value={form.position}
                 onChange={(e) => set('position', e.target.value)}
-                placeholder="e.g. Accountant"
+                placeholder="e.g. Bus Driver, Security, Accountant"
               />
             </div>
             <div className="space-y-2">

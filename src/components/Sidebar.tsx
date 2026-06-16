@@ -40,6 +40,10 @@ import {
   CalendarClock,
   Landmark,
   SlidersHorizontal,
+  ChevronDown,
+  Bus,
+  Route,
+  MapPin,
 } from 'lucide-react';
 import { resolveLogoUrl } from '../services/tenantService';
 import {
@@ -56,6 +60,7 @@ import {
   SidebarSeparator,
   useSidebar,
 } from '@/components/ui/sidebar';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 
 interface AppSidebarProps {
   activeModule: string;
@@ -86,6 +91,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
     ...(hasAccess('end-of-year') && userRole === 'administrator'
       ? [{ id: 'end-of-year', label: 'End of Year', icon: CalendarClock }]
       : []),
+    ...(hasAccess('reports') ? [{ id: 'academic-reports', label: 'Academic Report', icon: BarChart3 }] : []),
   ],
   teaching: [
     ...(hasAccess('teacher-classes') ? [{ id: 'teacher-classes', label: 'My Classes', icon: BookOpen }] : []),
@@ -127,6 +133,14 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
   configurations: [
     ...(hasAccess('payment-accounts') ? [{ id: 'payment-accounts', label: 'Payment Accounts', icon: SlidersHorizontal }] : []),
     ...(hasAccess('settings-full') ? [{ id: 'appointment-letter-settings', label: 'Appointment Letters', icon: FileText }] : []),
+  ],
+  transport: [
+    ...(hasAccess('transport-overview') ? [{ id: 'transport-overview', label: 'Overview', icon: LayoutDashboard }] : []),
+    ...(hasAccess('transport-map') ? [{ id: 'transport-map', label: 'Live Map', icon: MapPin }] : []),
+    ...(hasAccess('transport-routes') ? [{ id: 'transport-routes', label: 'Routes', icon: Route }] : []),
+    ...(hasAccess('transport-vehicles') ? [{ id: 'transport-vehicles', label: 'Vehicles', icon: Bus }] : []),
+    ...(hasAccess('transport-drivers') ? [{ id: 'transport-drivers', label: 'Drivers', icon: UserCheck }] : []),
+    ...(hasAccess('transport-students') ? [{ id: 'transport-students', label: 'Students', icon: Users }] : []),
   ],
   /** Users, Settings, Audit — always last before footer. */
   system: [
@@ -176,11 +190,32 @@ const MenuSection: React.FC<{
                       await markCommsRead(item.id);
                     }
                     setActiveModule(item.id);
+                    
+                    const schoolMatch = window.location.pathname.match(/^\/school\/[^/]+/);
+                    const prefix = schoolMatch ? schoolMatch[0] : '';
+                    
                     if (item.id === 'transactions') {
-                      const schoolMatch = window.location.pathname.match(/^\/school\/[^/]+/);
-                      window.history.pushState({}, '', `${schoolMatch?.[0] || ''}/finance/transactions`);
-                    } else if (window.location.pathname.endsWith('/finance/transactions')) {
-                      const base = window.location.pathname.replace(/\/finance\/transactions\/?$/, '') || '/';
+                      window.history.pushState({}, '', `${prefix}/finance/transactions`);
+                    } else {
+                      // Remove any subpaths if navigating back to main modules
+                      let base = window.location.pathname;
+                      if (base.includes('/finance/transactions')) {
+                        base = base.replace(/\/finance\/transactions\/?$/, '') || '/';
+                      }
+                      const subpaths = [
+                        '/transport/map',
+                        '/transport/routes',
+                        '/transport/vehicles',
+                        '/transport/drivers',
+                        '/transport/students',
+                        '/transport',
+                      ];
+                      for (const sub of subpaths) {
+                        if (base.includes(sub)) {
+                          base = base.replace(new RegExp(`${sub}\\/?$`), '') || '/';
+                          break;
+                        }
+                      }
                       window.history.pushState({}, '', base);
                     }
                     if (isMobile) setOpenMobile(false);
@@ -221,6 +256,135 @@ const MenuSection: React.FC<{
         </SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>
+  );
+};
+
+const CollapsibleMenuSection: React.FC<{
+  items: { id: string; label: string; icon: React.ElementType; badge?: string }[];
+  label: string;
+  activeModule: string;
+  setActiveModule: (module: string) => void;
+  markCommsRead: (moduleId: string) => Promise<void>;
+  termNavigationBlocked: boolean;
+}> = ({ items, label, activeModule, setActiveModule, markCommsRead, termNavigationBlocked }) => {
+  const { isMobile, setOpenMobile, state } = useSidebar();
+  const [isOpen, setIsOpen] = useState(true);
+  const isCollapsed = state === 'collapsed';
+
+  if (items.length === 0) return null;
+
+  if (isCollapsed) {
+    // In icon-only mode, render a single highlighted icon representing the transport module
+    const activeChild = items.find(i => activeModule === i.id);
+    const parentItem = items.find(i => i.id === 'transport-overview') || items[0];
+
+    return (
+      <SidebarGroup className="py-1 flex justify-center">
+        <SidebarMenu>
+          <SidebarMenuItem className="flex justify-center">
+            <SidebarMenuButton
+              isActive={!!activeChild}
+              onClick={async () => {
+                await markCommsRead(parentItem.id);
+                setActiveModule(parentItem.id);
+                const schoolMatch = window.location.pathname.match(/^\/school\/[^/]+/);
+                const prefix = schoolMatch ? schoolMatch[0] : '';
+                window.history.pushState({}, '', `${prefix}/transport`);
+                if (isMobile) setOpenMobile(false);
+              }}
+              tooltip="Transport Management"
+              className={cn(
+                "readonly-allowed relative rounded-xl mx-auto w-9 h-9 justify-center transition-all duration-300 dark:h-9 dark:text-sidebar-foreground/70",
+                activeChild
+                  ? "bg-gradient-to-r from-emerald-500 to-green-500 text-white shadow-lg shadow-emerald-400/25 ring-1 ring-white/15 dark:bg-sidebar-primary dark:text-sidebar-primary-foreground"
+                  : "hover:bg-white/10 hover:text-white dark:hover:bg-sidebar-accent dark:hover:text-sidebar-foreground"
+              )}
+            >
+              <Bus className="h-[1.1rem] w-[1.1rem] opacity-80" />
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarGroup>
+    );
+  }
+
+  return (
+    <Collapsible open={isOpen} onOpenChange={setIsOpen} className="w-full">
+      <SidebarGroup className="py-1">
+        <SidebarGroupLabel className="text-[10px] font-bold text-sidebar-foreground/50 uppercase tracking-[0.2em] px-3 mb-1.5 opacity-80 cursor-pointer flex items-center justify-between w-full select-none" asChild>
+          <CollapsibleTrigger className="flex items-center justify-between w-full py-1 hover:text-white transition-colors">
+            <span className="flex items-center gap-1.5">
+              <Bus className="h-3.5 w-3.5 opacity-70" />
+              <span>{label}</span>
+            </span>
+            <ChevronDown className={cn("h-3 w-3 transition-transform duration-200 shrink-0 ml-auto opacity-70", isOpen ? "rotate-0" : "-rotate-90")} />
+          </CollapsibleTrigger>
+        </SidebarGroupLabel>
+        <CollapsibleContent className="space-y-1 relative pl-3.5">
+          {/* Guide Line */}
+          <div className="absolute left-[18px] top-2 bottom-2 w-[1px] bg-white/10 dark:bg-sidebar-border/60" />
+          
+          <SidebarGroupContent>
+            <SidebarMenu className="space-y-1">
+              {items.map((item) => {
+                const isActive = activeModule === item.id;
+                return (
+                  <SidebarMenuItem key={item.id}>
+                    <SidebarMenuButton
+                      isActive={isActive}
+                      onClick={async () => {
+                        if (termNavigationBlocked && !ACTIVE_TERM_EXEMPT_MODULES.has(item.id)) {
+                          toast({
+                            title: 'Set your active term first',
+                            description:
+                              'Welcome! Please open Settings → Academic Terms and activate a term before using this feature.',
+                          });
+                          return;
+                        }
+                        await markCommsRead(item.id);
+                        setActiveModule(item.id);
+                        
+                        const schoolMatch = window.location.pathname.match(/^\/school\/[^/]+/);
+                        const prefix = schoolMatch ? schoolMatch[0] : '';
+                        
+                        if (item.id === 'transport-overview') {
+                          window.history.pushState({}, '', `${prefix}/transport`);
+                        } else if (item.id === 'transport-map') {
+                          window.history.pushState({}, '', `${prefix}/transport/map`);
+                        } else if (item.id === 'transport-routes') {
+                          window.history.pushState({}, '', `${prefix}/transport/routes`);
+                        } else if (item.id === 'transport-vehicles') {
+                          window.history.pushState({}, '', `${prefix}/transport/vehicles`);
+                        } else if (item.id === 'transport-drivers') {
+                          window.history.pushState({}, '', `${prefix}/transport/drivers`);
+                        } else if (item.id === 'transport-students') {
+                          window.history.pushState({}, '', `${prefix}/transport/students`);
+                        }
+                        if (isMobile) setOpenMobile(false);
+                      }}
+                      tooltip={item.label}
+                      className={cn(
+                        "readonly-allowed relative rounded-lg w-full h-8.5 text-xs text-emerald-50/70 transition-all duration-200 dark:h-8 dark:text-sidebar-foreground/60",
+                        isActive
+                          ? "bg-white/10 text-white font-bold shadow-sm border border-white/5 dark:bg-sidebar-accent dark:text-sidebar-foreground"
+                          : "hover:bg-white/5 hover:text-white dark:hover:bg-sidebar-accent/50 dark:hover:text-sidebar-foreground"
+                      )}
+                    >
+                      <span className="relative inline-flex shrink-0">
+                        <item.icon className="h-[1rem] w-[1rem] opacity-85" />
+                      </span>
+                      <span className="font-semibold group-data-[collapsible=icon]:hidden ml-2 flex min-w-0 flex-1 items-center gap-1.5 text-left">
+                        <span className="truncate">{item.label}</span>
+                      </span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </CollapsibleContent>
+      </SidebarGroup>
+    </Collapsible>
   );
 };
 
@@ -329,6 +493,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
         <MenuSection items={menuItems.teaching} label="Teaching Room" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} />
         <MenuSection items={menuItems.financial} label="Financial Ops" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} />
         <MenuSection items={menuItems.records} label="Data Center" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} />
+        <CollapsibleMenuSection items={menuItems.transport} label="Transport Management" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} />
         <MenuSection
           items={menuItems.announcements}
           label="Announcements & parent desk"

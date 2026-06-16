@@ -69,8 +69,11 @@ export const mapStudent = (backendStudent: Record<string, unknown>): Student => 
       };
     }
     return {
-      discountType: (backendStudent.discount_type as 'percentage' | 'fixed') || 'percentage',
-      discountValue: backendStudent.discount_value ? parseFloat(String(backendStudent.discount_value)) : 0,
+      discountType: backendStudent.discount_type != null ? (backendStudent.discount_type as 'percentage' | 'fixed') : undefined,
+      discountValue:
+        backendStudent.discount_value != null && backendStudent.discount_value !== ''
+          ? parseFloat(String(backendStudent.discount_value))
+          : 0,
     };
   })(),
   beneficiaryNotes: (backendStudent.beneficiary_notes as string) || '',

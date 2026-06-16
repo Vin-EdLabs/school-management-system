@@ -37,6 +37,12 @@ export const MODULE_DATA_NEEDS: Record<string, DataDomain[]> = {
   'teacher-appointment-letters': [],
   'teacher-payment-history': [],
   'teacher-quizzes': ['classes', 'subjects'],
+  'transport-overview': ['students'],
+  'transport-map': [],
+  'transport-routes': ['students'],
+  'transport-vehicles': [],
+  'transport-drivers': [],
+  'transport-students': ['students', 'classes'],
 };
 
 export function domainsForModule(moduleId: string): DataDomain[] {

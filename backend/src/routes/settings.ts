@@ -22,6 +22,7 @@ import { notifySetupProgressChanged } from '../services/setupProgressService.js'
 import { writeAuditLog } from '../services/auditService.js';
 import { getClientIp } from '../utils/clientIp.js';
 import { resolveActorFromRequest, resolveUserDisplayName, withActor } from '../utils/auditResolve.js';
+import { ensureAllTeacherUserAccounts } from '../services/teacherUserService.js';
 
 const router = express.Router();
 
@@ -539,6 +540,10 @@ router.get('/users', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, r
   try {
     const tenantId = req.user!.tenantId!;
     if (!tenantId) return res.status(400).json({ error: 'Tenant context required' });
+
+    await ensureAllTeacherUserAccounts(tenantId).catch((err) => {
+      console.warn('[settings/users] Teacher user sync warning:', (err as Error).message);
+    });
 
     const result = await query(
       `SELECT u.id, u.username, COALESCE(u.email, t.email) as email, u.role, u.teacher_id, u.other_staff_id, u.is_active, u.is_primary_admin, u.created_at,

@@ -58,7 +58,7 @@ router.post('/login', async (req, res) => {
           FROM users u
           LEFT JOIN teachers t ON u.teacher_id::text = t.id::text AND t.tenant_id = u.tenant_id
           LEFT JOIN other_staff s ON u.other_staff_id = s.id AND s.tenant_id = u.tenant_id
-          WHERE (u.username = $1 OR u.email = $1) AND u.is_active = true
+          WHERE (u.username = $1 OR u.email = $1 OR t.staff_id = $1 OR s.staff_id = $1) AND u.is_active = true
           ${hasTenantId ? 'AND (u.tenant_id = $2 OR u.tenant_id IS NULL)' : 'AND u.tenant_id IS NULL'}
         `,
         params: hasTenantId ? [username, tenantId] : [username]
@@ -100,7 +100,9 @@ router.post('/login', async (req, res) => {
           sql: `
             SELECT u.id, u.tenant_id, u.username, u.role
             FROM users u
-            WHERE (u.username = $1 OR u.email = $1) AND COALESCE(u.is_active, true) = false
+            WHERE (u.username = $1 OR u.email = $1 OR EXISTS (
+              SELECT 1 FROM teachers t2 WHERE t2.tenant_id = u.tenant_id AND t2.staff_id = $1 AND u.teacher_id::text = t2.id::text
+            )) AND COALESCE(u.is_active, true) = false
             ${hasTenantId ? 'AND (u.tenant_id = $2 OR u.tenant_id IS NULL)' : 'AND u.tenant_id IS NULL'}
             LIMIT 1
           `,

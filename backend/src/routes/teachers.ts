@@ -1,5 +1,4 @@
 import express from 'express';
-import bcrypt from 'bcryptjs';
 import multer from 'multer';
 import path from 'path';
 import { query } from '../db/connection.js';
@@ -24,6 +23,7 @@ import {
   listAppointmentLetters,
   getAppointmentLetterPdf,
 } from '../services/appointmentLetterService.js';
+import { ensureTeacherUserAccount } from '../services/teacherUserService.js';
 
 function generatePin(): string {
   return String(Math.floor(10000 + Math.random() * 90000));
@@ -452,13 +452,13 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
     ).catch(() => {});
 
     try {
-      const passwordHash = await bcrypt.hash(staffId, 10);
-      await query(
-        `INSERT INTO users (tenant_id, username, full_name, email, password_hash, role, teacher_id)
-         VALUES ($1, $2, $3, $4, $5, 'teacher', $6)
-         ON CONFLICT (tenant_id, username) DO NOTHING`,
-        [tenantId, staffId, teacherData.full_name, teacherData.email || null, passwordHash, String(teacherId)]
-      );
+      await ensureTeacherUserAccount(tenantId, {
+        id: teacherId,
+        staff_id: staffId,
+        full_name: teacherData.full_name,
+        email: teacherData.email || null,
+      });
+      emitTenantDataChanged(tenantId, 'user', 'created');
     } catch (userErr) {
       console.error('Teacher user account creation warning (teacher saved):', userErr);
     }
@@ -555,6 +555,17 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
        WHERE tenant_id = $3 AND teacher_id::text = $4::text`,
       [result.rows[0].full_name, result.rows[0].email || null, tenantId, id]
     ).catch(() => {});
+
+    try {
+      await ensureTeacherUserAccount(tenantId, {
+        id: Number(id),
+        staff_id: result.rows[0].staff_id,
+        full_name: result.rows[0].full_name,
+        email: result.rows[0].email || null,
+      });
+    } catch {
+      /* teacher saved; user link best-effort */
+    }
     
     const actor = await resolveActorFromRequest(req);
     await writeAuditLog({

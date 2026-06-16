@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/table';
 import { apiService } from '../../services/api';
 import { useSchool } from '../../contexts/SchoolContext';
+import { useSocket } from '../../contexts/SocketContext';
 import { toast } from '@/hooks/use-toast';
 import {
   Users,
@@ -80,6 +81,7 @@ const roleIcons: Record<string, React.ElementType> = {
 
 const UsersModule = () => {
   const { schoolId } = useSchool();
+  const { socket } = useSocket();
   const [users, setUsers] = useState<SchoolUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
@@ -133,6 +135,20 @@ const UsersModule = () => {
   useEffect(() => {
     loadUsers();
   }, [schoolId]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const onTenant = (evt: { entity?: string }) => {
+      const entity = String(evt?.entity || '');
+      if (entity === 'teacher' || entity === 'user') {
+        void loadUsers();
+      }
+    };
+    socket.on('tenant-data-changed', onTenant);
+    return () => {
+      socket.off('tenant-data-changed', onTenant);
+    };
+  }, [socket]);
 
   const loadStaffCandidates = async () => {
     setLoadingStaffCandidates(true);
@@ -305,7 +321,9 @@ const UsersModule = () => {
             <div className="py-16 text-center">
               <Users className="w-14 h-14 text-muted/30 mx-auto mb-3" />
               <p className="text-muted-foreground font-medium">No users yet</p>
-              <p className="text-sm text-muted-foreground/60 mt-1">Add teachers in Teachers or create an Administrator/Finance user.</p>
+              <p className="text-sm text-muted-foreground/60 mt-1">
+                Teachers added in the Teachers module appear here automatically. You can reset passwords and manage access.
+              </p>
               <Button variant="outline" className="mt-4" onClick={() => setCreateOpen(true)}>
                 <UserPlus className="w-4 h-4 mr-2" />
                 Create User

@@ -83,6 +83,19 @@ export async function toggleSuperAnnouncement(id: number): Promise<GlobalAnnounc
   return apiService.patch(`/super/announcements/${id}/toggle`, {});
 }
 
+export async function fetchAnnouncementReaders(id: number): Promise<
+  Array<{
+    user_id: number;
+    full_name: string | null;
+    email: string | null;
+    tenant_id: number | null;
+    read_at: string;
+  }>
+> {
+  const res = await apiService.get<{ readers: any }>(`/super/announcements/${id}/reads`);
+  return res.readers || [];
+}
+
 export async function fetchUnreadAnnouncements(): Promise<{
   items: UnreadAnnouncement[];
   schoolName: string;

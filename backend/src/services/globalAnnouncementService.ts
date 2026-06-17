@@ -267,4 +267,32 @@ export async function markAnnouncementRead(
   return true;
 }
 
+export async function getAnnouncementReaders(
+  announcementId: number
+): Promise<
+  Array<{
+    user_id: number;
+    full_name: string | null;
+    email: string | null;
+    tenant_id: number | null;
+    read_at: string;
+  }>
+> {
+  const res = await query(
+    `SELECT ar.user_id, u.full_name, u.email, ar.tenant_id, ar.read_at
+     FROM announcement_reads ar
+     JOIN users u ON u.id = ar.user_id
+     WHERE ar.announcement_id = $1
+     ORDER BY ar.read_at DESC`,
+    [announcementId]
+  );
+  return res.rows.map((r: Record<string, unknown>) => ({
+    user_id: Number(r.user_id),
+    full_name: r.full_name ? String(r.full_name) : null,
+    email: r.email ? String(r.email) : null,
+    tenant_id: r.tenant_id != null ? Number(r.tenant_id) : null,
+    read_at: r.read_at instanceof Date ? r.read_at.toISOString() : String(r.read_at),
+  }));
+}
+
 export { TYPE_PRIORITY };

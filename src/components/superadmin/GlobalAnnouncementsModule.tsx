@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from '@/hooks/use-toast';
 import { Megaphone, Plus, RefreshCw, Trash2, Power } from 'lucide-react';
+import { Eye } from 'lucide-react';
 import {
   ANNOUNCEMENT_TYPE_OPTIONS,
   createSuperAnnouncement,
@@ -68,6 +69,9 @@ const GlobalAnnouncementsModule: React.FC<{ schools: SchoolOption[] }> = ({ scho
   const [form, setForm] = useState<AnnouncementFormInput>(emptyForm());
   const [usePlaceholder, setUsePlaceholder] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [readersModalId, setReadersModalId] = useState<number | null>(null);
+  const [readers, setReaders] = useState<Array<Record<string, unknown>>>([]);
+  const [loadingReaders, setLoadingReaders] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -149,6 +153,21 @@ const GlobalAnnouncementsModule: React.FC<{ schools: SchoolOption[] }> = ({ scho
       await load();
     } catch (err: unknown) {
       toast({ title: 'Delete failed', description: (err as Error).message, variant: 'destructive' });
+    }
+  };
+
+  const openReaders = async (id: number) => {
+    setReadersModalId(id);
+    setLoadingReaders(true);
+    try {
+      // @ts-ignore
+      const r = await (await import('../../services/globalAnnouncementsApi')).fetchAnnouncementReaders(id);
+      setReaders(r as any[]);
+    } catch (err: unknown) {
+      toast({ title: 'Failed to load readers', description: (err as Error).message, variant: 'destructive' });
+      setReaders([]);
+    } finally {
+      setLoadingReaders(false);
     }
   };
 
@@ -360,6 +379,9 @@ const GlobalAnnouncementsModule: React.FC<{ schools: SchoolOption[] }> = ({ scho
                     >
                       <Power className="w-3.5 h-3.5" />
                     </Button>
+                    <Button size="sm" variant="outline" className="h-8" onClick={() => void openReaders(row.id)} title="View Readers">
+                      <Eye className="w-3.5 h-3.5" />
+                    </Button>
                     <Button
                       size="sm"
                       variant="destructive"
@@ -375,6 +397,47 @@ const GlobalAnnouncementsModule: React.FC<{ schools: SchoolOption[] }> = ({ scho
           </Table>
         </Card>
       )}
+
+      {/* Readers Modal */}
+      <AlertDialog open={readersModalId != null} onOpenChange={(o) => !o && setReadersModalId(null)}>
+        <AlertDialogContent className="max-w-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Readers</AlertDialogTitle>
+            <AlertDialogDescription>Users who have marked this announcement as read.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="p-4">
+            {loadingReaders ? (
+              <BrandedLoading label="Loading readers…" />
+            ) : readers.length === 0 ? (
+              <p className="text-sm text-slate-500">No readers yet.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>School</TableHead>
+                    <TableHead>Read At</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {readers.map((r: any) => (
+                    <TableRow key={r.user_id}>
+                      <TableCell>{r.full_name ?? '—'}</TableCell>
+                      <TableCell className="text-xs">{r.email ?? '—'}</TableCell>
+                      <TableCell className="text-xs">{r.tenant_id ?? '—'}</TableCell>
+                      <TableCell className="text-xs whitespace-nowrap">{new Date(r.read_at).toLocaleString()}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setReadersModalId(null)}>Close</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={deleteId != null} onOpenChange={(o) => !o && setDeleteId(null)}>
         <AlertDialogContent>

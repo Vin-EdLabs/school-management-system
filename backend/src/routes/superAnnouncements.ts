@@ -9,6 +9,7 @@ import {
   listGlobalAnnouncements,
   toggleGlobalAnnouncement,
   updateGlobalAnnouncement,
+  getAnnouncementReaders,
   type AnnouncementType,
 } from '../services/globalAnnouncementService.js';
 
@@ -180,6 +181,19 @@ router.patch('/:id/toggle', async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error('Toggle announcement error:', error);
     res.status(500).json({ error: 'Failed to toggle announcement' });
+  }
+});
+
+router.get('/:id/reads', async (req: AuthRequest, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    if (Number.isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
+
+    const readers = await getAnnouncementReaders(id);
+    res.json({ readers });
+  } catch (error) {
+    console.error('Get announcement readers error:', error);
+    res.status(500).json({ error: 'Failed to get announcement readers' });
   }
 });
 

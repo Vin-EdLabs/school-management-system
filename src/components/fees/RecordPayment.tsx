@@ -21,6 +21,12 @@ import {
   formatBalanceLines,
   type StudentBalance,
 } from '../../services/studentBalance';
+import {
+  fetchFeeStructureItemsSummary,
+  formatFeeItemLabel,
+  resolveFeeStructureId,
+  type FeeStructureItemsSummary,
+} from '../../services/feeStructureItems';
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -35,7 +41,7 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
   paymentDisabledReason = null,
   onBlockedSubmit,
 }) => {
-  const { students, payments } = useData();
+  const { students, payments, feeStructures, ledgerBalances } = useData();
   const { currentTerm, currentYear } = useActiveTerm();
   const { readOnly: termReadOnly } = useTermReadOnly();
   const recordPayment = useRecordPayment();
@@ -53,11 +59,17 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
   const [receiptData, setReceiptData] = useState(null);
   const [studentBalance, setStudentBalance] = useState<StudentBalance | null>(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
+  const [termBillSummary, setTermBillSummary] = useState<FeeStructureItemsSummary | null>(null);
+  const [termBillLoading, setTermBillLoading] = useState(false);
 
   useEffect(() => {
     if (!formData.studentId) {
       setStudentBalance(null);
       return;
+    }
+    const cached = ledgerBalances[formData.studentId];
+    if (cached) {
+      setStudentBalance(cached);
     }
     let cancelled = false;
     setBalanceLoading(true);
@@ -66,7 +78,7 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
         if (!cancelled) setStudentBalance(b);
       })
       .catch(() => {
-        if (!cancelled) setStudentBalance(null);
+        if (!cancelled && !cached) setStudentBalance(null);
       })
       .finally(() => {
         if (!cancelled) setBalanceLoading(false);
@@ -74,7 +86,44 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [formData.studentId, payments]);
+  }, [formData.studentId, payments, ledgerBalances]);
+
+  const selectedStudent = useMemo(
+    () => students.find(s => s.id === formData.studentId),
+    [students, formData.studentId]
+  );
+
+  useEffect(() => {
+    if (!formData.studentId || !selectedStudent) {
+      setTermBillSummary(null);
+      return;
+    }
+    const feeStructureId = resolveFeeStructureId(
+      feeStructures,
+      selectedStudent.classAssigned,
+      selectedStudent.classId ?? (selectedStudent as { class_id?: number }).class_id,
+      currentTerm
+    );
+    if (!feeStructureId) {
+      setTermBillSummary(null);
+      return;
+    }
+    let cancelled = false;
+    setTermBillLoading(true);
+    void fetchFeeStructureItemsSummary(feeStructureId)
+      .then(summary => {
+        if (!cancelled) setTermBillSummary(summary);
+      })
+      .catch(() => {
+        if (!cancelled) setTermBillSummary(null);
+      })
+      .finally(() => {
+        if (!cancelled) setTermBillLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [formData.studentId, selectedStudent, feeStructures, currentTerm]);
 
   const activeStudents = useMemo(
     () => students.filter((s) => shouldTrackStudentFees(s)),
@@ -97,6 +146,7 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
       totalAmountDue: studentBalance.totalDue,
       totalPaid: studentBalance.totalPaid,
       creditBalance: studentBalance.credit,
+      individualChargeLines: studentBalance.individualChargeLines ?? [],
       baseFee: studentBalance.currentTermFee,
       discountAmount: 0,
       arrearLines: studentBalance.arrearLines,
@@ -278,9 +328,81 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
               <div className="overflow-hidden rounded-2xl border border-emerald-200 bg-emerald-50/40 shadow-sm dark:rounded-lg dark:border-blue-200 dark:bg-transparent">
                 <div className="bg-gradient-to-r from-[#146C43] to-[#22C55E] px-4 py-2 dark:bg-blue-600 dark:bg-none">
                   <h3 className="font-semibold text-white text-sm">
-                    Fee Breakdown — {currentTerm.replace(new RegExp(`\\s+${currentYear}$`), '')} {currentYear}
+                    {selectedStudent
+                      ? `Record Payment — ${selectedStudent.firstName} ${selectedStudent.lastName}`
+                      : 'Fee Breakdown'}
                   </h3>
+                  <p className="text-white/80 text-xs mt-0.5">
+                    {selectedStudent?.classAssigned} · {currentTerm.replace(new RegExp(`\\s+${currentYear}$`), '')} · {currentYear}
+                  </p>
                 </div>
+
+                {(termBillLoading || termBillSummary) && (
+                  <div className="border-b border-emerald-200/80 bg-white/60 px-4 py-3 dark:bg-blue-50/50">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-900/70 mb-2">Term Bill Breakdown</p>
+                    {termBillLoading ? (
+                      <p className="text-sm text-muted-foreground flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Loading bill items…
+                      </p>
+                    ) : termBillSummary ? (
+                      <div className="space-y-1 text-sm">
+                        {termBillSummary.items.map(item => (
+                          <div key={item.item_name} className="flex justify-between py-0.5">
+                            <span className="text-slate-600 dark:text-gray-600">{formatFeeItemLabel(item.item_name)}</span>
+                            <span className="font-mono tabular-nums">GHS {Number(item.amount).toFixed(2)}</span>
+                          </div>
+                        ))}
+                        {(studentBalance?.individualChargeLines ?? []).map((charge) => (
+                          <div key={charge.id} className="flex justify-between py-0.5 border-t border-dashed border-emerald-100 first:border-t-0">
+                            <span className="text-slate-600 dark:text-gray-600 text-xs sm:text-sm">
+                              {charge.description}
+                              <span className="block text-[10px] text-amber-700 dark:text-amber-500">
+                                ⚑ Individual Charge ·{' '}
+                                {charge.date
+                                  ? new Date(charge.date).toLocaleDateString('en-GB', {
+                                      day: 'numeric',
+                                      month: 'short',
+                                      year: 'numeric',
+                                    })
+                                  : '—'}
+                              </span>
+                            </span>
+                            <span className="font-mono tabular-nums">GHS {Number(charge.amount).toFixed(2)}</span>
+                          </div>
+                        ))}
+                        <div className="border-t border-emerald-200 pt-2 mt-2 space-y-1">
+                          <div className="flex justify-between font-semibold">
+                            <span>
+                              {(studentBalance?.individualChargeLines?.length ?? 0) > 0
+                                ? 'Total Billed'
+                                : 'Total Term Bill'}
+                            </span>
+                            <span className="font-mono tabular-nums">
+                              GHS {(selectedStudentFeeDetails?.totalAmountDue ?? studentBalance?.totalDue ?? termBillSummary.total).toFixed(2)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-emerald-700 dark:text-green-700">
+                            <span>Amount Paid So Far</span>
+                            <span className="font-mono tabular-nums">
+                              GHS {(selectedStudentFeeDetails?.totalPaid ?? 0).toFixed(2)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between font-semibold text-red-700">
+                            <span>Outstanding Balance</span>
+                            <span className="font-mono tabular-nums">
+                              GHS {(selectedStudentFeeDetails?.totalAmountDue != null
+                                ? Math.max(0, selectedStudentFeeDetails.totalAmountDue - (selectedStudentFeeDetails.totalPaid ?? 0))
+                                : studentBalance?.outstanding ?? 0
+                              ).toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+
                 {!selectedStudentFeeDetails ? (
                   <div className="p-4 bg-emerald-50/60 text-sm text-slate-500 dark:bg-blue-50 dark:text-gray-500">
                     {balanceLoading ? 'Loading fee breakdown…' : 'No fee structure set for this student\'s class and term.'}
@@ -328,13 +450,13 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
                             <span className="font-semibold text-emerald-700 dark:text-indigo-600">− GHS {selectedStudentFeeDetails.discountAmount.toFixed(2)}</span>
                           </div>
                           <div className="flex justify-between border-t border-emerald-100 pt-1 dark:border-blue-100">
-                            <span className="text-slate-600 font-semibold dark:text-gray-600">Net Term Fee:</span>
+                            <span className="text-slate-600 font-semibold dark:text-gray-600">Net Total Term Bill:</span>
                             <span className="font-bold">GHS {selectedStudentFeeDetails.currentTermFee.toFixed(2)}</span>
                           </div>
                         </>
                       ) : (
                         <div className="flex justify-between">
-                          <span className="text-slate-600 dark:text-gray-600">Term Fee:</span>
+                          <span className="text-slate-600 dark:text-gray-600">Total Term Bill:</span>
                           <span className="font-medium">GHS {selectedStudentFeeDetails.currentTermFee.toFixed(2)}</span>
                         </div>
                       )}

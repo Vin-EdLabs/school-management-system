@@ -606,7 +606,7 @@ ${availableStudents}
       content: `💰 **Balance for ${student.firstName} ${student.lastName}:**
 
 🏫 **Class:** ${student.classAssigned}
-💵 **Current Term Fee:** GHS ${balanceInfo.currentTermFee.toFixed(2)}
+💵 **Total Term Bill:** GHS ${balanceInfo.currentTermFee.toFixed(2)}
 ✅ **Total Paid:** GHS ${balanceInfo.totalPaid.toFixed(2)}
 ⚠️ **Outstanding Balance:** GHS ${balanceInfo.balance.toFixed(2)}
 📊 **Payment History:** ${balanceInfo.payments.length} payments

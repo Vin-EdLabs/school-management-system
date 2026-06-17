@@ -14,6 +14,7 @@ import { apiService } from '../../services/api';
 import { useData } from '../../contexts/DataContext';
 import { useActiveTerm } from '../../hooks/useActiveTerm';
 import { useFeeStructureCheck } from '../../hooks/useFeeStructureCheck';
+import { useFinanceRealtime } from '../../hooks/useFinanceRealtime';
 import { toast } from '@/hooks/use-toast';
 import {
   CreditCard,
@@ -43,6 +44,12 @@ const FEE_STRUCTURE_DISABLED_TOOLTIP = 'Configure fee structures for all classes
 const FeesModule: React.FC<FeesModuleProps> = ({ onNavigate }) => {
   const { refresh } = useData();
   const { currentTerm, currentYear, hasActiveTerm, activeAcademicTermId, isLoading: termLoading } = useActiveTerm();
+
+  useFinanceRealtime({
+    onInvalidate: () => {
+      void refresh(['fees', 'payments', 'students']);
+    },
+  });
   const [activeTab, setActiveTab] = useState('record-payment');
   const [refreshing, setRefreshing] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -272,7 +279,7 @@ const FeesModule: React.FC<FeesModuleProps> = ({ onNavigate }) => {
             </TabsTrigger>
             <TabsTrigger value="fee-structure" className="flex items-center space-x-2">
               <DollarSign className="h-4 w-4" />
-              <span>Fee Structure</span>
+              <span>Fee Structure / Bill</span>
             </TabsTrigger>
           </TabsList>
 

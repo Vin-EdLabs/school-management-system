@@ -384,7 +384,7 @@ const ManualAdjustmentsReport: React.FC = () => {
                         <Table className="min-w-[520px]">
                           <TableHeader>
                             <TableRow className="bg-muted/50 hover:bg-muted/50">
-                              <TableHead className="text-right">Term fee</TableHead>
+                              <TableHead className="text-right">Total Term Bill</TableHead>
                               <TableHead className="text-right">Arrears</TableHead>
                               <TableHead className="text-right">Total due</TableHead>
                               <TableHead className="text-right">Paid</TableHead>

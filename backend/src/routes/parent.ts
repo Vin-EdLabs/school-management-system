@@ -10,6 +10,7 @@ import { beneficiaryAdjustedFee, type BeneficiaryStudentRow } from '../utils/ben
 import { buildStudentFinanceStatement } from '../services/studentFinanceStatementService.js';
 import { getStudentLiveFeeBreakdown } from '../services/studentLiveFeeBreakdownService.js';
 import { resolveActiveLedgerTerm } from '../services/studentUnifiedBalanceService.js';
+import { loadActiveFeeStructureLinesByClassTerm } from '../services/feeStructureItemsService.js';
 
 const router = express.Router();
 
@@ -37,41 +38,28 @@ async function buildCurrentTermFeeLines(
 ): Promise<{ lines: Array<{ label: string; amount: number }>; discountAmount: number; subtotal: number }> {
   if (!classId || !termId) {
     return {
-      lines: netBilled > 0 ? [{ label: 'Term Fee', amount: netBilled }] : [],
+      lines: netBilled > 0 ? [{ label: 'Total Term Bill', amount: netBilled }] : [],
       discountAmount: 0,
       subtotal: netBilled,
     };
   }
 
-  const fsRes = await query(
-    `SELECT tuition_fee, pta_fee, exam_fee, total
-     FROM ledger_fee_structures
-     WHERE tenant_id = $1 AND class_id = $2 AND term_id = $3
-     LIMIT 1`,
-    [tenantId, classId, termId]
-  );
-
-  if (fsRes.rows.length === 0) {
+  const structureLines = await loadActiveFeeStructureLinesByClassTerm(tenantId, classId, termId);
+  if (!structureLines) {
     return {
-      lines: netBilled > 0 ? [{ label: 'Term Fee', amount: netBilled }] : [],
+      lines: netBilled > 0 ? [{ label: 'Total Term Bill', amount: netBilled }] : [],
       discountAmount: 0,
       subtotal: netBilled,
     };
   }
 
-  const fs = fsRes.rows[0];
-  const lines: Array<{ label: string; amount: number }> = [];
-  const tuition = roundMoney(parseFloat(String(fs.tuition_fee)) || 0);
-  const pta = roundMoney(parseFloat(String(fs.pta_fee)) || 0);
-  const exam = roundMoney(parseFloat(String(fs.exam_fee)) || 0);
-  if (tuition > 0) lines.push({ label: 'Tuition Fee', amount: tuition });
-  if (pta > 0) lines.push({ label: 'PTA Levy', amount: pta });
-  if (exam > 0) lines.push({ label: 'Exam Fee', amount: exam });
-  const subtotal = roundMoney(
-    lines.reduce((sum, line) => sum + line.amount, 0) || parseFloat(String(fs.total)) || 0
-  );
+  const { lines, subtotal } = structureLines;
   const { discountAmount } = beneficiaryAdjustedFee(subtotal, beneficiary);
-  return { lines, discountAmount: roundMoney(discountAmount), subtotal };
+  return {
+    lines: lines.length > 0 ? lines : netBilled > 0 ? [{ label: 'Total Term Bill', amount: netBilled }] : [],
+    discountAmount: roundMoney(discountAmount),
+    subtotal,
+  };
 }
 
 function parentJwtExpiresIn(): jwt.SignOptions['expiresIn'] {

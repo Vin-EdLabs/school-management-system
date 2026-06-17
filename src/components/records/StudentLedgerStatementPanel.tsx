@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useTermStatus } from '../../contexts/TermStatusContext';
-import { Lock } from 'lucide-react';
+import { Lock, FileDown, Loader2 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import {
   fetchStudentLedgerStatement,

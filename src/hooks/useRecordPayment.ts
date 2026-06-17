@@ -87,7 +87,7 @@ function buildOptimisticPayment(input: RecordPaymentInput): Payment {
 export function useRecordPayment() {
   const queryClient = useQueryClient();
   const { schoolId } = useSchool();
-  const { applyPaymentLocally, revertPaymentLocally } = useData();
+  const { applyPaymentLocally, revertPaymentLocally, refresh } = useData();
 
   return useMutation({
     mutationFn: async (input: RecordPaymentInput) => {
@@ -143,6 +143,8 @@ export function useRecordPayment() {
       });
 
       applyPaymentLocally(payment, input.amount, res.balance);
+
+      void refresh(['fees', 'payments']);
 
       toast({
         title: 'Payment Recorded',

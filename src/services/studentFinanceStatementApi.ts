@@ -12,6 +12,8 @@ export type TermFeeBreakdown = {
   discountLabel: string | null;
   netBilled: number;
   noFeeStructure: boolean;
+  individualCharges?: IndividualChargeStatementLine[];
+  termTotal?: number;
 };
 
 export type TermSummaryRow = {
@@ -21,6 +23,18 @@ export type TermSummaryRow = {
   outstanding: number;
   credit: number;
   status: 'Cleared' | 'Owing' | 'Credit';
+};
+
+export type IndividualChargeStatementLine = {
+  id: number;
+  termId: number;
+  termLabel: string;
+  description: string;
+  amount: number;
+  date: string;
+  addedBy: string | null;
+  status: 'paid' | 'unpaid';
+  reason: string | null;
 };
 
 export type ArrearsHistoryLine = {
@@ -91,6 +105,8 @@ export type StudentFinanceStatement = {
     generatedByRole: string | null;
   };
   feeBreakdown: TermFeeBreakdown[];
+  individualCharges?: IndividualChargeStatementLine[];
+  individualChargesSubtotal?: number;
   grandTotalFeesBilled: number;
   termSummary: TermSummaryRow[];
   termSummaryTotals: Omit<TermSummaryRow, 'termLabel' | 'status'>;

@@ -375,7 +375,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [income, setIncome] = useState<Income[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const paymentRollbackRef = useRef<Map<string, { payments: Payment[] }>>(new Map());
+  const paymentRollbackRef = useRef<
+    Map<string, { payments: Payment[]; ledgerBalances?: Record<string, StudentBalance> }>
+  >(new Map());
   const [loading, setLoading] = useState(false);
   const loadedDomainsRef = useRef<Set<DataDomain>>(new Set());
   const inFlightRef = useRef<Set<DataDomain>>(new Set());
@@ -600,6 +602,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       class: ['classes', 'students'],
       fee: ['fees'],
       payment: ['payments', 'fees'],
+      'finance-arrears': ['fees'],
+      finance: ['fees', 'payments'],
       income: ['income'],
       expense: ['expenses'],
       subject: ['subjects'],
@@ -607,7 +611,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     let debounceTimer: ReturnType<typeof setTimeout> | undefined;
     const refreshNow = (payload?: { entity?: string }) => {
-      if (payload?.entity === 'payment') return;
       const entity = String(payload?.entity || '').toLowerCase();
       if (entity === 'student' && Date.now() < skipStudentSocketRefreshUntil.current) return;
       const domains = entityDomains[entity]?.filter((d) => loadedDomainsRef.current.has(d)) ?? [];
@@ -700,15 +703,64 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const applyPaymentLocally = (
     payment: Payment,
-    _amount: number,
-    _balance?: { outstanding?: number; arrears?: number; credit?: number }
+    amount: number,
+    balance?: {
+      outstanding?: number;
+      arrears?: number;
+      credit?: number;
+      totalPaid?: number;
+      totalDue?: number;
+      status?: string;
+    }
   ): string => {
     const token = `pay-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const studentKey = String(payment.studentId);
+
     setPayments((prev) => {
-      paymentRollbackRef.current.set(token, { payments: prev });
+      paymentRollbackRef.current.set(token, {
+        payments: prev,
+        ledgerBalances: paymentRollbackRef.current.get(token)?.ledgerBalances,
+      });
       const withoutDup = prev.filter((p) => p.id !== payment.id && !p.id.startsWith('optimistic-'));
       return [payment, ...withoutDup];
     });
+
+    if (!balance || !studentKey) {
+      return token;
+    }
+
+    setLedgerBalances((prev) => {
+      const existing = prev[studentKey];
+      if (!existing) return prev;
+
+      const prior = paymentRollbackRef.current.get(token);
+      paymentRollbackRef.current.set(token, {
+        payments: prior?.payments ?? [],
+        ledgerBalances: prev,
+      });
+
+      const credit = Math.max(0, Number(balance.credit) || 0);
+      const outstanding = Math.max(0, Number(balance.outstanding) || 0);
+      const totalPaid =
+        balance.totalPaid != null ? Number(balance.totalPaid) : (existing.totalPaid ?? 0) + amount;
+      const status: StudentBalance['status'] =
+        credit > 0 ? 'Credit' : outstanding > 0 ? 'Owing' : 'Cleared';
+
+      return {
+        ...prev,
+        [studentKey]: {
+          ...existing,
+          outstanding,
+          credit,
+          netBalance: credit > 0 ? -credit : outstanding,
+          totalPaid,
+          totalArrears: balance.arrears ?? existing.totalArrears,
+          totalDue: balance.totalDue ?? existing.totalDue,
+          status,
+        },
+      };
+    });
+
     return token;
   };
 
@@ -716,6 +768,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const snapshot = paymentRollbackRef.current.get(token);
     if (!snapshot) return;
     setPayments(snapshot.payments);
+    if (snapshot.ledgerBalances) {
+      setLedgerBalances(snapshot.ledgerBalances);
+    }
     paymentRollbackRef.current.delete(token);
   };
 

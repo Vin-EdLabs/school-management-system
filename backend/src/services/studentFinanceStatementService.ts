@@ -3,6 +3,12 @@ import type { StudentTermBalance } from './studentUnifiedBalanceService.js';
 import { resolveActiveLedgerTerm } from './studentUnifiedBalanceService.js';
 import { getTermByTermLedgerSummary } from './ledgerBalanceService.js';
 import { beneficiaryAdjustedFee, type BeneficiaryStudentRow } from '../utils/beneficiaryFee.js';
+import {
+  getFeeStructureItems,
+  linesFromFeeStructureItems,
+  loadActiveFeeStructureLinesBatch,
+} from './feeStructureItemsService.js';
+import { listStudentCharges } from './studentChargesService.js';
 
 function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
@@ -25,6 +31,8 @@ export type TermFeeBreakdown = {
   discountLabel: string | null;
   netBilled: number;
   noFeeStructure: boolean;
+  individualCharges?: IndividualChargeStatementLine[];
+  termTotal?: number;
 };
 
 export type TermSummaryRow = {
@@ -87,6 +95,18 @@ export type AccountSummary = {
   statusLabel: string;
 };
 
+export type IndividualChargeStatementLine = {
+  id: number;
+  termId: number;
+  termLabel: string;
+  description: string;
+  amount: number;
+  date: string;
+  addedBy: string | null;
+  status: 'paid' | 'unpaid';
+  reason: string | null;
+};
+
 export type StudentFinanceStatement = {
   header: {
     schoolName: string;
@@ -104,6 +124,8 @@ export type StudentFinanceStatement = {
     generatedByRole: string | null;
   };
   feeBreakdown: TermFeeBreakdown[];
+  individualCharges: IndividualChargeStatementLine[];
+  individualChargesSubtotal: number;
   grandTotalFeesBilled: number;
   termSummary: TermSummaryRow[];
   termSummaryTotals: Omit<TermSummaryRow, 'termLabel' | 'status'>;
@@ -454,7 +476,7 @@ export async function buildStudentFinanceStatement(
   let feeStructureRows: Array<Record<string, unknown>> = [];
   if (classId && termIds.length > 0) {
     const fsRes = await query(
-      `SELECT lfs.term_id, lfs.tuition_fee, lfs.pta_fee, lfs.exam_fee, lfs.total,
+      `SELECT lfs.id, lfs.term_id, lfs.total,
               t.name AS term_part, ay.name AS year_part
        FROM ledger_fee_structures lfs
        JOIN terms t ON t.id = lfs.term_id
@@ -471,7 +493,37 @@ export async function buildStudentFinanceStatement(
     feeStructureByTerm.set(Number(row.term_id), row);
   }
 
-  const feeBreakdown: TermFeeBreakdown[] = termRows.map((row) => {
+  const feeStructureIds = feeStructureRows.map((row) => Number(row.id)).filter((id) => !Number.isNaN(id));
+  const savedItemsByStructureId = await loadActiveFeeStructureLinesBatch(tenantId, feeStructureIds);
+
+  // Load individual charges for the student and group by term so they can be
+  // attached to each term block in the statement.
+  const chargeRows = await listStudentCharges(tenantId, studentId, null);
+  const termLabelById = new Map(termRows.map((r) => [r.termId, r.termName]));
+  const individualCharges: IndividualChargeStatementLine[] = chargeRows.map((c) => ({
+    id: c.id,
+    termId: c.termId,
+    termLabel: termLabelById.get(c.termId) || 'Term',
+    description: c.description,
+    amount: c.amount,
+    date: c.createdAt.split('T')[0],
+    addedBy: c.createdByName,
+    status: c.status,
+    reason: c.reason,
+  }));
+  const individualChargesSubtotal = roundMoney(
+    individualCharges.reduce((sum, line) => sum + line.amount, 0)
+  );
+
+  const chargesByTerm = new Map<number, IndividualChargeStatementLine[]>();
+  for (const ch of individualCharges) {
+    const list = chargesByTerm.get(ch.termId) || [];
+    list.push(ch);
+    chargesByTerm.set(ch.termId, list);
+  }
+
+  const feeBreakdown: TermFeeBreakdown[] = await Promise.all(
+    termRows.map(async (row) => {
     const fs = feeStructureByTerm.get(row.termId);
     const netBilled = roundMoney(row.termFee);
 
@@ -486,6 +538,8 @@ export async function buildStudentFinanceStatement(
         discountLabel: null,
         netBilled: 0,
         noFeeStructure: true,
+        individualCharges: [],
+        termTotal: 0,
       };
     }
 
@@ -494,40 +548,54 @@ export async function buildStudentFinanceStatement(
         termId: row.termId,
         termLabel: row.termName,
         className,
-        lines: netBilled > 0 ? [{ label: 'Tuition Fee', amount: netBilled }] : [],
+        lines: netBilled > 0 ? [{ label: 'Total Term Bill', amount: netBilled }] : [],
         subtotal: netBilled,
         discountAmount: 0,
         discountLabel: null,
         netBilled,
         noFeeStructure: false,
+        individualCharges: [],
+        termTotal: netBilled,
       };
     }
 
-    const tuition = roundMoney(parseFloat(String(fs.tuition_fee)) || 0);
-    const pta = roundMoney(parseFloat(String(fs.pta_fee)) || 0);
-    const exam = roundMoney(parseFloat(String(fs.exam_fee)) || 0);
-    const lines: TermFeeBreakdownLine[] = [];
-    if (tuition > 0) lines.push({ label: 'Tuition Fee', amount: tuition });
-    if (pta > 0) lines.push({ label: 'PTA Levy', amount: pta });
-    if (exam > 0) lines.push({ label: 'Exam Fee', amount: exam });
+    const feeStructureId = Number(fs.id);
+    let lines = savedItemsByStructureId.get(feeStructureId) || [];
+    if (lines.length === 0) {
+      const items = await getFeeStructureItems(tenantId, feeStructureId);
+      lines = items ? linesFromFeeStructureItems(items) : [];
+    }
     const structureSubtotal = roundMoney(
       lines.reduce((s, l) => s + l.amount, 0) || parseFloat(String(fs.total)) || 0
     );
     const { discountAmount } = beneficiaryAdjustedFee(structureSubtotal, beneficiary);
+    const discountAmountRounded = roundMoney(discountAmount);
+    const termIndividualCharges = chargesByTerm.get(row.termId) || [];
+    const termChargesSum = roundMoney(termIndividualCharges.reduce((s, c) => s + c.amount, 0));
+    // Avoid double-counting individual charges: `netBilled` (from ledger) may already
+    // include student_charge entries. When we have a fee structure, derive the term
+    // total from the structure subtotal (fee items) minus discounts plus individual
+    // charges. When no fee structure is present, fall back to netBilled which already
+    // represents ledger-calculated total.
+    const termTotal = roundMoney(structureSubtotal - discountAmountRounded + termChargesSum);
     return {
       termId: row.termId,
       termLabel: row.termName,
       className,
-      lines: lines.length > 0 ? lines : netBilled > 0 ? [{ label: 'Tuition Fee', amount: netBilled }] : [],
+      lines: lines.length > 0 ? lines : netBilled > 0 ? [{ label: 'Total Term Bill', amount: netBilled }] : [],
       subtotal: structureSubtotal,
       discountAmount: roundMoney(discountAmount),
       discountLabel: discountAmount > 0 ? formatDiscountLabel(beneficiary) : null,
       netBilled,
       noFeeStructure: false,
+      individualCharges: termIndividualCharges,
+      termTotal,
     };
-  });
-
-  const grandTotalFeesBilled = roundMoney(termSummaryTotals.feeBilled);
+  })
+  );
+  const grandTotalFeesBilled = roundMoney(
+    feeBreakdown.reduce((s, t) => s + (t.termTotal ?? t.netBilled ?? 0), 0)
+  );
 
   const paymentsRes = await query(
     `SELECT p.id, p.payment_date, p.amount, p.term, p.receipt_number, p.payment_method,
@@ -650,6 +718,8 @@ export async function buildStudentFinanceStatement(
         variant === 'parent_portal' ? null : roleDisplayName(opts.generatedByRole ?? null),
     },
     feeBreakdown,
+    individualCharges,
+    individualChargesSubtotal,
     grandTotalFeesBilled,
     termSummary,
     termSummaryTotals,

@@ -89,6 +89,7 @@ router.get('/students/balances', async (req: AuthRequest, res) => {
         netBalance: row.netBalance,
         status:
           row.termFee <= 0 &&
+          (row.individualCharges ?? 0) <= 0 &&
           row.amountPaidThisTerm <= 0 &&
           row.arrears <= 0 &&
           row.creditBroughtForward <= 0
@@ -100,6 +101,8 @@ router.get('/students/balances', async (req: AuthRequest, res) => {
                 : 'Cleared',
         paymentsMade: row.amountPaidThisTerm,
         totalCharged: row.totalDue,
+        individualCharges: row.individualCharges ?? 0,
+        individualChargeLines: [],
         termRows: [
           {
             termId: ledgerTermId,

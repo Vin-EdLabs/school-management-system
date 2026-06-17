@@ -7,6 +7,14 @@ import {
   resolveActiveLedgerTerm,
 } from './studentUnifiedBalanceService.js';
 import { getStudentBalanceFromLedger } from './ledgerBalanceService.js';
+import {
+  markStudentChargesPaidAfterPayment,
+  markAllUnpaidChargesPaidForTerm,
+} from './studentChargesService.js';
+
+function roundMoney(n: number): number {
+  return Math.round(n * 100) / 100;
+}
 import { resolveLedgerTermFromSettings } from './ledgerFinanceService.js';
 
 export type RecordLedgerPaymentInput = {
@@ -28,6 +36,7 @@ export type RecordLedgerPaymentResult = {
   allocation: ReturnType<typeof allocatePayment>;
   balance: {
     termFee: number;
+    individualCharges?: number;
     arrears: number;
     totalDue: number;
     totalPaid: number;
@@ -141,6 +150,26 @@ export async function recordPaymentWithLedger(
       ctx.ledgerTermId
     );
 
+    const totalPaidAfter = roundMoney(allocation.totalPaidBefore + input.amount);
+    if (allocation.outstandingAfter <= 0.001) {
+      await markAllUnpaidChargesPaidForTerm(
+        client,
+        input.tenantId,
+        input.studentId,
+        ctx.ledgerTermId,
+        paymentId
+      );
+    } else {
+      await markStudentChargesPaidAfterPayment(
+        client,
+        input.tenantId,
+        input.studentId,
+        ctx.ledgerTermId,
+        paymentId,
+        totalPaidAfter
+      );
+    }
+
     let balanceStatus = 'Cleared';
     if (afterBalance.creditBalance > 0) balanceStatus = 'Credit';
     else if (afterBalance.outstanding > 0) balanceStatus = 'Owing';
@@ -153,6 +182,7 @@ export async function recordPaymentWithLedger(
       allocation,
       balance: {
         termFee: afterBalance.termFee,
+        individualCharges: afterBalance.individualCharges,
         arrears: afterBalance.arrears,
         totalDue: afterBalance.totalDue,
         totalPaid: afterBalance.totalPaid,

@@ -179,7 +179,7 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
             <div class="section">
               <div class="section-title">Breakdown</div>
               <table class="charges-table">
-                ${displayTermFee > 0 ? `<tr><td>Term Fee</td><td style="text-align:right">GHS ${formatMoney(displayTermFee)}</td></tr>` : ''}
+                ${displayTermFee > 0 ? `<tr><td>Total Term Bill</td><td style="text-align:right">GHS ${formatMoney(displayTermFee)}</td></tr>` : ''}
                 ${arrears > 0 ? `<tr><td>Arrears</td><td style="text-align:right">GHS ${formatMoney(arrears)}</td></tr>` : ''}
                 <tr><td><strong>Total Due</strong></td><td style="text-align:right"><strong>GHS ${formatMoney(totalDue)}</strong></td></tr>
               </table>
@@ -320,7 +320,7 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
               </div>
               {displayTermFee > 0 && (
                 <div className="flex justify-between text-slate-700">
-                  <span className="font-medium">Term Fee:</span>
+                  <span className="font-medium">Total Term Bill:</span>
                   <span className="font-bold">GHS {formatMoney(displayTermFee)}</span>
                 </div>
               )}

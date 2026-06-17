@@ -1,6 +1,7 @@
 import type pg from 'pg';
 import { query } from '../db/connection.js';
 import { resolveActiveLedgerTerm } from './studentUnifiedBalanceService.js';
+import { listStudentCharges } from './studentChargesService.js';
 
 type QueryFn = typeof query;
 
@@ -15,6 +16,8 @@ const CREDIT_AVAILABLE_SQL = CREDIT_AVAILABLE_ENTRY_TYPES.map((t) => `'${t}'`).j
 
 export type LedgerBalance = {
   termFee: number;
+  /** One-time individual charges (student_charge ledger entries). */
+  individualCharges: number;
   arrears: number;
   /** carry_forward_credit only — shown in Credit column */
   creditFromCarryForward: number;
@@ -54,6 +57,7 @@ export type BatchStudentLedgerBalance = {
   admissionNumber: string;
   className: string;
   termFee: number;
+  individualCharges: number;
   arrears: number;
   creditBroughtForward: number;
   amountPaidThisTerm: number;
@@ -97,6 +101,7 @@ export async function getStudentBalanceFromLedger(
   const res = await run(
     `SELECT
        COALESCE(SUM(CASE WHEN entry_type = 'term_fee' THEN debit ELSE 0 END), 0) AS term_fee,
+       COALESCE(SUM(CASE WHEN entry_type = 'student_charge' THEN debit ELSE 0 END), 0) AS individual_charges,
        COALESCE(SUM(CASE WHEN entry_type = 'arrears' THEN debit ELSE 0 END), 0) AS arrears,
        COALESCE(SUM(CASE WHEN entry_type IN (${CREDIT_AVAILABLE_SQL}) THEN credit ELSE 0 END), 0) AS credit_available,
        COALESCE(SUM(CASE WHEN entry_type = 'payment' THEN credit ELSE 0 END), 0) AS payments_made,
@@ -108,16 +113,19 @@ export async function getStudentBalanceFromLedger(
 
   const row = res.rows[0] || {};
   const termFee = roundMoney(parseFloat(row.term_fee) || 0);
+  const individualCharges = roundMoney(parseFloat(row.individual_charges) || 0);
   const arrears = roundMoney(parseFloat(row.arrears) || 0);
   const creditFromCarryForward = roundMoney(parseFloat(row.credit_available) || 0);
   const paymentsMade = roundMoney(parseFloat(row.payments_made) || 0);
   const netBalance = roundMoney(parseFloat(row.net_balance) || 0);
-  const totalDue = roundMoney(termFee + arrears);
+  const totalDue = roundMoney(termFee + individualCharges + arrears);
   const outstanding = roundMoney(Math.max(0, netBalance));
-  const creditBalance = creditFromCarryForward;
+  /** Overpayment in the current term (or net credit after payments) — not the same as brought-forward credit lines. */
+  const creditBalance = roundMoney(netBalance < -0.001 ? Math.abs(netBalance) : 0);
 
   return {
     termFee,
+    individualCharges,
     arrears,
     creditFromCarryForward,
     paymentsMade,
@@ -230,6 +238,7 @@ export async function getBatchStudentBalancesFromLedger(
        s.admission_number,
        c.class_name,
        COALESCE(SUM(CASE WHEN sl.entry_type = 'term_fee' THEN sl.debit ELSE 0 END), 0) AS term_fee,
+       COALESCE(SUM(CASE WHEN sl.entry_type = 'student_charge' THEN sl.debit ELSE 0 END), 0) AS individual_charges,
        COALESCE(SUM(CASE WHEN sl.entry_type = 'arrears' THEN sl.debit ELSE 0 END), 0) AS arrears,
        COALESCE(SUM(CASE WHEN sl.entry_type IN (${CREDIT_AVAILABLE_SQL}) THEN sl.credit ELSE 0 END), 0) AS credit_brought_forward,
        COALESCE(SUM(CASE WHEN sl.entry_type = 'payment' THEN sl.credit ELSE 0 END), 0) AS amount_paid_this_term,
@@ -249,12 +258,14 @@ export async function getBatchStudentBalancesFromLedger(
 
   return res.rows.map((row) => {
     const termFee = roundMoney(parseFloat(row.term_fee) || 0);
+    const individualCharges = roundMoney(parseFloat(row.individual_charges) || 0);
     const arrears = roundMoney(parseFloat(row.arrears) || 0);
     const creditBroughtForward = roundMoney(parseFloat(row.credit_brought_forward) || 0);
     const amountPaidThisTerm = roundMoney(parseFloat(row.amount_paid_this_term) || 0);
     const netBalance = roundMoney(parseFloat(row.net_balance) || 0);
-    const totalDue = roundMoney(termFee + arrears);
+    const totalDue = roundMoney(termFee + individualCharges + arrears);
     const outstanding = roundMoney(Math.max(0, netBalance));
+    const creditBalance = roundMoney(netBalance < -0.001 ? Math.abs(netBalance) : 0);
     return {
       id: Number(row.id),
       firstName: String(row.first_name || ''),
@@ -263,13 +274,14 @@ export async function getBatchStudentBalancesFromLedger(
       admissionNumber: String(row.admission_number || ''),
       className: String(row.class_name || ''),
       termFee,
+      individualCharges,
       arrears,
       creditBroughtForward,
       amountPaidThisTerm,
       totalDue,
       balance: outstanding,
       outstanding,
-      creditBalance: creditBroughtForward,
+      creditBalance,
       netBalance,
     };
   });
@@ -286,7 +298,7 @@ export async function getTermByTermLedgerSummary(
     `SELECT
        t.id AS term_id,
        TRIM(t.name || ' ' || ay.name) AS term_label,
-       COALESCE(SUM(CASE WHEN sl.entry_type = 'term_fee' THEN sl.debit ELSE 0 END), 0) AS fee_billed,
+       COALESCE(SUM(CASE WHEN sl.entry_type IN ('term_fee', 'student_charge') THEN sl.debit ELSE 0 END), 0) AS fee_billed,
        COALESCE(SUM(CASE WHEN sl.entry_type = 'payment' THEN sl.credit ELSE 0 END), 0) AS amount_paid,
        COALESCE(SUM(CASE WHEN sl.entry_type IN (${CREDIT_AVAILABLE_SQL}) THEN sl.credit ELSE 0 END), 0) AS credit,
        COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(sl.credit), 0) AS net_balance
@@ -350,11 +362,22 @@ export type StudentBalanceApiShape = {
   }>;
   paymentsMade: number;
   totalCharged: number;
+  individualCharges?: number;
+  individualChargeLines?: Array<{
+    id: number;
+    description: string;
+    amount: number;
+    date: string;
+    status: 'unpaid' | 'paid';
+    createdByName: string | null;
+    reason: string | null;
+  }>;
 };
 
 function deriveBalanceStatus(balance: LedgerBalance): StudentBalanceApiShape['status'] {
   if (
     balance.termFee <= 0 &&
+    balance.individualCharges <= 0 &&
     balance.paymentsMade <= 0 &&
     balance.arrears <= 0 &&
     balance.creditFromCarryForward <= 0
@@ -398,15 +421,28 @@ export async function ledgerBalanceToApiShape(
       termRows: [],
       paymentsMade: 0,
       totalCharged: 0,
+      individualCharges: 0,
+      individualChargeLines: [],
     };
   }
 
   const balance = await getStudentBalanceFromLedger(client, tenantId, studentId, effectiveTermId);
   const arrearsLines = await getArrearsBreakdownFromLedger(client, tenantId, studentId, effectiveTermId);
+  const chargeRows = await listStudentCharges(tenantId, studentId, effectiveTermId);
 
   const arrearLines = arrearsLines.map((line) => ({
     termName: line.description,
     amount: line.amount,
+  }));
+
+  const individualChargeLines = chargeRows.map((c) => ({
+    id: c.id,
+    description: c.description,
+    amount: c.amount,
+    date: c.createdAt.split('T')[0],
+    status: c.status,
+    createdByName: c.createdByName,
+    reason: c.reason,
   }));
 
   const status = deriveBalanceStatus(balance);
@@ -431,6 +467,8 @@ export async function ledgerBalanceToApiShape(
     status,
     paymentsMade: balance.paymentsMade,
     totalCharged: balance.totalDue,
+    individualCharges: balance.individualCharges,
+    individualChargeLines,
     termRows: [
       {
         termId: effectiveTermId,

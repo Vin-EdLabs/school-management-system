@@ -13,6 +13,8 @@ import { isActiveEnrolledStudent } from '../students/studentRegistryUtils';
 import { formatDisplayDate } from '../../utils/dateFormat';
 import type { StudentBalance } from '../../services/studentBalance';
 import type { Payment } from '../../contexts/DataContext';
+import TermBillBreakdown from './TermBillBreakdown';
+import { resolveFeeStructureId } from '../../services/feeStructureItems';
 
 const StudentBalances = () => {
   const { students, payments, classes, ledgerBalances, feeStructures } = useData();
@@ -338,7 +340,7 @@ const StudentBalances = () => {
               <TableRow>
                 <TableHead>Student</TableHead>
                 <TableHead>Class</TableHead>
-                <TableHead>Term Fee</TableHead>
+                <TableHead>Total Term Bill</TableHead>
                 <TableHead>Arrears</TableHead>
                 <TableHead>Credit</TableHead>
                 <TableHead>Total Due</TableHead>
@@ -377,9 +379,19 @@ const StudentBalances = () => {
                       <Badge variant="outline">{student.classAssigned}</Badge>
                     </TableCell>
                     <TableCell>
-                      <span className="font-mono">
-                        GHS {(student.currentTermFee ?? 0).toLocaleString()}
-                      </span>
+                      <TermBillBreakdown
+                        total={student.currentTermFee ?? 0}
+                        feeStructureId={resolveFeeStructureId(
+                          feeStructures || [],
+                          student.classAssigned,
+                          student.classAssignedId,
+                          currentTerm
+                        )}
+                        individualCharges={student.individualChargeLines}
+                        studentId={student.id}
+                        termId={student.activeTermId}
+                        compact
+                      />
                     </TableCell>
                     <TableCell>
                       <span className={`font-mono ${

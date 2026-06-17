@@ -207,7 +207,7 @@ const ManualBalanceOverrideDialog: React.FC<ManualBalanceOverrideDialogProps> = 
                 <table className="w-full min-w-[520px] border-collapse text-sm">
                   <thead>
                     <tr className="border-b bg-muted/50 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      <th className="px-3 py-2 text-right">Term fee</th>
+                      <th className="px-3 py-2 text-right">Total Term Bill</th>
                       <th className="px-3 py-2 text-right">Arrears</th>
                       <th className="px-3 py-2 text-right">Total due</th>
                       <th className="px-3 py-2 text-right">Paid</th>

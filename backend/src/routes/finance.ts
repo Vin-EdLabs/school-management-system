@@ -31,6 +31,7 @@ import {
 import { buildStudentFinanceStatement } from '../services/studentFinanceStatementService.js';
 import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 import { requireCompleteFeeStructures } from '../middleware/requireCompleteFeeStructures.js';
+import studentChargesRouter from './studentCharges.js';
 
 const router = express.Router();
 
@@ -47,6 +48,8 @@ router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
 attachWritableTermGuard(router, { skipActiveTermPaths: ['/switch-term'] });
+
+router.use('/student-charges', studentChargesRouter);
 
 function getTenantId(req: AuthRequest): number {
   const id = req.user!.tenantId!;

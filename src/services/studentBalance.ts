@@ -16,6 +16,16 @@ export type StudentBalance = {
   arrearLines: BalanceLine[];
   totalArrears: number;
   creditBroughtForward?: number;
+  individualCharges?: number;
+  individualChargeLines?: Array<{
+    id: number;
+    description: string;
+    amount: number;
+    date: string;
+    status: 'unpaid' | 'paid';
+    createdByName: string | null;
+    reason: string | null;
+  }>;
   totalDue: number;
   paidLines: BalanceLine[];
   totalPaid: number;
@@ -167,13 +177,47 @@ export function formatBalanceLines(b: StudentBalance) {
   }> = [];
 
   const termLabel = b.currentTermName ?? 'Current term';
-  lines.push({ label: `Term Fee (${termLabel})`, amount: b.currentTermFee, kind: 'charge' });
+  lines.push({ label: `Total Term Bill (${termLabel})`, amount: b.currentTermFee, kind: 'charge' });
 
   for (const row of b.arrearLines) {
     lines.push({ label: `Arrears — ${row.termName}`, amount: row.amount, kind: 'charge' });
   }
 
-  if ((b.creditBroughtForward ?? 0) > 0) {
+  for (const charge of b.individualChargeLines ?? []) {
+    const datePart = charge.date
+      ? new Date(charge.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+      : '';
+    lines.push({
+      label: datePart
+        ? `${charge.description} · Individual Charge · ${datePart}`
+        : `${charge.description} · Individual Charge`,
+      amount: charge.amount,
+      kind: 'charge',
+    });
+  }
+
+  if ((b.individualCharges ?? 0) > 0 && !(b.individualChargeLines?.length)) {
+    lines.push({
+      label: 'Individual charges',
+      amount: b.individualCharges ?? 0,
+      kind: 'charge',
+    });
+  }
+
+  const creditBalance =
+    (b.credit ?? 0) > 0
+      ? b.credit
+      : (b.netBalance ?? 0) < -0.001
+        ? Math.abs(b.netBalance ?? 0)
+        : 0;
+
+  if (creditBalance > 0) {
+    lines.push({
+      label: 'Credit Balance',
+      amount: creditBalance,
+      kind: 'credit',
+    });
+  } else if ((b.creditBroughtForward ?? 0) > 0) {
     lines.push({
       label: 'Credit Available',
       amount: b.creditBroughtForward ?? 0,
@@ -181,7 +225,11 @@ export function formatBalanceLines(b: StudentBalance) {
     });
   }
 
-  lines.push({ label: 'Total Due', amount: b.totalDue, kind: 'total' });
+  lines.push({
+    label: (b.individualChargeLines?.length ?? 0) > 0 ? 'Total Billed' : 'Total Due',
+    amount: b.totalDue,
+    kind: 'total',
+  });
 
   if ((b.totalPaid ?? 0) > 0) {
     lines.push({ label: 'Paid this term', amount: -(b.totalPaid ?? 0), kind: 'paid' });
@@ -192,7 +240,7 @@ export function formatBalanceLines(b: StudentBalance) {
     lines.push({ label: `Paid — ${row.termName}`, amount: -row.amount, kind: 'paid' });
   }
 
-  lines.push({ label: 'Outstanding', amount: b.outstanding, kind: 'outstanding' });
+  lines.push({ label: 'Outstanding Balance', amount: b.outstanding, kind: 'outstanding' });
 
   return lines;
 }

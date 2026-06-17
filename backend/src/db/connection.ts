@@ -1480,6 +1480,45 @@ const runMigrations = async () => {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_ledger_fee_structures_tenant ON ledger_fee_structures(tenant_id)`).catch(() => { });
 
     await client.query(`
+      CREATE TABLE IF NOT EXISTS fee_structure_items (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        fee_structure_id INTEGER NOT NULL REFERENCES ledger_fee_structures(id) ON DELETE CASCADE,
+        item_name VARCHAR(255) NOT NULL,
+        amount NUMERIC(10, 2) NOT NULL DEFAULT 0,
+        is_active BOOLEAN DEFAULT true,
+        sort_order INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(fee_structure_id, item_name)
+      )
+    `).catch(() => { });
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_fsi_tenant ON fee_structure_items(tenant_id)`).catch(() => { });
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_fsi_fee_structure ON fee_structure_items(fee_structure_id)`).catch(() => { });
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS student_charges (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+        academic_year_id INTEGER NOT NULL REFERENCES academic_years(id) ON DELETE CASCADE,
+        term_id INTEGER NOT NULL REFERENCES terms(id) ON DELETE CASCADE,
+        description VARCHAR(500) NOT NULL,
+        amount NUMERIC(12, 2) NOT NULL,
+        reason TEXT,
+        created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        status VARCHAR(20) NOT NULL DEFAULT 'unpaid',
+        paid_at TIMESTAMP,
+        ledger_entry_id INTEGER,
+        payment_id INTEGER REFERENCES payments(id) ON DELETE SET NULL
+      )
+    `).catch(() => { });
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_student_charges_tenant ON student_charges(tenant_id)`).catch(() => { });
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_student_charges_student ON student_charges(student_id)`).catch(() => { });
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_student_charges_term ON student_charges(term_id)`).catch(() => { });
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_student_charges_status ON student_charges(status)`).catch(() => { });
+
+    await client.query(`
       CREATE TABLE IF NOT EXISTS student_ledger (
         id SERIAL PRIMARY KEY,
         tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,

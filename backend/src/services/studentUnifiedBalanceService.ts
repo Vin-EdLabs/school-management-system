@@ -22,7 +22,7 @@ export const ARREARS_EXCLUDED_DEBIT_TYPES = [
 ] as const;
 
 /** Debits that receive carry_forward_credit when closing a term. */
-export const BILLABLE_DEBIT_TYPES = ['term_fee', 'payment_correction', 'manual_adjustment'] as const;
+export const BILLABLE_DEBIT_TYPES = ['term_fee', 'payment_correction', 'manual_adjustment', 'student_charge'] as const;
 
 const cfList = CARRY_FORWARD_ENTRY_TYPES.map((t) => `'${t}'`).join(', ');
 const arrearsExcludedList = ARREARS_EXCLUDED_DEBIT_TYPES.map((t) => `'${t}'`).join(', ');
@@ -538,6 +538,8 @@ export function fullBalanceToLiveBreakdown(
     status: balance.status === 'NotSet' ? 'Cleared' : balance.status,
     paymentsMade: balance.currentTerm ? balance.totalPaid : 0,
     totalCharged: balance.totalDue,
+    individualCharges: 0,
+    individualChargeLines: [],
     termRows: balance.termRows.map((r) => {
       const displayOutstanding = r.isCurrentTerm
         ? r.outstanding

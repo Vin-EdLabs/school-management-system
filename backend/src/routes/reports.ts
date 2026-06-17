@@ -13,6 +13,7 @@ import {
 } from '../services/financeSummaryService.js';
 import { ACTIVE_STUDENT_WHERE } from '../utils/studentEnrollment.js';
 import { getStudentLiveFeeBreakdown } from '../services/studentLiveFeeBreakdownService.js';
+import { resolveLedgerTermFromSettings } from '../services/ledgerFinanceService.js';
 
 const router = express.Router();
 
@@ -136,7 +137,22 @@ type ReportPeriod = {
   financeFrom: string;
   financeTo: string;
   academicYearDisplay: string;
+  ledgerTermId: number | null;
 };
+
+/** Per-student ledger totals for the report term (term_fee, arrears, paid, outstanding). */
+const LEDGER_STUDENT_TOTALS_CTE = `
+  student_ledger_totals AS (
+    SELECT
+      sl.student_id,
+      COALESCE(SUM(CASE WHEN sl.entry_type = 'term_fee' THEN sl.debit ELSE 0 END), 0)::numeric AS term_fee,
+      COALESCE(SUM(CASE WHEN sl.entry_type = 'arrears' THEN sl.debit ELSE 0 END), 0)::numeric AS arrears_amt,
+      COALESCE(SUM(CASE WHEN sl.entry_type = 'payment' THEN sl.credit ELSE 0 END), 0)::numeric AS paid_amt,
+      GREATEST(0, COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(sl.credit), 0))::numeric AS outstanding_amt
+    FROM student_ledger sl
+    WHERE sl.tenant_id = $1 AND sl.term_id = $2
+    GROUP BY sl.student_id
+  )`;
 
 async function loadReportPeriod(req: AuthRequest): Promise<ReportPeriod> {
   const tenantId = req.user!.tenantId!;
@@ -162,8 +178,10 @@ async function loadReportPeriod(req: AuthRequest): Promise<ReportPeriod> {
 
   const { from: financeFrom, to: financeTo } = await resolveFinanceBounds(tenantId, academicYear);
   const academicYearDisplay = formatAcademicYearLabel(academicYear);
+  const ledgerResolved = await resolveLedgerTermFromSettings(tenantId, academicYear, term);
+  const ledgerTermId = ledgerResolved?.termId ?? null;
 
-  return { tenantId, term, academicYear, termMatch, termLike, termOnly, financeFrom, financeTo, academicYearDisplay };
+  return { tenantId, term, academicYear, termMatch, termLike, termOnly, financeFrom, financeTo, academicYearDisplay, ledgerTermId };
 }
 
 /**
@@ -291,7 +309,10 @@ router.get('/fee-status', async (req: AuthRequest, res) => {
     const totalArrearsSum = students.reduce((sum: number, s: any) => sum + s.arrears, 0);
     const totalExpected = students.reduce((sum: number, s: any) => sum + s.totalFeeExpected, 0);
     const totalPaid = students.reduce((sum: number, s: any) => sum + s.totalPaid, 0);
-    const totalBalance = students.reduce((sum: number, s: any) => sum + s.balance, 0);
+    const totalBalance = students.reduce(
+      (sum: number, s: any) => sum + (s.balance > 0 ? s.balance : 0),
+      0
+    );
 
     const classResult = await query(
       'SELECT id, class_name FROM classes WHERE id = $1 AND tenant_id = $2',
@@ -330,70 +351,50 @@ router.get('/fee-status', async (req: AuthRequest, res) => {
  */
 router.get('/financial-summary', async (req: AuthRequest, res) => {
   try {
-    const { tenantId, term, termMatch, termLike, termOnly, financeFrom, financeTo, academicYearDisplay, academicYear } =
+    const { tenantId, term, termMatch, termLike, termOnly, financeFrom, financeTo, academicYearDisplay, academicYear, ledgerTermId } =
       await loadReportPeriod(req);
 
+    const feeTotalsRow = ledgerTermId
+      ? (
+          await query(
+            `WITH ${LEDGER_STUDENT_TOTALS_CTE}
+             SELECT
+               COALESCE(SUM(COALESCE(slt.term_fee, 0) + COALESCE(slt.arrears_amt, 0)), 0)::numeric AS total_expected,
+               COALESCE(SUM(COALESCE(slt.paid_amt, 0)), 0)::numeric AS total_collected,
+               COALESCE(SUM(COALESCE(slt.outstanding_amt, 0)), 0)::numeric AS total_outstanding
+             FROM students s
+             LEFT JOIN student_ledger_totals slt ON slt.student_id = s.id
+             WHERE s.tenant_id = $1 AND ${ACTIVE_STUDENT_WHERE}`,
+            [tenantId, ledgerTermId]
+          )
+        ).rows[0]
+      : { total_expected: 0, total_collected: 0, total_outstanding: 0 };
+
     const summaryQuery = `
-      WITH class_raw_fee AS (
-        SELECT c.id AS class_id,
-          COALESCE(SUM(fs.amount), 0)::numeric AS raw_total
-        FROM classes c
-        LEFT JOIN fee_structures fs ON fs.class_id = c.id
-          AND (fs.tenant_id = $1 OR fs.tenant_id IS NULL)
-          AND (${TERM_PRED_FS})
-        WHERE c.tenant_id = $1
-        GROUP BY c.id
-      ),
-      student_arrears AS (
-        SELECT ta.student_id, COALESCE(SUM(ta.amount), 0)::numeric AS arrears_amt
-        FROM term_arrears ta
-        WHERE ta.tenant_id = $1 AND (${TERM_PRED_TA})
-        GROUP BY ta.student_id
-      ),
-      student_payments AS (
-        SELECT p.student_id, COALESCE(SUM(COALESCE(p.amount_paid, p.amount, 0)), 0)::numeric AS paid_amt
-        FROM payments p
-        WHERE p.tenant_id = $1 AND COALESCE(p.is_voided, false) = false AND (${TERM_PRED_PAY})
-        GROUP BY p.student_id
-      ),
-      fee_totals AS (
-        SELECT
-          COALESCE(SUM(${DISCOUNTED_TERM_FEE_SQL} + COALESCE(sa.arrears_amt, 0)), 0)::numeric AS total_expected,
-          COALESCE(SUM(COALESCE(sp.paid_amt, 0)), 0)::numeric AS total_collected
-        FROM students s
-        INNER JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
-        LEFT JOIN class_raw_fee crf ON crf.class_id = s.class_assigned_id
-        LEFT JOIN student_arrears sa ON sa.student_id = s.id
-        LEFT JOIN student_payments sp ON sp.student_id = s.id
-        WHERE s.tenant_id = $1
-      ),
-      expense_total AS (
+      WITH expense_total AS (
         SELECT COALESCE(SUM(amount), 0)::numeric AS total_expenses
         FROM expenses
         WHERE tenant_id = $1
-          AND COALESCE(payment_date::date, created_at::date) >= $5::date
-          AND COALESCE(payment_date::date, created_at::date) <= $6::date
+          AND COALESCE(payment_date::date, created_at::date) >= $2::date
+          AND COALESCE(payment_date::date, created_at::date) <= $3::date
       ),
       income_total AS (
         SELECT COALESCE(SUM(amount), 0)::numeric AS total_other_income
         FROM income
         WHERE tenant_id = $1
-          AND COALESCE(income_date::date, created_at::date) >= $5::date
-          AND COALESCE(income_date::date, created_at::date) <= $6::date
+          AND COALESCE(income_date::date, created_at::date) >= $2::date
+          AND COALESCE(income_date::date, created_at::date) <= $3::date
       )
-      SELECT
-        ft.total_expected,
-        ft.total_collected,
-        et.total_expenses,
-        it.total_other_income
-      FROM fee_totals ft, expense_total et, income_total it
+      SELECT et.total_expenses, it.total_other_income
+      FROM expense_total et, income_total it
     `;
 
-    const result = await query(summaryQuery, [tenantId, termMatch, termLike, termOnly, financeFrom, financeTo]);
+    const result = await query(summaryQuery, [tenantId, financeFrom, financeTo]);
     const row = result.rows[0];
 
-    const totalExpected = parseFloat(row.total_expected) || 0;
-    const collected = parseFloat(row.total_collected) || 0;
+    const totalExpected = parseFloat(feeTotalsRow.total_expected) || 0;
+    const collected = parseFloat(feeTotalsRow.total_collected) || 0;
+    const feeOutstanding = parseFloat(feeTotalsRow.total_outstanding) || 0;
 
     const [incomeExpenseAll, activity, cashPosition, collectionsByAccount, fundTransfers] = await Promise.all([
       getIncomeAndExpenseTotalsAll(tenantId),
@@ -421,7 +422,6 @@ router.get('/financial-summary', async (req: AuthRequest, res) => {
     const totalIncome = collected + otherIncome;
     const totalOpeningBalance = getTotalOpeningBalance(cashPosition.accounts);
     const periodActivityNet = totalIncome - expenses;
-    const feeOutstanding = Math.max(0, totalExpected - collected);
     const netBalance = totalOpeningBalance + totalIncome - expenses;
     const accountSnapshots = buildAccountSnapshots(cashPosition.accounts);
 
@@ -463,60 +463,31 @@ router.get('/financial-summary', async (req: AuthRequest, res) => {
  */
 router.get('/fees-by-class', async (req: AuthRequest, res) => {
   try {
-    const { tenantId, termMatch, termLike, termOnly } = await loadReportPeriod(req);
+    const { tenantId, ledgerTermId } = await loadReportPeriod(req);
+
+    if (!ledgerTermId) {
+      res.set('Cache-Control', 'no-store');
+      return res.json([]);
+    }
 
     const feesByClassQuery = `
-      WITH class_raw_fee AS (
-        SELECT c.id AS class_id,
-          COALESCE(SUM(fs.amount), 0)::numeric AS raw_total
-        FROM classes c
-        LEFT JOIN fee_structures fs ON fs.class_id = c.id
-          AND (fs.tenant_id = $1 OR fs.tenant_id IS NULL)
-          AND (${TERM_PRED_FS})
-        WHERE c.tenant_id = $1
-        GROUP BY c.id
-      ),
-      student_arrears AS (
-        SELECT ta.student_id, COALESCE(SUM(ta.amount), 0)::numeric AS arrears_amt
-        FROM term_arrears ta
-        WHERE ta.tenant_id = $1 AND (${TERM_PRED_TA})
-        GROUP BY ta.student_id
-      ),
-      student_payments AS (
-        SELECT p.student_id, COALESCE(SUM(COALESCE(p.amount_paid, p.amount, 0)), 0)::numeric AS paid_amt
-        FROM payments p
-        WHERE p.tenant_id = $1 AND (${TERM_PRED_PAY})
-          AND COALESCE(p.is_voided, false) = false
-        GROUP BY p.student_id
-      )
+      WITH ${LEDGER_STUDENT_TOTALS_CTE}
       SELECT
         c.id,
         c.class_name AS name,
         COUNT(s.id)::int AS students,
-        COALESCE(SUM(
-          CASE
-            WHEN s.id IS NULL THEN 0::numeric
-            ELSE (${DISCOUNTED_TERM_FEE_SQL} + COALESCE(sa.arrears_amt, 0))
-          END
-        ), 0)::numeric AS expected,
-        COALESCE(SUM(COALESCE(sp.paid_amt, 0)), 0)::numeric AS collected,
-        COALESCE(SUM(
-          CASE
-            WHEN s.id IS NULL THEN 0::numeric
-            ELSE (${DISCOUNTED_TERM_FEE_SQL} + COALESCE(sa.arrears_amt, 0) - COALESCE(sp.paid_amt, 0))
-          END
-        ), 0)::numeric AS outstanding
+        COALESCE(SUM(COALESCE(slt.term_fee, 0) + COALESCE(slt.arrears_amt, 0)), 0)::numeric AS expected,
+        COALESCE(SUM(COALESCE(slt.paid_amt, 0)), 0)::numeric AS collected,
+        COALESCE(SUM(COALESCE(slt.outstanding_amt, 0)), 0)::numeric AS outstanding
       FROM classes c
       LEFT JOIN students s ON s.class_assigned_id = c.id AND s.tenant_id = c.tenant_id AND ${ACTIVE_STUDENT_WHERE}
-      LEFT JOIN class_raw_fee crf ON crf.class_id = c.id
-      LEFT JOIN student_arrears sa ON sa.student_id = s.id
-      LEFT JOIN student_payments sp ON sp.student_id = s.id
+      LEFT JOIN student_ledger_totals slt ON slt.student_id = s.id
       WHERE c.tenant_id = $1
       GROUP BY c.id, c.class_name
       ORDER BY c.class_name
     `;
 
-    const result = await query(feesByClassQuery, [tenantId, termMatch, termLike, termOnly]);
+    const result = await query(feesByClassQuery, [tenantId, ledgerTermId]);
     res.set('Cache-Control', 'no-store');
     res.json(result.rows);
   } catch (error) {
@@ -530,37 +501,21 @@ router.get('/fees-by-class', async (req: AuthRequest, res) => {
  */
 router.get('/outstanding-fees', async (req: AuthRequest, res) => {
   try {
-    const { tenantId, termMatch, termLike, termOnly } = await loadReportPeriod(req);
+    const { tenantId, termMatch, termLike, termOnly, ledgerTermId } = await loadReportPeriod(req);
+
+    if (!ledgerTermId) {
+      res.set('Cache-Control', 'no-store');
+      return res.json([]);
+    }
 
     const outstandingQuery = `
-      WITH class_raw_fee AS (
-        SELECT c.id AS class_id,
-          COALESCE(SUM(fs.amount), 0)::numeric AS raw_total
-        FROM classes c
-        LEFT JOIN fee_structures fs ON fs.class_id = c.id
-          AND (fs.tenant_id = $1 OR fs.tenant_id IS NULL)
-          AND (${TERM_PRED_FS})
-        WHERE c.tenant_id = $1
-        GROUP BY c.id
-      ),
-      student_arrears AS (
-        SELECT ta.student_id, COALESCE(SUM(ta.amount), 0)::numeric AS arrears_amt
-        FROM term_arrears ta
-        WHERE ta.tenant_id = $1 AND (${TERM_PRED_TA})
-        GROUP BY ta.student_id
-      ),
-      student_payments AS (
-        SELECT p.student_id, COALESCE(SUM(COALESCE(p.amount_paid, p.amount, 0)), 0)::numeric AS paid_amt
-        FROM payments p
-        WHERE p.tenant_id = $1 AND COALESCE(p.is_voided, false) = false AND (${TERM_PRED_PAY})
-        GROUP BY p.student_id
-      ),
+      WITH ${LEDGER_STUDENT_TOTALS_CTE},
       balances AS (
         SELECT
           s.id,
           s.first_name || ' ' || s.last_name AS name,
           c.class_name AS class,
-          (${DISCOUNTED_TERM_FEE_SQL} + COALESCE(sa.arrears_amt, 0) - COALESCE(sp.paid_amt, 0))::numeric AS amount,
+          COALESCE(slt.outstanding_amt, 0)::numeric AS amount,
           COALESCE(
             (
               SELECT EXTRACT(DAY FROM NOW() - MAX(COALESCE(p2.payment_date, p2.created_at::date)::timestamp))::int
@@ -571,9 +526,7 @@ router.get('/outstanding-fees', async (req: AuthRequest, res) => {
           ) AS days
         FROM students s
         INNER JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
-        LEFT JOIN class_raw_fee crf ON crf.class_id = s.class_assigned_id
-        LEFT JOIN student_arrears sa ON sa.student_id = s.id
-        LEFT JOIN student_payments sp ON sp.student_id = s.id
+        INNER JOIN student_ledger_totals slt ON slt.student_id = s.id
         WHERE s.tenant_id = $1 AND ${ACTIVE_STUDENT_WHERE}
       )
       SELECT id, name, class, amount, days
@@ -583,7 +536,7 @@ router.get('/outstanding-fees', async (req: AuthRequest, res) => {
       LIMIT 50
     `;
 
-    const result = await query(outstandingQuery, [tenantId, termMatch, termLike, termOnly]);
+    const result = await query(outstandingQuery, [tenantId, ledgerTermId, termMatch, termLike, termOnly]);
     res.set('Cache-Control', 'no-store');
     res.json(result.rows);
   } catch (error) {
@@ -831,7 +784,42 @@ router.get('/income-vs-expenditure', async (req: AuthRequest, res) => {
  */
 router.get('/admin-overview', async (req: AuthRequest, res) => {
   try {
-    const { tenantId, termMatch, termLike, termOnly } = await loadReportPeriod(req);
+    const { tenantId, termMatch, termLike, termOnly, ledgerTermId } = await loadReportPeriod(req);
+
+    const feeMixQuery = ledgerTermId
+      ? `
+        WITH ${LEDGER_STUDENT_TOTALS_CTE},
+        student_fee AS (
+          SELECT
+            s.id,
+            COALESCE(slt.term_fee, 0)::numeric AS term_fee,
+            COALESCE(slt.arrears_amt, 0)::numeric AS arrears_amt,
+            COALESCE(slt.paid_amt, 0)::numeric AS paid_amt,
+            COALESCE(slt.outstanding_amt, 0)::numeric AS outstanding_amt,
+            (COALESCE(slt.term_fee, 0) + COALESCE(slt.arrears_amt, 0) - COALESCE(slt.paid_amt, 0))::numeric AS net_position
+          FROM students s
+          LEFT JOIN student_ledger_totals slt ON slt.student_id = s.id
+          WHERE s.tenant_id = $1 AND ${ACTIVE_STUDENT_WHERE}
+        ),
+        categorized AS (
+          SELECT
+            CASE
+              WHEN term_fee <= 0 AND arrears_amt <= 0 AND paid_amt <= 0 THEN 'noFee'
+              WHEN net_position < -0.01 THEN 'credit'
+              WHEN outstanding_amt <= 0.01 THEN 'paid'
+              ELSE 'owing'
+            END AS bucket,
+            outstanding_amt AS owing_amt
+          FROM student_fee
+        )
+        SELECT
+          COUNT(*) FILTER (WHERE bucket = 'paid')::int AS paid,
+          COUNT(*) FILTER (WHERE bucket = 'owing')::int AS owing,
+          COUNT(*) FILTER (WHERE bucket = 'noFee')::int AS no_fee,
+          COUNT(*) FILTER (WHERE bucket = 'credit')::int AS credit,
+          COALESCE(SUM(CASE WHEN bucket = 'owing' THEN owing_amt ELSE 0 END), 0)::numeric AS total_owing
+        FROM categorized`
+      : `SELECT 0::int AS paid, 0::int AS owing, 0::int AS no_fee, 0::int AS credit, 0::numeric AS total_owing`;
 
     const [countsRes, enrollmentRes, feeMixRes, classesRes] = await Promise.all([
       query(
@@ -862,62 +850,7 @@ router.get('/admin-overview', async (req: AuthRequest, res) => {
          LIMIT 20`,
         [tenantId]
       ),
-      query(
-        `WITH class_raw_fee AS (
-          SELECT c.id AS class_id, COALESCE(SUM(fs.amount), 0)::numeric AS raw_total
-          FROM classes c
-          LEFT JOIN fee_structures fs ON fs.class_id = c.id
-            AND (fs.tenant_id = $1 OR fs.tenant_id IS NULL)
-            AND (${TERM_PRED_FS})
-          WHERE c.tenant_id = $1
-          GROUP BY c.id
-        ),
-        student_arrears AS (
-          SELECT ta.student_id, COALESCE(SUM(ta.amount), 0)::numeric AS arrears_amt
-          FROM term_arrears ta
-          WHERE ta.tenant_id = $1 AND (${TERM_PRED_TA})
-          GROUP BY ta.student_id
-        ),
-        student_payments AS (
-          SELECT p.student_id, COALESCE(SUM(COALESCE(p.amount_paid, p.amount, 0)), 0)::numeric AS paid_amt
-          FROM payments p
-          WHERE p.tenant_id = $1 AND COALESCE(p.is_voided, false) = false AND (${TERM_PRED_PAY})
-          GROUP BY p.student_id
-        ),
-        student_fee AS (
-          SELECT
-            s.id,
-            COALESCE(crf.raw_total, 0)::numeric AS raw_fee,
-            COALESCE(sa.arrears_amt, 0)::numeric AS arrears_amt,
-            COALESCE(sp.paid_amt, 0)::numeric AS paid_amt,
-            (${DISCOUNTED_TERM_FEE_SQL})::numeric AS term_fee
-          FROM students s
-          INNER JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
-          LEFT JOIN class_raw_fee crf ON crf.class_id = s.class_assigned_id
-          LEFT JOIN student_arrears sa ON sa.student_id = s.id
-          LEFT JOIN student_payments sp ON sp.student_id = s.id
-          WHERE s.tenant_id = $1 AND ${ACTIVE_STUDENT_WHERE}
-        ),
-        categorized AS (
-          SELECT
-            CASE
-              WHEN raw_fee <= 0 AND arrears_amt <= 0 THEN 'noFee'
-              WHEN (term_fee + arrears_amt - paid_amt) < -0.01 THEN 'credit'
-              WHEN (term_fee + arrears_amt - paid_amt) <= 0.01 THEN 'paid'
-              ELSE 'owing'
-            END AS bucket,
-            GREATEST(0, term_fee + arrears_amt - paid_amt)::numeric AS owing_amt
-          FROM student_fee
-        )
-        SELECT
-          COUNT(*) FILTER (WHERE bucket = 'paid')::int AS paid,
-          COUNT(*) FILTER (WHERE bucket = 'owing')::int AS owing,
-          COUNT(*) FILTER (WHERE bucket = 'noFee')::int AS no_fee,
-          COUNT(*) FILTER (WHERE bucket = 'credit')::int AS credit,
-          COALESCE(SUM(CASE WHEN bucket = 'owing' THEN owing_amt ELSE 0 END), 0)::numeric AS total_owing
-        FROM categorized`,
-        [tenantId, termMatch, termLike, termOnly]
-      ),
+      query(feeMixQuery, ledgerTermId ? [tenantId, ledgerTermId] : [tenantId]),
       query(
         `SELECT TRIM(class_name) AS class_name
          FROM classes

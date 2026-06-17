@@ -86,7 +86,7 @@ export const FinanceStatementPreview = forwardRef<HTMLDivElement, FinanceStateme
       <hr className="fs-divider" />
 
       <section>
-        <h3>Term Fee Breakdown</h3>
+        <h3>Total Term Bill Breakdown</h3>
         {statement.feeBreakdown.map((term) =>
           term.noFeeStructure && term.netBilled <= 0 && term.lines.length === 0 ? (
             <p key={term.termId} className="text-sm text-muted-foreground mb-2">
@@ -109,15 +109,79 @@ export const FinanceStatementPreview = forwardRef<HTMLDivElement, FinanceStateme
                   <span>- {money(term.discountAmount)}</span>
                 </div>
               ) : null}
+
+              {term.individualCharges && term.individualCharges.length > 0 ? (
+                <div className="fs-individual-charges">
+                  <div className="fs-fee-line divider-label">
+                    <span>── Individual Charges ──</span>
+                    <span />
+                  </div>
+                  {term.individualCharges.map((c) => (
+                    <div key={c.id} className="fs-fee-line individual-charge">
+                      <span>
+                        {c.description} {c.reason ? `(${c.reason})` : ''}
+                      </span>
+                      <span>{money(c.amount)}</span>
+                    </div>
+                  ))}
+                  <div className="fs-fee-line divider" />
+                </div>
+              ) : null}
+
               <div className="fs-fee-subtotal">
-                <span>{term.termLabel} Net Billed:</span>
-                <span>{money(term.netBilled)}</span>
+                <span>Total Term Bill:</span>
+                <span>{money(term.termTotal ?? term.netBilled ?? term.subtotal)}</span>
               </div>
+              {term.discountAmount > 0 ? (
+                <div className="fs-fee-subtotal">
+                  <span>{term.termLabel} Net Billed:</span>
+                  <span>{money(term.netBilled)}</span>
+                </div>
+              ) : null}
             </div>
           )
         )}
         <p className="fs-grand-total">GRAND TOTAL FEES BILLED: {money(statement.grandTotalFeesBilled)}</p>
       </section>
+
+      {(statement.individualCharges?.length ?? 0) > 0 ? (
+        <section>
+          <h3>Individual Charges</h3>
+          <table className="fs-table-term-summary">
+            <thead>
+              <tr>
+                <th>Description</th>
+                <th>Reason</th>
+                <th>Term</th>
+                <th>Date</th>
+                <th>Added By</th>
+                <th className="fs-num">Amount</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {statement.individualCharges.map((line) => (
+                <tr key={line.id}>
+                  <td>{line.description}</td>
+                  <td>{line.reason || '—'}</td>
+                  <td>{line.termLabel}</td>
+                  <td>{line.date}</td>
+                  <td>{line.addedBy || '—'}</td>
+                  <td className="fs-num">{money(line.amount)}</td>
+                  <td className={line.status === 'paid' ? 'text-green-700' : 'text-red-700'}>
+                    {line.status === 'paid' ? 'PAID' : 'UNPAID'}
+                  </td>
+                </tr>
+              ))}
+              <tr className="fs-totals-row">
+                <td colSpan={5}>Subtotal — Individual Charges</td>
+                <td className="fs-num">{money(statement.individualChargesSubtotal ?? 0)}</td>
+                <td />
+              </tr>
+            </tbody>
+          </table>
+        </section>
+      ) : null}
 
       <section>
         <h3>Term-by-Term Summary</h3>

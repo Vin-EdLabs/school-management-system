@@ -17,6 +17,7 @@ import { getFriendlyLoginMessage } from '@/utils/loginErrors';
 import { formatDisplayDate } from '@/utils/dateFormat';
 import { resolveSocketBaseUrl, SOCKET_IO_OPTIONS } from '@/utils/socketUrl';
 import FinanceStatementModal from '@/components/finance/FinanceStatementModal';
+import TermBillBreakdown from '@/components/fees/TermBillBreakdown';
 import { isFinanceStatementNotificationUrl } from '@/services/studentFinanceStatementApi';
 
 function resolveApiBase(): string {
@@ -592,10 +593,6 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         : [{ token: data.token, student: studentInfo }];
       syncLinkedAccounts(linked);
 
-      void parentFetch('/parent/finance', {}, data.token)
-        .then((financeData) => setFinance(financeData))
-        .catch(() => undefined);
-
       setLoginAdmission('');
       setLoginPassword('');
     } catch (err: unknown) {
@@ -740,12 +737,6 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       } catch {
         if (studentSessionRef.current === sessionId) setParentDeskUnread(0);
       }
-      void parentFetch('/parent/finance', {}, authToken)
-        .then((financeData) => {
-          if (studentSessionRef.current !== sessionId) return;
-          setFinance(financeData);
-        })
-        .catch(() => undefined);
     } finally {
       window.clearTimeout(forceClearTimer);
       if (studentSessionRef.current === sessionId) {
@@ -993,17 +984,6 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     if (activeTab === 'overview') return;
     void fetchTabData(activeTab);
   }, [token, student?.admission_number, activeTab, isSwitchingStudent, fetchTabData]);
-
-  useEffect(() => {
-    if (!token || !student?.admission_number || isSwitchingStudent || finance) return;
-    const sessionId = studentSessionRef.current;
-    void parentFetch('/parent/finance', {}, token)
-      .then((financeData) => {
-        if (studentSessionRef.current !== sessionId) return;
-        setFinance(financeData);
-      })
-      .catch(() => undefined);
-  }, [token, student?.admission_number, isSwitchingStudent, finance]);
 
   useEffect(() => {
     if (!token || activeTab !== 'finance' || isSwitchingStudent) return;
@@ -1865,74 +1845,6 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               </div>
             </section>
 
-            {/* Fee balance snapshot */}
-            <section className="rounded-[1.5rem] border border-white/70 bg-white/58 p-4 shadow-[0_14px_38px_rgba(15,23,42,0.08)] backdrop-blur-2xl">
-              <div className="flex items-center justify-between gap-3 mb-3">
-                <div>
-                  <p className="text-sm font-black text-slate-950">Fee Balance</p>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    {isSwitchingStudent ? 'Switching student…' : finance?.currentTermLabel || finance?.currentTerm || student.current_term || 'Current term'}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void refreshFinanceAll()}
-                  disabled={isSwitchingStudent || dataLoading}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 ${dataLoading ? 'animate-spin' : ''}`} />
-                  Refresh
-                </button>
-              </div>
-              {isSwitchingStudent || (dataLoading && !finance) ? (
-                <div className="rounded-2xl border border-slate-100 bg-slate-50/80 px-4 py-6 text-center text-sm text-slate-500">
-                  Loading fee balance…
-                </div>
-              ) : finance ? (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <div className="rounded-2xl border border-slate-100 bg-white/80 p-3">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Outstanding</p>
-                    <p className="text-sm font-black text-slate-900 mt-1">
-                      {GH(Number(finance.credit ?? 0) > 0 ? finance.credit : Math.max(0, Number(finance.outstanding ?? finance.balance ?? 0)))}
-                    </p>
-                  </div>
-                  <div className="rounded-2xl border border-slate-100 bg-white/80 p-3">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Term Fee</p>
-                    <p className="text-sm font-black text-slate-900 mt-1">{GH(Number(finance.termFee ?? 0))}</p>
-                  </div>
-                  <div className="rounded-2xl border border-slate-100 bg-white/80 p-3">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Arrears</p>
-                    <p className="text-sm font-black text-slate-900 mt-1">{GH(Number(finance.arrears ?? 0))}</p>
-                  </div>
-                  <div className="rounded-2xl border border-slate-100 bg-white/80 p-3">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Paid</p>
-                    <p className="text-sm font-black text-emerald-700 mt-1">{GH(Number(finance.totalPaid ?? 0))}</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 px-4 py-5 text-center">
-                  <p className="text-sm text-slate-500">Tap Refresh to load balance, receipts, and payments.</p>
-                  <button
-                    type="button"
-                    onClick={() => void refreshFinanceAll()}
-                    className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700"
-                  >
-                    <RefreshCw className="h-3.5 w-3.5" />
-                    Load Fee Data
-                  </button>
-                </div>
-              )}
-              {finance ? (
-                <button
-                  type="button"
-                  onClick={() => handleTabChange('finance')}
-                  className="mt-3 w-full text-center text-xs font-bold text-emerald-700 hover:text-emerald-800"
-                >
-                  View full fee breakdown & payment history →
-                </button>
-              ) : null}
-            </section>
-
             {/* Quick Actions */}
             <section className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {quickActions.map((action) => (
@@ -2449,8 +2361,18 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                   </div>
                   <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-white/20">
                     <div className="text-center">
-                      <p className="text-white/60 text-[10px] uppercase tracking-wide">Term Fee</p>
-                      <p className="text-xs sm:text-sm font-bold mt-0.5">{GH(Number(finance.termFee ?? 0))}</p>
+                      <p className="text-white/60 text-[10px] uppercase tracking-wide">Total Term Bill</p>
+                      <TermBillBreakdown
+                        total={Number(finance.termFee ?? 0)}
+                        credit={Number(finance.feeBreakdown?.credit ?? finance.credit ?? 0)}
+                        breakdownItems={(finance.feeBreakdown?.termFeeLines || []).map((line: { label: string; amount: number }) => ({
+                          label: line.label,
+                          amount: line.amount,
+                        }))}
+                        individualCharges={finance.individualChargeLines}
+                        compact
+                        className="mt-0.5 text-white [&_button]:text-white/80 [&_span]:text-white [&_.font-mono]:text-white"
+                      />
                     </div>
                     <div className="text-center">
                       <p className="text-white/60 text-[10px] uppercase tracking-wide">Arrears</p>
@@ -2480,6 +2402,19 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                           <span className="text-sm font-semibold text-gray-800">{GH(Number(line.amount || 0))}</span>
                         </div>
                       ))}
+                      {(finance.liveBreakdown?.individualChargeLines || []).length > 0 && (
+                        <>
+                          {(finance.liveBreakdown.individualChargeLines || []).map((charge: { id: number; description: string; amount: number; reason: string | null; status: string }) => (
+                            <div key={`charge-${charge.id}`} className="flex items-center justify-between px-4 py-2.5 bg-blue-50/50">
+                              <div className="text-sm flex-1">
+                                <div className="text-blue-700 font-medium">{charge.description}</div>
+                                {charge.reason && <div className="text-xs text-blue-600 mt-0.5">{charge.reason}</div>}
+                              </div>
+                              <span className="text-sm font-semibold text-blue-700 ml-2">{GH(Number(charge.amount || 0))}</span>
+                            </div>
+                          ))}
+                        </>
+                      )}
                       {Number(finance.feeBreakdown.discountAmount || finance.discountAmount || 0) > 0 && (
                         <div className="flex items-center justify-between px-4 py-2.5 bg-amber-50">
                           <span className="text-sm text-amber-700 flex items-center gap-1.5">
@@ -2498,6 +2433,12 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                           <span className="text-sm font-semibold text-red-700">{GH(Number(line.amount || 0))}</span>
                         </div>
                       ))}
+                      {Number(finance.feeBreakdown.credit ?? finance.credit ?? 0) > 0 && (
+                        <div className="flex items-center justify-between px-4 py-2.5 bg-blue-50/70">
+                          <span className="text-sm text-blue-700">Credit</span>
+                          <span className="text-sm font-semibold text-blue-700">-{GH(Number(finance.feeBreakdown.credit ?? finance.credit ?? 0))}</span>
+                        </div>
+                      )}
                       <div className="flex items-center justify-between px-4 py-2.5">
                         <span className="text-sm font-medium text-gray-700">Total Due</span>
                         <span className="text-sm font-bold text-gray-800">{GH(Number(finance.feeBreakdown.totalDue ?? finance.totalDue ?? 0))}</span>

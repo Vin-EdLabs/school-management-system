@@ -114,8 +114,8 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
     ...(hasAccess('cash-bank') ? [{ id: 'cash-bank', label: 'Cash & Bank', icon: Landmark }] : []),
     ...(hasAccess('payroll') ? [{ id: 'payroll', label: 'Payroll', icon: Wallet }] : []),
     ...(hasAccess('reports') ? [{ id: 'reports', label: 'Reports', icon: BarChart3 }] : []),
-    ...(hasAccess('print-fee-status') ? [{ id: 'print-fee-status', label: 'Fee Status', icon: FileText }] : []),
     ...(hasAccess('manual-adjustments') ? [{ id: 'manual-adjustments', label: 'Balance overrides', icon: Scale }] : []),
+    ...(hasAccess('print-fee-status') ? [{ id: 'print-fee-status', label: 'Fee Status', icon: FileText }] : []),
   ],
   records: [
     ...(hasAccess('records') ? [{ id: 'records', label: 'Records', icon: Search }] : []),

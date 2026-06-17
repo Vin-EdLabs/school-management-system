@@ -108,7 +108,7 @@ const OutstandingFees = () => {
     const reportData = filteredStudents.map(student => ({
       'Student Name': student.studentName,
       'Class': student.className,
-      'Current Term Fee': student.currentTermFee,
+      'Total Term Bill': student.currentTermFee,
       'Arrears': student.arrears,
       'Total Due': student.totalAmountDue,
       'Total Paid': student.totalPaid,
@@ -275,7 +275,7 @@ const OutstandingFees = () => {
                       <div className="flex flex-col">
                         <span className="text-foreground/90 font-medium">Due: GHS {student.totalAmountDue.toLocaleString()}</span>
                         <div className="flex justify-end gap-2 text-[9px] text-muted-foreground mt-0.5 opacity-60">
-                          <span>Fee: {student.currentTermFee.toLocaleString()}</span>
+                          <span>Bill: {student.currentTermFee.toLocaleString()}</span>
                           {student.arrears > 0 && <span className="text-orange-500/70 font-semibold">Arr: {student.arrears.toLocaleString()}</span>}
                         </div>
                         <span className="text-emerald-500/80 font-bold text-[9px] mt-1">Paid: GHS {student.totalPaid.toLocaleString()}</span>

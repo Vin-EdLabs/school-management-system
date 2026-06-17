@@ -7,8 +7,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useSchool } from '../../contexts/SchoolContext';
 import { useSocket } from '../../contexts/SocketContext';
 import { apiService } from '../../services/api';
+import { resolveLogoUrl } from '../../services/tenantService';
 import { formatDisplayDate } from '../../utils/dateFormat';
-import { Printer, FileText, Users, GraduationCap, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { downloadFeeStatusPdf } from './buildFeeStatusPdf';
+import { loadImageDataUrl } from '../../utils/schoolPdfHeader';
+import { toast } from '@/hooks/use-toast';
+import { Printer, FileText, Users, GraduationCap, Loader2, AlertCircle, RefreshCw, FileDown } from 'lucide-react';
 
 /** One row from the fee status report (server-calculated). */
 interface FeeStatusStudent {
@@ -50,6 +54,12 @@ function feeStatusLabel(status: FeeStatusStudent['status']): string {
   if (status === 'not_set') return 'Not Set';
   if (status === 'no_fee') return 'No Fee Set';
   return 'Paid';
+}
+
+function statusFilterLabel(filter: StatusFilter): string {
+  if (filter === 'owing') return 'Students owing fees';
+  if (filter === 'paid') return 'Fully paid students';
+  return 'All students';
 }
 
 const PrintFeeStatusModule = () => {
@@ -151,8 +161,45 @@ const PrintFeeStatusModule = () => {
   const summary = report?.summary;
   const periodLabel = report?.academicPeriod?.label ?? 'Current period';
 
-  const handlePrint = () => {
-    if (!report || studentsToShow.length === 0 && !loading) {
+  const logoUrl = resolveLogoUrl(school?.logo_url ?? null);
+
+  const handleExportPdf = async () => {
+    if (!report || studentsToShow.length === 0) {
+      toast({
+        title: 'Nothing to export',
+        description: 'Select a class and load the report first.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      await downloadFeeStatusPdf({
+        schoolName,
+        logoUrl,
+        className: selectedClassName || report.class.name,
+        periodLabel,
+        term: report.academicPeriod.term,
+        academicYear: report.academicPeriod.academicYear,
+        statusFilterLabel: statusFilterLabel(statusFilter),
+        students: studentsToShow,
+        summary: report.summary,
+      });
+      toast({
+        title: 'PDF export ready',
+        description: `${studentsToShow.length} student(s) exported to PDF.`,
+      });
+    } catch (err: unknown) {
+      toast({
+        title: 'Export failed',
+        description: err instanceof Error ? err.message : 'Could not generate PDF.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handlePrint = async () => {
+    if (!report || (studentsToShow.length === 0 && !loading)) {
       const printWindow = window.open('', '_blank');
       if (printWindow) {
         printWindow.document.write(`
@@ -164,23 +211,32 @@ const PrintFeeStatusModule = () => {
       return;
     }
 
+    const logoDataUrl = await loadImageDataUrl(logoUrl);
+
+    const money = (n: number) =>
+      Number(n || 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
     const rows = studentsToShow
       .map(
-        (s) => `
+        (s, index) => `
         <tr>
+          <td class="center">${index + 1}</td>
           <td>${s.studentNumber}</td>
           <td>${s.studentName}</td>
-          <td>${s.className}</td>
-          <td class="amount">GHS ${(s.termFee ?? 0).toLocaleString()}</td>
-          <td class="amount">GHS ${(s.arrears ?? 0).toLocaleString()}</td>
-          <td class="amount">GHS ${(s.totalFeeExpected ?? 0).toLocaleString()}</td>
-          <td class="amount">GHS ${s.totalPaid.toLocaleString()}</td>
-          <td class="amount ${s.balance > 0 ? 'owing' : s.balance < 0 ? 'credit' : ''}">GHS ${s.balance.toLocaleString()}</td>
-          <td>${feeStatusLabel(s.status)}</td>
+          <td class="amount">GHS ${money(s.termFee ?? 0)}</td>
+          <td class="amount">GHS ${money(s.arrears ?? 0)}</td>
+          <td class="amount">GHS ${money(s.totalFeeExpected ?? 0)}</td>
+          <td class="amount">GHS ${money(s.totalPaid)}</td>
+          <td class="amount ${s.balance > 0 ? 'owing' : s.balance < 0 ? 'credit' : ''}">GHS ${money(s.balance)}</td>
+          <td class="center status-${s.status}">${feeStatusLabel(s.status)}</td>
         </tr>
       `
       )
       .join('');
+
+    const logoBlock = logoDataUrl
+      ? `<img src="${logoDataUrl}" alt="" class="logo" />`
+      : '';
 
     const printContent = `
       <!DOCTYPE html>
@@ -188,66 +244,106 @@ const PrintFeeStatusModule = () => {
       <head>
         <title>Fee Status Report - ${selectedClassName}</title>
         <style>
-          body { font-family: Arial, sans-serif; margin: 20px; color: #333; font-size: 14px; }
-          .header { text-align: center; margin-bottom: 24px; border-bottom: 2px solid #3B82F6; padding-bottom: 16px; }
-          .school-name { font-size: 22px; font-weight: bold; color: #1F2937; }
-          .report-title { font-size: 16px; font-weight: bold; color: #3B82F6; margin-top: 8px; }
-          .report-info { background: #F3F4F6; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; }
-          table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-          th, td { border: 1px solid #D1D5DB; padding: 10px; text-align: left; }
-          th { background: #3B82F6; color: white; }
-          tr:nth-child(even) { background: #F9FAFB; }
+          @page { size: A4 landscape; margin: 14mm; }
+          body { font-family: "Times New Roman", Times, serif; margin: 0; color: #222; font-size: 11pt; }
+          .header { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid #2d2d2d; }
+          .logo { width: 64px; height: 64px; object-fit: contain; flex-shrink: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .school-name { font-size: 18pt; font-weight: bold; margin: 0 0 4px; }
+          .report-title { font-size: 11pt; margin: 0; color: #444; }
+          .meta { font-size: 9pt; color: #444; line-height: 1.55; margin-bottom: 16px; }
+          .summary-table { width: 280px; border-collapse: collapse; margin-bottom: 18px; font-size: 9.5pt; }
+          .summary-table th, .summary-table td { border: 1px solid #b4b4b4; padding: 6px 8px; }
+          .summary-table th { background: #f2f2f2; text-align: left; font-weight: bold; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .summary-table td:last-child { text-align: right; }
+          table.data { width: 100%; border-collapse: collapse; font-size: 9pt; }
+          table.data th, table.data td { border: 1px solid #b4b4b4; padding: 6px 7px; }
+          table.data th { background: #f2f2f2; font-weight: bold; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          table.data tbody tr:nth-child(even) { background: #fafafa; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           .amount { text-align: right; }
-          .amount.owing { color: #DC2626; font-weight: bold; }
-          .amount.credit { color: #059669; }
-          .summary { margin-top: 20px; padding: 12px 16px; background: #EFF6FF; border-radius: 8px; border-left: 4px solid #3B82F6; }
-          .footer { margin-top: 32px; font-size: 12px; color: #6B7280; text-align: center; }
-          @media print {
-            body { margin: 12px; }
-            .no-print { display: none !important; }
-          }
+          .center { text-align: center; }
+          .amount.owing, .status-owing { color: #b91c1c; font-weight: bold; }
+          .amount.credit, .status-credit { color: #059669; font-weight: bold; }
+          .status-paid { color: #166534; }
+          .footer { margin-top: 24px; font-size: 8pt; color: #777; display: flex; justify-content: space-between; }
         </style>
       </head>
       <body>
         <div class="header">
-          <div class="school-name">${schoolName}</div>
-          <div class="report-title">Fee Status / Class Report</div>
+          ${logoBlock}
+          <div>
+            <p class="school-name">${schoolName}</p>
+            <p class="report-title">Fee status report</p>
+          </div>
         </div>
-        <div class="report-info">
-          <p><strong>Class:</strong> ${selectedClassName} &nbsp;|&nbsp; <strong>Academic Period:</strong> ${periodLabel}</p>
-          <p><strong>Report Date:</strong> ${formatDisplayDate(new Date())} &nbsp;|&nbsp; <strong>Students:</strong> ${studentsToShow.length}
-            ${summary != null ? ` &nbsp;|&nbsp; <strong>Total Balance:</strong> GHS ${summary.totalBalance.toLocaleString()}</p>` : '</p>'}
+        <div class="meta">
+          <div><strong>Class:</strong> ${selectedClassName}</div>
+          <div><strong>Academic period:</strong> ${periodLabel}</div>
+          <div><strong>Filter:</strong> ${statusFilterLabel(statusFilter)} &nbsp;·&nbsp; <strong>Report date:</strong> ${formatDisplayDate(new Date())}</div>
+          <div><strong>Students listed:</strong> ${studentsToShow.length}</div>
         </div>
-        <table>
+        ${
+          summary != null
+            ? `<table class="summary-table">
+          <thead><tr><th>Summary</th><th>Amount (GHS)</th></tr></thead>
+          <tbody>
+            <tr><td>Total term bills</td><td>${money(summary.totalTermFee ?? 0)}</td></tr>
+            <tr><td>Total arrears</td><td>${money(summary.totalArrears ?? 0)}</td></tr>
+            <tr><td>Total due</td><td>${money(summary.totalExpected)}</td></tr>
+            <tr><td>Total paid</td><td>${money(summary.totalPaid)}</td></tr>
+            <tr><td>Outstanding balance</td><td>${money(Math.max(0, summary.totalBalance))}</td></tr>
+          </tbody>
+        </table>`
+            : ''
+        }
+        <table class="data">
           <thead>
             <tr>
+              <th>#</th>
               <th>Student ID</th>
-              <th>Student Name</th>
-              <th>Class</th>
-              <th>Term fee</th>
+              <th>Student name</th>
+              <th>Total term bill</th>
               <th>Arrears</th>
               <th>Total due</th>
-              <th>Total paid</th>
+              <th>Paid</th>
               <th>Balance</th>
               <th>Status</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>
-        ${summary != null ? `<div class="summary"><strong>Summary:</strong> Term fees: GHS ${(summary.totalTermFee ?? 0).toLocaleString()} &nbsp;|&nbsp; Arrears: GHS ${(summary.totalArrears ?? 0).toLocaleString()} &nbsp;|&nbsp; Total due: GHS ${summary.totalExpected.toLocaleString()} &nbsp;|&nbsp; Paid: GHS ${summary.totalPaid.toLocaleString()} &nbsp;|&nbsp; Balance: GHS ${summary.totalBalance.toLocaleString()}</div>` : ''}
-        <div class="footer">Generated by ${schoolName}</div>
+        <div class="footer">
+          <span>${schoolName} — Fee status report</span>
+          <span>Generated ${new Date().toLocaleString()}</span>
+        </div>
       </body>
       </html>
     `;
 
     const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(printContent);
-      printWindow.document.close();
-      printWindow.focus();
-      printWindow.print();
-      printWindow.close();
-    }
+    if (!printWindow) return;
+
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+
+    const waitForImages = () =>
+      Promise.all(
+        Array.from(printWindow.document.images).map(
+          (img) =>
+            new Promise<void>((resolve) => {
+              if (img.complete) {
+                resolve();
+                return;
+              }
+              img.onload = () => resolve();
+              img.onerror = () => resolve();
+            })
+        )
+      );
+
+    await waitForImages();
+    printWindow.focus();
+    printWindow.print();
+    setTimeout(() => printWindow.close(), 300);
   };
 
   return (
@@ -284,7 +380,7 @@ const PrintFeeStatusModule = () => {
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            The report uses the <strong>current academic period</strong> from school settings. <strong>Term fee</strong> comes from Set Fees; <strong>arrears</strong> from carried balances; <strong>total due</strong> = term fee + arrears; <strong>balance</strong> = total due − paid.
+            The report uses the <strong>current academic period</strong> from school settings. <strong>Total Term Bill</strong> comes from Set Fees; <strong>arrears</strong> from carried balances; <strong>total due</strong> = total term bill + arrears; <strong>balance</strong> = total due − paid.
           </p>
           {report?.academicPeriod && (
             <div className="mt-3 grid grid-cols-2 gap-4">
@@ -359,7 +455,7 @@ const PrintFeeStatusModule = () => {
                   <p className="font-medium text-foreground">{report.summary.count}</p>
                 </div>
                 <div>
-                  <p className="text-blue-600/80 dark:text-blue-400/80">Term fees</p>
+                  <p className="text-blue-600/80 dark:text-blue-400/80">Total term bills</p>
                   <p className="font-medium text-foreground">GHS {(report.summary.totalTermFee ?? 0).toLocaleString()}</p>
                 </div>
                 <div>
@@ -406,7 +502,7 @@ const PrintFeeStatusModule = () => {
                       <th className="text-left p-3 font-medium text-foreground">Student ID</th>
                       <th className="text-left p-3 font-medium text-foreground">Student Name</th>
                       <th className="text-left p-3 font-medium text-foreground">Class</th>
-                      <th className="text-right p-3 font-medium text-foreground">Term fee</th>
+                      <th className="text-right p-3 font-medium text-foreground">Total Term Bill</th>
                       <th className="text-right p-3 font-medium text-foreground">Arrears</th>
                       <th className="text-right p-3 font-medium text-foreground">Total due</th>
                       <th className="text-right p-3 font-medium text-foreground">Paid</th>
@@ -483,17 +579,30 @@ const PrintFeeStatusModule = () => {
 
       <Card>
         <CardContent className="pt-6">
-          <div className="flex justify-center">
+          <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Button
-              onClick={handlePrint}
-              disabled={!selectedClassId || loading}
+              onClick={() => void handleExportPdf()}
+              disabled={!selectedClassId || loading || studentsToShow.length === 0}
               size="lg"
-              className="bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700"
+              variant="outline"
+              className="min-w-[180px] border-slate-300"
+            >
+              <FileDown className="w-5 h-5 mr-2" />
+              {loading ? 'Loading...' : 'Export PDF'}
+            </Button>
+            <Button
+              onClick={() => void handlePrint()}
+              disabled={!selectedClassId || loading || studentsToShow.length === 0}
+              size="lg"
+              className="min-w-[180px] bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700"
             >
               <Printer className="w-5 h-5 mr-2" />
               {loading ? 'Loading...' : 'Print Report'}
             </Button>
           </div>
+          <p className="mt-3 text-center text-xs text-muted-foreground">
+            PDF export uses your school logo and a clean classic layout — same style as the discount student report.
+          </p>
         </CardContent>
       </Card>
     </div>

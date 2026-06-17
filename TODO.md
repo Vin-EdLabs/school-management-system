@@ -1,7 +1,1 @@
-- [x] Add refresh button on StudentsModule page header/toolbar
-- [x] On click, call DataContext.refresh(['students','classes']) and animate the button/icon (small animation)
-- [x] Ensure animation is subtle (scale/rotate) and doesn’t break other UI
-
-- [ ] Quick manual test: open Students tabs, click refresh, verify data updates
-
-
+is working but on the statemnt of the student show add the reason also at the term bill  and also when u clik on the view term bill it should be there too for that student and also on the parents portal for the fess breakmedon it should be there and the interface finace dont need to clik on got it before it open once finace clik on bill student it should open a nice big module with student class and pic  the descrition should on that card make it nice and lovely 

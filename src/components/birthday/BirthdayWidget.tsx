@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Cake, Gift, ChevronRight, Sparkles } from 'lucide-react';
 import { apiService } from '../../services/api';
 import { useSchool } from '../../contexts/SchoolContext';
+import { toast } from 'sonner';
 
 interface BirthdayPerson {
   id: number;
@@ -27,6 +28,7 @@ const BirthdayWidget = () => {
   const [todayBirthdays, setTodayBirthdays] = useState<BirthdayPerson[]>([]);
   const [upcomingBirthdays, setUpcomingBirthdays] = useState<BirthdayGroup[]>([]);
   const [loading, setLoading] = useState(true);
+  const notifiedRef = useRef(false);
 
   useEffect(() => {
     const fetchBirthdays = async () => {
@@ -38,8 +40,18 @@ const BirthdayWidget = () => {
           apiService.get<BirthdayPerson[]>('/birthdays/today').catch(() => [] as BirthdayPerson[]),
           apiService.get<BirthdayGroup[]>('/birthdays/upcoming?days=30').catch(() => [] as BirthdayGroup[]),
         ]);
-        setTodayBirthdays(Array.isArray(todayRes) ? todayRes : []);
+        const today = Array.isArray(todayRes) ? todayRes : [];
+        setTodayBirthdays(today);
         setUpcomingBirthdays(Array.isArray(upcomingRes) ? upcomingRes : []);
+
+        if (today.length > 0 && !notifiedRef.current) {
+          notifiedRef.current = true;
+          const names = today.map((p) => p.fullName).join(', ');
+          toast(`🎂 ${today.length} birthday${today.length > 1 ? 's' : ''} today!`, {
+            description: names,
+            duration: 6000,
+          });
+        }
       } catch {
         setTodayBirthdays([]);
         setUpcomingBirthdays([]);

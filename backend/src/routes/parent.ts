@@ -11,6 +11,7 @@ import { buildStudentFinanceStatement } from '../services/studentFinanceStatemen
 import { getStudentLiveFeeBreakdown } from '../services/studentLiveFeeBreakdownService.js';
 import { resolveActiveLedgerTerm } from '../services/studentUnifiedBalanceService.js';
 import { loadActiveFeeStructureLinesByClassTerm } from '../services/feeStructureItemsService.js';
+import { listAdmissionLetters, getAdmissionLetterPdf } from '../services/admissionLetterService.js';
 
 const router = express.Router();
 
@@ -1679,6 +1680,32 @@ router.get('/finance-statement', authenticateParent, async (req: ParentRequest, 
   } catch (error) {
     console.error('Parent finance statement error:', error);
     res.status(500).json({ error: 'Failed to fetch finance statement' });
+  }
+});
+
+// ── GET /api/parent/admission-letters ────────────────────────────────────────
+
+router.get('/admission-letters', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    const { studentId, tenantId } = req.parent!;
+    const letters = await listAdmissionLetters(tenantId, studentId);
+    res.json(letters);
+  } catch (error) {
+    console.error('Parent admission letters error:', error);
+    res.status(500).json({ error: 'Failed to fetch admission letters' });
+  }
+});
+
+router.get('/admission-letters/:letterId/download', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    const { studentId, tenantId } = req.parent!;
+    const { letterId } = req.params;
+    const letter = await getAdmissionLetterPdf(tenantId, studentId, parseInt(letterId, 10));
+    if (!letter) return res.status(404).json({ error: 'Admission letter not found' });
+    res.json(letter.letter_content);
+  } catch (error) {
+    console.error('Parent admission letter download error:', error);
+    res.status(500).json({ error: 'Failed to download admission letter' });
   }
 });
 

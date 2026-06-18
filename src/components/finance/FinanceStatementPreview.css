@@ -1,9 +1,9 @@
 .finance-statement-preview {
-  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-family: 'Times New Roman', Times, serif;
   font-size: 12px;
-  color: #111;
+  color: #000;
   background: #fff;
-  line-height: 1.45;
+  line-height: 1.5;
 }
 
 .finance-statement-preview.parent-portal {
@@ -51,16 +51,23 @@
 }
 
 .finance-statement-preview .fs-divider {
-  border: none;
-  border-top: 2px solid #111;
-  margin: 0.75rem 0;
+  display: none;
 }
 
 .finance-statement-preview .fs-title {
+  padding: 4px 32px;
+  display: inline-block;
   text-align: center;
   font-weight: 700;
   font-size: 14px;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin: 0 auto;
+}
+
+.finance-statement-preview .fs-title-wrap {
+  text-align: center;
+  margin: 0.75rem 0;
 }
 
 .finance-statement-preview .fs-meta {
@@ -72,32 +79,39 @@
 }
 
 .finance-statement-preview .fs-meta dt {
-  font-weight: 600;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.finance-statement-preview .fs-meta dd {
+  font-weight: 700;
+  padding-left: 8px;
 }
 
 .finance-statement-preview section {
-  margin-top: 1.25rem;
+  margin-top: 1rem;
 }
 
 .finance-statement-preview h3 {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
-  margin-bottom: 0.5rem;
-  color: #111;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.35rem;
+  color: #000;
 }
 
 .finance-statement-preview .fs-term-block {
-  margin-bottom: 0.75rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px dashed #ccc;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px dotted #ccc;
 }
 
 .finance-statement-preview .fs-fee-line {
   display: flex;
   justify-content: space-between;
-  padding: 0.1rem 0 0.1rem 0.75rem;
+  padding: 0.05rem 0 0.05rem 0.75rem;
+  font-size: 11px;
 }
 
 .finance-statement-preview .fs-fee-line span:last-child {
@@ -106,16 +120,16 @@
 }
 
 .finance-statement-preview .fs-fee-line.discount {
-  color: #b45309;
+  font-weight: 700;
 }
 
 .finance-statement-preview .fs-fee-subtotal {
   display: flex;
   justify-content: space-between;
   font-weight: 700;
-  margin-top: 0.25rem;
-  padding-top: 0.25rem;
-  border-top: 1px solid #ddd;
+  margin-top: 0.15rem;
+  padding-top: 0.15rem;
+  border-top: 1px solid #000;
 }
 
 .finance-statement-preview .fs-fee-subtotal span:last-child {
@@ -127,20 +141,21 @@
   width: 100%;
   border-collapse: collapse;
   font-size: 11px;
-  table-layout: fixed;
 }
 
 .finance-statement-preview th,
 .finance-statement-preview td {
-  border: 1px solid #ccc;
-  padding: 0.35rem 0.4rem;
+  border: 1px solid #000;
+  padding: 0.3rem 0.5rem;
   text-align: left;
   vertical-align: top;
 }
 
 .finance-statement-preview th {
-  background: #f1f5f9;
-  font-weight: 600;
+  background: #f8fafc;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 10px;
 }
 
 .finance-statement-preview .fs-table-term-summary th:first-child,
@@ -160,33 +175,29 @@
 }
 
 .finance-statement-preview .fs-payment-section th {
-  background: #ecfdf5;
-  color: #047857;
+  background: #f8fafc;
   font-weight: 700;
 }
 
 .finance-statement-preview tbody tr:nth-child(even) {
-  background: #f8fafc;
+  background: #fafafa;
 }
 
 .finance-statement-preview .fs-totals-row td {
   font-weight: 700;
-  background: #e2e8f0 !important;
+  background: #f1f5f9 !important;
 }
 
 .finance-statement-preview .status-cleared {
-  color: #16a34a;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .finance-statement-preview .status-owing {
-  color: #dc2626;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .finance-statement-preview .status-credit {
-  color: #2563eb;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .finance-statement-preview .payment-voided {
@@ -195,24 +206,25 @@
 }
 
 .finance-statement-preview .fs-summary-box {
-  border: 2px solid #111;
-  padding: 0.75rem 1rem;
-  max-width: 420px;
-  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  max-width: 400px;
+  margin: 0.5rem auto 0;
 }
 
 .finance-statement-preview .fs-summary-box h4 {
   text-align: center;
   font-weight: 700;
-  border-bottom: 1px solid #111;
-  padding-bottom: 0.35rem;
-  margin-bottom: 0.5rem;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 0.35rem;
 }
 
 .finance-statement-preview .fs-summary-line {
   display: flex;
   justify-content: space-between;
-  padding: 0.15rem 0;
+  padding: 0.1rem 0;
+  font-size: 11px;
 }
 
 .finance-statement-preview .fs-summary-line span:last-child {
@@ -221,207 +233,84 @@
 }
 
 .finance-statement-preview .fs-summary-line.divider {
-  border-top: 1px solid #999;
-  margin-top: 0.25rem;
-  padding-top: 0.35rem;
+  border-top: 1px solid #000;
+  margin-top: 0.15rem;
+  padding-top: 0.2rem;
 }
 
 .finance-statement-preview .fs-footer {
-  margin-top: 1.5rem;
-  padding-top: 0.75rem;
+  margin-top: 1rem;
+  padding-top: 0.5rem;
   border-top: 1px solid #999;
-  font-size: 11px;
-  color: #444;
+  font-size: 9px;
+  color: #666;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .finance-statement-preview .fs-signature {
   margin-top: 1rem;
   font-size: 11px;
-  line-height: 1.8;
+  border-top: 1px solid #000;
+  padding-top: 0.5rem;
 }
 
 .finance-statement-preview .fs-arrears-history {
-  padding: 0.75rem;
-  border: 1px solid #cbd5e1;
-  background: #f8fafc;
-  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
 }
 
 .finance-statement-preview .fs-arrears-list {
-  margin: 0.5rem 0;
+  margin: 0.35rem 0;
   padding-left: 1.25rem;
   list-style: disc;
 }
 
 .finance-statement-preview .fs-arrears-list li {
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.15rem;
 }
 
 .finance-statement-preview .fs-grand-total {
   font-weight: 700;
   font-size: 12px;
-  margin-top: 0.5rem;
-  color: #047857;
+  margin-top: 0.35rem;
+  border-top: 1px solid #000;
+  padding-top: 0.25rem;
+}
+
+.finance-statement-preview .fs-individual-charges {
+  margin-top: 0.15rem;
+}
+
+.finance-statement-preview .fs-individual-charges .divider-label {
+  font-size: 10px;
+  color: #666;
+  letter-spacing: 0.04em;
+  border-top: 1px dotted #ccc;
+  padding-top: 0.15rem;
+  margin-top: 0.15rem;
+}
+
+.finance-statement-preview .fs-individual-charges .individual-charge {
+  padding-left: 1.25rem;
+}
+
+.finance-statement-preview .fs-credit-history {
+  margin-top: 1rem;
 }
 
 @page {
   size: A4;
-  margin: 15mm;
+  margin: 5mm;
 }
 
 @media print {
-  html,
-  body {
-    width: 210mm;
-    height: auto;
-    margin: 0;
-    padding: 0;
-    background: #fff !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-
   @page {
     size: A4;
-    margin: 15mm 15mm 18mm 15mm;
-
-    @bottom-center {
-      content: 'Page ' counter(page) ' of ' counter(pages);
-      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-      font-size: 9pt;
-      color: #666;
-    }
-  }
-
-  body * {
-    visibility: hidden !important;
-  }
-
-  .finance-statement-print-root,
-  .finance-statement-print-root * {
-    visibility: visible !important;
-  }
-
-  .finance-statement-print-root {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    padding: 0;
-    margin: 0;
-    background: #fff;
-    z-index: 99999;
-  }
-
-  .finance-statement-print-root .finance-statement-preview {
-    width: 100%;
-    max-width: none;
-    padding: 0;
-    margin: 0;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-
-  .finance-statement-print-root .fs-print-repeat-header {
-    display: block;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    text-align: center;
-    background: #fff;
-    padding: 2mm 0 3mm;
-    border-bottom: 1px solid #ccc;
-    z-index: 9999;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-
-  .finance-statement-print-root .fs-print-repeat-header .fs-school-name {
-    font-size: 11pt;
-    font-weight: 700;
-  }
-
-  .finance-statement-print-root .fs-print-repeat-header .fs-title {
-    font-size: 9pt;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-  }
-
-  .finance-statement-print-root .finance-statement-preview {
-    padding-top: 14mm;
+    margin: 5mm;
   }
 
   .fs-no-print {
     display: none !important;
-  }
-
-  .finance-statement-preview th,
-  .finance-statement-preview td {
-    border: 1px solid #999 !important;
-  }
-
-  .finance-statement-preview th {
-    background: #f1f5f9 !important;
-  }
-
-  .finance-statement-preview .fs-payment-section th {
-    background: #ecfdf5 !important;
-    color: #047857 !important;
-  }
-
-  .finance-statement-preview tbody tr:nth-child(even) {
-    background: #f8fafc !important;
-  }
-
-  .finance-statement-preview .fs-totals-row td {
-    background: #e2e8f0 !important;
-    font-weight: 700 !important;
-  }
-
-  .finance-statement-preview .status-cleared {
-    color: #16a34a !important;
-  }
-
-  .finance-statement-preview .status-owing {
-    color: #dc2626 !important;
-  }
-
-  .finance-statement-preview .status-credit {
-    color: #2563eb !important;
-  }
-
-  .finance-statement-preview .fs-summary-box {
-    border: 2px solid #111 !important;
-    break-inside: avoid;
-    page-break-inside: avoid;
-  }
-
-  .finance-statement-preview .fs-payment-section {
-    break-before: page;
-    page-break-before: always;
-  }
-
-  .finance-statement-preview .fs-account-summary-section {
-    break-before: page;
-    page-break-before: always;
-  }
-
-  .finance-statement-preview section:not(.fs-payment-section):not(.fs-account-summary-section) {
-    break-inside: avoid;
-    page-break-inside: avoid;
-  }
-
-  .finance-statement-preview .fs-signature {
-    break-inside: avoid;
-    page-break-inside: avoid;
-    margin-top: 1.5rem;
-    line-height: 2;
-  }
-
-  .finance-statement-preview.parent-portal::before {
-    position: fixed;
-    print-color-adjust: exact;
-    -webkit-print-color-adjust: exact;
   }
 }

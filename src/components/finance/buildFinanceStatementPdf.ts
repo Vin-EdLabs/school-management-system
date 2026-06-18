@@ -71,7 +71,7 @@ export async function downloadFinanceStatementPdf(
   try {
     const worker = html2pdf()
       .set({
-        margin: [15, 15, 18, 15],
+        margin: [5, 5, 5, 5],
         filename,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: {
@@ -112,19 +112,53 @@ export async function downloadFinanceStatementPdf(
 }
 
 export function printFinanceStatementPreview(previewElement: HTMLElement): void {
-  document.querySelectorAll('.finance-statement-print-root').forEach((el) => el.remove());
-
-  const root = document.createElement('div');
-  root.className = 'finance-statement-print-root';
   const clone = previewElement.cloneNode(true) as HTMLElement;
-  root.appendChild(clone);
-  document.body.appendChild(root);
+  clone.querySelectorAll('.fs-no-print, button, [type="button"]').forEach(el => el.remove());
+  clone.querySelectorAll('.hidden').forEach(el => {
+    (el as HTMLElement).style.display = '';
+    el.classList.remove('hidden');
+  });
 
-  const cleanup = () => {
-    root.remove();
-    window.removeEventListener('afterprint', cleanup);
-  };
-  window.addEventListener('afterprint', cleanup);
+  const headStylesheets = Array.from(document.head.querySelectorAll('link[rel="stylesheet"], style'))
+    .map(el => el.outerHTML)
+    .join('\n');
 
-  requestAnimationFrame(() => window.print());
+  const win = window.open('', '_blank');
+  if (!win) return;
+
+  win.document.write(`
+    <html>
+      <head>
+        <title>Finance Statement</title>
+        ${headStylesheets}
+        <style>
+          @page { margin: 5mm; size: A4 portrait; }
+          @media print {
+            body, body * { visibility: visible !important; }
+            .fs-no-print, .fs-no-print *, button, button * { display: none !important; }
+            body {
+              margin: 0 !important; padding: 0 !important;
+              -webkit-print-color-adjust: exact; print-color-adjust: exact;
+            }
+          }
+          body {
+            font-family: 'Times New Roman', Times, serif;
+            color: #000; background: #fff; margin: 10px; font-size: 12px;
+          }
+          .finance-statement-preview {
+            max-width: 800px; margin: 0 auto;
+            padding: 0;
+          }
+          img { max-width: 100%; }
+          table { width: 100%; border-collapse: collapse; }
+          th, td { padding: 4px 6px; vertical-align: middle; }
+        </style>
+      </head>
+      <body>
+        ${clone.outerHTML}
+        <script>setTimeout(function(){window.print()},500)</script>
+      </body>
+    </html>
+  `);
+  win.document.close();
 }

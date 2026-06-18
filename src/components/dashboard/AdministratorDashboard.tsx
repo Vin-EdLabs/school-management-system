@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { enrollmentStatusLabel } from '../students/studentRegistryUtils';
+import BirthdayWidget from '../birthday/BirthdayWidget';
 import {
   PieChart,
   Pie,
@@ -230,6 +231,8 @@ const AdministratorDashboard = () => {
             hint="Add students under Academic → Students. Metrics and charts will appear automatically."
           />
         )}
+
+        <BirthdayWidget />
 
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
           <Card className="overflow-hidden border-border/80 shadow-md">

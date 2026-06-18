@@ -116,7 +116,7 @@ export class ApiService {
 
   private buildURL(endpoint: string, addTenantId = true): string {
     let url = `${this.baseURL}${endpoint}`;
-    if (addTenantId && this.tenantId !== null) {
+    if (addTenantId && this.tenantId !== null && !endpoint.includes('tenantId=')) {
       const separator = endpoint.includes('?') ? '&' : '?';
       url += `${separator}tenantId=${this.tenantId}`;
     }

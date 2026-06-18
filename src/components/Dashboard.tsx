@@ -49,6 +49,7 @@ import PushNotificationsModule from './notifications/PushNotificationsModule';
 import ParentDeskAdminModule from './notifications/ParentDeskAdminModule';
 import ParentAccountsModule from './parent/ParentAccountsModule';
 import EndOfYearWizard from './academic/EndOfYearWizard';
+import BirthdayModule from './birthday/BirthdayModule';
 import GlobalAnnouncementPopup from './announcements/GlobalAnnouncementPopup';
 import SetupProgressGate from './onboarding/SetupProgressGate';
 import ActiveTermWelcomeGate from './onboarding/ActiveTermWelcomeGate';
@@ -209,6 +210,8 @@ const Dashboard = () => {
         return <ParentDeskAdminModule />;
       case 'parent-accounts':
         return <ParentAccountsModule />;
+      case 'birthdays':
+        return <BirthdayModule />;
       case 'end-of-year':
         return <EndOfYearWizard />;
       case 'transport-overview':

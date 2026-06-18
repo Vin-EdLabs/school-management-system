@@ -10,6 +10,7 @@ import { beneficiaryAdjustedFee, type BeneficiaryStudentRow } from '../utils/ben
 import { buildStudentFinanceStatement } from '../services/studentFinanceStatementService.js';
 import { getStudentLiveFeeBreakdown } from '../services/studentLiveFeeBreakdownService.js';
 import { resolveActiveLedgerTerm } from '../services/studentUnifiedBalanceService.js';
+import { getStudentBirthdaysForParent } from '../services/birthdayService.js';
 import { loadActiveFeeStructureLinesByClassTerm } from '../services/feeStructureItemsService.js';
 import { listAdmissionLetters, getAdmissionLetterPdf } from '../services/admissionLetterService.js';
 
@@ -419,37 +420,50 @@ router.get('/linked-accounts', authenticateParent, async (req: ParentRequest, re
     return res.status(500).json({ error: 'Failed to fetch linked accounts' });
   }
 });
- 
+
+// ── GET /api/parent/birthdays ──────────────────────────────────────────────────
+
+router.get('/birthdays', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    const { studentId, tenantId } = req.parent!;
+    const birthdays = await getStudentBirthdaysForParent(tenantId, [studentId]);
+    return res.json({ birthdays });
+  } catch (error) {
+    console.error('Parent birthdays error:', error);
+    return res.status(500).json({ error: 'Failed to fetch birthdays' });
+  }
+});
+
 // ── POST /api/parent/link-siblings ───────────────────────────────────────────
 // Links two students as siblings in the database (no guardian validation — admin controls student IDs).
- 
+
 router.post('/link-siblings', authenticateParent, async (req: ParentRequest, res) => {
   try {
     const { studentId: currentStudentId, tenantId } = req.parent!;
     const { targetStudentId } = req.body;
- 
+
     if (!targetStudentId) {
       return res.status(400).json({ error: 'targetStudentId is required' });
     }
- 
+
     const students = await query(
       `SELECT id, first_name, last_name, names_of_siblings, number_of_siblings
        FROM students
        WHERE id IN ($1, $2) AND tenant_id = $3`,
       [currentStudentId, targetStudentId, tenantId]
     );
- 
+
     if (students.rows.length < 2) {
       return res.status(404).json({ error: 'One or both students not found' });
     }
- 
+
     const studentA = students.rows.find(s => s.id === currentStudentId);
     const studentB = students.rows.find(s => s.id === targetStudentId);
- 
+
     const updateStudent = async (student: any, sibling: any) => {
       const existingSiblings = (student.names_of_siblings || '').split(',').map((s: string) => s.trim()).filter(Boolean);
       const siblingFullName = `${sibling.first_name} ${sibling.last_name}`;
-      
+
       if (!existingSiblings.includes(siblingFullName)) {
         existingSiblings.push(siblingFullName);
         await query(
@@ -460,10 +474,10 @@ router.post('/link-siblings', authenticateParent, async (req: ParentRequest, res
         );
       }
     };
- 
+
     await updateStudent(studentA, studentB);
     await updateStudent(studentB, studentA);
- 
+
     res.json({ success: true, message: 'Siblings linked successfully' });
   } catch (error) {
     console.error('Link siblings error:', error);

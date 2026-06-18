@@ -18,6 +18,7 @@ import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDisplayDate, formatDisplayDateTime } from '../../utils/dateFormat';
 import { downloadTermReportCardPdf } from '../reports/buildTermReportCardPdf';
+import SignaturePad from '@/components/common/SignaturePad';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -230,10 +231,33 @@ const GradesModule = () => {
 
   const [sigPadType, setSigPadType] = useState<'teacher' | 'head'>('teacher');
   const [isSigPadOpen, setIsSigPadOpen] = useState(false);
-  const [classTeacherSig, setClassTeacherSig] = useState(() => localStorage.getItem('class_teacher_sig') || '');
-  const [headTeacherSig, setHeadTeacherSig] = useState(() => localStorage.getItem('head_teacher_sig') || '');
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const isDrawingRef = useRef(false);
+  const [classTeacherSig, setClassTeacherSig] = useState('');
+  const [headTeacherSig, setHeadTeacherSig] = useState('');
+  const [sigLoaded, setSigLoaded] = useState(false);
+
+  // Load signatures from DB on mount
+  useEffect(() => {
+    if (sigLoaded) return;
+    const load = async () => {
+      try {
+        // Load class teacher signature
+        if (user?.teacherId) {
+          const tRes = await apiService.get<{ signature?: string | null }>(`/teachers/${user.teacherId}/signature`);
+          if (tRes?.signature) setClassTeacherSig(tRes.signature);
+        }
+        // Load head teacher / school signature from settings
+        const sRes = await apiService.get<{ signatureImage?: string | null }>('/settings/appointment-letter');
+        if (sRes?.signatureImage) setHeadTeacherSig(sRes.signatureImage);
+      } catch {
+        // fall back to localStorage if API fails
+        if (localStorage.getItem('class_teacher_sig')) setClassTeacherSig(localStorage.getItem('class_teacher_sig') || '');
+        if (localStorage.getItem('head_teacher_sig')) setHeadTeacherSig(localStorage.getItem('head_teacher_sig') || '');
+      } finally {
+        setSigLoaded(true);
+      }
+    };
+    void load();
+  }, [user?.teacherId]);
 
   // Grade history dropdown — key is `${studentId}-${assignmentId}`
   const [expandedHistory, setExpandedHistory] = useState<Set<string>>(new Set());
@@ -503,64 +527,18 @@ const GradesModule = () => {
   const [promotedToDraft, setPromotedToDraft] = useState('');
   const [reopeningDateDraft, setReopeningDateDraft] = useState('21st April, 2026');
 
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.strokeStyle = '#0000ff';
-    ctx.lineWidth = 2;
-    ctx.lineCap = 'round';
-    
-    const rect = canvas.getBoundingClientRect();
-    const x = ('touches' in e) ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
-    const y = ('touches' in e) ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
-    
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    isDrawingRef.current = true;
-  };
-
-  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    if (!isDrawingRef.current) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    const rect = canvas.getBoundingClientRect();
-    const x = ('touches' in e) ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
-    const y = ('touches' in e) ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
-    
-    ctx.lineTo(x, y);
-    ctx.stroke();
-  };
-
-  const stopDrawing = () => {
-    isDrawingRef.current = false;
-  };
-
-  const clearCanvas = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-  };
-
-  const saveSignature = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const dataUrl = canvas.toDataURL();
+  const saveSignature = (dataUrl: string) => {
     if (sigPadType === 'teacher') {
-      localStorage.setItem('class_teacher_sig', dataUrl);
-      setClassTeacherSig(dataUrl);
-    } else {
-      localStorage.setItem('head_teacher_sig', dataUrl);
-      setHeadTeacherSig(dataUrl);
-    }
-    setIsSigPadOpen(false);
-    toast({ title: 'Signature saved' });
+        setClassTeacherSig(dataUrl);
+        if (user?.teacherId) {
+          apiService.put(`/teachers/${user.teacherId}/signature`, { signature: dataUrl }).catch(() => {});
+        }
+      } else {
+        setHeadTeacherSig(dataUrl);
+        apiService.put('/settings/appointment-letter', { signatureImage: dataUrl }).catch(() => {});
+      }
+      setIsSigPadOpen(false);
+      toast({ title: 'Signature saved' });
   };
 
   const parseTeacherRemarkDetails = (rawRemark: string) => {
@@ -792,6 +770,10 @@ const GradesModule = () => {
           <title>Terminal Report Card - ${student ? student.firstName + ' ' + student.lastName : 'Student'}</title>
           ${headStylesheets}
           <style>
+            @page {
+              margin: 5mm;
+              size: A4 portrait;
+            }
             @media print {
               body, body * {
                 visibility: visible !important;
@@ -808,6 +790,10 @@ const GradesModule = () => {
                 position: static !important;
                 width: auto !important;
                 height: auto !important;
+              }
+              .report-wrapper {
+                max-width: none !important;
+                width: 100% !important;
               }
             }
             body {
@@ -1637,7 +1623,7 @@ const GradesModule = () => {
                                     <div className="relative group">
                                       <img src={classTeacherSig} alt="Teacher Signature" className="h-12 object-contain" />
                                       <button 
-                                        onClick={() => { setClassTeacherSig(''); localStorage.removeItem('class_teacher_sig'); }}
+                                        onClick={() => { setClassTeacherSig(''); if (user?.teacherId) { apiService.put(`/teachers/${user.teacherId}/signature`, { signature: null }).catch(() => {}); } }}
                                         className="absolute -top-4 -right-4 bg-red-100 text-red-600 rounded-full p-0.5 text-[8px] no-print hover:bg-red-200"
                                       >
                                         ✕
@@ -1661,7 +1647,7 @@ const GradesModule = () => {
                                     <div className="relative group">
                                       <img src={headTeacherSig} alt="Head Teacher Signature" className="h-12 object-contain" />
                                       <button 
-                                        onClick={() => { setHeadTeacherSig(''); localStorage.removeItem('head_teacher_sig'); }}
+                                        onClick={() => { setHeadTeacherSig(''); apiService.put('/settings/appointment-letter', { signatureImage: null }).catch(() => {}); }}
                                         className="absolute -top-4 -right-4 bg-red-100 text-red-600 rounded-full p-0.5 text-[8px] no-print hover:bg-red-200"
                                       >
                                         ✕
@@ -1984,46 +1970,12 @@ const GradesModule = () => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isSigPadOpen} onOpenChange={setIsSigPadOpen}>
-        <DialogContent className="max-w-md bg-white text-slate-900 border-slate-200">
-          <DialogHeader>
-            <DialogTitle>Draw Digital Signature</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <p className="text-xs text-gray-500">
-              Draw your signature in the box below using your mouse or touch screen.
-            </p>
-            <div className="border border-gray-300 rounded-lg bg-gray-50 overflow-hidden">
-              <canvas
-                ref={canvasRef}
-                width={400}
-                height={200}
-                onMouseDown={startDrawing}
-                onMouseMove={draw}
-                onMouseUp={stopDrawing}
-                onMouseLeave={stopDrawing}
-                onTouchStart={startDrawing}
-                onTouchMove={draw}
-                onTouchEnd={stopDrawing}
-                className="w-full h-[200px] cursor-crosshair touch-none"
-              />
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <Button type="button" variant="outline" onClick={clearCanvas}>
-                Clear
-              </Button>
-              <div className="flex items-center gap-2">
-                <Button type="button" variant="outline" onClick={() => setIsSigPadOpen(false)}>
-                  Cancel
-                </Button>
-                <Button type="button" onClick={saveSignature} className="bg-purple-600 hover:bg-purple-700 text-white">
-                  Save Signature
-                </Button>
-              </div>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <SignaturePad
+        open={isSigPadOpen}
+        onOpenChange={setIsSigPadOpen}
+        onSave={saveSignature}
+        title={sigPadType === 'teacher' ? 'Draw Class Teacher Signature' : 'Draw Head Teacher Signature'}
+      />
 
     </div>
   );

@@ -7,6 +7,7 @@ import { writeAuditLog } from '../services/auditService.js';
 import { enrichAuditLogRow, AUDIT_ENTITY_JOINS, AUDIT_ENTITY_LABEL_SQL } from '../utils/auditDisplay.js';
 import { getClientIp } from '../utils/clientIp.js';
 import { getIO } from '../socket.js';
+import type { AuthenticatedSocket } from '../socket.js';
 
 const router = express.Router();
 

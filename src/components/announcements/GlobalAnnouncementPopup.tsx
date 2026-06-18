@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useSocket } from '../../contexts/SocketContext';
 import {
   fetchUnreadAnnouncements,
   markAnnouncementRead,
@@ -54,9 +55,24 @@ const GlobalAnnouncementPopup: React.FC = () => {
     }
   }, [shouldCheck]);
 
+  const { socket } = useSocket();
+
   useEffect(() => {
     if (shouldCheck && !checked) void loadUnread();
   }, [shouldCheck, checked, loadUnread]);
+
+  useEffect(() => {
+    if (!socket || !shouldCheck) return;
+
+    const handleNewAnnouncement = () => {
+      void loadUnread();
+    };
+
+    socket.on('global-announcement-created', handleNewAnnouncement);
+    return () => {
+      socket.off('global-announcement-created', handleNewAnnouncement);
+    };
+  }, [socket, shouldCheck, loadUnread]);
 
   useEffect(() => {
     const blockEscape = (e: KeyboardEvent) => {

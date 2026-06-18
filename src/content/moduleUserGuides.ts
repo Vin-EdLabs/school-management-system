@@ -32,7 +32,7 @@ const DEFAULT_GUIDE = (moduleId: string): ModuleUserGuide => ({
     'Read labels and section headings on the page—they match how your school configured the system.',
     'Use any search or filters at the top of lists to find a specific person, class, or record.',
     'Save or confirm only after reviewing amounts, dates, and names.',
-    'If something looks wrong, do not guess—use Support Chat so Scholarve can help trace it.',
+    'If something looks wrong, do not guess—use Support Chat so ScholarNerve can help trace it.',
   ],
   tips: ['Use the sidebar to switch modules; your place is remembered while you work.'],
 });
@@ -317,14 +317,14 @@ export const MODULE_USER_GUIDES: Record<string, ModuleUserGuide> = {
     steps: [
       'Ask specific questions (“How do I record a partial payment?”).',
       'Do not paste passwords or confidential personal data.',
-      'For account or billing disputes, still use Support Chat for Scholarve staff.',
+      'For account or billing disputes, still use Support Chat for ScholarNerve staff.',
     ],
   },
   'support-chat': {
     title: 'Support Chat',
-    tagline: 'Talk to Scholarve',
+    tagline: 'Talk to ScholarNerve',
     purpose:
-      'Reach Scholarve support for bugs, access issues, or how-to questions that need a human. Include your school name and what you were trying to do.',
+      'Reach ScholarNerve support for bugs, access issues, or how-to questions that need a human. Include your school name and what you were trying to do.',
     steps: [
       'Start a new message with a clear subject.',
       'Describe steps you took and any error text you saw.',

@@ -52,15 +52,15 @@ export function ModuleUserGuideDialog({ activeModule, setActiveModule }: ModuleU
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[min(90dvh,720px)] w-[calc(100vw-1.5rem)] max-w-lg gap-0 overflow-hidden border-border/80 p-0 sm:max-w-lg [&>button]:hidden">
-          <div className="relative overflow-hidden bg-gradient-to-br from-indigo-600 via-violet-600 to-indigo-800 px-5 pb-8 pt-6 text-white">
-            <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-white/10 blur-2xl" />
-            <div className="pointer-events-none absolute -bottom-20 left-0 h-40 w-40 rounded-full bg-indigo-300/20 blur-2xl" />
+        <DialogContent className="max-h-[min(90dvh,720px)] w-[calc(100vw-1.5rem)] max-w-lg gap-0 overflow-hidden p-0 sm:max-w-lg [&>button]:hidden">
+          <div className="relative overflow-hidden bg-gradient-to-br from-emerald-600 via-emerald-700 to-slate-950 px-5 pb-8 pt-6 text-white">
+            <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-white/15 blur-2xl" />
+            <div className="pointer-events-none absolute -bottom-20 left-0 h-40 w-40 rounded-full bg-emerald-200/20 blur-2xl" />
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              className="absolute right-2 top-2 h-9 w-9 text-white/90 hover:bg-white/10 hover:text-white"
+              className="absolute right-2 top-2 h-10 w-10 rounded-2xl border border-white/20 bg-white/10 text-white/95 shadow-lg transition hover:bg-white/20 hover:text-white"
               onClick={() => setOpen(false)}
               aria-label="Close"
             >
@@ -81,17 +81,17 @@ export function ModuleUserGuideDialog({ activeModule, setActiveModule }: ModuleU
           <ScrollArea className="max-h-[min(58dvh,420px)] sm:max-h-[min(50dvh,380px)]">
             <div className="space-y-5 px-5 py-5">
               <section>
-                <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">What this page does</h3>
-                <p className="mt-2 text-sm leading-relaxed text-foreground/95">{guide.purpose}</p>
+                <h3 className="text-xs font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">What this page does</h3>
+                <p className="mt-2 text-sm leading-relaxed text-slate-900 dark:text-slate-200">{guide.purpose}</p>
               </section>
 
               <Separator />
 
               <section>
-                <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">How to use it</h3>
-                <ol className="mt-3 list-decimal space-y-2.5 pl-4 text-sm leading-relaxed marker:font-semibold marker:text-indigo-600 dark:marker:text-indigo-400">
+                <h3 className="text-xs font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">How to use it</h3>
+                <ol className="mt-3 space-y-3 pl-5 text-sm leading-relaxed text-slate-900 dark:text-slate-200 marker:font-semibold marker:text-emerald-700 dark:marker:text-emerald-300">
                   {guide.steps.map((s, i) => (
-                    <li key={i} className="pl-1">
+                    <li key={i} className="rounded-2xl border border-emerald-200/70 bg-emerald-50/70 p-3 text-slate-900 shadow-sm dark:border-emerald-500/20 dark:bg-emerald-950/20 dark:text-slate-100">
                       {s}
                     </li>
                   ))}
@@ -101,11 +101,18 @@ export function ModuleUserGuideDialog({ activeModule, setActiveModule }: ModuleU
               {guide.tips && guide.tips.length > 0 && (
                 <>
                   <Separator />
-                  <section className="rounded-xl border border-amber-200/60 bg-amber-50/80 px-4 py-3 dark:border-amber-900/50 dark:bg-amber-950/25">
-                    <h3 className="text-xs font-bold uppercase tracking-wide text-amber-900/80 dark:text-amber-200/90">Tips</h3>
-                    <ul className="mt-2 list-disc space-y-1.5 pl-4 text-sm leading-relaxed text-amber-950/90 dark:text-amber-50/90">
+                  <section className="rounded-3xl border border-emerald-200/70 bg-emerald-50/90 px-5 py-4 shadow-sm dark:border-emerald-500/30 dark:bg-emerald-950/20">
+                    <div className="mb-3 flex items-center gap-2 text-emerald-900 dark:text-emerald-200">
+                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-800 shadow-inner dark:bg-emerald-500/20 dark:text-emerald-100">
+                        <Sparkles className="h-4 w-4" aria-hidden />
+                      </span>
+                      <h3 className="text-sm font-bold uppercase tracking-wide">Tips</h3>
+                    </div>
+                    <ul className="space-y-3 text-sm leading-relaxed text-slate-900 dark:text-slate-100">
                       {guide.tips.map((t, i) => (
-                        <li key={i}>{t}</li>
+                        <li key={i} className="rounded-2xl border border-emerald-200/70 bg-white/90 p-3 shadow-sm dark:border-emerald-500/20 dark:bg-emerald-950/40">
+                          {t}
+                        </li>
                       ))}
                     </ul>
                   </section>
@@ -114,16 +121,16 @@ export function ModuleUserGuideDialog({ activeModule, setActiveModule }: ModuleU
             </div>
           </ScrollArea>
 
-          <div className="border-t border-border/80 bg-muted/30 px-5 py-4">
-            <p className="text-center text-xs font-medium text-muted-foreground">
+          <div className="border-t border-emerald-100/80 bg-emerald-50/80 px-5 py-4 dark:border-emerald-500/20 dark:bg-emerald-950/10">
+            <p className="text-center text-xs font-medium text-slate-700 dark:text-slate-300">
               Need more help?{' '}
-              <span className="text-foreground">Scholarve</span> can assist through Support Chat.
+              <span className="font-semibold text-emerald-700 dark:text-emerald-300">ScholarNerve</span> can assist through Support Chat.
             </p>
             <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-center">
               {canSupport && activeModule !== 'support-chat' && (
                 <Button
                   type="button"
-                  className="gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md hover:from-indigo-700 hover:to-violet-700"
+                  className="gap-2 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white shadow-lg shadow-emerald-500/20 hover:from-emerald-700 hover:to-emerald-800"
                   onClick={onSupport}
                 >
                   <MessageCircle className="h-4 w-4 shrink-0" aria-hidden />
@@ -132,16 +139,21 @@ export function ModuleUserGuideDialog({ activeModule, setActiveModule }: ModuleU
               )}
               {activeModule === 'support-chat' && (
                 <p className="text-center text-xs text-muted-foreground">
-                  You are already in Support Chat—describe your issue below and the Scholarve team will respond.
+                  You are already in Support Chat—describe your issue below and the ScholarNerve team will respond.
                 </p>
               )}
               {!canSupport && activeModule !== 'support-chat' && (
-                <p className="text-center text-xs text-muted-foreground">
-                  Support Chat is not enabled for your account. Ask a school administrator to grant access if you need Scholarve
+                <p className="text-center text-xs text-slate-600 dark:text-slate-400">
+                  Support Chat is not enabled for your account. Ask a school administrator to grant access if you need ScholarNerve
                   assistance.
                 </p>
               )}
-              <Button type="button" variant="outline" className="sm:min-w-[120px]" onClick={() => setOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                className="sm:min-w-[120px] border-emerald-200/80 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50 dark:border-emerald-500/30 dark:text-emerald-200 dark:hover:bg-emerald-700/20"
+                onClick={() => setOpen(false)}
+              >
                 Close
               </Button>
             </div>

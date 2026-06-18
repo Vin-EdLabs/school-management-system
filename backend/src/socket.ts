@@ -98,13 +98,21 @@ export const initSocket = (server: HttpServer) => {
 
   io.on('connection', (socket: AuthenticatedSocket) => {
     if (socket.user) {
-      const { id, tenantId } = socket.user;
+      const { id, tenantId, role } = socket.user;
+      const normalizedRole = String(role || '').toLowerCase().trim();
       socket.join(`user:${id}`);
       if (tenantId) {
         socket.join(`tenant:${tenantId}`);
       }
+      if (normalizedRole === 'super-admin') {
+        socket.join('global:super-admin');
+      }
       socket.join('global:general');
+      socket.data.connectedAt = Date.now();
       console.log(`User connected and joined rooms: ${socket.id} (User:${id}, Tenant:${tenantId})`);
+      if (normalizedRole !== 'parent') {
+        io.to('global:super-admin').emit('super-admin-online-users-updated', { updatedAt: socket.data.connectedAt });
+      }
     }
 
     socket.on('join-channel', (channel: string) => {
@@ -113,6 +121,12 @@ export const initSocket = (server: HttpServer) => {
 
     socket.on('disconnect', () => {
       console.log(`User disconnected: ${socket.id}`);
+      if (socket.user) {
+        const normalizedRole = String(socket.user.role || '').toLowerCase().trim();
+        if (normalizedRole !== 'parent') {
+          io.to('global:super-admin').emit('super-admin-online-users-updated', { updatedAt: Date.now() });
+        }
+      }
     });
   });
 

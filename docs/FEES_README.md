@@ -1,4 +1,4 @@
-# SCHOLARNERVE — Fees, Arrears & Receipts
+# ScholarNerve — Fees, Arrears & Receipts
 
 This document explains **how school fees are billed, collected, calculated on receipts, and how arrears work** in the ROSA School Management System. It reflects the **actual implementation** in the codebase (as of June 2026).
 

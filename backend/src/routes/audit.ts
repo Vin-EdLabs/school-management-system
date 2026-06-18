@@ -6,6 +6,7 @@ import { setTenantContext } from '../middleware/tenant.js';
 import { writeAuditLog } from '../services/auditService.js';
 import { enrichAuditLogRow, AUDIT_ENTITY_JOINS, AUDIT_ENTITY_LABEL_SQL } from '../utils/auditDisplay.js';
 import { getClientIp } from '../utils/clientIp.js';
+import { getIO } from '../socket.js';
 
 const router = express.Router();
 
@@ -323,6 +324,43 @@ router.get('/super-admin/tracker/timeline', authenticate, requireRole('super-adm
   } catch (error) {
     console.error('Get tracker timeline error:', error);
     res.status(500).json({ error: 'Failed to fetch tracker timeline' });
+  }
+});
+
+router.get('/super-admin/online-sessions', authenticate, requireRole('super-admin'), async (req: AuthRequest, res) => {
+  try {
+    const sockets = await getIO().fetchSockets() as Array<AuthenticatedSocket>;
+    const sessions = sockets
+      .filter((socket) => socket.user && String(socket.user.role || '').toLowerCase().trim() !== 'parent')
+      .map((socket) => ({
+        socketId: socket.id,
+        userId: socket.user!.id,
+        tenantId: socket.user!.tenantId,
+        username: socket.user!.username,
+        fullName: socket.user!.fullName,
+        role: socket.user!.role,
+        connectedAt: socket.data?.connectedAt ? new Date(socket.data.connectedAt).toISOString() : null,
+      }));
+
+    const tenantIds = Array.from(new Set(sessions.filter((s) => typeof s.tenantId === 'number' && !Number.isNaN(s.tenantId)).map((s) => s.tenantId as number)));
+    const tenantNames = new Map<number, string>();
+    if (tenantIds.length > 0) {
+      const tenantRows = await query(`SELECT id, name FROM tenants WHERE id = ANY($1::int[])`, [tenantIds]);
+      tenantRows.rows.forEach((row: any) => {
+        tenantNames.set(row.id, row.name);
+      });
+    }
+
+    const payload = sessions.map((session) => ({
+      ...session,
+      tenantName: session.tenantId ? tenantNames.get(session.tenantId) ?? `School #${session.tenantId}` : 'Platform',
+      durationSeconds: session.connectedAt ? Math.max(0, Math.floor((Date.now() - new Date(session.connectedAt).getTime()) / 1000)) : null,
+    }));
+
+    res.json(payload);
+  } catch (error) {
+    console.error('Get online sessions error:', error);
+    res.status(500).json({ error: 'Failed to fetch online sessions' });
   }
 });
 

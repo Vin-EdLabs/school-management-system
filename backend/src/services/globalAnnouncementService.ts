@@ -279,9 +279,15 @@ export async function getAnnouncementReaders(
   }>
 > {
   const res = await query(
-    `SELECT ar.user_id, u.full_name, u.email, ar.tenant_id, ar.read_at
+    `SELECT ar.user_id,
+            COALESCE(NULLIF(TRIM(t.full_name), ''), NULLIF(TRIM(s.full_name), ''), NULLIF(TRIM(u.full_name), ''), u.username) AS full_name,
+            u.email,
+            ar.tenant_id,
+            ar.read_at
      FROM announcement_reads ar
      JOIN users u ON u.id = ar.user_id
+     LEFT JOIN teachers t ON u.teacher_id::text = t.id::text AND t.tenant_id = u.tenant_id
+     LEFT JOIN other_staff s ON u.other_staff_id = s.id AND s.tenant_id = u.tenant_id
      WHERE ar.announcement_id = $1
      ORDER BY ar.read_at DESC`,
     [announcementId]

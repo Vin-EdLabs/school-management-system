@@ -103,12 +103,12 @@ const LoginPage = () => {
     >
       <div className="pointer-events-none absolute inset-0 opacity-[0.06] [background-image:linear-gradient(to_right,#fff_1px,transparent_1px),linear-gradient(to_bottom,#fff_1px,transparent_1px)] [background-size:42px_42px]" />
       <div className="pointer-events-none absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 select-none text-[16vw] font-black italic tracking-[-0.12em] text-white/5 md:block">
-        Scholarve
+        ScholarNerve
       </div>
       <div className="relative flex min-h-screen w-full items-center justify-center [zoom:0.8]">
       <div className="relative w-full max-w-5xl overflow-hidden rounded-[1.75rem] border border-white/15 bg-white/95 shadow-[0_30px_100px_rgba(0,0,0,0.45)] backdrop-blur-xl md:rounded-[2rem]">
         <div className="pointer-events-none absolute -right-16 -top-24 z-0 text-[8rem] font-black italic leading-none tracking-[-0.08em] text-slate-900/[0.035] md:text-[11rem]">
-          Scholarve
+          ScholarNerve
         </div>
         {isSubmitting && (
           <div className="absolute inset-0 z-[120] flex items-center justify-center rounded-2xl bg-white/85 backdrop-blur-[2px] md:rounded-3xl">

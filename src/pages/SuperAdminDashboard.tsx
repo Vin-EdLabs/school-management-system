@@ -63,6 +63,7 @@ import {
   GraduationCap,
   MessageCircle,
   UserPlus,
+  UserCheck,
   Globe,
   FileText,
   Download,
@@ -154,7 +155,19 @@ interface TrackerUser {
   finance_activity_count: number;
 }
 
-type Section = 'schools' | 'visits' | 'tracker' | 'registrations' | 'audit' | 'super-admins' | 'support-chat' | 'school-data' | 'system-health' | 'announcements';
+interface OnlineSession {
+  socketId: string;
+  userId: number;
+  tenantId: number | null;
+  tenantName: string;
+  username: string;
+  fullName?: string | null;
+  role: string;
+  connectedAt?: string | null;
+  durationSeconds?: number | null;
+}
+
+type Section = 'schools' | 'visits' | 'tracker' | 'registrations' | 'audit' | 'super-admins' | 'support-chat' | 'school-data' | 'system-health' | 'announcements' | 'online-users';
 
 /** Normalize school name for reset confirmation (trim, collapse spaces, case-insensitive). */
 function normalizeSchoolConfirmName(value: string): string {
@@ -213,6 +226,10 @@ const SuperAdminDashboard = () => {
   const [trackerOrder, setTrackerOrder] = useState<'desc' | 'asc'>('desc');
   const [trackerSearch, setTrackerSearch] = useState('');
   const [trackerLoading, setTrackerLoading] = useState(false);
+  const [onlineSessions, setOnlineSessions] = useState<OnlineSession[]>([]);
+  const [onlineLoading, setOnlineLoading] = useState(false);
+  const [onlineSearch, setOnlineSearch] = useState('');
+  const [onlineLastUpdated, setOnlineLastUpdated] = useState<string | null>(null);
   const [newSchool, setNewSchool] = useState({
     name: '',
     slug: '',
@@ -314,6 +331,26 @@ const SuperAdminDashboard = () => {
     if (user?.role !== 'super-admin' || section !== 'tracker' || !selectedTrackerSchoolId || !selectedTrackerUserId) return;
     void loadTrackerTimeline();
   }, [section, user?.role, selectedTrackerSchoolId, selectedTrackerUserId, trackerOrder, trackerSearch]);
+
+  useEffect(() => {
+    if (user?.role !== 'super-admin' || section !== 'online-users') return;
+    void loadOnlineSessions();
+    const id = window.setInterval(() => void loadOnlineSessions(), 10000);
+    return () => window.clearInterval(id);
+  }, [section, user?.role]);
+
+  useEffect(() => {
+    if (!socket || user?.role !== 'super-admin') return;
+    const onOnlineUpdate = () => {
+      if (section === 'online-users') {
+        void loadOnlineSessions();
+      }
+    };
+    socket.on('super-admin-online-users-updated', onOnlineUpdate);
+    return () => {
+      socket.off('super-admin-online-users-updated', onOnlineUpdate);
+    };
+  }, [socket, user?.role, section]);
 
   const refreshSupportInboxUnread = useCallback(async () => {
     if (user?.role !== 'super-admin') return;
@@ -468,6 +505,19 @@ const SuperAdminDashboard = () => {
       setTrackerTimeline([]);
     } finally {
       setTrackerLoading(false);
+    }
+  };
+
+  const loadOnlineSessions = async () => {
+    setOnlineLoading(true);
+    try {
+      const sessions = await apiService.get<OnlineSession[]>('/audit/super-admin/online-sessions');
+      setOnlineSessions(Array.isArray(sessions) ? sessions : []);
+      setOnlineLastUpdated(new Date().toISOString());
+    } catch {
+      setOnlineSessions([]);
+    } finally {
+      setOnlineLoading(false);
     }
   };
 
@@ -752,6 +802,26 @@ const SuperAdminDashboard = () => {
     URL.revokeObjectURL(url);
   };
 
+  const formatOnlineDuration = (seconds: number | null | undefined): string => {
+    if (typeof seconds !== 'number' || Number.isNaN(seconds) || seconds < 0) return 'Unknown';
+    const mins = Math.floor(seconds / 60);
+    const hrs = Math.floor(mins / 60);
+    const days = Math.floor(hrs / 24);
+    if (days > 0) return `Online for ${days} day${days === 1 ? '' : 's'}`;
+    if (hrs > 0) return `Online for ${hrs} hour${hrs === 1 ? '' : 's'}`;
+    if (mins > 0) return `Online for ${mins} minute${mins === 1 ? '' : 's'}`;
+    return `Online for ${seconds} second${seconds === 1 ? '' : 's'}`;
+  };
+
+  const filteredOnlineSessions = onlineSessions.filter((session) => {
+    const term = onlineSearch.trim().toLowerCase();
+    if (!term) return true;
+    return [session.username, session.fullName ?? '', session.role, session.tenantName, session.socketId]
+      .some((value) => value.toLowerCase().includes(term));
+  });
+
+  const uniqueOnlineUsers = Array.from(new Set(onlineSessions.map((session) => session.userId))).length;
+
   const handleSchoolBackup = async (school: School) => {
     setDataActionLoading(true);
     try {
@@ -938,6 +1008,7 @@ const SuperAdminDashboard = () => {
     { id: 'schools' as Section, label: 'Schools', icon: Building2 },
     { id: 'announcements' as Section, label: 'Announcements', icon: Megaphone },
     { id: 'visits' as Section, label: 'Visitor Analytics', icon: Globe },
+    { id: 'online-users' as Section, label: 'Online Users', icon: UserCheck },
     { id: 'tracker' as Section, label: 'Tracker', icon: ShieldCheck },
     { id: 'school-data' as Section, label: 'School Data', icon: FileText },
     { id: 'registrations' as Section, label: 'Registration Requests', icon: ClipboardList },
@@ -1057,6 +1128,7 @@ const SuperAdminDashboard = () => {
               {section === 'schools' && 'Schools'}
               {section === 'announcements' && 'Global Announcements'}
               {section === 'visits' && 'Visitor Analytics'}
+              {section === 'online-users' && 'Online Users / Active Sessions'}
               {section === 'tracker' && 'Tracker'}
               {section === 'school-data' && 'School Data Management'}
               {section === 'registrations' && 'Registration Requests'}
@@ -1755,6 +1827,110 @@ const SuperAdminDashboard = () => {
                     </CardContent>
                   </Card>
                 </div>
+              </div>
+            )}
+
+            {section === 'online-users' && (
+              <div className="space-y-6 animate-in fade-in duration-700">
+                <div className="relative overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
+                  <div className="absolute right-0 top-0 h-56 w-56 translate-x-1/3 -translate-y-1/3 rounded-full bg-slate-900/5 blur-3xl dark:bg-slate-50/10" />
+                  <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                      <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                        <UserCheck className="h-3.5 w-3.5" />
+                        Active Sessions Overview
+                      </div>
+                      <h3 className="font-outfit text-3xl font-black tracking-tight text-slate-900 dark:text-white">Online Users</h3>
+                      <p className="mt-2 max-w-2xl text-sm font-medium leading-6 text-slate-500 dark:text-slate-400">
+                        See staff/admin/teacher/finance sessions currently connected across the entire platform. Parent portal logins are excluded.
+                      </p>
+                    </div>
+                    <div className="grid w-full gap-3 sm:grid-cols-2 lg:w-[560px]">
+                      <Input
+                        value={onlineSearch}
+                        onChange={(e) => setOnlineSearch(e.target.value)}
+                        placeholder="Search by name, username, role, or school..."
+                        className="h-11 rounded-xl border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"
+                      />
+                      <div className="flex items-center gap-2 h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+                        <span className="text-slate-500">Updated:</span>
+                        <span>{onlineLastUpdated ? new Date(onlineLastUpdated).toLocaleTimeString() : 'Never'}</span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void loadOnlineSessions()}
+                          className="h-9 rounded-xl border-slate-200 dark:border-slate-700 text-[10px] uppercase tracking-widest"
+                        >
+                          <RefreshCw className="mr-2 h-4 w-4" />
+                          Refresh
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+                  {[
+                    { label: 'Online Sessions', value: onlineSessions.length, tone: 'text-blue-500' },
+                    { label: 'Distinct Users', value: uniqueOnlineUsers, tone: 'text-emerald-500' },
+                    { label: 'Search Filter', value: onlineSearch ? 'Active' : 'None', tone: 'text-slate-900 dark:text-white' },
+                    { label: 'Auto-refresh', value: 'Every 10s', tone: 'text-purple-500' },
+                  ].map((stat) => (
+                    <Card key={stat.label} className="border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900/50">
+                      <CardContent className="p-5">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{stat.label}</p>
+                        <p className={cn('mt-2 font-outfit text-3xl font-black', stat.tone)}>{stat.value}</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+
+                <Card className="border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900/50">
+                  <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <CardTitle className="font-outfit text-lg font-black">Active User Sessions</CardTitle>
+                      <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Each open session is shown separately so concurrent device logins are visible.</p>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1">Realtime update</span>
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1">Parent accounts excluded</span>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="overflow-x-auto">
+                    {onlineLoading ? (
+                      <BrandedLoading label="Loading online users..." className="py-16" />
+                    ) : filteredOnlineSessions.length === 0 ? (
+                      <div className="rounded-3xl border border-dashed border-slate-200 p-20 text-center dark:border-slate-800">
+                        <User className="mx-auto mb-4 h-12 w-12 text-slate-300 dark:text-slate-700" />
+                        <p className="text-sm font-black uppercase tracking-widest text-slate-400">No active staff/admin sessions found</p>
+                        <p className="mt-2 text-xs text-slate-500">Try refreshing or wait for the next auto-update.</p>
+                      </div>
+                    ) : (
+                      <Table>
+                        <TableHeader className="bg-slate-50 dark:bg-slate-800/50">
+                          <TableRow>
+                            <TableHead>Full name</TableHead>
+                            <TableHead>Username</TableHead>
+                            <TableHead>Role</TableHead>
+                            <TableHead>School / Tenant</TableHead>
+                            <TableHead>Online duration</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filteredOnlineSessions.map((session) => (
+                            <TableRow key={session.socketId} className="hover:bg-slate-50 dark:hover:bg-slate-950/80">
+                              <TableCell>{session.fullName || '—'}</TableCell>
+                              <TableCell>{session.username}</TableCell>
+                              <TableCell className="capitalize">{session.role.replace('-', ' ')}</TableCell>
+                              <TableCell>{session.tenantName}</TableCell>
+                              <TableCell>{formatOnlineDuration(session.durationSeconds)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </CardContent>
+                </Card>
               </div>
             )}
 

@@ -330,7 +330,7 @@ router.get('/super-admin/tracker/timeline', authenticate, requireRole('super-adm
 
 router.get('/super-admin/online-sessions', authenticate, requireRole('super-admin'), async (req: AuthRequest, res) => {
   try {
-    const sockets = await getIO().fetchSockets() as Array<AuthenticatedSocket>;
+    const sockets = await getIO().fetchSockets() as unknown as Array<AuthenticatedSocket>;
     const sessions = sockets
       .filter((socket) => socket.user && String(socket.user.role || '').toLowerCase().trim() !== 'parent')
       .map((socket) => ({

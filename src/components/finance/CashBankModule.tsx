@@ -8,9 +8,14 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
+  DialogBody,
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  detailDialogContentClass,
+  detailDialogHeaderClass,
+  detailDialogBodyClass,
+  detailDialogFooterClass,
 } from '@/components/ui/dialog';
 import {
   Select,
@@ -55,7 +60,7 @@ const today = () => new Date().toISOString().split('T')[0];
 
 const CashBankModule = () => {
   const { hasAccess } = useAuth();
-  const canTransfer = hasAccess('settings-full');
+  const canTransfer = hasAccess('cash-bank');
   const { accounts, balances, totalBalance, loading, refresh } = usePaymentAccounts({ includeBalances: true });
 
   const [transfers, setTransfers] = useState<FundTransfer[]>([]);
@@ -161,7 +166,7 @@ const CashBankModule = () => {
       {!canTransfer && (
         <Card className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30">
           <CardContent className="py-3 text-sm">
-            Read-only view. Only administrators can transfer funds. Account setup is done in Configurations → Payment Accounts.
+            Read-only view. You do not have permission to transfer funds. Account setup is done in Configurations → Payment Accounts.
           </CardContent>
         </Card>
       )}
@@ -284,15 +289,20 @@ const CashBankModule = () => {
       </Card>
 
       <Dialog open={transferDialogOpen} onOpenChange={setTransferDialogOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Transfer Funds</DialogTitle></DialogHeader>
-          <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950/30">
-            <div className="flex gap-2">
-              <AlertTriangle className="h-4 w-4 shrink-0" />
-              This transfer is permanent and will be logged.
+        <DialogContent className={detailDialogContentClass}>
+          <DialogHeader className={detailDialogHeaderClass}>
+            <DialogTitle>Transfer funds</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              Move money between payment accounts. This action is logged permanently.
+            </p>
+          </DialogHeader>
+          <DialogBody className={`${detailDialogBodyClass} space-y-4`}>
+            <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950/30">
+              <div className="flex gap-2">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                <span>Transfers cannot be edited — only reversed from transfer history.</span>
+              </div>
             </div>
-          </div>
-          <div className="space-y-3 py-2">
             <div className="space-y-2">
               <Label>From account</Label>
               <Select
@@ -339,10 +349,10 @@ const CashBankModule = () => {
               <Label>Note *</Label>
               <Textarea value={transferForm.note} onChange={(e) => setTransferForm((p) => ({ ...p, note: e.target.value }))} rows={2} />
             </div>
-          </div>
-          <DialogFooter>
+          </DialogBody>
+          <DialogFooter className={detailDialogFooterClass}>
             <Button variant="outline" onClick={() => setTransferDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleTransfer} disabled={saving || !transferForm.note.trim()}>Confirm transfer</Button>
+            <Button variant="primaryAction" onClick={handleTransfer} disabled={saving || !transferForm.note.trim()}>Confirm transfer</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

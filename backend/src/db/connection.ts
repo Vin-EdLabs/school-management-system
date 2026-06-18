@@ -1062,6 +1062,26 @@ const runMigrations = async () => {
       )
     `);
 
+    // Real-time presence for super-admin "Online Users" (shared across PM2 workers / proxies)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS active_socket_sessions (
+        socket_id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        tenant_id INTEGER REFERENCES tenants(id) ON DELETE SET NULL,
+        username TEXT NOT NULL,
+        full_name TEXT,
+        role TEXT NOT NULL,
+        connected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_active_socket_sessions_user ON active_socket_sessions(user_id)
+    `).catch(() => { });
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_active_socket_sessions_last_seen ON active_socket_sessions(last_seen_at)
+    `).catch(() => { });
+
     // Create indexes for better performance
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);

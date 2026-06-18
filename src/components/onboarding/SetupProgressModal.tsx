@@ -3,6 +3,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { Check, Circle, GraduationCap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { ModalViewport } from '@/components/ui/dialog';
 import { resolveLogoUrl } from '@/services/tenantService';
 import { useSchool } from '@/contexts/SchoolContext';
 import type { SetupStep } from '@/hooks/useSetupProgress';
@@ -59,22 +60,23 @@ const SetupProgressModal: React.FC<SetupProgressModalProps> = ({
           className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
           aria-hidden
         />
-        <DialogPrimitive.Content
-          aria-modal="true"
-          aria-labelledby={titleId}
-          aria-describedby={descId}
-          className={cn(
-            'fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2',
-            'rounded-2xl border border-slate-200/80 bg-white p-8 shadow-xl',
-            'duration-300 data-[state=open]:animate-in data-[state=closed]:animate-out',
-            'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-            'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
-            'data-[state=closed]:scale-95 data-[state=open]:scale-100',
-            'focus:outline-none dark:border-slate-700 dark:bg-slate-900'
-          )}
-          onEscapeKeyDown={() => handleLater()}
-          onPointerDownOutside={(e) => e.preventDefault()}
-        >
+        <ModalViewport>
+          <DialogPrimitive.Content
+            aria-modal="true"
+            aria-labelledby={titleId}
+            aria-describedby={descId}
+            className={cn(
+              'pointer-events-auto relative my-auto mx-auto w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto',
+              'rounded-2xl border border-slate-200/80 bg-white p-8 shadow-xl',
+              'duration-300 data-[state=open]:animate-in data-[state=closed]:animate-out',
+              'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+              'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
+              'data-[state=closed]:scale-95 data-[state=open]:scale-100',
+              'focus:outline-none dark:border-slate-700 dark:bg-slate-900'
+            )}
+            onEscapeKeyDown={() => handleLater()}
+            onPointerDownOutside={(e) => e.preventDefault()}
+          >
           <div className="mb-6 flex flex-col items-center text-center">
             {logoUrl ? (
               <img
@@ -173,6 +175,7 @@ const SetupProgressModal: React.FC<SetupProgressModalProps> = ({
             </button>
           </div>
         </DialogPrimitive.Content>
+        </ModalViewport>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
   );

@@ -116,9 +116,12 @@ export const AssignStudentsModal: React.FC<AssignStudentsModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col p-0 overflow-hidden">
-        <DialogHeader className="px-6 py-4 border-b">
-          <DialogTitle>Assign Students to Route: <span className="text-indigo-600">{route.name}</span></DialogTitle>
+      <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl rounded-[1rem] border-t-4 border-emerald-500 shadow-[0_20px_60px_rgba(0,0,0,0.15)]">
+        <DialogHeader className="shrink-0 border-b border-border/70 px-6 py-4 pr-12 text-left">
+          <DialogTitle>Assign students to route</DialogTitle>
+          <p className="text-sm text-muted-foreground mt-1">
+            Route: <span className="font-medium text-foreground">{route.name}</span>
+          </p>
         </DialogHeader>
 
         <DialogBody className="flex-1 overflow-y-auto px-6 py-4 space-y-4 min-h-0">
@@ -225,7 +228,7 @@ export const AssignStudentsModal: React.FC<AssignStudentsModalProps> = ({
           </div>
         </DialogBody>
 
-        <DialogFooter className="px-6 py-4 border-t gap-2 bg-slate-50">
+        <DialogFooter className="form-action-bar shrink-0 gap-2 border-t border-border/70 px-6 py-4">
           <Button type="button" variant="outline" onClick={onClose}>Close</Button>
         </DialogFooter>
       </DialogContent>

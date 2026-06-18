@@ -2,6 +2,11 @@ import { Server, Socket } from 'socket.io';
 import { Server as HttpServer } from 'http';
 import jwt from 'jsonwebtoken';
 import { query } from './db/connection.js';
+import {
+  registerPresence,
+  removePresence,
+  touchPresence,
+} from './services/presenceService.js';
 
 let io: Server;
 
@@ -109,6 +114,7 @@ export const initSocket = (server: HttpServer) => {
     if (socket.user) {
       const { id, tenantId, role } = socket.user;
       const normalizedRole = normalizeRole(role);
+      socket.data.user = socket.user;
       socket.join(`user:${id}`);
       if (tenantId) {
         socket.join(`tenant:${tenantId}`);
@@ -117,10 +123,12 @@ export const initSocket = (server: HttpServer) => {
         socket.join('global:super-admin');
       }
       socket.join('global:general');
-      socket.data.connectedAt = Date.now();
+      const connectedAt = Date.now();
+      socket.data.connectedAt = connectedAt;
+      void registerPresence(socket.id, socket.user, connectedAt);
       console.log(`User connected and joined rooms: ${socket.id} (User:${id}, Tenant:${tenantId}, Role:${normalizedRole})`);
       if (normalizedRole !== 'parent') {
-        io.to('global:super-admin').emit('super-admin-online-users-updated', { updatedAt: socket.data.connectedAt });
+        io.to('global:super-admin').emit('super-admin-online-users-updated', { updatedAt: connectedAt });
       }
     }
 
@@ -128,8 +136,13 @@ export const initSocket = (server: HttpServer) => {
       socket.join(`global:${channel}`);
     });
 
+    socket.on('presence:ping', () => {
+      void touchPresence(socket.id);
+    });
+
     socket.on('disconnect', () => {
       console.log(`User disconnected: ${socket.id}`);
+      void removePresence(socket.id);
       if (socket.user) {
         const normalizedRole = String(socket.user.role || '').toLowerCase().trim();
         if (normalizedRole !== 'parent') {

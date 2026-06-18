@@ -801,11 +801,12 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
       {/* Floating Lightbox Image Preview Modal */}
       {previewPhoto && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-sm animate-in fade-in duration-200"
+          className="fixed inset-0 z-[100] overflow-y-auto bg-black/85 backdrop-blur-sm p-4 animate-in fade-in duration-200"
           onClick={() => setPreviewPhoto(null)}
         >
+          <div className="flex min-h-full w-full justify-center">
           <div
-            className="relative max-w-sm w-full p-4 mx-auto animate-in zoom-in-95 duration-200"
+            className="relative my-auto mx-auto max-w-sm w-full max-h-[calc(100dvh-2rem)] animate-in zoom-in-95 duration-200"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -826,6 +827,7 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
                 <p className="text-[10px] text-indigo-500 dark:text-indigo-400 font-bold uppercase tracking-wider mt-0.5">Sibling Passport Preview</p>
               </div>
             </div>
+          </div>
           </div>
         </div>
       )}

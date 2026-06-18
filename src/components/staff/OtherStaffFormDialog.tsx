@@ -4,6 +4,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogBody,
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -14,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { apiService } from '@/services/api';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, UserPlus, Camera } from 'lucide-react';
+import { Loader2, UserPlus, Camera, Info } from 'lucide-react';
 import StaffOptionalSections from './StaffOptionalSections';
 import type { OtherStaffRecord } from './otherStaffTypes';
 
@@ -169,11 +170,32 @@ const OtherStaffFormDialog: React.FC<Props> = ({ open, onClose, staff, onSuccess
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle className="text-lg">Edit Staff Member</DialogTitle>
+      <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[760px] rounded-[1rem] border-t-4 border-emerald-500 shadow-[0_20px_60px_rgba(0,0,0,0.15)]">
+        <DialogHeader className="shrink-0 border-b border-border/70 px-6 py-4">
+          <DialogTitle>{isEdit ? 'Edit staff member' : 'Add staff'}</DialogTitle>
+          <p className="text-sm text-muted-foreground mt-1">
+            {isEdit
+              ? 'Update personal, employment, and payroll details for this staff member.'
+              : 'Register non-teaching staff for payroll, transport, and optional system access.'}
+          </p>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <DialogBody className="space-y-5 overflow-y-auto px-6 py-4">
+            <div className="rounded-3xl border border-emerald-100 bg-emerald-50/70 p-4 text-sm text-emerald-900 shadow-sm">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 rounded-full bg-emerald-100 p-2 text-emerald-700">
+                  <Info className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="font-semibold">Staff records</p>
+                  <p className="mt-1 leading-6 text-slate-700">
+                    {isEdit
+                      ? 'Changes here update payroll and staff lists. To grant login access, use Users → Add Staff as User after saving.'
+                      : 'A unique staff ID is generated automatically. Add employment and salary details now, or expand optional sections for emergency and bank info.'}
+                  </p>
+                </div>
+              </div>
+            </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2 md:col-span-2">
               <Label>Full Name *</Label>
@@ -311,12 +333,12 @@ const OtherStaffFormDialog: React.FC<Props> = ({ open, onClose, staff, onSuccess
             <Label>Notes</Label>
             <Textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} rows={2} />
           </div>
-
-          <DialogFooter>
+          </DialogBody>
+          <DialogFooter className="form-action-bar shrink-0 gap-2 border-t border-border/70 px-6 py-4">
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
             <Button type="submit" variant="primaryAction" disabled={submitting}>
               {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <UserPlus className="w-4 h-4 mr-2" />}
-              {isEdit ? 'Save Changes' : 'Add Staff'}
+              {isEdit ? 'Save changes' : 'Add staff'}
             </Button>
           </DialogFooter>
         </form>

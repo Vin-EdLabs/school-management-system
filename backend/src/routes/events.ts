@@ -1,6 +1,6 @@
 import express from 'express';
 import { query } from '../db/connection.js';
-import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
+import { authenticate, requireTenant, AuthRequest, requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 import { getIO } from '../socket.js';
@@ -23,6 +23,8 @@ router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
 attachWritableTermGuard(router);
+
+const calendarManageRoles = requireRole('super-admin', 'administrator');
 
 // Get all events
 router.get('/', async (req: AuthRequest, res) => {
@@ -79,7 +81,7 @@ router.get('/:id', async (req: AuthRequest, res) => {
 });
 
 // Create event
-router.post('/', async (req: AuthRequest, res) => {
+router.post('/', calendarManageRoles, async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const { title, description, event_date, event_time, location, category, color, reminder, reminder_time } = req.body;
@@ -129,7 +131,7 @@ router.post('/', async (req: AuthRequest, res) => {
 });
 
 // Update event
-router.put('/:id', async (req: AuthRequest, res) => {
+router.put('/:id', calendarManageRoles, async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const { id } = req.params;
@@ -192,7 +194,7 @@ router.put('/:id', async (req: AuthRequest, res) => {
 });
 
 // Delete event
-router.delete('/:id', async (req: AuthRequest, res) => {
+router.delete('/:id', calendarManageRoles, async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const { id } = req.params;

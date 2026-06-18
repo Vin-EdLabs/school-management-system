@@ -289,10 +289,11 @@ const SupportChatWindow: React.FC<SupportChatWindowProps> = ({ tenantId, tenantN
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-background">
       {lightbox && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-6 backdrop-blur-md animate-in fade-in duration-200"
+          className="fixed inset-0 z-[100] overflow-y-auto bg-black/90 p-4 backdrop-blur-md animate-in fade-in duration-200"
           onClick={() => setLightbox(null)}
           role="presentation"
         >
+          <div className="flex min-h-full w-full items-center justify-center">
           <button
             type="button"
             className="absolute right-6 top-6 rounded-full p-2 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
@@ -304,9 +305,10 @@ const SupportChatWindow: React.FC<SupportChatWindowProps> = ({ tenantId, tenantN
           <img
             src={lightbox}
             alt="Full size"
-            className="max-h-[90vh] max-w-full rounded-lg object-contain shadow-2xl animate-in zoom-in-95 duration-200"
+            className="my-auto max-h-[calc(100dvh-2rem)] max-w-[calc(100vw-2rem)] rounded-lg object-contain shadow-2xl animate-in zoom-in-95 duration-200"
             onClick={(e) => e.stopPropagation()}
           />
+          </div>
         </div>
       )}
 

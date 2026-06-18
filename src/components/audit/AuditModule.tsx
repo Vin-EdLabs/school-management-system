@@ -16,6 +16,11 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogBody,
+  detailDialogContentClass,
+  detailDialogHeaderClass,
+  detailDialogBodyClass,
+  DetailField,
 } from '@/components/ui/dialog';
 import {
   Select,
@@ -24,7 +29,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
 import {
@@ -495,70 +499,63 @@ const AuditModule = () => {
       </Card>
 
       <Dialog open={!!detail} onOpenChange={(o) => !o && setDetail(null)}>
-        <DialogContent className="max-h-[90dvh] max-w-lg overflow-hidden sm:max-w-xl">
-          <DialogHeader>
+        <DialogContent className={detailDialogContentClass}>
+          <DialogHeader className={detailDialogHeaderClass}>
             <DialogTitle>Audit detail #{detail?.id}</DialogTitle>
+            {detail?.summary ? (
+              <p className="text-sm text-muted-foreground line-clamp-2">{detail.summary}</p>
+            ) : null}
           </DialogHeader>
           {detail && (
-            <ScrollArea className="max-h-[70dvh] pr-3">
-              <div className="space-y-3 text-sm">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <p className="text-xs text-muted-foreground">When</p>
-                    <p className="font-medium">{new Date(detail.created_at).toLocaleString()}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Status</p>
-                    <p className="font-medium">{detail.status || 'success'}</p>
-                  </div>
-                  <div className="col-span-2">
-                    <p className="text-xs text-muted-foreground">Actor (full name)</p>
-                    <p className="font-medium">{detail.user_full_name || detail.username || '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Username</p>
-                    <p className="font-mono text-sm">{detail.username || '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Role (at event)</p>
-                    <p className="font-medium">{detail.user_role || '—'}</p>
-                  </div>
-                  <div className="col-span-2">
-                    <p className="text-xs text-muted-foreground">Action</p>
-                    <p className="font-mono text-sm">{detail.action}</p>
-                  </div>
-                  <div className="col-span-2">
-                    <p className="text-xs text-muted-foreground">Module / subject</p>
-                    <p>
-                      {detail.module || '—'} · {detail.entity_type ? detail.entity_type.replace(/_/g, ' ') : '—'}
-                    </p>
-                    <p className="mt-1 font-medium">
-                      {detail.entity_label || detail.summary?.split(' — ').slice(1).join(' — ') || '—'}
-                    </p>
-                  </div>
-                </div>
-                <Separator />
-                <div>
-                  <p className="text-xs text-muted-foreground">Summary</p>
-                  <p className="mt-1 leading-relaxed">{detail.summary || '—'}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">IP address</p>
-                  <p className="font-mono text-xs">{detail.ip_address || '—'}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Device / browser</p>
-                  <p className="break-all text-xs text-muted-foreground">{detail.user_agent || '—'}</p>
-                </div>
-                <Separator />
-                <div>
-                  <p className="text-xs text-muted-foreground">Details (JSON)</p>
-                  <pre className="mt-2 max-h-48 overflow-auto rounded-md border bg-muted/40 p-3 text-[11px] leading-relaxed">
-                    {JSON.stringify(detail.details ?? {}, null, 2)}
-                  </pre>
-                </div>
+            <DialogBody className={`${detailDialogBodyClass} space-y-4`}>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <DetailField label="When">
+                  {new Date(detail.created_at).toLocaleString()}
+                </DetailField>
+                <DetailField label="Status">
+                  {detail.status || 'success'}
+                </DetailField>
+                <DetailField label="Actor (full name)" className="sm:col-span-2">
+                  {detail.user_full_name || detail.username || '—'}
+                </DetailField>
+                <DetailField label="Username">
+                  <span className="font-mono text-sm">{detail.username || '—'}</span>
+                </DetailField>
+                <DetailField label="Role (at event)">
+                  {detail.user_role || '—'}
+                </DetailField>
+                <DetailField label="Action" className="sm:col-span-2">
+                  <span className="font-mono text-sm">{detail.action}</span>
+                </DetailField>
+                <DetailField label="Module / subject" className="sm:col-span-2">
+                  <span>
+                    {detail.module || '—'} · {detail.entity_type ? detail.entity_type.replace(/_/g, ' ') : '—'}
+                  </span>
+                  <p className="mt-1 font-medium">
+                    {detail.entity_label || detail.summary?.split(' — ').slice(1).join(' — ') || '—'}
+                  </p>
+                </DetailField>
               </div>
-            </ScrollArea>
+              <Separator />
+              <DetailField label="Summary">
+                {detail.summary || '—'}
+              </DetailField>
+              <DetailField label="IP address">
+                <span className="font-mono text-xs">{detail.ip_address || '—'}</span>
+              </DetailField>
+              <DetailField label="Device / browser">
+                <span className="text-xs font-normal text-muted-foreground">{detail.user_agent || '—'}</span>
+              </DetailField>
+              <Separator />
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800/75 dark:text-emerald-300/80">
+                  Details (JSON)
+                </p>
+                <pre className="mt-2 max-h-48 overflow-auto rounded-lg border border-emerald-100 bg-emerald-50/40 p-3 text-[11px] leading-relaxed break-all dark:border-emerald-900/40 dark:bg-emerald-950/20">
+                  {JSON.stringify(detail.details ?? {}, null, 2)}
+                </pre>
+              </div>
+            </DialogBody>
           )}
         </DialogContent>
       </Dialog>

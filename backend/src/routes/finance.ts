@@ -804,7 +804,7 @@ const WRITE_OFF_REASONS = z.enum([
  */
 router.post(
   '/student/:id/write-off-arrears',
-  requireRole('super-admin', 'administrator'),
+  requireRole('super-admin', 'administrator', 'finance'),
   async (req: AuthRequest, res: Response) => {
     try {
       const tenantId = getTenantId(req);

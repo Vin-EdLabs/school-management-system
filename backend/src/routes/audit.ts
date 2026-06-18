@@ -6,8 +6,7 @@ import { setTenantContext } from '../middleware/tenant.js';
 import { writeAuditLog } from '../services/auditService.js';
 import { enrichAuditLogRow, AUDIT_ENTITY_JOINS, AUDIT_ENTITY_LABEL_SQL } from '../utils/auditDisplay.js';
 import { getClientIp } from '../utils/clientIp.js';
-import { getIO } from '../socket.js';
-import type { AuthenticatedSocket } from '../socket.js';
+import { listActiveSessions } from '../services/presenceService.js';
 
 const router = express.Router();
 
@@ -361,18 +360,7 @@ router.get('/super-admin/tracker/timeline', authenticate, requireRole('super-adm
 
 router.get('/super-admin/online-sessions', authenticate, requireRole('super-admin'), async (req: AuthRequest, res) => {
   try {
-    const sockets = await getIO().fetchSockets() as unknown as Array<AuthenticatedSocket>;
-    const sessions = sockets
-      .filter((socket) => socket.user && String(socket.user.role || '').toLowerCase().trim() !== 'parent')
-      .map((socket) => ({
-        socketId: socket.id,
-        userId: socket.user!.id,
-        tenantId: socket.user!.tenantId,
-        username: socket.user!.username,
-        fullName: socket.user!.fullName,
-        role: socket.user!.role,
-        connectedAt: socket.data?.connectedAt ? new Date(socket.data.connectedAt).toISOString() : null,
-      }));
+    const sessions = await listActiveSessions();
 
     const tenantIds = Array.from(new Set(sessions.filter((s) => typeof s.tenantId === 'number' && !Number.isNaN(s.tenantId)).map((s) => s.tenantId as number)));
     const tenantNames = new Map<number, string>();

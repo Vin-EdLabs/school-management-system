@@ -413,16 +413,33 @@ export const TransportVehicles: React.FC = () => {
       )}
 
       {/* Add / Edit Form Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{editingVehicle ? 'Edit Vehicle Details' : 'Register New Fleet Unit'}</DialogTitle>
+      <Dialog open={dialogOpen} onOpenChange={open => { if (!open && !submitting) { setDialogOpen(false); setEditingVehicle(null); } }}>
+        <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[640px] rounded-[1rem] border-t-4 border-emerald-500 shadow-[0_20px_60px_rgba(0,0,0,0.15)]">
+          <DialogHeader className="shrink-0 border-b border-border/70 px-6 py-4">
+            <DialogTitle>{editingVehicle ? 'Edit vehicle' : 'Add vehicle'}</DialogTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              {editingVehicle
+                ? 'Update fleet unit details, capacity, and instructor assignment.'
+                : 'Register a bus or shuttle for routes and driver assignment.'}
+            </p>
           </DialogHeader>
-
-          <form onSubmit={handleSubmit}>
-            <DialogBody className="space-y-4 py-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="vehicleName">Vehicle Name *</Label>
+          <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+            <DialogBody className="space-y-4 overflow-y-auto px-6 py-4">
+              <div className="rounded-3xl border border-emerald-100 bg-emerald-50/70 p-4 text-sm text-emerald-900 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 rounded-full bg-emerald-100 p-2 text-emerald-700">
+                    <Info className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="font-semibold">Fleet registration</p>
+                    <p className="mt-1 leading-6 text-slate-700">
+                      Each vehicle can be linked to routes and drivers. Set capacity to match seat count so student assignments stay within limits.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="vehicleName">Vehicle name *</Label>
                 <Input
                   id="vehicleName"
                   value={vehicleName}
@@ -431,10 +448,9 @@ export const TransportVehicles: React.FC = () => {
                   required
                 />
               </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="plateNumber">Plate Number *</Label>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="plateNumber">Plate number *</Label>
                   <Input
                     id="plateNumber"
                     value={plateNumber}
@@ -443,9 +459,8 @@ export const TransportVehicles: React.FC = () => {
                     required
                   />
                 </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="capacity">Capacity (Seats) *</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="capacity">Capacity (seats) *</Label>
                   <Input
                     id="capacity"
                     type="number"
@@ -457,9 +472,8 @@ export const TransportVehicles: React.FC = () => {
                   />
                 </div>
               </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="model">Model / Make</Label>
+              <div className="space-y-2">
+                <Label htmlFor="model">Model / make</Label>
                 <Input
                   id="model"
                   value={model}
@@ -467,24 +481,22 @@ export const TransportVehicles: React.FC = () => {
                   placeholder="e.g. Toyota Coaster 2022"
                 />
               </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="vehicleColor">Accent Color</Label>
-                  <div className="flex gap-2 items-center">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="vehicleColor">Accent color</Label>
+                  <div className="flex items-center gap-2">
                     <Input
                       id="vehicleColor"
                       type="color"
                       value={color}
                       onChange={e => setColor(e.target.value)}
-                      className="w-12 h-10 p-0 cursor-pointer rounded-lg overflow-hidden border-0"
+                      className="h-10 w-12 cursor-pointer overflow-hidden rounded-lg border-0 p-0"
                     />
                     <span className="font-mono text-xs font-bold uppercase">{color}</span>
                   </div>
                 </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="status">Fleet Status</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="status">Fleet status</Label>
                   <Select value={status} onValueChange={setStatus as any}>
                     <SelectTrigger id="status">
                       <SelectValue />
@@ -497,9 +509,8 @@ export const TransportVehicles: React.FC = () => {
                   </Select>
                 </div>
               </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="instructor">Assign Instructor (Teacher)</Label>
+              <div className="space-y-2">
+                <Label htmlFor="instructor">Assign instructor (teacher)</Label>
                 <Select value={instructorId} onValueChange={setInstructorId}>
                   <SelectTrigger id="instructor">
                     <SelectValue placeholder="Unassigned" />
@@ -515,14 +526,12 @@ export const TransportVehicles: React.FC = () => {
                 </Select>
               </div>
             </DialogBody>
-
-            <DialogFooter className="gap-2 bg-slate-50 p-4 border-t rounded-b-lg mt-4">
+            <DialogFooter className="form-action-bar shrink-0 gap-2 border-t border-border/70 px-6 py-4">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => setDialogOpen(false)}
                 disabled={submitting}
-                className="h-9 rounded-lg"
               >
                 Cancel
               </Button>
@@ -530,9 +539,8 @@ export const TransportVehicles: React.FC = () => {
                 type="submit"
                 variant="primaryAction"
                 disabled={submitting}
-                className="h-9 rounded-lg font-semibold"
               >
-                {submitting ? 'Saving...' : editingVehicle ? 'Save Changes' : 'Register Vehicle'}
+                {submitting ? 'Saving…' : editingVehicle ? 'Save changes' : 'Add vehicle'}
               </Button>
             </DialogFooter>
           </form>

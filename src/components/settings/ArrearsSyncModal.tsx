@@ -179,12 +179,13 @@ const ArrearsSyncModal: React.FC<ArrearsSyncModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4"
+      className="fixed inset-0 z-[110] overflow-y-auto bg-black/70 p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="arrears-sync-title"
     >
-      <div className="w-full max-w-lg rounded-2xl border border-border bg-background shadow-2xl">
+      <div className="flex min-h-full w-full justify-center">
+        <div className="my-auto mx-auto w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-border bg-background shadow-2xl">
         <div className="border-b px-6 py-5">
           <h2 id="arrears-sync-title" className="text-lg font-semibold text-foreground">
             Syncing Arrears
@@ -258,6 +259,7 @@ const ArrearsSyncModal: React.FC<ArrearsSyncModalProps> = ({
             </p>
           )}
         </div>
+      </div>
       </div>
     </div>
   );

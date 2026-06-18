@@ -151,12 +151,13 @@ const TermActivationModal: React.FC<TermActivationModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
+      className="fixed inset-0 z-[100] overflow-y-auto bg-black/70 p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="term-activation-title"
     >
-      <div className="w-full max-w-lg rounded-2xl border border-border bg-background shadow-2xl">
+      <div className="flex min-h-full w-full justify-center">
+        <div className="my-auto mx-auto w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-border bg-background shadow-2xl">
         <div className="border-b px-6 py-5">
           <h2 id="term-activation-title" className="text-lg font-semibold text-foreground">
             Activating Academic Term
@@ -226,6 +227,7 @@ const TermActivationModal: React.FC<TermActivationModalProps> = ({
             </p>
           )}
         </div>
+      </div>
       </div>
     </div>
   );

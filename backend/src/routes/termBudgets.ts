@@ -23,7 +23,7 @@ import {
 
 const router = express.Router();
 const budgetRoles = requireRole('super-admin', 'administrator', 'finance');
-const adminOnly = requireRole('super-admin', 'administrator');
+const adminOnly = requireRole('super-admin', 'administrator', 'finance');
 
 router.use(authenticate);
 router.use(requireTenant);

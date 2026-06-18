@@ -10,6 +10,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogBody,
 } from '@/components/ui/dialog';
 import {
   Select,
@@ -74,7 +75,7 @@ function varianceLabel(remaining: number, isExpense: boolean) {
 const TermBudgetModule = () => {
   const { user } = useAuth();
   const { currentTerm, currentYear } = useActiveTerm();
-  const canClose = user?.role === 'administrator' || user?.role === 'super-admin';
+  const canClose = user?.role === 'administrator' || user?.role === 'super-admin' || user?.role === 'finance';
 
   const [loading, setLoading] = useState(true);
   const [budget, setBudget] = useState<TermBudgetView | null>(null);
@@ -672,11 +673,14 @@ const TermBudgetModule = () => {
       </Tabs>
 
       <Dialog open={categoryDialog.open} onOpenChange={(open) => setCategoryDialog((p) => ({ ...p, open }))}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add Category</DialogTitle>
+        <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[480px] rounded-[1rem] border-t-4 border-emerald-500 shadow-[0_20px_60px_rgba(0,0,0,0.15)]">
+          <DialogHeader className="shrink-0 border-b border-border/70 px-6 py-4 pr-12 text-left">
+            <DialogTitle>Add budget category</DialogTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              Create a new income or expense category for this term&apos;s budget.
+            </p>
           </DialogHeader>
-          <div className="space-y-3 py-2">
+          <DialogBody className="space-y-4 overflow-y-auto px-6 py-4">
             <div className="space-y-2">
               <Label>Type</Label>
               <Select
@@ -700,13 +704,13 @@ const TermBudgetModule = () => {
                 placeholder="e.g. PTA Donations"
               />
             </div>
-          </div>
-          <DialogFooter>
+          </DialogBody>
+          <DialogFooter className="form-action-bar shrink-0 gap-2 border-t border-border/70 px-6 py-4">
             <Button variant="outline" onClick={() => setCategoryDialog({ open: false, type: 'income' })}>
               Cancel
             </Button>
             <Button variant="primaryAction" onClick={() => void handleAddCategory()}>
-              Save
+              Save category
             </Button>
           </DialogFooter>
         </DialogContent>

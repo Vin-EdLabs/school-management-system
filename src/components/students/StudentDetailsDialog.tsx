@@ -1,5 +1,6 @@
 import React from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter, detailDialogContentWideClass, detailDialogHeaderClass, detailDialogBodyClass, detailDialogFooterClass } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -147,15 +148,18 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="flex max-h-[min(90dvh,900px)] max-w-4xl flex-col gap-0 overflow-hidden p-0 [&>button.absolute]:hidden">
-        <DialogHeader className="shrink-0 border-b px-6 py-4">
-          <DialogTitle className="flex items-center space-x-2">
-            {alumni ? <GraduationCap className="w-5 h-5 text-indigo-600" /> : <User className="w-5 h-5" />}
-            <span>{alumni ? 'Alumni profile' : 'Student complete profile'}</span>
+      <DialogContent className={`${detailDialogContentWideClass} sm:max-w-4xl`}>
+        <DialogHeader className={detailDialogHeaderClass}>
+          <DialogTitle className="flex items-center gap-2 pr-0">
+            {alumni ? <GraduationCap className="w-5 h-5 shrink-0 text-indigo-600" /> : <User className="w-5 h-5 shrink-0" />}
+            <span className="min-w-0 break-words">{alumni ? 'Alumni profile' : 'Student profile'}</span>
           </DialogTitle>
+          <p className="text-sm text-muted-foreground">
+            {student.firstName} {student.lastName} · {student.studentId}
+          </p>
         </DialogHeader>
 
-        <DialogBody className="space-y-6 px-6 py-4">
+        <DialogBody className={`${detailDialogBodyClass} space-y-6`}>
           {/* Student Header Card with Passport Photo */}
           <Card className={cn('border-slate-200', alumni && 'border-indigo-200 bg-gradient-to-r from-indigo-50/80 to-slate-50 dark:from-indigo-950/30 dark:to-slate-900/50')}>
             <CardContent className="pt-6">
@@ -649,6 +653,10 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
             </TabsContent>
           </Tabs>
         </DialogBody>
+
+        <DialogFooter className={detailDialogFooterClass}>
+          <Button variant="outline" onClick={onClose}>Close</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

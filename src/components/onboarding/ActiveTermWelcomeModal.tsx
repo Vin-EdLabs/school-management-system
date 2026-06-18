@@ -3,6 +3,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { CalendarClock, GraduationCap, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { ModalViewport } from '@/components/ui/dialog';
 import { resolveLogoUrl } from '@/services/tenantService';
 import { useSchool } from '@/contexts/SchoolContext';
 
@@ -45,16 +46,17 @@ const ActiveTermWelcomeModal: React.FC<ActiveTermWelcomeModalProps> = ({
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-[200] bg-black/55 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <DialogPrimitive.Content
-          aria-labelledby={titleId}
-          aria-describedby={descId}
-          className={cn(
-            'fixed left-1/2 top-1/2 z-[201] w-[min(92vw,28rem)] -translate-x-1/2 -translate-y-1/2',
-            'rounded-2xl border border-emerald-200/80 bg-gradient-to-b from-white to-emerald-50/80 p-0 shadow-2xl shadow-emerald-900/20',
-            'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-            'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 dark:from-slate-900 dark:to-emerald-950/40 dark:border-emerald-800/60'
-          )}
-        >
+        <ModalViewport className="z-[201]">
+          <DialogPrimitive.Content
+            aria-labelledby={titleId}
+            aria-describedby={descId}
+            className={cn(
+              'pointer-events-auto relative my-auto mx-auto w-[min(calc(100vw-2rem),28rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto',
+              'rounded-2xl border border-emerald-200/80 bg-gradient-to-b from-white to-emerald-50/80 p-0 shadow-2xl shadow-emerald-900/20',
+              'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+              'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 dark:from-slate-900 dark:to-emerald-950/40 dark:border-emerald-800/60'
+            )}
+          >
           <div className="relative overflow-hidden rounded-2xl">
             <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-emerald-400/20 blur-2xl" />
             <div className="pointer-events-none absolute -bottom-10 -left-6 h-28 w-28 rounded-full bg-sky-400/15 blur-2xl" />
@@ -109,7 +111,8 @@ const ActiveTermWelcomeModal: React.FC<ActiveTermWelcomeModalProps> = ({
               </Button>
             </div>
           </div>
-        </DialogPrimitive.Content>
+          </DialogPrimitive.Content>
+        </ModalViewport>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
   );

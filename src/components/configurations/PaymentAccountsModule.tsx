@@ -8,9 +8,14 @@ import { Switch } from '@/components/ui/switch';
 import {
   Dialog,
   DialogContent,
+  DialogBody,
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  detailDialogContentClass,
+  detailDialogHeaderClass,
+  detailDialogBodyClass,
+  detailDialogFooterClass,
 } from '@/components/ui/dialog';
 import {
   Select,
@@ -34,7 +39,7 @@ import {
   type PaymentAccountBalance,
 } from '../../utils/paymentAccounts';
 import { formatDisplayDate } from '../../utils/dateFormat';
-import { Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { Pencil, Plus, RefreshCw, Trash2, Info } from 'lucide-react';
 
 type AccountForm = {
   account_type: 'cash' | 'bank' | 'momo';
@@ -66,7 +71,7 @@ const emptyForm = (): AccountForm => ({
 
 const PaymentAccountsModule = () => {
   const { hasAccess } = useAuth();
-  const canManage = hasAccess('settings-full');
+  const canManage = hasAccess('payment-accounts');
   const { accounts, balances, loading, refresh } = usePaymentAccounts({ includeBalances: true });
 
   const [legacyStatus, setLegacyStatus] = useState<LegacyMigrationStatus | null>(null);
@@ -274,7 +279,7 @@ const PaymentAccountsModule = () => {
       {!canManage && (
         <Card className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30">
           <CardContent className="py-4 text-sm">
-            Only administrators can configure payment accounts and opening balances.
+            Only users with payment account access can configure accounts and opening balances.
           </CardContent>
         </Card>
       )}
@@ -380,93 +385,132 @@ const PaymentAccountsModule = () => {
 
       {/* Add/Edit Account */}
       <Dialog open={accountDialogOpen} onOpenChange={setAccountDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[560px] rounded-[1rem] border-t-4 border-emerald-500 shadow-[0_20px_60px_rgba(0,0,0,0.15)]">
+          <DialogHeader className="shrink-0 border-b border-border/70 px-6 py-4">
             <DialogTitle>{editing ? 'Edit Payment Account' : 'Add Payment Account'}</DialogTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              {editing
+                ? 'Update account details used when recording fees and other payments.'
+                : 'Set up cash, bank, or mobile money accounts for receiving school payments.'}
+            </p>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            {!editing && (
-              <div className="space-y-2">
-                <Label>Account Type</Label>
-                <Select value={form.account_type} onValueChange={(v) => setForm((p) => ({ ...p, account_type: v as AccountForm['account_type'] }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {!hasCashAccount && <SelectItem value="cash">Cash at Hand</SelectItem>}
-                    <SelectItem value="bank">Bank Account</SelectItem>
-                    <SelectItem value="momo">Mobile Money</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            {form.account_type === 'bank' && (
-              <>
-                <div className="space-y-2"><Label>Bank Name</Label><Input value={form.account_name} onChange={(e) => setForm((p) => ({ ...p, account_name: e.target.value }))} placeholder="e.g. GCB Bank" /></div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-2"><Label>Account Number</Label><Input value={form.account_number} onChange={(e) => setForm((p) => ({ ...p, account_number: e.target.value }))} /></div>
-                  <div className="space-y-2"><Label>Branch</Label><Input value={form.branch} onChange={(e) => setForm((p) => ({ ...p, branch: e.target.value }))} /></div>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleSaveAccount();
+            }}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <DialogBody className="space-y-4 overflow-y-auto px-6 py-4">
+              <div className="rounded-3xl border border-emerald-100 bg-emerald-50/70 p-4 text-sm text-emerald-900 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 rounded-full bg-emerald-100 p-2 text-emerald-700">
+                    <Info className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="font-semibold">Payment account setup</p>
+                    <p className="mt-1 leading-6 text-slate-700">
+                      {form.account_type === 'cash'
+                        ? 'Cash at hand is used for on-site collections. You only need one cash account per school.'
+                        : form.account_type === 'bank'
+                          ? 'Bank accounts appear on receipts and finance reports. Add the official account name and number for accurate records.'
+                          : 'Mobile money wallets are used when parents pay via MTN, Telecel, or AirtelTigo. Enter the registered phone number.'}
+                    </p>
+                  </div>
                 </div>
-                <div className="space-y-2"><Label>Account Nickname (optional)</Label><Input value={form.nickname} onChange={(e) => setForm((p) => ({ ...p, nickname: e.target.value }))} placeholder="e.g. Main School Account" /></div>
-              </>
-            )}
-            {form.account_type === 'momo' && (
-              <>
+              </div>
+              {!editing && (
                 <div className="space-y-2">
-                  <Label>Network</Label>
-                  <Select value={form.network} onValueChange={(v) => setForm((p) => ({ ...p, network: v }))}>
-                    <SelectTrigger><SelectValue placeholder="Select network" /></SelectTrigger>
+                  <Label>Account Type</Label>
+                  <Select value={form.account_type} onValueChange={(v) => setForm((p) => ({ ...p, account_type: v as AccountForm['account_type'] }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="MTN">MTN</SelectItem>
-                      <SelectItem value="Telecel">Telecel</SelectItem>
-                      <SelectItem value="AirtelTigo">AirtelTigo</SelectItem>
+                      {!hasCashAccount && <SelectItem value="cash">Cash at Hand</SelectItem>}
+                      <SelectItem value="bank">Bank Account</SelectItem>
+                      <SelectItem value="momo">Mobile Money</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2"><Label>Phone Number</Label><Input value={form.phone_number} onChange={(e) => setForm((p) => ({ ...p, phone_number: e.target.value }))} /></div>
-                <div className="space-y-2"><Label>Wallet Nickname (optional)</Label><Input value={form.nickname} onChange={(e) => setForm((p) => ({ ...p, nickname: e.target.value }))} /></div>
-              </>
-            )}
-            {form.account_type === 'cash' && !editing && (
-              <div className="space-y-2"><Label>Account Name</Label><Input value={form.account_name} onChange={(e) => setForm((p) => ({ ...p, account_name: e.target.value }))} /></div>
-            )}
-            {!editing && (
-              <>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-2"><Label>Opening Balance (GHS)</Label><Input type="number" min="0" step="0.01" value={form.opening_balance} onChange={(e) => setForm((p) => ({ ...p, opening_balance: e.target.value }))} /></div>
-                  <div className="space-y-2"><Label>As of Date</Label><Input type="date" value={form.opening_balance_as_of} onChange={(e) => setForm((p) => ({ ...p, opening_balance_as_of: e.target.value }))} /></div>
+              )}
+              {form.account_type === 'bank' && (
+                <>
+                  <div className="space-y-2"><Label>Bank Name</Label><Input value={form.account_name} onChange={(e) => setForm((p) => ({ ...p, account_name: e.target.value }))} placeholder="e.g. GCB Bank" /></div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2"><Label>Account Number</Label><Input value={form.account_number} onChange={(e) => setForm((p) => ({ ...p, account_number: e.target.value }))} /></div>
+                    <div className="space-y-2"><Label>Branch</Label><Input value={form.branch} onChange={(e) => setForm((p) => ({ ...p, branch: e.target.value }))} /></div>
+                  </div>
+                  <div className="space-y-2"><Label>Account Nickname (optional)</Label><Input value={form.nickname} onChange={(e) => setForm((p) => ({ ...p, nickname: e.target.value }))} placeholder="e.g. Main School Account" /></div>
+                </>
+              )}
+              {form.account_type === 'momo' && (
+                <>
+                  <div className="space-y-2">
+                    <Label>Network</Label>
+                    <Select value={form.network} onValueChange={(v) => setForm((p) => ({ ...p, network: v }))}>
+                      <SelectTrigger><SelectValue placeholder="Select network" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="MTN">MTN</SelectItem>
+                        <SelectItem value="Telecel">Telecel</SelectItem>
+                        <SelectItem value="AirtelTigo">AirtelTigo</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2"><Label>Phone Number</Label><Input value={form.phone_number} onChange={(e) => setForm((p) => ({ ...p, phone_number: e.target.value }))} /></div>
+                  <div className="space-y-2"><Label>Wallet Nickname (optional)</Label><Input value={form.nickname} onChange={(e) => setForm((p) => ({ ...p, nickname: e.target.value }))} /></div>
+                </>
+              )}
+              {form.account_type === 'cash' && !editing && (
+                <div className="space-y-2"><Label>Account Name</Label><Input value={form.account_name} onChange={(e) => setForm((p) => ({ ...p, account_name: e.target.value }))} /></div>
+              )}
+              {!editing && (
+                <>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2"><Label>Opening Balance (GHS)</Label><Input type="number" min="0" step="0.01" value={form.opening_balance} onChange={(e) => setForm((p) => ({ ...p, opening_balance: e.target.value }))} /></div>
+                    <div className="space-y-2"><Label>As of Date</Label><Input type="date" value={form.opening_balance_as_of} onChange={(e) => setForm((p) => ({ ...p, opening_balance_as_of: e.target.value }))} /></div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Set opening balance now. It locks after the first transaction is linked to this account.</p>
+                </>
+              )}
+              {editing && (
+                <p className="text-xs text-muted-foreground rounded-lg border bg-muted/40 p-3">
+                  Opening balance is configured separately via &quot;Set opening balance&quot; on the account card (Configurations only).
+                </p>
+              )}
+              <div className="flex items-center justify-between rounded-xl border border-border/70 bg-slate-50/80 p-4">
+                <div>
+                  <Label>Set as Default</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">Pre-selected when recording transactions</p>
                 </div>
-                <p className="text-xs text-muted-foreground">Set opening balance now. It locks after the first transaction is linked to this account.</p>
-              </>
-            )}
-            {editing && (
-              <p className="text-xs text-muted-foreground rounded-md border bg-muted/40 p-3">
-                Opening balance is configured separately via &quot;Set opening balance&quot; on the account card (Configurations only).
-              </p>
-            )}
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <div><Label>Set as Default</Label><p className="text-xs text-muted-foreground">Pre-selected when recording transactions</p></div>
-              <Switch checked={form.is_default} onCheckedChange={(v) => setForm((p) => ({ ...p, is_default: v }))} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAccountDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleSaveAccount} disabled={saving}>{saving ? 'Saving…' : editing ? 'Save Changes' : 'Create Account'}</Button>
-          </DialogFooter>
+                <Switch checked={form.is_default} onCheckedChange={(v) => setForm((p) => ({ ...p, is_default: v }))} />
+              </div>
+            </DialogBody>
+            <DialogFooter className="form-action-bar shrink-0 gap-2 border-t border-border/70 px-6 py-4">
+              <Button type="button" variant="outline" onClick={() => setAccountDialogOpen(false)}>Cancel</Button>
+              <Button type="submit" variant="primaryAction" disabled={saving}>
+                {saving ? 'Saving…' : editing ? 'Save Changes' : 'Create Account'}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
       {/* Opening Balance */}
       <Dialog open={openingDialogOpen} onOpenChange={setOpeningDialogOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Configure Opening Balance</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            {getAccountDisplayName(openingTarget || { account_name: '' } as PaymentAccount)}
-          </p>
-          <div className="grid gap-3 sm:grid-cols-2 py-2">
-            <div className="space-y-2"><Label>Opening Balance (GHS)</Label><Input type="number" min="0" step="0.01" value={openingForm.opening_balance} onChange={(e) => setOpeningForm((p) => ({ ...p, opening_balance: e.target.value }))} /></div>
-            <div className="space-y-2"><Label>As of Date</Label><Input type="date" value={openingForm.opening_balance_as_of} onChange={(e) => setOpeningForm((p) => ({ ...p, opening_balance_as_of: e.target.value }))} /></div>
-          </div>
-          <p className="text-xs text-muted-foreground">Editable until the first transaction is linked. After that it is permanently locked.</p>
-          <DialogFooter>
+        <DialogContent className={detailDialogContentClass}>
+          <DialogHeader className={detailDialogHeaderClass}>
+            <DialogTitle>Configure opening balance</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              {getAccountDisplayName(openingTarget || { account_name: '' } as PaymentAccount)}
+            </p>
+          </DialogHeader>
+          <DialogBody className={`${detailDialogBodyClass} space-y-4`}>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2"><Label>Opening Balance (GHS)</Label><Input type="number" min="0" step="0.01" value={openingForm.opening_balance} onChange={(e) => setOpeningForm((p) => ({ ...p, opening_balance: e.target.value }))} /></div>
+              <div className="space-y-2"><Label>As of Date</Label><Input type="date" value={openingForm.opening_balance_as_of} onChange={(e) => setOpeningForm((p) => ({ ...p, opening_balance_as_of: e.target.value }))} /></div>
+            </div>
+            <p className="text-xs text-muted-foreground">Editable until the first transaction is linked. After that it is permanently locked.</p>
+          </DialogBody>
+          <DialogFooter className={detailDialogFooterClass}>
             <Button variant="outline" onClick={() => setOpeningDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleSaveOpeningBalance} disabled={saving}>Save opening balance</Button>
           </DialogFooter>
@@ -475,10 +519,12 @@ const PaymentAccountsModule = () => {
 
       {/* Legacy Migration */}
       <Dialog open={legacyDialogOpen} onOpenChange={setLegacyDialogOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Map Legacy Transactions</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">One-time mapping. Cannot be repeated after completion.</p>
-          <div className="space-y-4 py-2">
+        <DialogContent className={detailDialogContentClass}>
+          <DialogHeader className={detailDialogHeaderClass}>
+            <DialogTitle>Map legacy transactions</DialogTitle>
+            <p className="text-sm text-muted-foreground">One-time mapping. Cannot be repeated after completion.</p>
+          </DialogHeader>
+          <DialogBody className={`${detailDialogBodyClass} space-y-4`}>
             {legacyStatus && legacyStatus.groups.cash > 0 && (
               <div className="space-y-2">
                 <Label>{legacyStatus.groups.cash} Cash transaction(s) → assign to:</Label>
@@ -506,8 +552,8 @@ const PaymentAccountsModule = () => {
                 </Select>
               </div>
             )}
-          </div>
-          <DialogFooter>
+          </DialogBody>
+          <DialogFooter className={detailDialogFooterClass}>
             <Button variant="outline" onClick={() => setLegacyDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleLegacyMigrate} disabled={saving}>Confirm mapping</Button>
           </DialogFooter>

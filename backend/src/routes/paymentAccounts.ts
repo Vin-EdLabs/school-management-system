@@ -33,8 +33,8 @@ router.use(requireTenant);
 router.use(setTenantContext);
 attachWritableTermGuard(router);
 
-const adminRoles = requireRole('super-admin', 'administrator');
-const financeViewRoles = requireRole('super-admin', 'administrator', 'finance');
+const financeManageRoles = requireRole('super-admin', 'administrator', 'finance');
+const financeViewRoles = financeManageRoles;
 
 async function auditAccountAction(
   req: AuthRequest,
@@ -98,7 +98,7 @@ router.get('/balances', financeViewRoles, async (req: AuthRequest, res) => {
 });
 
 // GET /api/payment-accounts/legacy-status
-router.get('/legacy-status', adminRoles, async (req: AuthRequest, res) => {
+router.get('/legacy-status', financeManageRoles, async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const status = await getLegacyMigrationStatus(tenantId);
@@ -110,7 +110,7 @@ router.get('/legacy-status', adminRoles, async (req: AuthRequest, res) => {
 });
 
 // POST /api/payment-accounts/legacy-migrate
-router.post('/legacy-migrate', adminRoles, async (req: AuthRequest, res) => {
+router.post('/legacy-migrate', financeManageRoles, async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const { cash_account_id, bank_account_id, momo_account_id } = req.body;
@@ -155,7 +155,7 @@ router.get('/transfers', financeViewRoles, async (req: AuthRequest, res) => {
 });
 
 // POST /api/payment-accounts/transfers
-router.post('/transfers', adminRoles, async (req: AuthRequest, res) => {
+router.post('/transfers', financeManageRoles, async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const { from_account_id, to_account_id, amount, transfer_date, note } = req.body;
@@ -191,7 +191,7 @@ router.post('/transfers', adminRoles, async (req: AuthRequest, res) => {
 });
 
 // POST /api/payment-accounts/transfers/:id/reverse
-router.post('/transfers/:id/reverse', adminRoles, async (req: AuthRequest, res) => {
+router.post('/transfers/:id/reverse', financeManageRoles, async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const transferId = parseInt(req.params.id, 10);
@@ -239,7 +239,7 @@ router.get('/transactions', financeViewRoles, async (req: AuthRequest, res) => {
 });
 
 // POST /api/payment-accounts — create account (admin only)
-router.post('/', adminRoles, async (req: AuthRequest, res) => {
+router.post('/', financeManageRoles, async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const {
@@ -342,7 +342,7 @@ router.post('/', adminRoles, async (req: AuthRequest, res) => {
 });
 
 // PUT /api/payment-accounts/:id/opening-balance — set/edit opening balance (before transactions)
-router.put('/:id/opening-balance', adminRoles, async (req: AuthRequest, res) => {
+router.put('/:id/opening-balance', financeManageRoles, async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const accountId = parseInt(req.params.id, 10);
@@ -399,7 +399,7 @@ router.put('/:id/opening-balance', adminRoles, async (req: AuthRequest, res) => 
 });
 
 // PUT /api/payment-accounts/:id — update account details (not opening balance)
-router.put('/:id', adminRoles, async (req: AuthRequest, res) => {
+router.put('/:id', financeManageRoles, async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const accountId = parseInt(req.params.id, 10);
@@ -463,7 +463,7 @@ router.put('/:id', adminRoles, async (req: AuthRequest, res) => {
 });
 
 // DELETE /api/payment-accounts/:id
-router.delete('/:id', adminRoles, async (req: AuthRequest, res) => {
+router.delete('/:id', financeManageRoles, async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const accountId = parseInt(req.params.id, 10);

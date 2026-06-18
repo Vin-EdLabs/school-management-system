@@ -169,8 +169,8 @@ export class ApiService {
     return promise;
   }
 
-  async get<T>(endpoint: string): Promise<T> {
-    const response = await fetch(this.buildURL(endpoint), {
+  async get<T>(endpoint: string, options?: { skipTenant?: boolean }): Promise<T> {
+    const response = await fetch(this.buildURL(endpoint, !options?.skipTenant), {
       headers: this.getAuthHeaders(),
     });
     const data = await readResponseJson<Record<string, unknown>>(response);

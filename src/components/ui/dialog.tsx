@@ -12,6 +12,26 @@ const DialogPortal = DialogPrimitive.Portal
 
 const DialogClose = DialogPrimitive.Close
 
+/** Scrollable viewport with safe padding; centers short panels, scrolls tall ones. */
+const ModalViewport = ({
+  children,
+  className,
+}: {
+  children: React.ReactNode
+  className?: string
+}) => (
+  <div
+    className={cn(
+      "fixed inset-0 z-50 overflow-y-auto p-4 pointer-events-none",
+      className
+    )}
+  >
+    <div className="flex min-h-full w-full justify-center">
+      {children}
+    </div>
+  </div>
+)
+
 const DialogOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
@@ -33,20 +53,22 @@ const DialogContent = React.forwardRef<
 >(({ className, children, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
-    <DialogPrimitive.Content
-      ref={ref}
-      className={cn(
-        "fixed left-[50%] top-[50%] z-50 flex w-full max-w-lg max-h-[calc(100vh-4rem)] flex-col overflow-hidden translate-x-[-50%] translate-y-[-50%] gap-4 rounded-[1.5rem] border border-emerald-200/70 bg-white/95 p-0 shadow-[0_28px_120px_rgba(15,118,110,0.24)] duration-300 ease-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-[1.75rem] overscroll-contain dark:border-emerald-500/20 dark:bg-slate-950/95",
-        className
-      )}
-      {...props}
-    >
-      {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
-      </DialogPrimitive.Close>
-    </DialogPrimitive.Content>
+    <ModalViewport>
+      <DialogPrimitive.Content
+        ref={ref}
+        className={cn(
+          "modal pointer-events-auto relative z-50 my-auto mx-auto flex w-full max-w-lg max-h-[calc(100dvh-2rem)] flex-col gap-4 overflow-y-auto overscroll-contain rounded-[1.5rem] border border-emerald-200/70 bg-white/95 p-0 shadow-[0_28px_120px_rgba(15,118,110,0.24)] duration-300 ease-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 sm:rounded-[1.75rem] dark:border-emerald-500/20 dark:bg-slate-950/95",
+          className
+        )}
+        {...props}
+      >
+        {children}
+        <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
+          <X className="h-4 w-4" />
+          <span className="sr-only">Close</span>
+        </DialogPrimitive.Close>
+      </DialogPrimitive.Content>
+    </ModalViewport>
   </DialogPortal>
 ))
 DialogContent.displayName = DialogPrimitive.Content.displayName
@@ -125,12 +147,50 @@ const DialogDescription = React.forwardRef<
 ))
 DialogDescription.displayName = DialogPrimitive.Description.displayName
 
+/** Shared shell for read-only detail / summary dialogs */
+export const detailDialogContentClass =
+  "flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-xl rounded-[1rem] border-t-4 border-emerald-500 shadow-[0_20px_60px_rgba(0,0,0,0.15)]"
+
+export const detailDialogContentWideClass =
+  "flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl rounded-[1rem] border-t-4 border-emerald-500 shadow-[0_20px_60px_rgba(0,0,0,0.15)]"
+
+export const detailDialogHeaderClass =
+  "shrink-0 space-y-1 border-b border-border/70 px-6 py-4 pr-12 text-left"
+
+export const detailDialogBodyClass =
+  "min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-4"
+
+export const detailDialogFooterClass =
+  "form-action-bar shrink-0 gap-2 border-t border-border/70 px-6 py-4"
+
+export function DetailField({
+  label,
+  children,
+  className,
+}: {
+  label: string
+  children: React.ReactNode
+  className?: string
+}) {
+  return (
+    <div className={cn("min-w-0", className)}>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800/75 dark:text-emerald-300/80">
+        {label}
+      </p>
+      <div className="mt-1 break-words text-sm font-medium leading-relaxed text-foreground">
+        {children}
+      </div>
+    </div>
+  )
+}
+
 export {
   Dialog,
   DialogPortal,
   DialogOverlay,
   DialogClose,
   DialogTrigger,
+  ModalViewport,
   DialogContent,
   DialogHeader,
   DialogBody,

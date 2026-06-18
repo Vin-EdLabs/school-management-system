@@ -9,7 +9,12 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogBody,
   DialogFooter,
+  detailDialogContentClass,
+  detailDialogHeaderClass,
+  detailDialogBodyClass,
+  detailDialogFooterClass,
 } from '@/components/ui/dialog';
 import {
   Select,
@@ -39,6 +44,7 @@ import {
   Wallet,
   UserCheck,
   Copy,
+  Info,
 } from 'lucide-react';
 
 interface SchoolUser {
@@ -438,85 +444,102 @@ const UsersModule = () => {
 
       {/* Add Staff as User Dialog */}
       <Dialog open={staffUserOpen} onOpenChange={setStaffUserOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[560px] rounded-[1rem] border-t-4 border-emerald-500 shadow-[0_20px_60px_rgba(0,0,0,0.15)]">
+          <DialogHeader className="shrink-0 border-b border-border/70 px-6 py-4">
             <DialogTitle className="flex items-center gap-2">
-              <UserCheck className="w-5 h-5 text-indigo-600" />
+              <UserCheck className="w-5 h-5 text-emerald-600" />
               Add Staff as User
             </DialogTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              Give an existing staff member a login account with username and password.
+            </p>
           </DialogHeader>
-          <form onSubmit={handleCreateStaffUser} className="space-y-4">
-            <div>
-              <Label>Staff Member *</Label>
-              {loadingStaffCandidates ? (
-                <p className="text-sm text-muted-foreground mt-2">Loading...</p>
-              ) : staffCandidates.length === 0 ? (
-                <p className="text-sm text-muted-foreground mt-2">All active other staff already have user accounts.</p>
-              ) : (
+          <form onSubmit={handleCreateStaffUser} className="flex min-h-0 flex-1 flex-col">
+            <DialogBody className="space-y-4 overflow-y-auto px-6 py-4">
+              <div className="rounded-3xl border border-emerald-100 bg-emerald-50/70 p-4 text-sm text-emerald-900 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 rounded-full bg-emerald-100 p-2 text-emerald-700">
+                    <Info className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="font-semibold">Staff login accounts</p>
+                    <p className="mt-1 leading-6 text-slate-700">
+                      Teachers receive accounts automatically when added. Use this for other staff (drivers, accountants, etc.) who need system access.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Staff member *</Label>
+                {loadingStaffCandidates ? (
+                  <p className="text-sm text-muted-foreground">Loading…</p>
+                ) : staffCandidates.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">All active other staff already have user accounts.</p>
+                ) : (
+                  <Select
+                    value={staffUserForm.staffId}
+                    onValueChange={(v) => {
+                      const s = staffCandidates.find((x) => String(x.id) === v);
+                      setStaffUserForm({
+                        ...staffUserForm,
+                        staffId: v,
+                        username: s?.staff_id || '',
+                      });
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select staff member" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {staffCandidates.map((s) => (
+                        <SelectItem key={s.id} value={String(s.id)}>
+                          {s.full_name} — {s.staff_id}
+                          {s.position ? ` (${s.position})` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label>Username *</Label>
+                <Input
+                  className="font-mono"
+                  value={staffUserForm.username}
+                  onChange={(e) => setStaffUserForm({ ...staffUserForm, username: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Initial password * (min 5 characters)</Label>
+                <Input
+                  type="password"
+                  value={staffUserForm.password}
+                  onChange={(e) => setStaffUserForm({ ...staffUserForm, password: e.target.value })}
+                  required
+                  minLength={5}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Role</Label>
                 <Select
-                  value={staffUserForm.staffId}
-                  onValueChange={(v) => {
-                    const s = staffCandidates.find((x) => String(x.id) === v);
-                    setStaffUserForm({
-                      ...staffUserForm,
-                      staffId: v,
-                      username: s?.staff_id || '',
-                    });
-                  }}
+                  value={staffUserForm.role}
+                  onValueChange={(v: 'staff' | 'finance' | 'administrator') =>
+                    setStaffUserForm({ ...staffUserForm, role: v })
+                  }
                 >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Select staff member" />
+                  <SelectTrigger>
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {staffCandidates.map((s) => (
-                      <SelectItem key={s.id} value={String(s.id)}>
-                        {s.full_name} — {s.staff_id}
-                        {s.position ? ` (${s.position})` : ''}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="staff">Staff</SelectItem>
+                    <SelectItem value="finance">Finance</SelectItem>
+                    <SelectItem value="administrator">Administrator</SelectItem>
                   </SelectContent>
                 </Select>
-              )}
-            </div>
-            <div>
-              <Label>Username *</Label>
-              <Input
-                className="mt-1 font-mono"
-                value={staffUserForm.username}
-                onChange={(e) => setStaffUserForm({ ...staffUserForm, username: e.target.value })}
-                required
-              />
-            </div>
-            <div>
-              <Label>Initial Password * (min 5 characters)</Label>
-              <Input
-                type="password"
-                className="mt-1"
-                value={staffUserForm.password}
-                onChange={(e) => setStaffUserForm({ ...staffUserForm, password: e.target.value })}
-                required
-                minLength={5}
-              />
-            </div>
-            <div>
-              <Label>Role</Label>
-              <Select
-                value={staffUserForm.role}
-                onValueChange={(v: 'staff' | 'finance' | 'administrator') =>
-                  setStaffUserForm({ ...staffUserForm, role: v })
-                }
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="staff">Staff</SelectItem>
-                  <SelectItem value="finance">Finance</SelectItem>
-                  <SelectItem value="administrator">Administrator</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <DialogFooter>
+              </div>
+            </DialogBody>
+            <DialogFooter className="form-action-bar shrink-0 gap-2 border-t border-border/70 px-6 py-4">
               <Button type="button" variant="outline" onClick={() => setStaffUserOpen(false)}>Cancel</Button>
               <Button type="submit" variant="primaryAction" disabled={!staffUserForm.staffId || staffCandidates.length === 0}>
                 Create Account
@@ -528,75 +551,88 @@ const UsersModule = () => {
 
       {/* Create User Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[560px] rounded-[1rem] border-t-4 border-emerald-500 shadow-[0_20px_60px_rgba(0,0,0,0.15)]">
+          <DialogHeader className="shrink-0 border-b border-border/70 px-6 py-4">
             <DialogTitle className="flex items-center gap-2">
-              <UserPlus className="w-5 h-5 text-indigo-600" />
-              Create New User
+              <UserPlus className="w-5 h-5 text-emerald-600" />
+              Create User
             </DialogTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              Add an administrator, finance officer, or manual login without a staff profile.
+            </p>
           </DialogHeader>
-          <form onSubmit={handleCreateUser} className="space-y-4">
-            <div>
-              <Label>Username *</Label>
-              <Input
-                value={newUser.username}
-                onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
-                placeholder="e.g. admin, finance1"
-                className="mt-1"
-                required
-              />
-            </div>
-            {(newUser.role === 'administrator' || newUser.role === 'finance') && (
-              <div>
-                <Label>Full Name *</Label>
+          <form onSubmit={handleCreateUser} className="flex min-h-0 flex-1 flex-col">
+            <DialogBody className="space-y-4 overflow-y-auto px-6 py-4">
+              <div className="rounded-3xl border border-emerald-100 bg-emerald-50/70 p-4 text-sm text-emerald-900 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 rounded-full bg-emerald-100 p-2 text-emerald-700">
+                    <Info className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="font-semibold">When to use this</p>
+                    <p className="mt-1 leading-6 text-slate-700">
+                      Use Create User for administrators or finance officers. Teachers and other staff normally get accounts when added via Teachers or Payroll — use &quot;Add Staff as User&quot; for them instead.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Username *</Label>
                 <Input
-                  value={newUser.fullName}
-                  onChange={(e) => setNewUser({ ...newUser, fullName: e.target.value })}
-                  placeholder="e.g. Barbara Acquah"
-                  className="mt-1"
+                  value={newUser.username}
+                  onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
+                  placeholder="e.g. admin, finance1"
                   required
                 />
-                <p className="text-xs text-muted-foreground mt-1">This name appears in the system header and audit records.</p>
               </div>
-            )}
-            <div>
-              <Label>Password * (min {newUser.role === 'teacher' || newUser.role === 'staff' ? 5 : 6} characters)</Label>
-              <Input
-                type="password"
-                value={newUser.password}
-                onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-                placeholder="••••••••"
-                className="mt-1"
-                required
-                minLength={newUser.role === 'teacher' || newUser.role === 'staff' ? 5 : 6}
-              />
-            </div>
-            <div>
-              <Label>Email</Label>
-              <Input
-                type="email"
-                value={newUser.email}
-                onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                placeholder="optional"
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label>Role</Label>
-              <Select value={newUser.role} onValueChange={(v: any) => setNewUser({ ...newUser, role: v })}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="administrator">Administrator</SelectItem>
-                  <SelectItem value="finance">Finance</SelectItem>
-                  <SelectItem value="teacher">Teacher</SelectItem>
-                  <SelectItem value="staff">Staff</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground mt-1">Use Teacher/Staff for manual accounts; normally they get accounts when added via Teachers or Payroll.</p>
-            </div>
-            <DialogFooter>
+              {(newUser.role === 'administrator' || newUser.role === 'finance') && (
+                <div className="space-y-2">
+                  <Label>Full name *</Label>
+                  <Input
+                    value={newUser.fullName}
+                    onChange={(e) => setNewUser({ ...newUser, fullName: e.target.value })}
+                    placeholder="e.g. Barbara Acquah"
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground">This name appears in the system header and audit records.</p>
+                </div>
+              )}
+              <div className="space-y-2">
+                <Label>Password * (min {newUser.role === 'teacher' || newUser.role === 'staff' ? 5 : 6} characters)</Label>
+                <Input
+                  type="password"
+                  value={newUser.password}
+                  onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                  placeholder="••••••••"
+                  required
+                  minLength={newUser.role === 'teacher' || newUser.role === 'staff' ? 5 : 6}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Email</Label>
+                <Input
+                  type="email"
+                  value={newUser.email}
+                  onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                  placeholder="Optional"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Role</Label>
+                <Select value={newUser.role} onValueChange={(v: any) => setNewUser({ ...newUser, role: v })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="administrator">Administrator</SelectItem>
+                    <SelectItem value="finance">Finance</SelectItem>
+                    <SelectItem value="teacher">Teacher</SelectItem>
+                    <SelectItem value="staff">Staff</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </DialogBody>
+            <DialogFooter className="form-action-bar shrink-0 gap-2 border-t border-border/70 px-6 py-4">
               <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
               <Button type="submit" variant="primaryAction">Create User</Button>
             </DialogFooter>
@@ -606,33 +642,38 @@ const UsersModule = () => {
 
       {/* Reset Password Dialog */}
       <Dialog open={resetOpen} onOpenChange={setResetOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <KeyRound className="w-5 h-5 text-amber-600" />
-              Reset Password — {selectedUser ? displayName(selectedUser) : ''}
+        <DialogContent className={detailDialogContentClass}>
+          <DialogHeader className={detailDialogHeaderClass}>
+            <DialogTitle className="flex items-center gap-2 pr-0">
+              <KeyRound className="w-5 h-5 shrink-0 text-amber-600" />
+              <span className="min-w-0 break-words">
+                Reset password — {selectedUser ? displayName(selectedUser) : ''}
+              </span>
             </DialogTitle>
+            {selectedUser ? (
+              <p className="text-sm text-muted-foreground">
+                Set a new login password for <strong>{selectedUser.username}</strong> ({roleLabels[selectedUser.role] || selectedUser.role}).
+              </p>
+            ) : null}
           </DialogHeader>
           {selectedUser && (
-            <form onSubmit={handleResetPassword} className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Set a new password for <strong>{selectedUser.username}</strong> ({roleLabels[selectedUser.role] || selectedUser.role}). They will use this to log in.
-              </p>
-              <div>
-                <Label>New Password * (min {selectedUser.role === 'teacher' || selectedUser.role === 'staff' ? 5 : 6} characters)</Label>
-                <Input
-                  type="password"
-                  value={resetPassword}
-                  onChange={(e) => setResetPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="mt-1"
-                  required
-                  minLength={selectedUser.role === 'teacher' || selectedUser.role === 'staff' ? 5 : 6}
-                />
-              </div>
-              <DialogFooter>
+            <form onSubmit={handleResetPassword} className="flex min-h-0 flex-1 flex-col">
+              <DialogBody className={detailDialogBodyClass}>
+                <div className="space-y-2">
+                  <Label>New password * (min {selectedUser.role === 'teacher' || selectedUser.role === 'staff' ? 5 : 6} characters)</Label>
+                  <Input
+                    type="password"
+                    value={resetPassword}
+                    onChange={(e) => setResetPassword(e.target.value)}
+                    placeholder="••••••••"
+                    required
+                    minLength={selectedUser.role === 'teacher' || selectedUser.role === 'staff' ? 5 : 6}
+                  />
+                </div>
+              </DialogBody>
+              <DialogFooter className={detailDialogFooterClass}>
                 <Button type="button" variant="outline" onClick={() => setResetOpen(false)}>Cancel</Button>
-                <Button type="submit" className="bg-amber-600 hover:bg-amber-700">Reset Password</Button>
+                <Button type="submit" className="bg-amber-600 hover:bg-amber-700">Reset password</Button>
               </DialogFooter>
             </form>
           )}

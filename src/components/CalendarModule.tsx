@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Calendar } from '@/components/ui/calendar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter, detailDialogContentClass, detailDialogHeaderClass, detailDialogBodyClass, detailDialogFooterClass, DetailField } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +17,7 @@ import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterv
 import { toast } from '@/hooks/use-toast';
 import { apiService } from '../services/api';
 import { useSchool } from '../contexts/SchoolContext';
+import { useAuth } from '../contexts/AuthContext';
 import { Loader2 } from 'lucide-react';
 
 interface CalendarEvent {
@@ -50,8 +51,13 @@ const eventCategories = [
   'Other'
 ];
 
+const formDialogClass =
+  'flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[700px] rounded-[1rem] border-t-4 border-emerald-500 shadow-[0_20px_60px_rgba(0,0,0,0.15)]';
+
 export default function CalendarModule() {
   const { schoolId } = useSchool();
+  const { user } = useAuth();
+  const canManageEvents = user?.role === 'super-admin' || user?.role === 'administrator';
   const [currentDate, setCurrentDate] = useState(new Date());
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -244,6 +250,7 @@ export default function CalendarModule() {
   };
 
   const openEditDialog = (event: CalendarEvent) => {
+    if (!canManageEvents) return;
     setEditingEvent(event);
     setSelectedDate(event.date);
     setEventForm({
@@ -260,6 +267,7 @@ export default function CalendarModule() {
   };
 
   const openAddDialog = (date?: Date) => {
+    if (!canManageEvents) return;
     setSelectedDate(date || new Date());
     setEditingEvent(null);
     setEventForm({ 
@@ -273,6 +281,18 @@ export default function CalendarModule() {
       reminderTime: '30'
     });
     setIsDialogOpen(true);
+  };
+
+  const handleDayClick = (date: Date) => {
+    setSelectedDate(date);
+    const dayEvents = getEventsForDate(date);
+    if (canManageEvents) {
+      openAddDialog(date);
+      return;
+    }
+    if (dayEvents.length > 0) {
+      openDetailsDialog(dayEvents[0]);
+    }
   };
 
   const openDetailsDialog = (event: CalendarEvent) => {
@@ -304,13 +324,15 @@ export default function CalendarModule() {
               Organize your academic year with style and precision
             </p>
           </div>
-          <Button 
-            onClick={() => openAddDialog()} 
-            className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 px-8 py-3 rounded-xl text-lg font-semibold"
-          >
-            <Plus className="h-5 w-5 mr-2" />
-            Create Event
-          </Button>
+          {canManageEvents && (
+            <Button 
+              onClick={() => openAddDialog()} 
+              className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 px-8 py-3 rounded-xl text-lg font-semibold"
+            >
+              <Plus className="h-5 w-5 mr-2" />
+              Create Event
+            </Button>
+          )}
         </div>
 
         {/* Calendar Navigation */}
@@ -363,10 +385,7 @@ export default function CalendarModule() {
                     mode="single"
                     selected={selectedDate}
                     onSelect={(date) => {
-                      if (date) {
-                        setSelectedDate(date);
-                        openAddDialog(date);
-                      }
+                      if (date) handleDayClick(date);
                     }}
                     month={month}
                     showOutsideDays={true}
@@ -400,10 +419,7 @@ export default function CalendarModule() {
                                 ${!isCurrentMonth ? 'text-muted-foreground/20 opacity-30' : 'text-foreground/80 hover:bg-indigo-500/10 hover:text-indigo-600'}
                                 flex items-center justify-center
                               `}
-                              onClick={() => {
-                                setSelectedDate(date);
-                                openAddDialog(date);
-                              }}
+                              onClick={() => handleDayClick(date)}
                             >
                               <span className="relative z-10">{format(date, 'd')}</span>
 
@@ -501,24 +517,28 @@ export default function CalendarModule() {
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openEditDialog(event)}
-                            className="h-10 w-10 p-0 hover:bg-purple-100 hover:text-purple-600 rounded-xl transition-all duration-200"
-                            title="Edit Event"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteEvent(event.id)}
-                            className="h-10 w-10 p-0 text-red-500 hover:bg-red-100 hover:text-red-600 rounded-xl transition-all duration-200"
-                            title="Delete Event"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          {canManageEvents && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openEditDialog(event)}
+                                className="h-10 w-10 p-0 hover:bg-purple-100 hover:text-purple-600 rounded-xl transition-all duration-200"
+                                title="Edit Event"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeleteEvent(event.id)}
+                                className="h-10 w-10 p-0 text-red-500 hover:bg-red-100 hover:text-red-600 rounded-xl transition-all duration-200"
+                                title="Delete Event"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -530,7 +550,11 @@ export default function CalendarModule() {
                     <CalendarIcon className="h-8 w-8 text-slate-400" />
                   </div>
                   <h3 className="text-lg font-semibold text-foreground mb-2">No events scheduled</h3>
-                  <p className="text-muted-foreground">Click on any date to create your first event</p>
+                  <p className="text-muted-foreground">
+                    {canManageEvents
+                      ? 'Click on any date to create your first event'
+                      : 'Events will appear here when administrators add them to the calendar'}
+                  </p>
                 </div>
               )}
             </div>
@@ -539,124 +563,86 @@ export default function CalendarModule() {
 
         {/* Event Dialog */}
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogContent className="sm:max-w-[700px] max-h-[90dvh] border-border shadow-2xl bg-card/95 backdrop-blur-sm">
-            <DialogHeader className="pb-6 border-b border-border">
-              <DialogTitle className="text-2xl font-bold text-foreground flex items-center gap-3">
-                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-                  <CalendarIcon className="h-4 w-4 text-white" />
-                </div>
-                {editingEvent ? 'Edit Event' : 'Create New Event'}
-              </DialogTitle>
-            </DialogHeader>
-            
-            <div className="space-y-8 py-6">
-              {/* Selected Date Display */}
+          <DialogContent className={formDialogClass}>
+            <DialogHeader className="shrink-0 border-b border-border/70 px-6 py-4 pr-12 text-left">
+              <DialogTitle>{editingEvent ? 'Edit event' : 'Create event'}</DialogTitle>
               {selectedDate && (
-                <div className="bg-gradient-to-r from-blue-500/5 to-purple-500/5 p-6 rounded-2xl border border-blue-500/20">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
-                      <CalendarIcon className="h-5 w-5 text-white" />
-                    </div>
-                    <div>
-                      <span className="text-sm font-medium text-muted-foreground">Selected Date</span>
-                      <div className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                        {format(selectedDate, 'EEEE, MMMM d, yyyy')}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {format(selectedDate, 'EEEE, MMMM d, yyyy')}
+                </p>
               )}
+            </DialogHeader>
 
-              {/* Event Title */}
-              <div className="space-y-3">
-                <Label htmlFor="title" className="text-sm font-semibold text-foreground/80 flex items-center gap-2">
-                  Event Title <span className="text-red-500">*</span>
-                </Label>
+            <DialogBody className="space-y-5 overflow-y-auto px-6 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="title">Event title *</Label>
                 <Input
                   id="title"
                   value={eventForm.title}
                   onChange={(e) => setEventForm({ ...eventForm, title: e.target.value })}
-                  placeholder="Enter a descriptive title for your event"
-                  className="h-12 border-border bg-background rounded-xl focus:ring-blue-500/20 text-lg"
+                  placeholder="Enter a descriptive title"
                 />
               </div>
-              
-              {/* Description */}
-              <div className="space-y-3">
-                <Label htmlFor="description" className="text-sm font-semibold text-foreground/80">Description</Label>
+
+              <div className="space-y-2">
+                <Label htmlFor="description">Description</Label>
                 <Textarea
                   id="description"
                   value={eventForm.description}
                   onChange={(e) => setEventForm({ ...eventForm, description: e.target.value })}
                   placeholder="Add details about your event..."
-                  rows={4}
-                  className="resize-none border-border bg-background rounded-xl focus:ring-blue-500/20"
+                  rows={3}
+                  className="resize-none"
                 />
               </div>
 
-              {/* Time and Category Row */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-3">
-                  <Label htmlFor="time" className="text-sm font-semibold text-foreground/80 flex items-center gap-2">
-                    <Clock className="h-4 w-4" />
-                    Time
-                  </Label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="time">Time</Label>
                   <Input
                     id="time"
                     type="time"
                     value={eventForm.time}
                     onChange={(e) => setEventForm({ ...eventForm, time: e.target.value })}
-                    className="h-12 border-border bg-background rounded-xl focus:ring-blue-500/20"
                   />
                 </div>
-                <div className="space-y-3">
-                  <Label htmlFor="category" className="text-sm font-semibold text-foreground/80 flex items-center gap-2">
-                    <Tag className="h-4 w-4" />
-                    Category
-                  </Label>
+                <div className="space-y-2">
+                  <Label htmlFor="category">Category</Label>
                   <Select value={eventForm.category} onValueChange={(value) => setEventForm({ ...eventForm, category: value })}>
-                    <SelectTrigger className="h-12 border-border bg-background rounded-xl focus:ring-blue-500/20">
+                    <SelectTrigger id="category">
                       <SelectValue placeholder="Select category" />
                     </SelectTrigger>
-                    <SelectContent className="rounded-xl border-border bg-card">
+                    <SelectContent>
                       {eventCategories.map((category) => (
-                        <SelectItem key={category} value={category} className="rounded-lg">
-                          {category}
-                        </SelectItem>
+                        <SelectItem key={category} value={category}>{category}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
               </div>
 
-              {/* Location */}
-              <div className="space-y-3">
-                <Label htmlFor="location" className="text-sm font-semibold text-foreground/80 flex items-center gap-2">
-                  <MapPin className="h-4 w-4" />
-                  Location
-                </Label>
+              <div className="space-y-2">
+                <Label htmlFor="location">Location</Label>
                 <Input
                   id="location"
                   value={eventForm.location}
                   onChange={(e) => setEventForm({ ...eventForm, location: e.target.value })}
                   placeholder="Where will this event take place?"
-                  className="h-12 border-border bg-background rounded-xl focus:ring-blue-500/20"
                 />
               </div>
 
-              {/* Color Tag */}
-              <div className="space-y-3">
-                <Label htmlFor="color" className="text-sm font-semibold text-foreground/80">Color Theme</Label>
+              <div className="space-y-2">
+                <Label htmlFor="color">Color theme</Label>
                 <Select value={eventForm.color} onValueChange={(value) => setEventForm({ ...eventForm, color: value })}>
-                  <SelectTrigger className="h-12 border-border bg-background rounded-xl focus:ring-blue-500/20">
+                  <SelectTrigger id="color">
                     <SelectValue placeholder="Choose a color theme" />
                   </SelectTrigger>
-                  <SelectContent className="rounded-xl border-border bg-card">
+                  <SelectContent>
                     {eventColors.map((color) => (
-                      <SelectItem key={color.value} value={color.value} className="rounded-lg">
+                      <SelectItem key={color.value} value={color.value}>
                         <div className="flex items-center gap-3">
-                          <div className={`w-5 h-5 rounded-full ${color.value} shadow-sm`} />
-                          <span className="font-medium">{color.name}</span>
+                          <div className={`w-4 h-4 rounded-full ${color.value}`} />
+                          <span>{color.name}</span>
                         </div>
                       </SelectItem>
                     ))}
@@ -664,17 +650,16 @@ export default function CalendarModule() {
                 </Select>
               </div>
 
-              <Separator className="bg-border" />
+              <Separator />
 
-              {/* Reminder Section */}
-              <div className="space-y-6">
-                <div className="flex items-center justify-between p-4 bg-amber-500/10 rounded-xl border border-amber-500/20">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between rounded-xl border border-amber-500/20 bg-amber-500/10 p-4">
                   <div className="space-y-1">
-                    <Label htmlFor="reminder" className="text-sm font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-2">
+                    <Label htmlFor="reminder" className="flex items-center gap-2 text-amber-700">
                       <Bell className="h-4 w-4" />
-                      Set Reminder
+                      Set reminder
                     </Label>
-                    <p className="text-xs text-amber-600/70 dark:text-amber-400/70">Get notified before the event starts</p>
+                    <p className="text-xs text-muted-foreground">Get notified before the event starts</p>
                   </div>
                   <Switch
                     id="reminder"
@@ -682,15 +667,15 @@ export default function CalendarModule() {
                     onCheckedChange={(checked) => setEventForm({ ...eventForm, reminder: checked })}
                   />
                 </div>
-                
+
                 {eventForm.reminder && (
-                  <div className="space-y-3 pl-6 border-l-4 border-amber-500/30 bg-amber-500/5 py-4 rounded-r-xl">
-                    <Label htmlFor="reminderTime" className="text-sm font-semibold text-foreground/80">Remind me</Label>
+                  <div className="space-y-2">
+                    <Label htmlFor="reminderTime">Remind me</Label>
                     <Select value={eventForm.reminderTime} onValueChange={(value) => setEventForm({ ...eventForm, reminderTime: value })}>
-                      <SelectTrigger className="h-12 border-2 border-amber-500/20 rounded-xl focus:border-amber-500 focus:ring-0 bg-background">
+                      <SelectTrigger id="reminderTime">
                         <SelectValue placeholder="Select reminder time" />
                       </SelectTrigger>
-                      <SelectContent className="rounded-xl border-2 border-amber-500/20">
+                      <SelectContent>
                         <SelectItem value="15">15 minutes before</SelectItem>
                         <SelectItem value="30">30 minutes before</SelectItem>
                         <SelectItem value="60">1 hour before</SelectItem>
@@ -701,133 +686,92 @@ export default function CalendarModule() {
                   </div>
                 )}
               </div>
-            </div>
+            </DialogBody>
 
-            {/* Dialog Actions */}
-            <div className="flex justify-end gap-4 pt-6 border-t border-border">
-              <Button 
-                variant="outline" 
-                onClick={resetForm} 
-                className="px-8 py-3 rounded-xl border-2 border-border hover:bg-muted"
-              >
+            <DialogFooter className="form-action-bar shrink-0 gap-2 border-t border-border/70 px-6 py-4">
+              <Button variant="outline" onClick={resetForm}>
                 Cancel
               </Button>
-              <Button 
+              <Button
+                variant="primaryAction"
                 onClick={editingEvent ? handleEditEvent : handleAddEvent}
                 disabled={!eventForm.title.trim()}
-                className="px-8 py-3 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
               >
-                {editingEvent ? 'Update Event' : 'Create Event'}
+                {editingEvent ? 'Update event' : 'Create event'}
               </Button>
-            </div>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
 
         {/* Event Details Dialog */}
         <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-          <DialogContent className="sm:max-w-[600px] border-border shadow-2xl bg-card/95 backdrop-blur-sm">
-            <DialogHeader className="border-b border-border pb-6">
-              <DialogTitle className="flex items-center gap-3 text-2xl font-bold text-foreground">
-                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-                  <Eye className="h-4 w-4 text-white" />
-                </div>
-                Event Details
-              </DialogTitle>
+          <DialogContent className={detailDialogContentClass}>
+            <DialogHeader className={detailDialogHeaderClass}>
+              <DialogTitle>Event details</DialogTitle>
             </DialogHeader>
             {viewingEvent && (
-              <div className="space-y-6 py-6">
-                <div className="text-center space-y-4">
-                  <h2 className="text-3xl font-bold text-foreground">{viewingEvent.title}</h2>
-                  <div className="flex justify-center gap-3">
-                    <Badge className={`${getColorConfig(viewingEvent.color).value} text-white px-4 py-2 text-sm font-semibold rounded-xl shadow-sm`}>
-                      {format(viewingEvent.date, 'EEEE, MMMM d, yyyy')}
-                    </Badge>
-                    <Badge variant="outline" className="px-3 py-1 text-sm font-medium rounded-lg border-2">
-                      {viewingEvent.category}
-                    </Badge>
-                  </div>
-                </div>
-
-                <Separator className="bg-border" />
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {viewingEvent.time && (
-                    <div className="space-y-2">
-                      <Label className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
-                        <Clock className="h-4 w-4" />
-                        Time
-                      </Label>
-                      <p className="text-lg font-medium text-foreground">{viewingEvent.time}</p>
+              <>
+                <DialogBody className={`${detailDialogBodyClass} space-y-4`}>
+                  <div>
+                    <h2 className="text-xl font-bold text-foreground">{viewingEvent.title}</h2>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Badge className={`${getColorConfig(viewingEvent.color).value} text-white`}>
+                        {format(viewingEvent.date, 'EEEE, MMMM d, yyyy')}
+                      </Badge>
+                      <Badge variant="outline">{viewingEvent.category}</Badge>
                     </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {viewingEvent.time && (
+                      <DetailField label="Time">{viewingEvent.time}</DetailField>
+                    )}
+                    {viewingEvent.location && (
+                      <DetailField label="Location">{viewingEvent.location}</DetailField>
+                    )}
+                  </div>
+
+                  {viewingEvent.description && (
+                    <DetailField label="Description">{viewingEvent.description}</DetailField>
                   )}
-                  
-                  {viewingEvent.location && (
-                    <div className="space-y-2">
-                      <Label className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
-                        <MapPin className="h-4 w-4" />
-                        Location
-                      </Label>
-                      <p className="text-lg font-medium text-foreground">{viewingEvent.location}</p>
-                    </div>
+
+                  {viewingEvent.reminder && (
+                    <DetailField label="Reminder">
+                      {viewingEvent.reminderTime} minutes before
+                    </DetailField>
                   )}
-                </div>
+                </DialogBody>
 
-                {viewingEvent.description && (
-                  <div className="space-y-3">
-                    <Label className="text-sm font-semibold text-muted-foreground">Description</Label>
-                    <p className="text-foreground/90 bg-muted p-4 rounded-xl leading-relaxed">
-                      {viewingEvent.description}
-                    </p>
-                  </div>
-                )}
-
-                {viewingEvent.reminder && (
-                  <div className="space-y-2">
-                    <Label className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
-                      <Bell className="h-4 w-4" />
-                      Reminder
-                    </Label>
-                    <div className="flex items-center gap-2 text-amber-600 bg-amber-500/5 p-3 rounded-lg border border-amber-500/20">
-                      <Bell className="h-4 w-4" />
-                      <span className="font-medium">Set for {viewingEvent.reminderTime} minutes before</span>
-                    </div>
-                  </div>
-                )}
-
-                <Separator className="bg-border" />
-
-                <div className="flex justify-end gap-3">
-                  <Button
-                    variant="outline"
-                    onClick={() => setIsDetailsOpen(false)}
-                    className="px-6 py-3 rounded-xl border-2 border-border hover:bg-muted"
-                  >
+                <DialogFooter className={detailDialogFooterClass}>
+                  <Button variant="outline" onClick={() => setIsDetailsOpen(false)}>
                     Close
                   </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setIsDetailsOpen(false);
-                      openEditDialog(viewingEvent);
-                    }}
-                    className="gap-2 px-6 py-3 rounded-xl border-2 border-purple-200 text-purple-600 hover:bg-purple-50"
-                  >
-                    <Edit className="h-4 w-4" />
-                    Edit
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    onClick={() => {
-                      setIsDetailsOpen(false);
-                      handleDeleteEvent(viewingEvent.id);
-                    }}
-                    className="gap-2 px-6 py-3 rounded-xl bg-red-500 hover:bg-red-600"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Delete
-                  </Button>
-                </div>
-              </div>
+                  {canManageEvents && (
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setIsDetailsOpen(false);
+                          openEditDialog(viewingEvent);
+                        }}
+                      >
+                        <Edit className="h-4 w-4 mr-2" />
+                        Edit
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        onClick={() => {
+                          setIsDetailsOpen(false);
+                          handleDeleteEvent(viewingEvent.id);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete
+                      </Button>
+                    </>
+                  )}
+                </DialogFooter>
+              </>
             )}
           </DialogContent>
         </Dialog>

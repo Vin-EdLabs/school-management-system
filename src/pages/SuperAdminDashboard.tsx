@@ -13,6 +13,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogBody,
+  detailDialogContentWideClass,
+  detailDialogHeaderClass,
+  detailDialogBodyClass,
+  detailDialogFooterClass,
 } from '@/components/ui/dialog';
 import {
   Table,
@@ -511,10 +516,13 @@ const SuperAdminDashboard = () => {
   const loadOnlineSessions = async () => {
     setOnlineLoading(true);
     try {
-      const sessions = await apiService.get<OnlineSession[]>('/audit/super-admin/online-sessions');
+      const sessions = await apiService.get<OnlineSession[]>('/audit/super-admin/online-sessions', { skipTenant: true });
       setOnlineSessions(Array.isArray(sessions) ? sessions : []);
       setOnlineLastUpdated(new Date().toISOString());
-    } catch {
+    } catch (err) {
+      if (import.meta.env.DEV) {
+        console.warn('[SuperAdmin] online sessions:', err);
+      }
       setOnlineSessions([]);
     } finally {
       setOnlineLoading(false);
@@ -1466,24 +1474,25 @@ const SuperAdminDashboard = () => {
                 </div>
 
                 <Dialog open={!!selectedSchoolDetail} onOpenChange={(open) => { if (!open) { setSelectedSchoolDetail(null); setSchoolOverview(null); } }}>
-                  <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border-slate-200 dark:border-slate-800">
-                    <DialogHeader>
-                      <DialogTitle className="text-2xl font-black font-outfit flex items-center gap-3">
+                  <DialogContent className={detailDialogContentWideClass}>
+                    <DialogHeader className={detailDialogHeaderClass}>
+                      <DialogTitle className="text-xl font-black font-outfit flex items-center gap-3 pr-0">
                         {selectedSchoolDetail?.logo_url ? (
-                          <img src={resolveLogoUrl(selectedSchoolDetail.logo_url)!} alt="" className="w-12 h-12 rounded-xl object-contain border border-slate-200" />
+                          <img src={resolveLogoUrl(selectedSchoolDetail.logo_url)!} alt="" className="w-12 h-12 shrink-0 rounded-xl object-contain border border-slate-200" />
                         ) : (
-                          <Building2 className="w-8 h-8 text-indigo-500" />
+                          <Building2 className="w-8 h-8 shrink-0 text-indigo-500" />
                         )}
-                        {selectedSchoolDetail?.name}
+                        <span className="min-w-0 break-words">{selectedSchoolDetail?.name}</span>
                       </DialogTitle>
                       <DialogDescription>
                         Tenant #{selectedSchoolDetail?.id} · {selectedSchoolDetail?.is_active ? 'Active' : 'Inactive'}
                       </DialogDescription>
                     </DialogHeader>
+                    <DialogBody className={`${detailDialogBodyClass} space-y-5 text-sm`}>
                     {schoolOverviewLoading ? (
                       <BrandedLoading label="Loading school details…" className="py-10" />
                     ) : (
-                      <div className="space-y-5 text-sm">
+                      <div className="space-y-5">
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                           {[
                             { label: 'Students', value: schoolOverview?.stats?.students ?? '—', icon: GraduationCap },
@@ -1537,7 +1546,8 @@ const SuperAdminDashboard = () => {
                         )}
                       </div>
                     )}
-                    <DialogFooter className="gap-2 flex-wrap">
+                    </DialogBody>
+                    <DialogFooter className={`${detailDialogFooterClass} flex-wrap`}>
                       <Button variant="outline" onClick={() => setSelectedSchoolDetail(null)}>Close</Button>
                       {selectedSchoolDetail && (
                         <Button onClick={() => openSchool(selectedSchoolDetail)}>
@@ -2636,7 +2646,7 @@ const SuperAdminDashboard = () => {
             )}
 
             <Dialog open={!!selectedAuditLog} onOpenChange={(open) => !open && setSelectedAuditLog(null)}>
-              <DialogContent className="max-h-[90vh] max-w-3xl overflow-hidden rounded-3xl border-slate-200 bg-white p-0 dark:border-slate-800 dark:bg-slate-900">
+              <DialogContent className="max-w-3xl overflow-hidden rounded-3xl border-slate-200 bg-white p-0 dark:border-slate-800 dark:bg-slate-900">
                 <DialogHeader className="border-b border-slate-200 px-6 py-5 text-left dark:border-slate-800">
                   <DialogTitle className="font-outfit text-2xl font-black">Audit Event Details</DialogTitle>
                   <DialogDescription className="text-xs font-medium">

@@ -490,15 +490,32 @@ export const TransportStudents: React.FC = () => {
 
       {/* Enroll Student Dialog */}
       <Dialog open={enrollDialogOpen} onOpenChange={setEnrollDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Enroll Rider: <span className="text-indigo-600">{selectedStudentName}</span></DialogTitle>
+        <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[520px] rounded-[1rem] border-t-4 border-emerald-500 shadow-[0_20px_60px_rgba(0,0,0,0.15)]">
+          <DialogHeader className="shrink-0 border-b border-border/70 px-6 py-4 pr-12 text-left">
+            <DialogTitle>Enroll student in transport</DialogTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              Assign <span className="font-medium text-foreground">{selectedStudentName}</span> to a route and pickup stop.
+            </p>
           </DialogHeader>
 
-          <form onSubmit={handleConfirmEnroll}>
-            <DialogBody className="space-y-4 py-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="routeSelect">Select Transport Route *</Label>
+          <form onSubmit={handleConfirmEnroll} className="flex min-h-0 flex-1 flex-col">
+            <DialogBody className="space-y-4 overflow-y-auto px-6 py-4">
+              <div className="rounded-3xl border border-emerald-100 bg-emerald-50/70 p-4 text-sm text-emerald-900 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 rounded-full bg-emerald-100 p-2 text-emerald-700">
+                    <Bus className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="font-semibold">Route &amp; stop</p>
+                    <p className="mt-1 leading-6 text-slate-700">
+                      Choose the route this student rides and the stop where they board or alight.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="routeSelect">Transport route *</Label>
                 {routes.length === 0 ? (
                   <p className="text-xs text-amber-600 font-semibold">No active routes registered. Please configure routes first.</p>
                 ) : (
@@ -519,8 +536,8 @@ export const TransportStudents: React.FC = () => {
               </div>
 
               {enrollRouteId && (
-                <div className="space-y-1.5 animate-in fade-in duration-300">
-                  <Label htmlFor="stopSelect">Select Designated Stop *</Label>
+                <div className="space-y-2 animate-in fade-in duration-300">
+                  <Label htmlFor="stopSelect">Designated stop *</Label>
                   {currentEnrollStops.length === 0 ? (
                     <p className="text-xs text-amber-600 font-semibold">No stops placed on this route yet.</p>
                   ) : (
@@ -539,13 +556,12 @@ export const TransportStudents: React.FC = () => {
               )}
             </DialogBody>
 
-            <DialogFooter className="gap-2 bg-slate-50 p-4 border-t rounded-b-lg mt-4">
+            <DialogFooter className="form-action-bar shrink-0 gap-2 border-t border-border/70 px-6 py-4">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => setEnrollDialogOpen(false)}
                 disabled={savingEnrollment}
-                className="h-9 rounded-lg"
               >
                 Cancel
               </Button>
@@ -553,9 +569,8 @@ export const TransportStudents: React.FC = () => {
                 type="submit"
                 variant="primaryAction"
                 disabled={savingEnrollment || !enrollRouteId || !enrollStopId}
-                className="h-9 rounded-lg font-semibold"
               >
-                {savingEnrollment ? 'Enrolling...' : 'Confirm Enrollment'}
+                {savingEnrollment ? 'Enrolling...' : 'Confirm enrollment'}
               </Button>
             </DialogFooter>
           </form>
@@ -564,13 +579,13 @@ export const TransportStudents: React.FC = () => {
 
       {/* Remove Rider Confirmation Dialog */}
       <Dialog open={removeConfirmOpen} onOpenChange={setRemoveConfirmOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[480px] rounded-[1rem] border-t-4 border-emerald-500 shadow-[0_20px_60px_rgba(0,0,0,0.15)]">
+          <DialogHeader className="shrink-0 border-b border-border/70 px-6 py-4 pr-12 text-left">
             <DialogTitle className="flex items-center gap-2 text-rose-600">
-              <UserX className="h-5 w-5" /> Cancel Transport Enrollment
+              <UserX className="h-5 w-5" /> Cancel transport enrollment
             </DialogTitle>
           </DialogHeader>
-          <DialogBody className="space-y-2 py-2">
+          <DialogBody className="space-y-2 overflow-y-auto px-6 py-4">
             <p className="text-sm text-slate-600">
               Are you sure you want to remove <span className="font-bold text-slate-800">"{studentToRemove?.first_name} {studentToRemove?.last_name}"</span> from the route <span className="font-bold text-slate-800">"{studentToRemove?.route_name}"</span>?
             </p>
@@ -578,13 +593,12 @@ export const TransportStudents: React.FC = () => {
               The student will no longer be assigned to this route or stop. They can be re-enrolled at any time.
             </p>
           </DialogBody>
-          <DialogFooter className="gap-2 bg-slate-50 p-4 border-t rounded-b-lg">
+          <DialogFooter className="form-action-bar shrink-0 gap-2 border-t border-border/70 px-6 py-4">
             <Button
               type="button"
               variant="outline"
               onClick={() => setRemoveConfirmOpen(false)}
               disabled={removing}
-              className="h-9 rounded-lg"
             >
               Cancel
             </Button>
@@ -593,9 +607,8 @@ export const TransportStudents: React.FC = () => {
               variant="destructive"
               onClick={handleConfirmRemove}
               disabled={removing}
-              className="h-9 rounded-lg bg-rose-600 hover:bg-rose-700 text-white"
             >
-              {removing ? 'Removing...' : 'Confirm Remove'}
+              {removing ? 'Removing...' : 'Confirm remove'}
             </Button>
           </DialogFooter>
         </DialogContent>

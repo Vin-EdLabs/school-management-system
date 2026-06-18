@@ -65,7 +65,7 @@ const PAYMENT_CORRECTION_COLUMNS = `
   p.corrects_payment_id, p.corrected_by_payment_id`;
 
 // Receipt corrections audit log (administrators only)
-router.get('/corrections', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+router.get('/corrections', requireRole('super-admin', 'administrator', 'finance'), async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const { startDate, endDate, userId, studentId, limit, offset } = req.query;

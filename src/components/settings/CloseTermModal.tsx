@@ -6,6 +6,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogBody,
+  detailDialogContentClass,
+  detailDialogHeaderClass,
+  detailDialogBodyClass,
+  detailDialogFooterClass,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { AlertTriangle, Loader2, Lock } from 'lucide-react';
@@ -95,18 +100,18 @@ export function CloseTermModal({ open, onOpenChange, academicTermId, onClosed }:
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="readonly-view-allow max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Lock className="h-5 w-5 text-red-600" />
-            Close Term Permanently
+      <DialogContent className={`${detailDialogContentClass} readonly-view-allow`}>
+        <DialogHeader className={detailDialogHeaderClass}>
+          <DialogTitle className="flex items-center gap-2 pr-0">
+            <Lock className="h-5 w-5 shrink-0 text-red-600" />
+            Close term permanently
           </DialogTitle>
           <DialogDescription>
             This creates an immutable snapshot and locks the term forever. Carry-forward entries will be created for the next term.
           </DialogDescription>
         </DialogHeader>
 
-        <div>
+        <DialogBody className={`${detailDialogBodyClass} space-y-4 text-sm`}>
           {loading ? (
             <div className="flex items-center justify-center py-10 text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin mr-2" />
@@ -115,8 +120,8 @@ export function CloseTermModal({ open, onOpenChange, academicTermId, onClosed }:
           ) : error && !preview ? (
             <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>
           ) : preview ? (
-            <div className="space-y-4 text-sm">
-              <div className="rounded-lg border bg-muted/40 p-4 space-y-2">
+            <>
+              <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-4 space-y-2 dark:border-emerald-900/40 dark:bg-emerald-950/20">
                 <p>
                   <span className="font-medium">Term being closed:</span> {preview.termLabel}
                 </p>
@@ -136,7 +141,7 @@ export function CloseTermModal({ open, onOpenChange, academicTermId, onClosed }:
                 </p>
               </div>
 
-              <div className="rounded-lg border bg-muted/20 p-4 space-y-2">
+              <div className="rounded-xl border border-border/70 bg-muted/20 p-4 space-y-2">
                 <p className="font-medium">Term finance summary</p>
                 <p>
                   <span className="text-muted-foreground">Total fees billed:</span>{' '}
@@ -169,11 +174,11 @@ export function CloseTermModal({ open, onOpenChange, academicTermId, onClosed }:
                 </p>
               </div>
               {error ? <p className="text-red-600 text-sm">{error}</p> : null}
-            </div>
+            </>
           ) : null}
-        </div>
+        </DialogBody>
 
-        <DialogFooter>
+        <DialogFooter className={detailDialogFooterClass}>
           <Button
             variant="outline"
             data-readonly-allow="view"

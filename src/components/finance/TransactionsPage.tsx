@@ -18,6 +18,12 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogBody,
+  detailDialogContentClass,
+  detailDialogHeaderClass,
+  detailDialogBodyClass,
+  detailDialogFooterClass,
+  DetailField,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -603,68 +609,54 @@ const TransactionsPage: React.FC<TransactionsPageProps> = ({ onNavigate }) => {
       </Card>
 
       <Dialog open={!!selected} onOpenChange={(open) => !open && setSelected(null)}>
-        <DialogContent className="sm:max-w-lg bg-background text-foreground">
-          <DialogHeader>
-            <DialogTitle>Transaction Detail</DialogTitle>
+        <DialogContent className={detailDialogContentClass}>
+          <DialogHeader className={detailDialogHeaderClass}>
+            <DialogTitle>Transaction detail</DialogTitle>
             <DialogDescription>
-              {selected?.id} - {selected?.type === 'income' ? 'Income' : 'Expense'}
+              {selected?.id} · {selected?.type === 'income' ? 'Income' : 'Expense'}
             </DialogDescription>
           </DialogHeader>
           {selected && (
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <p className="text-muted-foreground">Date</p>
-                <p className="font-medium">{formatDisplayDate(selected.date)}</p>
+            <DialogBody className={detailDialogBodyClass}>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <DetailField label="Date">{formatDisplayDate(selected.date)}</DetailField>
+                <DetailField label="Time">{formatDisplayTime(selected.recordedAt)}</DetailField>
+                <DetailField label="Amount">{money(selected.amount)}</DetailField>
+                <DetailField label="Category">{selected.category}</DetailField>
+                <DetailField label="Payment method">{selected.paymentMethod}</DetailField>
+                <DetailField label="Type">{selected.type === 'income' ? 'Income' : 'Expense'}</DetailField>
+                <DetailField label="Name" className="sm:col-span-2">{selected.name}</DetailField>
+                <DetailField label="Description" className="sm:col-span-2">
+                  {selected.description || '—'}
+                </DetailField>
               </div>
-              <div>
-                <p className="text-muted-foreground">Time</p>
-                <p className="font-medium">{formatDisplayTime(selected.recordedAt)}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Amount</p>
-                <p className="font-medium">{money(selected.amount)}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Category</p>
-                <p className="font-medium">{selected.category}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Payment Method</p>
-                <p className="font-medium">{selected.paymentMethod}</p>
-              </div>
-              <div className="col-span-2">
-                <p className="text-muted-foreground">Name</p>
-                <p className="font-medium">{selected.name}</p>
-              </div>
-              <div className="col-span-2">
-                <p className="text-muted-foreground">Description</p>
-                <p className="font-medium">{selected.description || '-'}</p>
-              </div>
-            </div>
+            </DialogBody>
           )}
         </DialogContent>
       </Dialog>
 
       <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-        <DialogContent className="sm:max-w-md bg-background text-foreground">
-          <DialogHeader>
-            <DialogTitle>Add Transaction</DialogTitle>
+        <DialogContent className={detailDialogContentClass}>
+          <DialogHeader className={detailDialogHeaderClass}>
+            <DialogTitle>Add transaction</DialogTitle>
             <DialogDescription>
               Choose where to record this transaction using the existing finance forms.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Button variant="primaryAction" className="h-20 flex-col gap-1" onClick={() => openModule('income')}>
-              <ArrowUpRight className="h-5 w-5 text-emerald-600" />
-              Add Income
-            </Button>
-            <Button variant="primaryAction" className="h-20 flex-col gap-1" onClick={() => openModule('expenses')}>
-              <ArrowDownRight className="h-5 w-5 text-red-600" />
-              Add Expense
-            </Button>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setAddDialogOpen(false)}>
+          <DialogBody className={detailDialogBodyClass}>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Button variant="primaryAction" className="h-20 flex-col gap-1" onClick={() => openModule('income')}>
+                <ArrowUpRight className="h-5 w-5 text-emerald-600" />
+                Add Income
+              </Button>
+              <Button variant="primaryAction" className="h-20 flex-col gap-1" onClick={() => openModule('expenses')}>
+                <ArrowDownRight className="h-5 w-5 text-red-600" />
+                Add Expense
+              </Button>
+            </div>
+          </DialogBody>
+          <DialogFooter className={detailDialogFooterClass}>
+            <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
               Cancel
             </Button>
           </DialogFooter>

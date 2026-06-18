@@ -1,10 +1,10 @@
 
 import React, { useEffect, useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter, detailDialogContentWideClass, detailDialogHeaderClass, detailDialogBodyClass, detailDialogFooterClass, DetailField } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
-import { User, Mail, Phone, MapPin, Calendar, Briefcase, DollarSign, FileText, Ban, UserX, UserCheck } from 'lucide-react';
+import { User, Mail, Phone, MapPin, FileText, Ban, UserX, UserCheck } from 'lucide-react';
 import { formatDisplayDate } from '../../utils/dateFormat';
 import type { Teacher } from '../../contexts/DataContext';
 import LazyTeacherAvatar from './LazyTeacherAvatar';
@@ -127,89 +127,75 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onClose}>
-        <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-3">
+      <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+        <DialogContent className={detailDialogContentWideClass}>
+          <DialogHeader className={detailDialogHeaderClass}>
+            <DialogTitle className="flex flex-wrap items-center gap-3 pr-0">
               {photoUrl ? (
                 <StaffPhotoLightbox src={photoUrl} name={teacher.fullName} size="sm" />
               ) : (
                 <LazyTeacherAvatar teacherId={teacher.id} fullName={teacher.fullName} hasPassportPhoto={teacher.hasPassportPhoto} eager />
               )}
-              <span>Teacher Profile</span>
+              <span className="min-w-0 break-words">Teacher profile</span>
               {badge ? <Badge className={badge.className}>{badge.label}</Badge> : null}
             </DialogTitle>
-            {photoUrl && <p className="text-xs text-muted-foreground pl-1">Click photo to view full size</p>}
+            {photoUrl ? <p className="text-sm text-muted-foreground">Click photo to view full size</p> : null}
           </DialogHeader>
 
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium text-gray-500">Full Name</label>
-                <p className="text-base">{teacher.fullName}</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-500">Staff ID</label>
-                <p className="text-base font-mono">{teacher.staffId}</p>
-              </div>
+          <DialogBody className={`${detailDialogBodyClass} space-y-6`}>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <DetailField label="Full name">{teacher.fullName}</DetailField>
+              <DetailField label="Staff ID">
+                <span className="font-mono">{teacher.staffId}</span>
+              </DetailField>
             </div>
 
             <Separator />
 
             <div className="space-y-3">
-              <div className="flex items-center space-x-2"><Phone className="w-4 h-4 text-gray-500" /><span>{teacher.phoneNumber}</span></div>
-              <div className="flex items-center space-x-2"><Mail className="w-4 h-4 text-gray-500" /><span>{teacher.email}</span></div>
-              <div className="flex items-start space-x-2"><MapPin className="w-4 h-4 text-gray-500 mt-1" /><span>{teacher.address}</span></div>
+              <div className="flex items-center space-x-2 break-words"><Phone className="w-4 h-4 shrink-0 text-muted-foreground" /><span>{teacher.phoneNumber}</span></div>
+              <div className="flex items-center space-x-2 break-words"><Mail className="w-4 h-4 shrink-0 text-muted-foreground" /><span>{teacher.email}</span></div>
+              <div className="flex items-start space-x-2 break-words"><MapPin className="w-4 h-4 shrink-0 text-muted-foreground mt-1" /><span>{teacher.address}</span></div>
             </div>
 
             <Separator />
 
             <div>
-              <label className="text-sm font-medium text-gray-500">Subjects</label>
-              <div className="flex flex-wrap gap-2 mt-1">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800/75 dark:text-emerald-300/80">Subjects</p>
+              <div className="flex flex-wrap gap-2 mt-2">
                 {teacher.subjectsTaught.map((subject, index) => (
                   <Badge key={index} variant="secondary">{subject}</Badge>
                 ))}
               </div>
-              <p className="mt-2 text-sm">Class: {teacher.classAssigned || 'No class assigned'}</p>
+              <p className="mt-2 text-sm break-words">Class: {teacher.classAssigned || 'No class assigned'}</p>
             </div>
 
             <Separator />
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="flex items-center space-x-2">
-                <Calendar className="w-4 h-4 text-gray-500" />
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Employment Date</label>
-                  <p>{formatDisplayDate(teacher.employmentDate)}</p>
-                </div>
-              </div>
-              <div className="flex items-center space-x-2">
-                <DollarSign className="w-4 h-4 text-gray-500" />
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Monthly Salary</label>
-                  <p className="font-mono">
-                    {teacher.monthlySalary > 0 ? `GHS ${teacher.monthlySalary.toLocaleString()}` : 'Not set'}
-                  </p>
-                </div>
-              </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <DetailField label="Employment date">{formatDisplayDate(teacher.employmentDate)}</DetailField>
+              <DetailField label="Monthly salary">
+                {teacher.monthlySalary > 0 ? `GHS ${teacher.monthlySalary.toLocaleString()}` : 'Not set'}
+              </DetailField>
             </div>
 
             <Separator />
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <h4 className="text-sm font-semibold mb-2">Emergency Contact</h4>
-                <p className="text-sm"><span className="text-muted-foreground">Name: </span>{teacher.emergencyContactName || '—'}</p>
-                <p className="text-sm"><span className="text-muted-foreground">Relationship: </span>{teacher.emergencyContactRelationship || '—'}</p>
-                <p className="text-sm"><span className="text-muted-foreground">Phone: </span>{teacher.emergencyContactPhone || '—'}</p>
+                <h4 className="text-sm font-semibold mb-2">Emergency contact</h4>
+                <DetailField label="Name">{teacher.emergencyContactName || '—'}</DetailField>
+                <DetailField label="Relationship">{teacher.emergencyContactRelationship || '—'}</DetailField>
+                <DetailField label="Phone">{teacher.emergencyContactPhone || '—'}</DetailField>
               </div>
               <div>
-                <h4 className="text-sm font-semibold mb-2">Bank Details</h4>
-                <p className="text-sm"><span className="text-muted-foreground">Bank: </span>{teacher.bankName || '—'}</p>
-                <p className="text-sm"><span className="text-muted-foreground">Account Name: </span>{teacher.bankAccountName || '—'}</p>
-                <p className="text-sm font-mono"><span className="text-muted-foreground font-sans">Account No: </span>{teacher.bankAccountNumber || '—'}</p>
-                <p className="text-sm"><span className="text-muted-foreground">Branch: </span>{teacher.bankBranch || '—'}</p>
+                <h4 className="text-sm font-semibold mb-2">Bank details</h4>
+                <DetailField label="Bank">{teacher.bankName || '—'}</DetailField>
+                <DetailField label="Account name">{teacher.bankAccountName || '—'}</DetailField>
+                <DetailField label="Account number">
+                  <span className="font-mono">{teacher.bankAccountNumber || '—'}</span>
+                </DetailField>
+                <DetailField label="Branch">{teacher.bankBranch || '—'}</DetailField>
               </div>
             </div>
 
@@ -237,7 +223,7 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
                 <Separator />
                 <div>
                   <h3 className="font-semibold flex items-center gap-2 mb-2">
-                    <FileText className="h-4 w-4" /> Appointment Letter
+                    <FileText className="h-4 w-4" /> Appointment letter
                   </h3>
                   {checklist.some((c) => !c.ok) && (
                     <ul className="text-sm text-amber-700 mb-2 list-disc pl-5">
@@ -247,10 +233,10 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
                     </ul>
                   )}
                   <Button size="sm" onClick={generateLetter} disabled={generating}>
-                    {generating ? 'Loading…' : 'Generate Appointment Letter'}
+                    {generating ? 'Loading…' : 'Generate appointment letter'}
                   </Button>
                   {letters.length > 0 && (
-                    <ul className="mt-3 text-sm space-y-1">
+                    <ul className="mt-3 text-sm space-y-1 break-words">
                       {letters.map((l) => (
                         <li key={l.id}>
                           v{l.version_number} — {formatDisplayDate(l.generated_at)} — {l.position_title}
@@ -261,7 +247,11 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
                 </div>
               </>
             )}
-          </div>
+          </DialogBody>
+
+          <DialogFooter className={detailDialogFooterClass}>
+            <Button variant="outline" onClick={onClose}>Close</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

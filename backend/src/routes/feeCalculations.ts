@@ -328,7 +328,7 @@ router.get('/class-report', async (req: AuthRequest, res) => {
   }
 });
 
-router.post('/refresh-arrears', requireRole('super-admin', 'administrator'), async (_req: AuthRequest, res) => {
+router.post('/refresh-arrears', requireRole('super-admin', 'administrator', 'finance'), async (_req: AuthRequest, res) => {
   res.json({
     message: 'Arrears are computed from the student ledger in real time.',
     deprecated: true,

@@ -261,8 +261,9 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
   };
 
   return (
-    <div className="readonly-view-allow fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
-      <Card className="modal max-w-md w-full shadow-2xl border-0 rounded-2xl">
+    <div className="readonly-view-allow fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 overflow-y-auto p-4">
+      <div className="flex min-h-full w-full justify-center">
+      <Card className="modal my-auto mx-auto max-w-md w-full max-h-[calc(100dvh-2rem)] shadow-2xl border-0 rounded-2xl">
         <CardHeader className="bg-white border-b sticky top-0 z-10 py-4 px-6">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-bold text-slate-800">Print Preview</h3>
@@ -448,6 +449,7 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
           </div>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 };

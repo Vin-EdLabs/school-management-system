@@ -327,12 +327,30 @@ export const TransportDrivers: React.FC = () => {
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={open => { if (!open && !submitting) { setDialogOpen(false); setEditingDriver(null); } }}>
-        <DialogContent className="max-w-3xl w-full min-h-[calc(90vh-4rem)]">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[640px] rounded-[1rem] border-t-4 border-emerald-500 shadow-[0_20px_60px_rgba(0,0,0,0.15)]">
+          <DialogHeader className="shrink-0 border-b border-border/70 px-6 py-4">
             <DialogTitle>{editingDriver ? 'Edit driver' : 'Add driver'}</DialogTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              {editingDriver
+                ? 'Update driver details and bus assignment.'
+                : 'Register a driver and optionally assign them to a bus.'}
+            </p>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
-            <DialogBody className="space-y-4 overflow-y-auto">
+          <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+            <DialogBody className="space-y-4 overflow-y-auto px-6 py-4">
+              <div className="rounded-3xl border border-emerald-100 bg-emerald-50/70 p-4 text-sm text-emerald-900 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 rounded-full bg-emerald-100 p-2 text-emerald-700">
+                    <Info className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="font-semibold">Driver &amp; bus assignment</p>
+                    <p className="mt-1 leading-6 text-slate-700">
+                      Each driver can be assigned to one bus. The same bus may serve multiple routes. Leave bus unassigned if the driver is not yet linked to a vehicle.
+                    </p>
+                  </div>
+                </div>
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="driverName">Full name *</Label>
                 <Input id="driverName" value={fullName} onChange={e => setFullName(e.target.value)} placeholder="e.g. Kwame Mensah" required />
@@ -350,15 +368,16 @@ export const TransportDrivers: React.FC = () => {
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-[11px] text-slate-500">One bus per driver. The same bus can run on multiple routes.</p>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="driverPhone">Phone</Label>
-                <Input id="driverPhone" value={phone} onChange={e => setPhone(e.target.value)} placeholder="e.g. 024 123 4567" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="driverLicense">License number</Label>
-                <Input id="driverLicense" value={licenseNumber} onChange={e => setLicenseNumber(e.target.value)} placeholder="Driving license ID" />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="driverPhone">Phone</Label>
+                  <Input id="driverPhone" value={phone} onChange={e => setPhone(e.target.value)} placeholder="e.g. 024 123 4567" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="driverLicense">License number</Label>
+                  <Input id="driverLicense" value={licenseNumber} onChange={e => setLicenseNumber(e.target.value)} placeholder="Driving license ID" />
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="driverEmail">Email</Label>
@@ -379,7 +398,7 @@ export const TransportDrivers: React.FC = () => {
                 </Select>
               </div>
             </DialogBody>
-            <DialogFooter className="gap-2">
+            <DialogFooter className="form-action-bar shrink-0 gap-2 border-t border-border/70 px-6 py-4">
               <Button type="button" variant="outline" disabled={submitting} onClick={() => setDialogOpen(false)}>Cancel</Button>
               <Button type="submit" variant="primaryAction" disabled={submitting}>
                 {submitting ? 'Saving…' : editingDriver ? 'Save changes' : 'Add driver'}

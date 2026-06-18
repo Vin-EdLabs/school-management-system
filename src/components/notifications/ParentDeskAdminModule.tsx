@@ -59,18 +59,20 @@ const ParentDeskAdminModule: React.FC = () => {
       {/* Lightbox */}
       {lightbox && (
         <div 
-          className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-8 animate-in fade-in duration-200"
+          className="fixed inset-0 z-[100] overflow-y-auto bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-200"
           onClick={() => setLightbox(null)}
         >
+          <div className="flex min-h-full w-full items-center justify-center">
           <button className="absolute top-6 right-6 text-white/50 hover:text-white p-2 hover:bg-white/10 rounded-full transition-all">
             <X className="w-8 h-8" />
           </button>
           <img 
             src={lightbox} 
             alt="Full view" 
-            className="max-w-full max-h-full object-contain rounded-lg shadow-2xl animate-in zoom-in-95 duration-300" 
+            className="my-auto max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)] object-contain rounded-lg shadow-2xl animate-in zoom-in-95 duration-300" 
             onClick={e => e.stopPropagation()}
           />
+          </div>
         </div>
       )}
       {/* Sidebar: Message List */}

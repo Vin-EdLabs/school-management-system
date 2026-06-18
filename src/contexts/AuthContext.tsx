@@ -184,7 +184,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Finance: financial sections only (financial dashboard, not the general admin dashboard)
     if (user.role === 'finance') {
-      return ['students-view-only', 'teachers-view-only', 'other-staff-view-only', 'fees', 'income', 'expenses', 'transactions', 'cash-bank', 'payroll', 'reports', 'financial-dashboard', 'term-budget', 'settings', 'settings-password-only', 'print-fee-status', 'finance-statement', 'ai-assistant', 'support-chat', 'parent-desk', 'audit', 'manual-adjustments'].includes(module);
+      return ['students-view-only', 'teachers-view-only', 'other-staff-view-only', 'fees', 'income', 'expenses', 'transactions', 'cash-bank', 'payroll', 'reports', 'financial-dashboard', 'term-budget', 'settings', 'settings-password-only', 'payment-accounts', 'print-fee-status', 'finance-statement', 'ai-assistant', 'support-chat', 'parent-desk', 'audit', 'manual-adjustments'].includes(module);
     }
 
     // Teacher: teacher section + profile + payment history

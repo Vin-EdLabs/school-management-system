@@ -19,6 +19,7 @@ type LetterConfig = {
   bodyClosing?: string;
   customClauses?: string[];
   stampImage?: string | null;
+  signatureImage?: string | null;
 };
 
 const DEFAULT_OPENING = 'We are pleased to offer you employment at [SCHOOL] under the following terms and conditions:';
@@ -198,9 +199,45 @@ const AppointmentLetterSettings = () => {
           </Button>
         </div>
 
-        <div className="space-y-2">
-          <Label>School stamp / seal (optional)</Label>
-          <Input type="file" accept="image/*" onChange={(e) => onStampFile(e.target.files?.[0])} />
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label>School stamp / seal (optional)</Label>
+            <Input type="file" accept="image/*" onChange={(e) => onStampFile(e.target.files?.[0])} />
+            {config.stampImage ? (
+              <div className="relative inline-block mt-1">
+                <img src={config.stampImage} alt="Stamp preview" className="h-16 object-contain border rounded" />
+                <button
+                  type="button"
+                  onClick={() => setConfig((c) => ({ ...c, stampImage: null }))}
+                  className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-0.5 text-[8px] hover:bg-red-200"
+                >
+                  ✕
+                </button>
+              </div>
+            ) : null}
+          </div>
+          <div className="space-y-2">
+            <Label>Headmaster/Admin signature (optional)</Label>
+            <Input type="file" accept="image/*" onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              const reader = new FileReader();
+              reader.onload = () => setConfig((c) => ({ ...c, signatureImage: String(reader.result) }));
+              reader.readAsDataURL(file);
+            }} />
+            {config.signatureImage ? (
+              <div className="relative inline-block mt-1">
+                <img src={config.signatureImage} alt="Signature preview" className="h-12 object-contain border rounded" />
+                <button
+                  type="button"
+                  onClick={() => setConfig((c) => ({ ...c, signatureImage: null }))}
+                  className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-0.5 text-[8px] hover:bg-red-200"
+                >
+                  ✕
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
 
         <div className="flex justify-end">

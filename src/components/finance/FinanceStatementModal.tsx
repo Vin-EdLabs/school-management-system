@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Loader2, Download, Printer, FileText } from 'lucide-react';
+import { Loader2, Printer, FileText } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { resolveLogoUrl } from '../../services/tenantService';
 import {
@@ -16,11 +16,7 @@ import {
   fetchParentFinanceStatement,
   type StudentFinanceStatement,
 } from '../../services/studentFinanceStatementApi';
-import {
-  buildFinanceStatementFilename,
-  downloadFinanceStatementPdf,
-  printFinanceStatementPreview,
-} from './buildFinanceStatementPdf';
+import { printFinanceStatementPreview } from './buildFinanceStatementPdf';
 import { formatDisplayDate } from '../../utils/dateFormat';
 import './FinanceStatementPreview.css';
 
@@ -48,19 +44,46 @@ export const FinanceStatementPreview = forwardRef<HTMLDivElement, FinanceStateme
     <div ref={ref} className={`finance-statement-preview ${isParent ? 'parent-portal' : ''}`}>
       <div className="fs-print-repeat-header" aria-hidden="true">
         <div className="fs-school-name">{h.schoolName}</div>
+        <div className="fs-title" style={{ border: 'none', padding: '4px 0', letterSpacing: '0.12em' }}>STUDENT FINANCE STATEMENT</div>
+      </div>
+
+      {/* Header: Logo | School Name | Student Photo */}
+      <table className="w-full border-collapse" style={{ fontFamily: "'Times New Roman', Times, serif" }}>
+        <tbody>
+          <tr className="border-none" style={{ border: 'none' }}>
+            <td style={{ width: '80px', border: 'none', textAlign: 'left', verticalAlign: 'middle', padding: 0 }}>
+              <div style={{ width: '80px', height: '80px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: '#f8fafc' }}>
+                {logoUrl ? (
+                  <img src={logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '4px' }} />
+                ) : (
+                  <span style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8' }}>LOGO</span>
+                )}
+              </div>
+            </td>
+            <td style={{ border: 'none', textAlign: 'center', verticalAlign: 'middle', padding: '0 16px' }}>
+              <h1 style={{ fontSize: '20px', fontWeight: 900, textTransform: 'uppercase', margin: 0, fontFamily: "'Times New Roman', Georgia, serif" }}>
+                {h.schoolName}
+              </h1>
+              <p style={{ fontSize: '11px', color: '#475569', margin: '4px 0 0' }}>
+                {[h.address, h.phone, h.email].filter(Boolean).join(' · ')}
+              </p>
+            </td>
+            <td style={{ width: '80px', border: 'none', textAlign: 'right', verticalAlign: 'middle', padding: 0 }}>
+              {h.photoUrl ? (
+                <img src={h.photoUrl} alt="Student" style={{ width: '80px', height: '80px', objectFit: 'cover' }} />
+              ) : null}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* Title Box */}
+      <div className="fs-title-wrap">
         <div className="fs-title">STUDENT FINANCE STATEMENT</div>
       </div>
-      <div className="fs-header">
-        {logoUrl ? <img src={logoUrl} alt="" className="fs-logo" /> : null}
-        <div className="fs-school-name">{h.schoolName}</div>
-        <div className="fs-contact">
-          {[h.address, h.phone, h.email].filter(Boolean).join(' | ')}
-        </div>
-      </div>
-      <hr className="fs-divider" />
-      <div className="fs-title">STUDENT FINANCE STATEMENT</div>
-      <hr className="fs-divider" />
-      <dl className="fs-meta">
+
+      {/* Student Info Grid */}
+      <div className="fs-meta">
         <dt>Student Name:</dt>
         <dd>{h.studentName}</dd>
         <dt>Student ID:</dt>
@@ -82,8 +105,7 @@ export const FinanceStatementPreview = forwardRef<HTMLDivElement, FinanceStateme
             </dd>
           </>
         ) : null}
-      </dl>
-      <hr className="fs-divider" />
+      </div>
 
       <section>
         <h3>Total Term Bill Breakdown</h3>
@@ -168,7 +190,7 @@ export const FinanceStatementPreview = forwardRef<HTMLDivElement, FinanceStateme
                   <td>{line.date}</td>
                   <td>{line.addedBy || '—'}</td>
                   <td className="fs-num">{money(line.amount)}</td>
-                  <td className={line.status === 'paid' ? 'text-green-700' : 'text-red-700'}>
+                  <td style={{ fontWeight: 700 }}>
                     {line.status === 'paid' ? 'PAID' : 'UNPAID'}
                   </td>
                 </tr>
@@ -252,7 +274,7 @@ export const FinanceStatementPreview = forwardRef<HTMLDivElement, FinanceStateme
               </li>
             ))}
           </ul>
-          <p className="font-semibold text-sm text-green-700">
+          <p className="font-bold text-sm">
             Total Credit Available: {money(statement.creditHistory.totalCreditAvailable)}
           </p>
         </section>
@@ -354,23 +376,38 @@ export const FinanceStatementPreview = forwardRef<HTMLDivElement, FinanceStateme
       </section>
 
       {!isParent ? (
-        <div className="fs-signature">
-          <p>Authorized Signature: _______________________________</p>
-          <p>Name &amp; Title: _______________________________</p>
-          <p>Date: _______________________________</p>
-          <p className="text-right text-muted-foreground">[School Stamp Area]</p>
+        <div className="fs-signature" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px', textAlign: 'center' }}>
+          <div>
+            <div style={{ borderTop: '2px solid #111', paddingTop: '4px', fontWeight: 700, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>
+              AUTHORIZED SIGNATURE
+            </div>
+            <p style={{ fontSize: '11px', fontWeight: 700, margin: '4px 0' }}>{statement.header.signatoryName || '—'}</p>
+            <p style={{ fontSize: '9px', color: '#666', margin: '2px 0 8px' }}>{statement.header.signatoryTitle || '—'}</p>
+            {statement.header.signatureImage ? (
+              <img src={statement.header.signatureImage} alt="Signature" style={{ height: '36px', objectFit: 'contain', margin: '4px auto' }} />
+            ) : (
+              <div style={{ borderBottom: '2px solid #111', height: '28px', margin: '12px 0 4px' }} />
+            )}
+            <p style={{ fontSize: '9px', color: '#666', marginTop: '4px' }}>Signature / Date</p>
+            <p style={{ fontSize: '8px', fontWeight: 700, marginTop: '2px' }}>{new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+          </div>
+          <div>
+            <div style={{ borderTop: '2px solid #111', paddingTop: '4px', fontWeight: 700, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>
+              SCHOOL STAMP
+            </div>
+            {statement.header.stampImage ? (
+              <img src={statement.header.stampImage} alt="School Stamp" style={{ height: '60px', objectFit: 'contain', margin: '8px auto' }} />
+            ) : (
+              <div style={{ border: '2px dashed #999', height: '60px', margin: '8px 0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ fontSize: '9px', color: '#999', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Stamp Area</span>
+              </div>
+            )}
+          </div>
         </div>
       ) : null}
 
       <div className="fs-footer">
-        <p>
-          This statement was generated on {h.dateGenerated}
-          {!isParent && h.generatedBy ? ` by ${h.generatedBy}${h.generatedByRole ? ` (${h.generatedByRole})` : ''}` : ''}.
-        </p>
-        <p>This is an official financial statement from {h.schoolName}.</p>
-        <p>
-          For queries contact: {h.phone} | {h.email}
-        </p>
+        Generated by ScholarNerve
       </div>
     </div>
   );
@@ -394,7 +431,6 @@ const FinanceStatementModal: React.FC<FinanceStatementModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [statement, setStatement] = useState<StudentFinanceStatement | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
-  const [downloading, setDownloading] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
 
   const loadStatement = useCallback(async () => {
@@ -433,24 +469,6 @@ const FinanceStatementModal: React.FC<FinanceStatementModalProps> = ({
     }
   }, [open, loadStatement]);
 
-  const handleDownload = async () => {
-    if (!statement || !previewRef.current) return;
-    setDownloading(true);
-    try {
-      const filename = buildFinanceStatementFilename(statement.header.studentName, statement.header.studentId);
-      await downloadFinanceStatementPdf(previewRef.current, filename);
-      toast({ title: 'Download started', description: 'Finance statement PDF is downloading.' });
-    } catch (e: unknown) {
-      toast({
-        title: 'Download failed',
-        description: (e as Error).message || 'Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setDownloading(false);
-    }
-  };
-
   const handlePrint = () => {
     if (!previewRef.current) return;
     printFinanceStatementPreview(previewRef.current);
@@ -467,7 +485,7 @@ const FinanceStatementModal: React.FC<FinanceStatementModalProps> = ({
               Finance Statement — {title}
             </DialogTitle>
             <DialogDescription>
-              Review the full financial history before downloading or printing.
+              Review the full financial history before printing.
             </DialogDescription>
           </DialogHeader>
 
@@ -486,22 +504,9 @@ const FinanceStatementModal: React.FC<FinanceStatementModalProps> = ({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Close
             </Button>
-            <Button type="button" variant="outline" onClick={handlePrint} disabled={!statement || loading}>
+            <Button type="button" onClick={handlePrint} disabled={!statement || loading}>
               <Printer className="h-4 w-4 mr-1" />
-              Print
-            </Button>
-            <Button type="button" onClick={() => void handleDownload()} disabled={!statement || loading || downloading}>
-              {downloading ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                  Generating…
-                </>
-              ) : (
-                <>
-                  <Download className="h-4 w-4 mr-1" />
-                  Download PDF
-                </>
-              )}
+              Print / Save as PDF
             </Button>
           </DialogFooter>
         </DialogContent>

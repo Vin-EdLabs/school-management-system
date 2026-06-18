@@ -97,12 +97,38 @@ function buildTenantAuditWhere(
 // Super-admin: all schools
 router.get('/all', authenticate, requireRole('super-admin'), async (req: AuthRequest, res) => {
   try {
-    const { startDate, endDate, action, entityType, tenantId: rawTenantId, username, module, status, search, limit = '500', offset = '0' } = req.query;
+    const { startDate: rawStartDate, endDate: rawEndDate, action: rawAction, entityType: rawEntityType, tenantId: rawTenantId, username: rawUsername, module: rawModule, status: rawStatus, search: rawSearch, limit = '500', offset = '0' } = req.query;
+    const str = (v: unknown): string | undefined => {
+      if (v == null) return undefined;
+      return Array.isArray(v) ? String(v[0]) : String(v);
+    };
+    const startDate = str(rawStartDate);
+    const endDate = str(rawEndDate);
+    const action = str(rawAction);
+    const entityType = str(rawEntityType);
+    const username = str(rawUsername);
+    const module = str(rawModule);
+    const status = str(rawStatus);
+    const search = str(rawSearch);
     const tenantId = Array.isArray(rawTenantId) ? rawTenantId[0] : rawTenantId;
     const parsedTenantId = tenantId != null && String(tenantId).trim() !== '' ? parseInt(String(tenantId), 10) : null;
     if (Array.isArray(rawTenantId) || (rawTenantId != null && parsedTenantId === null)) {
       return res.status(400).json({ error: 'Invalid tenantId parameter' });
     }
+
+    console.debug('Get all audit logs params', {
+      startDate,
+      endDate,
+      action,
+      entityType,
+      tenantId: parsedTenantId,
+      username,
+      module,
+      status,
+      search,
+      limit,
+      offset,
+    });
 
     let queryText = `
       SELECT al.*, u.username, ${AUDIT_USER_FULL_NAME_SQL}, ten.name as tenant_name,
@@ -144,9 +170,9 @@ router.get('/all', authenticate, requireRole('super-admin'), async (req: AuthReq
       params.push(`%${username}%`);
     }
     if (search) {
-      const s = `%${String(search).trim()}%`;
-      queryText += ` AND (COALESCE(al.summary,'') ILIKE $${params.length + 1} OR COALESCE(al.details::text,'') ILIKE $${params.length + 1})`;
-      params.push(s);
+      const s = `%${search.trim()}%`;
+      queryText += ` AND (COALESCE(al.summary,'') ILIKE $${params.length + 1} OR COALESCE(al.details::text,'') ILIKE $${params.length + 2})`;
+      params.push(s, s);
     }
 
     const lim = Math.min(Math.max(parseInt(String(limit), 10) || 50, 1), 1000);

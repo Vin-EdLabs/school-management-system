@@ -1,4 +1,5 @@
 import { query } from '../db/connection.js';
+import { sendPushToStudentParents, sendPushToStaffUser, sendPushToTenantStaff } from './webPushService.js';
 
 export interface BirthdayPerson {
   id: number;
@@ -279,18 +280,10 @@ export async function sendBirthdayNotifications(
   tenantId: number,
   birthdayPeople: BirthdayPerson[]
 ) {
-  for (const person of birthdayPeople) {
-    if (person.type !== 'student') continue;
+  const students = birthdayPeople.filter((p) => p.type === 'student');
+  const teachers = birthdayPeople.filter((p) => p.type === 'teacher');
 
-    const guardianRes = await query(
-      `SELECT s.guardian_name, s.guardian_contact
-       FROM students s
-       WHERE s.id = $1 AND s.tenant_id = $2`,
-      [person.id, tenantId]
-    );
-
-    const guardianName = guardianRes.rows[0]?.guardian_name || 'Parent/Guardian';
-
+  for (const person of students) {
     const parentAccountsRes = await query(
       `SELECT ppa.id
        FROM parent_portal_accounts ppa
@@ -315,10 +308,47 @@ export async function sendBirthdayNotifications(
           [
             tenantId,
             account.id,
-            `🎉 ${person.fullName} is turning ${person.age} today! Wish them a wonderful birthday!`,
+            `${person.fullName} is turning ${person.age} today! Wish them a wonderful birthday!`,
           ]
         );
       }
     }
+
+    await sendPushToStudentParents(tenantId, person.id, {
+      title: 'Happy Birthday!',
+      body: `${person.fullName} is turning ${person.age} today! Wish them a wonderful birthday!`,
+      url: '/parent-portal',
+    }).catch(() => {});
+
+    if (person.classId) {
+      const teacherUserIds = await getClassTeacherUserIds(tenantId, person.classId);
+      for (const userId of teacherUserIds) {
+        await sendPushToStaffUser(userId, {
+          title: 'Student Birthday!',
+          body: `${person.fullName} (${person.className || ''}) is turning ${person.age} today!`,
+          url: '/',
+        }).catch(() => {});
+      }
+    }
   }
+
+  for (const person of teachers) {
+    await sendPushToTenantStaff(tenantId, {
+      title: 'Staff Birthday!',
+      body: `${person.fullName} is turning ${person.age} today! Wish them a wonderful day!`,
+      url: '/',
+    }).catch(() => {});
+  }
+}
+
+async function getClassTeacherUserIds(tenantId: number, classId: number): Promise<number[]> {
+  const res = await query(
+    `SELECT DISTINCT u.id
+     FROM class_teachers ct
+     JOIN teachers t ON t.id = ct.teacher_id AND t.tenant_id = ct.tenant_id
+     JOIN users u ON u.teacher_id::text = t.id::text AND u.tenant_id = ct.tenant_id
+     WHERE ct.tenant_id = $1 AND ct.class_id = $2 AND u.is_active = true`,
+    [tenantId, classId]
+  );
+  return res.rows.map((r) => r.id);
 }

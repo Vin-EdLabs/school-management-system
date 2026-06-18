@@ -42,20 +42,33 @@ function formDataFingerprint(formData: FormData): string {
   return parts.sort().join('&');
 }
 
+function normalizeBaseUrl(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return trimmed.replace(/\/api\/?$/, '/api');
+  }
+  const normalized = trimmed.replace(/^\/*/, '').replace(/\/$/, '');
+  return `/${normalized}`.replace(/\/api\/?$/, '/api');
+}
+
 function resolveApiBaseUrl(): string {
+  const envBase = typeof import.meta !== 'undefined' ? String(import.meta.env?.VITE_API_BASE_URL || '').trim() : '';
+  if (envBase) {
+    return normalizeBaseUrl(envBase);
+  }
+
   if (typeof window !== 'undefined') {
     const host = window.location.hostname;
     if (host === 'scholarnerve.com' || host.endsWith('.scholarnerve.com')) {
       return `${window.location.origin}/api`;
     }
-    if (host === 'localhost' || host === '127.0.0.1') {
-      return import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
-    }
-    if (host.endsWith('.lvh.me')) {
-      return import.meta.env.VITE_API_BASE_URL || `${window.location.origin}/api`;
+    if (host === 'localhost' || host === '127.0.0.1' || host.endsWith('.lvh.me')) {
+      return '/api';
     }
   }
-  return import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+
+  return 'http://localhost:3001/api';
 }
 
 function apiErrorMessage(payload: Record<string, unknown> | null, status: number): string {

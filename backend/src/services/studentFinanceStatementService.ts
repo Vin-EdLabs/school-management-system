@@ -118,10 +118,15 @@ export type StudentFinanceStatement = {
     studentId: string;
     admissionNo: string;
     className: string;
+    photoUrl: string | null;
     academicYear: string;
     dateGenerated: string;
     generatedBy: string | null;
     generatedByRole: string | null;
+    signatoryName: string | null;
+    signatoryTitle: string | null;
+    signatureImage: string | null;
+    stampImage: string | null;
   };
   feeBreakdown: TermFeeBreakdown[];
   individualCharges: IndividualChargeStatementLine[];
@@ -435,6 +440,7 @@ export async function buildStudentFinanceStatement(
   const studentRes = await query(
     `SELECT s.id, s.first_name, s.last_name, s.student_id, s.admission_number,
             s.is_beneficiary, s.discount_type, s.discount_value, s.class_assigned_id,
+            s.passport_photo_url,
             c.class_name
      FROM students s
      LEFT JOIN classes c ON c.id = s.class_assigned_id
@@ -456,7 +462,11 @@ export async function buildStudentFinanceStatement(
             COALESCE(NULLIF(ss.physical_address, ''), ss.address, ss.postal_address, '') AS address,
             COALESCE(NULLIF(ss.contact_phone, ''), ss.phone_number, ss.contact, '') AS phone,
             COALESCE(ss.email, '') AS email,
-            COALESCE(NULLIF(ss.logo_url, ''), t.logo_url) AS logo_url
+            COALESCE(NULLIF(ss.logo_url, ''), t.logo_url) AS logo_url,
+            ss.appointment_letter_config->>'signatoryName' AS signatory_name,
+            ss.appointment_letter_config->>'signatoryTitle' AS signatory_title,
+            ss.appointment_letter_config->>'signatureImage' AS signature_image,
+            ss.appointment_letter_config->>'stampImage' AS stamp_image
      FROM school_settings ss
      LEFT JOIN tenants t ON t.id = ss.tenant_id
      WHERE ss.tenant_id = $1`,
@@ -711,11 +721,16 @@ export async function buildStudentFinanceStatement(
       studentId: String(student.student_id || '—'),
       admissionNo: String(student.admission_number || student.student_id || '—'),
       className,
+      photoUrl: student.passport_photo_url ? String(student.passport_photo_url) : null,
       academicYear: String(settings.current_year || '—'),
       dateGenerated,
       generatedBy: variant === 'parent_portal' ? null : opts.generatedByName ?? null,
       generatedByRole:
         variant === 'parent_portal' ? null : roleDisplayName(opts.generatedByRole ?? null),
+      signatoryName: settings.signatory_name ? String(settings.signatory_name) : null,
+      signatoryTitle: settings.signatory_title ? String(settings.signatory_title) : null,
+      signatureImage: settings.signature_image ? String(settings.signature_image) : null,
+      stampImage: settings.stamp_image ? String(settings.stamp_image) : null,
     },
     feeBreakdown,
     individualCharges,

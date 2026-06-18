@@ -244,7 +244,7 @@ const PrintFeeStatusModule = () => {
       <head>
         <title>Fee Status Report - ${selectedClassName}</title>
         <style>
-          @page { size: A4 landscape; margin: 14mm; }
+          @page { size: A4 landscape; margin: 5mm; }
           body { font-family: "Times New Roman", Times, serif; margin: 0; color: #222; font-size: 11pt; }
           .header { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid #2d2d2d; }
           .logo { width: 64px; height: 64px; object-fit: contain; flex-shrink: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }

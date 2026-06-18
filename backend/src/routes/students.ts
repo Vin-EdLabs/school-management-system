@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { query, getClient } from '../db/connection.js';
 import { postStudentActivationTermFee, tryPostStudentActivationTermFee } from '../services/ledgerPaymentService.js';
 import { getStudentLedgerStatement } from '../services/studentLedgerStatementService.js';
+import { buildAdmissionLetterContent, saveAdmissionLetter } from '../services/admissionLetterService.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
@@ -973,6 +974,23 @@ router.post('/:id/approve-admission', requireRole('super-admin', 'administrator'
       emitTenantDataChanged(tenantId, 'fee', 'updated');
       emitTenantDataChanged(tenantId, 'finance', 'updated');
     }
+
+    // Auto-generate admission letter
+    try {
+      const letterContent = await buildAdmissionLetterContent(tenantId, parseInt(id, 10));
+      if (letterContent) {
+        await saveAdmissionLetter({
+          tenantId,
+          studentId: parseInt(id, 10),
+          userId: req.user!.id,
+          userRole: req.user!.role,
+          letterContent,
+        });
+      }
+    } catch (letterErr) {
+      console.error('[approve-admission] Admission letter generation failed:', letterErr);
+    }
+
     res.json({
       ...row,
       billing: {
@@ -1028,6 +1046,57 @@ router.post('/:id/reject-admission', requireRole('super-admin', 'administrator')
   } catch (error) {
     console.error('Reject admission error:', error);
     res.status(500).json({ error: 'Failed to reject admission' });
+  }
+});
+
+// --- Admission Letters ---
+
+router.get('/:id/admission-letters', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const { id } = req.params;
+    const { listAdmissionLetters } = await import('../services/admissionLetterService.js');
+    const letters = await listAdmissionLetters(tenantId, parseInt(id, 10));
+    res.json(letters);
+  } catch (error) {
+    console.error('List admission letters error:', error);
+    res.status(500).json({ error: 'Failed to list admission letters' });
+  }
+});
+
+router.get('/:id/admission-letters/:letterId/download', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const { id, letterId } = req.params;
+    const { getAdmissionLetterPdf } = await import('../services/admissionLetterService.js');
+    const letter = await getAdmissionLetterPdf(tenantId, parseInt(id, 10), parseInt(letterId, 10));
+    if (!letter) return res.status(404).json({ error: 'Admission letter not found' });
+    res.json(letter.letter_content);
+  } catch (error) {
+    console.error('Download admission letter error:', error);
+    res.status(500).json({ error: 'Failed to download admission letter' });
+  }
+});
+
+router.post('/:id/admission-letters/generate', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const { id } = req.params;
+    const { buildAdmissionLetterContent, saveAdmissionLetter } = await import('../services/admissionLetterService.js');
+    const letterContent = await buildAdmissionLetterContent(tenantId, parseInt(id, 10));
+    if (!letterContent) return res.status(404).json({ error: 'Student not found' });
+    const saved = await saveAdmissionLetter({
+      tenantId,
+      studentId: parseInt(id, 10),
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      letterContent,
+    });
+    emitTenantDataChanged(tenantId, 'student', 'updated');
+    res.json(saved);
+  } catch (error) {
+    console.error('Generate admission letter error:', error);
+    res.status(500).json({ error: 'Failed to generate admission letter' });
   }
 });
 

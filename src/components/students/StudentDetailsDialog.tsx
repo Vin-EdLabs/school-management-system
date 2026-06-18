@@ -19,12 +19,16 @@ import {
   Bus,
   Compass,
   Loader2,
+  Printer,
+  Plus,
 } from 'lucide-react';
 import { enrollmentStatusLabel, isAlumniStudent, statusBadgeClass, normalizeEnrollmentStatus, guardianContactLinks } from './studentRegistryUtils';
 import { cn } from '@/lib/utils';
 import { resolveLogoUrl } from '../../services/tenantService';
 import { formatDisplayDate } from '../../utils/dateFormat';
 import { isActivePayment, paymentAmountValue } from '../../utils/feeCalculations';
+import { Button } from '@/components/ui/button';
+import AdmissionLetterDocument, { printAdmissionLetter, type AdmissionLetterData } from './AdmissionLetterDocument';
 
 interface Student {
   id: string;
@@ -128,6 +132,11 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
   const [transportInfo, setTransportInfo] = React.useState<StudentTransportInfo | null>(null);
   const [loadingTransport, setLoadingTransport] = React.useState(false);
 
+  const [admissionLetters, setAdmissionLetters] = React.useState<Array<{ id: number; version_number: number; reference_number: string | null; created_at: string }>>([]);
+  const [loadingLetters, setLoadingLetters] = React.useState(false);
+  const [generatingLetter, setGeneratingLetter] = React.useState(false);
+  const [selectedLetter, setSelectedLetter] = React.useState<AdmissionLetterData | null>(null);
+
   React.useEffect(() => {
     if (open && student?.id) {
       setLoadingTransport(true);
@@ -141,8 +150,22 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
         .finally(() => {
           setLoadingTransport(false);
         });
+
+      setLoadingLetters(true);
+      apiService.get<Array<{ id: number; version_number: number; reference_number: string | null; created_at: string }>>(`/students/${student.id}/admission-letters`)
+        .then(data => {
+          setAdmissionLetters(data);
+        })
+        .catch(err => {
+          console.error('Failed to fetch admission letters:', err);
+        })
+        .finally(() => {
+          setLoadingLetters(false);
+        });
     } else {
       setTransportInfo(null);
+      setAdmissionLetters([]);
+      setSelectedLetter(null);
     }
   }, [open, student?.id]);
 
@@ -240,9 +263,10 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
           </Card>
 
           <Tabs defaultValue="general" className="w-full mt-4 flex flex-col">
-            <TabsList className="grid grid-cols-3 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl h-10 w-full max-w-md shrink-0">
+            <TabsList className="grid grid-cols-4 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl h-10 w-full max-w-lg shrink-0">
               <TabsTrigger value="general" className="rounded-lg text-xs font-semibold">General Info</TabsTrigger>
               <TabsTrigger value="billing" className="rounded-lg text-xs font-semibold">Billing & Payments</TabsTrigger>
+              <TabsTrigger value="admission-letter" className="rounded-lg text-xs font-semibold">Admission Letter</TabsTrigger>
               <TabsTrigger value="transport" className="rounded-lg text-xs font-semibold">Transport</TabsTrigger>
             </TabsList>
 
@@ -526,6 +550,100 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
                   <p className="font-semibold text-slate-600 text-sm">No Payment History</p>
                   <p className="text-xs text-slate-400 mt-1">There are no recorded fee payments for this student in this term.</p>
                 </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="admission-letter" className="space-y-6 pt-4 focus-visible:outline-none">
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-semibold text-sm">Admission Letters</h3>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={async () => {
+                        setGeneratingLetter(true);
+                        try {
+                          const saved = await apiService.post<{ letter_content: AdmissionLetterData }>(`/students/${student.id}/admission-letters/generate`, {});
+                          const letters = await apiService.get<Array<{ id: number; version_number: number; reference_number: string | null; created_at: string }>>(`/students/${student.id}/admission-letters`);
+                          setAdmissionLetters(letters);
+                          setSelectedLetter(saved.letter_content);
+                        } catch (err) {
+                          console.error('Failed to generate admission letter:', err);
+                        } finally {
+                          setGeneratingLetter(false);
+                        }
+                      }}
+                      disabled={generatingLetter}
+                    >
+                      {generatingLetter ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Plus className="h-3 w-3 mr-1" />}
+                      Generate Letter
+                    </Button>
+                  </div>
+
+                  {loadingLetters ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-5 w-5 text-indigo-500 animate-spin" />
+                    </div>
+                  ) : admissionLetters.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-8 border border-dashed rounded-xl bg-slate-50/50 text-slate-500">
+                      <FileText className="h-8 w-8 text-slate-300 mb-2" />
+                      <p className="font-semibold text-slate-600 text-sm">No Admission Letters</p>
+                      <p className="text-xs text-slate-400 mt-1">Generate one above.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {admissionLetters.map(letter => (
+                        <div key={letter.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50 transition-colors">
+                          <div>
+                            <p className="text-sm font-semibold">v{letter.version_number}</p>
+                            <p className="text-xs text-slate-500">
+                              Adm No: {student.admissionNumber || student.studentId} · {formatDisplayDate(letter.created_at)}
+                              {letter.reference_number && <span className="ml-1">· {letter.reference_number}</span>}
+                            </p>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={async () => {
+                                try {
+                                  const data = await apiService.get<AdmissionLetterData>(`/students/${student.id}/admission-letters/${letter.id}/download`);
+                                  setSelectedLetter(data);
+                                } catch (err) {
+                                  console.error('Failed to load admission letter:', err);
+                                }
+                              }}
+                            >
+                              <FileText className="h-3 w-3 mr-1" />
+                              Preview
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={async () => {
+                                try {
+                                  const data = await apiService.get<AdmissionLetterData>(`/students/${student.id}/admission-letters/${letter.id}/download`);
+                                  setSelectedLetter(data);
+                                  setTimeout(() => printAdmissionLetter(), 300);
+                                } catch (err) {
+                                  console.error('Failed to download admission letter:', err);
+                                }
+                              }}
+                            >
+                              <Printer className="h-3 w-3 mr-1" />
+                              Print
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {selectedLetter && (
+                <AdmissionLetterDocument data={selectedLetter} />
               )}
             </TabsContent>
 

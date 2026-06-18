@@ -3,7 +3,7 @@ import {
   GraduationCap, LogOut, BookOpen, Trophy, CreditCard,
   CalendarCheck, Eye, EyeOff, Lock, ChevronRight, Medal,
   TrendingUp, CheckCircle2, XCircle, Clock, AlertTriangle,
-  Home, RefreshCw, Activity, Bell, X, MessageSquare, Send, Phone, Mail, Plus, Paperclip,
+  Home, RefreshCw, Activity, Bell, X, MessageSquare, Send, Phone, Mail, Plus, Paperclip, FileText,
 } from 'lucide-react';
 import ReceiptPrinter from '@/components/common/ReceiptPrinter';
 import { parseReceiptSnapshot, termsMatch } from '@/utils/feeCalculations';
@@ -19,6 +19,8 @@ import { resolveSocketBaseUrl, SOCKET_IO_OPTIONS } from '@/utils/socketUrl';
 import FinanceStatementModal from '@/components/finance/FinanceStatementModal';
 import TermBillBreakdown from '@/components/fees/TermBillBreakdown';
 import { isFinanceStatementNotificationUrl } from '@/services/studentFinanceStatementApi';
+import AdmissionLetterDocument, { printAdmissionLetter } from '@/components/students/AdmissionLetterDocument';
+import type { AdmissionLetterData } from '@/components/students/AdmissionLetterDocument';
 
 function resolveApiBase(): string {
   if (import.meta.env.VITE_API_BASE_URL) return import.meta.env.VITE_API_BASE_URL;
@@ -409,9 +411,18 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         <head>
           <title>Terminal Report Card - ${studentName}</title>
           <style>
+            @page {
+              margin: 5mm;
+              size: A4 portrait;
+            }
             @media print {
               body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
               .no-print { display: none !important; }
+              .report-card {
+                max-width: none !important;
+                width: 100% !important;
+                padding: 10px !important;
+              }
             }
             body {
               font-family: 'Times New Roman', Times, serif;
@@ -473,6 +484,8 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   const [hardRefreshing, setHardRefreshing] = useState(false);
   const [selectedNotification, setSelectedNotification] = useState<ParentAppNotification | null>(null);
   const [financeStatementOpen, setFinanceStatementOpen] = useState(false);
+  const [admissionLetters, setAdmissionLetters] = useState<Array<{ id: number; version_number: number; reference_number: string | null; created_at: string }>>([]);
+  const [selectedAdmissionLetter, setSelectedAdmissionLetter] = useState<AdmissionLetterData | null>(null);
   const [showDeskGuide, setShowDeskGuide] = useState(false);
 
   // Photo lightbox
@@ -1131,6 +1144,9 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         await loadDeskMessages(sessionId);
       } else if (activeTab === 'overview') {
         await refreshFinanceAll();
+        parentFetch('/parent/admission-letters', {}, token).then((d) => {
+          if (studentSessionRef.current === sessionId) setAdmissionLetters(d || []);
+        }).catch(() => {});
       }
     } catch { /* silent */ }
     finally {
@@ -1145,12 +1161,13 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     const sessionId = studentSessionRef.current;
     try {
       setHardRefreshing(true);
-      const [financeData, termData, gradesData, attendanceData, meData] = await Promise.all([
+      const [financeData, termData, gradesData, attendanceData, meData, admissionLettersData] = await Promise.all([
         parentFetch('/parent/finance', {}, token).catch(() => null),
         parentFetch('/parent/term-report', {}, token).catch(() => null),
         parentFetch('/parent/grades', {}, token).catch(() => null),
         parentFetch('/parent/attendance', {}, token).catch(() => null),
         parentFetch('/parent/me', {}, token).catch(() => null),
+        parentFetch('/parent/admission-letters', {}, token).catch(() => null),
       ]);
       if (studentSessionRef.current !== sessionId) return;
       if (financeData) setFinance(financeData);
@@ -1158,6 +1175,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       if (gradesData) setGrades(gradesData);
       if (attendanceData) setAttendance(attendanceData);
       if (meData) setStudent(meData as StudentInfo);
+      if (admissionLettersData) setAdmissionLetters(admissionLettersData);
       await loadServerNotifications(token, studentSessionRef.current).catch(() => undefined);
     } finally {
       if (studentSessionRef.current === sessionId) {
@@ -1863,6 +1881,66 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                   </span>
                 </button>
               ))}
+            </section>
+
+            {/* Admission Letter */}
+            <section className="relative overflow-hidden rounded-[2rem] border border-white/75 bg-white/62 p-4 shadow-[0_14px_38px_rgba(139,92,246,0.14)] backdrop-blur-2xl">
+              <div className="relative">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[1.25rem] bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-[0_12px_28px_rgba(251,146,60,0.28)]">
+                    <FileText className="h-5 w-5" />
+                  </div>
+                  <p className="text-base font-black tracking-tight text-slate-950">Admission Letter</p>
+                </div>
+                {admissionLetters.length === 0 ? (
+                  <p className="text-xs font-medium text-slate-500">No admission letter available yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {admissionLetters.map((letter) => (
+                      <div key={letter.id} className="flex items-center justify-between p-2 border border-white/70 rounded-xl bg-white/40">
+                        <div>
+                          <p className="text-sm font-bold text-slate-800">
+                            v{letter.version_number}
+                            {letter.reference_number && <span className="text-xs font-medium text-slate-500 ml-2">· {letter.reference_number}</span>}
+                          </p>
+                          <p className="text-[10px] text-slate-400">{formatDisplayDate(letter.created_at)}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={async () => {
+                              try {
+                                const data = await parentFetch(`/parent/admission-letters/${letter.id}/download`, {}, token);
+                                setSelectedAdmissionLetter(null);
+                                setTimeout(() => setSelectedAdmissionLetter(data), 50);
+                              } catch {}
+                            }}
+                            className="rounded-xl border border-white/70 bg-white/60 px-3 py-1.5 text-[10px] font-bold text-violet-700 hover:bg-white transition-all"
+                          >
+                            Preview
+                          </button>
+                          <button
+                            onClick={async () => {
+                              try {
+                                const data = await parentFetch(`/parent/admission-letters/${letter.id}/download`, {}, token);
+                                setSelectedAdmissionLetter(data);
+                                setTimeout(() => printAdmissionLetter(), 300);
+                              } catch {}
+                            }}
+                            className="rounded-xl border border-white/70 bg-white/60 px-3 py-1.5 text-[10px] font-bold text-slate-700 hover:bg-white transition-all"
+                          >
+                            Print
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {selectedAdmissionLetter && (
+                      <div className="mt-4">
+                        <AdmissionLetterDocument data={selectedAdmissionLetter} />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </section>
           </div>
         )}

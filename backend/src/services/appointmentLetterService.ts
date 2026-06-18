@@ -178,6 +178,7 @@ export async function buildLetterContent(tenantId: number, teacherId: number) {
       fullName: teacher.full_name,
       staffId: teacher.staff_id,
       photoUrl: teacher.passport_photo_url || null,
+      signature: teacher.signature || null,
       employmentDate: teacher.employment_date,
       monthlySalary: Number(teacher.monthly_salary) || 0,
       className: teacher.class_name || '',

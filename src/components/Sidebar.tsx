@@ -40,6 +40,7 @@ import {
   CalendarClock,
   Landmark,
   SlidersHorizontal,
+  Cake,
   ChevronDown,
   Bus,
   Route,
@@ -72,10 +73,10 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
     ...(hasAccess('dashboard') ? [{ id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }] : []),
     ...(hasAccess('financial-dashboard')
       ? [{
-          id: 'financial-dashboard',
-          label: userRole === 'finance' ? 'Dashboard' : 'Financial',
-          icon: userRole === 'finance' ? LayoutDashboard : DollarSign,
-        }]
+        id: 'financial-dashboard',
+        label: userRole === 'finance' ? 'Dashboard' : 'Financial',
+        icon: userRole === 'finance' ? LayoutDashboard : DollarSign,
+      }]
       : []),
     ...(hasAccess('teacher-dashboard') && userRole !== 'super-admin' && userRole !== 'administrator'
       ? [{ id: 'teacher-dashboard', label: 'My Dashboard', icon: GraduationCap }]
@@ -88,6 +89,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
     ...(hasAccess('classes') ? [{ id: 'classes', label: 'Classes', icon: BookOpen }] : []),
     ...(hasAccess('subjects') ? [{ id: 'subjects', label: 'Subjects', icon: BookOpen }] : []),
     ...(hasAccess('calendar') && userRole !== 'finance' ? [{ id: 'calendar', label: 'Calendar', icon: Calendar }] : []),
+    ...(hasAccess('birthdays') ? [{ id: 'birthdays', label: 'Birthdays', icon: Cake }] : []),
     ...(hasAccess('end-of-year') && userRole === 'administrator'
       ? [{ id: 'end-of-year', label: 'End of Year', icon: CalendarClock }]
       : []),
@@ -192,10 +194,10 @@ const MenuSection: React.FC<{
                       await markCommsRead(item.id);
                     }
                     setActiveModule(item.id);
-                    
+
                     const schoolMatch = window.location.pathname.match(/^\/school\/[^/]+/);
                     const prefix = schoolMatch ? schoolMatch[0] : '';
-                    
+
                     if (item.id === 'transactions') {
                       window.history.pushState({}, '', `${prefix}/finance/transactions`);
                     } else {
@@ -325,7 +327,7 @@ const CollapsibleMenuSection: React.FC<{
         <CollapsibleContent className="space-y-1 relative pl-3.5">
           {/* Guide Line */}
           <div className="absolute left-[18px] top-2 bottom-2 w-[1px] bg-white/10 dark:bg-sidebar-border/60" />
-          
+
           <SidebarGroupContent>
             <SidebarMenu className="space-y-1">
               {items.map((item) => {
@@ -345,10 +347,10 @@ const CollapsibleMenuSection: React.FC<{
                         }
                         await markCommsRead(item.id);
                         setActiveModule(item.id);
-                        
+
                         const schoolMatch = window.location.pathname.match(/^\/school\/[^/]+/);
                         const prefix = schoolMatch ? schoolMatch[0] : '';
-                        
+
                         if (item.id === 'transport-overview') {
                           window.history.pushState({}, '', `${prefix}/transport`);
                         } else if (item.id === 'transport-map') {

@@ -5,6 +5,13 @@ import { query } from './db/connection.js';
 
 let io: Server;
 
+const normalizeRole = (role: string | null | undefined): string => {
+  const value = String(role || '').toLowerCase().trim();
+  if (value === 'superadmin') return 'super-admin';
+  if (value === 'admin') return 'administrator';
+  return value;
+};
+
 export interface SocketUser {
   id: number;
   tenantId: number | null;
@@ -52,7 +59,8 @@ export const initSocket = (server: HttpServer) => {
       if (!token) return next(new Error('Authentication error: No token'));
 
       const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as any;
-      if (decoded.role === 'parent' && decoded.parentAccountId) {
+      const decodedRole = normalizeRole(decoded.role);
+      if (decodedRole === 'parent' && decoded.parentAccountId) {
         const parentResult = await query(
           `SELECT p.id, p.tenant_id, p.student_id, s.first_name, s.last_name
            FROM parent_portal_accounts p
@@ -80,11 +88,12 @@ export const initSocket = (server: HttpServer) => {
         );
         if (result.rows.length === 0) return next(new Error('Invalid user'));
         const row = result.rows[0];
+        const normalizedRole = normalizeRole(row.role);
         socket.user = {
           id: row.id,
           tenantId: row.tenant_id,
           username: row.username,
-          role: row.role,
+          role: normalizedRole,
           fullName: row.full_name,
         };
       }
@@ -99,7 +108,7 @@ export const initSocket = (server: HttpServer) => {
   io.on('connection', (socket: AuthenticatedSocket) => {
     if (socket.user) {
       const { id, tenantId, role } = socket.user;
-      const normalizedRole = String(role || '').toLowerCase().trim();
+      const normalizedRole = normalizeRole(role);
       socket.join(`user:${id}`);
       if (tenantId) {
         socket.join(`tenant:${tenantId}`);
@@ -109,7 +118,7 @@ export const initSocket = (server: HttpServer) => {
       }
       socket.join('global:general');
       socket.data.connectedAt = Date.now();
-      console.log(`User connected and joined rooms: ${socket.id} (User:${id}, Tenant:${tenantId})`);
+      console.log(`User connected and joined rooms: ${socket.id} (User:${id}, Tenant:${tenantId}, Role:${normalizedRole})`);
       if (normalizedRole !== 'parent') {
         io.to('global:super-admin').emit('super-admin-online-users-updated', { updatedAt: socket.data.connectedAt });
       }

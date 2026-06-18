@@ -3,7 +3,7 @@ import {
   GraduationCap, LogOut, BookOpen, Trophy, CreditCard,
   CalendarCheck, Eye, EyeOff, Lock, ChevronRight, Medal,
   TrendingUp, CheckCircle2, XCircle, Clock, AlertTriangle,
-  Home, RefreshCw, Activity, Bell, X, MessageSquare, Send, Phone, Mail, Plus, Paperclip, FileText,
+  Home, RefreshCw, Activity, Bell, X, MessageSquare, Send, Phone, Mail, Plus, Paperclip, Cake, FileText,
 } from 'lucide-react';
 import ReceiptPrinter from '@/components/common/ReceiptPrinter';
 import { parseReceiptSnapshot, termsMatch } from '@/utils/feeCalculations';
@@ -380,6 +380,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   const [termReport, setTermReport] = useState<any>(null);
   const [finance, setFinance] = useState<any>(null);
   const [attendance, setAttendance] = useState<any>(null);
+  const [birthdayInfo, setBirthdayInfo] = useState<{ birthdays: Array<{ id: number; fullName: string; age: number }> } | null>(null);
   const [dataLoading, setDataLoading] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<any>(null);
   const [showReceipt, setShowReceipt] = useState(false);
@@ -591,7 +592,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         method: 'POST',
         body: JSON.stringify({ tenantId, studentId: loginAdmission.trim(), password: loginPassword }),
       }) as { token: string; mustChangePassword: boolean; linkedAccounts?: LinkedAccount[] };
-      
+
       const me = await parentFetch('/parent/me', {}, data.token) as unknown as StudentInfo;
       const studentInfo = { ...me, must_change_password: data.mustChangePassword };
 
@@ -714,14 +715,14 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     if (studentSessionRef.current !== sessionId) return;
     const mapped = Array.isArray(data?.notifications)
       ? data.notifications.map((n: any) => ({
-          id: `srv-${n.id}`,
-          serverId: Number(n.id),
-          title: n.title,
-          message: n.message,
-          url: typeof n.url === 'string' ? n.url : undefined,
-          at: new Date(n.created_at).getTime(),
-          read: Boolean(n.is_read),
-        }))
+        id: `srv-${n.id}`,
+        serverId: Number(n.id),
+        title: n.title,
+        message: n.message,
+        url: typeof n.url === 'string' ? n.url : undefined,
+        at: new Date(n.created_at).getTime(),
+        read: Boolean(n.is_read),
+      }))
       : [];
     setAppNotifications(mapped);
   }, []);
@@ -999,6 +1000,17 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   }, [token, student?.admission_number, activeTab, isSwitchingStudent, fetchTabData]);
 
   useEffect(() => {
+    if (!token || isSwitchingStudent) return;
+    const sessionId = studentSessionRef.current;
+    void parentFetch('/parent/birthdays', {}, token)
+      .then((data) => {
+        if (studentSessionRef.current !== sessionId) return;
+        setBirthdayInfo(data as any);
+      })
+      .catch(() => undefined);
+  }, [token, student?.id, isSwitchingStudent]);
+
+  useEffect(() => {
     if (!token || activeTab !== 'finance' || isSwitchingStudent) return;
     const sessionId = studentSessionRef.current;
     const interval = window.setInterval(() => {
@@ -1146,7 +1158,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         await refreshFinanceAll();
         parentFetch('/parent/admission-letters', {}, token).then((d) => {
           if (studentSessionRef.current === sessionId) setAdmissionLetters(d || []);
-        }).catch(() => {});
+        }).catch(() => { });
       }
     } catch { /* silent */ }
     finally {
@@ -1525,35 +1537,35 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     icon: React.ReactNode;
     tone: string;
   }[] = [
-    {
-      key: 'grades',
-      label: 'Grades',
-      description: 'View academic performance',
-      icon: <BookOpen className="w-6 h-6" />,
-      tone: 'from-violet-500/20 to-purple-500/10 text-violet-600',
-    },
-    {
-      key: 'position',
-      label: 'Position',
-      description: 'Check class & general position',
-      icon: <Trophy className="w-6 h-6" />,
-      tone: 'from-fuchsia-500/20 to-violet-500/10 text-purple-600',
-    },
-    {
-      key: 'finance',
-      label: 'Finance',
-      description: 'View fees & payments',
-      icon: <CreditCard className="w-6 h-6" />,
-      tone: 'from-emerald-500/20 to-teal-500/10 text-emerald-600',
-    },
-    {
-      key: 'attendance',
-      label: 'Attendance',
-      description: 'Track attendance records',
-      icon: <CalendarCheck className="w-6 h-6" />,
-      tone: 'from-sky-500/20 to-indigo-500/10 text-blue-600',
-    },
-  ];
+      {
+        key: 'grades',
+        label: 'Grades',
+        description: 'View academic performance',
+        icon: <BookOpen className="w-6 h-6" />,
+        tone: 'from-violet-500/20 to-purple-500/10 text-violet-600',
+      },
+      {
+        key: 'position',
+        label: 'Position',
+        description: 'Check class & general position',
+        icon: <Trophy className="w-6 h-6" />,
+        tone: 'from-fuchsia-500/20 to-violet-500/10 text-purple-600',
+      },
+      {
+        key: 'finance',
+        label: 'Finance',
+        description: 'View fees & payments',
+        icon: <CreditCard className="w-6 h-6" />,
+        tone: 'from-emerald-500/20 to-teal-500/10 text-emerald-600',
+      },
+      {
+        key: 'attendance',
+        label: 'Attendance',
+        description: 'Track attendance records',
+        icon: <CalendarCheck className="w-6 h-6" />,
+        tone: 'from-sky-500/20 to-indigo-500/10 text-blue-600',
+      },
+    ];
 
   const openStudentMode = () => {
     setStudentModeEntering(true);
@@ -1677,11 +1689,10 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             <button
               key={t.key}
               onClick={() => handleTabChange(t.key)}
-              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold whitespace-nowrap transition-all ${
-                activeTab === t.key
+              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold whitespace-nowrap transition-all ${activeTab === t.key
                   ? 'bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white shadow-lg shadow-violet-500/25'
                   : 'bg-white/55 text-slate-500 hover:bg-white/80 hover:text-violet-700'
-              }`}
+                }`}
             >
               <span className="inline-flex items-center gap-1.5">
                 {t.icon}
@@ -1742,11 +1753,10 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                         setSelectedNotification({ ...n, read: true });
                         setShowNotifPanel(false);
                       }}
-                      className={`w-full text-left rounded-xl border px-3 py-2.5 transition-all active:scale-[0.99] ${
-                        n.read
+                      className={`w-full text-left rounded-xl border px-3 py-2.5 transition-all active:scale-[0.99] ${n.read
                           ? 'border-slate-100 bg-white hover:bg-slate-50'
                           : 'border-indigo-200 bg-indigo-50 shadow-sm ring-1 ring-indigo-100'
-                      }`}
+                        }`}
                     >
                       <p className={`text-sm leading-snug ${n.read ? 'font-medium text-slate-700' : 'font-bold text-slate-900'}`}>{n.title}</p>
                       <p className={`text-xs mt-0.5 line-clamp-2 ${n.read ? 'text-slate-500' : 'text-slate-700 font-medium'}`}>{n.message}</p>
@@ -1863,6 +1873,26 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               </div>
             </section>
 
+            {/* Birthday */}
+            {birthdayInfo?.birthdays && birthdayInfo.birthdays.length > 0 && birthdayInfo.birthdays.map((bday) => (
+              <section key={bday.id} className="relative overflow-hidden rounded-[2rem] border border-amber-200/70 bg-gradient-to-br from-amber-50 via-orange-50/60 to-pink-50/40 p-4 shadow-[0_14px_38px_rgba(251,191,36,0.18)] backdrop-blur-2xl">
+                <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-amber-300/30 blur-3xl" />
+                <div className="relative flex items-center gap-4">
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[1.25rem] bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-[0_12px_28px_rgba(251,191,36,0.30)]">
+                    <Cake className="h-7 w-7" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-lg font-black tracking-tight text-slate-950">
+                      Happy Birthday, {bday.fullName}! 🎂
+                    </p>
+                    <p className="text-sm font-medium text-amber-700">
+                      Turning {bday.age} today! Wishing you a fantastic year ahead!
+                    </p>
+                  </div>
+                </div>
+              </section>
+            ))}
+
             {/* Quick Actions */}
             <section className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {quickActions.map((action) => (
@@ -1912,7 +1942,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                                 const data = await parentFetch(`/parent/admission-letters/${letter.id}/download`, {}, token);
                                 setSelectedAdmissionLetter(null);
                                 setTimeout(() => setSelectedAdmissionLetter(data), 50);
-                              } catch {}
+                              } catch { }
                             }}
                             className="rounded-xl border border-white/70 bg-white/60 px-3 py-1.5 text-[10px] font-bold text-violet-700 hover:bg-white transition-all"
                           >
@@ -1924,7 +1954,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                                 const data = await parentFetch(`/parent/admission-letters/${letter.id}/download`, {}, token);
                                 setSelectedAdmissionLetter(data);
                                 setTimeout(() => printAdmissionLetter(), 300);
-                              } catch {}
+                              } catch { }
                             }}
                             className="rounded-xl border border-white/70 bg-white/60 px-3 py-1.5 text-[10px] font-bold text-slate-700 hover:bg-white transition-all"
                           >
@@ -2063,7 +2093,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               const { report } = termReport;
               const myRecord = report.students.find((s: any) => s.isCurrentStudent);
               if (!myRecord) return null;
-              
+
               const bece = calculateBECE(myRecord.subjectScores);
               const photoUrl = resolveMediaUrl(myRecord.passportPhotoUrl);
               const parsedRemarks = parseTeacherRemarkDetails(report.teacherRemark || '');
@@ -2071,8 +2101,8 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               return (
                 <div className="space-y-4">
                   {/* Beautiful Report Card Container */}
-                  <div 
-                    ref={reportCardRef} 
+                  <div
+                    ref={reportCardRef}
                     className="bg-white text-slate-950 p-6 md:p-8 border-2 border-black rounded shadow-lg max-w-4xl mx-auto space-y-4"
                     style={{ fontFamily: "'Times New Roman', Times, serif" }}
                   >
@@ -2084,8 +2114,8 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                           <td className="w-20 align-middle border-none p-0">
                             <div className="w-20 h-20 border-2 border-black inline-block overflow-hidden bg-slate-100">
                               {resolvedLogo ? (
-                                <img 
-                                  src={resolvedLogo} 
+                                <img
+                                  src={resolvedLogo}
                                   alt="School Logo"
                                   className="w-full h-full object-contain p-1"
                                 />
@@ -2094,7 +2124,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                               )}
                             </div>
                           </td>
-                          
+
                           {/* School Info */}
                           <td className="text-center align-middle border-none px-4 p-0">
                             <h1 className="text-2xl font-black uppercase tracking-normal m-0" style={{ fontFamily: "'Times New Roman', Georgia, serif" }}>
@@ -2106,8 +2136,8 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                           <td className="w-20 align-middle border-none text-right p-0">
                             <div className="w-20 h-24 border-2 border-black inline-block overflow-hidden bg-slate-100">
                               {photoUrl ? (
-                                <img 
-                                  src={photoUrl} 
+                                <img
+                                  src={photoUrl}
                                   alt={`${myRecord.firstName} ${myRecord.lastName}`}
                                   className="w-full h-full object-cover"
                                 />
@@ -2166,9 +2196,9 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                       <thead>
                         <tr>
                           <th className="border-2 border-black bg-slate-50 p-2 text-left font-bold uppercase w-1/3">SUBJECTS</th>
-                          <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase w-20">Class Score<br/>40%</th>
-                          <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase w-20">Exams Score<br/>60%</th>
-                          <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase w-20">Total Score<br/>100%</th>
+                          <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase w-20">Class Score<br />40%</th>
+                          <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase w-20">Exams Score<br />60%</th>
+                          <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase w-20">Total Score<br />100%</th>
                           <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase w-14">Grade</th>
                           <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase w-16">Position</th>
                           <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase">Remarks</th>
@@ -2178,9 +2208,9 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                         {report.subjects.map((subj: string) => {
                           const sScore = myRecord.subjectScores[subj];
                           const gr = sScore ? getGhanaianGradeInfo(sScore.score) : { grade: '', remark: '—' };
-                          
+
                           // Calculate position in subject
-                          const sortedList = [...report.students].sort((a,b) => (b.subjectScores[subj]?.score || 0) - (a.subjectScores[subj]?.score || 0));
+                          const sortedList = [...report.students].sort((a, b) => (b.subjectScores[subj]?.score || 0) - (a.subjectScores[subj]?.score || 0));
                           let subPos = 1;
                           for (let i = 0; i < sortedList.length; i++) {
                             if (sortedList[i].studentId === myRecord.studentId) {
@@ -2404,64 +2434,64 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                   const termLabel = finance.currentTermLabel || finance.currentTerm || '';
                   const cardClass =
                     portalStatus === 'paid' ? 'bg-gradient-to-br from-green-500 to-emerald-700'
-                    : portalStatus === 'credit' ? 'bg-gradient-to-br from-blue-500 to-indigo-700'
-                    : portalStatus === 'not_set' ? 'bg-gradient-to-br from-slate-500 to-slate-700'
-                    : 'bg-gradient-to-br from-red-500 to-rose-700';
+                      : portalStatus === 'credit' ? 'bg-gradient-to-br from-blue-500 to-indigo-700'
+                        : portalStatus === 'not_set' ? 'bg-gradient-to-br from-slate-500 to-slate-700'
+                          : 'bg-gradient-to-br from-red-500 to-rose-700';
                   const badgeClass =
                     portalStatus === 'paid' ? 'bg-green-400/30 text-green-100'
-                    : portalStatus === 'credit' ? 'bg-blue-400/30 text-blue-100'
-                    : portalStatus === 'not_set' ? 'bg-white/20 text-white/90'
-                    : 'bg-red-400/30 text-red-100';
+                      : portalStatus === 'credit' ? 'bg-blue-400/30 text-blue-100'
+                        : portalStatus === 'not_set' ? 'bg-white/20 text-white/90'
+                          : 'bg-red-400/30 text-red-100';
                   const badgeLabel =
                     portalStatus === 'paid' ? '✓ Paid'
-                    : portalStatus === 'credit' ? 'Credit'
-                    : portalStatus === 'not_set' ? 'No Fee Set'
-                    : 'Unpaid';
+                      : portalStatus === 'credit' ? 'Credit'
+                        : portalStatus === 'not_set' ? 'No Fee Set'
+                          : 'Unpaid';
                   const headlineAmount = portalStatus === 'credit' ? credit : Math.max(0, outstanding);
                   const headlineLabel = portalStatus === 'credit' ? 'Credit Balance' : 'Outstanding Balance';
 
                   return (
-                <div className={`rounded-2xl p-5 text-white shadow-lg ${cardClass}`}>
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-white/60 text-[10px] uppercase tracking-wider font-medium">
-                        {finance.schoolName || student.school_name}
-                      </p>
-                      <p className="text-white/70 text-xs mb-1">{termLabel}</p>
-                      <p className="text-3xl font-black mt-1">{GH(headlineAmount)}</p>
-                      <p className="text-white/80 text-sm mt-1">{headlineLabel}</p>
+                    <div className={`rounded-2xl p-5 text-white shadow-lg ${cardClass}`}>
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-white/60 text-[10px] uppercase tracking-wider font-medium">
+                            {finance.schoolName || student.school_name}
+                          </p>
+                          <p className="text-white/70 text-xs mb-1">{termLabel}</p>
+                          <p className="text-3xl font-black mt-1">{GH(headlineAmount)}</p>
+                          <p className="text-white/80 text-sm mt-1">{headlineLabel}</p>
+                        </div>
+                        <div className="text-right">
+                          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${badgeClass}`}>
+                            {badgeLabel}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-white/20">
+                        <div className="text-center">
+                          <p className="text-white/60 text-[10px] uppercase tracking-wide">Total Term Bill</p>
+                          <TermBillBreakdown
+                            total={Number(finance.termFee ?? 0)}
+                            credit={Number(finance.feeBreakdown?.credit ?? finance.credit ?? 0)}
+                            breakdownItems={(finance.feeBreakdown?.termFeeLines || []).map((line: { label: string; amount: number }) => ({
+                              label: line.label,
+                              amount: line.amount,
+                            }))}
+                            individualCharges={finance.individualChargeLines}
+                            compact
+                            className="mt-0.5 text-white [&_button]:text-white/80 [&_span]:text-white [&_.font-mono]:text-white"
+                          />
+                        </div>
+                        <div className="text-center">
+                          <p className="text-white/60 text-[10px] uppercase tracking-wide">Arrears</p>
+                          <p className="text-xs sm:text-sm font-bold mt-0.5">{GH(Number(finance.arrears ?? 0))}</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-white/60 text-[10px] uppercase tracking-wide">Paid</p>
+                          <p className="text-xs sm:text-sm font-bold mt-0.5">{GH(Number(finance.totalPaid ?? 0))}</p>
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${badgeClass}`}>
-                        {badgeLabel}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-white/20">
-                    <div className="text-center">
-                      <p className="text-white/60 text-[10px] uppercase tracking-wide">Total Term Bill</p>
-                      <TermBillBreakdown
-                        total={Number(finance.termFee ?? 0)}
-                        credit={Number(finance.feeBreakdown?.credit ?? finance.credit ?? 0)}
-                        breakdownItems={(finance.feeBreakdown?.termFeeLines || []).map((line: { label: string; amount: number }) => ({
-                          label: line.label,
-                          amount: line.amount,
-                        }))}
-                        individualCharges={finance.individualChargeLines}
-                        compact
-                        className="mt-0.5 text-white [&_button]:text-white/80 [&_span]:text-white [&_.font-mono]:text-white"
-                      />
-                    </div>
-                    <div className="text-center">
-                      <p className="text-white/60 text-[10px] uppercase tracking-wide">Arrears</p>
-                      <p className="text-xs sm:text-sm font-bold mt-0.5">{GH(Number(finance.arrears ?? 0))}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-white/60 text-[10px] uppercase tracking-wide">Paid</p>
-                      <p className="text-xs sm:text-sm font-bold mt-0.5">{GH(Number(finance.totalPaid ?? 0))}</p>
-                    </div>
-                  </div>
-                </div>
                   );
                 })()}
 
@@ -2558,71 +2588,68 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                           String(activeTerm).toLowerCase().includes(String(p.term).toLowerCase());
                         const paymentStatus = p.status === 'corrected' ? 'Corrected' : 'Active';
                         return (
-                        <div key={p.id ?? `${p.receipt_number}-${p.payment_date}`} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3">
-                          <div className="flex items-start gap-3 min-w-0">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
-                              isCurrentTerm ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
-                            }`}>
-                              <CheckCircle2 className="w-4 h-4" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-sm font-bold text-gray-800">{GH(parseFloat(p.amount_paid))}</span>
-                                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                                  isCurrentTerm
-                                    ? 'bg-green-100 text-green-700'
-                                    : 'bg-gray-100 text-gray-500'
+                          <div key={p.id ?? `${p.receipt_number}-${p.payment_date}`} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3">
+                            <div className="flex items-start gap-3 min-w-0">
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${isCurrentTerm ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
                                 }`}>
-                                  {p.term || '—'}
-                                </span>
-                                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                                  p.status === 'corrected'
-                                    ? 'bg-amber-100 text-amber-800'
-                                    : 'bg-slate-100 text-slate-600'
-                                }`}>
-                                  {paymentStatus}
-                                </span>
+                                <CheckCircle2 className="w-4 h-4" />
                               </div>
-                              <p className="text-xs text-gray-400 flex items-center gap-1 flex-wrap mt-0.5">
-                                <Clock className="w-3 h-3" />
-                                {fmtDate(p.payment_date)}
-                                {p.payment_method && <><span>·</span> {p.payment_method}</>}
-                                {p.receipt_number && (
-                                  <>
-                                    <span>·</span>
-                                    <button
-                                      type="button"
-                                      onClick={() => openReceipt(p)}
-                                      className="font-medium text-purple-600 hover:text-purple-700 underline underline-offset-2"
-                                    >
-                                      #{p.receipt_number}
-                                    </button>
-                                  </>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-sm font-bold text-gray-800">{GH(parseFloat(p.amount_paid))}</span>
+                                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${isCurrentTerm
+                                      ? 'bg-green-100 text-green-700'
+                                      : 'bg-gray-100 text-gray-500'
+                                    }`}>
+                                    {p.term || '—'}
+                                  </span>
+                                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${p.status === 'corrected'
+                                      ? 'bg-amber-100 text-amber-800'
+                                      : 'bg-slate-100 text-slate-600'
+                                    }`}>
+                                    {paymentStatus}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-gray-400 flex items-center gap-1 flex-wrap mt-0.5">
+                                  <Clock className="w-3 h-3" />
+                                  {fmtDate(p.payment_date)}
+                                  {p.payment_method && <><span>·</span> {p.payment_method}</>}
+                                  {p.receipt_number && (
+                                    <>
+                                      <span>·</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => openReceipt(p)}
+                                        className="font-medium text-purple-600 hover:text-purple-700 underline underline-offset-2"
+                                      >
+                                        #{p.receipt_number}
+                                      </button>
+                                    </>
+                                  )}
+                                </p>
+                                {(p.reference_number || p.notes) && (
+                                  <p className="text-[11px] text-gray-500 mt-1 truncate">
+                                    {p.reference_number ? `Ref: ${p.reference_number}` : ''}
+                                    {p.reference_number && p.notes ? ' · ' : ''}
+                                    {p.notes ? `Note: ${p.notes}` : ''}
+                                  </p>
                                 )}
-                              </p>
-                              {(p.reference_number || p.notes) && (
-                                <p className="text-[11px] text-gray-500 mt-1 truncate">
-                                  {p.reference_number ? `Ref: ${p.reference_number}` : ''}
-                                  {p.reference_number && p.notes ? ' · ' : ''}
-                                  {p.notes ? `Note: ${p.notes}` : ''}
-                                </p>
-                              )}
-                              {p.status === 'corrected' && p.replacesReceiptNumber && (
-                                <p className="text-[11px] text-amber-700 mt-1">
-                                  Replaces receipt #{p.replacesReceiptNumber}
-                                  {p.receipt_updated_at ? ` · updated ${fmtDate(p.receipt_updated_at)}` : ''}
-                                </p>
-                              )}
+                                {p.status === 'corrected' && p.replacesReceiptNumber && (
+                                  <p className="text-[11px] text-amber-700 mt-1">
+                                    Replaces receipt #{p.replacesReceiptNumber}
+                                    {p.receipt_updated_at ? ` · updated ${fmtDate(p.receipt_updated_at)}` : ''}
+                                  </p>
+                                )}
+                              </div>
                             </div>
+                            <button
+                              type="button"
+                              onClick={() => openReceipt(p)}
+                              className="w-full sm:w-auto text-center text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100 shrink-0"
+                            >
+                              View Receipt
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => openReceipt(p)}
-                            className="w-full sm:w-auto text-center text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100 shrink-0"
-                          >
-                            View Receipt
-                          </button>
-                        </div>
                         );
                       })}
                     </div>
@@ -2786,11 +2813,10 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                     </div>
                     <p className="text-xs text-slate-600 mt-2 line-clamp-2">{m.message}</p>
                     <div className="mt-2 flex items-center justify-between">
-                      <span className={`text-[11px] px-2 py-1 rounded-full ${
-                        m.status === 'resolved' ? 'bg-emerald-100 text-emerald-700' :
-                        m.status === 'urgent' ? 'bg-red-100 text-red-700' :
-                        m.status === 'in_review' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'
-                      }`}>
+                      <span className={`text-[11px] px-2 py-1 rounded-full ${m.status === 'resolved' ? 'bg-emerald-100 text-emerald-700' :
+                          m.status === 'urgent' ? 'bg-red-100 text-red-700' :
+                            m.status === 'in_review' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'
+                        }`}>
                         {String(m.status || 'pending').replace('_', ' ')}
                       </span>
                       {(Number(m.unread_replies || 0) > 0) && <span className="text-[11px] text-purple-700 font-semibold animate-pulse">● New Reply</span>}
@@ -2824,11 +2850,10 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             <button
               key={t.key}
               onClick={() => handleTabChange(t.key)}
-              className={`relative flex min-h-[58px] flex-col items-center justify-center gap-1 rounded-2xl px-1 py-2 text-[9px] xs:text-[10px] font-bold transition-all active:scale-95 ${
-                activeTab === t.key
+              className={`relative flex min-h-[58px] flex-col items-center justify-center gap-1 rounded-2xl px-1 py-2 text-[9px] xs:text-[10px] font-bold transition-all active:scale-95 ${activeTab === t.key
                   ? 'text-white shadow-[0_12px_28px_rgba(139,92,246,0.35)]'
                   : 'text-slate-500 hover:text-violet-700'
-              }`}
+                }`}
               style={activeTab === t.key ? { background: 'linear-gradient(135deg, #8B5CF6, #A855F7 55%, #EC4899)' } : undefined}
             >
               <span className="relative inline-flex">
@@ -2987,10 +3012,10 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                   <p>{selectedDeskMessage.message}</p>
                   {selectedDeskMessage.attachment_url && (
                     <div className="mt-2 rounded-lg overflow-hidden border border-green-300">
-                      <img 
-                        src={resolveMediaUrl(selectedDeskMessage.attachment_url) || selectedDeskMessage.attachment_url} 
-                        alt="Attachment" 
-                        className="max-h-48 w-full object-cover cursor-pointer" 
+                      <img
+                        src={resolveMediaUrl(selectedDeskMessage.attachment_url) || selectedDeskMessage.attachment_url}
+                        alt="Attachment"
+                        className="max-h-48 w-full object-cover cursor-pointer"
                         onClick={() => setLightboxUrl(selectedDeskMessage.attachment_url)}
                       />
                     </div>
@@ -3000,18 +3025,17 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               </div>
               {deskConversation.map((r) => (
                 <div key={r.id} className={`flex ${r.sender_type === 'parent' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[86%] rounded-2xl px-3 py-2 text-sm shadow-sm ${
-                    r.sender_type === 'parent'
+                  <div className={`max-w-[86%] rounded-2xl px-3 py-2 text-sm shadow-sm ${r.sender_type === 'parent'
                       ? 'bg-[#dcf8c6] border border-green-200 text-slate-700 rounded-br-md'
                       : 'bg-white border border-slate-200 text-slate-700 rounded-bl-md'
-                  }`}>
+                    }`}>
                     <p>{r.reply_text}</p>
                     {r.attachment_url && (
                       <div className={`mt-2 rounded-lg overflow-hidden border ${r.sender_type === 'parent' ? 'border-green-300' : 'border-slate-200'}`}>
-                        <img 
-                          src={resolveMediaUrl(r.attachment_url) || r.attachment_url || ''} 
-                          alt="Reply Attachment" 
-                          className="max-h-48 w-full object-cover cursor-pointer" 
+                        <img
+                          src={resolveMediaUrl(r.attachment_url) || r.attachment_url || ''}
+                          alt="Reply Attachment"
+                          className="max-h-48 w-full object-cover cursor-pointer"
                           onClick={() => setLightboxUrl(r.attachment_url)}
                         />
                       </div>
@@ -3201,11 +3225,11 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       {showSwitcher && (
         <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center">
           {/* Backdrop */}
-          <div 
-            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300" 
-            onClick={() => setShowSwitcher(false)} 
+          <div
+            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300"
+            onClick={() => setShowSwitcher(false)}
           />
-          
+
           {/* Sheet */}
           <div className="relative w-full max-w-lg sm:max-w-sm bg-white rounded-t-[2.5rem] sm:rounded-[2rem] shadow-2xl overflow-hidden animate-in slide-in-from-bottom-full sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-500 ease-out">
             {/* Mobile Handle */}
@@ -3215,8 +3239,8 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
             <div className="p-5 border-b border-slate-50 flex items-center justify-between">
               <h3 className="font-bold text-slate-900 text-base">Switch Account</h3>
-              <button 
-                onClick={() => setShowSwitcher(false)} 
+              <button
+                onClick={() => setShowSwitcher(false)}
                 className="hidden sm:block p-1.5 hover:bg-slate-100 rounded-full transition-colors"
               >
                 <X className="w-5 h-5 text-slate-400" />
@@ -3237,16 +3261,14 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                     <button
                       key={acc.student.admission_number}
                       onClick={() => handleSwitchAccount(acc)}
-                      className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all duration-200 ${
-                        isActive 
-                          ? 'bg-purple-50/50 border border-purple-100' 
+                      className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all duration-200 ${isActive
+                          ? 'bg-purple-50/50 border border-purple-100'
                           : 'hover:bg-slate-50'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center gap-4">
-                        <div className={`relative w-14 h-14 rounded-2xl overflow-hidden shadow-sm border-2 transition-all duration-300 ${
-                          isActive ? 'border-purple-500 scale-105' : 'border-white'
-                        }`}>
+                        <div className={`relative w-14 h-14 rounded-2xl overflow-hidden shadow-sm border-2 transition-all duration-300 ${isActive ? 'border-purple-500 scale-105' : 'border-white'
+                          }`}>
                           {acc.student.passport_photo_url ? (
                             <img src={resolveMediaUrl(acc.student.passport_photo_url)!} alt="" className="w-full h-full object-cover" />
                           ) : (
@@ -3357,7 +3379,7 @@ export const ParentPortalRoute: React.FC = () => {
 
         const res = await fetch(fetchUrl);
         const d = await res.json();
-        
+
         if (d?.tenant?.id) {
           setTenantId(Number(d.tenant.id));
           if (d.tenant.name) setSchoolName(d.tenant.name);

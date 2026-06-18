@@ -256,6 +256,7 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
         termFeeCleared: snap?.termFeeCleared,
         totalPaidThisTerm: snap?.totalPaidThisTerm,
         paymentStatus: snap?.status,
+        paidCharges: snap?.paidCharges,
       });
       setShowReceipt(true);
       resetForm();

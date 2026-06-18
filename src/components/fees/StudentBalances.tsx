@@ -27,6 +27,68 @@ const StudentBalances = () => {
 
   const classRow = filterClass !== 'all-classes' ? classes.find((c) => c.className === filterClass) : null;
 
+  const roundMoney = (value: number) => Math.round(value * 100) / 100;
+
+  const getMatchingFeeStructureBaseAmount = (
+    student: { classAssigned?: string; classAssignedId?: number | string | null },
+    feeStructures: any[],
+    term: string | null
+  ) => {
+    if (!term || term === 'Not Set') return 0;
+    const normalizedTerm = term.trim();
+    return feeStructures
+      .filter((f) => {
+        const feeClassId = f.classId ?? f.class_id;
+        const classMatch =
+          student.classAssignedId != null && feeClassId != null
+            ? Number(feeClassId) === Number(student.classAssignedId)
+            : (f.className || '').trim() === (student.classAssigned || '').trim();
+        if (!classMatch) return false;
+        const feeTerm = (f.term || '').trim();
+        return !feeTerm || feeTerm === normalizedTerm || feeTerm.startsWith(normalizedTerm) || normalizedTerm.startsWith(feeTerm);
+      })
+      .reduce((sum, fee) => sum + (Number(fee.amount) || 0), 0);
+  };
+
+  const formatBeneficiaryDiscountLabel = (student: { isBeneficiary?: boolean; discountType?: string; discountValue?: number }) => {
+    if (!student?.isBeneficiary) return null;
+    const type = String(student.discountType ?? '').trim().toLowerCase();
+    const value = Number(student.discountValue) || 0;
+    if (!type) return 'Beneficiary Discount (100%)';
+    if (type === 'percentage') return `Beneficiary Discount (${value}%)`;
+    if (type === 'fixed') return `Beneficiary Discount (GHS ${value.toLocaleString()})`;
+    return 'Beneficiary Discount';
+  };
+
+  const getBeneficiaryDiscountDetails = (
+    student: { isBeneficiary?: boolean; discountType?: string; discountValue?: number; classAssigned?: string; classAssignedId?: number | string | null },
+    feeStructures: any[],
+    term: string | null
+  ) => {
+    if (!student?.isBeneficiary) {
+      return { discountAmount: 0, discountLabel: undefined };
+    }
+
+    const baseFee = getMatchingFeeStructureBaseAmount(student, feeStructures, term);
+    const type = String(student.discountType ?? '').trim().toLowerCase();
+    const value = Number(student.discountValue) || 0;
+
+    if (!type) {
+      return { discountAmount: roundMoney(baseFee), discountLabel: formatBeneficiaryDiscountLabel(student) };
+    }
+
+    if (type === 'percentage') {
+      const percent = Math.min(100, Math.max(0, value));
+      return { discountAmount: roundMoney((baseFee * percent) / 100), discountLabel: formatBeneficiaryDiscountLabel(student) };
+    }
+
+    if (type === 'fixed') {
+      return { discountAmount: roundMoney(Math.min(baseFee, value)), discountLabel: formatBeneficiaryDiscountLabel(student) };
+    }
+
+    return { discountAmount: roundMoney(baseFee), discountLabel: formatBeneficiaryDiscountLabel(student) };
+  };
+
   const hasFeeStructureForStudent = (student: { classAssignedId?: number | string | null; classAssigned?: string }) => {
     if (!currentTerm || currentTerm === 'Not Set') return false;
     return (feeStructures || []).some((f) => {
@@ -64,6 +126,8 @@ const StudentBalances = () => {
         balance: 0,
         feeStatus: { status: 'Not Set', balance: 0 },
         paymentCount: 0,
+        individualCharges: 0,
+        individualChargeLines: [],
       };
     }
 
@@ -79,10 +143,13 @@ const StudentBalances = () => {
         feeStatus: { status: 'No Fee Set', balance: 0 },
         feeStructureMissing: true,
         paymentCount: countTermPayments(student.id),
+        individualCharges: 0,
+        individualChargeLines: [],
       };
     }
 
     if (balance.status === 'NotSet') {
+      const discountDetails = getBeneficiaryDiscountDetails(student, feeStructures || [], currentTerm);
       return {
         ...student,
         currentTermFee: balance.currentTermFee,
@@ -95,6 +162,10 @@ const StudentBalances = () => {
         feeStatus: { status: 'No Fee Set', balance: 0 },
         feeStructureMissing: !hasFeeStructureForStudent(student),
         paymentCount: countTermPayments(student.id),
+        individualCharges: balance.individualCharges ?? 0,
+        individualChargeLines: balance.individualChargeLines ?? [],
+        discountAmount: discountDetails.discountAmount,
+        discountLabel: discountDetails.discountLabel,
       };
     }
 
@@ -121,6 +192,7 @@ const StudentBalances = () => {
       feeStatus = { status: 'Paid', balance: 0 };
     }
 
+    const discountDetails = getBeneficiaryDiscountDetails(student, feeStructures || [], currentTerm);
     return {
       ...student,
       currentTermFee: balance.currentTermFee,
@@ -134,6 +206,10 @@ const StudentBalances = () => {
       feeStatus,
       feeStructureMissing,
       paymentCount: countTermPayments(student.id),
+      individualCharges: balance.individualCharges ?? 0,
+      individualChargeLines: balance.individualChargeLines ?? [],
+      discountAmount: discountDetails.discountAmount,
+      discountLabel: discountDetails.discountLabel,
     };
   };
 
@@ -388,9 +464,12 @@ const StudentBalances = () => {
                           currentTerm
                         )}
                         individualCharges={student.individualChargeLines}
+                        individualChargeAmount={student.individualCharges}
                         studentId={student.id}
                         termId={student.activeTermId}
                         compact
+                        discountAmount={student.discountAmount}
+                        discountLabel={student.discountLabel}
                       />
                     </TableCell>
                     <TableCell>

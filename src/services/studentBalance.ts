@@ -33,6 +33,8 @@ export type StudentBalance = {
   credit: number;
   netBalance?: number;
   status: 'Owing' | 'Cleared' | 'Credit' | 'NotSet';
+  discountAmount?: number;
+  discountLabel?: string;
   arrearsBreakdown?: ArrearsBreakdownLine[];
   totalCharged?: number;
   paymentsMade?: number;
@@ -177,7 +179,8 @@ export function formatBalanceLines(b: StudentBalance) {
   }> = [];
 
   const termLabel = b.currentTermName ?? 'Current term';
-  lines.push({ label: `Total Term Bill (${termLabel})`, amount: b.currentTermFee, kind: 'charge' });
+  const totalTermBillAmount = Number(b.currentTermFee || 0) + Number(b.individualCharges || 0);
+  lines.push({ label: `Total Term Bill (${termLabel})`, amount: totalTermBillAmount, kind: 'charge' });
 
   for (const row of b.arrearLines) {
     lines.push({ label: `Arrears — ${row.termName}`, amount: row.amount, kind: 'charge' });

@@ -226,6 +226,7 @@ export type ReceiptSnapshotData = {
   outstandingAfter?: number;
   totalPaidThisTerm?: number;
   status?: 'Owing' | 'Cleared' | 'Credit';
+  paidCharges?: Array<{ id: number; amount: number; description?: string }>;
 };
 
 export function parseReceiptSnapshot(raw: unknown): ReceiptSnapshotData | null {
@@ -255,6 +256,9 @@ export function parseReceiptSnapshot(raw: unknown): ReceiptSnapshotData | null {
     outstandingAfter: o.outstandingAfter != null ? Number(o.outstandingAfter) : undefined,
     totalPaidThisTerm: o.totalPaidThisTerm != null ? Number(o.totalPaidThisTerm) : undefined,
     status: o.status as ReceiptSnapshotData['status'],
+    paidCharges: Array.isArray(o.paidCharges)
+      ? (o.paidCharges as Array<any>).map((c) => ({ id: Number(c.id), amount: Number(c.amount), description: String(c.description || '') }))
+      : undefined,
   };
 }
 

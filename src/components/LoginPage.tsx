@@ -20,6 +20,7 @@ const LoginPage = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [formError, setFormError] = useState('');
+  const [timeoutNotice, setTimeoutNotice] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [tenant, setTenant] = useState<{ name: string; logo_url: string | null; primary_color: string | null; secondary_color: string | null } | null>(null);
   const [tenantBrandingLoading, setTenantBrandingLoading] = useState(!!(contextSchoolId ?? (schoolId ? parseInt(schoolId, 10) : undefined)));
@@ -41,6 +42,17 @@ const LoginPage = () => {
       })
       .finally(() => setTenantBrandingLoading(false));
   }, [tenantId]);
+
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('reason') === 'session_timeout') {
+        setTimeoutNotice('Your session expired due to inactivity. Please sign in again.');
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, []);
 
   const primaryColor = tenant?.primary_color || '#2563eb';
   const secondaryColor = tenant?.secondary_color || '#7c3aed';
@@ -144,6 +156,13 @@ const LoginPage = () => {
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-4 md:space-y-5">
+                {timeoutNotice && (
+                  <Alert className="border-yellow-200 bg-yellow-50 text-yellow-900">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle className="text-sm font-semibold">Session timed out</AlertTitle>
+                    <AlertDescription className="text-sm opacity-95">{timeoutNotice}</AlertDescription>
+                  </Alert>
+                )}
                 {formError && (
                   <Alert variant="destructive" className="border-red-200 bg-red-50 text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100">
                     <AlertCircle className="h-4 w-4" />

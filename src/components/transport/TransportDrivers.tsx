@@ -327,12 +327,12 @@ export const TransportDrivers: React.FC = () => {
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={open => { if (!open && !submitting) { setDialogOpen(false); setEditingDriver(null); } }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-3xl w-full min-h-[calc(90vh-4rem)]">
           <DialogHeader>
             <DialogTitle>{editingDriver ? 'Edit driver' : 'Add driver'}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit}>
-            <DialogBody className="space-y-4">
+          <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+            <DialogBody className="space-y-4 overflow-y-auto">
               <div className="space-y-2">
                 <Label htmlFor="driverName">Full name *</Label>
                 <Input id="driverName" value={fullName} onChange={e => setFullName(e.target.value)} placeholder="e.g. Kwame Mensah" required />

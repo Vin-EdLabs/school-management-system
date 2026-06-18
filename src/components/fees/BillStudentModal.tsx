@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,13 +12,23 @@ import {
   DialogBody,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useData, type Student } from '../../contexts/DataContext';
 import { useActiveTerm } from '../../hooks/useActiveTerm';
-import { createStudentCharge } from '../../services/studentCharges';
+import { createStudentCharge, deleteStudentCharge, fetchStudentCharges, type StudentCharge } from '../../services/studentCharges';
 import { shouldTrackStudentFees } from '../students/studentRegistryUtils';
 import LazyStudentAvatar from '../students/LazyStudentAvatar';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, Search, X } from 'lucide-react';
+import { Info, Loader2, Search, Trash2, X } from 'lucide-react';
 
 type BillStudentModalProps = {
   open: boolean;
@@ -28,7 +38,7 @@ type BillStudentModalProps = {
 
 const BillStudentModal: React.FC<BillStudentModalProps> = ({ open, onOpenChange, onSuccess }) => {
   const { students, refresh } = useData();
-  const { currentTerm, currentYear } = useActiveTerm();
+  const { currentTerm, currentYear, activeAcademicTermId } = useActiveTerm();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
@@ -36,6 +46,11 @@ const BillStudentModal: React.FC<BillStudentModalProps> = ({ open, onOpenChange,
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [removingChargeId, setRemovingChargeId] = useState<number | null>(null);
+  const [manualCharges, setManualCharges] = useState<StudentCharge[]>([]);
+  const [loadingCharges, setLoadingCharges] = useState(false);
+  const [selectedChargeToRemove, setSelectedChargeToRemove] = useState<StudentCharge | null>(null);
+  const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const activeStudents = useMemo(
@@ -57,17 +72,47 @@ const BillStudentModal: React.FC<BillStudentModalProps> = ({ open, onOpenChange,
       .slice(0, 8);
   }, [activeStudents, searchTerm]);
 
-  const resetForm = () => {
-    setSearchTerm('');
-    setSelectedStudent(null);
+  const resetFormFields = () => {
     setDescription('');
     setAmount('');
     setReason('');
     setError(null);
+    setSelectedChargeToRemove(null);
   };
 
+  const resetModal = () => {
+    setSearchTerm('');
+    setSelectedStudent(null);
+    setManualCharges([]);
+    resetFormFields();
+  };
+
+  const loadManualCharges = async (studentId: string) => {
+    if (!activeAcademicTermId) {
+      setManualCharges([]);
+      return;
+    }
+    setLoadingCharges(true);
+    try {
+      const charges = await fetchStudentCharges(studentId, activeAcademicTermId);
+      setManualCharges(charges);
+    } catch {
+      setManualCharges([]);
+    } finally {
+      setLoadingCharges(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedStudent) {
+      setManualCharges([]);
+      return;
+    }
+    void loadManualCharges(selectedStudent.id);
+  }, [selectedStudent, activeAcademicTermId]);
+
   const handleClose = () => {
-    resetForm();
+    resetModal();
     onOpenChange(false);
   };
 
@@ -97,13 +142,43 @@ const BillStudentModal: React.FC<BillStudentModalProps> = ({ open, onOpenChange,
         description: `GHS ${Number(amount).toFixed(2)} charge added to ${studentName}'s ${currentTerm} bill successfully.`,
       });
 
+      await loadManualCharges(selectedStudent.id);
       await refresh(['fees']);
       onSuccess?.();
-      handleClose();
+      resetFormFields();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to add charge');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleRemoveCharge = (charge: StudentCharge) => {
+    setSelectedChargeToRemove(charge);
+    setConfirmRemoveOpen(true);
+  };
+
+  const confirmRemoveCharge = async () => {
+    if (!selectedChargeToRemove || !selectedStudent) return;
+    setRemovingChargeId(selectedChargeToRemove.id);
+    try {
+      await deleteStudentCharge(selectedChargeToRemove.id);
+      await loadManualCharges(selectedStudent.id);
+      await refresh(['fees']);
+      toast({
+        title: 'Charge removed',
+        description: `The manual charge was removed from the student bill.`,
+      });
+      setConfirmRemoveOpen(false);
+      setSelectedChargeToRemove(null);
+    } catch (err: unknown) {
+      toast({
+        title: 'Unable to remove charge',
+        description: err instanceof Error ? err.message : 'Failed to remove charge.',
+        variant: 'destructive',
+      });
+    } finally {
+      setRemovingChargeId(null);
     }
   };
 
@@ -114,7 +189,7 @@ const BillStudentModal: React.FC<BillStudentModalProps> = ({ open, onOpenChange,
 
   return (
     <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : handleClose())}>
-      <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+        <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[760px] rounded-[1rem] border-t-4 border-emerald-500 shadow-[0_20px_60px_rgba(0,0,0,0.15)]">
         <DialogHeader className="shrink-0 border-b border-border/70 px-6 py-4">
           <DialogTitle>Bill a Student</DialogTitle>
           <p className="text-sm text-muted-foreground mt-1">
@@ -124,6 +199,20 @@ const BillStudentModal: React.FC<BillStudentModalProps> = ({ open, onOpenChange,
 
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           <DialogBody className="space-y-4 overflow-y-auto px-6 py-4">
+            <div className="rounded-3xl border border-emerald-100 bg-emerald-50/70 p-4 text-sm text-emerald-900 shadow-sm">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 rounded-full bg-emerald-100 p-2 text-emerald-700">
+                  <Info className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="font-semibold">How this works</p>
+                  <p className="mt-1 leading-6 text-slate-700">
+                    Bill this student directly to their active term. The charge appears on their term bill and receipt immediately. Use this for one-off charges like damages, lost items, or extra services not covered by the standard fee structure.
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {error && (
               <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-400">
                 {error}
@@ -138,6 +227,7 @@ const BillStudentModal: React.FC<BillStudentModalProps> = ({ open, onOpenChange,
                     <LazyStudentAvatar
                       studentId={selectedStudent.id}
                       photoUrl={selectedStudent.passportPhotoUrl}
+                      hasPassportPhoto={selectedStudent.hasPassportPhoto}
                       firstName={selectedStudent.firstName}
                       lastName={selectedStudent.lastName}
                       className="h-16 w-16 rounded-3xl"
@@ -200,6 +290,7 @@ const BillStudentModal: React.FC<BillStudentModalProps> = ({ open, onOpenChange,
                             <LazyStudentAvatar
                               studentId={student.id}
                               photoUrl={student.passportPhotoUrl}
+                              hasPassportPhoto={student.hasPassportPhoto}
                               firstName={student.firstName}
                               lastName={student.lastName}
                               className="h-9 w-9 shrink-0"
@@ -220,6 +311,54 @@ const BillStudentModal: React.FC<BillStudentModalProps> = ({ open, onOpenChange,
                 </>
               )}
             </div>
+
+            {selectedStudent ? (
+              <div className="rounded-3xl border border-border bg-white p-4 shadow-sm">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Manual Charges This Term</p>
+                    <p className="text-xs text-muted-foreground">{termDisplay}</p>
+                  </div>
+                  {loadingCharges ? <Loader2 className="h-4 w-4 animate-spin text-slate-500" /> : null}
+                </div>
+                <div className="mt-4 space-y-3">
+                  {manualCharges.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                      No manual charges have been added for this student in the current term.
+                    </div>
+                  ) : (
+                    manualCharges.map((charge) => (
+                      <div key={charge.id} className="rounded-3xl border border-border p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <p className="font-semibold text-slate-900 truncate">{charge.description}</p>
+                            <p className="text-sm text-muted-foreground">{charge.createdByName ?? 'System'} • {new Date(charge.createdAt).toLocaleDateString()}</p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm font-semibold text-emerald-700">GHS {charge.amount.toFixed(2)}</span>
+                            {charge.status === 'unpaid' ? (
+                              <button
+                                type="button"
+                                className="inline-flex items-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-1 text-sm font-semibold text-red-700 hover:bg-red-100"
+                                onClick={() => handleRemoveCharge(charge)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Remove
+                              </button>
+                            ) : (
+                              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">Paid</span>
+                            )}
+                          </div>
+                        </div>
+                        {charge.reason ? (
+                          <p className="mt-2 text-sm text-slate-600">{charge.reason}</p>
+                        ) : null}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            ) : null}
 
             <div className="space-y-2">
               <Label htmlFor="chargeDescription">Charge Description *</Label>
@@ -266,10 +405,10 @@ const BillStudentModal: React.FC<BillStudentModalProps> = ({ open, onOpenChange,
           </DialogBody>
 
           <DialogFooter className="form-action-bar shrink-0 gap-2 border-t border-border/70 px-6 py-4">
-            <Button type="button" variant="outline" onClick={handleClose} disabled={submitting}>
+            <Button type="button" variant="outline" onClick={handleClose} disabled={submitting || removingChargeId != null}>
               Cancel
             </Button>
-            <Button type="submit" variant="primaryAction" disabled={!canSubmit}>
+            <Button type="submit" variant="primaryAction" disabled={!canSubmit || removingChargeId != null}>
               {submitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -281,6 +420,36 @@ const BillStudentModal: React.FC<BillStudentModalProps> = ({ open, onOpenChange,
             </Button>
           </DialogFooter>
         </form>
+
+        <AlertDialog open={confirmRemoveOpen} onOpenChange={setConfirmRemoveOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove this charge?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {selectedChargeToRemove ? (
+                  <>
+                    “{selectedChargeToRemove.description}” — GHS {selectedChargeToRemove.amount.toFixed(2)}
+                    <br />
+                    This will permanently remove this charge from the student&apos;s bill. This cannot be undone.
+                  </>
+                ) : (
+                  'This will permanently remove the selected charge from the student bill.'
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                type="button"
+                className="inline-flex items-center justify-center rounded-full bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                onClick={() => void confirmRemoveCharge()}
+                disabled={removingChargeId != null}
+              >
+                {removingChargeId ? 'Removing…' : 'Remove Charge'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </DialogContent>
     </Dialog>
   );

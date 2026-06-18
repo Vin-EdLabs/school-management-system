@@ -23,6 +23,7 @@ interface ReceiptData {
   arrears?: number;
   currentTermFee?: number;
   totalAmountDue?: number;
+  paidCharges?: Array<{ id: number; amount: number; description?: string }>;
   /** Payment allocation (unified ledger snapshot) */
   arrearsCleared?: number;
   termFeeCleared?: number;
@@ -191,6 +192,14 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
                 ${(receiptData.arrearsCleared ?? 0) > 0 ? `<tr><td>→ Applied to arrears</td><td style="text-align:right">GHS ${formatMoney(Number(receiptData.arrearsCleared))}</td></tr>` : ''}
                 ${(receiptData.termFeeCleared ?? 0) > 0 ? `<tr><td>→ Applied to term fee</td><td style="text-align:right">GHS ${formatMoney(Number(receiptData.termFeeCleared))}</td></tr>` : ''}
               </table>
+              ${receiptData.paidCharges && receiptData.paidCharges.length > 0 ? `
+              <div class="section">
+                <div class="section-title">Charges Paid</div>
+                <table class="charges-table">
+                  ${receiptData.paidCharges.map(pc => `<tr><td>${(pc.description || 'Charge')}</td><td style="text-align:right">GHS ${formatMoney(Number(pc.amount) || 0)}</td></tr>`).join('')}
+                </table>
+              </div>
+              ` : ''}
             </div>
             <div class="section">
               <div class="section-title">Balance</div>
@@ -334,6 +343,19 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
                 <span className="font-medium">Amount Paid:</span>
                 <span className="font-bold">GHS {formatMoney(Number(receiptData.amount) || 0)}</span>
               </div>
+              {receiptData.paidCharges && receiptData.paidCharges.length > 0 && (
+                <div className="mt-3">
+                  <div className="text-[9px] font-bold uppercase text-slate-800 mb-2">Charges Paid</div>
+                  <div className="space-y-1">
+                    {receiptData.paidCharges.map((pc) => (
+                      <div key={pc.id} className="flex justify-between text-slate-700 text-[10px]">
+                        <span>{pc.description || 'Charge'}</span>
+                        <span className="font-bold">GHS {formatMoney(Number(pc.amount) || 0)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="flex justify-between pt-2 border-t border-slate-300 font-black text-sm text-slate-950">
                 <span>Total Due:</span>
                 <span>GHS {formatMoney(totalDue)}</span>

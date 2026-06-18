@@ -1,6 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { apiService } from '../services/api';
+import { initInactivityTracker, isPWAInstalled, stopInactivityTracker } from '../utils/inactivityTracker';
 import { clearActiveTermWelcomeDismiss } from '../components/onboarding/ActiveTermWelcomeModal';
 
 export type UserRole = 'administrator' | 'finance' | 'super-admin' | 'teacher' | 'staff' | 'driver';
@@ -52,6 +53,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               isPrimaryAdmin: response.user.isPrimaryAdmin,
               otherStaffId: response.user.otherStaffId ?? null,
             });
+            // start inactivity tracking for non-PWA / non-parent sessions
+            try { initInactivityTracker(); } catch (e) { /* ignore */ }
           } else {
             localStorage.removeItem('authToken');
             localStorage.removeItem('rosaGardensUser');
@@ -71,10 +74,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (username: string, password: string, role: UserRole, tenantId?: number): Promise<boolean> => {
     try {
-      const payload: { username: string; password: string; role?: UserRole; tenantId?: number } = {
+      const payload: { username: string; password: string; role?: UserRole; tenantId?: number; is_pwa?: boolean } = {
         username,
         password,
         role,
+        is_pwa: isPWAInstalled(),
       };
       if (tenantId !== undefined && tenantId !== null && !isNaN(tenantId)) {
         payload.tenantId = Number(tenantId);
@@ -91,6 +95,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           isPrimaryAdmin: response.user.isPrimaryAdmin,
           otherStaffId: response.user.otherStaffId ?? null,
         });
+
+        // start inactivity tracking for non-PWA / non-parent sessions
+        try { initInactivityTracker(); } catch (e) { /* ignore */ }
 
         const loginTenantId = Number(response.user.tenantId);
         if (Number.isFinite(loginTenantId)) {
@@ -128,6 +135,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (token) {
       apiService.post('/auth/logout', {}).catch(() => { });
     }
+    try { stopInactivityTracker(); } catch (e) { /* ignore */ }
     setIsAuthenticated(false);
     setUser(null);
     setToken(null);

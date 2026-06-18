@@ -23,15 +23,21 @@ type TermBillBreakdownProps = {
     status?: string | null;
     reason?: string | null;
   }>;
+  /** Numeric total of individual charges when charge lines are not preloaded */
+  individualChargeAmount?: number;
   credit?: number;
   studentId?: number | string;
   termId?: number | null;
   className?: string;
   compact?: boolean;
+  discountAmount?: number;
+  discountLabel?: string;
 };
 
 const formatMoney = (n: number) =>
   n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const roundMoney = (n: number) => Math.round(n * 100) / 100;
 
 export const TermBillBreakdown: React.FC<TermBillBreakdownProps> = ({
   total,
@@ -39,24 +45,31 @@ export const TermBillBreakdown: React.FC<TermBillBreakdownProps> = ({
   summary: summaryProp,
   breakdownItems,
   individualCharges,
+  individualChargeAmount,
   credit,
   studentId,
   termId,
   className = '',
   compact = false,
+  discountAmount: discountAmountProp,
+  discountLabel,
 }) => {
   const [expanded, setExpanded] = useState(false);
   const [summary, setSummary] = useState<FeeStructureItemsSummary | null>(summaryProp ?? null);
   const [loading, setLoading] = useState(false);
   const [loadedCharges, setLoadedCharges] = useState<StudentCharge[] | null>(
-    individualCharges ?? null
+    individualCharges && individualCharges.length > 0 ? individualCharges : null
   );
 
   const propChargeTotal = (individualCharges ?? []).reduce((sum, c) => sum + Number(c.amount), 0);
   const loadedChargeTotal = (loadedCharges ?? []).reduce((sum, c) => sum + Number(c.amount), 0);
-  const chargeTotal = propChargeTotal > 0 ? propChargeTotal : loadedChargeTotal;
+  const numericChargeTotal = Number(individualChargeAmount ?? 0);
+  const chargeTotal = propChargeTotal > 0 ? propChargeTotal : loadedChargeTotal > 0 ? loadedChargeTotal : numericChargeTotal;
+  const discountAmount = roundMoney(Number(discountAmountProp ?? 0));
 
   const displayTotal = (summaryProp?.total ?? summary?.total ?? total) + chargeTotal;
+  const displayGrossTermBill = roundMoney((summaryProp?.total ?? summary?.total ?? total) + chargeTotal + discountAmount);
+  const shouldShowDiscount = discountAmount > 0;
 
   const handleToggle = async () => {
     const next = !expanded;
@@ -99,9 +112,10 @@ export const TermBillBreakdown: React.FC<TermBillBreakdownProps> = ({
   const creditAmount = Number(credit ?? 0);
   const propCharges = individualCharges ?? [];
   const charges = propCharges.length > 0 ? propCharges : loadedCharges ?? [];
+  const extraChargeSummary = charges.length === 0 ? numericChargeTotal : 0;
 
   const canExpand = Boolean(
-    feeStructureId || breakdownItems?.length || propCharges.length > 0 || creditAmount > 0 || (studentId != null && termId != null)
+    feeStructureId || breakdownItems?.length || propCharges.length > 0 || creditAmount > 0 || extraChargeSummary > 0 || (studentId != null && termId != null)
   );
 
   return (
@@ -115,6 +129,12 @@ export const TermBillBreakdown: React.FC<TermBillBreakdownProps> = ({
             GHS {formatMoney(displayTotal)}
           </span>
         </div>
+        {shouldShowDiscount && !compact ? (
+          <div className="flex items-center justify-between gap-2 text-xs text-amber-700">
+            <span>{discountLabel ?? 'Beneficiary Discount'}</span>
+            <span>-GHS {formatMoney(discountAmount)}</span>
+          </div>
+        ) : null}
         {canExpand ? (
           <button
             type="button"
@@ -135,7 +155,7 @@ export const TermBillBreakdown: React.FC<TermBillBreakdownProps> = ({
           </button>
         ) : null}
       </div>
-      {expanded && (activeItems.length > 0 || charges.length > 0 || creditAmount > 0) && (
+      {expanded && (activeItems.length > 0 || charges.length > 0 || creditAmount > 0 || shouldShowDiscount) && (
         <div className={`mt-2 space-y-1 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs ${compact ? 'text-right' : ''}`}>
           {activeItems.map(item => (
             <div key={item.item_name} className="flex justify-between gap-4">
@@ -144,7 +164,14 @@ export const TermBillBreakdown: React.FC<TermBillBreakdownProps> = ({
             </div>
           ))}
 
-          {charges.length > 0 && (
+          {shouldShowDiscount ? (
+            <div className="flex justify-between gap-4 text-amber-700">
+              <span>{discountLabel ?? 'Beneficiary Discount'}</span>
+              <span className="font-mono tabular-nums">-GHS {formatMoney(discountAmount)}</span>
+            </div>
+          ) : null}
+
+          {charges.length > 0 ? (
             <div className="pt-2">
               <div className="text-xs text-muted-foreground mb-1">── Individual Charges ──</div>
               <div className="space-y-1">
@@ -166,7 +193,14 @@ export const TermBillBreakdown: React.FC<TermBillBreakdownProps> = ({
                 ))}
               </div>
             </div>
-          )}
+          ) : extraChargeSummary > 0 ? (
+            <div className="pt-2">
+              <div className="flex justify-between gap-4">
+                <span className="text-muted-foreground">Individual charges</span>
+                <span className="font-mono tabular-nums">GHS {formatMoney(extraChargeSummary)}</span>
+              </div>
+            </div>
+          ) : null}
           {creditAmount > 0 && (
             <div className="pt-2">
               <div className="flex justify-between gap-4">

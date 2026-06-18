@@ -64,8 +64,14 @@ export async function listStudentCharges(
   const params: unknown[] = [tenantId, studentId];
   let termFilter = '';
   if (termId != null && !Number.isNaN(Number(termId))) {
-    termFilter = 'AND sc.term_id = $3';
-    params.push(termId);
+    const resolved = await resolveActiveLedgerTerm(query, tenantId, termId);
+    const ledgerTermId = resolved.ledgerTermId;
+    if (ledgerTermId != null && !Number.isNaN(ledgerTermId)) {
+      termFilter = 'AND sc.term_id = $3';
+      params.push(ledgerTermId);
+    } else {
+      return [];
+    }
   }
 
   const res = await query(
@@ -262,7 +268,7 @@ export async function markStudentChargesPaidAfterPayment(
   termId: number,
   paymentId: number | null,
   totalPaidAfter: number
-): Promise<void> {
+): Promise<Array<{ id: number; amount: number; description?: string }>> {
   const balance = await getStudentBalanceFromLedger(client, tenantId, studentId, termId);
   const standardTotal = roundMoney(balance.termFee + balance.arrears);
 
@@ -273,10 +279,12 @@ export async function markStudentChargesPaidAfterPayment(
     [tenantId, studentId, termId]
   );
 
-  if (chargesRes.rows.length === 0) return;
+  if (chargesRes.rows.length === 0) return [];
 
   let poolForCharges = roundMoney(Math.max(0, totalPaidAfter - standardTotal));
-  if (poolForCharges <= 0) return;
+  if (poolForCharges <= 0) return [];
+
+  const paid: Array<{ id: number; amount: number; description?: string }> = [];
 
   for (const row of chargesRes.rows) {
     const chargeAmount = roundMoney(parseFloat(String(row.amount)) || 0);
@@ -288,8 +296,11 @@ export async function markStudentChargesPaidAfterPayment(
        WHERE id = $2 AND tenant_id = $3`,
       [paymentId, row.id, tenantId]
     );
+    paid.push({ id: Number(row.id), amount: chargeAmount, description: String(row.description || '') });
     poolForCharges = roundMoney(poolForCharges - chargeAmount);
   }
+
+  return paid;
 }
 
 export async function markAllUnpaidChargesPaidForTerm(
@@ -298,11 +309,21 @@ export async function markAllUnpaidChargesPaidForTerm(
   studentId: number,
   termId: number,
   paymentId: number | null
-): Promise<void> {
+): Promise<Array<{ id: number; amount: number; description?: string }>> {
+  const res = await client.query(
+    `SELECT id, amount, description FROM student_charges
+     WHERE tenant_id = $1 AND student_id = $2 AND term_id = $3 AND status = 'unpaid'
+     ORDER BY created_at ASC, id ASC`,
+    [tenantId, studentId, termId]
+  );
+  if (res.rows.length === 0) return [];
+
   await client.query(
     `UPDATE student_charges
      SET status = 'paid', paid_at = CURRENT_TIMESTAMP, payment_id = COALESCE($4, payment_id)
      WHERE tenant_id = $1 AND student_id = $2 AND term_id = $3 AND status = 'unpaid'`,
     [tenantId, studentId, termId, paymentId]
   );
+
+  return res.rows.map((r) => ({ id: Number(r.id), amount: roundMoney(parseFloat(String(r.amount)) || 0), description: String(r.description || '') }));
 }

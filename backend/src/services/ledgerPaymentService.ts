@@ -151,8 +151,9 @@ export async function recordPaymentWithLedger(
     );
 
     const totalPaidAfter = roundMoney(allocation.totalPaidBefore + input.amount);
+    let paidCharges: Array<{ id: number; amount: number; description?: string }> = [];
     if (allocation.outstandingAfter <= 0.001) {
-      await markAllUnpaidChargesPaidForTerm(
+      paidCharges = await markAllUnpaidChargesPaidForTerm(
         client,
         input.tenantId,
         input.studentId,
@@ -160,7 +161,7 @@ export async function recordPaymentWithLedger(
         paymentId
       );
     } else {
-      await markStudentChargesPaidAfterPayment(
+      paidCharges = await markStudentChargesPaidAfterPayment(
         client,
         input.tenantId,
         input.studentId,
@@ -173,6 +174,19 @@ export async function recordPaymentWithLedger(
     let balanceStatus = 'Cleared';
     if (afterBalance.creditBalance > 0) balanceStatus = 'Credit';
     else if (afterBalance.outstanding > 0) balanceStatus = 'Owing';
+
+    // Include paid charge lines in the receipt snapshot for front-end display
+    if (paidCharges && paidCharges.length > 0) {
+      (receiptSnapshot as any).paidCharges = paidCharges;
+      try {
+        await client.query(
+          `UPDATE payments SET receipt_snapshot = $1::jsonb WHERE id = $2 AND tenant_id = $3`,
+          [JSON.stringify(receiptSnapshot), paymentId, input.tenantId]
+        );
+      } catch (err) {
+        // non-fatal: proceed but log could be added
+      }
+    }
 
     await client.query('COMMIT');
 

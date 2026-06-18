@@ -276,7 +276,7 @@ export const TransportMap: React.FC = () => {
   const [mapFocus, setMapFocus] = useState<MapFocus>({ mode: 'routes' });
   const [savingSchool, setSavingSchool] = useState(false);
   const [deletingSchool, setDeletingSchool] = useState(false);
-  const [fullMapView, setFullMapView] = useState(false);
+  const [fullMapView, setFullMapView] = useState(true);
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipSearchDebounce = useRef(false);
 
@@ -349,11 +349,6 @@ export const TransportMap: React.FC = () => {
   }, [fullMapView]);
 
   useEffect(() => {
-    if (!buildMode) {
-      setPlaceSearchResults([]);
-      setPlaceSearchLoading(false);
-      return;
-    }
     if (searchDebounce.current) clearTimeout(searchDebounce.current);
     if (skipSearchDebounce.current) {
       skipSearchDebounce.current = false;
@@ -375,7 +370,9 @@ export const TransportMap: React.FC = () => {
     return () => {
       if (searchDebounce.current) clearTimeout(searchDebounce.current);
     };
-  }, [searchQuery, buildMode]);
+  }, [searchQuery]);
+
+  // Default to full map view when there is no pinned school; collapse if a school is set.
 
   const visibleRoutes = useMemo(() => {
     if (selectedRouteId === 'all') return routes.filter(r => r.stops?.length > 0);
@@ -512,7 +509,8 @@ export const TransportMap: React.FC = () => {
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
-      if (buildMode && placeSearchResults.length > 0) {
+      // Prefer a place result if available, otherwise fall back to route match
+      if (placeSearchResults.length > 0) {
         e.preventDefault();
         handlePickPlaceResult(placeSearchResults[0]);
       } else if (!buildMode && matchingRoutes.length > 0) {
@@ -672,9 +670,7 @@ export const TransportMap: React.FC = () => {
                   <Maximize2 className="h-4 w-4" />
                   Full map
                 </Button>
-                <Button type="button" size="sm" className="h-9 rounded-lg bg-white text-slate-800 hover:bg-slate-100" onClick={() => { setBuildMode(true); setSetSchoolMode(false); }}>
-                  <Plus className="h-4 w-4 mr-1" /> Build route
-                </Button>
+                {/* Build route removed from live map per request */}
               </>
             )}
           </div>
@@ -986,15 +982,16 @@ export const TransportMap: React.FC = () => {
                   onChange={e => { setSearchQuery(e.target.value); setSearchOpen(true); }}
                   onFocus={() => setSearchOpen(true)}
                   onKeyDown={handleSearchKeyDown}
-                  placeholder={buildMode ? 'Search places — Tema, Wamfie, Accra…' : 'Search routes — name, driver, vehicle, stop…'}
+                  placeholder={buildMode ? 'Search places — Tema, Wamfie, Accra…' : 'Search places or routes — Accra, Tema, driver, stop…'}
                   className="border-0 shadow-none focus-visible:ring-0 h-9 bg-transparent text-sm"
                 />
                 {buildMode && placeSearchLoading && <Loader2 className="h-4 w-4 animate-spin text-slate-400 shrink-0" />}
               </div>
               {searchOpen && searchQuery.trim() && (
-                buildMode ? (
-                  placeSearchResults.length > 0 ? (
-                    <ul className="max-h-52 overflow-y-auto py-1">
+                <div>
+                  {/* Place results (if any) shown first */}
+                  {placeSearchResults.length > 0 ? (
+                    <ul className="max-h-48 overflow-y-auto py-1">
                       {placeSearchResults.map(r => (
                         <li key={r.place_id}>
                           <button
@@ -1009,36 +1006,40 @@ export const TransportMap: React.FC = () => {
                       ))}
                     </ul>
                   ) : placeSearchLoading ? null : (
-                    <p className="px-3 py-2.5 text-xs text-slate-400">No places found</p>
-                  )
-                ) : matchingRoutes.length > 0 ? (
-                  <ul className="max-h-52 overflow-y-auto py-1">
-                    {matchingRoutes.map(r => (
-                      <li key={r.id}>
-                        <button
-                          type="button"
-                          className="w-full text-left px-3 py-2.5 text-xs hover:bg-violet-50 flex items-start gap-2 transition-colors"
-                          onClick={() => handlePickRouteFromSearch(r)}
-                        >
-                          <span className="w-2.5 h-2.5 rounded-full shrink-0 mt-1" style={{ background: r.color || '#3b82f6' }} />
-                          <span className="min-w-0 flex-1">
-                            <span className="font-semibold text-slate-800 block truncate">{r.name}</span>
-                            <span className="text-slate-500 block truncate">
-                              {[r.driver_name, r.vehicle_name].filter(Boolean).join(' · ') || 'Unassigned'}
-                              {r.stops?.length ? ` · ${r.stops.length} stops` : ''}
-                              {(() => {
-                                const d = getRouteDistance(r);
-                                return d ? ` · ${formatDistance(d.totalKm)}` : '';
-                              })()}
+                    <></>
+                  )}
+
+                  {/* Route matches shown next */}
+                  {matchingRoutes.length > 0 ? (
+                    <ul className="max-h-48 overflow-y-auto py-1">
+                      {matchingRoutes.map(r => (
+                        <li key={r.id}>
+                          <button
+                            type="button"
+                            className="w-full text-left px-3 py-2.5 text-xs hover:bg-violet-50 flex items-start gap-2 transition-colors"
+                            onClick={() => handlePickRouteFromSearch(r)}
+                          >
+                            <span className="w-2.5 h-2.5 rounded-full shrink-0 mt-1" style={{ background: r.color || '#3b82f6' }} />
+                            <span className="min-w-0 flex-1">
+                              <span className="font-semibold text-slate-800 block truncate">{r.name}</span>
+                              <span className="text-slate-500 block truncate">
+                                {[r.driver_name, r.vehicle_name].filter(Boolean).join(' · ') || 'Unassigned'}
+                                {r.stops?.length ? ` · ${r.stops.length} stops` : ''}
+                                {(() => {
+                                  const d = getRouteDistance(r);
+                                  return d ? ` · ${formatDistance(d.totalKm)}` : '';
+                                })()}
+                              </span>
                             </span>
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="px-3 py-2.5 text-xs text-slate-400">No routes match your search</p>
-                )
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    // If neither places nor routes found, show a helpful message
+                    <p className="px-3 py-2.5 text-xs text-slate-400">No places or routes match your search</p>
+                  )}
+                </div>
               )}
             </div>
             {buildMode && mapFocus.mode === 'place' && (

@@ -1,6 +1,7 @@
 
 // API service for backend integration
 import { detectTenantSlugFromHost } from '../utils/tenantHost';
+import { shouldTrackInactivity } from '../utils/inactivityTracker';
 
 async function readResponseJson<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -68,8 +69,24 @@ function apiErrorMessage(payload: Record<string, unknown> | null, status: number
 }
 
 function throwApiError(payload: Record<string, unknown> | null, status: number): never {
-  const err = new Error(apiErrorMessage(payload, status)) as Error & { code?: string };
+  const err = new Error(apiErrorMessage(payload, status)) as Error & { code?: string; status?: number; apiError?: string };
   if (payload?.code) err.code = String(payload.code);
+  if (payload?.error) err.apiError = String(payload.error);
+  err.status = status;
+
+  // If the server reports session expired, clear token and redirect for tracked sessions
+  try {
+    const code = payload?.code || payload?.error;
+    if (status === 401 && code === 'SESSION_EXPIRED') {
+      if (shouldTrackInactivity()) {
+        try { localStorage.removeItem('authToken'); localStorage.removeItem('lastActivityTimestamp'); } catch (e) {}
+        try { window.location.href = '/login?reason=session_timeout'; } catch (e) {}
+      }
+    }
+  } catch (e) {
+    // swallow
+  }
+
   throw err;
 }
 

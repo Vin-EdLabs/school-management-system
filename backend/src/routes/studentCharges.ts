@@ -106,7 +106,7 @@ router.get('/student/:studentId', financeRoles, async (req: AuthRequest, res) =>
 /** DELETE /api/finance/student-charges/:chargeId — admin only */
 router.delete(
   '/:chargeId',
-  requireRole('super-admin', 'administrator'),
+  requireRole('super-admin', 'administrator', 'finance'),
   async (req: AuthRequest, res) => {
     try {
       const tenantId = req.user!.tenantId!;

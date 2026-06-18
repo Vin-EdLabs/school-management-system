@@ -1,5 +1,5 @@
 export const TRANSPORT_DEFAULT_CENTER: [number, number] = [5.6037, -0.187];
-export const TRANSPORT_DEFAULT_ZOOM = 12;
+export const TRANSPORT_DEFAULT_ZOOM = 15;
 export const TRANSPORT_MAP_BOUNDS: [[number, number], [number, number]] = [[4.5, -3.5], [11.5, 1.5]];
 
 export const TRANSPORT_MAP_TILES = {

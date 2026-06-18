@@ -23,6 +23,7 @@ import TransactionsPage from './finance/TransactionsPage';
 import CashBankModule from './finance/CashBankModule';
 import PaymentAccountsModule from './configurations/PaymentAccountsModule';
 import AppointmentLetterSettings from './configurations/AppointmentLetterSettings';
+import AdmissionLetterSettings from './configurations/AdmissionLetterSettings';
 import ManualAdjustmentsReport from './finance/ManualAdjustmentsReport';
 import TermBudgetModule from './finance/TermBudgetModule';
 import FinanceStatementModule from './finance/FinanceStatementModule';
@@ -108,6 +109,7 @@ const Dashboard = () => {
       hasAccess(activeModule + '-view-only') ||
       (activeModule === 'other-staff' && (hasAccess('teachers') || hasAccess('teachers-view-only'))) ||
       (activeModule === 'appointment-letter-settings' && hasAccess('settings-full')) ||
+      (activeModule === 'admission-letter-settings' && hasAccess('settings-full')) ||
       (activeModule === 'teacher-quizzes' && (hasAccess('grades') || user?.role === 'teacher')) ||
       (activeModule === 'academic-reports' && hasAccess('reports'));
     if (!hasModuleAccess) {
@@ -191,6 +193,8 @@ const Dashboard = () => {
         return <PaymentAccountsModule />;
       case 'appointment-letter-settings':
         return <AppointmentLetterSettings />;
+      case 'admission-letter-settings':
+        return <AdmissionLetterSettings />;
       case 'audit':
         return <AuditModule />;
       case 'records':

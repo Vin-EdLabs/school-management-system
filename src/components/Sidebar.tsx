@@ -134,6 +134,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
   configurations: [
     ...(hasAccess('payment-accounts') ? [{ id: 'payment-accounts', label: 'Payment Accounts', icon: SlidersHorizontal }] : []),
     ...(hasAccess('settings-full') ? [{ id: 'appointment-letter-settings', label: 'Appointment Letters', icon: FileText }] : []),
+    ...(hasAccess('settings-full') ? [{ id: 'admission-letter-settings', label: 'Admission Letter', icon: FileText }] : []),
   ],
   transport: [
     ...(hasAccess('transport-overview') ? [{ id: 'transport-overview', label: 'Overview', icon: LayoutDashboard }] : []),

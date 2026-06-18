@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { School, Users, ClipboardCheck, BookOpen, Wallet, CheckCircle, XCircle } from 'lucide-react';
+import { School, Users, ClipboardCheck, BookOpen, Wallet, CheckCircle, XCircle, Cake, Sparkles, Gift } from 'lucide-react';
 import { apiService } from '../../services/api';
 import { useSchool } from '../../contexts/SchoolContext';
 import { type TeacherMySalaryResponse, formatTeacherMoney, salaryStatusBadgeClass } from './teacherSalaryPortal';
@@ -44,6 +44,7 @@ const TeacherDashboard = () => {
   const [profile, setProfile] = useState<TeacherProfile | null>(null);
   const [teacherClasses, setTeacherClasses] = useState<TeacherClass[]>([]);
   const [salaryInfo, setSalaryInfo] = useState<SalaryInfo | null>(null);
+  const [birthdayStudents, setBirthdayStudents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [profileError, setProfileError] = useState(false);
 
@@ -56,14 +57,16 @@ const TeacherDashboard = () => {
       setLoading(true);
       setProfileError(false);
       try {
-        const [profRes, classesRes, salaryRes] = await Promise.all([
+        const [profRes, classesRes, salaryRes, birthdayRes] = await Promise.all([
           apiService.get<TeacherProfile>('/teachers/me').catch(() => null),
           apiService.get<TeacherClass[]>('/teachers/me/classes').catch(() => []),
           apiService.get<SalaryInfo>('/payroll/my-salary').catch(() => null),
+          apiService.get<any[]>('/birthdays/my-classes/today').catch(() => []),
         ]);
         setProfile(profRes);
         setTeacherClasses(Array.isArray(classesRes) ? classesRes : []);
         setSalaryInfo(salaryRes);
+        setBirthdayStudents(Array.isArray(birthdayRes) ? birthdayRes : []);
         if (!profRes) setProfileError(true);
       } catch {
         setProfileError(true);
@@ -168,6 +171,39 @@ const TeacherDashboard = () => {
           </CardContent>
         </Card>
       </div>
+
+      {birthdayStudents.length > 0 && (
+        <Card className="border-amber-200/60 dark:border-amber-800/40 overflow-hidden">
+          <CardHeader className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/20 pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Cake className="w-5 h-5 text-amber-500" />
+              Birthday Students Today!
+              <Badge className="ml-auto bg-amber-500 text-white">{birthdayStudents.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4">
+            <div className="space-y-2">
+              {birthdayStudents.map((person: any) => (
+                <div key={person.id} className="flex items-center gap-3 p-3 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50/50 dark:from-amber-950/20 dark:to-orange-950/10 border border-amber-200/40">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
+                    <Gift className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-sm text-gray-900">
+                      {person.fullName}
+                      <span className="font-normal text-gray-500 ml-1">turns {person.age}!</span>
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {person.className && `${person.className}`}
+                    </p>
+                  </div>
+                  <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* My Classes */}

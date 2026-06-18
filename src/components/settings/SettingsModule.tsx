@@ -11,11 +11,12 @@ import { apiService } from '../../services/api';
 import { toast } from '@/hooks/use-toast';
 import {
   Settings, Key, Building, Download, Receipt,
-  GraduationCap, Copy, ExternalLink, ShieldAlert, RefreshCw,
+  GraduationCap, Copy, ExternalLink, ShieldAlert, RefreshCw, Pen, Stamp,
 } from 'lucide-react';
 import AcademicTermManager from './AcademicTermManager';
 import ArrearsSyncModal from './ArrearsSyncModal';
 import SchoolManager from './SchoolManager';
+import SignatureStampManager from './SignatureStampManager';
 import { getTenantParentPortalUrl } from '../../utils/tenantHost';
 
 interface SchoolSettings {
@@ -673,6 +674,22 @@ const SettingsModule = () => {
             </CardContent>
           </Card>
         )}
+
+        {/* Signatures & Stamp Settings */}
+        <Card className="shadow-sm border-purple-500/20">
+          <CardHeader className="px-4 py-3">
+            <CardTitle className="flex items-center space-x-2 text-base">
+              <Pen className="w-4 h-4 text-purple-600" />
+              <span>Signatures &amp; Stamp</span>
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Manage the school stamp and headmaster/admin signature used on appointment letters and report cards. Teachers can set their own signature from their profile.
+            </p>
+          </CardHeader>
+          <CardContent className="px-4 pb-4 space-y-4">
+            <SignatureStampManager />
+          </CardContent>
+        </Card>
 
         <Card className="shadow-sm">
           <CardHeader className="px-4 py-3">

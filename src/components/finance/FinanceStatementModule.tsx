@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { FileText, Loader2, Search, X, Download, Send } from 'lucide-react';
+import { FileText, Loader2, Search, X, Printer, Send } from 'lucide-react';
 import { useData } from '../../contexts/DataContext';
 import { shouldTrackStudentFees } from '../students/studentRegistryUtils';
 import {
@@ -12,10 +12,7 @@ import {
   type StudentFinanceStatement,
 } from '../../services/studentFinanceStatementApi';
 import { FinanceStatementPreview } from './FinanceStatementModal';
-import {
-  buildFinanceStatementFilename,
-  downloadFinanceStatementPdf,
-} from './buildFinanceStatementPdf';
+import { printFinanceStatementPreview } from './buildFinanceStatementPdf';
 import { resolveLogoUrl } from '../../services/tenantService';
 import { toast } from '@/hooks/use-toast';
 
@@ -34,7 +31,6 @@ const FinanceStatementModule: React.FC = () => {
   const [statement, setStatement] = useState<StudentFinanceStatement | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [downloading, setDownloading] = useState(false);
   const [sending, setSending] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
 
@@ -90,23 +86,9 @@ const FinanceStatementModule: React.FC = () => {
     setShowDropdown(false);
   };
 
-  const handleDownload = async () => {
-    if (!statement || !selected || !previewRef.current) return;
-    setDownloading(true);
-    try {
-      await logFinanceStatementDownload(selected.id);
-      const filename = buildFinanceStatementFilename(statement.header.studentName, statement.header.studentId);
-      await downloadFinanceStatementPdf(previewRef.current, filename);
-      toast({ title: 'Download started', description: 'Finance statement PDF is downloading.' });
-    } catch (e: unknown) {
-      toast({
-        title: 'Download failed',
-        description: (e as Error).message || 'Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setDownloading(false);
-    }
+  const handlePrint = () => {
+    if (!previewRef.current) return;
+    printFinanceStatementPreview(previewRef.current);
   };
 
   const handleSendToParent = async () => {
@@ -215,7 +197,7 @@ const FinanceStatementModule: React.FC = () => {
               variant="outline"
               className="min-w-[220px] border-emerald-600 text-emerald-700 hover:bg-emerald-50"
               onClick={() => void handleSendToParent()}
-              disabled={sending || downloading}
+              disabled={sending}
             >
               {sending ? (
                 <>
@@ -232,20 +214,11 @@ const FinanceStatementModule: React.FC = () => {
             <Button
               size="lg"
               className="min-w-[220px] bg-emerald-600 hover:bg-emerald-700"
-              onClick={() => void handleDownload()}
-              disabled={downloading || sending}
+              onClick={handlePrint}
+              disabled={!statement}
             >
-              {downloading ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Generating PDF…
-                </>
-              ) : (
-                <>
-                  <Download className="h-4 w-4 mr-2" />
-                  Download PDF
-                </>
-              )}
+              <Printer className="h-4 w-4 mr-2" />
+              Print / Save as PDF
             </Button>
           </div>
         </>

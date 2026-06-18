@@ -352,6 +352,7 @@ const runMigrations = async () => {
     await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS monthly_salary DECIMAL(10, 2) DEFAULT 0`).catch(() => { });
     await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS employment_status VARCHAR(50) DEFAULT 'active'`).catch(() => { });
     await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS staff_id VARCHAR(100)`).catch(() => { });
+    await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS signature TEXT`).catch(() => { });
     await client.query(`UPDATE teachers SET class_assigned_id = class_id WHERE class_assigned_id IS NULL AND class_id IS NOT NULL`).catch(() => { });
 
     // Class-teachers junction: multiple teachers per class, one main
@@ -1192,6 +1193,7 @@ const runMigrations = async () => {
     await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS deactivation_date DATE`).catch(() => { });
     await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS deactivation_reason VARCHAR(100)`).catch(() => { });
     await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS appointment_letter_config JSONB DEFAULT '{}'::jsonb`).catch(() => { });
+    await client.query(`ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS admission_letter_config JSONB DEFAULT '{}'::jsonb`).catch(() => { });
     await client.query(`
       CREATE TABLE IF NOT EXISTS teacher_appointment_letters (
         id SERIAL PRIMARY KEY,
@@ -1220,6 +1222,21 @@ const runMigrations = async () => {
     await client.query(`ALTER TABLE teacher_appointment_letters ADD COLUMN IF NOT EXISTS body_opening TEXT`).catch(() => { });
     await client.query(`ALTER TABLE teacher_appointment_letters ADD COLUMN IF NOT EXISTS body_closing TEXT`).catch(() => { });
     await client.query(`ALTER TABLE teacher_appointment_letters ADD COLUMN IF NOT EXISTS letter_date DATE`).catch(() => { });
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS student_admission_letters (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id),
+        student_id INTEGER NOT NULL REFERENCES students(id),
+        version_number INTEGER DEFAULT 1,
+        reference_number TEXT,
+        letter_content JSONB DEFAULT '{}'::jsonb,
+        pdf_data TEXT,
+        generated_by INTEGER REFERENCES users(id),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `).catch(() => { });
 
     await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS emergency_contact_name VARCHAR(255)`).catch(() => { });
     await client.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS emergency_contact_phone VARCHAR(100)`).catch(() => { });

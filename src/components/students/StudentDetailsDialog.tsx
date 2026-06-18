@@ -27,7 +27,6 @@ import { cn } from '@/lib/utils';
 import { resolveLogoUrl } from '../../services/tenantService';
 import { formatDisplayDate } from '../../utils/dateFormat';
 import { isActivePayment, paymentAmountValue } from '../../utils/feeCalculations';
-import { Button } from '@/components/ui/button';
 import AdmissionLetterDocument, { printAdmissionLetter, type AdmissionLetterData } from './AdmissionLetterDocument';
 
 interface Student {
@@ -104,11 +103,11 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
     const birthDate = new Date(dateOfBirth);
     let age = today.getFullYear() - birthDate.getFullYear();
     const monthDiff = today.getMonth() - birthDate.getMonth();
-    
+
     if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
       age--;
     }
-    
+
     return age;
   };
 
@@ -279,7 +278,7 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
                       <User className="w-4 h-4 text-blue-600" />
                       <h3 className="font-semibold">Personal Information</h3>
                     </div>
-                    
+
                     <div className="space-y-3">
                       <div className="grid grid-cols-2 gap-4">
                         <div>
@@ -315,7 +314,7 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
                       <School className="w-4 h-4 text-green-600" />
                       <h3 className="font-semibold">Academic Information</h3>
                     </div>
-                    
+
                     <div className="space-y-3">
                       <div>
                         <label className="text-sm font-medium text-gray-500">{alumni ? 'Last class' : 'Current class'}</label>
@@ -344,7 +343,7 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
                     <Phone className="w-4 h-4 text-purple-600" />
                     <h3 className="font-semibold">Guardian Information</h3>
                   </div>
-                  
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="text-sm font-medium text-gray-500">Guardian Name</label>
@@ -437,7 +436,7 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
                     <Users className="w-4 h-4 text-orange-600" />
                     <h3 className="font-semibold">Family Information</h3>
                   </div>
-                  
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="text-sm font-medium text-gray-500">Number of Siblings</label>
@@ -459,7 +458,7 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
                       <GraduationCap className="w-4 h-4 text-indigo-600" />
                       <h3 className="font-semibold text-indigo-900">Beneficiary & Discount Details</h3>
                     </div>
-                    
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-4">
                         <div>

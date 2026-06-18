@@ -1157,7 +1157,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       } else if (activeTab === 'overview') {
         await refreshFinanceAll();
         parentFetch('/parent/admission-letters', {}, token).then((d) => {
-          if (studentSessionRef.current === sessionId) setAdmissionLetters(d || []);
+          if (studentSessionRef.current === sessionId) setAdmissionLetters((d || []) as any);
         }).catch(() => { });
       }
     } catch { /* silent */ }
@@ -1939,7 +1939,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                           <button
                             onClick={async () => {
                               try {
-                                const data = await parentFetch(`/parent/admission-letters/${letter.id}/download`, {}, token);
+                                const data = await parentFetch(`/parent/admission-letters/${letter.id}/download`, {}, token) as AdmissionLetterData;
                                 setSelectedAdmissionLetter(null);
                                 setTimeout(() => setSelectedAdmissionLetter(data), 50);
                               } catch { }
@@ -1951,7 +1951,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                           <button
                             onClick={async () => {
                               try {
-                                const data = await parentFetch(`/parent/admission-letters/${letter.id}/download`, {}, token);
+                                const data = await parentFetch(`/parent/admission-letters/${letter.id}/download`, {}, token) as AdmissionLetterData;
                                 setSelectedAdmissionLetter(data);
                                 setTimeout(() => printAdmissionLetter(), 300);
                               } catch { }

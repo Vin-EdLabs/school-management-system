@@ -125,7 +125,7 @@ export const initSocket = (server: HttpServer) => {
       socket.join('global:general');
       const connectedAt = Date.now();
       socket.data.connectedAt = connectedAt;
-      void registerPresence(socket.id, socket.user, connectedAt);
+      void registerPresence(`sock:${socket.id}`, socket.user, connectedAt);
       console.log(`User connected and joined rooms: ${socket.id} (User:${id}, Tenant:${tenantId}, Role:${normalizedRole})`);
       if (normalizedRole !== 'parent') {
         io.to('global:super-admin').emit('super-admin-online-users-updated', { updatedAt: connectedAt });
@@ -136,13 +136,13 @@ export const initSocket = (server: HttpServer) => {
       socket.join(`global:${channel}`);
     });
 
-    socket.on('presence:ping', () => {
-      void touchPresence(socket.id);
+    socket.on('session:alive', () => {
+      void touchPresence(`sock:${socket.id}`);
     });
 
     socket.on('disconnect', () => {
       console.log(`User disconnected: ${socket.id}`);
-      void removePresence(socket.id);
+      void removePresence(`sock:${socket.id}`);
       if (socket.user) {
         const normalizedRole = String(socket.user.role || '').toLowerCase().trim();
         if (normalizedRole !== 'parent') {

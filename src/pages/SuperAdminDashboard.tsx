@@ -234,6 +234,7 @@ const SuperAdminDashboard = () => {
   const [onlineSessions, setOnlineSessions] = useState<OnlineSession[]>([]);
   const [onlineLoading, setOnlineLoading] = useState(false);
   const [onlineSearch, setOnlineSearch] = useState('');
+  const [onlineError, setOnlineError] = useState<string | null>(null);
   const [onlineLastUpdated, setOnlineLastUpdated] = useState<string | null>(null);
   const [newSchool, setNewSchool] = useState({
     name: '',
@@ -515,14 +516,14 @@ const SuperAdminDashboard = () => {
 
   const loadOnlineSessions = async () => {
     setOnlineLoading(true);
+    setOnlineError(null);
     try {
-      const sessions = await apiService.get<OnlineSession[]>('/audit/super-admin/online-sessions', { skipTenant: true });
+      const sessions = await apiService.get<OnlineSession[]>('/super-admin/live-users', { skipTenant: true });
       setOnlineSessions(Array.isArray(sessions) ? sessions : []);
       setOnlineLastUpdated(new Date().toISOString());
     } catch (err) {
-      if (import.meta.env.DEV) {
-        console.warn('[SuperAdmin] online sessions:', err);
-      }
+      const msg = err instanceof Error ? err.message : 'Could not load live users';
+      setOnlineError(msg);
       setOnlineSessions([]);
     } finally {
       setOnlineLoading(false);
@@ -1878,6 +1879,16 @@ const SuperAdminDashboard = () => {
                     </div>
                   </div>
                 </div>
+
+                {onlineError && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                    <p className="font-semibold">Could not refresh live users</p>
+                    <p className="mt-1 text-xs opacity-90">{onlineError}</p>
+                    <p className="mt-2 text-xs opacity-80">
+                      If you use an ad blocker, allow this site — some blockers flag URLs containing &quot;audit&quot; or tracking paths.
+                    </p>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
                   {[

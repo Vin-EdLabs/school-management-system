@@ -10,10 +10,9 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Plus, Edit, Trash2, ChevronLeft, ChevronRight, Bell, Clock, Eye, Calendar as CalendarIcon, MapPin, Tag } from 'lucide-react';
-import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, isToday, isPast, isBefore, addHours, subHours } from 'date-fns';
+import { Plus, Edit, Trash2, ChevronLeft, ChevronRight, Bell, Clock, Eye, Calendar as CalendarIcon, MapPin, Tag, Info } from 'lucide-react';
+import { format, addMonths, subMonths, isSameDay, isSameMonth } from 'date-fns';
 import { toast } from '@/hooks/use-toast';
 import { apiService } from '../services/api';
 import { useSchool } from '../contexts/SchoolContext';
@@ -52,7 +51,7 @@ const eventCategories = [
 ];
 
 const formDialogClass =
-  'flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[700px] rounded-[1rem] border-t-4 border-emerald-500 shadow-[0_20px_60px_rgba(0,0,0,0.15)]';
+  'flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[640px] rounded-[1rem] border-t-4 border-emerald-500 shadow-[0_20px_60px_rgba(0,0,0,0.15)]';
 
 export default function CalendarModule() {
   const { schoolId } = useSchool();
@@ -325,15 +324,25 @@ export default function CalendarModule() {
             </p>
           </div>
           {canManageEvents && (
-            <Button 
-              onClick={() => openAddDialog()} 
-              className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 px-8 py-3 rounded-xl text-lg font-semibold"
+            <Button
+              variant="primaryAction"
+              onClick={() => openAddDialog()}
+              className="px-8 py-3 rounded-xl text-lg font-semibold"
             >
               <Plus className="h-5 w-5 mr-2" />
-              Create Event
+              Create event
             </Button>
           )}
         </div>
+
+        {!canManageEvents && (
+          <Alert className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30">
+            <Info className="h-4 w-4" />
+            <AlertDescription>
+              View-only calendar. Only school administrators can add or edit events.
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Calendar Navigation */}
         <Card className="border-border shadow-lg bg-card/80 backdrop-blur-sm">
@@ -562,144 +571,162 @@ export default function CalendarModule() {
         </Card>
 
         {/* Event Dialog */}
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <Dialog open={isDialogOpen && canManageEvents} onOpenChange={(open) => canManageEvents && setIsDialogOpen(open)}>
           <DialogContent className={formDialogClass}>
             <DialogHeader className="shrink-0 border-b border-border/70 px-6 py-4 pr-12 text-left">
               <DialogTitle>{editingEvent ? 'Edit event' : 'Create event'}</DialogTitle>
-              {selectedDate && (
-                <p className="text-sm text-muted-foreground mt-1">
-                  {format(selectedDate, 'EEEE, MMMM d, yyyy')}
-                </p>
-              )}
+              <p className="text-sm text-muted-foreground mt-1">
+                {selectedDate
+                  ? format(selectedDate, 'EEEE, MMMM d, yyyy')
+                  : 'Add a new item to the school calendar.'}
+              </p>
             </DialogHeader>
 
-            <DialogBody className="space-y-5 overflow-y-auto px-6 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="title">Event title *</Label>
-                <Input
-                  id="title"
-                  value={eventForm.title}
-                  onChange={(e) => setEventForm({ ...eventForm, title: e.target.value })}
-                  placeholder="Enter a descriptive title"
-                />
-              </div>
+            <form
+              className="flex min-h-0 flex-1 flex-col"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (editingEvent) void handleEditEvent();
+                else void handleAddEvent();
+              }}
+            >
+              <DialogBody className="space-y-4 overflow-y-auto px-6 py-4">
+                <div className="rounded-3xl border border-emerald-100 bg-emerald-50/70 p-4 text-sm text-emerald-900 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 rounded-full bg-emerald-100 p-2 text-emerald-700">
+                      <CalendarIcon className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <p className="font-semibold">School calendar event</p>
+                      <p className="mt-1 leading-6 text-slate-700">
+                        Set the title, date, time, and category. All staff with calendar access can view this event.
+                      </p>
+                    </div>
+                  </div>
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  value={eventForm.description}
-                  onChange={(e) => setEventForm({ ...eventForm, description: e.target.value })}
-                  placeholder="Add details about your event..."
-                  rows={3}
-                  className="resize-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="time">Time</Label>
+                  <Label htmlFor="title">Event title *</Label>
                   <Input
-                    id="time"
-                    type="time"
-                    value={eventForm.time}
-                    onChange={(e) => setEventForm({ ...eventForm, time: e.target.value })}
+                    id="title"
+                    value={eventForm.title}
+                    onChange={(e) => setEventForm({ ...eventForm, title: e.target.value })}
+                    placeholder="e.g. PTA meeting, Sports day"
+                    required
                   />
                 </div>
+
                 <div className="space-y-2">
-                  <Label htmlFor="category">Category</Label>
-                  <Select value={eventForm.category} onValueChange={(value) => setEventForm({ ...eventForm, category: value })}>
-                    <SelectTrigger id="category">
-                      <SelectValue placeholder="Select category" />
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    value={eventForm.description}
+                    onChange={(e) => setEventForm({ ...eventForm, description: e.target.value })}
+                    placeholder="Add details about your event..."
+                    rows={3}
+                    className="resize-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="time">Time</Label>
+                    <Input
+                      id="time"
+                      type="time"
+                      value={eventForm.time}
+                      onChange={(e) => setEventForm({ ...eventForm, time: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="category">Category</Label>
+                    <Select value={eventForm.category} onValueChange={(value) => setEventForm({ ...eventForm, category: value })}>
+                      <SelectTrigger id="category">
+                        <SelectValue placeholder="Select category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {eventCategories.map((category) => (
+                          <SelectItem key={category} value={category}>{category}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="location">Location</Label>
+                  <Input
+                    id="location"
+                    value={eventForm.location}
+                    onChange={(e) => setEventForm({ ...eventForm, location: e.target.value })}
+                    placeholder="Where will this event take place?"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="color">Color theme</Label>
+                  <Select value={eventForm.color} onValueChange={(value) => setEventForm({ ...eventForm, color: value })}>
+                    <SelectTrigger id="color">
+                      <SelectValue placeholder="Choose a color theme" />
                     </SelectTrigger>
                     <SelectContent>
-                      {eventCategories.map((category) => (
-                        <SelectItem key={category} value={category}>{category}</SelectItem>
+                      {eventColors.map((color) => (
+                        <SelectItem key={color.value} value={color.value}>
+                          <div className="flex items-center gap-3">
+                            <div className={`w-4 h-4 rounded-full ${color.value}`} />
+                            <span>{color.name}</span>
+                          </div>
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="location">Location</Label>
-                <Input
-                  id="location"
-                  value={eventForm.location}
-                  onChange={(e) => setEventForm({ ...eventForm, location: e.target.value })}
-                  placeholder="Where will this event take place?"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="color">Color theme</Label>
-                <Select value={eventForm.color} onValueChange={(value) => setEventForm({ ...eventForm, color: value })}>
-                  <SelectTrigger id="color">
-                    <SelectValue placeholder="Choose a color theme" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {eventColors.map((color) => (
-                      <SelectItem key={color.value} value={color.value}>
-                        <div className="flex items-center gap-3">
-                          <div className={`w-4 h-4 rounded-full ${color.value}`} />
-                          <span>{color.name}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <Separator />
-
-              <div className="space-y-4">
-                <div className="flex items-center justify-between rounded-xl border border-amber-500/20 bg-amber-500/10 p-4">
-                  <div className="space-y-1">
-                    <Label htmlFor="reminder" className="flex items-center gap-2 text-amber-700">
-                      <Bell className="h-4 w-4" />
-                      Set reminder
-                    </Label>
-                    <p className="text-xs text-muted-foreground">Get notified before the event starts</p>
+                <div className="space-y-4 rounded-xl border border-amber-500/20 bg-amber-500/10 p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <Label htmlFor="reminder" className="flex items-center gap-2 text-amber-800">
+                        <Bell className="h-4 w-4" />
+                        Set reminder
+                      </Label>
+                      <p className="text-xs text-muted-foreground">Optional notification before the event</p>
+                    </div>
+                    <Switch
+                      id="reminder"
+                      checked={eventForm.reminder}
+                      onCheckedChange={(checked) => setEventForm({ ...eventForm, reminder: checked })}
+                    />
                   </div>
-                  <Switch
-                    id="reminder"
-                    checked={eventForm.reminder}
-                    onCheckedChange={(checked) => setEventForm({ ...eventForm, reminder: checked })}
-                  />
+
+                  {eventForm.reminder && (
+                    <div className="space-y-2">
+                      <Label htmlFor="reminderTime">Remind me</Label>
+                      <Select value={eventForm.reminderTime} onValueChange={(value) => setEventForm({ ...eventForm, reminderTime: value })}>
+                        <SelectTrigger id="reminderTime">
+                          <SelectValue placeholder="Select reminder time" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="15">15 minutes before</SelectItem>
+                          <SelectItem value="30">30 minutes before</SelectItem>
+                          <SelectItem value="60">1 hour before</SelectItem>
+                          <SelectItem value="120">2 hours before</SelectItem>
+                          <SelectItem value="1440">1 day before</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 </div>
+              </DialogBody>
 
-                {eventForm.reminder && (
-                  <div className="space-y-2">
-                    <Label htmlFor="reminderTime">Remind me</Label>
-                    <Select value={eventForm.reminderTime} onValueChange={(value) => setEventForm({ ...eventForm, reminderTime: value })}>
-                      <SelectTrigger id="reminderTime">
-                        <SelectValue placeholder="Select reminder time" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="15">15 minutes before</SelectItem>
-                        <SelectItem value="30">30 minutes before</SelectItem>
-                        <SelectItem value="60">1 hour before</SelectItem>
-                        <SelectItem value="120">2 hours before</SelectItem>
-                        <SelectItem value="1440">1 day before</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-              </div>
-            </DialogBody>
-
-            <DialogFooter className="form-action-bar shrink-0 gap-2 border-t border-border/70 px-6 py-4">
-              <Button variant="outline" onClick={resetForm}>
-                Cancel
-              </Button>
-              <Button
-                variant="primaryAction"
-                onClick={editingEvent ? handleEditEvent : handleAddEvent}
-                disabled={!eventForm.title.trim()}
-              >
-                {editingEvent ? 'Update event' : 'Create event'}
-              </Button>
-            </DialogFooter>
+              <DialogFooter className="form-action-bar shrink-0 gap-2 border-t border-border/70 px-6 py-4">
+                <Button type="button" variant="outline" onClick={resetForm}>
+                  Cancel
+                </Button>
+                <Button type="submit" variant="primaryAction" disabled={!eventForm.title.trim()}>
+                  {editingEvent ? 'Save changes' : 'Create event'}
+                </Button>
+              </DialogFooter>
+            </form>
           </DialogContent>
         </Dialog>
 

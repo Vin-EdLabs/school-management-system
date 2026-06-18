@@ -6,7 +6,7 @@ import { setTenantContext } from '../middleware/tenant.js';
 import { writeAuditLog } from '../services/auditService.js';
 import { enrichAuditLogRow, AUDIT_ENTITY_JOINS, AUDIT_ENTITY_LABEL_SQL } from '../utils/auditDisplay.js';
 import { getClientIp } from '../utils/clientIp.js';
-import { listActiveSessions } from '../services/presenceService.js';
+import { listActiveSessionsForSuperAdmin } from '../services/presenceService.js';
 
 const router = express.Router();
 
@@ -360,7 +360,7 @@ router.get('/super-admin/tracker/timeline', authenticate, requireRole('super-adm
 
 router.get('/super-admin/online-sessions', authenticate, requireRole('super-admin'), async (req: AuthRequest, res) => {
   try {
-    const sessions = await listActiveSessions();
+    const sessions = await listActiveSessionsForSuperAdmin();
 
     const tenantIds = Array.from(new Set(sessions.filter((s) => typeof s.tenantId === 'number' && !Number.isNaN(s.tenantId)).map((s) => s.tenantId as number)));
     const tenantNames = new Map<number, string>();

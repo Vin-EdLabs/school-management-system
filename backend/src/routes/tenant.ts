@@ -3,7 +3,7 @@
  * Resolves tenant for branding, login page, etc.
  */
 import express from 'express';
-import { resolveTenantById, resolveTenantBySlug } from '../services/tenantResolver.js';
+import { resolveTenantById, resolveTenantBySlugAnyStatus } from '../services/tenantResolver.js';
 import { resolveTenant, TenantRequest } from '../middleware/tenantResolver.js';
 import { query } from '../db/connection.js';
 
@@ -70,8 +70,15 @@ router.get('/by-id/:id', async (req, res) => {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid tenant ID' });
     const tenant = await resolveTenantById(id);
-    if (!tenant) return res.status(404).json({ error: 'School not found' });
-    if (!tenant.is_active) return res.status(403).json({ error: 'School is not active' });
+    if (!tenant) return res.status(404).json({ error: 'School not found', code: 'SCHOOL_NOT_FOUND' });
+    if (!tenant.is_active) {
+      return res.status(403).json({
+        error: 'School account deactivated',
+        code: 'SCHOOL_DEACTIVATED',
+        message: 'This school account has been deactivated by ScholarNerve. Contact support if you believe this is a mistake.',
+        tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug },
+      });
+    }
     res.json({
       success: true,
       tenant: {
@@ -94,9 +101,16 @@ router.get('/by-slug/:slug', async (req, res) => {
   try {
     const slug = req.params.slug;
     if (!slug) return res.status(400).json({ error: 'Slug required' });
-    const tenant = await resolveTenantBySlug(slug);
-    if (!tenant) return res.status(404).json({ error: 'School not found' });
-    if (!tenant.is_active) return res.status(403).json({ error: 'School is not active' });
+    const tenant = await resolveTenantBySlugAnyStatus(slug);
+    if (!tenant) return res.status(404).json({ error: 'School not found', code: 'SCHOOL_NOT_FOUND' });
+    if (!tenant.is_active) {
+      return res.status(403).json({
+        error: 'School account deactivated',
+        code: 'SCHOOL_DEACTIVATED',
+        message: 'This school account has been deactivated by ScholarNerve. Contact support if you believe this is a mistake.',
+        tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug },
+      });
+    }
     res.json({
       success: true,
       tenant: {

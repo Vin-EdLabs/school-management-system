@@ -271,6 +271,21 @@ html {
   scroll-behavior: smooth;
 }
 
+/* Public 404 / school-unavailable — always readable (ignore app dark mode) */
+.scholar-public-error-page {
+  color-scheme: light;
+  background-color: #f4faf7 !important;
+  color: #0a1410 !important;
+}
+
+.scholar-public-error-page h1,
+.scholar-public-error-page p,
+.scholar-public-error-page a,
+.scholar-public-error-page span,
+.scholar-public-error-page footer {
+  opacity: 1;
+}
+
 .scholar-landing {
   --brand: #0D9E75;
   --brand-dark: #085041;

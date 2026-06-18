@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { apiService } from '../services/api';
 import { initInactivityTracker, isPWAInstalled, stopInactivityTracker } from '../utils/inactivityTracker';
 import { clearActiveTermWelcomeDismiss } from '../components/onboarding/ActiveTermWelcomeModal';
+import { startSessionPulse, stopSessionPulse, endSessionPulse } from '../utils/sessionPulse';
 
 export type UserRole = 'administrator' | 'finance' | 'super-admin' | 'teacher' | 'staff' | 'driver';
 
@@ -55,6 +56,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             });
             // start inactivity tracking for non-PWA / non-parent sessions
             try { initInactivityTracker(); } catch (e) { /* ignore */ }
+            try { startSessionPulse(); } catch (e) { /* ignore */ }
           } else {
             localStorage.removeItem('authToken');
             localStorage.removeItem('rosaGardensUser');
@@ -98,6 +100,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // start inactivity tracking for non-PWA / non-parent sessions
         try { initInactivityTracker(); } catch (e) { /* ignore */ }
+        try { startSessionPulse(); } catch (e) { /* ignore */ }
 
         const loginTenantId = Number(response.user.tenantId);
         if (Number.isFinite(loginTenantId)) {
@@ -133,7 +136,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = () => {
     const token = localStorage.getItem('authToken');
     if (token) {
+      void endSessionPulse();
       apiService.post('/auth/logout', {}).catch(() => { });
+    } else {
+      stopSessionPulse();
     }
     try { stopInactivityTracker(); } catch (e) { /* ignore */ }
     setIsAuthenticated(false);
@@ -184,7 +190,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Finance: financial sections only (financial dashboard, not the general admin dashboard)
     if (user.role === 'finance') {
-      return ['students-view-only', 'teachers-view-only', 'other-staff-view-only', 'fees', 'income', 'expenses', 'transactions', 'cash-bank', 'payroll', 'reports', 'financial-dashboard', 'term-budget', 'settings', 'settings-password-only', 'payment-accounts', 'print-fee-status', 'finance-statement', 'ai-assistant', 'support-chat', 'parent-desk', 'audit', 'manual-adjustments'].includes(module);
+      return ['students-view-only', 'teachers-view-only', 'other-staff-view-only', 'fees', 'income', 'expenses', 'transactions', 'cash-bank', 'payroll', 'reports', 'financial-dashboard', 'term-budget', 'calendar', 'settings', 'settings-password-only', 'payment-accounts', 'print-fee-status', 'finance-statement', 'ai-assistant', 'support-chat', 'parent-desk', 'audit', 'manual-adjustments'].includes(module);
     }
 
     // Teacher: teacher section + profile + payment history

@@ -87,7 +87,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
     ...(hasAccess('teachers') || hasAccess('teachers-view-only') ? [{ id: 'other-staff', label: 'Other Staff', icon: UserCog }] : []),
     ...(hasAccess('classes') ? [{ id: 'classes', label: 'Classes', icon: BookOpen }] : []),
     ...(hasAccess('subjects') ? [{ id: 'subjects', label: 'Subjects', icon: BookOpen }] : []),
-    ...(hasAccess('calendar') ? [{ id: 'calendar', label: 'Calendar', icon: Calendar }] : []),
+    ...(hasAccess('calendar') && userRole !== 'finance' ? [{ id: 'calendar', label: 'Calendar', icon: Calendar }] : []),
     ...(hasAccess('end-of-year') && userRole === 'administrator'
       ? [{ id: 'end-of-year', label: 'End of Year', icon: CalendarClock }]
       : []),
@@ -116,6 +116,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
     ...(hasAccess('reports') ? [{ id: 'reports', label: 'Reports', icon: BarChart3 }] : []),
     ...(hasAccess('manual-adjustments') ? [{ id: 'manual-adjustments', label: 'Balance overrides', icon: Scale }] : []),
     ...(hasAccess('print-fee-status') ? [{ id: 'print-fee-status', label: 'Fee Status', icon: FileText }] : []),
+    ...(hasAccess('calendar') && userRole === 'finance' ? [{ id: 'calendar', label: 'Calendar', icon: Calendar }] : []),
   ],
   records: [
     ...(hasAccess('records') ? [{ id: 'records', label: 'Records', icon: Search }] : []),

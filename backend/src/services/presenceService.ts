@@ -1,6 +1,8 @@
 import { query } from '../db/connection.js';
 import type { SocketUser } from '../socket.js';
 
+export type PresenceUser = SocketUser;
+
 export type PresenceSessionRow = {
   socketId: string;
   userId: number;
@@ -12,13 +14,18 @@ export type PresenceSessionRow = {
 };
 
 /** Stale sessions (missed disconnect) are purged after this many seconds. */
-const STALE_SECONDS = 150;
+const STALE_SECONDS = 120;
+
+function isParentRole(role: string): boolean {
+  return String(role || '').toLowerCase().trim() === 'parent';
+}
 
 export async function registerPresence(
-  socketId: string,
-  user: SocketUser,
+  sessionKey: string,
+  user: PresenceUser,
   connectedAt: number
 ): Promise<void> {
+  if (isParentRole(user.role)) return;
   try {
     await query(
       `INSERT INTO active_socket_sessions (
@@ -31,33 +38,48 @@ export async function registerPresence(
          full_name = EXCLUDED.full_name,
          role = EXCLUDED.role,
          last_seen_at = NOW()`,
-      [socketId, user.id, user.tenantId, user.username, user.fullName, user.role, connectedAt]
+      [sessionKey, user.id, user.tenantId, user.username, user.fullName, user.role, connectedAt]
     );
   } catch (err) {
     console.error('registerPresence error:', err);
   }
 }
 
-export async function touchPresence(socketId: string): Promise<void> {
+export async function touchPresence(sessionKey: string): Promise<void> {
   try {
     await query(
       `UPDATE active_socket_sessions SET last_seen_at = NOW() WHERE socket_id = $1`,
-      [socketId]
+      [sessionKey]
     );
   } catch (err) {
     console.error('touchPresence error:', err);
   }
 }
 
-export async function removePresence(socketId: string): Promise<void> {
+/** HTTP heartbeat from the browser — works even when WebSockets are blocked. */
+export async function pulseHttpSession(sessionKey: string, user: PresenceUser): Promise<void> {
+  if (isParentRole(user.role)) return;
+  const key = `web:${sessionKey}`;
+  await registerPresence(key, user, Date.now());
+}
+
+export async function clearHttpSession(sessionKey: string): Promise<void> {
   try {
-    await query(`DELETE FROM active_socket_sessions WHERE socket_id = $1`, [socketId]);
+    await query(`DELETE FROM active_socket_sessions WHERE socket_id = $1`, [`web:${sessionKey}`]);
+  } catch (err) {
+    console.error('clearHttpSession error:', err);
+  }
+}
+
+export async function removePresence(sessionKey: string): Promise<void> {
+  try {
+    await query(`DELETE FROM active_socket_sessions WHERE socket_id = $1`, [sessionKey]);
   } catch (err) {
     console.error('removePresence error:', err);
   }
 }
 
-export async function listActiveSessions(): Promise<PresenceSessionRow[]> {
+export async function listActiveSessionsForSuperAdmin(): Promise<PresenceSessionRow[]> {
   try {
     await query(
       `DELETE FROM active_socket_sessions

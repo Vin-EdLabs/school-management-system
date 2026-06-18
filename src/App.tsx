@@ -24,7 +24,14 @@ import { detectTenantSlugFromHost, getSubdomainUrl, normalizeLegacyPathOnSubdoma
 import { PwaUpdateManager } from "@/components/pwa/PwaUpdateManager";
 import { NetworkStatusBanner } from "@/components/ui/NetworkStatusBanner";
 import { BrandedLoadingScreen } from "@/components/common/BrandedLoading";
+import { PublicErrorPage } from "@/components/common/PublicErrorPage";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import {
+  parseTenantLookup,
+  schoolPortalErrorPresentation,
+  type SchoolPortalErrorState,
+} from "./utils/schoolPortalError";
+import { MapPinOff } from "lucide-react";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -120,81 +127,101 @@ const IndexWithSchool = () => {
     return id && !isNaN(id) ? id : null;
   });
   const [resolving, setResolving] = React.useState(!schoolId && !!slug);
-  const [schoolResolveError, setSchoolResolveError] = React.useState<string | null>(null);
+  const [schoolPortalError, setSchoolPortalError] = React.useState<SchoolPortalErrorState | null>(null);
   const [resolveAttempt, setResolveAttempt] = React.useState(0);
 
+  const apiBase = import.meta.env.VITE_API_BASE_URL || `${window.location.origin}/api`;
+
+  const lookupTenant = React.useCallback(async (url: string) => {
+    const r = await fetch(url);
+    const text = await r.text();
+    let payload: Record<string, unknown> = {};
+    if (text.trim()) {
+      try {
+        payload = JSON.parse(text) as Record<string, unknown>;
+      } catch {
+        return {
+          resolvedId: null as number | null,
+          error: {
+            kind: 'server' as const,
+            message: r.ok
+              ? 'The server returned an unexpected response. Check your API configuration.'
+              : `Could not load this school (HTTP ${r.status}).`,
+          },
+        };
+      }
+    }
+    return parseTenantLookup(r.status, payload as Parameters<typeof parseTenantLookup>[1]);
+  }, []);
+
   React.useEffect(() => {
-    setSchoolResolveError(null);
+    setSchoolPortalError(null);
     const schoolIdNum = schoolId ? parseInt(schoolId, 10) : null;
 
     if (schoolId && (schoolIdNum === null || Number.isNaN(schoolIdNum))) {
       setResolvedId(null);
-      setSchoolResolveError(
-        'This link does not contain a valid school ID. Use the numeric ID from your school or open the portal from the home page.'
-      );
+      setSchoolPortalError({
+        kind: 'invalid',
+        message:
+          'This link does not contain a valid school ID. Use the numeric ID from your school or open the portal from the home page.',
+      });
       setResolving(false);
       return;
     }
 
-    if (schoolIdNum !== null && !Number.isNaN(schoolIdNum)) {
-      setResolvedId(schoolIdNum);
-      setResolving(false);
-      return;
-    }
-
-    if (slug) {
-      setResolving(true);
-      const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
-      fetch(`${base}/tenant/by-slug/${encodeURIComponent(slug)}`)
-        .then(async (r) => {
-          const text = await r.text();
-          let d: { tenant?: { id?: number }; error?: string } = {};
-          if (text.trim()) {
-            try {
-              d = JSON.parse(text);
-            } catch {
-              setResolvedId(null);
-              setSchoolResolveError(
-                r.ok
-                  ? 'The server returned an unexpected response. Check your API configuration.'
-                  : `Could not load this school (HTTP ${r.status}).`
-              );
-              return;
-            }
-          }
-          if (!r.ok) {
-            setResolvedId(null);
-            setSchoolResolveError(
-              typeof d.error === 'string' && d.error.trim()
-                ? d.error
-                : `Could not load this school (HTTP ${r.status}).`
-            );
-            return;
-          }
-          if (d?.tenant?.id != null) {
-            setResolvedId(d.tenant.id);
-          } else {
-            setResolvedId(null);
-            setSchoolResolveError('No school matches this link. Check the spelling or ask your school for an updated link.');
-          }
-        })
-        .catch((e) => {
+    const run = async () => {
+      if (schoolIdNum !== null && !Number.isNaN(schoolIdNum)) {
+        setResolving(true);
+        try {
+          const result = await lookupTenant(`${apiBase}/tenant/by-id/${schoolIdNum}`);
+          setResolvedId(result.resolvedId);
+          setSchoolPortalError(result.error);
+        } catch (e) {
           setResolvedId(null);
           const m = e instanceof Error ? e.message : String(e);
           const low = m.toLowerCase();
-          setSchoolResolveError(
-            low.includes('failed to fetch') || low.includes('network')
-              ? 'Cannot reach the server. Check your connection and that the API is running and the site URL is correct.'
-              : m || 'Could not load school.'
-          );
-        })
-        .finally(() => setResolving(false));
-      return;
-    }
+          setSchoolPortalError({
+            kind: 'network',
+            message:
+              low.includes('failed to fetch') || low.includes('network')
+                ? 'Cannot reach the server. Check your connection and that the API is running.'
+                : m || 'Could not load school.',
+          });
+        } finally {
+          setResolving(false);
+        }
+        return;
+      }
 
-    setResolvedId(null);
-    setResolving(false);
-  }, [schoolId, slug, resolveAttempt]);
+      if (slug) {
+        setResolving(true);
+        try {
+          const result = await lookupTenant(`${apiBase}/tenant/by-slug/${encodeURIComponent(slug)}`);
+          setResolvedId(result.resolvedId);
+          setSchoolPortalError(result.error);
+        } catch (e) {
+          setResolvedId(null);
+          const m = e instanceof Error ? e.message : String(e);
+          const low = m.toLowerCase();
+          setSchoolPortalError({
+            kind: 'network',
+            message:
+              low.includes('failed to fetch') || low.includes('network')
+                ? 'Cannot reach the server. Check your connection and that the API is running.'
+                : m || 'Could not load school.',
+          });
+        } finally {
+          setResolving(false);
+        }
+        return;
+      }
+
+      setResolvedId(null);
+      setResolving(false);
+    };
+
+    void run();
+  }, [schoolId, slug, resolveAttempt, apiBase, lookupTenant]);
 
   if (resolving) {
     return (
@@ -202,22 +229,38 @@ const IndexWithSchool = () => {
         label="Opening your school…"
         active={resolving}
         onRetry={() => {
-          setSchoolResolveError(null);
+          setSchoolPortalError(null);
           setResolveAttempt((n) => n + 1);
-          if (slug && !schoolId) setResolving(true);
         }}
       />
     );
   }
   if (!resolvedId) {
+    const detailParts = [slug ? `School: ${slug}` : null, schoolId ? `ID: ${schoolId}` : null].filter(Boolean);
+    const errorState: SchoolPortalErrorState = schoolPortalError ?? {
+      kind: 'unknown',
+      message: 'We could not open this school. The link may be wrong or the school may not be registered on ScholarNerve yet.',
+    };
+    const presentation = schoolPortalErrorPresentation(errorState);
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background p-6 text-center text-foreground">
-        <p className="text-lg font-semibold">School portal unavailable</p>
-        <p className="text-muted-foreground max-w-md">{schoolResolveError ?? 'We could not open this school.'}</p>
-        <Link to="/" className="text-primary underline underline-offset-4">
-          Back to home
-        </Link>
-      </div>
+      <PublicErrorPage
+        variant={presentation.variant}
+        eyebrow={presentation.eyebrow}
+        title={presentation.title}
+        description={presentation.description}
+        schoolName={errorState.schoolName}
+        detail={detailParts.length > 0 ? detailParts.join(' · ') : undefined}
+        icon={presentation.icon}
+        onRetry={
+          slug || schoolId
+            ? () => {
+                setSchoolPortalError(null);
+                setResolveAttempt((n) => n + 1);
+              }
+            : undefined
+        }
+        retryLabel="Try again"
+      />
     );
   }
 
@@ -276,7 +319,7 @@ const App = () => {
                     <Route path="/school/:schoolId/*" element={<IndexWithSchool />} />
                     <Route path="/sch/:slug/*" element={<LegacySubdomainRedirect />} />
                     <Route path="/portal/:tenantId" element={<LegacyPortalRedirect />} />
-                    <Route path="*" element={<Navigate to="/" replace />} />
+                    <Route path="*" element={<NotFound />} />
                   </Routes>
                 )}
               </BrowserRouter>

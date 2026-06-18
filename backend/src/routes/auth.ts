@@ -7,6 +7,8 @@ import { getVapidPublicKey } from '../services/webPushService.js';
 import { writeAuditLog } from '../services/auditService.js';
 import { getClientIp } from '../utils/clientIp.js';
 import { resolveUserDisplayName } from '../utils/auditResolve.js';
+import { pulseHttpSession, clearHttpSession } from '../services/presenceService.js';
+import { getIO } from '../socket.js';
 
 const router = express.Router();
 
@@ -423,6 +425,51 @@ router.get('/me', authenticate, async (req: AuthRequest, res) => {
   } catch (error) {
     console.error('Get user error:', error);
     res.status(500).json({ error: 'Failed to get user' });
+  }
+});
+
+/** Browser heartbeat — marks this tab as active (works without WebSockets). */
+router.post('/session-pulse', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const clientSessionId = String(req.body?.clientSessionId || '').trim();
+    if (!clientSessionId || clientSessionId.length > 120) {
+      return res.status(400).json({ error: 'clientSessionId required' });
+    }
+    const user = req.user!;
+    await pulseHttpSession(clientSessionId, {
+      id: user.id,
+      tenantId: user.tenantId,
+      username: user.username,
+      role: user.role,
+      fullName: user.fullName,
+    });
+    try {
+      getIO().to('global:super-admin').emit('super-admin-online-users-updated', { updatedAt: Date.now() });
+    } catch {
+      // Socket optional
+    }
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('session-pulse error:', error);
+    res.status(500).json({ error: 'Failed to update session' });
+  }
+});
+
+router.post('/session-end', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const clientSessionId = String(req.body?.clientSessionId || '').trim();
+    if (clientSessionId) {
+      await clearHttpSession(clientSessionId);
+      try {
+        getIO().to('global:super-admin').emit('super-admin-online-users-updated', { updatedAt: Date.now() });
+      } catch {
+        // Socket optional
+      }
+    }
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('session-end error:', error);
+    res.json({ ok: true });
   }
 });
 

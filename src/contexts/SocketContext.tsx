@@ -31,10 +31,11 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     s.on('connect', () => {
       setConnected(true);
+      s.emit('session:alive');
     });
 
-    const presencePingId = window.setInterval(() => {
-      if (s.connected) s.emit('presence:ping');
+    const sessionAliveId = window.setInterval(() => {
+      if (s.connected) s.emit('session:alive');
     }, 30000);
 
     s.on('disconnect', () => {
@@ -51,7 +52,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setSocket(s);
 
     return () => {
-      window.clearInterval(presencePingId);
+      window.clearInterval(sessionAliveId);
       s.removeAllListeners();
       s.disconnect();
     };

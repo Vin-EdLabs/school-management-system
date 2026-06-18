@@ -1,11 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { FileDown, Save, X } from 'lucide-react';
+import { Printer, Save, X } from 'lucide-react';
 import { apiService } from '@/services/api';
 import { toast } from '@/hooks/use-toast';
-import AppointmentLetterDocument, { type AppointmentLetterData } from './AppointmentLetterDocument';
-import { downloadAppointmentLetterPdf } from './appointmentLetterPdf';
+import AppointmentLetterDocument, { type AppointmentLetterData, printAppointmentLetter } from './AppointmentLetterDocument';
 
 type Props = {
   open: boolean;
@@ -28,7 +27,6 @@ const AppointmentLetterGeneratorDialog: React.FC<Props> = ({
 }) => {
   const [letter, setLetter] = useState<AppointmentLetterData>(initialLetter);
   const [saving, setSaving] = useState(false);
-  const [downloading, setDownloading] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -38,34 +36,21 @@ const AppointmentLetterGeneratorDialog: React.FC<Props> = ({
     }
   }, [open, initialLetter]);
 
-  const pdfFilename = () => {
-    const ref = letter.referenceNumber?.replace(/\//g, '-') || `v${letter.versionNumber}`;
-    return `appointment-letter-${teacherStaffId}-${ref}.pdf`;
+  const handleLetterChange = (updates: Partial<AppointmentLetterData>) => {
+    setLetter((prev) => ({ ...prev, ...updates }));
   };
 
-  const handleSaveToPdf = async () => {
+  const handlePrint = () => {
     if (!letter) return;
     if (!letter.portalAccess?.temporaryPassword) {
       toast({
         title: 'Save the letter first',
-        description: 'Portal login credentials are added when you save the letter. Save it, then download the PDF.',
+        description: 'Portal login credentials are added when you save the letter. Save it, then print.',
         variant: 'destructive',
       });
       return;
     }
-    setDownloading(true);
-    try {
-      await downloadAppointmentLetterPdf(letter, pdfFilename());
-      toast({ title: 'PDF saved', description: 'Appointment letter downloaded to your device.' });
-    } catch (e: unknown) {
-      toast({
-        title: 'PDF failed',
-        description: e instanceof Error ? e.message : 'Could not generate PDF',
-        variant: 'destructive',
-      });
-    } finally {
-      setDownloading(false);
-    }
+    printAppointmentLetter();
   };
 
   const handleSave = async () => {
@@ -135,21 +120,21 @@ const AppointmentLetterGeneratorDialog: React.FC<Props> = ({
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => void handleSaveToPdf()}
-              disabled={!letter || downloading || !saved}
+              onClick={handlePrint}
+              disabled={!letter || !saved}
             >
-              <FileDown className="h-4 w-4 mr-1" />
-              {downloading ? 'Saving PDF…' : 'Save to PDF'}
+              <Printer className="h-4 w-4 mr-1" />
+              Print / Save as PDF
             </Button>
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
-            Save the letter first to issue portal login credentials (Staff ID + temporary password). Then use Save to
-            PDF to download the complete letter with your school logo.
+            Save the letter first to issue portal login credentials (Staff ID + temporary password). Then use Print
+            and select "Save as PDF" in the print dialog to preserve all styling.
           </p>
         </div>
 
         <div className="p-4 sm:p-6 bg-slate-100">
-          <AppointmentLetterDocument data={letter} />
+          <AppointmentLetterDocument data={letter} onChange={handleLetterChange} />
         </div>
       </DialogContent>
     </Dialog>

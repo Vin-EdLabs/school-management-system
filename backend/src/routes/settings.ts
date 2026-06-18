@@ -1005,4 +1005,28 @@ router.put('/appointment-letter', requireRole('super-admin', 'administrator'), a
   }
 });
 
+router.get('/admission-letter', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+  try {
+    const { getAdmissionLetterConfig } = await import('../services/admissionLetterService.js');
+    const config = await getAdmissionLetterConfig(req.user!.tenantId!);
+    res.json(config);
+  } catch (error) {
+    console.error('Get admission letter config error:', error);
+    res.status(500).json({ error: 'Failed to load admission letter settings' });
+  }
+});
+
+router.put('/admission-letter', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const { saveAdmissionLetterConfig } = await import('../services/admissionLetterService.js');
+    await saveAdmissionLetterConfig(tenantId, req.body || {});
+    emitTenantDataChanged(tenantId, 'settings', 'updated');
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Save admission letter config error:', error);
+    res.status(500).json({ error: 'Failed to save admission letter settings' });
+  }
+});
+
 export default router;

@@ -97,7 +97,12 @@ function buildTenantAuditWhere(
 // Super-admin: all schools
 router.get('/all', authenticate, requireRole('super-admin'), async (req: AuthRequest, res) => {
   try {
-    const { startDate, endDate, action, entityType, tenantId, username, module, status, search, limit = '500', offset = '0' } = req.query;
+    const { startDate, endDate, action, entityType, tenantId: rawTenantId, username, module, status, search, limit = '500', offset = '0' } = req.query;
+    const tenantId = Array.isArray(rawTenantId) ? rawTenantId[0] : rawTenantId;
+    const parsedTenantId = tenantId != null && String(tenantId).trim() !== '' ? parseInt(String(tenantId), 10) : null;
+    if (Array.isArray(rawTenantId) || (rawTenantId != null && parsedTenantId === null)) {
+      return res.status(400).json({ error: 'Invalid tenantId parameter' });
+    }
 
     let queryText = `
       SELECT al.*, u.username, ${AUDIT_USER_FULL_NAME_SQL}, ten.name as tenant_name,
@@ -130,9 +135,9 @@ router.get('/all', authenticate, requireRole('super-admin'), async (req: AuthReq
       queryText += ` AND al.status = $${params.length + 1}`;
       params.push(String(status).toLowerCase());
     }
-    if (tenantId) {
+    if (parsedTenantId !== null) {
       queryText += ` AND al.tenant_id = $${params.length + 1}`;
-      params.push(tenantId);
+      params.push(parsedTenantId);
     }
     if (username) {
       queryText += ` AND u.username ILIKE $${params.length + 1}`;

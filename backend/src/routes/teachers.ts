@@ -255,17 +255,19 @@ router.get('/me/appointment-letters/:letterId/download', async (req: AuthRequest
 
     let letterContent = row.letter_content as Record<string, any> | null;
     if (letterContent && typeof letterContent === 'object') {
-      const photoRes = await query(
-        'SELECT passport_photo_url FROM teachers WHERE id = $1 AND tenant_id = $2',
+      const teacherRes = await query(
+        'SELECT passport_photo_url, signature FROM teachers WHERE id = $1 AND tenant_id = $2',
         [Number(teacherId), tenantId]
       );
-      const photoUrl = photoRes.rows[0]?.passport_photo_url || null;
+      const photoUrl = teacherRes.rows[0]?.passport_photo_url || null;
+      const signature = teacherRes.rows[0]?.signature || null;
       letterContent = {
         ...letterContent,
         teacher: {
           ...(letterContent.teacher || {}),
           id: Number(teacherId),
           photoUrl: letterContent.teacher?.photoUrl || photoUrl,
+          signature: signature || letterContent.teacher?.signature,
         },
       };
     }
@@ -342,6 +344,62 @@ router.post(
     }
   }
 );
+
+// Get teacher signature
+router.get('/:id/signature', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const { id } = req.params;
+    const result = await query(
+      'SELECT signature FROM teachers WHERE id = $1 AND tenant_id = $2',
+      [id, tenantId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Teacher not found' });
+    res.json({ signature: result.rows[0].signature || null });
+  } catch (error) {
+    console.error('Get teacher signature error:', error);
+    res.status(500).json({ error: 'Failed to fetch signature' });
+  }
+});
+
+// Save teacher signature
+router.put('/:id/signature', requireRole('super-admin', 'administrator', 'teacher'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const { id } = req.params;
+    const { signature } = req.body;
+    if (signature !== undefined && typeof signature !== 'string') {
+      return res.status(400).json({ error: 'Signature must be a string (data URL)' });
+    }
+    const result = await query(
+      'UPDATE teachers SET signature = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND tenant_id = $3 RETURNING id, full_name',
+      [signature || null, id, tenantId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Teacher not found' });
+
+    const before = await query(
+      'SELECT full_name FROM teachers WHERE id = $1 AND tenant_id = $2',
+      [id, tenantId]
+    );
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'TEACHER_SIGNATURE_UPDATED',
+      entityType: 'TEACHER',
+      entityId: parseInt(id, 10),
+      module: 'teachers',
+      summary: `Updated signature for ${before.rows[0]?.full_name || 'teacher'}`,
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') || null,
+    });
+    emitTenantDataChanged(tenantId, 'teacher', 'updated');
+    res.json({ id: result.rows[0].id, signature_updated: true });
+  } catch (error) {
+    console.error('Save teacher signature error:', error);
+    res.status(500).json({ error: 'Failed to save signature' });
+  }
+});
 
 // Get single teacher
 router.get('/:id', async (req: AuthRequest, res) => {
@@ -748,17 +806,19 @@ router.get('/:id/appointment-letters/:letterId/download', async (req: AuthReques
 
     let letterContent = row.letter_content as Record<string, any> | null;
     if (letterContent && typeof letterContent === 'object') {
-      const photoRes = await query(
-        'SELECT passport_photo_url FROM teachers WHERE id = $1 AND tenant_id = $2',
+      const teacherRes = await query(
+        'SELECT passport_photo_url, signature FROM teachers WHERE id = $1 AND tenant_id = $2',
         [teacherId, tenantId]
       );
-      const photoUrl = photoRes.rows[0]?.passport_photo_url || null;
+      const photoUrl = teacherRes.rows[0]?.passport_photo_url || null;
+      const signature = teacherRes.rows[0]?.signature || null;
       letterContent = {
         ...letterContent,
         teacher: {
           ...(letterContent.teacher || {}),
           id: teacherId,
           photoUrl: letterContent.teacher?.photoUrl || photoUrl,
+          signature: signature || letterContent.teacher?.signature,
         },
       };
     }

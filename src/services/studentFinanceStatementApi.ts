@@ -99,10 +99,15 @@ export type StudentFinanceStatement = {
     studentId: string;
     admissionNo: string;
     className: string;
+    photoUrl: string | null;
     academicYear: string;
     dateGenerated: string;
     generatedBy: string | null;
     generatedByRole: string | null;
+    signatoryName: string | null;
+    signatoryTitle: string | null;
+    signatureImage: string | null;
+    stampImage: string | null;
   };
   feeBreakdown: TermFeeBreakdown[];
   individualCharges?: IndividualChargeStatementLine[];

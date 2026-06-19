@@ -588,7 +588,7 @@ router.put('/:id', requireRole('super-admin'), async (req: AuthRequest, res) => 
     const tenantId = parseInt(id, 10);
     const { name, slug, subdomain, logo_url, primary_color, secondary_color, subscription_status, is_active } = req.body;
 
-    const slugCheck = await resolveTenantSlugForUpdate(query, tenantId, { slug, subdomain });
+    const slugCheck = await resolveTenantSlugForUpdate({ query }, tenantId, { slug, subdomain });
     if ('error' in slugCheck) {
       return res.status(slugCheck.status).json({ error: slugCheck.error });
     }

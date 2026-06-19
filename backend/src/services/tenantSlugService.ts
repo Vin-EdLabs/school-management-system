@@ -1,4 +1,8 @@
-import type { PoolClient } from 'pg';
+import type { QueryResult } from 'pg';
+
+type DbClient = {
+  query: (text: string, params?: unknown[]) => Promise<Pick<QueryResult, 'rows'>>;
+};
 
 export function slugifyTenant(value: string): string {
   return (
@@ -11,8 +15,6 @@ export function slugifyTenant(value: string): string {
       .replace(/^-|-$/g, '') || 'school'
   );
 }
-
-type DbClient = Pick<PoolClient, 'query'>;
 
 export async function isTenantSlugTaken(
   db: DbClient,

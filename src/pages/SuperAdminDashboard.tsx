@@ -1263,8 +1263,11 @@ const SuperAdminDashboard = () => {
                               <Input value={newSchool.name} onChange={(e) => setNewSchool({ ...newSchool, name: e.target.value })} className="h-12 rounded-xl" placeholder="e.g. Light Preparatory School" required />
                             </div>
                             <div className="space-y-2">
-                              <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Portal Address</Label>
-                              <Input value={newSchool.slug} onChange={(e) => setNewSchool({ ...newSchool, slug: e.target.value })} className="h-12 rounded-xl" placeholder="e.g. light-preparatory" />
+                              <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Portal Address (unique URL)</Label>
+                              <Input value={newSchool.slug} onChange={(e) => setNewSchool({ ...newSchool, slug: e.target.value })} className="h-12 rounded-xl font-mono" placeholder="e.g. hope-academy-kumasi" />
+                              <p className="text-[11px] text-slate-500 leading-snug">
+                                Must be unique for login links. School names can repeat — use a different URL for each school (e.g. hope-kumasi vs hope-tema).
+                              </p>
                             </div>
                             <div className="space-y-2">
                               <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Admin Login Username</Label>

@@ -8,11 +8,11 @@ import { useTeacherNotifications } from '../../contexts/TeacherNotificationConte
 import { useSocket } from '../../contexts/SocketContext';
 import { apiService } from '../../services/api';
 import { resolveLogoUrl } from '../../services/tenantService';
-import { Bell, Bot, User, Clock, Calendar, Moon, Sun } from 'lucide-react';
+import { Bell, Bot, User, Clock, Moon, Sun } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import PwaInstallButton from '../common/PwaInstallButton';
+import PersonalTodosWidget, { canUsePersonalTodos } from '../todos/PersonalTodosPanel';
 import { ModuleUserGuideDialog } from '../common/ModuleUserGuideDialog';
-import { formatDisplayDate } from '../../utils/dateFormat';
 import { fetchUnreadBudgetAlerts, markBudgetAlertRead } from '../../services/termBudgetApi';
 
 interface MainHeaderProps {
@@ -34,6 +34,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
   const pwaLogo = resolveLogoUrl(school?.logo_url ?? null);
   const showStaffNotifications = user?.role === 'teacher' || user?.role === 'staff';
   const showAdminNotifications = !!user && ['administrator', 'finance', 'super-admin'].includes(user.role || '');
+  const showPersonalTodos = canUsePersonalTodos(user?.role);
   const displayName = user?.fullName?.trim() || user?.username || '';
 
   useEffect(() => {
@@ -50,15 +51,10 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
     return 'Good evening';
   };
 
-  const formatDate = (date: Date) => {
-    return formatDisplayDate(date);
-  };
-
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString('en-US', {
-      hour: '2-digit',
+      hour: 'numeric',
       minute: '2-digit',
-      second: '2-digit',
       hour12: true,
     });
   };
@@ -164,9 +160,9 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
   }, [socket, showAdminNotifications, loadAdminNotifications]);
 
   return (
-    <div className="flex items-center justify-between w-full h-full gap-2 sm:gap-4 md:gap-6 min-w-0">
+    <div className="relative flex items-center justify-between w-full h-full gap-2 sm:gap-4 md:gap-6 min-w-0">
       {/* Welcome Section */}
-      <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
+      <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1 basis-0">
         <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-[#146C43] to-[#22C55E] flex items-center justify-center shrink-0 shadow-sm shadow-emerald-500/20 dark:from-blue-500 dark:to-indigo-600 dark:shadow-sm">
           <User className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
         </div>
@@ -182,16 +178,19 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
         </div>
       </div>
 
+      {/* Center: Personal To-dos */}
+      {showPersonalTodos && (
+        <div className="absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2">
+          <PersonalTodosWidget />
+        </div>
+      )}
+
       {/* Right Section: Time and Actions */}
-      <div className="flex items-center gap-1 sm:gap-2 md:gap-4 shrink-0">
-        <div className="hidden lg:flex items-center gap-3">
-          <div className="px-3 py-2 bg-white/85 dark:bg-slate-900/50 rounded-xl border border-slate-200/70 dark:border-slate-800 flex items-center gap-2 shadow-sm">
-            <Calendar className="w-4 h-4 text-emerald-600 dark:text-indigo-400" />
-            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{formatDate(currentTime)}</span>
-          </div>
-          <div className="px-3 py-2 bg-white/85 dark:bg-slate-900/50 rounded-xl border border-slate-200/70 dark:border-slate-800 flex items-center gap-2 shadow-sm">
-            <Clock className="w-4 h-4 text-emerald-600 dark:text-indigo-400" />
-            <span className="text-sm font-mono font-medium text-slate-700 dark:text-slate-300 w-[90px] text-center">
+      <div className="flex items-center gap-1 sm:gap-2 md:gap-4 shrink-0 flex-1 basis-0 justify-end ml-auto">
+        <div className="hidden sm:flex items-center">
+          <div className="px-2 py-1 bg-white/85 dark:bg-slate-900/50 rounded-lg border border-slate-200/70 dark:border-slate-800 flex items-center gap-1.5 shadow-sm">
+            <Clock className="w-3.5 h-3.5 text-emerald-600 dark:text-indigo-400 shrink-0" />
+            <span className="text-xs font-mono font-medium text-slate-700 dark:text-slate-300 tabular-nums">
               {formatTime(currentTime)}
             </span>
           </div>

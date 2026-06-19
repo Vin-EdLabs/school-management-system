@@ -16,15 +16,10 @@ router.use(setTenantContext);
 attachWritableTermGuard(router);
 router.use(requireRole('administrator', 'finance'));
 
+import { resolveSchoolDisplayName } from '../services/schoolBrandingService.js';
+
 async function resolveSchoolName(tenantId: number): Promise<string> {
-  const res = await query(
-    `SELECT COALESCE(NULLIF(ss.school_name, ''), t.name, 'Your School') AS school_name
-     FROM tenants t
-     LEFT JOIN school_settings ss ON ss.tenant_id = t.id
-     WHERE t.id = $1`,
-    [tenantId]
-  );
-  return res.rows[0]?.school_name || 'Your School';
+  return resolveSchoolDisplayName(tenantId);
 }
 
 router.get('/unread', async (req: AuthRequest, res: Response) => {

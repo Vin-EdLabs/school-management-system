@@ -18,6 +18,7 @@ interface SchoolContextType {
   schools: School[];
   setSchoolId: (id: number | null) => void;
   loadSchools: () => Promise<void>;
+  reloadSchool: () => Promise<void>;
 }
 
 const SchoolContext = createContext<SchoolContextType | undefined>(undefined);
@@ -47,6 +48,30 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode; schoolIdFromU
     }
   }, []);
 
+  const reloadSchool = useCallback(async () => {
+    if (!schoolId) {
+      setSchool(null);
+      return;
+    }
+    try {
+      const s = await apiService.get<School>(`/schools/${schoolId}`);
+      setSchool(s);
+    } catch {
+      const tenant = await fetchTenantById(schoolId);
+      if (tenant) {
+        setSchool({
+          id: tenant.id,
+          name: tenant.name,
+          logo_url: tenant.logo_url || undefined,
+          primary_color: tenant.primary_color || undefined,
+          secondary_color: tenant.secondary_color || undefined,
+        });
+      } else {
+        setSchool(null);
+      }
+    }
+  }, [schoolId]);
+
   // Sync schoolId from URL prop and set tenant context
   useEffect(() => {
     if (schoolIdFromUrl && !isNaN(schoolIdFromUrl)) {
@@ -56,37 +81,20 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode; schoolIdFromU
     }
   }, [schoolIdFromUrl]);
 
-  // Load school details when schoolId is set (auth API first, then public tenant fallback)
   useEffect(() => {
-    if (!schoolId) {
-      setSchool(null);
-      return;
-    }
-    const loadSchool = async () => {
-      try {
-        const s = await apiService.get<School>(`/schools/${schoolId}`);
-        setSchool(s);
-      } catch {
-        // Fallback: use public tenant API (works without auth, for branding)
-        const tenant = await fetchTenantById(schoolId);
-        if (tenant) {
-          setSchool({
-            id: tenant.id,
-            name: tenant.name,
-            logo_url: tenant.logo_url || undefined,
-            primary_color: tenant.primary_color || undefined,
-            secondary_color: tenant.secondary_color || undefined,
-          });
-        } else {
-          setSchool(null);
-        }
-      }
+    void reloadSchool();
+  }, [reloadSchool]);
+
+  useEffect(() => {
+    const onBrandingChanged = () => {
+      void reloadSchool();
     };
-    loadSchool();
-  }, [schoolId]);
+    window.addEventListener('school-branding-changed', onBrandingChanged);
+    return () => window.removeEventListener('school-branding-changed', onBrandingChanged);
+  }, [reloadSchool]);
 
   return (
-    <SchoolContext.Provider value={{ schoolId, school, schools, setSchoolId, loadSchools }}>
+    <SchoolContext.Provider value={{ schoolId, school, schools, setSchoolId, loadSchools, reloadSchool }}>
       {children}
     </SchoolContext.Provider>
   );

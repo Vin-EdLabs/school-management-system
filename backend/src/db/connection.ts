@@ -1695,6 +1695,26 @@ const runMigrations = async () => {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_system_errors_source ON system_errors(source)`).catch(() => { });
     await client.query(`CREATE INDEX IF NOT EXISTS idx_system_errors_severity ON system_errors(severity)`).catch(() => { });
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS personal_todos (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        content TEXT NOT NULL,
+        is_completed BOOLEAN DEFAULT false,
+        reminder_at TIMESTAMP,
+        reminder_sent BOOLEAN DEFAULT false,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_personal_todos_user ON personal_todos(user_id, tenant_id)`).catch(() => { });
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_personal_todos_reminder
+      ON personal_todos(reminder_at)
+      WHERE reminder_sent = false AND reminder_at IS NOT NULL
+    `).catch(() => { });
+
     console.log('✅ Database migrations completed');
   } catch (error) {
     console.error('❌ Migration error:', error);

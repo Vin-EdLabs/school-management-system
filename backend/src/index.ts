@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import { initializeDatabase } from './db/connection.js';
 import { startReceiptLockJob } from './jobs/receiptLockJob.js';
 import { startTeacherSuspensionJob } from './jobs/teacherSuspensionJob.js';
+import { startTodoReminderJob } from './jobs/todoReminderJob.js';
 import authRoutes from './routes/auth.js';
 import schoolRoutes from './routes/schools.js';
 import studentRoutes from './routes/students.js';
@@ -45,6 +46,7 @@ import visitRoutes from './routes/visits.js';
 import academicCycleRoutes from './routes/academicCycle.js';
 import enrollmentsRoutes from './routes/enrollments.js';
 import birthdayRoutes from './routes/birthday.js';
+import todosRoutes from './routes/todos.js';
 import academicTermsRoutes from './routes/academicTerms.js';
 import systemRoutes from './routes/system.js';
 import superAnnouncementsRoutes from './routes/superAnnouncements.js';
@@ -184,6 +186,7 @@ app.use('/api/events', eventsRoutes);
 app.use('/api/global-chat', globalChatRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/birthdays', birthdayRoutes);
+app.use('/api/todos', todosRoutes);
 app.use('/api/messages', messagesRoutes);
 app.use('/api/student', studentLearningRoutes);
 app.use('/api/transport', transportRoutes);
@@ -196,6 +199,7 @@ initializeDatabase()
   .then(() => {
     startReceiptLockJob();
     startTeacherSuspensionJob();
+    startTodoReminderJob();
     httpServer.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📊 Database connected`);

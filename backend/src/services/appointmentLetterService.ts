@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { query } from '../db/connection.js';
 import { writeAuditLog } from './auditService.js';
+import { resolveSchoolDisplayName } from './schoolBrandingService.js';
 
 function generatePin(): string {
   return String(Math.floor(10000 + Math.random() * 90000));
@@ -137,7 +138,7 @@ export async function buildLetterContent(tenantId: number, teacherId: number) {
     [tenantId]
   );
   const school = settingsRes.rows[0] || {};
-  const schoolName = String(school.school_name || '').trim() || 'School';
+  const schoolName = await resolveSchoolDisplayName(tenantId);
 
   const versionRes = await query(
     `SELECT COALESCE(MAX(version_number), 0) + 1 AS next_version

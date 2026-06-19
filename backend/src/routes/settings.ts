@@ -23,6 +23,7 @@ import { writeAuditLog } from '../services/auditService.js';
 import { getClientIp } from '../utils/clientIp.js';
 import { resolveActorFromRequest, resolveUserDisplayName, withActor } from '../utils/auditResolve.js';
 import { ensureAllTeacherUserAccounts } from '../services/teacherUserService.js';
+import { healSchoolBrandingMismatch } from '../services/schoolBrandingService.js';
 
 const router = express.Router();
 
@@ -82,9 +83,11 @@ router.get('/', async (req: AuthRequest, res) => {
     
     if (result.rows.length === 0) {
       // Create default settings if they don't exist
+      const tenantRes = await query('SELECT name FROM tenants WHERE id = $1', [tenantId]);
+      const defaultName = tenantRes.rows[0]?.name || 'School';
       await query(
         'INSERT INTO school_settings (tenant_id, school_name) VALUES ($1, $2)',
-        [tenantId, 'School']
+        [tenantId, defaultName]
       );
       
       const newResult = await query(
@@ -93,8 +96,19 @@ router.get('/', async (req: AuthRequest, res) => {
       );
       return res.json(newResult.rows[0]);
     }
+
+    await healSchoolBrandingMismatch(tenantId);
+    const healed = await query(
+      `SELECT ss.*,
+              COALESCE(NULLIF(TRIM(t.name), ''), NULLIF(TRIM(ss.school_name), ''), 'School') AS school_name,
+              COALESCE(NULLIF(TRIM(ss.logo_url), ''), NULLIF(TRIM(t.logo_url), '')) AS logo_url
+       FROM school_settings ss
+       JOIN tenants t ON t.id = ss.tenant_id
+       WHERE ss.tenant_id = $1`,
+      [tenantId]
+    );
     
-    res.json(result.rows[0]);
+    res.json(healed.rows[0] || result.rows[0]);
   } catch (error) {
     console.error('Get settings error:', error);
     res.status(500).json({ error: 'Failed to fetch settings' });

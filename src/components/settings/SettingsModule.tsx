@@ -38,7 +38,7 @@ interface AcademicSettings {
 
 const SettingsModule = () => {
   const { user, hasAccess, changePassword } = useAuth();
-  const { school } = useSchool();
+  const { school, reloadSchool } = useSchool();
   const { refresh: refreshData } = useData();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -184,6 +184,8 @@ const SettingsModule = () => {
         title: "School Information Updated",
         description: "School details have been saved successfully",
       });
+      await reloadSchool();
+      window.dispatchEvent(new CustomEvent('school-branding-changed'));
       loadSettings(); // Re-load settings after update
     } catch (error: any) {
       toast({

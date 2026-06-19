@@ -5,6 +5,7 @@ import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 import { isGraduatedEnrollment } from '../services/studentFeeBalanceService.js';
+import { resolveSchoolDisplayName } from '../services/schoolBrandingService.js';
 
 const router = express.Router();
 
@@ -103,6 +104,7 @@ async function buildStudentProfile(tenantId: number, student: any) {
     [tenantId]
   );
   const schoolSettings = settingsRes.rows[0] || {};
+  const schoolDisplayName = await resolveSchoolDisplayName(tenantId);
   const currentTerm = schoolSettings.current_term || null;
   const currentYear = schoolSettings.current_year || null;
 
@@ -155,7 +157,7 @@ async function buildStudentProfile(tenantId: number, student: any) {
 
   return {
     school: {
-      name: schoolSettings.school_name || 'School',
+      name: schoolDisplayName,
       currentTerm,
       currentYear,
     },

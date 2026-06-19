@@ -1,5 +1,6 @@
 import { query } from '../db/connection.js';
 import { writeAuditLog } from './auditService.js';
+import { resolveSchoolDisplayName } from './schoolBrandingService.js';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
@@ -98,7 +99,7 @@ export async function buildAdmissionLetterContent(
   const settings = settingsRes.rows[0] || {};
   const apptConfig = settings.appointment_letter_config || {};
   const admConfig: AdmissionLetterConfig = settings.admission_letter_config || {};
-  const schoolName = String(settings.school_name || 'School');
+  const schoolName = await resolveSchoolDisplayName(tenantId);
 
   const admissionDate = student.date_of_admission
     ? formatDate(student.date_of_admission)

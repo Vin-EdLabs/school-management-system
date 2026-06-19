@@ -9,6 +9,7 @@ import {
   loadActiveFeeStructureLinesBatch,
 } from './feeStructureItemsService.js';
 import { listStudentCharges } from './studentChargesService.js';
+import { resolveSchoolDisplayName } from './schoolBrandingService.js';
 
 function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
@@ -712,7 +713,7 @@ export async function buildStudentFinanceStatement(
 
   return {
     header: {
-      schoolName: String(settings.school_name || 'School'),
+      schoolName: await resolveSchoolDisplayName(tenantId),
       logoUrl: settings.logo_url ? String(settings.logo_url) : null,
       address: String(settings.address || '—'),
       phone: String(settings.phone || '—'),

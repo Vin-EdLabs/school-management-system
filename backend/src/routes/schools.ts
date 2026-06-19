@@ -17,6 +17,12 @@ import {
   clearTenantData,
   writeSafetyBackup,
 } from '../services/schoolDataService.js';
+import { syncSchoolSettingsFromTenant } from '../services/schoolBrandingService.js';
+import {
+  formatTenantSlugConflictError,
+  resolveTenantSlugForCreate,
+  resolveTenantSlugForUpdate,
+} from '../services/tenantSlugService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -443,17 +449,22 @@ router.post('/', requireRole('super-admin'), async (req: AuthRequest, res) => {
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
     
-    const slugVal = slug || subdomain || name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-    
     const client = await (await import('../db/connection.js')).getClient();
     
     try {
       await client.query('BEGIN');
+
+      const slugResolved = await resolveTenantSlugForCreate(client, { name, slug, subdomain });
+      if ('error' in slugResolved) {
+        await client.query('ROLLBACK');
+        return res.status(slugResolved.status).json({ error: slugResolved.error });
+      }
+      const { slug: finalSlug, subdomain: finalSubdomain } = slugResolved;
       
       const tenantResult = await client.query(
         `INSERT INTO tenants (name, slug, subdomain, primary_color, secondary_color, subscription_status, is_active)
          VALUES ($1, $2, $3, $4, $5, 'active', true) RETURNING id`,
-        [name, slugVal, subdomain || slugVal || null, primary_color || null, secondary_color || null]
+        [name, finalSlug, finalSubdomain, primary_color || null, secondary_color || null]
       );
       
       const tenantId = tenantResult.rows[0].id;
@@ -516,14 +527,14 @@ router.post('/', requireRole('super-admin'), async (req: AuthRequest, res) => {
       res.status(201).json({
         id: tenantId,
         name,
-        slug: slugVal,
-        subdomain: subdomain || slugVal,
+        slug: finalSlug,
+        subdomain: finalSubdomain,
         message: 'School created successfully',
       });
     } catch (error: any) {
       await client.query('ROLLBACK');
       if (error.code === '23505') {
-        return res.status(409).json({ error: 'School name or subdomain already exists' });
+        return res.status(409).json({ error: formatTenantSlugConflictError(error) });
       }
       throw error;
     } finally {
@@ -555,6 +566,7 @@ router.post('/:id/logo', requireRole('super-admin'), upload.single('logo'), asyn
       `UPDATE tenants SET logo_url = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
       [base64Image, id]
     );
+    await syncSchoolSettingsFromTenant(parseInt(id, 10), { logo_url: base64Image });
     res.json({ logoUrl: base64Image });
   } catch (error) {
     console.error('Upload school logo error:', error);
@@ -566,7 +578,15 @@ router.post('/:id/logo', requireRole('super-admin'), upload.single('logo'), asyn
 router.put('/:id', requireRole('super-admin'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
+    const tenantId = parseInt(id, 10);
     const { name, slug, subdomain, logo_url, primary_color, secondary_color, subscription_status, is_active } = req.body;
+
+    const slugCheck = await resolveTenantSlugForUpdate(query, tenantId, { slug, subdomain });
+    if ('error' in slugCheck) {
+      return res.status(slugCheck.status).json({ error: slugCheck.error });
+    }
+    const nextSlug = slugCheck.slug ?? slug;
+    const nextSubdomain = slugCheck.subdomain ?? subdomain;
     
     const result = await query(
       `UPDATE tenants SET 
@@ -577,11 +597,18 @@ router.put('/:id', requireRole('super-admin'), async (req: AuthRequest, res) => 
         is_active = COALESCE($8, is_active),
         updated_at = CURRENT_TIMESTAMP
        WHERE id = $9 RETURNING *`,
-      [name, slug, subdomain, logo_url, primary_color, secondary_color, subscription_status, is_active, id]
+      [name, nextSlug, nextSubdomain, logo_url, primary_color, secondary_color, subscription_status, is_active, id]
     );
     
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'School not found' });
+    }
+
+    if (name) {
+      await syncSchoolSettingsFromTenant(parseInt(id, 10), { name });
+    }
+    if (logo_url) {
+      await syncSchoolSettingsFromTenant(parseInt(id, 10), { logo_url });
     }
     
     // Log update
@@ -595,7 +622,7 @@ router.put('/:id', requireRole('super-admin'), async (req: AuthRequest, res) => 
   } catch (error: any) {
     console.error('Update school error:', error);
     if (error.code === '23505') {
-      return res.status(409).json({ error: 'School name or subdomain already exists' });
+      return res.status(409).json({ error: formatTenantSlugConflictError(error) });
     }
     res.status(500).json({ error: 'Failed to update school' });
   }

@@ -5,6 +5,7 @@ import { setTenantContext } from '../middleware/tenant.js';
 import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 import { getIO } from '../socket.js';
 import { sendPushToStudentParents } from '../services/webPushService.js';
+import { resolveSchoolDisplayName } from '../services/schoolBrandingService.js';
 
 const router = express.Router();
 
@@ -468,12 +469,12 @@ router.get('/term-report', async (req: AuthRequest, res) => {
 
     // 10. Get school settings for term info
     const settingsRes = await query(
-      'SELECT current_term, current_year, school_name, grade_scale FROM school_settings WHERE tenant_id = $1',
+      'SELECT current_term, current_year, grade_scale FROM school_settings WHERE tenant_id = $1',
       [tenantId]
     );
     const currentTerm = settingsRes.rows[0]?.current_term || '';
     const currentYear = settingsRes.rows[0]?.current_year || '';
-    const schoolName = settingsRes.rows[0]?.school_name || '';
+    const schoolName = await resolveSchoolDisplayName(tenantId);
     const gradeScale = settingsRes.rows[0]?.grade_scale || [
       { letter: 'A', minPct: 80, maxPct: 100, description: 'Excellent' },
       { letter: 'B', minPct: 70, maxPct: 79, description: 'Good' },

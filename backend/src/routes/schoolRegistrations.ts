@@ -2,17 +2,9 @@ import express from 'express';
 import { getClient, query } from '../db/connection.js';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth.js';
 import { getIO } from '../socket.js';
+import { allocateUniqueTenantSlug } from '../services/tenantSlugService.js';
 
 const router = express.Router();
-
-const slugify = (value: string) =>
-  value
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9-]/g, '')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '') || 'school';
 
 async function ensureRegistrationSchema(client: Awaited<ReturnType<typeof getClient>>) {
   await client.query(`ALTER TABLE school_registrations ADD COLUMN IF NOT EXISTS internal_note TEXT`).catch(() => undefined);
@@ -28,16 +20,7 @@ async function ensureRegistrationSchema(client: Awaited<ReturnType<typeof getCli
 }
 
 async function uniqueTenantSlug(client: Awaited<ReturnType<typeof getClient>>, schoolName: string) {
-  const base = slugify(schoolName);
-  let candidate = base;
-  let suffix = 2;
-
-  while (true) {
-    const existing = await client.query('SELECT id FROM tenants WHERE slug = $1 OR subdomain = $1 LIMIT 1', [candidate]);
-    if (existing.rows.length === 0) return candidate;
-    candidate = `${base}-${suffix}`;
-    suffix += 1;
-  }
+  return allocateUniqueTenantSlug(client, schoolName);
 }
 
 async function uniqueAdminUsername(client: Awaited<ReturnType<typeof getClient>>, slug: string) {

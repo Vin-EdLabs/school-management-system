@@ -14,6 +14,7 @@ import { SchoolProvider } from "./contexts/SchoolContext";
 import { ActiveTermProvider } from "./contexts/ActiveTermContext";
 import { TermStatusProvider } from "./contexts/TermStatusContext";
 import Index from "./pages/Index";
+import VerifyCardPage from "./pages/VerifyCardPage";
 import NotFound from "./pages/NotFound";
 import SchoolSelector from "./pages/SchoolSelector";
 import LandingPage from "./pages/LandingPage";
@@ -301,6 +302,7 @@ const App = () => {
                     {/* --- WILDCARD SUBDOMAIN ROUTING (Clean URL bar, e.g. rosa.localhost:8080) --- */}
                     <Route path="/portal" element={<ParentPortalRoute />} />
                     <Route path="/portal/*" element={<ParentPortalRoute />} />
+                    <Route path="/verify/:entityType/:entityId" element={<VerifyCardPage />} />
                     
                     {/* Standard Shared Dashboard Routes */}
                     <Route path="/register-school" element={<RegisterSchool />} />
@@ -313,6 +315,7 @@ const App = () => {
                 ) : (
                   <Routes>
                     {/* --- APEX DOMAIN / STATIC SUBDOMAIN ROUTING --- */}
+                    <Route path="/verify/:entityType/:entityId" element={<VerifyCardPage />} />
                     <Route path="/" element={<LandingPage />} />
                     <Route path="/register-school" element={<RegisterSchool />} />
                     <Route path="/super-admin" element={<SuperAdminDashboard />} />

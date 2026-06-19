@@ -8,6 +8,7 @@ import { useTeacherNotifications } from '../../contexts/TeacherNotificationConte
 import { useSocket } from '../../contexts/SocketContext';
 import { apiService } from '../../services/api';
 import { resolveLogoUrl } from '../../services/tenantService';
+import { cn } from '@/lib/utils';
 import { Bell, Bot, User, Clock, Moon, Sun } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import PwaInstallButton from '../common/PwaInstallButton';
@@ -29,7 +30,20 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
   const { theme, toggleTheme } = useTheme();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [notifOpen, setNotifOpen] = useState(false);
-  const [adminNotifications, setAdminNotifications] = useState<Array<{ id: string; type: 'parent-desk' | 'support-chat' | 'term-budget'; title: string; body: string; unread: number; timestamp: number; alertId?: number }>>([]);
+  const [adminNotifications, setAdminNotifications] = useState<
+    Array<{
+      id: string;
+      type: 'parent-desk' | 'support-chat' | 'term-budget' | 'lost-card';
+      title: string;
+      body: string;
+      unread: number;
+      timestamp: number;
+      alertId?: number;
+      priority?: 'HIGH' | 'NORMAL';
+      reportId?: string;
+      notificationDbId?: number;
+    }>
+  >([]);
   const [adminUnreadCount, setAdminUnreadCount] = useState(0);
   const pwaLogo = resolveLogoUrl(school?.logo_url ?? null);
   const showStaffNotifications = user?.role === 'teacher' || user?.role === 'staff';
@@ -62,7 +76,42 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
   const loadAdminNotifications = useCallback(async () => {
     if (!showAdminNotifications) return;
     try {
-      const results: Array<{ id: string; count: number; title: string; body: string; type: 'parent-desk' | 'support-chat' | 'term-budget' }> = [];
+      const results: Array<{
+        id: string;
+        count: number;
+        title: string;
+        body: string;
+        type: 'parent-desk' | 'support-chat' | 'term-budget' | 'lost-card';
+        priority?: 'HIGH' | 'NORMAL';
+        reportId?: string;
+        notificationDbId?: number;
+        timestamp?: number;
+      }> = [];
+
+      const lostRes = await apiService.get<{
+        items: Array<{
+          id: number;
+          title: string;
+          message: string;
+          priority: string;
+          report_id: string;
+          created_at: string;
+        }>;
+      }>('/lost-cards/notifications/unread').catch(() => ({ items: [] }));
+      for (const n of lostRes.items || []) {
+        results.push({
+          id: `lost-card-${n.id}`,
+          type: 'lost-card',
+          count: 1,
+          title: n.title,
+          body: n.message,
+          priority: n.priority === 'HIGH' ? 'HIGH' : 'NORMAL',
+          reportId: n.report_id,
+          notificationDbId: n.id,
+          timestamp: new Date(n.created_at).getTime(),
+        });
+      }
+
       const parentRes = await apiService.get<{ count: number }>('/messages/admin/unread-count');
       const parentCount = Number(parentRes?.count ?? 0);
       if (parentCount > 0) {
@@ -96,6 +145,12 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
           body: String(alert.message || alert.category_name || 'Budget alert'),
         });
       }
+      results.sort((a, b) => {
+        const pa = a.priority === 'HIGH' ? 0 : 1;
+        const pb = b.priority === 'HIGH' ? 0 : 1;
+        if (pa !== pb) return pa - pb;
+        return (b.timestamp || 0) - (a.timestamp || 0);
+      });
       setAdminNotifications(
         results.map((item) => ({
           id: item.id,
@@ -103,8 +158,11 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
           title: item.title,
           body: item.body,
           unread: item.count,
-          timestamp: Date.now(),
+          timestamp: item.timestamp || Date.now(),
           alertId: item.type === 'term-budget' ? Number(String(item.id).replace('budget-alert-', '')) : undefined,
+          priority: item.priority,
+          reportId: item.reportId,
+          notificationDbId: item.notificationDbId,
         }))
       );
       setAdminUnreadCount(results.reduce((sum, item) => sum + item.count, 0));
@@ -115,7 +173,11 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
     }
   }, [showAdminNotifications]);
 
-  const markAdminNotificationRead = useCallback(async (notificationType: 'parent-desk' | 'support-chat' | 'term-budget', alertId?: number) => {
+  const markAdminNotificationRead = useCallback(async (
+    notificationType: 'parent-desk' | 'support-chat' | 'term-budget' | 'lost-card',
+    alertId?: number,
+    notificationDbId?: number
+  ) => {
     try {
       if (notificationType === 'parent-desk') {
         await apiService.post('/messages/admin/mark-read-by-school', {});
@@ -125,6 +187,9 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
       }
       if (notificationType === 'term-budget' && alertId) {
         await markBudgetAlertRead(alertId);
+      }
+      if (notificationType === 'lost-card' && notificationDbId) {
+        await apiService.post(`/lost-cards/notifications/${notificationDbId}/read`, {});
       }
       await loadAdminNotifications();
     } catch (error) {
@@ -141,21 +206,26 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
     if (!socket || !showAdminNotifications) return;
     const onTenant = (evt: { entity?: string }) => {
       const e = String(evt?.entity || '');
-      if (e === 'parent-desk' || e === 'support-chat' || e === 'term-budget') {
+      if (e === 'parent-desk' || e === 'support-chat' || e === 'term-budget' || e === 'lost-card') {
         void loadAdminNotifications();
       }
     };
     const onNew = (event: { type?: string }) => {
       const type = String(event?.type || '');
-      if (type === 'parent-desk' || type === 'support-chat') {
+      if (type === 'parent-desk' || type === 'support-chat' || type === 'lost-card') {
         void loadAdminNotifications();
       }
     };
+    const onLostCard = () => {
+      void loadAdminNotifications();
+    };
     socket.on('tenant-data-changed', onTenant);
     socket.on('new-parent-message', onNew);
+    socket.on('lost-card-report', onLostCard);
     return () => {
       socket.off('tenant-data-changed', onTenant);
       socket.off('new-parent-message', onNew);
+      socket.off('lost-card-report', onLostCard);
     };
   }, [socket, showAdminNotifications, loadAdminNotifications]);
 
@@ -296,15 +366,42 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
                           key={notification.id}
                           type="button"
                           onClick={async () => {
-                            await markAdminNotificationRead(notification.type, notification.alertId);
+                            await markAdminNotificationRead(
+                              notification.type,
+                              notification.alertId,
+                              notification.notificationDbId
+                            );
                             setNotifOpen(false);
+                            if (notification.type === 'lost-card') {
+                              if (notification.reportId) {
+                                try {
+                                  sessionStorage.setItem('lost-card-report-id', notification.reportId);
+                                } catch {
+                                  /* ignore */
+                                }
+                              }
+                              setActiveModule('lost-cards');
+                              return;
+                            }
                             setActiveModule(notification.type === 'term-budget' ? 'term-budget' : notification.type);
                           }}
-                          className="w-full rounded-lg border border-border bg-card p-2.5 text-left transition-colors hover:border-emerald-300 hover:bg-emerald-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-500 dark:hover:bg-indigo-950/70"
+                          className={cn(
+                            'w-full rounded-lg border p-2.5 text-left transition-colors',
+                            notification.priority === 'HIGH'
+                              ? 'border-amber-300 bg-amber-50 hover:border-amber-400 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/40 dark:hover:bg-amber-950/60'
+                              : 'border-border bg-card hover:border-emerald-300 hover:bg-emerald-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-500 dark:hover:bg-indigo-950/70'
+                          )}
                         >
-                          <p className="text-sm font-semibold text-foreground">{notification.title}</p>
-                          <p className="mt-0.5 line-clamp-3 text-xs text-muted-foreground">{notification.body}</p>
-                          <p className="mt-1 text-[10px] text-muted-foreground">{new Date(notification.timestamp).toLocaleString()}</p>
+                          <div className="flex items-start gap-2">
+                            {notification.priority === 'HIGH' && (
+                              <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden />
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-semibold text-foreground">{notification.title}</p>
+                              <p className="mt-0.5 line-clamp-3 text-xs text-muted-foreground">{notification.body}</p>
+                              <p className="mt-1 text-[10px] text-muted-foreground">{new Date(notification.timestamp).toLocaleString()}</p>
+                            </div>
+                          </div>
                         </button>
                       ))}
                     </div>

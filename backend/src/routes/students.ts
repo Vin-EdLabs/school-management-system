@@ -326,7 +326,6 @@ async function nextStudentIdentifiers(tenantId: number, bump = 0): Promise<{ stu
   const year = new Date().getFullYear();
   const yearShort = year.toString().slice(-2);
 
-  // Use max existing sequence for this year — COUNT(*) + 1 reuses IDs after deletes and causes 409.
   const seqRes = await query(
     `SELECT COALESCE(MAX(CAST(SUBSTRING(student_id FROM 5) AS INTEGER)), 0) AS mx
      FROM students

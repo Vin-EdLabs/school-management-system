@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { getClient, query } from '../db/connection.js';
-import { authenticate, requireRole, AuthRequest } from '../middleware/auth.js';
+import { authenticate, requireRole, AuthRequest, requirePrimaryAdminOrSuperAdmin } from '../middleware/auth.js';
 import { getIO } from '../socket.js';
 import { ensureSetupProgressRow, getSetupProgress } from '../services/setupProgressService.js';
 import { writeAuditLog } from '../services/auditService.js';
@@ -18,6 +18,13 @@ import {
   writeSafetyBackup,
 } from '../services/schoolDataService.js';
 import { syncSchoolSettingsFromTenant } from '../services/schoolBrandingService.js';
+import {
+  getIdCardTemplate,
+  updateIdCardTemplate,
+  getSchoolCardContext,
+  mapTemplateToApi,
+  type CardTypeKey,
+} from '../services/idCardService.js';
 import {
   formatTenantSlugConflictError,
   resolveTenantSlugForCreate,
@@ -773,6 +780,56 @@ router.post('/:id/users', requireRole('super-admin'), async (req: AuthRequest, r
       return res.status(409).json({ error: 'Username already exists' });
     }
     res.status(500).json({ error: 'Failed to create user' });
+  }
+});
+
+function resolveTemplateTenantId(req: AuthRequest, schoolId: number): number | null {
+  const role = String(req.user?.role || '').toLowerCase();
+  if (role === 'super-admin') return schoolId;
+  if (req.user?.tenantId === schoolId) return schoolId;
+  return null;
+}
+
+router.get('/:id/id-card-template', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+  try {
+    const schoolId = parseInt(req.params.id, 10);
+    const tenantId = resolveTemplateTenantId(req, schoolId);
+    if (!tenantId) return res.status(403).json({ error: 'Not allowed' });
+    const ctx = await getSchoolCardContext(tenantId);
+    const template = await getIdCardTemplate(tenantId);
+    const schoolName = String(ctx?.school_name || ctx?.tenant_name || 'School');
+    res.json({ schoolName, ...mapTemplateToApi(template) });
+  } catch (error) {
+    console.error('Get school ID card template error:', error);
+    res.status(500).json({ error: 'Failed to load template' });
+  }
+});
+
+router.patch('/:id/id-card-template', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, res) => {
+  try {
+    const schoolId = parseInt(req.params.id, 10);
+    const tenantId = resolveTemplateTenantId(req, schoolId);
+    if (!tenantId) return res.status(403).json({ error: 'Not allowed' });
+    const instructions = req.body?.instructions ?? req.body?.studentInstructions ?? req.body?.staffInstructions;
+    const updated = await updateIdCardTemplate(tenantId, 'SCHOOL', {
+      primary_color: req.body?.primaryColor,
+      accent_color: req.body?.accentColor,
+      footer_bg: req.body?.footerBg,
+      powered_by_color: req.body?.poweredByColor,
+      school_slogan: req.body?.schoolSlogan,
+      school_phone: req.body?.schoolPhone,
+      school_website: req.body?.schoolWebsite,
+      school_code: req.body?.schoolCode,
+      school_email: req.body?.schoolEmail,
+      back_header_text: req.body?.backHeaderText,
+      ...(Array.isArray(instructions) ? { instructions } : {}),
+    });
+    const ctx = await getSchoolCardContext(tenantId);
+    const schoolName = String(ctx?.school_name || ctx?.tenant_name || 'School');
+    res.json({ schoolName, ...mapTemplateToApi(updated) });
+  } catch (error) {
+    console.error('Update school ID card template error:', error);
+    res.status(500).json({ error: 'Failed to update template' });
   }
 });
 

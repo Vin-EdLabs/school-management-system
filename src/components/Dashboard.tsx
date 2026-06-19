@@ -24,6 +24,9 @@ import CashBankModule from './finance/CashBankModule';
 import PaymentAccountsModule from './configurations/PaymentAccountsModule';
 import AppointmentLetterSettings from './configurations/AppointmentLetterSettings';
 import AdmissionLetterSettings from './configurations/AdmissionLetterSettings';
+import IdCardSettings from './configurations/IdCardSettings';
+import IdCardsModule from './id-cards/IdCardsModule';
+import LostCardsModule from './lost-cards/LostCardsModule';
 import ManualAdjustmentsReport from './finance/ManualAdjustmentsReport';
 import TermBudgetModule from './finance/TermBudgetModule';
 import FinanceStatementModule from './finance/FinanceStatementModule';
@@ -69,6 +72,13 @@ const Dashboard = () => {
   const [activeModule, setActiveModule] = useState(() => {
     const path = window.location.pathname;
     if (path.includes('/finance/transactions')) return 'transactions';
+    if (path.includes('/lost-cards/')) {
+      try {
+        const id = path.split('/lost-cards/')[1]?.split('/')[0];
+        if (id) sessionStorage.setItem('lost-card-report-id', id);
+      } catch { /* ignore */ }
+      return 'lost-cards';
+    }
     if (path.endsWith('/transport')) return 'transport-overview';
     if (path.includes('/transport/map')) return 'transport-map';
     if (path.includes('/transport/routes')) return 'transport-routes';
@@ -86,6 +96,24 @@ const Dashboard = () => {
       return 'dashboard'; // super-admin
     }
   });
+
+  const [lostCardReportId, setLostCardReportId] = useState<string | null>(() => {
+    try {
+      return sessionStorage.getItem('lost-card-report-id');
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    if (activeModule !== 'lost-cards') return;
+    try {
+      const id = sessionStorage.getItem('lost-card-report-id');
+      if (id) setLostCardReportId(id);
+    } catch {
+      /* ignore */
+    }
+  }, [activeModule]);
 
   const domains = useMemo(() => domainsForModule(activeModule), [activeModule]);
   useEnsureData(domains);
@@ -196,6 +224,24 @@ const Dashboard = () => {
         return <AppointmentLetterSettings />;
       case 'admission-letter-settings':
         return <AdmissionLetterSettings />;
+      case 'id-card-settings':
+        return <IdCardSettings onNavigate={setActiveModule} />;
+      case 'id-cards':
+        return <IdCardsModule onNavigate={setActiveModule} />;
+      case 'lost-cards':
+        return (
+          <LostCardsModule
+            initialReportId={lostCardReportId}
+            onClearReportId={() => {
+              setLostCardReportId(null);
+              try {
+                sessionStorage.removeItem('lost-card-report-id');
+              } catch {
+                /* ignore */
+              }
+            }}
+          />
+        );
       case 'audit':
         return <AuditModule />;
       case 'records':

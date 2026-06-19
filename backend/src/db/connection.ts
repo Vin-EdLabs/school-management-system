@@ -1715,6 +1715,90 @@ const runMigrations = async () => {
       WHERE reminder_sent = false AND reminder_at IS NOT NULL
     `).catch(() => { });
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS id_card_templates (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        card_type VARCHAR(20) NOT NULL,
+        primary_color VARCHAR(20) DEFAULT '#1a3a6b',
+        accent_color VARCHAR(20) DEFAULT '#c9a227',
+        footer_bg VARCHAR(20) DEFAULT '#1a3a6b',
+        powered_by_color VARCHAR(20) DEFAULT '#ffffff',
+        school_slogan VARCHAR(120) DEFAULT 'Excellence • Discipline • Character',
+        school_phone VARCHAR(80) DEFAULT '',
+        school_website VARCHAR(200) DEFAULT '',
+        school_code VARCHAR(20) DEFAULT '',
+        school_email VARCHAR(255) DEFAULT '',
+        back_header_text VARCHAR(300) DEFAULT 'This card is the property of {schoolName}.',
+        instructions JSONB DEFAULT '[]'::jsonb,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(tenant_id, card_type)
+      )
+    `);
+    await client.query(`ALTER TABLE id_card_templates ADD COLUMN IF NOT EXISTS school_slogan VARCHAR(120) DEFAULT 'Excellence • Discipline • Character'`).catch(() => { });
+    await client.query(`ALTER TABLE id_card_templates ADD COLUMN IF NOT EXISTS school_phone VARCHAR(80) DEFAULT ''`).catch(() => { });
+    await client.query(`ALTER TABLE id_card_templates ADD COLUMN IF NOT EXISTS school_website VARCHAR(200) DEFAULT ''`).catch(() => { });
+    await client.query(`ALTER TABLE id_card_templates ADD COLUMN IF NOT EXISTS school_code VARCHAR(20) DEFAULT ''`).catch(() => { });
+    await client.query(`ALTER TABLE id_card_templates ADD COLUMN IF NOT EXISTS school_email VARCHAR(255) DEFAULT ''`).catch(() => { });
+    await client.query(`ALTER TABLE id_card_templates ADD COLUMN IF NOT EXISTS back_header_text VARCHAR(300) DEFAULT 'This card is the property of {schoolName}.'`).catch(() => { });
+    await client.query(`ALTER TABLE id_card_templates ADD COLUMN IF NOT EXISTS instructions JSONB DEFAULT '[]'::jsonb`).catch(() => { });
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS generated_id_cards (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        entity_type VARCHAR(20) NOT NULL,
+        entity_id INTEGER NOT NULL,
+        card_data JSONB NOT NULL,
+        generated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        status VARCHAR(20) DEFAULT 'ACTIVE'
+      )
+    `).catch(() => { });
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_generated_id_cards_tenant ON generated_id_cards(tenant_id, generated_at DESC)`).catch(() => { });
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS lost_card_reports (
+        id UUID PRIMARY KEY,
+        reference_code VARCHAR(20) UNIQUE NOT NULL,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        entity_type VARCHAR(20) NOT NULL,
+        entity_id INTEGER NOT NULL,
+        scanned_id VARCHAR(100) NOT NULL,
+        bearer_name VARCHAR(255) NOT NULL,
+        card_type_label VARCHAR(50) DEFAULT 'Student Card',
+        reported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        ip_address VARCHAR(64),
+        initial_notified_at TIMESTAMP,
+        found_location TEXT,
+        collection_point TEXT,
+        reporter_phone VARCHAR(50),
+        details_submitted_at TIMESTAMP,
+        detail_skipped BOOLEAN DEFAULT FALSE,
+        status VARCHAR(20) DEFAULT 'PENDING',
+        resolved_at TIMESTAMP,
+        resolved_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        resolution_note TEXT
+      )
+    `).catch(() => { });
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_lost_card_reports_tenant ON lost_card_reports(tenant_id, reported_at DESC)`).catch(() => { });
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS tenant_admin_notifications (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        notification_type VARCHAR(50) NOT NULL DEFAULT 'lost-card',
+        title VARCHAR(255) NOT NULL,
+        message TEXT NOT NULL,
+        link VARCHAR(500),
+        priority VARCHAR(20) NOT NULL DEFAULT 'NORMAL',
+        report_id UUID REFERENCES lost_card_reports(id) ON DELETE CASCADE,
+        read_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `).catch(() => { });
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_tenant_admin_notifications ON tenant_admin_notifications(tenant_id, read_at, created_at DESC)`).catch(() => { });
+
     console.log('✅ Database migrations completed');
   } catch (error) {
     console.error('❌ Migration error:', error);

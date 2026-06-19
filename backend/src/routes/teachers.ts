@@ -453,18 +453,18 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
       'SELECT staff_id FROM teachers WHERE tenant_id = $1 AND staff_id LIKE $2',
       [tenantId, 'TCH%']
     );
-    
+
     let staffId = 'TCH001';
     if (existingStaffIds.rows.length > 0) {
       const maxId = Math.max(
-        ...existingStaffIds.rows.map(r => {
+        ...existingStaffIds.rows.map((r) => {
           const num = parseInt(r.staff_id.slice(3)) || 0;
           return num;
         })
       );
       staffId = `TCH${(maxId + 1).toString().padStart(3, '0')}`;
     }
-    
+
     const result = await query(
       `INSERT INTO teachers (
         tenant_id, full_name, gender, date_of_birth, staff_id, phone_number,

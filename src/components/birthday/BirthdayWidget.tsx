@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Cake, Gift, ChevronRight, Sparkles } from 'lucide-react';
+import { Cake, Gift, Sparkles } from 'lucide-react';
 import { apiService } from '../../services/api';
 import { useSchool } from '../../contexts/SchoolContext';
 import { toast } from 'sonner';
@@ -23,10 +23,24 @@ interface BirthdayGroup {
   people: BirthdayPerson[];
 }
 
+interface MonthSection {
+  label: string;
+  year: number;
+  month: number;
+  groups: BirthdayGroup[];
+}
+
+function formatMonthDay(dateStr: string): string {
+  return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+  });
+}
+
 const BirthdayWidget = () => {
   const { schoolId } = useSchool();
   const [todayBirthdays, setTodayBirthdays] = useState<BirthdayPerson[]>([]);
-  const [upcomingBirthdays, setUpcomingBirthdays] = useState<BirthdayGroup[]>([]);
+  const [monthSection, setMonthSection] = useState<MonthSection | null>(null);
   const [loading, setLoading] = useState(true);
   const notifiedRef = useRef(false);
 
@@ -36,13 +50,13 @@ const BirthdayWidget = () => {
       setLoading(true);
       try {
         apiService.setTenantContext(schoolId);
-        const [todayRes, upcomingRes] = await Promise.all([
+        const [todayRes, sectionsRes] = await Promise.all([
           apiService.get<BirthdayPerson[]>('/birthdays/today').catch(() => [] as BirthdayPerson[]),
-          apiService.get<BirthdayGroup[]>('/birthdays/upcoming?days=30').catch(() => [] as BirthdayGroup[]),
+          apiService.get<MonthSection>('/birthdays/upcoming?scope=months').catch(() => null),
         ]);
         const today = Array.isArray(todayRes) ? todayRes : [];
         setTodayBirthdays(today);
-        setUpcomingBirthdays(Array.isArray(upcomingRes) ? upcomingRes : []);
+        setMonthSection(sectionsRes);
 
         if (today.length > 0 && !notifiedRef.current) {
           notifiedRef.current = true;
@@ -54,7 +68,7 @@ const BirthdayWidget = () => {
         }
       } catch {
         setTodayBirthdays([]);
-        setUpcomingBirthdays([]);
+        setMonthSection(null);
       } finally {
         setLoading(false);
       }
@@ -62,8 +76,9 @@ const BirthdayWidget = () => {
     fetchBirthdays();
   }, [schoolId]);
 
+  const monthGroups = monthSection?.groups ?? [];
   const totalToday = todayBirthdays.length;
-  const totalUpcoming = upcomingBirthdays.reduce((sum, g) => sum + g.people.length, 0);
+  const totalUpcoming = monthGroups.reduce((sum, g) => sum + g.people.length, 0);
   const hasBirthdays = totalToday > 0 || totalUpcoming > 0;
 
   if (loading) {
@@ -81,7 +96,7 @@ const BirthdayWidget = () => {
       <Card>
         <CardContent className="p-6 text-center">
           <Cake className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-          <p className="text-sm text-gray-500">No upcoming birthdays</p>
+          <p className="text-sm text-gray-500">No birthdays this month</p>
         </CardContent>
       </Card>
     );
@@ -94,9 +109,7 @@ const BirthdayWidget = () => {
           <Cake className="w-5 h-5 text-amber-500" />
           Birthdays
           {totalToday > 0 && (
-            <Badge className="ml-auto bg-amber-500 hover:bg-amber-600 text-white">
-              {totalToday} today
-            </Badge>
+            <Badge className="ml-auto bg-amber-500 hover:bg-amber-600 text-white">{totalToday} today</Badge>
           )}
         </CardTitle>
       </CardHeader>
@@ -112,9 +125,7 @@ const BirthdayWidget = () => {
             <div className="min-w-0 flex-1">
               <p className="font-semibold text-sm text-gray-900 truncate">
                 {person.fullName}
-                <span className="font-normal text-gray-500 ml-1">
-                  turns {person.age}!
-                </span>
+                <span className="font-normal text-gray-500 ml-1">turns {person.age}!</span>
               </p>
               <p className="text-xs text-gray-500">
                 {person.type === 'student' ? 'Student' : 'Teacher'}
@@ -125,23 +136,24 @@ const BirthdayWidget = () => {
           </div>
         ))}
 
-        {upcomingBirthdays.length > 0 && (
+        {monthGroups.length > 0 && (
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-              Upcoming ({totalUpcoming})
+              {monthSection?.label ?? 'This month'}
             </p>
-            {upcomingBirthdays.slice(0, 5).map((group) => (
+            {monthGroups.map((group) => (
               <div key={group.date} className="mb-2">
-                <p className="text-xs text-gray-400 mb-1">{group.dayLabel} — {new Date(group.date + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</p>
+                <p className="text-xs text-gray-400 mb-1">{formatMonthDay(group.date)}</p>
                 <div className="space-y-1">
                   {group.people.map((person) => (
-                    <div key={`upcoming-${person.type}-${person.id}`} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/40">
+                    <div
+                      key={`upcoming-${person.type}-${person.id}`}
+                      className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/40"
+                    >
                       <div className="w-6 h-6 rounded-full bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center text-amber-600 text-xs font-bold shrink-0">
                         {person.fullName.charAt(0)}
                       </div>
-                      <span className="text-sm text-gray-700 truncate flex-1">
-                        {person.fullName}
-                      </span>
+                      <span className="text-sm text-gray-700 truncate flex-1">{person.fullName}</span>
                       <span className="text-xs text-gray-400 shrink-0">
                         {person.type === 'student' ? 'Student' : 'Teacher'}
                       </span>
@@ -150,11 +162,6 @@ const BirthdayWidget = () => {
                 </div>
               </div>
             ))}
-            {upcomingBirthdays.length > 5 && (
-              <p className="text-xs text-center text-amber-600 mt-1">
-                +{upcomingBirthdays.length - 5} more days with birthdays
-              </p>
-            )}
           </div>
         )}
       </CardContent>

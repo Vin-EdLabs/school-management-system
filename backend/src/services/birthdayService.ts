@@ -30,6 +30,17 @@ function birthdayAge(birthDate: string): number {
   return age;
 }
 
+function ageOnBirthday(birthDate: string, birthdayYear: number): number {
+  const bd = new Date(birthDate);
+  if (isNaN(bd.getTime())) return birthdayAge(birthDate);
+  return birthdayYear - bd.getFullYear();
+}
+
+function monthLabel(year: number, month: number): string {
+  const d = new Date(year, month - 1, 1);
+  return d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+}
+
 function monthDaySQL(col: string): { month: string; day: string } {
   return {
     month: `EXTRACT(MONTH FROM ${col}::date)`,
@@ -97,6 +108,111 @@ export async function getBirthdaysToday(tenantId: number): Promise<BirthdayPerso
   }
 
   return results;
+}
+
+export async function getBirthdaysForMonth(
+  tenantId: number,
+  year: number,
+  month: number,
+  options?: { fromDay?: number }
+): Promise<BirthdayGroup[]> {
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const fromDay = options?.fromDay ?? 1;
+
+  const studentsRes = await query(
+    `SELECT s.id, s.first_name, s.last_name, s.date_of_birth,
+            s.class_assigned_id, s.passport_photo_url,
+            EXTRACT(DAY FROM s.date_of_birth::date)::int AS birth_day,
+            c.class_name
+     FROM students s
+     LEFT JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
+     WHERE s.tenant_id = $1
+       AND s.date_of_birth IS NOT NULL
+       AND EXTRACT(MONTH FROM s.date_of_birth::date) = $2
+       AND EXTRACT(DAY FROM s.date_of_birth::date) >= $3
+       AND (s.enrollment_status IS NULL OR s.enrollment_status = 'active')`,
+    [tenantId, month, fromDay]
+  );
+
+  const teachersRes = await query(
+    `SELECT t.id, t.full_name, t.date_of_birth, t.passport_photo_url,
+            EXTRACT(DAY FROM t.date_of_birth::date)::int AS birth_day,
+            c.class_name
+     FROM teachers t
+     LEFT JOIN classes c ON c.id = t.class_assigned_id AND c.tenant_id = t.tenant_id
+     WHERE t.tenant_id = $1
+       AND t.date_of_birth IS NOT NULL
+       AND EXTRACT(MONTH FROM t.date_of_birth::date) = $2
+       AND EXTRACT(DAY FROM t.date_of_birth::date) >= $3
+       AND (t.status IS NULL OR t.status = 'active')`,
+    [tenantId, month, fromDay]
+  );
+
+  const people: Array<BirthdayPerson & { day: number }> = [];
+
+  for (const row of studentsRes.rows) {
+    const day = Number(row.birth_day);
+    people.push({
+      id: row.id,
+      fullName: `${row.first_name} ${row.last_name}`,
+      type: 'student',
+      dateOfBirth: row.date_of_birth,
+      age: ageOnBirthday(row.date_of_birth, year),
+      classId: row.class_assigned_id,
+      className: row.class_name || null,
+      photoUrl: row.passport_photo_url || null,
+      day,
+    });
+  }
+
+  for (const row of teachersRes.rows) {
+    const day = Number(row.birth_day);
+    people.push({
+      id: row.id,
+      fullName: row.full_name,
+      type: 'teacher',
+      dateOfBirth: row.date_of_birth,
+      age: ageOnBirthday(row.date_of_birth, year),
+      className: row.class_name || null,
+      photoUrl: row.passport_photo_url || null,
+      day,
+    });
+  }
+
+  people.sort((a, b) => a.day - b.day);
+
+  const groups: Record<string, BirthdayPerson[]> = {};
+  for (const item of people) {
+    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(item.day).padStart(2, '0')}`;
+    if (!groups[dateStr]) groups[dateStr] = [];
+    const { day, ...person } = item;
+    groups[dateStr].push(person);
+  }
+
+  return Object.entries(groups).map(([date, groupPeople]) => {
+    const d = new Date(date + 'T12:00:00');
+    return { date, dayLabel: dayNames[d.getDay()], people: groupPeople };
+  });
+}
+
+export async function getBirthdaysByMonthSections(tenantId: number): Promise<{
+  label: string;
+  year: number;
+  month: number;
+  groups: BirthdayGroup[];
+}> {
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth() + 1;
+
+  const groups = await getBirthdaysForMonth(tenantId, currentYear, currentMonth, { fromDay: 1 });
+
+  return {
+    label: monthLabel(currentYear, currentMonth),
+    year: currentYear,
+    month: currentMonth,
+    groups,
+  };
 }
 
 export async function getUpcomingBirthdays(

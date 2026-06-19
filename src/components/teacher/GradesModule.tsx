@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter, detailDialogContentClass, detailDialogHeaderClass, detailDialogBodyClass, detailDialogFooterClass } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
@@ -1846,15 +1846,15 @@ const GradesModule = () => {
 
       {/* ── Add Assessment Dialog ── */}
       <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-        <DialogContent className="max-w-md bg-white text-slate-900 border-slate-200 dark:bg-slate-950 dark:text-slate-100 dark:border-slate-700">
-          <DialogHeader>
-            <DialogTitle className="text-slate-900 dark:text-white">Add Assessment</DialogTitle>
+        <DialogContent className={`${detailDialogContentClass} sm:max-w-md`}>
+          <DialogHeader className={detailDialogHeaderClass}>
+            <DialogTitle>Add Assessment</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 pt-2 text-slate-900 dark:text-slate-100">
+          <DialogBody className={`${detailDialogBodyClass} space-y-4`}>
             <div className="space-y-1.5">
-              <Label className="text-slate-700 dark:text-slate-200">Subject</Label>
+              <Label>Subject</Label>
               <Select value={newAssignment.subject} onValueChange={v => setNewAssignment(p => ({ ...p, subject: v }))}>
-                <SelectTrigger className="bg-white text-slate-900 border-slate-300 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-600">
+                <SelectTrigger>
                   <SelectValue placeholder="Choose subject…" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1873,26 +1873,24 @@ const GradesModule = () => {
                   value={newAssignment.subjectCustom}
                   onChange={e => setNewAssignment(p => ({ ...p, subjectCustom: e.target.value }))}
                   autoFocus
-                  className="bg-white text-slate-900 border-slate-300 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-600"
                 />
               )}
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-slate-700 dark:text-slate-200">Assessment Name</Label>
+              <Label>Assessment Name</Label>
               <Input
                 placeholder="e.g. Mid-Term Test, End of Term Exam…"
                 value={newAssignment.name}
                 onChange={e => setNewAssignment(p => ({ ...p, name: e.target.value }))}
-                className="bg-white text-slate-900 border-slate-300 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-600"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-slate-700 dark:text-slate-200">Type</Label>
+                <Label>Type</Label>
                 <Select value={newAssignment.assignmentType} onValueChange={v => setNewAssignment(p => ({ ...p, assignmentType: v }))}>
-                  <SelectTrigger className="bg-white text-slate-900 border-slate-300 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-600">
+                  <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1901,26 +1899,24 @@ const GradesModule = () => {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-slate-700 dark:text-slate-200">Max Marks</Label>
+                <Label>Max Marks</Label>
                 <Input
                   type="number" min={1} step={0.5}
                   value={newAssignment.maxScore}
                   onChange={e => setNewAssignment(p => ({ ...p, maxScore: e.target.value }))}
                   placeholder="e.g. 20, 50, 100"
-                  className="bg-white text-slate-900 border-slate-300 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-600"
                 />
               </div>
             </div>
-
-            <Button
-              type="button"
-              variant="primaryAction"
-              onClick={handleAddAssignment}
-              className="w-full h-11 font-semibold"
-            >
+          </DialogBody>
+          <DialogFooter className={detailDialogFooterClass}>
+            <Button type="button" variant="outline" onClick={() => setIsAddOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" variant="primaryAction" onClick={handleAddAssignment}>
               Add Assessment
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

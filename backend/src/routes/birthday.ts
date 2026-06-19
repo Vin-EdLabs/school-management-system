@@ -5,6 +5,7 @@ import { setTenantContext } from '../middleware/tenant.js';
 import {
   getBirthdaysToday,
   getUpcomingBirthdays,
+  getBirthdaysByMonthSections,
   getClassBirthdaysToday,
   getClassTeacherIds,
   sendBirthdayNotifications,
@@ -36,6 +37,10 @@ router.get('/today', async (req: AuthRequest, res: any) => {
 router.get('/upcoming', async (req: AuthRequest, res: any) => {
   try {
     const tenantId = resolveTenantId(req);
+    if (req.query.scope === 'months') {
+      const sections = await getBirthdaysByMonthSections(tenantId);
+      return res.json(sections);
+    }
     const days = parseInt(req.query.days as string) || 30;
     const upcoming = await getUpcomingBirthdays(tenantId, days);
     res.json(upcoming);

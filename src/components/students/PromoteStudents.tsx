@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
-import { TrendingUp, Users, User, AlertTriangle, GraduationCap } from 'lucide-react';
+import { TrendingUp, Users, User, AlertTriangle, GraduationCap, ListChecks } from 'lucide-react';
 import { isJhs3Class } from '../../utils/classLevelUtils';
 import { 
   calculateStudentFees, 
@@ -16,6 +16,7 @@ import {
   processArrearsForTermChange 
 } from '../../utils/feeCalculations';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
+import BulkPromoteSection from './BulkPromoteSection';
 
 type PromoteStudentsProps = {
   initialStudentId?: string | null;
@@ -28,7 +29,7 @@ const PromoteStudents: React.FC<PromoteStudentsProps> = ({
 }) => {
   const { students, classes, promoteStudent, promoteClass, graduateClassToAlumni, feeStructures, payments } = useData();
   const { currentTerm, currentYear } = useActiveTerm();
-  const [promotionType, setPromotionType] = useState<'individual' | 'class'>('individual');
+  const [promotionType, setPromotionType] = useState<'individual' | 'class' | 'bulk'>('individual');
   const [selectedStudent, setSelectedStudent] = useState('');
   const [selectedCurrentClass, setSelectedCurrentClass] = useState('');
   const [selectedNewClass, setSelectedNewClass] = useState('');
@@ -508,9 +509,23 @@ const PromoteStudents: React.FC<PromoteStudentsProps> = ({
               <Users className="h-4 w-4" />
               Whole class
             </Button>
+            <Button
+              variant={promotionType === 'bulk' ? 'default' : 'outline'}
+              onClick={() => setPromotionType('bulk')}
+              className={`flex h-11 items-center gap-2 rounded-xl px-6 text-sm font-medium transition-all ${
+                promotionType === 'bulk'
+                  ? 'bg-slate-900 text-white shadow-lg dark:bg-white dark:text-slate-900'
+                  : 'border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-400'
+              }`}
+            >
+              <ListChecks className="h-4 w-4" />
+              Select students
+            </Button>
           </div>
 
-          {promotionType === 'individual' ? (
+          {promotionType === 'bulk' ? (
+            <BulkPromoteSection />
+          ) : promotionType === 'individual' ? (
             <div className="space-y-8 animate-in slide-in-from-left-4 duration-500">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="space-y-2.5">

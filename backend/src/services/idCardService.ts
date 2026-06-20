@@ -280,5 +280,29 @@ export function mergeCardDataWithTemplate(
     department: entityFields.department,
     className: entityFields.className,
   });
+
+  const overrides = entityFields.savedOverrides as Record<string, unknown> | undefined;
+  if (overrides && typeof overrides === 'object') {
+    const keys = [
+      'motto',
+      'schoolCode',
+      'academicYear',
+      'position',
+      'department',
+      'propertyHeader',
+      'instructions',
+      'scanLabel',
+      'phone',
+      'website',
+      'email',
+    ] as const;
+    for (const key of keys) {
+      const val = overrides[key];
+      if (val !== undefined && val !== null && val !== '') {
+        fresh[key] = val;
+      }
+    }
+  }
+
   return fresh;
 }

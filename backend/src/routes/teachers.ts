@@ -546,6 +546,19 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
       /* noop */
     }
 
+    try {
+      const { ensureGeneratedIdCard } = await import('../services/idCardAutoService.js');
+      await ensureGeneratedIdCard({
+        tenantId,
+        entityType: 'STAFF',
+        entityId: Number(created.id),
+        generatedAt: teacherData.date_of_appointment || created.created_at,
+        generatedBy: null,
+      });
+    } catch (cardErr) {
+      console.error('[create-teacher] Auto ID card failed:', cardErr);
+    }
+
     res.status(201).json({
       id: created.id,
       staff_id: staffId,

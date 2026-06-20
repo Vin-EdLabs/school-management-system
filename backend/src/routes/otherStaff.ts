@@ -304,6 +304,18 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
       userAgent: req.get('user-agent') ?? null,
     });
     emitChanged(tenantId, 'created');
+    try {
+      const { ensureGeneratedIdCard } = await import('../services/idCardAutoService.js');
+      await ensureGeneratedIdCard({
+        tenantId,
+        entityType: 'STAFF',
+        entityId: Number(row.id),
+        generatedAt: row.employment_date || row.created_at,
+        generatedBy: null,
+      });
+    } catch (cardErr) {
+      console.error('[create-other-staff] Auto ID card failed:', cardErr);
+    }
     res.status(201).json(row);
   } catch (error: unknown) {
     console.error('Create other staff error:', error);

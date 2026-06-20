@@ -436,6 +436,21 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
         });
         emitTenantDataChanged(tenantId, 'student', 'created');
 
+        if (enrollmentStatus === 'active') {
+          try {
+            const { ensureGeneratedIdCard } = await import('../services/idCardAutoService.js');
+            await ensureGeneratedIdCard({
+              tenantId,
+              entityType: 'STUDENT',
+              entityId: Number(result.rows[0].id),
+              generatedAt: result.rows[0].date_of_admission || result.rows[0].created_at,
+              generatedBy: null,
+            });
+          } catch (cardErr) {
+            console.error('[create-student] Auto ID card failed:', cardErr);
+          }
+        }
+
         let billing: Awaited<ReturnType<typeof tryPostStudentActivationTermFee>> | null = null;
         if (enrollmentStatus === 'active' && result.rows[0].class_assigned_id) {
           try {
@@ -969,6 +984,18 @@ router.post('/:id/approve-admission', requireRole('super-admin', 'administrator'
       });
     }
     emitTenantDataChanged(tenantId, 'student', 'updated');
+    try {
+      const { ensureGeneratedIdCard } = await import('../services/idCardAutoService.js');
+      await ensureGeneratedIdCard({
+        tenantId,
+        entityType: 'STUDENT',
+        entityId: parseInt(id, 10),
+        generatedAt: row.date_of_admission || row.created_at,
+        generatedBy: null,
+      });
+    } catch (cardErr) {
+      console.error('[approve-admission] Auto ID card failed:', cardErr);
+    }
     if (feePosted.posted) {
       emitTenantDataChanged(tenantId, 'fee', 'updated');
       emitTenantDataChanged(tenantId, 'finance', 'updated');

@@ -530,13 +530,12 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
   const beginStudentSessionTransition = useCallback(() => {
     studentSessionRef.current += 1;
-    clearAllStudentData();
     setIsSwitchingStudent(true);
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'auto' });
     }
     return studentSessionRef.current;
-  }, [clearAllStudentData]);
+  }, []);
 
   const persist = (t: string, s: StudentInfo) => {
     localStorage.setItem(`parent_token_${tenantId}`, t);
@@ -994,10 +993,10 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   }, [token, student, loadServerNotifications]);
 
   useEffect(() => {
-    if (!token || !student?.admission_number || isSwitchingStudent) return;
+    if (!token || !student?.admission_number) return;
     if (activeTab === 'overview') return;
     void fetchTabData(activeTab);
-  }, [token, student?.admission_number, activeTab, isSwitchingStudent, fetchTabData]);
+  }, [token, student?.admission_number, activeTab, fetchTabData]);
 
   useEffect(() => {
     if (!token || isSwitchingStudent) return;
@@ -1125,7 +1124,8 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     };
   }, [token, tenantId, student?.admission_number, pushNotification, loadServerNotifications, refreshParentDeskUnread, activeTab, loadDeskMessages]);
 
-  const showTabLoading = isSwitchingStudent || dataLoading;
+  const showTabLoading = dataLoading && !isSwitchingStudent;
+  const showSwitchOverlay = isSwitchingStudent;
 
   const handleTabChange = (tab: Tab) => {
     setActiveTab(tab);
@@ -1590,7 +1590,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   if (isStudentMode && token && student) {
     return (
       <StudentLearningMode
-        key={`${student.admission_number}-${token}`}
+        key={student.admission_number}
         token={token}
         student={student as any}
         onExit={() => setIsStudentMode(false)}
@@ -1772,6 +1772,17 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
       {/* ── Content ── */}
       <main className="relative z-10 max-w-6xl mx-auto px-3.5 sm:px-6 pt-24 pb-28 sm:pt-32 sm:pb-8">
+        {showSwitchOverlay ? (
+          <div
+            className="absolute inset-0 z-20 flex items-start justify-center bg-white/60 pt-24"
+            aria-hidden
+          >
+            <div className="flex items-center gap-2 rounded-full border border-purple-100 bg-white px-4 py-2 text-sm font-semibold text-purple-700 shadow-sm">
+              <RefreshCw className="h-4 w-4 animate-spin" />
+              Switching student…
+            </div>
+          </div>
+        ) : null}
 
         {/* Change password banner */}
         {!mustChangePassword && student.must_change_password && (

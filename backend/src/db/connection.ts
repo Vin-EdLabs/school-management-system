@@ -1799,6 +1799,21 @@ const runMigrations = async () => {
     `).catch(() => { });
     await client.query(`CREATE INDEX IF NOT EXISTS idx_tenant_admin_notifications ON tenant_admin_notifications(tenant_id, read_at, created_at DESC)`).catch(() => { });
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS promotion_history (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+        from_class_id INTEGER REFERENCES classes(id) ON DELETE SET NULL,
+        to_class_id INTEGER REFERENCES classes(id) ON DELETE SET NULL,
+        academic_year VARCHAR(30) DEFAULT '',
+        promoted_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        promoted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        action_type VARCHAR(20) DEFAULT 'PROMOTE'
+      )
+    `).catch(() => { });
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_promotion_history_tenant ON promotion_history(tenant_id, promoted_at DESC)`).catch(() => { });
+
     console.log('✅ Database migrations completed');
   } catch (error) {
     console.error('❌ Migration error:', error);

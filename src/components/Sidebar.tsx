@@ -93,8 +93,9 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
     ...(hasAccess('calendar') && userRole !== 'finance' ? [{ id: 'calendar', label: 'Calendar', icon: Calendar }] : []),
     ...(hasAccess('birthdays') ? [{ id: 'birthdays', label: 'Birthdays', icon: Cake }] : []),
     ...(hasAccess('id-cards') ? [{ id: 'id-cards', label: 'ID Cards', icon: IdCard }] : []),
+    ...(hasAccess('id-cards') ? [{ id: 'id-cards-bulk-print', label: 'Bulk Print Cards', icon: IdCard }] : []),
     ...(hasAccess('lost-cards') ? [{ id: 'lost-cards', label: 'Lost Cards', icon: AlertTriangle }] : []),
-    ...(hasAccess('end-of-year') && userRole === 'administrator'
+    ...(hasAccess('end-of-year')
       ? [{ id: 'end-of-year', label: 'End of Year', icon: CalendarClock }]
       : []),
     ...(hasAccess('reports') ? [{ id: 'academic-reports', label: 'Academic Report', icon: BarChart3 }] : []),

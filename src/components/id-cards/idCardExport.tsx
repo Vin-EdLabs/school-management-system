@@ -87,7 +87,7 @@ function renderCardFace(
   return { container, root };
 }
 
-async function captureCardFace(
+export async function captureCardFace(
   entityType: CardEntityType,
   face: 'front' | 'back',
   data: IDCardData,
@@ -351,4 +351,190 @@ export function useCardExporting() {
     setExportAction(v ? action || null : null);
   }, []);
   return { exporting, exportAction, setExporting: setExportState };
+}
+
+export type CapturedCard = {
+  frontUrl: string;
+  backUrl: string;
+  name: string;
+};
+
+export type CardExportPayload = {
+  entityType: CardEntityType;
+  data: IDCardData;
+  colors: IDCardColors;
+  fullName: string;
+};
+
+export async function fetchCardExportPayload(
+  entityType: CardEntityType,
+  entityId: number,
+  staffType?: string
+): Promise<CardExportPayload> {
+  const { apiService } = await import('@/services/api');
+  const path =
+    entityType === 'STUDENT'
+      ? `/id-cards/student/${entityId}`
+      : `/id-cards/staff/${entityId}?staffType=${staffType || 'teacher'}`;
+  const res = await apiService.get<{
+    entityType: CardEntityType;
+    colors: IDCardColors;
+    cardData: IDCardData;
+  }>(path);
+  return {
+    entityType: res.entityType,
+    fullName: res.cardData.fullName,
+    data: {
+      ...res.cardData,
+      logoUrl: resolveMediaUrl(res.cardData.logoUrl),
+      photoUrl: resolveMediaUrl(res.cardData.photoUrl),
+      academicYear: formatIdCardAcademicYear(res.cardData.academicYear),
+      qrUrl: res.cardData.qrUrl || resolveIdCardVerifyUrl(res.entityType, entityId),
+    },
+    colors: {
+      ...res.colors,
+      footerBg: res.colors.footerBg || res.colors.primaryColor,
+      poweredByColor: res.colors.poweredByColor || res.colors.accentColor,
+    },
+  };
+}
+
+export async function captureEntityCard(
+  entityType: CardEntityType,
+  entityId: number,
+  staffType?: string
+): Promise<CapturedCard> {
+  const payload = await fetchCardExportPayload(entityType, entityId, staffType);
+  const frontUrl = await captureCardFace(entityType, 'front', payload.data, payload.colors);
+  const backUrl = await captureCardFace(entityType, 'back', payload.data, payload.colors);
+  return { frontUrl, backUrl, name: payload.fullName };
+}
+
+const BULK_CARD_W = 85.6;
+const BULK_CARD_H = 54;
+const BULK_CARDS_PER_PAGE = 8;
+const BULK_COLS = 2;
+
+function addCardsToPdfPages(pdf: jsPDF, images: string[]): void {
+  const marginX = 10;
+  const marginY = 10;
+  const gapX = 10;
+  const gapY = 8;
+
+  images.forEach((img, i) => {
+    const posInPage = i % BULK_CARDS_PER_PAGE;
+    const col = posInPage % BULK_COLS;
+    const row = Math.floor(posInPage / BULK_COLS);
+
+    if (posInPage === 0 && i !== 0) pdf.addPage();
+
+    const x = marginX + col * (BULK_CARD_W + gapX);
+    const y = marginY + row * (BULK_CARD_H + gapY);
+
+    pdf.addImage(img, 'PNG', x, y, BULK_CARD_W, BULK_CARD_H);
+    pdf.setDrawColor(200, 200, 200);
+    pdf.setLineWidth(0.2);
+    pdf.setLineDashPattern([1, 1], 0);
+    pdf.rect(x - 1, y - 1, BULK_CARD_W + 2, BULK_CARD_H + 2);
+  });
+}
+
+export function downloadBulkCardsPdf(cards: CapturedCard[], includeBacks: boolean): void {
+  const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  addCardsToPdfPages(
+    pdf,
+    cards.map((c) => c.frontUrl)
+  );
+  if (includeBacks && cards.length > 0) {
+    addCardsToPdfPages(
+      pdf,
+      cards.map((c) => c.backUrl)
+    );
+  }
+  pdf.save(`Bulk-ID-Cards-${new Date().toISOString().slice(0, 10)}.pdf`);
+}
+
+export async function downloadBulkCardsZip(cards: CapturedCard[]): Promise<void> {
+  const JSZip = (await import('jszip')).default;
+  const zip = new JSZip();
+
+  for (const card of cards) {
+    const frontBlob = await (await fetch(card.frontUrl)).blob();
+    const backBlob = await (await fetch(card.backUrl)).blob();
+    const safeName = card.name.replace(/\s+/g, '-');
+    zip.file(`${safeName}-Front.png`, frontBlob);
+    zip.file(`${safeName}-Back.png`, backBlob);
+  }
+
+  const content = await zip.generateAsync({ type: 'blob' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(content);
+  link.download = `ID-Cards-${new Date().toISOString().slice(0, 10)}.zip`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+export async function printBulkCards(cards: CapturedCard[], includeBacks: boolean): Promise<void> {
+  const frontPages: string[][] = [];
+  for (let i = 0; i < cards.length; i += BULK_CARDS_PER_PAGE) {
+    frontPages.push(cards.slice(i, i + BULK_CARDS_PER_PAGE).map((c) => c.frontUrl));
+  }
+
+  const backPages: string[][] = [];
+  if (includeBacks) {
+    for (let i = 0; i < cards.length; i += BULK_CARDS_PER_PAGE) {
+      backPages.push(cards.slice(i, i + BULK_CARDS_PER_PAGE).map((c) => c.backUrl));
+    }
+  }
+
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:none;';
+  document.body.appendChild(iframe);
+  const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+  if (!iframeDoc) throw new Error('Print iframe unavailable');
+
+  const renderPage = (urls: string[]) => urls
+    .map(
+      (url) =>
+        `<div class="cell"><img src="${url}" /><div class="cut-line"></div></div>`
+    )
+    .join('');
+
+  const pagesHtml = frontPages
+    .map((urls) => `<div class="sheet"><div class="grid">${renderPage(urls)}</div></div>`)
+    .concat(
+      backPages.map((urls) => `<div class="sheet backs"><div class="grid">${renderPage(urls)}</div></div>`)
+    )
+    .join('');
+
+  iframeDoc.open();
+  iframeDoc.write(`<!DOCTYPE html>
+<html><head><style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  @page { size: A4 portrait; margin: 10mm; }
+  body { font-family: sans-serif; }
+  .sheet { page-break-after: always; padding: 4mm 0; }
+  .grid {
+    display: grid;
+    grid-template-columns: 85.6mm 85.6mm;
+    grid-template-rows: repeat(4, 54mm);
+    gap: 8mm 10mm;
+    justify-content: center;
+  }
+  .cell { width: 85.6mm; height: 54mm; position: relative; }
+  img { width: 100%; height: 100%; display: block; border-radius: 3.5mm; }
+  .cut-line {
+    position: absolute; inset: -1mm; border: 0.2mm dashed #cccccc;
+    border-radius: 4mm; pointer-events: none;
+  }
+  @media print {
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  }
+</style></head><body>${pagesHtml}</body></html>`);
+  iframeDoc.close();
+
+  await new Promise((r) => window.setTimeout(r, 800));
+  iframe.contentWindow?.focus();
+  iframe.contentWindow?.print();
+  window.setTimeout(() => document.body.removeChild(iframe), 2000);
 }

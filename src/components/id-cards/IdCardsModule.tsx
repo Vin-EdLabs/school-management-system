@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Search, IdCard } from 'lucide-react';
 import { apiService } from '@/services/api';
 import { toast } from 'sonner';
@@ -90,28 +90,50 @@ const IdCardsModule: React.FC<IdCardsModuleProps> = ({ onNavigate }) => {
     setEditPanelOpen(false);
   };
 
-  const saveCard = async () => {
-    if (!state) return;
-    try {
-      await apiService.post('/id-cards/generate', {
-        entityType: state.entityType,
-        entityId: state.entityId,
-        staffType: state.staffType,
-        cardData: {
-          academicYear: state.data.academicYear,
-          position: state.data.position,
-          department: state.data.department,
-        },
-      });
-      await reload();
-      if (selected?.meta) {
-        setSelected({ ...selected, meta: { ...selected.meta, hasGeneratedCard: true } });
-      }
-      toast.success('Card saved with the latest configuration');
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Could not save card');
+  const saveTimerRef = useRef<number | null>(null);
+  const entityRef = useRef<{ entityType: CardEntityType; entityId: number } | null>(null);
+  const [showSaved, setShowSaved] = useState(false);
+
+  useEffect(() => {
+    if (state) {
+      entityRef.current = { entityType: state.entityType, entityId: state.entityId };
     }
+  }, [state?.entityType, state?.entityId]);
+
+  const scheduleSaveOverrides = (data: import('@/types/idCard').IDCardData) => {
+    setState((prev) => (prev ? { ...prev, data } : prev));
+    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(async () => {
+      const entity = entityRef.current;
+      if (!entity) return;
+      try {
+        await apiService.patch('/id-cards/override', {
+          entityType: entity.entityType,
+          entityId: entity.entityId,
+          overrides: {
+            academicYear: data.academicYear,
+            position: data.position,
+            department: data.department,
+            motto: data.motto,
+            propertyHeader: data.propertyHeader,
+            instructions: data.instructions,
+            scanLabel: data.scanLabel,
+            phone: data.phone,
+            website: data.website,
+            email: data.email,
+          },
+        });
+        setShowSaved(true);
+        window.setTimeout(() => setShowSaved(false), 1500);
+      } catch (e: unknown) {
+        toast.error(e instanceof Error ? e.message : 'Could not save card');
+      }
+    }, 600);
   };
+
+  useEffect(() => () => {
+    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+  }, []);
 
   if (selected && cardLoading) {
     return <p style={{ padding: 32, color: '#6b7280' }}>Loading card…</p>;
@@ -139,12 +161,13 @@ const IdCardsModule: React.FC<IdCardsModuleProps> = ({ onNavigate }) => {
         exporting={exporting}
         exportAction={exportAction}
         onBack={() => setSelected(null)}
-        onSave={saveCard}
+        onSave={() => undefined}
         onReload={() => void reload()}
         onToggleEdit={() => setEditPanelOpen((v) => !v)}
         exportOptions={exportOptions}
         onExporting={setExporting}
-        onDataChange={(data) => setState({ ...state, data })}
+        onDataChange={scheduleSaveOverrides}
+        showSavedIndicator={showSaved}
       />
     );
   }
@@ -154,16 +177,25 @@ const IdCardsModule: React.FC<IdCardsModuleProps> = ({ onNavigate }) => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28, gap: 16, flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ fontSize: 28, fontWeight: 600, color: '#111827', margin: 0 }}>ID Cards</h1>
-          <p style={{ fontSize: 14, color: '#6b7280', marginTop: 6 }}>Generate and manage student and staff identity cards</p>
+          <p style={{ fontSize: 14, color: '#6b7280', marginTop: 6 }}>View and manage student and staff identity cards</p>
         </div>
         {isAdmin && (
-          <button
-            type="button"
-            onClick={() => onNavigate?.('id-card-settings')}
-            style={{ height: 40, padding: '0 20px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontSize: 14, cursor: 'pointer' }}
-          >
-            Card Configuration →
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => onNavigate?.('id-cards-bulk-print')}
+              style={{ height: 40, padding: '0 16px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontSize: 14, cursor: 'pointer' }}
+            >
+              Bulk Print →
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigate?.('id-card-settings')}
+              style={{ height: 40, padding: '0 20px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontSize: 14, cursor: 'pointer' }}
+            >
+              Card Configuration →
+            </button>
+          </div>
         )}
       </div>
 
@@ -218,7 +250,7 @@ const IdCardsModule: React.FC<IdCardsModuleProps> = ({ onNavigate }) => {
       {!query.trim() && (
         <div style={{ textAlign: 'center', padding: '48px 24px' }}>
           <IdCard size={48} color="#d1d5db" style={{ margin: '0 auto 16px' }} />
-          <p style={{ fontSize: 12, color: '#9ca3af' }}>Search for a student or staff member to generate their ID card</p>
+          <p style={{ fontSize: 12, color: '#9ca3af' }}>Search for a student or staff member to view their ID card</p>
         </div>
       )}
 
@@ -264,33 +296,18 @@ const IdCardsModule: React.FC<IdCardsModuleProps> = ({ onNavigate }) => {
                     {tab === 'students' ? row.className || '—' : row.department || row.position || '—'}
                   </td>
                   <td style={{ padding: '12px 16px' }}>
-                    {row.hasGeneratedCard ? (
-                      <>
-                        <span style={{ fontSize: 11, fontWeight: 600, color: '#047857', background: '#ecfdf5', padding: '2px 8px', borderRadius: 99 }}>Active</span>
-                      </>
-                    ) : (
-                      <span style={{ fontSize: 11, color: '#9ca3af', background: '#f3f4f6', padding: '2px 8px', borderRadius: 99 }}>Not generated</span>
-                    )}
+                    <span style={{ fontSize: 11, fontWeight: 600, color: '#047857', background: '#ecfdf5', padding: '2px 8px', borderRadius: 99 }}>
+                      🟢 Active
+                    </span>
                   </td>
                   <td style={{ padding: '12px 16px' }}>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button
-                        type="button"
-                        onClick={() => openEditor(tab === 'students' ? 'STUDENT' : 'STAFF', row)}
-                        style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: primaryColor, color: '#fff', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}
-                      >
-                        Generate Card
-                      </button>
-                      {row.hasGeneratedCard && (
-                        <button
-                          type="button"
-                          onClick={() => openEditor(tab === 'students' ? 'STUDENT' : 'STAFF', row)}
-                          style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontSize: 13, cursor: 'pointer' }}
-                        >
-                          View Card
-                        </button>
-                      )}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => openEditor(tab === 'students' ? 'STUDENT' : 'STAFF', row)}
+                      style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: primaryColor, color: '#fff', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}
+                    >
+                      View Card
+                    </button>
                   </td>
                 </tr>
               ))}

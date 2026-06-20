@@ -51,6 +51,7 @@ import TransportStudents from './transport/TransportStudents';
 import PushNotificationsModule from './notifications/PushNotificationsModule';
 import ParentDeskAdminModule from './notifications/ParentDeskAdminModule';
 import ParentAccountsModule from './parent/ParentAccountsModule';
+import BulkPrintIdCards from './id-cards/BulkPrintIdCards';
 import EndOfYearWizard from './academic/EndOfYearWizard';
 import BirthdayModule from './birthday/BirthdayModule';
 import GlobalAnnouncementPopup from './announcements/GlobalAnnouncementPopup';
@@ -258,6 +259,8 @@ const Dashboard = () => {
         return <ParentAccountsModule />;
       case 'birthdays':
         return <BirthdayModule />;
+      case 'id-cards-bulk-print':
+        return <BulkPrintIdCards onNavigate={setActiveModule} />;
       case 'end-of-year':
         return <EndOfYearWizard />;
       case 'transport-overview':

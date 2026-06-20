@@ -286,6 +286,7 @@ const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
+        <BrowserRouter>
         <AuthProvider>
           <SocketProvider>
             <TeacherNotificationProvider>
@@ -294,7 +295,6 @@ const App = () => {
               <PwaUpdateManager />
               <Toaster />
               <Sonner />
-              <BrowserRouter>
                 <SubdomainPathNormalizer />
                 {subdomainSlug ? (
                   <Routes>
@@ -325,11 +325,11 @@ const App = () => {
                     <Route path="*" element={<NotFound />} />
                   </Routes>
                 )}
-              </BrowserRouter>
             </TooltipProvider>
             </TeacherNotificationProvider>
           </SocketProvider>
         </AuthProvider>
+        </BrowserRouter>
       </ThemeProvider>
     </QueryClientProvider>
   );

@@ -37,7 +37,7 @@ interface AcademicSettings {
 }
 
 const SettingsModule = () => {
-  const { user, hasAccess, changePassword } = useAuth();
+  const { user, hasAccess, changePassword, isPlatformSuperAdmin } = useAuth();
   const { school, reloadSchool } = useSchool();
   const { refresh: refreshData } = useData();
   const [currentPassword, setCurrentPassword] = useState('');
@@ -69,7 +69,7 @@ const SettingsModule = () => {
     bank_details: '',
   });
 
-  const isSuperAdmin = hasAccess('schools');
+  const isSuperAdmin = isPlatformSuperAdmin;
   const hasSettingsFull = hasAccess('settings-full');
   const canBackupSchool = hasSettingsFull || (user?.role === 'administrator' && !!school?.id);
 

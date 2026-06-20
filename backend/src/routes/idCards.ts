@@ -176,6 +176,19 @@ router.get('/student/:studentId', async (req: AuthRequest, res) => {
     if (studentRes.rows.length === 0) return res.status(404).json({ error: 'Student not found' });
 
     const student = studentRes.rows[0];
+    try {
+      const { ensureGeneratedIdCard } = await import('../services/idCardAutoService.js');
+      await ensureGeneratedIdCard({
+        tenantId,
+        entityType: 'STUDENT',
+        entityId: studentId,
+        generatedAt: student.date_of_admission || student.created_at,
+        generatedBy: null,
+      });
+    } catch (cardErr) {
+      console.error('[get-student-card] Auto ensure card failed:', cardErr);
+    }
+
     const ctx = await getSchoolCardContext(tenantId);
     const template = await getIdCardTemplate(tenantId, 'STUDENT');
     const slug = String(ctx?.slug || 'school');
@@ -221,6 +234,7 @@ router.get('/student/:studentId', async (req: AuthRequest, res) => {
           (saved?.academicYear as string | undefined) ?? year
         ),
         className: student.class_name ? String(student.class_name) : undefined,
+        savedOverrides: saved,
       },
       verifyUrl
     );
@@ -236,7 +250,9 @@ router.get('/student/:studentId', async (req: AuthRequest, res) => {
             id: Number(latest.rows[0].id),
             status: String(latest.rows[0].status),
             generatedAt: new Date(String(latest.rows[0].generated_at)).toISOString(),
-            generatedByName: latest.rows[0].generated_by_name ? String(latest.rows[0].generated_by_name) : null,
+            generatedByName: latest.rows[0].generated_by_name
+              ? String(latest.rows[0].generated_by_name)
+              : 'System (Auto)',
           }
         : null,
       profile: {
@@ -273,6 +289,19 @@ router.get('/staff/:staffId', async (req: AuthRequest, res) => {
       staff = r.rows[0] || null;
     }
     if (!staff) return res.status(404).json({ error: 'Staff not found' });
+
+    try {
+      const { ensureGeneratedIdCard } = await import('../services/idCardAutoService.js');
+      await ensureGeneratedIdCard({
+        tenantId,
+        entityType: 'STAFF',
+        entityId: staffId,
+        generatedAt: (staff.employment_date ?? staff.created_at) as string | Date | null | undefined,
+        generatedBy: null,
+      });
+    } catch (cardErr) {
+      console.error('[get-staff-card] Auto ensure card failed:', cardErr);
+    }
 
     if (!canManageCards(role)) {
       if (role === 'teacher') {
@@ -331,6 +360,7 @@ router.get('/staff/:staffId', async (req: AuthRequest, res) => {
         idNumber: String(staff.staff_id),
         position: position.toUpperCase(),
         department: department.toUpperCase(),
+        savedOverrides: saved,
       },
       verifyUrl
     );
@@ -348,7 +378,9 @@ router.get('/staff/:staffId', async (req: AuthRequest, res) => {
             id: Number(latest.rows[0].id),
             status: String(latest.rows[0].status),
             generatedAt: new Date(String(latest.rows[0].generated_at)).toISOString(),
-            generatedByName: latest.rows[0].generated_by_name ? String(latest.rows[0].generated_by_name) : null,
+            generatedByName: latest.rows[0].generated_by_name
+              ? String(latest.rows[0].generated_by_name)
+              : 'System (Auto)',
           }
         : null,
       profile: {
@@ -644,6 +676,63 @@ router.patch('/template', requirePrimaryAdminOrSuperAdmin, async (req: AuthReque
   } catch (error) {
     console.error('Update ID card template error:', error);
     res.status(500).json({ error: 'Failed to update template' });
+  }
+});
+
+router.patch('/override', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const entityType = String(req.body?.entityType || '').toUpperCase();
+    const entityId = parseInt(String(req.body?.entityId), 10);
+    const overrides = (req.body?.overrides ?? req.body) as Record<string, unknown>;
+    if (!['STUDENT', 'STAFF'].includes(entityType) || Number.isNaN(entityId)) {
+      return res.status(400).json({ error: 'Invalid payload' });
+    }
+
+    const { ensureGeneratedIdCard } = await import('../services/idCardAutoService.js');
+    await ensureGeneratedIdCard({
+      tenantId,
+      entityType: entityType as 'STUDENT' | 'STAFF',
+      entityId,
+      generatedBy: req.user!.id,
+    });
+
+    const latest = await query(
+      `SELECT id, card_data FROM generated_id_cards
+       WHERE tenant_id = $1 AND entity_type = $2 AND entity_id = $3 AND status = 'ACTIVE'
+       ORDER BY generated_at DESC LIMIT 1`,
+      [tenantId, entityType, entityId]
+    );
+    if (!latest.rows[0]) return res.status(404).json({ error: 'Card not found' });
+
+    const current = (latest.rows[0].card_data as Record<string, unknown>) || {};
+    const allowed = [
+      'motto',
+      'schoolCode',
+      'academicYear',
+      'position',
+      'department',
+      'propertyHeader',
+      'instructions',
+      'scanLabel',
+      'phone',
+      'website',
+      'email',
+    ];
+    const next: Record<string, unknown> = { ...current };
+    for (const key of allowed) {
+      if (overrides[key] !== undefined) next[key] = overrides[key];
+    }
+
+    await query(
+      `UPDATE generated_id_cards SET card_data = $1 WHERE id = $2`,
+      [JSON.stringify(next), latest.rows[0].id]
+    );
+
+    res.json({ ok: true, cardData: next });
+  } catch (error) {
+    console.error('ID card override error:', error);
+    res.status(500).json({ error: 'Failed to save card overrides' });
   }
 });
 

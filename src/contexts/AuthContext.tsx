@@ -1,9 +1,24 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { apiService } from '../services/api';
 import { initInactivityTracker, isPWAInstalled, stopInactivityTracker } from '../utils/inactivityTracker';
 import { clearActiveTermWelcomeDismiss } from '../components/onboarding/ActiveTermWelcomeModal';
 import { startSessionPulse, stopSessionPulse, endSessionPulse } from '../utils/sessionPulse';
+import { isSchoolTenantView } from '../utils/schoolAdminView';
+
+const PRIMARY_ADMIN_MODULES = [
+  'students', 'teachers', 'other-staff', 'classes', 'calendar', 'fees', 'income', 'expenses',
+  'transactions', 'cash-bank', 'payroll', 'reports', 'dashboard', 'financial-dashboard', 'term-budget',
+  'settings', 'settings-full', 'payment-accounts', 'appointment-letter-settings', 'admission-letter-settings',
+  'id-cards', 'id-cards-bulk-print', 'id-card-settings', 'lost-cards', 'users', 'audit', 'print-fee-status',
+  'finance-statement', 'teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'ai-assistant',
+  'records', 'subjects', 'support-chat', 'push-notifications', 'parent-desk', 'parent-accounts',
+  'manual-adjustments', 'birthdays', 'transport-overview', 'transport-map', 'transport-routes',
+  'transport-vehicles', 'transport-drivers', 'transport-students', 'end-of-year',
+] as const;
+
+const PLATFORM_SUPER_ADMIN_MODULES = [...PRIMARY_ADMIN_MODULES, 'schools'] as const;
 
 export type UserRole = 'administrator' | 'finance' | 'super-admin' | 'teacher' | 'staff' | 'driver';
 
@@ -27,16 +42,27 @@ interface AuthContextType {
   changePassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
   verifyPassword: (password: string) => Promise<boolean>;
   hasAccess: (module: string) => boolean;
+  /** Super-admin on the platform dashboard — not when viewing a school. */
+  isPlatformSuperAdmin: boolean;
+  /** Primary admin powers (includes super-admin acting inside a school). */
+  actsAsPrimaryAdmin: boolean;
   loading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { pathname } = useLocation();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const inSchoolView = isSchoolTenantView(pathname);
+  const isPlatformSuperAdmin = user?.role === 'super-admin' && !inSchoolView;
+  const actsAsPrimaryAdmin =
+    !!(user?.role === 'administrator' && user.isPrimaryAdmin) ||
+    (user?.role === 'super-admin' && inSchoolView);
 
   useEffect(() => {
     const token = localStorage.getItem('authToken');
@@ -175,12 +201,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Super-admin: full access including school creation
     if (user.role === 'super-admin') {
-      return ['students', 'teachers', 'other-staff', 'classes', 'calendar', 'fees', 'income', 'expenses', 'transactions', 'cash-bank', 'payroll', 'reports', 'dashboard', 'financial-dashboard', 'term-budget', 'settings', 'settings-full', 'payment-accounts', 'appointment-letter-settings', 'admission-letter-settings', 'id-cards', 'id-card-settings', 'lost-cards', 'users', 'audit', 'print-fee-status', 'finance-statement', 'teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'ai-assistant', 'schools', 'records', 'subjects', 'support-chat', 'push-notifications', 'parent-desk', 'parent-accounts', 'manual-adjustments', 'end-of-year', 'birthdays', 'transport-overview', 'transport-map', 'transport-routes', 'transport-vehicles', 'transport-drivers', 'transport-students'].includes(module);
+      return ['students', 'teachers', 'other-staff', 'classes', 'calendar', 'fees', 'income', 'expenses', 'transactions', 'cash-bank', 'payroll', 'reports', 'dashboard', 'financial-dashboard', 'term-budget', 'settings', 'settings-full', 'payment-accounts', 'appointment-letter-settings', 'admission-letter-settings', 'id-cards', 'id-cards-bulk-print', 'id-card-settings', 'lost-cards', 'users', 'audit', 'print-fee-status', 'finance-statement', 'teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'ai-assistant', 'schools', 'records', 'subjects', 'support-chat', 'push-notifications', 'parent-desk', 'parent-accounts', 'manual-adjustments', 'end-of-year', 'birthdays', 'transport-overview', 'transport-map', 'transport-routes', 'transport-vehicles', 'transport-drivers', 'transport-students'].includes(module);
     }
 
     // Primary admin: full school control except school creation (sees everything)
     if (user.role === 'administrator' && user.isPrimaryAdmin) {
-      return ['students', 'teachers', 'other-staff', 'classes', 'calendar', 'fees', 'income', 'expenses', 'transactions', 'cash-bank', 'payroll', 'reports', 'dashboard', 'financial-dashboard', 'term-budget', 'settings', 'settings-full', 'payment-accounts', 'appointment-letter-settings', 'admission-letter-settings', 'id-cards', 'id-card-settings', 'lost-cards', 'users', 'audit', 'print-fee-status', 'finance-statement', 'teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'ai-assistant', 'records', 'subjects', 'support-chat', 'push-notifications', 'parent-desk', 'parent-accounts', 'manual-adjustments', 'birthdays', 'transport-overview', 'transport-map', 'transport-routes', 'transport-vehicles', 'transport-drivers', 'transport-students'].includes(module);
+      return ['students', 'teachers', 'other-staff', 'classes', 'calendar', 'fees', 'income', 'expenses', 'transactions', 'cash-bank', 'payroll', 'reports', 'dashboard', 'financial-dashboard', 'term-budget', 'settings', 'settings-full', 'payment-accounts', 'appointment-letter-settings', 'admission-letter-settings', 'id-cards', 'id-cards-bulk-print', 'id-card-settings', 'lost-cards', 'users', 'audit', 'print-fee-status', 'finance-statement', 'teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'ai-assistant', 'records', 'subjects', 'support-chat', 'push-notifications', 'parent-desk', 'parent-accounts', 'manual-adjustments', 'birthdays', 'transport-overview', 'transport-map', 'transport-routes', 'transport-vehicles', 'transport-drivers', 'transport-students'].includes(module);
     }
 
     // Additional administrators: academic only
@@ -212,7 +238,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, token, login, logout, changePassword, verifyPassword, hasAccess, loading }}>
+    <AuthContext.Provider value={{
+      isAuthenticated,
+      user,
+      token,
+      login,
+      logout,
+      changePassword,
+      verifyPassword,
+      hasAccess,
+      isPlatformSuperAdmin,
+      actsAsPrimaryAdmin,
+      loading,
+    }}>
       {children}
     </AuthContext.Provider>
   );

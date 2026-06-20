@@ -25,8 +25,8 @@ interface Conversation {
 }
 
 const SupportModule = () => {
-  const { user } = useAuth();
-  const isSuperAdmin = user?.role === 'super-admin';
+  const { isPlatformSuperAdmin } = useAuth();
+  const isSuperAdmin = isPlatformSuperAdmin;
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedTenant, setSelectedTenant] = useState<{ id: number; name: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');

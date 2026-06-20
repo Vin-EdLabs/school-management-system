@@ -66,8 +66,15 @@ type BulkPrintIdCardsProps = {
   onNavigate?: (module: string) => void;
 };
 
+type ClassOption = {
+  id: string;
+  className: string;
+};
+
 const BulkPrintIdCards: React.FC<BulkPrintIdCardsProps> = ({ onNavigate }) => {
-  const { classes, students, refresh } = useData();
+  const { students, refresh } = useData();
+  const [classOptions, setClassOptions] = useState<ClassOption[]>([]);
+  const [loadingClasses, setLoadingClasses] = useState(false);
   const [mode, setMode] = useState<SelectionMode>('class');
   const [classId, setClassId] = useState('');
   const [department, setDepartment] = useState('');
@@ -85,9 +92,30 @@ const BulkPrintIdCards: React.FC<BulkPrintIdCardsProps> = ({ onNavigate }) => {
 
   const primaryColor = '#1a3a6b';
 
+  const loadClasses = useCallback(async () => {
+    setLoadingClasses(true);
+    try {
+      const rows = await apiService.get<Array<{ id: number; class_name?: string; name?: string }>>('/classes');
+      const options = (Array.isArray(rows) ? rows : [])
+        .map((c) => ({
+          id: String(c.id),
+          className: (c.class_name || c.name || `Class ${c.id}`).trim(),
+        }))
+        .filter((c) => c.className.length > 0)
+        .sort((a, b) => a.className.localeCompare(b.className, undefined, { sensitivity: 'base' }));
+      setClassOptions(options);
+    } catch {
+      toast.error('Could not load classes');
+      setClassOptions([]);
+    } finally {
+      setLoadingClasses(false);
+    }
+  }, []);
+
   useEffect(() => {
-    void refresh(['students']);
-  }, [refresh]);
+    void refresh(['students', 'classes']);
+    void loadClasses();
+  }, [refresh, loadClasses]);
 
   const classStudents = useMemo(() => {
     if (!classId) return [];
@@ -454,28 +482,32 @@ const BulkPrintIdCards: React.FC<BulkPrintIdCardsProps> = ({ onNavigate }) => {
           <CardContent className="p-6">
             <div className="max-w-md space-y-2">
               <Label>Class</Label>
-              <Select value={classId} onValueChange={setClassId}>
+              <Select value={classId} onValueChange={setClassId} disabled={loadingClasses}>
                 <SelectTrigger className="h-12 rounded-xl">
-                  <SelectValue placeholder="Choose a class…" />
+                  <SelectValue placeholder={loadingClasses ? 'Loading classes…' : 'Choose a class…'} />
                 </SelectTrigger>
-                <SelectContent className="rounded-xl">
-                  {classes.map((c) => {
-                    const count = students.filter(
-                      (s) =>
-                        String(s.classAssignedId) === c.id &&
-                        (!s.enrollmentStatus || s.enrollmentStatus === 'active')
-                    ).length;
-                    return (
-                      <SelectItem key={c.id} value={c.id} className="rounded-lg py-2.5">
-                        <span className="flex w-full items-center justify-between gap-4">
-                          <span>{c.className}</span>
-                          <Badge variant="secondary" className="text-[10px] tabular-nums">
-                            {count} students
-                          </Badge>
-                        </span>
-                      </SelectItem>
-                    );
-                  })}
+                <SelectContent className="rounded-xl max-h-[min(24rem,70vh)]">
+                  {classOptions.length === 0 && !loadingClasses ? (
+                    <div className="px-3 py-6 text-center text-sm text-slate-500">No classes found</div>
+                  ) : (
+                    classOptions.map((c) => {
+                      const count = students.filter(
+                        (s) =>
+                          String(s.classAssignedId) === c.id &&
+                          (!s.enrollmentStatus || s.enrollmentStatus === 'active')
+                      ).length;
+                      return (
+                        <SelectItem key={c.id} value={c.id} className="rounded-lg py-2.5">
+                          <span className="flex w-full items-center justify-between gap-4">
+                            <span>{c.className}</span>
+                            <Badge variant="secondary" className="text-[10px] tabular-nums">
+                              {count} students
+                            </Badge>
+                          </span>
+                        </SelectItem>
+                      );
+                    })
+                  )}
                 </SelectContent>
               </Select>
             </div>

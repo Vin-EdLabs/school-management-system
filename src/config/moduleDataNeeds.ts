@@ -37,6 +37,8 @@ export const MODULE_DATA_NEEDS: Record<string, DataDomain[]> = {
   'teacher-appointment-letters': [],
   'teacher-payment-history': [],
   'teacher-quizzes': ['classes', 'subjects'],
+  'id-cards-bulk-print': ['students', 'classes'],
+  'id-card-settings': [],
   'transport-overview': ['students'],
   'transport-map': [],
   'transport-routes': ['students'],

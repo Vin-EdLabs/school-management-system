@@ -1,10 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  detailDialogBodyClass,
+  detailDialogContentWideClass,
+  detailDialogFooterClass,
+  detailDialogHeaderClass,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -221,11 +226,12 @@ const ReceiptCorrectionModal: React.FC<ReceiptCorrectionModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className={cn(detailDialogContentWideClass, 'sm:max-w-2xl')}>
+        <DialogHeader className={detailDialogHeaderClass}>
           <DialogTitle>Correct receipt #{context?.original.receiptNumber || payment.receiptNumber}</DialogTitle>
         </DialogHeader>
 
+        <DialogBody className={cn(detailDialogBodyClass, 'space-y-6')}>
         {loadingContext ? (
           <div className="flex items-center justify-center py-16 text-muted-foreground">
             <Loader2 className="mr-2 h-5 w-5 animate-spin" />
@@ -445,8 +451,9 @@ const ReceiptCorrectionModal: React.FC<ReceiptCorrectionModalProps> = ({
             )}
           </div>
         ) : null}
+        </DialogBody>
 
-        <DialogFooter>
+        <DialogFooter className={detailDialogFooterClass}>
           <Button variant="outline" onClick={onClose} disabled={saving}>
             Cancel
           </Button>

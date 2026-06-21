@@ -13,6 +13,7 @@ import { resolveActiveLedgerTerm } from '../services/studentUnifiedBalanceServic
 import { getStudentBirthdaysForParent } from '../services/birthdayService.js';
 import { loadActiveFeeStructureLinesByClassTerm } from '../services/feeStructureItemsService.js';
 import { listAdmissionLetters, getAdmissionLetterPdf } from '../services/admissionLetterService.js';
+import { getInvoiceById, getInvoicePdfPayload, listInvoices } from '../services/invoiceService.js';
 
 const router = express.Router();
 
@@ -168,6 +169,16 @@ router.post('/login', resolveTenant, async (req: ParentRequest & TenantRequest, 
       return res.status(401).json({ error: 'Invalid student ID or password' });
     }
 
+    // First-time login uses Student ID as both username and password — always force a password change.
+    const defaultLoginId = defaultParentPortalPassword(student);
+    if (defaultLoginId && password === defaultLoginId && !account.must_change_password) {
+      await query(
+        'UPDATE parent_portal_accounts SET must_change_password = true WHERE id = $1',
+        [account.id]
+      );
+      account.must_change_password = true;
+    }
+
     // Update last login
     await query(
       'UPDATE parent_portal_accounts SET last_login = NOW() WHERE id = $1',
@@ -231,22 +242,35 @@ router.post('/change-password', authenticateParent, async (req: ParentRequest, r
   try {
     const { currentPassword, newPassword } = req.body;
     if (!newPassword) {
-      return res.status(400).json({ error: 'newPassword is required' });
+      return res.status(400).json({ error: 'Please enter a new password' });
     }
     if (newPassword.length < 6) {
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
 
     const row = await query(
-      'SELECT password_hash, must_change_password FROM parent_portal_accounts WHERE id = $1',
-      [req.parent!.accountId]
+      `SELECT pa.password_hash, pa.must_change_password, s.student_id, s.admission_number
+       FROM parent_portal_accounts pa
+       JOIN students s ON s.id = pa.student_id AND s.tenant_id = pa.tenant_id
+       WHERE pa.id = $1 AND pa.tenant_id = $2`,
+      [req.parent!.accountId, req.parent!.tenantId]
     );
-    const mustChange = !!row.rows[0]?.must_change_password;
-    if (!mustChange) {
+    const accountRow = row.rows[0];
+    if (!accountRow) {
+      return res.status(404).json({ error: 'Parent account not found' });
+    }
+
+    const mustChange = !!accountRow.must_change_password;
+    const defaultLoginId = defaultParentPortalPassword(accountRow);
+    const stillOnDefaultPassword = defaultLoginId
+      ? await bcrypt.compare(defaultLoginId, accountRow.password_hash)
+      : false;
+
+    if (!mustChange && !stillOnDefaultPassword) {
       if (!currentPassword) {
-        return res.status(400).json({ error: 'currentPassword is required' });
+        return res.status(400).json({ error: 'Please enter your current password' });
       }
-      const valid = await bcrypt.compare(currentPassword, row.rows[0].password_hash);
+      const valid = await bcrypt.compare(currentPassword, accountRow.password_hash);
       if (!valid) return res.status(401).json({ error: 'Current password is incorrect' });
     }
 
@@ -1694,6 +1718,45 @@ router.get('/finance-statement', authenticateParent, async (req: ParentRequest, 
   } catch (error) {
     console.error('Parent finance statement error:', error);
     res.status(500).json({ error: 'Failed to fetch finance statement' });
+  }
+});
+
+// ── GET /api/parent/invoices ─────────────────────────────────────────────────
+router.get('/invoices', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    const { studentId, tenantId } = req.parent!;
+    const termId = req.query.termId ? Number(req.query.termId) : null;
+
+    const all = await listInvoices(tenantId, {
+      termId: termId && !Number.isNaN(termId) ? termId : null,
+      limit: 100,
+      offset: 0,
+    });
+    const items = all.items.filter((inv) => inv.studentId === studentId);
+    res.json({ items, total: items.length });
+  } catch (error) {
+    console.error('Parent invoices error:', error);
+    res.status(500).json({ error: 'Failed to fetch invoices' });
+  }
+});
+
+router.get('/invoices/:id/pdf-data', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    const { studentId, tenantId } = req.parent!;
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) return res.status(400).json({ error: 'Invalid invoice id' });
+
+    const invoice = await getInvoiceById(tenantId, id);
+    if (!invoice || invoice.studentId !== studentId) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    const payload = await getInvoicePdfPayload(tenantId, id);
+    if (!payload) return res.status(404).json({ error: 'Invoice not found' });
+    res.json(payload);
+  } catch (error) {
+    console.error('Parent invoice PDF data error:', error);
+    res.status(500).json({ error: 'Failed to load invoice' });
   }
 });
 

@@ -204,30 +204,24 @@ export const postFeesForClass = async (tenantId: number, classId: number, academ
     let postedCount = 0;
     let skippedCount = 0;
 
-    // 3. For each student, insert a new debit entry into the ledger with discount applied.
+    // 3. For each student, upsert term_fee debit (idempotent — safe when fees already posted).
     for (const student of studentsResult.rows) {
-      try {
-        const studentDetailsRes = await client.query(
-          'SELECT is_beneficiary, discount_type, discount_value FROM students WHERE id = $1',
-          [student.id]
-        );
-        const s = studentDetailsRes.rows[0];
-        const { totalFees: finalFee } = beneficiaryAdjustedFee(feeAmount, s);
+      const studentDetailsRes = await client.query(
+        'SELECT is_beneficiary, discount_type, discount_value FROM students WHERE id = $1',
+        [student.id]
+      );
+      const s = studentDetailsRes.rows[0];
+      const { totalFees: finalFee } = beneficiaryAdjustedFee(feeAmount, s);
 
-        await client.query(
-          `INSERT INTO student_ledger (tenant_id, student_id, academic_year_id, term_id, description, debit, credit, entry_type)
-           VALUES ($1, $2, $3, $4, $5, $6, 0, 'term_fee')`,
-          [validatedTenantId, student.id, validatedAcademicYearId, validatedTermId, description, finalFee]
-        );
-        postedCount++;
-      } catch (error: any) {
-        // If the unique constraint is violated, it means the fee has already been posted.
-        if (error.code === '23505') { // Unique violation
-          skippedCount++;
-        } else {
-          throw error;
-        }
-      }
+      await client.query(
+        `INSERT INTO student_ledger (tenant_id, student_id, academic_year_id, term_id, description, debit, credit, entry_type)
+         VALUES ($1, $2, $3, $4, $5, $6, 0, 'term_fee')
+         ON CONFLICT (tenant_id, student_id, academic_year_id, term_id)
+         WHERE entry_type = 'term_fee'
+         DO UPDATE SET debit = EXCLUDED.debit, description = EXCLUDED.description`,
+        [validatedTenantId, student.id, validatedAcademicYearId, validatedTermId, description, finalFee]
+      );
+      postedCount++;
     }
 
     await client.query('COMMIT');

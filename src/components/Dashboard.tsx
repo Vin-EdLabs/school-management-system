@@ -52,6 +52,7 @@ import PushNotificationsModule from './notifications/PushNotificationsModule';
 import ParentDeskAdminModule from './notifications/ParentDeskAdminModule';
 import ParentAccountsModule from './parent/ParentAccountsModule';
 import BulkPrintIdCards from './id-cards/BulkPrintIdCards';
+import InvoicesModule from './invoices/InvoicesModule';
 import EndOfYearWizard from './academic/EndOfYearWizard';
 import BirthdayModule from './birthday/BirthdayModule';
 import GlobalAnnouncementPopup from './announcements/GlobalAnnouncementPopup';
@@ -193,6 +194,8 @@ const Dashboard = () => {
         return <TeacherQuizModule />;
       case 'fees':
         return <FeesModule onNavigate={setActiveModule} />;
+      case 'invoices':
+        return <InvoicesModule />;
       case 'finance-statement':
         return <FinanceStatementModule />;
       case 'income':

@@ -316,7 +316,8 @@ router.put('/:id', requireRole('super-admin', 'administrator', 'finance'), async
     res.json(next);
   } catch (error) {
     console.error('Update fee structure error:', error);
-    res.status(500).json({ error: 'Failed to update fee structure' });
+    const message = error instanceof Error ? error.message : 'Failed to update fee structure';
+    res.status(500).json({ error: 'Failed to update fee structure', detail: message });
   }
 });
 

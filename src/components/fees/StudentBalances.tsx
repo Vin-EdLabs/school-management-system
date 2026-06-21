@@ -6,8 +6,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
-import { Search, AlertCircle, CreditCard, TrendingUp } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
+import { Search, AlertCircle, CreditCard, TrendingUp } from 'lucide-react';
 import { getActiveAcademicTerm } from '../../utils/feeCalculations';
 import { isActiveEnrolledStudent } from '../students/studentRegistryUtils';
 import { formatDisplayDate } from '../../utils/dateFormat';
@@ -15,10 +16,13 @@ import type { StudentBalance } from '../../services/studentBalance';
 import type { Payment } from '../../contexts/DataContext';
 import TermBillBreakdown from './TermBillBreakdown';
 import { resolveFeeStructureId } from '../../services/feeStructureItems';
+import { GenerateInvoiceBulkButton, GenerateInvoiceButton } from '../invoices/GenerateInvoiceActions';
 
 const StudentBalances = () => {
   const { students, payments, classes, ledgerBalances, feeStructures } = useData();
-  const { currentTerm: activeTerm } = useActiveTerm();
+  const { hasAccess } = useAuth();
+  const { currentTerm: activeTerm, activeAcademicTermId } = useActiveTerm();
+  const canGenerateInvoice = hasAccess('invoices');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterClass, setFilterClass] = useState('all-classes');
   const [filterStatus, setFilterStatus] = useState('all-status');
@@ -304,9 +308,15 @@ const StudentBalances = () => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center justify-between">
+        <CardTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <span>Student Balances - {currentTerm}</span>
-          <div className="flex items-center space-x-4">
+          <div className="flex flex-wrap items-center gap-2">
+            {canGenerateInvoice ? (
+              <GenerateInvoiceBulkButton
+                termId={activeAcademicTermId}
+                classes={classes.map((c) => ({ id: c.id, className: c.className }))}
+              />
+            ) : null}
             <Badge variant="outline" className="text-sm">
               Outstanding: {studentsWithOutstanding} students
             </Badge>
@@ -424,12 +434,13 @@ const StudentBalances = () => {
                 <TableHead>Balance</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Payments</TableHead>
+                {canGenerateInvoice ? <TableHead className="text-right">Invoice</TableHead> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredStudents.length === 0 ? (
                 <TableRow className="border-border">
-                  <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={canGenerateInvoice ? 11 : 10} className="text-center py-8 text-muted-foreground">
                     No students found matching your criteria
                   </TableCell>
                 </TableRow>
@@ -511,6 +522,15 @@ const StudentBalances = () => {
                         {student.paymentCount} payment{student.paymentCount !== 1 ? 's' : ''}
                       </Badge>
                     </TableCell>
+                    {canGenerateInvoice ? (
+                      <TableCell className="text-right">
+                        <GenerateInvoiceButton
+                          studentId={Number(student.id)}
+                          studentName={`${student.firstName} ${student.lastName}`}
+                          termId={student.activeTermId ?? activeAcademicTermId}
+                        />
+                      </TableCell>
+                    ) : null}
                   </TableRow>
                 ))
               )}

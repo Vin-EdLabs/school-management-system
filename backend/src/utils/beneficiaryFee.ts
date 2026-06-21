@@ -38,6 +38,18 @@ export function beneficiaryAdjustedFee(
   return { totalFees: 0, discountAmount: base };
 }
 
+/** Human-readable label for invoice / statement discount lines. */
+export function formatBeneficiaryDiscountLabel(student: BeneficiaryStudentRow | null | undefined): string {
+  if (!student?.is_beneficiary) return 'Beneficiary Discount';
+  const type = String(student.discount_type ?? '')
+    .trim()
+    .toLowerCase();
+  if (!type) return 'Beneficiary Discount (100%)';
+  if (type === 'percentage') return `Beneficiary Discount (${student.discount_value}%)`;
+  if (type === 'fixed') return `Beneficiary Discount (GHS ${student.discount_value})`;
+  return 'Beneficiary Discount';
+}
+
 /** Used when deciding whether to carry ledger balance into the next term. */
 export function isFullFeeWaiverStudentRow(student: BeneficiaryStudentRow | null | undefined): boolean {
   if (!student?.is_beneficiary) return false;

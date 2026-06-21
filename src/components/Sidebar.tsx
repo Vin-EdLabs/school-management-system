@@ -113,6 +113,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
   ],
   financial: [
     ...(hasAccess('fees') ? [{ id: 'fees', label: 'Fees', icon: DollarSign }] : []),
+    ...(hasAccess('invoices') ? [{ id: 'invoices', label: 'Invoices', icon: FileText }] : []),
     ...(hasAccess('finance-statement') ? [{ id: 'finance-statement', label: 'Finance Statement', icon: FileText }] : []),
     ...(hasAccess('income') ? [{ id: 'income', label: 'Income', icon: TrendingUp }] : []),
     ...(hasAccess('expenses') ? [{ id: 'expenses', label: 'Expenses', icon: TrendingDown }] : []),

@@ -295,7 +295,7 @@ const App = () => {
               <PwaUpdateManager />
               <Toaster />
               <Sonner />
-                <SubdomainPathNormalizer />
+              <SubdomainPathNormalizer />
                 {subdomainSlug ? (
                   <Routes>
                    

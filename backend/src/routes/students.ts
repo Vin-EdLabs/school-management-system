@@ -1,4 +1,5 @@
 import express from 'express';
+import bcrypt from 'bcryptjs';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -24,6 +25,22 @@ import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.j
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const uploadsDir = path.join(__dirname, '../../uploads');
+
+async function ensureParentPortalAccountForStudent(
+  tenantId: number,
+  studentPk: number,
+  loginId: string
+): Promise<void> {
+  const portalLoginId = String(loginId || '').trim();
+  if (!portalLoginId) return;
+  const passwordHash = await bcrypt.hash(portalLoginId, 10);
+  await query(
+    `INSERT INTO parent_portal_accounts (tenant_id, student_id, password_hash, must_change_password)
+     VALUES ($1, $2, $3, true)
+     ON CONFLICT (tenant_id, student_id) DO NOTHING`,
+    [tenantId, studentPk, passwordHash]
+  );
+}
 
 // Configure multer for memory storage (Base64)
 const storage = multer.memoryStorage();
@@ -448,6 +465,12 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
             });
           } catch (cardErr) {
             console.error('[create-student] Auto ID card failed:', cardErr);
+          }
+
+          try {
+            await ensureParentPortalAccountForStudent(tenantId, Number(result.rows[0].id), studentId);
+          } catch (portalErr) {
+            console.error('[create-student] Parent portal account setup failed:', portalErr);
           }
         }
 
@@ -899,6 +922,16 @@ router.post('/:id/approve-admission', requireRole('super-admin', 'administrator'
     }
 
     const row = result.rows[0];
+
+    try {
+      await ensureParentPortalAccountForStudent(
+        tenantId,
+        Number(row.id),
+        String(row.student_id || row.admission_number || '')
+      );
+    } catch (portalErr) {
+      console.error('[approve-admission] Parent portal account setup failed:', portalErr);
+    }
 
     const client = await getClient();
     let feePosted: Awaited<ReturnType<typeof postStudentActivationTermFee>> = { posted: false, amount: 0 };

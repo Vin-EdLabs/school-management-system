@@ -21,6 +21,15 @@ import TermBillBreakdown from '@/components/fees/TermBillBreakdown';
 import { isFinanceStatementNotificationUrl } from '@/services/studentFinanceStatementApi';
 import AdmissionLetterDocument, { printAdmissionLetter } from '@/components/students/AdmissionLetterDocument';
 import type { AdmissionLetterData } from '@/components/students/AdmissionLetterDocument';
+import {
+  fetchInvoicePdfData,
+  invoiceStatusLabel,
+  invoiceStatusClass,
+  type Invoice,
+} from '@/services/invoiceApi';
+import InvoiceDocument from '@/components/invoices/InvoiceDocument';
+import { buildInvoiceFilename, downloadInvoicePdf } from '@/components/invoices/buildInvoicePdf';
+import { createRoot } from 'react-dom/client';
 
 function resolveApiBase(): string {
   if (import.meta.env.VITE_API_BASE_URL) return import.meta.env.VITE_API_BASE_URL;
@@ -333,6 +342,19 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 }
 
+type CachedStudentPortalData = {
+  student: StudentInfo;
+  grades: any;
+  termReport: any;
+  finance: any;
+  parentInvoices: Invoice[];
+  attendance: any;
+  birthdayInfo: { birthdays: Array<{ id: number; fullName: string; age: number }> } | null;
+  admissionLetters: Array<{ id: number; version_number: number; reference_number: string | null; created_at: string }>;
+  deskMessages: any[];
+  parentDeskUnread: number;
+};
+
 // ── Main Component ────────────────────────────────────────────────────────────
 
 interface ParentPortalProps {
@@ -353,7 +375,15 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     const s = localStorage.getItem(`parent_student_${tenantId}`);
     return s ? JSON.parse(s) : null;
   });
-  const [mustChangePassword, setMustChangePassword] = useState(false);
+  const [mustChangePassword, setMustChangePassword] = useState(() => {
+    try {
+      const stored = localStorage.getItem(`parent_student_${tenantId}`);
+      if (stored) return !!JSON.parse(stored).must_change_password;
+    } catch {
+      // ignore invalid stored session
+    }
+    return false;
+  });
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [isStudentMode, setIsStudentMode] = useState(false);
   const [studentModeEntering, setStudentModeEntering] = useState(false);
@@ -379,6 +409,8 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   const [grades, setGrades] = useState<any>(null);
   const [termReport, setTermReport] = useState<any>(null);
   const [finance, setFinance] = useState<any>(null);
+  const [parentInvoices, setParentInvoices] = useState<Invoice[]>([]);
+  const [invoicePdfLoading, setInvoicePdfLoading] = useState<number | null>(null);
   const [attendance, setAttendance] = useState<any>(null);
   const [birthdayInfo, setBirthdayInfo] = useState<{ birthdays: Array<{ id: number; fullName: string; age: number }> } | null>(null);
   const [dataLoading, setDataLoading] = useState(false);
@@ -407,67 +439,67 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     const win = window.open('', '_blank');
     if (!win) return;
     const studentName = student ? `${student.first_name} ${student.last_name}` : 'Student';
+
+    const clone = content.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll('.no-print, button, [type="button"]').forEach((el) => el.remove());
+    clone.querySelectorAll('.hidden').forEach((el) => {
+      (el as HTMLElement).style.display = 'inline';
+      el.classList.remove('hidden');
+    });
+
+    const headStylesheets = Array.from(document.head.querySelectorAll('link[rel="stylesheet"], style'))
+      .map((el) => el.outerHTML)
+      .join('\n');
+
     win.document.write(`
       <html>
         <head>
           <title>Terminal Report Card - ${studentName}</title>
+          ${headStylesheets}
           <style>
-            @page {
-              margin: 5mm;
-              size: A4 portrait;
-            }
+            @page { margin: 5mm; size: A4 portrait; }
             @media print {
-              body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-              .no-print { display: none !important; }
-              .report-card {
-                max-width: none !important;
-                width: 100% !important;
-                padding: 10px !important;
+              body, body * { visibility: visible !important; }
+              .no-print, .no-print *, button, button * { display: none !important; visibility: hidden !important; }
+              body {
+                margin: 0 !important; padding: 0 !important;
+                -webkit-print-color-adjust: exact; print-color-adjust: exact;
+                position: static !important; width: auto !important; height: auto !important;
               }
+              .report-wrapper { max-width: none !important; width: 100% !important; }
             }
             body {
-              font-family: 'Times New Roman', Times, serif;
-              color: #000;
-              background: #fff;
-              margin: 10px;
-              font-size: 13px;
+              font-family: 'Times New Roman', Times, serif; color: #000; background: #fff;
+              margin: 10px !important; font-size: 13px;
+              position: static !important; width: auto !important; height: auto !important;
+              display: block !important;
             }
-            .report-card {
-              max-width: 800px;
-              margin: 0 auto;
-              padding: 20px;
-              border: 1px solid #000;
-              background: #fff;
+            .report-wrapper {
+              max-width: 800px; margin: 0 auto; display: block !important;
+              opacity: 1 !important; visibility: visible !important;
             }
-            table {
-              width: 100%;
-              border-collapse: collapse;
-            }
-            td, th {
-              padding: 6px;
-              vertical-align: middle;
-            }
-            .border-none td {
-              border: none;
-            }
-            .border-all th, .border-all td {
-              border: 2px solid #000;
+            table { width: 100%; border-collapse: collapse; }
+            td, th { padding: 6px; vertical-align: middle; }
+            input, textarea, select {
+              border: none !important; outline: none !important;
+              font-family: 'Times New Roman', Times, serif; font-size: 13px;
+              background: transparent !important; font-weight: bold; text-transform: uppercase;
             }
           </style>
         </head>
         <body>
-          <div class="report-card">
-            ${content.innerHTML}
-          </div>
+          <div class="report-wrapper">${clone.outerHTML}</div>
+          <script>setTimeout(function(){ window.print(); }, 500);</script>
         </body>
       </html>
     `);
     win.document.close();
-    win.print();
   };
   /** Incremented on every student switch — stale API responses must not update state. */
   const studentSessionRef = useRef(0);
+  const studentDataCacheRef = useRef<Map<string, CachedStudentPortalData>>(new Map());
   const [isSwitchingStudent, setIsSwitchingStudent] = useState(false);
+  const [switchTargetName, setSwitchTargetName] = useState<string | null>(null);
 
   useEffect(() => {
     if (selectedDeskMessage || deskConversation.length > 0) {
@@ -508,6 +540,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     setGrades(null);
     setTermReport(null);
     setFinance(null);
+    setParentInvoices([]);
     setAttendance(null);
     setDeskMessages([]);
     setDeskConversation([]);
@@ -528,14 +561,40 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     setStudentModeEntering(false);
   }, []);
 
-  const beginStudentSessionTransition = useCallback(() => {
+  const cacheCurrentStudentData = useCallback(() => {
+    if (!student?.admission_number) return;
+    studentDataCacheRef.current.set(student.admission_number, {
+      student,
+      grades,
+      termReport,
+      finance,
+      parentInvoices,
+      attendance,
+      birthdayInfo,
+      admissionLetters,
+      deskMessages,
+      parentDeskUnread,
+    });
+  }, [
+    student,
+    grades,
+    termReport,
+    finance,
+    parentInvoices,
+    attendance,
+    birthdayInfo,
+    admissionLetters,
+    deskMessages,
+    parentDeskUnread,
+  ]);
+
+  const beginStudentSessionTransition = useCallback((targetName?: string) => {
+    cacheCurrentStudentData();
     studentSessionRef.current += 1;
+    setSwitchTargetName(targetName?.trim() || null);
     setIsSwitchingStudent(true);
-    if (typeof window !== 'undefined') {
-      window.scrollTo({ top: 0, behavior: 'auto' });
-    }
     return studentSessionRef.current;
-  }, []);
+  }, [cacheCurrentStudentData]);
 
   const persist = (t: string, s: StudentInfo) => {
     localStorage.setItem(`parent_token_${tenantId}`, t);
@@ -565,18 +624,12 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     if (switchingAccountRef.current) return;
 
     switchingAccountRef.current = true;
-    const sessionId = beginStudentSessionTransition();
+    const targetName = `${acc.student.first_name} ${acc.student.last_name}`.trim();
+    const sessionId = beginStudentSessionTransition(targetName);
     setShowSwitcher(false);
-    setActiveTab('overview');
-
-    setToken(acc.token);
-    setStudent(acc.student);
-    setMustChangePassword(Boolean(acc.student.must_change_password));
-    localStorage.setItem(`parent_token_${tenantId}`, acc.token);
-    localStorage.setItem(`parent_student_${tenantId}`, JSON.stringify(acc.student));
 
     try {
-      await finalizeStudentSessionTransition(sessionId, acc.token);
+      await finalizeStudentSessionTransition(sessionId, acc.token, acc.student);
     } finally {
       switchingAccountRef.current = false;
     }
@@ -726,37 +779,143 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     setAppNotifications(mapped);
   }, []);
 
-  const finalizeStudentSessionTransition = useCallback(async (sessionId: number, authToken: string) => {
+  const finalizeStudentSessionTransition = useCallback(async (
+    sessionId: number,
+    authToken: string,
+    linkedStudent?: StudentInfo
+  ) => {
     const forceClearTimer = window.setTimeout(() => {
       if (studentSessionRef.current === sessionId) {
         setIsSwitchingStudent(false);
+        setSwitchTargetName(null);
       }
     }, 12000);
 
     try {
-      const me = await parentFetch('/parent/me', {}, authToken) as unknown as StudentInfo;
+      const cached = linkedStudent?.admission_number
+        ? studentDataCacheRef.current.get(linkedStudent.admission_number)
+        : undefined;
+
+      const tab = activeTab;
+      const prefetch: Promise<unknown>[] = [
+        parentFetch('/parent/me', {}, authToken) as Promise<StudentInfo>,
+        parentFetch('/parent/finance', {}, authToken).catch(() => null),
+        parentFetch('/parent/birthdays', {}, authToken).catch(() => null),
+        parentFetch('/parent/admission-letters', {}, authToken).catch(() => []),
+        parentFetch('/parent/invoices', {}, authToken).catch(() => ({ items: [] })),
+        parentFetch('/messages/unread-count', {}, authToken).catch(() => ({ count: 0 })),
+      ];
+
+      if (tab === 'grades') prefetch.push(parentFetch('/parent/grades', {}, authToken).catch(() => null));
+      else if (tab === 'position') prefetch.push(parentFetch('/parent/term-report', {}, authToken).catch(() => null));
+      else if (tab === 'attendance') prefetch.push(parentFetch('/parent/attendance', {}, authToken).catch(() => null));
+      else if (tab === 'desk') prefetch.push(parentFetch('/messages?page=1&limit=20', {}, authToken).catch(() => null));
+
+      const results = await Promise.all(prefetch);
       if (studentSessionRef.current !== sessionId) return;
-      setStudent((prev) => ({
+
+      const me = results[0] as StudentInfo;
+      const financeData = results[1];
+      const birthdays = results[2] as { birthdays?: Array<{ id: number; fullName: string; age: number }> } | null;
+      const admissionData = results[3] as Array<{ id: number; version_number: number; reference_number: string | null; created_at: string }>;
+      const invData = results[4] as { items?: Invoice[] };
+      const unreadData = results[5] as { count?: number };
+      const tabData = results[6] ?? null;
+
+      const studentInfo: StudentInfo = {
         ...me,
-        must_change_password: prev?.must_change_password ?? me.must_change_password ?? false,
-      }));
-      if (studentSessionRef.current !== sessionId) return;
-      await loadServerNotifications(authToken, sessionId);
-      if (studentSessionRef.current !== sessionId) return;
-      try {
-        const r = await parentFetch('/messages/unread-count', {}, authToken);
-        if (studentSessionRef.current !== sessionId) return;
-        setParentDeskUnread(Number(r?.count ?? 0));
-      } catch {
-        if (studentSessionRef.current === sessionId) setParentDeskUnread(0);
+        must_change_password:
+          linkedStudent?.must_change_password ?? me.must_change_password ?? false,
+      };
+
+      setToken(authToken);
+      setMustChangePassword(Boolean(studentInfo.must_change_password));
+      localStorage.setItem(`parent_token_${tenantId}`, authToken);
+      localStorage.setItem(`parent_student_${tenantId}`, JSON.stringify(studentInfo));
+
+      setLinkedAccounts((prev) => {
+        const updated = prev.map((acc) =>
+          acc.student.admission_number === studentInfo.admission_number
+            ? { token: authToken, student: studentInfo }
+            : acc
+        );
+        localStorage.setItem(`parent_accounts_${tenantId}`, JSON.stringify(updated));
+        return updated;
+      });
+
+      if (cached) {
+        if (!financeData && cached.finance) setFinance(cached.finance);
+        if (tab !== 'grades' && cached.grades) setGrades(cached.grades);
+        if (tab !== 'position' && cached.termReport) setTermReport(cached.termReport);
+        if (tab !== 'attendance' && cached.attendance) setAttendance(cached.attendance);
+        if (tab !== 'desk' && cached.deskMessages.length) setDeskMessages(cached.deskMessages);
       }
+
+      setStudent(studentInfo);
+      if (financeData) setFinance(financeData);
+      setBirthdayInfo(
+        birthdays?.birthdays?.length ? { birthdays: birthdays.birthdays } : null
+      );
+      setAdmissionLetters(Array.isArray(admissionData) ? admissionData : []);
+      setParentInvoices(Array.isArray(invData?.items) ? invData.items : []);
+      setParentDeskUnread(Number(unreadData?.count ?? 0));
+
+      if (tab === 'grades' && tabData) setGrades(tabData);
+      else if (tab === 'position' && tabData) setTermReport(tabData);
+      else if (tab === 'attendance' && tabData) setAttendance(tabData);
+      else if (tab === 'desk' && tabData) {
+        const deskPayload = tabData as { messages?: any[]; contact?: any };
+        setDeskMessages(Array.isArray(deskPayload?.messages) ? deskPayload.messages : []);
+        setDeskContact(deskPayload?.contact || {});
+        setSelectedDeskMessage(null);
+        setDeskConversation([]);
+      } else if (!cached) {
+        setGrades(null);
+        setTermReport(null);
+        setAttendance(null);
+        setDeskMessages([]);
+        setSelectedDeskMessage(null);
+        setDeskConversation([]);
+      }
+
+      setSelectedReceipt(null);
+      setShowReceipt(false);
+      setFinanceStatementOpen(false);
+      setDeskComposeOpen(false);
+      setDeskBody('');
+      setDeskReply('');
+      setDeskAttachment(null);
+      setDeskReplyAttachment(null);
+      setIsStudentMode(false);
+      setStudentModeEntering(false);
+
+      await loadServerNotifications(authToken, sessionId);
+
+      studentDataCacheRef.current.set(studentInfo.admission_number, {
+        student: studentInfo,
+        grades: tab === 'grades' && tabData ? tabData : cached?.grades ?? null,
+        termReport: tab === 'position' && tabData ? tabData : cached?.termReport ?? null,
+        finance: financeData ?? cached?.finance ?? null,
+        parentInvoices: Array.isArray(invData?.items) ? invData.items : cached?.parentInvoices ?? [],
+        attendance: tab === 'attendance' && tabData ? tabData : cached?.attendance ?? null,
+        birthdayInfo: birthdays?.birthdays?.length ? { birthdays: birthdays.birthdays } : null,
+        admissionLetters: Array.isArray(admissionData) ? admissionData : [],
+        deskMessages:
+          tab === 'desk' && tabData
+            ? (Array.isArray((tabData as { messages?: any[] }).messages)
+                ? (tabData as { messages: any[] }).messages
+                : [])
+            : cached?.deskMessages ?? [],
+        parentDeskUnread: Number(unreadData?.count ?? 0),
+      });
     } finally {
       window.clearTimeout(forceClearTimer);
       if (studentSessionRef.current === sessionId) {
         setIsSwitchingStudent(false);
+        setSwitchTargetName(null);
       }
     }
-  }, [loadServerNotifications]);
+  }, [activeTab, tenantId, loadServerNotifications]);
 
   const openFinanceStatementFromNotification = useCallback(async (n?: ParentAppNotification | null) => {
     if (n?.serverId && token && !n.read) {
@@ -795,9 +954,32 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     };
   }, [showNotifPanel]);
 
+  /** Restore forced password-change state when reopening the portal with an existing session. */
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const me = await parentFetch('/parent/me', {}, token) as StudentInfo;
+        if (cancelled) return;
+        setStudent((prev) => {
+          const next = { ...(prev || {}), ...me, must_change_password: !!me.must_change_password } as StudentInfo;
+          localStorage.setItem(`parent_student_${tenantId}`, JSON.stringify(next));
+          return next;
+        });
+        if (me.must_change_password) setMustChangePassword(true);
+      } catch {
+        // token expired or network issue — login screen handles invalid sessions
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, tenantId]);
+
   /** Load admin-linked sibling accounts so parents can switch without logging in again. */
   useEffect(() => {
-    if (!token || !student) return;
+    if (!token || !student || isSwitchingStudent) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -818,11 +1000,11 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     return () => {
       cancelled = true;
     };
-  }, [token, student?.admission_number, tenantId]);
+  }, [token, student?.admission_number, tenantId, isSwitchingStudent]);
 
   /** Sliding session: refresh JWT periodically so parents stay signed in across PWA restarts. */
   useEffect(() => {
-    if (!token || !student) return;
+    if (!token || !student || isSwitchingStudent) return;
     const refreshSession = async () => {
       try {
         const data = await parentFetch('/parent/refresh', { method: 'POST', body: JSON.stringify({}) }, token) as { token: string };
@@ -851,27 +1033,27 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       window.clearInterval(id);
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, [token, student, tenantId]);
+  }, [token, student, tenantId, isSwitchingStudent]);
 
   const refreshParentDeskUnread = useCallback(async () => {
-    if (!token) return;
+    if (!token || isSwitchingStudent) return;
     try {
       const r = await parentFetch('/messages/unread-count', {}, token);
       setParentDeskUnread(Number(r?.count ?? 0));
     } catch {
       setParentDeskUnread(0);
     }
-  }, [token]);
+  }, [token, isSwitchingStudent]);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token || isSwitchingStudent) return;
     void refreshParentDeskUnread();
     const id = window.setInterval(() => void refreshParentDeskUnread(), 60000);
     return () => window.clearInterval(id);
-  }, [token, refreshParentDeskUnread]);
+  }, [token, refreshParentDeskUnread, isSwitchingStudent]);
 
   const loadDeskMessages = useCallback(async (expectedSessionId?: number) => {
-    if (!token) return;
+    if (!token || isSwitchingStudent) return;
     const sessionId = expectedSessionId ?? studentSessionRef.current;
     setDeskLoading(true);
     try {
@@ -888,7 +1070,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         void refreshParentDeskUnread();
       }
     }
-  }, [token, refreshParentDeskUnread]);
+  }, [token, refreshParentDeskUnread, isSwitchingStudent]);
 
   const openDeskConversation = useCallback(async (id: number) => {
     if (!token) return;
@@ -946,9 +1128,13 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         if (studentSessionRef.current !== sessionId) return;
         setTermReport(d);
       } else if (tab === 'finance') {
-        const d = await parentFetch('/parent/finance', {}, token);
+        const [d, inv] = await Promise.all([
+          parentFetch('/parent/finance', {}, token),
+          parentFetch('/parent/invoices', {}, token).catch(() => ({ items: [] })),
+        ]);
         if (studentSessionRef.current !== sessionId) return;
         setFinance(d);
+        setParentInvoices(Array.isArray(inv?.items) ? inv.items : []);
       } else if (tab === 'attendance') {
         const d = await parentFetch('/parent/attendance', {}, token);
         if (studentSessionRef.current !== sessionId) return;
@@ -965,17 +1151,43 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     }
   }, [token, student?.admission_number, loadDeskMessages]);
 
+  const downloadParentInvoicePdf = useCallback(async (invoice: Invoice) => {
+    setInvoicePdfLoading(invoice.id);
+    try {
+      const data = await fetchInvoicePdfData(invoice.id, true);
+      const host = document.createElement('div');
+      host.style.position = 'fixed';
+      host.style.left = '-9999px';
+      document.body.appendChild(host);
+      const root = createRoot(host);
+      root.render(<InvoiceDocument data={data} />);
+      await new Promise((r) => setTimeout(r, 150));
+      const el = host.firstElementChild as HTMLElement;
+      if (el) {
+        await downloadInvoicePdf(el, buildInvoiceFilename(invoice.invoiceNumber, invoice.studentName));
+      }
+      root.unmount();
+      document.body.removeChild(host);
+    } catch {
+      /* ignore */
+    } finally {
+      setInvoicePdfLoading(null);
+    }
+  }, []);
+
   const refreshFinanceAll = useCallback(async () => {
     if (!token || !student) return;
     const sessionId = studentSessionRef.current;
     setDataLoading(true);
     try {
-      const [financeData, meData] = await Promise.all([
+      const [financeData, meData, invData] = await Promise.all([
         parentFetch('/parent/finance', {}, token),
         parentFetch('/parent/me', {}, token).catch(() => null),
+        parentFetch('/parent/invoices', {}, token).catch(() => ({ items: [] })),
       ]);
       if (studentSessionRef.current !== sessionId) return;
       setFinance(financeData);
+      setParentInvoices(Array.isArray(invData?.items) ? invData.items : []);
       if (meData) {
         setStudent((prev) => ({
           ...(meData as StudentInfo),
@@ -993,10 +1205,10 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   }, [token, student, loadServerNotifications]);
 
   useEffect(() => {
-    if (!token || !student?.admission_number) return;
+    if (!token || !student?.admission_number || isSwitchingStudent) return;
     if (activeTab === 'overview') return;
     void fetchTabData(activeTab);
-  }, [token, student?.admission_number, activeTab, fetchTabData]);
+  }, [token, student?.admission_number, activeTab, fetchTabData, isSwitchingStudent]);
 
   useEffect(() => {
     if (!token || isSwitchingStudent) return;
@@ -1024,7 +1236,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   }, [token, activeTab, isSwitchingStudent, student?.admission_number]);
 
   useEffect(() => {
-    if (!token || typeof window === 'undefined') return;
+    if (!token || typeof window === 'undefined' || isSwitchingStudent) return;
     ensurePushSubscription(token, tenantId).catch(() => undefined);
     loadServerNotifications(token, studentSessionRef.current).catch(() => undefined);
 
@@ -1040,10 +1252,10 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       ensurePushSubscription(token, tenantId).catch(() => undefined);
     }, 60000);
     return () => window.clearInterval(syncInterval);
-  }, [token, tenantId, loadServerNotifications]);
+  }, [token, tenantId, loadServerNotifications, isSwitchingStudent]);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token || isSwitchingStudent) return;
     const socket: Socket = io(resolveSocketBaseUrl(), {
       ...SOCKET_IO_OPTIONS,
       auth: { token },
@@ -1771,15 +1983,21 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       )}
 
       {/* ── Content ── */}
-      <main className="relative z-10 max-w-6xl mx-auto px-3.5 sm:px-6 pt-24 pb-28 sm:pt-32 sm:pb-8">
+      <main
+        className={`relative z-10 max-w-6xl mx-auto px-3.5 sm:px-6 pt-24 pb-28 sm:pt-32 sm:pb-8${showSwitchOverlay ? ' overflow-hidden' : ''}`}
+        aria-hidden={showSwitchOverlay ? true : undefined}
+      >
         {showSwitchOverlay ? (
           <div
-            className="absolute inset-0 z-20 flex items-start justify-center bg-white/60 pt-24"
-            aria-hidden
+            className="fixed inset-0 z-[130] flex items-center justify-center bg-white/75 backdrop-blur-[2px]"
+            aria-live="polite"
+            aria-busy="true"
           >
-            <div className="flex items-center gap-2 rounded-full border border-purple-100 bg-white px-4 py-2 text-sm font-semibold text-purple-700 shadow-sm">
-              <RefreshCw className="h-4 w-4 animate-spin" />
-              Switching student…
+            <div className="flex flex-col items-center gap-3 rounded-2xl border border-violet-100 bg-white px-6 py-5 shadow-lg">
+              <RefreshCw className="h-6 w-6 animate-spin text-violet-600" />
+              <p className="text-sm font-semibold text-slate-800">
+                {switchTargetName ? `Loading ${switchTargetName}…` : 'Switching student…'}
+              </p>
             </div>
           </div>
         ) : null}
@@ -1802,7 +2020,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
         {/* ── Overview tab ── */}
         {activeTab === 'overview' && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-500">
+          <div className="space-y-6">
             {/* Student profile card */}
             <section className="relative overflow-hidden rounded-[2rem] border border-white/70 bg-white/45 p-[1px] shadow-[0_24px_80px_rgba(139,92,246,0.22)] backdrop-blur-2xl">
               <div className="absolute inset-0 bg-gradient-to-br from-violet-400/50 via-white/10 to-pink-400/45 opacity-80" />
@@ -2114,7 +2332,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                   {/* Beautiful Report Card Container */}
                   <div
                     ref={reportCardRef}
-                    className="bg-white text-slate-950 p-6 md:p-8 border-2 border-black rounded shadow-lg max-w-4xl mx-auto space-y-4"
+                    className="report-wrapper bg-white text-slate-950 p-6 md:p-8 border-2 border-black rounded shadow-lg max-w-4xl mx-auto space-y-4"
                     style={{ fontFamily: "'Times New Roman', Times, serif" }}
                   >
                     {/* Header Layout */}
@@ -2580,6 +2798,50 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                   </div>
                 )}
 
+                {/* Invoices */}
+                <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                  <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                    <h3 className="font-semibold text-gray-800 text-sm flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-indigo-600" /> Invoices
+                    </h3>
+                    <span className="text-xs text-gray-400">{parentInvoices.length} invoice{parentInvoices.length !== 1 ? 's' : ''}</span>
+                  </div>
+                  {parentInvoices.length === 0 ? (
+                    <div className="px-4 py-6 text-center text-sm text-gray-400">No invoices issued yet.</div>
+                  ) : (
+                    <div className="divide-y divide-gray-50">
+                      {parentInvoices.map((inv) => (
+                        <div key={inv.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-bold text-gray-800">{inv.invoiceNumber}</p>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {inv.termLabel || 'Term'} · GHS {inv.totalDue.toLocaleString()} · Issued {fmtDate(inv.issueDate)}
+                            </p>
+                            <span className={`inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${invoiceStatusClass(inv.liveStatus || inv.status)}`}>
+                              {invoiceStatusLabel(inv.liveStatus || inv.status)}
+                            </span>
+                          </div>
+                          <div className="flex gap-2 shrink-0">
+                            <button
+                              type="button"
+                              disabled={invoicePdfLoading === inv.id}
+                              onClick={() => void downloadParentInvoicePdf(inv)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                            >
+                              {invoicePdfLoading === inv.id ? (
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <FileText className="w-3.5 h-3.5" />
+                              )}
+                              Download PDF
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 {/* Payment history */}
                 <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
                   <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
@@ -2762,7 +3024,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         )}
 
         {activeTab === 'desk' && (
-          <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <div className="space-y-4">
             <div className="flex justify-end">
               <button
                 onClick={() => setShowDeskGuide(true)}

@@ -56,7 +56,9 @@ import systemRoutes from './routes/system.js';
 import superAnnouncementsRoutes from './routes/superAnnouncements.js';
 import tenantBackupRoutes from './routes/tenantBackup.js';
 import announcementsRoutes from './routes/announcements.js';
+import invoiceRoutes from './routes/invoices.js';
 import transportRoutes from './routes/transport.js';
+import { startInvoiceStatusJob } from './jobs/invoiceStatusJob.js';
 import { initSocket } from './socket.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { idempotencyGuard } from './middleware/idempotency.js';
@@ -197,6 +199,7 @@ app.use('/api/lost-cards', lostCardsRoutes);
 app.use('/api/promotions', promotionsRoutes);
 app.use('/api/messages', messagesRoutes);
 app.use('/api/student', studentLearningRoutes);
+app.use('/api/invoices', invoiceRoutes);
 app.use('/api/transport', transportRoutes);
 
 // Error handling middleware
@@ -206,6 +209,7 @@ app.use(errorHandler);
 initializeDatabase()
   .then(() => {
     startReceiptLockJob();
+    startInvoiceStatusJob();
     startTeacherSuspensionJob();
     startTodoReminderJob();
     httpServer.listen(PORT, () => {

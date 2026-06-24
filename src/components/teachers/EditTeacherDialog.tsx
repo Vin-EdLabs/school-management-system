@@ -14,6 +14,9 @@ import { apiService } from '@/services/api';
 import LazyTeacherAvatar from './LazyTeacherAvatar';
 import { teacherStatusBadge } from './TeacherStatusModals';
 import StaffOptionalSections from '../staff/StaffOptionalSections';
+import StaffFieldSelect from '../common/StaffFieldSelect';
+import PasswordConfirmDialog from '../common/PasswordConfirmDialog';
+import { persistStaffProfileFields } from '@/services/staffFieldApi';
 
 interface EditTeacherDialogProps {
   teacher: Teacher | null;
@@ -29,10 +32,8 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
   onSuccess
 }) => {
   const { updateTeacher, subjects } = useData();
-  const { verifyPassword, user } = useAuth();
-  const [showPassword, setShowPassword] = useState(false);
-  const [password, setPassword] = useState('');
-  const [confirming, setConfirming] = useState(false);
+  const { user } = useAuth();
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -54,15 +55,15 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
     bankAccountName: '',
     bankAccountNumber: '',
     bankBranch: '',
+    position: '',
+    department: '',
   });
   const [showEmergency, setShowEmergency] = useState(false);
   const [showBank, setShowBank] = useState(false);
 
   useEffect(() => {
     if (!open) {
-      setShowPassword(false);
-      setPassword('');
-      setConfirming(false);
+      setShowPasswordDialog(false);
       setPhotoFile(null);
       setPhotoPreview(null);
     }
@@ -88,6 +89,8 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
         bankAccountName: teacher.bankAccountName || '',
         bankAccountNumber: teacher.bankAccountNumber || '',
         bankBranch: teacher.bankBranch || '',
+        position: teacher.position || '',
+        department: teacher.department || '',
       });
       setShowEmergency(!!(teacher.emergencyContactName || teacher.emergencyContactPhone));
       setShowBank(!!(teacher.bankName || teacher.bankAccountNumber));
@@ -141,7 +144,11 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
         bankAccountName: showBank ? formData.bankAccountName : '',
         bankAccountNumber: showBank ? formData.bankAccountNumber : '',
         bankBranch: showBank ? formData.bankBranch : '',
+        position: formData.position.trim() || undefined,
+        department: formData.department.trim() || undefined,
       });
+
+      await persistStaffProfileFields(formData.position, formData.department);
 
       if (photoFile) {
         try {
@@ -155,33 +162,11 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
         }
       }
 
-      toast({ title: "Teacher Updated", description: `${formData.fullName} has been updated successfully` });
+      toast({ title: 'Teacher updated', description: `${formData.fullName} has been updated successfully.` });
       onSuccess();
       onClose();
     } catch (err: any) {
       toast({ title: "Update Failed", description: err?.message || "Failed to update teacher. Please try again.", variant: "destructive" });
-    }
-  };
-
-  /** Must not be nested inside another `<form>` — that causes a real browser navigation (page refresh) on submit. */
-  const confirmPasswordAndUpdate = async () => {
-    if (!password.trim()) {
-      toast({ title: 'Password required', description: 'Enter your password to continue', variant: 'destructive' });
-      return;
-    }
-    if (confirming) return;
-    setConfirming(true);
-    try {
-      const valid = await verifyPassword(password);
-      if (!valid) {
-        toast({ title: 'Incorrect password', description: 'Please try again', variant: 'destructive' });
-        return;
-      }
-      setShowPassword(false);
-      setPassword('');
-      await performUpdate();
-    } finally {
-      setConfirming(false);
     }
   };
 
@@ -195,7 +180,7 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
     if (user?.role === 'super-admin') {
       await performUpdate();
     } else {
-      setShowPassword(true);
+      setShowPasswordDialog(true);
     }
   };
 
@@ -204,6 +189,7 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
   const statusBadge = teacherStatusBadge(teacher.status || 'active');
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="flex max-h-[90dvh] max-w-2xl flex-col gap-0 overflow-hidden p-0">
         <DialogHeader className="shrink-0 border-b border-border/70 px-6 py-4">
@@ -322,6 +308,25 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
             />
           </div>
 
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <StaffFieldSelect
+              field="position"
+              id="teacher-position"
+              label="Position"
+              value={formData.position}
+              onChange={(value) => setFormData((prev) => ({ ...prev, position: value }))}
+              placeholder="e.g. Senior Teacher, Head of Department"
+            />
+            <StaffFieldSelect
+              field="department"
+              id="teacher-department"
+              label="Department"
+              value={formData.department}
+              onChange={(value) => setFormData((prev) => ({ ...prev, department: value }))}
+              placeholder="e.g. Science, Administration"
+            />
+          </div>
+
           <div className="space-y-2">
             <Label>Subjects Taught</Label>
             <Select onValueChange={handleAddSubject}>
@@ -419,47 +424,25 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
             }}
           />
 
-          {showPassword && (
-            <div className="border-t pt-4 space-y-4">
-              <Label htmlFor="edit-teacher-admin-password">Enter your password to confirm this update</Label>
-              <div className="flex flex-wrap gap-2">
-                <Input
-                  id="edit-teacher-admin-password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Your password"
-                  required
-                  className="flex-1 min-w-[12rem]"
-                  autoComplete="current-password"
-                  disabled={confirming}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      void confirmPasswordAndUpdate();
-                    }
-                  }}
-                />
-                <Button type="button" variant="outline" disabled={confirming} onClick={() => { setShowPassword(false); setPassword(''); }}>
-                  Cancel
-                </Button>
-                <Button type="button" variant="primaryAction" disabled={confirming} onClick={() => void confirmPasswordAndUpdate()}>
-                  {confirming ? 'Checking…' : 'Confirm'}
-                </Button>
-              </div>
-            </div>
-          )}
         </div>
         </DialogBody>
 
-        {!showPassword && (
-          <DialogFooter className="form-action-bar shrink-0 gap-2 px-6 py-4">
-            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button type="button" variant="primaryAction" onClick={() => void handleUpdateClick()}>Update Teacher</Button>
-          </DialogFooter>
-        )}
+        <DialogFooter className="form-action-bar shrink-0 gap-2 px-6 py-4">
+          <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+          <Button type="button" variant="primaryAction" onClick={() => void handleUpdateClick()}>Update Teacher</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <PasswordConfirmDialog
+      open={showPasswordDialog}
+      onOpenChange={setShowPasswordDialog}
+      title="Confirm teacher update"
+      description="Enter your password to save changes to this teacher profile."
+      confirmLabel="Confirm update"
+      onConfirmed={performUpdate}
+    />
+    </>
   );
 };
 

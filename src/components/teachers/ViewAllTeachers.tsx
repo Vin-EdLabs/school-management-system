@@ -29,7 +29,9 @@ const ViewAllTeachers = () => {
     const matchesSearch = searchTerm === '' || 
       teacher.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       teacher.staffId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      teacher.email.toLowerCase().includes(searchTerm.toLowerCase());
+      teacher.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (teacher.position || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (teacher.department || '').toLowerCase().includes(searchTerm.toLowerCase());
     
     const status = teacher.status || 'active';
     const matchesStatus =
@@ -121,8 +123,8 @@ const ViewAllTeachers = () => {
                   <TableHead className="w-14 whitespace-nowrap">Photo</TableHead>
                   <TableHead className="whitespace-nowrap min-w-[150px]">Name</TableHead>
                   <TableHead className="whitespace-nowrap">Staff ID</TableHead>
+                  <TableHead className="whitespace-nowrap">Position</TableHead>
                   <TableHead className="whitespace-nowrap">Contact</TableHead>
-                  <TableHead className="whitespace-nowrap">Subjects</TableHead>
                   <TableHead className="whitespace-nowrap">Class Assigned</TableHead>
                   <TableHead className="whitespace-nowrap">Status</TableHead>
                   <TableHead className="whitespace-nowrap">Salary</TableHead>
@@ -160,23 +162,16 @@ const ViewAllTeachers = () => {
                         <span className="font-mono">{teacher.staffId}</span>
                       </TableCell>
                       <TableCell>
+                        {teacher.position ? (
+                          <Badge variant="secondary" className="text-xs">{teacher.position}</Badge>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
                         <div className="text-sm">
                           <div>{teacher.phoneNumber}</div>
                           <div className="text-muted-foreground">{teacher.email}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {teacher.subjectsTaught.slice(0, 2).map((subject, index) => (
-                            <Badge key={index} variant="outline" className="text-xs">
-                              {subject}
-                            </Badge>
-                          ))}
-                          {teacher.subjectsTaught.length > 2 && (
-                            <Badge variant="outline" className="text-xs">
-                              +{teacher.subjectsTaught.length - 2}
-                            </Badge>
-                          )}
                         </div>
                       </TableCell>
                       <TableCell>

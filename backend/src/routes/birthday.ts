@@ -1,6 +1,5 @@
 import express from 'express';
-import { query } from '../db/connection.js';
-import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
+import { authenticate, requireTenant, requireRole, AuthRequest } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import {
   getBirthdaysToday,
@@ -9,6 +8,9 @@ import {
   getClassBirthdaysToday,
   getClassTeacherIds,
   sendBirthdayNotifications,
+  getBirthdayMessageConfig,
+  saveBirthdayMessageConfig,
+  DEFAULT_BIRTHDAY_MESSAGE_CONFIG,
 } from '../services/birthdayService.js';
 
 const router = express.Router();
@@ -22,6 +24,26 @@ function resolveTenantId(req: AuthRequest): number {
   if (fromUser != null && !Number.isNaN(Number(fromUser))) return Number(fromUser);
   throw new Error('School context required');
 }
+
+router.get('/settings', async (req: AuthRequest, res: any) => {
+  try {
+    const tenantId = resolveTenantId(req);
+    const config = await getBirthdayMessageConfig(tenantId);
+    res.json({ config, placeholders: ['{{name}}', '{{age}}', '{{class}}'], defaults: DEFAULT_BIRTHDAY_MESSAGE_CONFIG });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to load birthday settings' });
+  }
+});
+
+router.put('/settings', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res: any) => {
+  try {
+    const tenantId = resolveTenantId(req);
+    const config = await saveBirthdayMessageConfig(tenantId, req.body || {});
+    res.json({ config });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to save birthday settings' });
+  }
+});
 
 router.get('/today', async (req: AuthRequest, res: any) => {
   try {

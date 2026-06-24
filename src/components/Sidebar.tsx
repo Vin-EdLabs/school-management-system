@@ -37,7 +37,6 @@ import {
   MessagesSquare,
   ClipboardList,
   Scale,
-  CalendarClock,
   Landmark,
   SlidersHorizontal,
   Cake,
@@ -92,12 +91,13 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
     ...(hasAccess('subjects') ? [{ id: 'subjects', label: 'Subjects', icon: BookOpen }] : []),
     ...(hasAccess('calendar') && userRole !== 'finance' ? [{ id: 'calendar', label: 'Calendar', icon: Calendar }] : []),
     ...(hasAccess('birthdays') ? [{ id: 'birthdays', label: 'Birthdays', icon: Cake }] : []),
-    ...(hasAccess('id-cards') ? [{ id: 'id-cards', label: 'ID Cards', icon: IdCard }] : []),
-    ...(hasAccess('id-cards') ? [{ id: 'id-cards-bulk-print', label: 'Bulk Print Cards', icon: IdCard }] : []),
-    ...(hasAccess('lost-cards') ? [{ id: 'lost-cards', label: 'Lost Cards', icon: AlertTriangle }] : []),
-    ...(hasAccess('end-of-year')
-      ? [{ id: 'end-of-year', label: 'End of Year', icon: CalendarClock }]
+    ...(hasAccess('id-cards') && userRole !== 'teacher'
+      ? [{ id: 'id-cards', label: 'ID Cards', icon: IdCard }]
       : []),
+    ...(hasAccess('id-cards') && userRole !== 'teacher'
+      ? [{ id: 'id-cards-bulk-print', label: 'Bulk Print Cards', icon: IdCard }]
+      : []),
+    ...(hasAccess('lost-cards') ? [{ id: 'lost-cards', label: 'Lost Cards', icon: AlertTriangle }] : []),
     ...(hasAccess('reports') ? [{ id: 'academic-reports', label: 'Academic Report', icon: BarChart3 }] : []),
   ],
   teaching: [

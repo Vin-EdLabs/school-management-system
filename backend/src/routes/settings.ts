@@ -567,7 +567,9 @@ router.get('/users', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, r
        LEFT JOIN teachers t ON u.teacher_id::text = t.id::text AND t.tenant_id = u.tenant_id
        LEFT JOIN other_staff s ON u.other_staff_id = s.id AND s.tenant_id = u.tenant_id
        WHERE u.tenant_id = $1
-       ORDER BY 
+         AND (u.teacher_id IS NULL OR COALESCE(t.is_deleted, false) = false)
+         AND (u.other_staff_id IS NULL OR COALESCE(s.is_deleted, false) = false)
+       ORDER BY
          CASE u.role WHEN 'super-admin' THEN 0 WHEN 'administrator' THEN 1 WHEN 'finance' THEN 2 WHEN 'teacher' THEN 3 WHEN 'staff' THEN 4 ELSE 5 END,
         COALESCE(t.full_name, s.full_name, u.full_name, u.username)`,
       [tenantId]

@@ -24,6 +24,7 @@ import {
   getAppointmentLetterPdf,
 } from '../services/appointmentLetterService.js';
 import { ensureTeacherUserAccount } from '../services/teacherUserService.js';
+import { persistStaffProfileFields } from '../services/staffFieldSuggestionService.js';
 
 function generatePin(): string {
   return String(Math.floor(10000 + Math.random() * 90000));
@@ -184,6 +185,7 @@ router.get('/', async (req: AuthRequest, res) => {
       FROM teachers t
       LEFT JOIN classes c ON t.class_assigned_id = c.id
       WHERE t.tenant_id = $1
+        AND COALESCE(t.is_deleted, false) = false
     `;
     const params: any[] = [tenantId];
 
@@ -210,6 +212,7 @@ router.get('/', async (req: AuthRequest, res) => {
           FROM teachers t
           LEFT JOIN classes c ON t.class_assigned_id = c.id
           WHERE t.tenant_id = $1
+            AND COALESCE(t.is_deleted, false) = false
           ${classId ? ' AND t.class_assigned_id = $2' : ''}
           ORDER BY t.created_at DESC
         `;
@@ -402,6 +405,56 @@ router.put('/:id/signature', requireRole('super-admin', 'administrator', 'teache
 });
 
 // Get single teacher
+router.get('/:id/status-history', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const teacherId = parseInt(String(req.params.id), 10);
+    if (Number.isNaN(teacherId)) {
+      return res.status(400).json({ error: 'Invalid teacher id' });
+    }
+
+    const result = await query(
+      `SELECT al.id, al.action, al.summary, al.details, al.before_values, al.after_values, al.created_at,
+              COALESCE(NULLIF(TRIM(u.full_name), ''), u.username, 'System') AS performed_by
+       FROM audit_logs al
+       LEFT JOIN users u ON al.user_id = u.id
+       WHERE al.tenant_id = $1
+         AND al.entity_type = 'TEACHER'
+         AND al.entity_id = $2
+         AND al.action IN ('TEACHER_SUSPENDED', 'TEACHER_DEACTIVATED', 'TEACHER_REACTIVATED', 'SOFT_DELETE')
+       ORDER BY al.created_at DESC
+       LIMIT 100`,
+      [tenantId, teacherId]
+    );
+
+    const entries = result.rows.map((row: any) => {
+      const details = typeof row.details === 'object' && row.details ? row.details : {};
+      const before = typeof row.before_values === 'object' && row.before_values ? row.before_values : {};
+      const after = typeof row.after_values === 'object' && row.after_values ? row.after_values : {};
+      return {
+        id: row.id,
+        action: row.action,
+        summary: row.summary,
+        performedBy: row.performed_by,
+        createdAt: row.created_at,
+        reason: details.reason ?? null,
+        notes: details.notes ?? null,
+        suspensionStartDate: details.suspensionStartDate ?? null,
+        suspensionEndDate: details.suspensionEndDate ?? null,
+        effectiveDate: details.effectiveDate ?? null,
+        previousStatus: details.previousStatus ?? before.status ?? null,
+        previousClass: details.previousClass ?? before.class_name ?? null,
+        newStatus: after.status ?? null,
+      };
+    });
+
+    res.json({ entries });
+  } catch (error) {
+    console.error('Teacher status history error:', error);
+    res.status(500).json({ error: 'Failed to load status history' });
+  }
+});
+
 router.get('/:id', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
@@ -469,12 +522,12 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
       `INSERT INTO teachers (
         tenant_id, full_name, gender, date_of_birth, staff_id, phone_number,
         email, address, subjects_taught, class_assigned_id, employment_date,
-        monthly_salary, employment_status, notes,
+        monthly_salary, employment_status, notes, position, department,
         emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
         bank_name, bank_account_number, bank_branch, bank_account_name
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-        $15, $16, $17, $18, $19, $20, $21
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
+        $17, $18, $19, $20, $21, $22, $23
       ) RETURNING *`,
       [
         tenantId,
@@ -491,6 +544,8 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
         teacherData.monthly_salary || null,
         teacherData.employment_status || 'Active',
         teacherData.notes || null,
+        teacherData.position ? String(teacherData.position).trim() : null,
+        teacherData.department ? String(teacherData.department).trim() : null,
         teacherData.emergency_contact_name || null,
         teacherData.emergency_contact_phone || null,
         teacherData.emergency_contact_relationship || null,
@@ -500,6 +555,12 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
         teacherData.bank_account_name || null,
       ]
     );
+
+    await persistStaffProfileFields(
+      tenantId,
+      teacherData.position,
+      teacherData.department
+    ).catch(() => undefined);
     
     const teacherId = result.rows[0].id;
     const created = result.rows[0];
@@ -591,7 +652,7 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
     const allowedFields = [
       'full_name', 'gender', 'date_of_birth', 'phone_number', 'email',
       'address', 'subjects_taught', 'class_assigned_id', 'employment_date',
-      'monthly_salary', 'employment_status', 'notes',
+      'monthly_salary', 'employment_status', 'notes', 'position', 'department',
       'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
       'bank_name', 'bank_account_number', 'bank_branch', 'bank_account_name',
     ];
@@ -619,6 +680,12 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Teacher not found' });
     }
+
+    await persistStaffProfileFields(
+      tenantId,
+      updates.position,
+      updates.department
+    ).catch(() => undefined);
 
     await query(
       `UPDATE users
@@ -848,11 +915,76 @@ router.get('/:id/appointment-letters/:letterId/download', async (req: AuthReques
   }
 });
 
-// Teachers cannot be deleted — use deactivate instead
-router.delete('/:id', requireRole('super-admin', 'administrator'), async (_req: AuthRequest, res) => {
-  return res.status(403).json({
-    error: 'Teachers cannot be deleted. Suspend or deactivate the teacher instead.',
-  });
+// Soft delete — hides from active lists; salary/payment history preserved
+router.delete('/:id', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const teacherId = parseInt(req.params.id, 10);
+    const reason = String(req.body?.reason || 'Removed from active staff list').trim();
+
+    const existing = await query(
+      'SELECT id, full_name, staff_id, COALESCE(is_deleted, false) AS is_deleted FROM teachers WHERE id = $1 AND tenant_id = $2',
+      [teacherId, tenantId]
+    );
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: 'Teacher not found' });
+    }
+    if (existing.rows[0].is_deleted) {
+      return res.status(400).json({ error: 'Teacher is already removed' });
+    }
+
+    await query('DELETE FROM class_teachers WHERE teacher_id = $1 AND tenant_id = $2', [teacherId, tenantId]);
+    await query(
+      'UPDATE classes SET assigned_teacher_id = NULL WHERE assigned_teacher_id = $1 AND tenant_id = $2',
+      [teacherId, tenantId]
+    );
+    await query(
+      `UPDATE teachers
+       SET is_deleted = true,
+           status = 'deactivated',
+           class_assigned_id = NULL,
+           deactivation_date = CURRENT_DATE,
+           deactivation_reason = $3,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1 AND tenant_id = $2
+       RETURNING id, full_name, staff_id`,
+      [teacherId, tenantId, reason]
+    );
+
+    await query(
+      `UPDATE users SET is_active = false, updated_at = CURRENT_TIMESTAMP
+       WHERE tenant_id = $1 AND teacher_id::text = $2::text`,
+      [tenantId, String(teacherId)]
+    ).catch(() => undefined);
+
+    const actor = await resolveActorFromRequest(req);
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'SOFT_DELETE',
+      entityType: 'TEACHER',
+      entityId: teacherId,
+      module: 'academics',
+      summary: withActor(
+        `Teacher soft-deleted — ${existing.rows[0].full_name} (${existing.rows[0].staff_id}). Salary history preserved.`,
+        actor
+      ),
+      details: { reason, staffId: existing.rows[0].staff_id },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
+
+    emitTenantDataChanged(tenantId, 'teacher', 'deleted');
+    emitTenantDataChanged(tenantId, 'user', 'updated');
+    res.json({
+      message: 'Teacher removed from active lists. All salary and payment records are preserved.',
+      id: teacherId,
+    });
+  } catch (error) {
+    console.error('Soft delete teacher error:', error);
+    res.status(500).json({ error: 'Failed to remove teacher' });
+  }
 });
 
 export default router;

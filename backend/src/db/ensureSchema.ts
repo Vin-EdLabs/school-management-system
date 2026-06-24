@@ -611,6 +611,65 @@ export async function ensureSupplementalSchema(): Promise<void> {
     'driver_profiles'
   );
 
+  // --- teachers: position, department, soft delete ---
+  await safe(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS position VARCHAR(150)`, 'teachers.position');
+  await safe(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS department VARCHAR(150)`, 'teachers.department');
+  await safe(
+    `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT false`,
+    'teachers.is_deleted'
+  );
+  await safe(
+    `ALTER TABLE other_staff ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT false`,
+    'other_staff.is_deleted'
+  );
+
+  await safe(
+    `
+    CREATE TABLE IF NOT EXISTS staff_field_suggestions (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      field_type VARCHAR(20) NOT NULL CHECK (field_type IN ('position', 'department')),
+      name VARCHAR(150) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `,
+    'staff_field_suggestions'
+  );
+  await safe(
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_staff_field_suggestions_name
+     ON staff_field_suggestions (tenant_id, field_type, lower(trim(name)))`,
+    'uq_staff_field_suggestions_name'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_staff_field_suggestions_tenant
+     ON staff_field_suggestions (tenant_id, field_type)`,
+    'idx_staff_field_suggestions_tenant'
+  );
+
+  await safe(
+    `
+    CREATE TABLE IF NOT EXISTS birthday_wishes_sent (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      person_type VARCHAR(20) NOT NULL CHECK (person_type IN ('student', 'teacher')),
+      person_id INTEGER NOT NULL,
+      wish_date DATE NOT NULL DEFAULT CURRENT_DATE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE (tenant_id, person_type, person_id, wish_date)
+    )
+  `,
+    'birthday_wishes_sent'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_birthday_wishes_sent_tenant_date
+     ON birthday_wishes_sent (tenant_id, wish_date)`,
+    'idx_birthday_wishes_sent_tenant_date'
+  );
+
+  await safe(
+    `ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS birthday_message_config JSONB DEFAULT '{}'::jsonb`,
+    'school_settings.birthday_message_config'
+  );
 
   const critical = [
     'subjects',

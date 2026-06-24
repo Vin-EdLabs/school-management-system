@@ -220,7 +220,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Teacher: teacher section + profile + payment history
     if (user.role === 'teacher') {
-      return ['teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'calendar', 'teacher-profile', 'teacher-appointment-letters', 'teacher-payment-history', 'id-cards', 'settings', 'settings-password-only', 'birthdays'].includes(module);
+      return ['teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'calendar', 'teacher-profile', 'teacher-appointment-letters', 'teacher-payment-history', 'settings', 'settings-password-only', 'birthdays'].includes(module);
     }
 
     // Staff (non-teaching): similar to teacher

@@ -85,6 +85,8 @@ export interface Teacher {
   bankAccountNumber?: string;
   bankBranch?: string;
   bankAccountName?: string;
+  position?: string;
+  department?: string;
 }
 
 function normalizeTeacherStatus(raw: string | null | undefined): TeacherStatus {
@@ -307,6 +309,8 @@ const mapTeacher = (backendTeacher: any): Teacher => ({
   bankAccountNumber: backendTeacher.bank_account_number || undefined,
   bankBranch: backendTeacher.bank_branch || undefined,
   bankAccountName: backendTeacher.bank_account_name || undefined,
+  position: backendTeacher.position || undefined,
+  department: backendTeacher.department || undefined,
 });
 
 // Helper function to map frontend teacher to backend format (only defined fields for partial updates)
@@ -331,6 +335,8 @@ const mapTeacherToBackend = (teacher: Partial<Teacher>): any => {
   if (teacher.bankAccountNumber !== undefined) out.bank_account_number = teacher.bankAccountNumber;
   if (teacher.bankBranch !== undefined) out.bank_branch = teacher.bankBranch;
   if (teacher.bankAccountName !== undefined) out.bank_account_name = teacher.bankAccountName;
+  if (teacher.position !== undefined) out.position = teacher.position;
+  if (teacher.department !== undefined) out.department = teacher.department;
   return out;
 };
 

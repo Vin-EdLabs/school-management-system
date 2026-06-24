@@ -16,8 +16,9 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { apiService } from '@/services/api';
 import { toast } from '@/hooks/use-toast';
-import { Pencil, Phone, Mail, MapPin, Briefcase, Banknote, User, Calendar, Hash } from 'lucide-react';
+import { Pencil, Phone, Mail, MapPin, Briefcase, Banknote, User, Calendar, Hash, Trash2 } from 'lucide-react';
 import OtherStaffFormDialog from './OtherStaffFormDialog';
+import StaffDeleteConfirmDialog from '../common/StaffDeleteConfirmDialog';
 import type { OtherStaffRecord } from './otherStaffTypes';
 import StaffPhotoLightbox from './StaffPhotoLightbox';
 
@@ -45,6 +46,8 @@ const OtherStaffProfileDialog: React.FC<Props> = ({ staffId, open, onClose, onUp
   const [loading, setLoading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [toggling, setToggling] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!open || staffId == null) {
@@ -68,7 +71,7 @@ const OtherStaffProfileDialog: React.FC<Props> = ({ staffId, open, onClose, onUp
     setToggling(true);
     try {
       if (isActive) {
-        await apiService.delete(`/other-staff/${staff.id}`);
+        await apiService.put(`/other-staff/${staff.id}`, { employment_status: 'inactive' });
         toast({ title: 'Deactivated', description: `${staff.full_name} has been deactivated` });
       } else {
         await apiService.put(`/other-staff/${staff.id}`, { employment_status: 'active' });
@@ -85,6 +88,29 @@ const OtherStaffProfileDialog: React.FC<Props> = ({ staffId, open, onClose, onUp
       });
     } finally {
       setToggling(false);
+    }
+  };
+
+  const handleSoftDelete = async () => {
+    if (!staff) return;
+    setDeleting(true);
+    try {
+      await apiService.delete(`/other-staff/${staff.id}`);
+      toast({
+        title: 'Staff removed',
+        description: `${staff.full_name} was removed from active lists. Salary history is preserved.`,
+      });
+      setShowDeleteConfirm(false);
+      onUpdated?.();
+      onClose();
+    } catch (e: unknown) {
+      toast({
+        title: 'Remove failed',
+        description: e instanceof Error ? e.message : 'Could not remove staff member',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -193,6 +219,14 @@ const OtherStaffProfileDialog: React.FC<Props> = ({ staffId, open, onClose, onUp
                 >
                   {isActive ? 'Deactivate' : 'Activate'}
                 </Button>
+                <Button
+                  variant="outline"
+                  className="text-destructive border-destructive/40"
+                  onClick={() => setShowDeleteConfirm(true)}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Remove from list
+                </Button>
               </>
             )}
           </DialogFooter>
@@ -212,6 +246,18 @@ const OtherStaffProfileDialog: React.FC<Props> = ({ staffId, open, onClose, onUp
           onUpdated?.();
         }}
       />
+
+      {staff ? (
+        <StaffDeleteConfirmDialog
+          open={showDeleteConfirm}
+          onOpenChange={setShowDeleteConfirm}
+          staffName={staff.full_name}
+          staffId={staff.staff_id}
+          staffType="other"
+          loading={deleting}
+          onConfirm={() => void handleSoftDelete()}
+        />
+      ) : null}
     </>
   );
 };

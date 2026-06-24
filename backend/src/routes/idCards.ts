@@ -77,13 +77,17 @@ router.get('/search', async (req: AuthRequest, res) => {
       const result = await query(
         `SELECT * FROM (
           SELECT t.id, t.full_name, t.staff_id AS id_number, t.passport_photo_url AS photo_url,
-                 'TEACHER'::text AS position, 'ACADEMIC'::text AS department, 'teacher'::text AS staff_type
+                 COALESCE(NULLIF(TRIM(t.position), ''), 'TEACHER')::text AS position,
+                 COALESCE(NULLIF(TRIM(t.department), ''), 'ACADEMIC')::text AS department,
+                 'teacher'::text AS staff_type
           FROM teachers t
-          WHERE t.tenant_id = $1 AND COALESCE(t.status, 'active') = 'active' ${teacherUserFilter}
+          WHERE t.tenant_id = $1 AND COALESCE(t.status, 'active') = 'active'
+            AND COALESCE(t.is_deleted, false) = false ${teacherUserFilter}
           UNION ALL
           SELECT o.id, o.full_name, o.staff_id, o.passport_photo_url, o.position, o.department, 'other'::text
           FROM other_staff o
           WHERE o.tenant_id = $1 AND COALESCE(o.employment_status, 'active') = 'active'
+            AND COALESCE(o.is_deleted, false) = false
         ) staff
         WHERE ($2 = '' OR LOWER(staff.full_name) LIKE $3 OR LOWER(staff.id_number) LIKE $3
                OR LOWER(COALESCE(staff.position, '')) LIKE $3 OR LOWER(COALESCE(staff.department, '')) LIKE $3)
@@ -341,8 +345,11 @@ router.get('/staff/:staffId', async (req: AuthRequest, res) => {
     const position =
       staffType === 'other'
         ? String(staff.position || 'STAFF')
-        : 'TEACHER';
-    const department = staffType === 'other' ? String(staff.department || 'ACADEMIC') : 'ACADEMIC';
+        : String(staff.position || 'TEACHER');
+    const department =
+      staffType === 'other'
+        ? String(staff.department || 'ACADEMIC')
+        : String(staff.department || 'ACADEMIC');
 
     const cardData = mergeCardDataWithTemplate(
       template,
@@ -386,8 +393,8 @@ router.get('/staff/:staffId', async (req: AuthRequest, res) => {
       profile: {
         dateOfBirth: staff.date_of_birth ? String(staff.date_of_birth).slice(0, 10) : null,
         gender: staff.gender ? String(staff.gender) : null,
-        position: staffType === 'other' ? String(staff.position || '') : 'TEACHER',
-        department: staffType === 'other' ? String(staff.department || '') : 'ACADEMIC',
+        position: staffType === 'other' ? String(staff.position || '') : String(staff.position || 'TEACHER'),
+        department: staffType === 'other' ? String(staff.department || '') : String(staff.department || 'ACADEMIC'),
       },
       lostReports: lostReports.rows.map((r: Record<string, unknown>) => ({
         id: String(r.id),
@@ -467,11 +474,10 @@ router.post('/generate', requirePrimaryAdminOrSuperAdmin, async (req: AuthReques
       const position =
         staffType === 'other'
           ? String(clientData?.position || staff.position || 'STAFF')
-          : String(clientData?.position || 'TEACHER');
-      const department =
-        staffType === 'other'
-          ? String(clientData?.department || staff.department || 'ACADEMIC')
-          : String(clientData?.department || 'ACADEMIC');
+          : String(clientData?.position || staff.position || 'TEACHER');
+      const department = String(
+        clientData?.department || staff.department || 'ACADEMIC'
+      );
 
       cardData = mergeCardDataWithTemplate(
         template,

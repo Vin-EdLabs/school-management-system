@@ -1,9 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Cake, Gift, Sparkles, Users, GraduationCap, Calendar } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Cake, Gift, Sparkles, Users, GraduationCap, Calendar, MessageSquare, Loader2 } from 'lucide-react';
 import { apiService } from '../../services/api';
 import { useSchool } from '../../contexts/SchoolContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { toast } from '@/hooks/use-toast';
 
 interface BirthdayPerson {
   id: number;
@@ -27,6 +33,22 @@ interface MonthSection {
   year: number;
   month: number;
   groups: BirthdayGroup[];
+}
+
+type BirthdayMessageConfig = {
+  studentParentTitle: string;
+  studentParentMessage: string;
+  classTeacherTitle: string;
+  classTeacherMessage: string;
+  teacherStaffTitle: string;
+  teacherStaffMessage: string;
+};
+
+function renderPreview(template: string, name = 'Ama Mensah', age = 10, className = 'Primary 4A') {
+  return template
+    .replace(/\{\{name\}\}/gi, name)
+    .replace(/\{\{age\}\}/gi, String(age))
+    .replace(/\{\{class\}\}/gi, className);
 }
 
 function formatMonthDay(dateStr: string): string {
@@ -82,9 +104,14 @@ function BirthdayGroupList({ groups }: { groups: BirthdayGroup[] }) {
 
 const BirthdayModule = () => {
   const { schoolId } = useSchool();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'super-admin' || user?.role === 'administrator';
   const [todayBirthdays, setTodayBirthdays] = useState<BirthdayPerson[]>([]);
   const [monthSection, setMonthSection] = useState<MonthSection | null>(null);
   const [loading, setLoading] = useState(true);
+  const [messageConfig, setMessageConfig] = useState<BirthdayMessageConfig | null>(null);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [loadingTemplate, setLoadingTemplate] = useState(false);
 
   useEffect(() => {
     const fetchBirthdays = async () => {
@@ -108,6 +135,46 @@ const BirthdayModule = () => {
     fetchBirthdays();
   }, [schoolId]);
 
+  useEffect(() => {
+    if (!schoolId || !isAdmin) {
+      setMessageConfig(null);
+      return;
+    }
+    setLoadingTemplate(true);
+    void apiService
+      .get<{ config: BirthdayMessageConfig }>('/birthdays/settings')
+      .then((res) => setMessageConfig(res.config))
+      .catch(() => setMessageConfig(null))
+      .finally(() => setLoadingTemplate(false));
+  }, [schoolId, isAdmin]);
+
+  const parentPreview = useMemo(() => {
+    if (!messageConfig) return '';
+    return renderPreview(messageConfig.studentParentMessage);
+  }, [messageConfig]);
+
+  const handleSaveTemplate = async () => {
+    if (!messageConfig) return;
+    setSavingTemplate(true);
+    try {
+      const res = await apiService.put<{ config: BirthdayMessageConfig }>('/birthdays/settings', messageConfig);
+      setMessageConfig(res.config);
+      toast({ title: 'Template saved', description: 'Birthday auto-messages will use this wording from now on.' });
+    } catch (e: unknown) {
+      toast({
+        title: 'Save failed',
+        description: e instanceof Error ? e.message : 'Could not save template',
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
+  const updateConfig = (key: keyof BirthdayMessageConfig, value: string) => {
+    setMessageConfig((prev) => (prev ? { ...prev, [key]: value } : prev));
+  };
+
   const todayStudents = todayBirthdays.filter((p) => p.type === 'student');
   const todayTeachers = todayBirthdays.filter((p) => p.type === 'teacher');
   const monthCount = monthSection?.groups.reduce((sum, g) => sum + g.people.length, 0) ?? 0;
@@ -128,6 +195,95 @@ const BirthdayModule = () => {
         <div className="animate-pulse text-slate-500">Loading birthdays...</div>
       ) : (
         <>
+          {isAdmin && messageConfig && (
+            <Card className="border-emerald-200/60 dark:border-emerald-800/40">
+              <CardHeader className="bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20 pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <MessageSquare className="w-5 h-5 text-emerald-600" />
+                  Auto-send message template
+                </CardTitle>
+                <CardDescription>
+                  Parents receive this once on a student&apos;s birthday. Use {'{{name}}'}, {'{{age}}'}, and {'{{class}}'} in the message.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-4 space-y-4">
+                {loadingTemplate ? (
+                  <p className="text-sm text-muted-foreground">Loading template…</p>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="birthday-parent-title">Notification title (parents)</Label>
+                      <Input
+                        id="birthday-parent-title"
+                        value={messageConfig.studentParentTitle}
+                        onChange={(e) => updateConfig('studentParentTitle', e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="birthday-parent-message">Message to parents</Label>
+                      <Textarea
+                        id="birthday-parent-message"
+                        value={messageConfig.studentParentMessage}
+                        onChange={(e) => updateConfig('studentParentMessage', e.target.value)}
+                        rows={3}
+                      />
+                    </div>
+                    <div className="rounded-xl border border-dashed border-emerald-200 bg-emerald-50/50 px-4 py-3 text-sm dark:border-emerald-900/40 dark:bg-emerald-950/20">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800/75 mb-1">Preview</p>
+                      <p className="font-medium text-foreground">{messageConfig.studentParentTitle}</p>
+                      <p className="text-muted-foreground mt-1">{parentPreview}</p>
+                    </div>
+
+                    <details className="rounded-xl border border-border/70 p-3">
+                      <summary className="cursor-pointer text-sm font-medium text-foreground">Staff & class teacher messages (optional)</summary>
+                      <div className="mt-4 space-y-4">
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label>Class teacher title</Label>
+                            <Input
+                              value={messageConfig.classTeacherTitle}
+                              onChange={(e) => updateConfig('classTeacherTitle', e.target.value)}
+                            />
+                          </div>
+                          <div className="space-y-2 sm:col-span-2">
+                            <Label>Class teacher message</Label>
+                            <Textarea
+                              value={messageConfig.classTeacherMessage}
+                              onChange={(e) => updateConfig('classTeacherMessage', e.target.value)}
+                              rows={2}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Teacher birthday title (all staff)</Label>
+                            <Input
+                              value={messageConfig.teacherStaffTitle}
+                              onChange={(e) => updateConfig('teacherStaffTitle', e.target.value)}
+                            />
+                          </div>
+                          <div className="space-y-2 sm:col-span-2">
+                            <Label>Teacher birthday message</Label>
+                            <Textarea
+                              value={messageConfig.teacherStaffMessage}
+                              onChange={(e) => updateConfig('teacherStaffMessage', e.target.value)}
+                              rows={2}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </details>
+
+                    <div className="flex justify-end">
+                      <Button variant="primaryAction" onClick={() => void handleSaveTemplate()} disabled={savingTemplate}>
+                        {savingTemplate ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                        Save template
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           {todayBirthdays.length > 0 && (
             <Card className="border-amber-300/60 dark:border-amber-700/40 overflow-hidden">
               <CardHeader className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/20 pb-3">

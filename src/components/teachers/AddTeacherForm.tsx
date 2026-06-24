@@ -17,6 +17,8 @@ import { toast } from '@/hooks/use-toast';
 import { Loader2, UserPlus, X, Copy, KeyRound, Camera } from 'lucide-react';
 import { apiService } from '@/services/api';
 import StaffOptionalSections from '../staff/StaffOptionalSections';
+import StaffFieldSelect from '../common/StaffFieldSelect';
+import { persistStaffProfileFields } from '@/services/staffFieldApi';
 
 interface AddTeacherFormProps {
   onSuccess: () => void;
@@ -46,6 +48,8 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
     bankAccountName: '',
     bankAccountNumber: '',
     bankBranch: '',
+    position: '',
+    department: '',
   });
   const [showEmergency, setShowEmergency] = useState(false);
   const [showBank, setShowBank] = useState(false);
@@ -99,7 +103,11 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
         bankAccountName: formData.bankAccountName || undefined,
         bankAccountNumber: formData.bankAccountNumber || undefined,
         bankBranch: formData.bankBranch || undefined,
+        position: formData.position.trim() || undefined,
+        department: formData.department.trim() || undefined,
       });
+
+      await persistStaffProfileFields(formData.position, formData.department);
 
       const teacherId = result?.id;
       if (photoFile && teacherId) {
@@ -143,6 +151,8 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
         bankAccountName: '',
         bankAccountNumber: '',
         bankBranch: '',
+        position: '',
+        department: '',
       });
       setShowEmergency(false);
       setShowBank(false);
@@ -237,6 +247,25 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
                 value={formData.address}
                 onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
                 rows={2}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <StaffFieldSelect
+                field="position"
+                id="add-teacher-position"
+                label="Position"
+                value={formData.position}
+                onChange={(value) => setFormData((prev) => ({ ...prev, position: value }))}
+                placeholder="e.g. Senior Teacher, Head of Department"
+              />
+              <StaffFieldSelect
+                field="department"
+                id="add-teacher-department"
+                label="Department"
+                value={formData.department}
+                onChange={(value) => setFormData((prev) => ({ ...prev, department: value }))}
+                placeholder="e.g. Science, Administration"
               />
             </div>
 

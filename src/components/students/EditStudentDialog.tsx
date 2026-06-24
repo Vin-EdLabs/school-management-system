@@ -12,6 +12,7 @@ import { useAudit } from '../../contexts/AuditContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { uploadStudentPhotoInBackground } from '@/hooks/useStudentCache';
 import { toast } from '@/hooks/use-toast';
+import PasswordConfirmDialog from '@/components/common/PasswordConfirmDialog';
 import { Camera, Trash2, GraduationCap as ScholarshipIcon, UserPlus, X } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 
@@ -66,10 +67,9 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
   const queryClient = useQueryClient();
   const { schoolId } = useSchool();
   const { addAuditLog } = useAudit();
-  const { verifyPassword, user } = useAuth();
+  const { user } = useAuth();
   const [formData, setFormData] = useState<Student | null>(null);
-  const [showPassword, setShowPassword] = useState(false);
-  const [password, setPassword] = useState('');
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [previewPhoto, setPreviewPhoto] = useState<{ url: string; name: string } | null>(null);
   const [siblingSearch, setSiblingSearch] = useState('');
   const [selectedSiblings, setSelectedSiblings] = useState<any[]>([]);
@@ -196,35 +196,45 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
   };
 
 
-  const performUpdate = () => {
+  const performUpdate = async () => {
     if (!formData) return;
     const photoToUpload = photoFile;
     const photoPreviewUrl = photoPreview;
     const snapshot = { ...formData };
 
-    addAuditLog({
-      actionType: 'Edit',
-      module: 'Students',
-      itemId: snapshot.id,
-      itemName: `${snapshot.firstName} ${snapshot.lastName}`,
-      reason: 'Student information updated successfully'
-    });
-    toast({ title: "Student Updated", description: `${snapshot.firstName} ${snapshot.lastName} has been updated successfully` });
-    onSuccess();
-    onClose();
+    try {
+      await updateStudent(snapshot.id, snapshot);
 
-    void updateStudent(snapshot.id, snapshot).catch((err: Error) => {
-      toast({ title: 'Update Failed', description: err?.message || 'Failed to update student', variant: 'destructive' });
-    });
+      addAuditLog({
+        actionType: 'Edit',
+        module: 'Students',
+        itemId: snapshot.id,
+        itemName: `${snapshot.firstName} ${snapshot.lastName}`,
+        reason: 'Student information updated successfully'
+      });
 
-    if (photoToUpload) {
-      void uploadStudentPhotoInBackground(
-        queryClient,
-        schoolId,
-        snapshot.id,
-        photoToUpload,
-        photoPreviewUrl || undefined
-      );
+      if (photoToUpload) {
+        await uploadStudentPhotoInBackground(
+          queryClient,
+          schoolId,
+          snapshot.id,
+          photoToUpload,
+          photoPreviewUrl || undefined
+        );
+      }
+
+      toast({
+        title: 'Student updated',
+        description: `${snapshot.firstName} ${snapshot.lastName} has been updated successfully.`,
+      });
+      onSuccess();
+      onClose();
+    } catch (err: unknown) {
+      toast({
+        title: 'Update Failed',
+        description: err instanceof Error ? err.message : 'Failed to update student',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -254,31 +264,16 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
     }
 
     if (user?.role === 'super-admin') {
-      performUpdate();
+      void performUpdate();
     } else {
-      setShowPassword(true);
+      setShowPasswordDialog(true);
     }
-  };
-
-  const handlePasswordConfirmAndUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!password.trim()) {
-      toast({ title: 'Password required', description: 'Enter your password to continue', variant: 'destructive' });
-      return;
-    }
-    const valid = await verifyPassword(password);
-    if (!valid) {
-      toast({ title: 'Incorrect password', description: 'Please try again', variant: 'destructive' });
-      return;
-    }
-    setShowPassword(false);
-    setPassword('');
-    performUpdate();
   };
 
   if (!formData) return null;
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="flex max-h-[90dvh] max-w-2xl flex-col gap-0 overflow-hidden p-0">
         <DialogHeader className="shrink-0 border-b border-border/70 px-6 py-4">
@@ -775,26 +770,14 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
             )}
           </div>
 
-          {showPassword && (
-            <div className="border-t pt-4 space-y-4">
-              <Label>Enter your password to confirm this update</Label>
-              <div className="flex flex-wrap gap-2">
-                <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Your password" required className="flex-1 min-w-[12rem]" />
-                <Button type="button" variant="outline" onClick={() => { setShowPassword(false); setPassword(''); }}>Cancel</Button>
-                <Button type="button" variant="primaryAction" onClick={handlePasswordConfirmAndUpdate}>Confirm</Button>
-              </div>
-            </div>
-          )}
           </DialogBody>
 
-          {!showPassword && (
-            <DialogFooter className="form-action-bar shrink-0 gap-2 border-t border-border/70 px-6 py-4">
-              <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-              <Button type="submit" variant="primaryAction">
-                Update Student
-              </Button>
-            </DialogFooter>
-          )}
+          <DialogFooter className="form-action-bar shrink-0 gap-2 border-t border-border/70 px-6 py-4">
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="submit" variant="primaryAction">
+              Update Student
+            </Button>
+          </DialogFooter>
         </form>
       </DialogContent>
 
@@ -832,6 +815,16 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
         </div>
       )}
     </Dialog>
+
+    <PasswordConfirmDialog
+      open={showPasswordDialog}
+      onOpenChange={setShowPasswordDialog}
+      title="Confirm student update"
+      description="Enter your password to save changes to this student profile."
+      confirmLabel="Confirm update"
+      onConfirmed={performUpdate}
+    />
+    </>
   );
 };
 

@@ -42,6 +42,16 @@ export async function ensureTeacherUserAccount(
      WHERE tenant_id = $1 AND teacher_id::text = $2`,
     [tenantId, teacherId]
   );
+
+  const teacherMeta = await query(
+    `SELECT COALESCE(is_deleted, false) AS is_deleted, COALESCE(status, 'active') AS status
+     FROM teachers WHERE id = $1 AND tenant_id = $2`,
+    [teacher.id, tenantId]
+  );
+  const isDeleted = !!teacherMeta.rows[0]?.is_deleted;
+  const teacherStatus = String(teacherMeta.rows[0]?.status || 'active').toLowerCase();
+  const loginActive = !isDeleted && teacherStatus === 'active';
+
   if (existingByTeacher.rows.length > 0) {
     const userId = Number(existingByTeacher.rows[0].id);
     await query(
@@ -49,10 +59,10 @@ export async function ensureTeacherUserAccount(
        SET full_name = $1,
            email = COALESCE($2, email),
            role = 'teacher',
-           is_active = true,
+           is_active = $4,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $3`,
-      [teacher.full_name, teacher.email || null, userId]
+      [teacher.full_name, teacher.email || null, userId, loginActive]
     );
     return { created: false, userId };
   }
@@ -67,12 +77,16 @@ export async function ensureTeacherUserAccount(
            full_name = $2,
            email = COALESCE($3, email),
            role = 'teacher',
-           is_active = true,
+           is_active = $5,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $4`,
-      [teacherId, teacher.full_name, teacher.email || null, userId]
+      [teacherId, teacher.full_name, teacher.email || null, userId, loginActive]
     );
     return { created: false, userId };
+  }
+
+  if (isDeleted) {
+    return { created: false };
   }
 
   const passwordHash = await bcrypt.hash(staffId, 10);
@@ -92,6 +106,7 @@ export async function ensureAllTeacherUserAccounts(tenantId: number): Promise<nu
     `SELECT t.id, t.staff_id, t.full_name, t.email
      FROM teachers t
      WHERE t.tenant_id = $1
+       AND COALESCE(t.is_deleted, false) = false
        AND NOT EXISTS (
          SELECT 1 FROM users u
          WHERE u.tenant_id = t.tenant_id AND u.teacher_id::text = t.id::text

@@ -17,6 +17,10 @@ import { apiService } from '@/services/api';
 import { toast } from '@/hooks/use-toast';
 import { Loader2, UserPlus, Camera, Info } from 'lucide-react';
 import StaffOptionalSections from './StaffOptionalSections';
+import StaffFieldSelect from '../common/StaffFieldSelect';
+import PasswordConfirmDialog from '../common/PasswordConfirmDialog';
+import { persistStaffProfileFields } from '@/services/staffFieldApi';
+import { useAuth } from '../../contexts/AuthContext';
 import type { OtherStaffRecord } from './otherStaffTypes';
 
 export type { OtherStaffRecord } from './otherStaffTypes';
@@ -54,6 +58,7 @@ type Props = {
 };
 
 const OtherStaffFormDialog: React.FC<Props> = ({ open, onClose, staff, onSuccess }) => {
+  const { user } = useAuth();
   const isEdit = !!staff?.id;
   const [form, setForm] = useState(emptyForm());
   const [submitting, setSubmitting] = useState(false);
@@ -61,6 +66,7 @@ const OtherStaffFormDialog: React.FC<Props> = ({ open, onClose, staff, onSuccess
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [showEmergency, setShowEmergency] = useState(false);
   const [showBank, setShowBank] = useState(false);
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -123,6 +129,14 @@ const OtherStaffFormDialog: React.FC<Props> = ({ open, onClose, staff, onSuccess
       toast({ title: 'Error', description: 'Full name is required', variant: 'destructive' });
       return;
     }
+    if (isEdit && user?.role !== 'super-admin') {
+      setShowPasswordDialog(true);
+      return;
+    }
+    await performSave();
+  };
+
+  const performSave = async () => {
     setSubmitting(true);
     try {
       const body = {
@@ -141,10 +155,12 @@ const OtherStaffFormDialog: React.FC<Props> = ({ open, onClose, staff, onSuccess
       let id = staff?.id;
       if (isEdit && id) {
         await apiService.put(`/other-staff/${id}`, body);
+        await persistStaffProfileFields(form.position, form.department);
         toast({ title: 'Updated', description: `${form.full_name} has been updated` });
       } else {
         const created = await apiService.post<OtherStaffRecord>('/other-staff', body);
         id = created.id;
+        await persistStaffProfileFields(form.position, form.department);
         toast({ title: 'Staff Added', description: `${form.full_name} (${created.staff_id}) added` });
       }
 
@@ -169,6 +185,7 @@ const OtherStaffFormDialog: React.FC<Props> = ({ open, onClose, staff, onSuccess
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[760px] rounded-[1rem] border-t-4 border-emerald-500 shadow-[0_20px_60px_rgba(0,0,0,0.15)]">
         <DialogHeader className="shrink-0 border-b border-border/70 px-6 py-4">
@@ -257,14 +274,22 @@ const OtherStaffFormDialog: React.FC<Props> = ({ open, onClose, staff, onSuccess
 
           <p className="text-sm font-medium text-foreground pt-2">Employment</p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Position</Label>
-              <Input value={form.position} onChange={(e) => set('position', e.target.value)} placeholder="e.g. Bus Driver, Accountant" />
-            </div>
-            <div className="space-y-2">
-              <Label>Department</Label>
-              <Input value={form.department} onChange={(e) => set('department', e.target.value)} placeholder="e.g. Finance" />
-            </div>
+            <StaffFieldSelect
+              field="position"
+              id="other-staff-position"
+              label="Position"
+              value={form.position}
+              onChange={(value) => set('position', value)}
+              placeholder="e.g. Bus Driver, Accountant"
+            />
+            <StaffFieldSelect
+              field="department"
+              id="other-staff-department"
+              label="Department"
+              value={form.department}
+              onChange={(value) => set('department', value)}
+              placeholder="e.g. Finance"
+            />
             <div className="space-y-2">
               <Label>Employment Type</Label>
               <Select value={form.employment_type} onValueChange={(v) => set('employment_type', v)}>
@@ -344,6 +369,16 @@ const OtherStaffFormDialog: React.FC<Props> = ({ open, onClose, staff, onSuccess
         </form>
       </DialogContent>
     </Dialog>
+
+    <PasswordConfirmDialog
+      open={showPasswordDialog}
+      onOpenChange={setShowPasswordDialog}
+      title="Confirm staff update"
+      description="Enter your password to save changes to this staff profile."
+      confirmLabel="Confirm update"
+      onConfirmed={performSave}
+    />
+    </>
   );
 };
 

@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFoo
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
-import { User, Mail, Phone, MapPin, FileText, Ban, UserX, UserCheck } from 'lucide-react';
+import { User, Mail, Phone, MapPin, FileText, Ban, UserX, UserCheck, Trash2 } from 'lucide-react';
 import { formatDisplayDate } from '../../utils/dateFormat';
 import type { Teacher } from '../../contexts/DataContext';
 import LazyTeacherAvatar from './LazyTeacherAvatar';
@@ -18,6 +18,8 @@ import {
 } from './AppointmentLetterDocument';
 import AppointmentLetterGeneratorDialog from './AppointmentLetterGeneratorDialog';
 import { useData } from '../../contexts/DataContext';
+import StaffDeleteConfirmDialog from '../common/StaffDeleteConfirmDialog';
+import TeacherStatusHistory from './TeacherStatusHistory';
 
 interface TeacherDetailsDialogProps {
   teacher: Teacher | null;
@@ -31,9 +33,11 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
   onClose,
 }) => {
   const { user } = useAuth();
-  const { refresh } = useData();
+  const { refresh, deleteTeacher } = useData();
   const isAdmin = user?.role === 'super-admin' || user?.role === 'administrator';
   const [statusMode, setStatusMode] = useState<'suspend' | 'deactivate' | 'reactivate' | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [checklist, setChecklist] = useState<Array<{ label: string; ok: boolean }>>([]);
   const [letters, setLetters] = useState<any[]>([]);
   const [generating, setGenerating] = useState(false);
@@ -125,6 +129,28 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
     onClose();
   };
 
+  const handleSoftDelete = async () => {
+    if (!teacher) return;
+    setDeleting(true);
+    try {
+      await deleteTeacher(teacher.id);
+      toast({
+        title: 'Teacher removed',
+        description: `${teacher.fullName} was removed from active lists. Salary history is preserved.`,
+      });
+      setShowDeleteConfirm(false);
+      onClose();
+    } catch (e: unknown) {
+      toast({
+        title: 'Remove failed',
+        description: e instanceof Error ? e.message : 'Could not remove teacher',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <>
       <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
@@ -148,6 +174,8 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
               <DetailField label="Staff ID">
                 <span className="font-mono">{teacher.staffId}</span>
               </DetailField>
+              <DetailField label="Position">{teacher.position || '—'}</DetailField>
+              <DetailField label="Department">{teacher.department || '—'}</DetailField>
             </div>
 
             <Separator />
@@ -178,6 +206,13 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
                 {teacher.monthlySalary > 0 ? `GHS ${teacher.monthlySalary.toLocaleString()}` : 'Not set'}
               </DetailField>
             </div>
+
+            {isAdmin ? (
+              <>
+                <Separator />
+                <TeacherStatusHistory teacherId={teacher.id} open={open} />
+              </>
+            ) : null}
 
             <Separator />
 
@@ -218,6 +253,9 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
                       <UserCheck className="h-4 w-4 mr-1" /> Reactivate
                     </Button>
                   )}
+                  <Button variant="outline" size="sm" className="text-destructive border-destructive/40" onClick={() => setShowDeleteConfirm(true)}>
+                    <Trash2 className="h-4 w-4 mr-1" /> Remove from list
+                  </Button>
                 </div>
 
                 <Separator />
@@ -273,6 +311,16 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
           onSaved={() => void refreshLetters()}
         />
       )}
+
+      <StaffDeleteConfirmDialog
+        open={showDeleteConfirm}
+        onOpenChange={setShowDeleteConfirm}
+        staffName={teacher.fullName}
+        staffId={teacher.staffId}
+        staffType="teacher"
+        loading={deleting}
+        onConfirm={() => void handleSoftDelete()}
+      />
     </>
   );
 };

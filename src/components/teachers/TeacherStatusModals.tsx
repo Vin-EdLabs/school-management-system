@@ -1,11 +1,17 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogBody,
   DialogFooter,
+  detailDialogContentClass,
+  detailDialogHeaderClass,
+  detailDialogBodyClass,
+  detailDialogFooterClass,
+  DetailField,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -15,6 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { apiService } from '@/services/api';
 import { toast } from '@/hooks/use-toast';
 import type { Teacher } from '@/contexts/DataContext';
+import { Ban, UserX, UserCheck } from 'lucide-react';
 
 const SUSPEND_REASONS = [
   'Under Investigation',
@@ -45,6 +52,17 @@ export function TeacherStatusModals({
   const [effectiveDate, setEffectiveDate] = useState(new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState('');
   const [reactivationReason, setReactivationReason] = useState('');
+
+  useEffect(() => {
+    if (!mode) return;
+    setReason('');
+    setStartDate(new Date().toISOString().slice(0, 10));
+    setEndDate('');
+    setEffectiveDate(new Date().toISOString().slice(0, 10));
+    setNotes('');
+    setReactivationReason('');
+    setLoading(false);
+  }, [mode, teacher?.id]);
 
   if (!teacher || !mode) return null;
 
@@ -103,22 +121,48 @@ export function TeacherStatusModals({
   };
 
   const title =
-    mode === 'suspend' ? 'Suspend Teacher' : mode === 'deactivate' ? 'Deactivate Teacher' : 'Reactivate Teacher';
+    mode === 'suspend' ? 'Suspend teacher' : mode === 'deactivate' ? 'Deactivate teacher' : 'Reactivate teacher';
+
+  const description =
+    mode === 'suspend'
+      ? 'The teacher will be hidden from active duties and login will be disabled.'
+      : mode === 'deactivate'
+        ? 'The teacher will be unassigned from classes and login will be disabled.'
+        : 'Restore this teacher to active status and re-enable login.';
+
+  const Icon = mode === 'suspend' ? Ban : mode === 'deactivate' ? UserX : UserCheck;
+  const iconWrapClass =
+    mode === 'deactivate'
+      ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
+      : mode === 'suspend'
+        ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+        : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300';
 
   return (
     <Dialog open={!!mode} onOpenChange={() => onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
+      <DialogContent className={`${detailDialogContentClass} sm:max-w-lg`}>
+        <DialogHeader className={detailDialogHeaderClass}>
+          <DialogTitle className="flex items-center gap-2 text-emerald-900 dark:text-emerald-100">
+            <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${iconWrapClass}`}>
+              <Icon className="h-4 w-4" />
+            </span>
+            {title}
+          </DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-        <DialogBody className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            {teacher.fullName} ({teacher.staffId})
-          </p>
+
+        <DialogBody className={`${detailDialogBodyClass} space-y-4`}>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <DetailField label="Teacher">{teacher.fullName}</DetailField>
+            <DetailField label="Staff ID">
+              <span className="font-mono">{teacher.staffId}</span>
+            </DetailField>
+          </div>
+
           {mode === 'suspend' && (
             <>
               <div className="space-y-2">
-                <Label>Reason</Label>
+                <Label>Reason *</Label>
                 <Select value={reason} onValueChange={setReason}>
                   <SelectTrigger><SelectValue placeholder="Select reason" /></SelectTrigger>
                   <SelectContent>
@@ -128,9 +172,9 @@ export function TeacherStatusModals({
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>Suspension start</Label>
+                  <Label>Suspension start *</Label>
                   <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
                 </div>
                 <div className="space-y-2">
@@ -144,10 +188,11 @@ export function TeacherStatusModals({
               </div>
             </>
           )}
+
           {mode === 'deactivate' && (
             <>
               <div className="space-y-2">
-                <Label>Reason</Label>
+                <Label>Reason *</Label>
                 <Select value={reason} onValueChange={setReason}>
                   <SelectTrigger><SelectValue placeholder="Select reason" /></SelectTrigger>
                   <SelectContent>
@@ -158,7 +203,7 @@ export function TeacherStatusModals({
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Effective date</Label>
+                <Label>Effective date *</Label>
                 <Input type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} />
               </div>
               <div className="space-y-2">
@@ -167,21 +212,30 @@ export function TeacherStatusModals({
               </div>
             </>
           )}
+
           {mode === 'reactivate' && (
             <div className="space-y-2">
-              <Label>Reason for reactivation</Label>
+              <Label>Reason for reactivation *</Label>
               <Textarea
                 value={reactivationReason}
                 onChange={(e) => setReactivationReason(e.target.value)}
-                placeholder="Required — e.g. Returned from medical leave"
+                placeholder="e.g. Returned from medical leave"
                 rows={3}
               />
             </div>
           )}
         </DialogBody>
-        <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={onClose} disabled={loading}>Cancel</Button>
-          <Button variant={mode === 'deactivate' ? 'destructive' : 'default'} onClick={submit} disabled={loading}>
+
+        <DialogFooter className={detailDialogFooterClass}>
+          <Button variant="outline" className="rounded-xl" onClick={onClose} disabled={loading}>
+            Cancel
+          </Button>
+          <Button
+            variant={mode === 'deactivate' ? 'destructive' : 'primaryAction'}
+            className="rounded-xl"
+            onClick={() => void submit()}
+            disabled={loading}
+          >
             {loading ? 'Saving…' : 'Confirm'}
           </Button>
         </DialogFooter>

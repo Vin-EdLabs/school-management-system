@@ -19,6 +19,77 @@ export interface BirthdayGroup {
   people: BirthdayPerson[];
 }
 
+export interface BirthdayMessageConfig {
+  studentParentTitle: string;
+  studentParentMessage: string;
+  classTeacherTitle: string;
+  classTeacherMessage: string;
+  teacherStaffTitle: string;
+  teacherStaffMessage: string;
+}
+
+export const DEFAULT_BIRTHDAY_MESSAGE_CONFIG: BirthdayMessageConfig = {
+  studentParentTitle: 'Happy Birthday!',
+  studentParentMessage: '{{name}} is turning {{age}} today! Wish them a wonderful birthday!',
+  classTeacherTitle: 'Student Birthday!',
+  classTeacherMessage: '{{name}} ({{class}}) is turning {{age}} today!',
+  teacherStaffTitle: 'Staff Birthday!',
+  teacherStaffMessage: '{{name}} is turning {{age}} today! Wish them a wonderful day!',
+};
+
+function mergeBirthdayConfig(raw: unknown): BirthdayMessageConfig {
+  const src = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const pick = (key: keyof BirthdayMessageConfig, fallback: string) => {
+    const v = src[key];
+    return typeof v === 'string' && v.trim() ? v.trim() : fallback;
+  };
+  return {
+    studentParentTitle: pick('studentParentTitle', DEFAULT_BIRTHDAY_MESSAGE_CONFIG.studentParentTitle),
+    studentParentMessage: pick('studentParentMessage', DEFAULT_BIRTHDAY_MESSAGE_CONFIG.studentParentMessage),
+    classTeacherTitle: pick('classTeacherTitle', DEFAULT_BIRTHDAY_MESSAGE_CONFIG.classTeacherTitle),
+    classTeacherMessage: pick('classTeacherMessage', DEFAULT_BIRTHDAY_MESSAGE_CONFIG.classTeacherMessage),
+    teacherStaffTitle: pick('teacherStaffTitle', DEFAULT_BIRTHDAY_MESSAGE_CONFIG.teacherStaffTitle),
+    teacherStaffMessage: pick('teacherStaffMessage', DEFAULT_BIRTHDAY_MESSAGE_CONFIG.teacherStaffMessage),
+  };
+}
+
+export function renderBirthdayTemplate(
+  template: string,
+  vars: { name: string; age: number; className?: string | null }
+): string {
+  return String(template || '')
+    .replace(/\{\{name\}\}/gi, vars.name)
+    .replace(/\{\{age\}\}/gi, String(vars.age))
+    .replace(/\{\{class\}\}/gi, vars.className?.trim() || '');
+}
+
+export async function getBirthdayMessageConfig(tenantId: number): Promise<BirthdayMessageConfig> {
+  const res = await query(
+    `SELECT birthday_message_config FROM school_settings WHERE tenant_id = $1 LIMIT 1`,
+    [tenantId]
+  );
+  if (res.rows.length === 0) return { ...DEFAULT_BIRTHDAY_MESSAGE_CONFIG };
+  return mergeBirthdayConfig(res.rows[0].birthday_message_config);
+}
+
+export async function saveBirthdayMessageConfig(
+  tenantId: number,
+  updates: Partial<BirthdayMessageConfig>
+): Promise<BirthdayMessageConfig> {
+  const current = await getBirthdayMessageConfig(tenantId);
+  const next = mergeBirthdayConfig({ ...current, ...updates });
+  await query(
+    `INSERT INTO school_settings (tenant_id, school_name, birthday_message_config)
+     SELECT $1, COALESCE(t.name, 'School'), $2::jsonb
+     FROM tenants t WHERE t.id = $1
+     ON CONFLICT (tenant_id) DO UPDATE
+       SET birthday_message_config = EXCLUDED.birthday_message_config,
+           updated_at = CURRENT_TIMESTAMP`,
+    [tenantId, JSON.stringify(next)]
+  );
+  return next;
+}
+
 function birthdayAge(birthDate: string): number {
   const today = new Date();
   const bd = new Date(birthDate);
@@ -392,56 +463,58 @@ export async function getClassTeacherIds(
   return res.rows.map((r) => r.class_id);
 }
 
+/** Returns true only the first time a birthday wish is claimed for this person on this date. */
+async function claimBirthdayWish(
+  tenantId: number,
+  personType: 'student' | 'teacher',
+  personId: number
+): Promise<boolean> {
+  const res = await query(
+    `INSERT INTO birthday_wishes_sent (tenant_id, person_type, person_id, wish_date)
+     VALUES ($1, $2, $3, CURRENT_DATE)
+     ON CONFLICT (tenant_id, person_type, person_id, wish_date) DO NOTHING
+     RETURNING id`,
+    [tenantId, personType, personId]
+  );
+  return res.rows.length > 0;
+}
+
 export async function sendBirthdayNotifications(
   tenantId: number,
   birthdayPeople: BirthdayPerson[]
 ) {
+  const config = await getBirthdayMessageConfig(tenantId);
   const students = birthdayPeople.filter((p) => p.type === 'student');
   const teachers = birthdayPeople.filter((p) => p.type === 'teacher');
 
   for (const person of students) {
-    const parentAccountsRes = await query(
-      `SELECT ppa.id
-       FROM parent_portal_accounts ppa
-       WHERE ppa.student_id = $1 AND ppa.tenant_id = $2 AND ppa.is_active = true`,
-      [person.id, tenantId]
-    );
+    const shouldSend = await claimBirthdayWish(tenantId, 'student', person.id);
+    if (!shouldSend) continue;
 
-    for (const account of parentAccountsRes.rows) {
-      const existing = await query(
-        `SELECT id FROM parent_notifications
-         WHERE parent_account_id = $1
-           AND tenant_id = $2
-           AND title = 'Happy Birthday!'
-           AND created_at::date = CURRENT_DATE`,
-        [account.id, tenantId]
-      );
-
-      if (existing.rows.length === 0) {
-        await query(
-          `INSERT INTO parent_notifications (tenant_id, parent_account_id, title, message, icon, url)
-           VALUES ($1, $2, 'Happy Birthday!', $3, 'cake', '/parent-portal')`,
-          [
-            tenantId,
-            account.id,
-            `${person.fullName} is turning ${person.age} today! Wish them a wonderful birthday!`,
-          ]
-        );
-      }
-    }
+    const parentBody = renderBirthdayTemplate(config.studentParentMessage, {
+      name: person.fullName,
+      age: person.age,
+      className: person.className,
+    });
 
     await sendPushToStudentParents(tenantId, person.id, {
-      title: 'Happy Birthday!',
-      body: `${person.fullName} is turning ${person.age} today! Wish them a wonderful birthday!`,
+      title: config.studentParentTitle,
+      body: parentBody,
       url: '/parent-portal',
+      icon: 'cake',
     }).catch(() => {});
 
     if (person.classId) {
       const teacherUserIds = await getClassTeacherUserIds(tenantId, person.classId);
+      const classBody = renderBirthdayTemplate(config.classTeacherMessage, {
+        name: person.fullName,
+        age: person.age,
+        className: person.className,
+      });
       for (const userId of teacherUserIds) {
         await sendPushToStaffUser(userId, {
-          title: 'Student Birthday!',
-          body: `${person.fullName} (${person.className || ''}) is turning ${person.age} today!`,
+          title: config.classTeacherTitle,
+          body: classBody,
           url: '/',
         }).catch(() => {});
       }
@@ -449,9 +522,18 @@ export async function sendBirthdayNotifications(
   }
 
   for (const person of teachers) {
+    const shouldSend = await claimBirthdayWish(tenantId, 'teacher', person.id);
+    if (!shouldSend) continue;
+
+    const staffBody = renderBirthdayTemplate(config.teacherStaffMessage, {
+      name: person.fullName,
+      age: person.age,
+      className: person.className,
+    });
+
     await sendPushToTenantStaff(tenantId, {
-      title: 'Staff Birthday!',
-      body: `${person.fullName} is turning ${person.age} today! Wish them a wonderful day!`,
+      title: config.teacherStaffTitle,
+      body: staffBody,
       url: '/',
     }).catch(() => {});
   }

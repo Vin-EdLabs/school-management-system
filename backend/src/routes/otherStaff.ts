@@ -9,6 +9,7 @@ import { getIO } from '../socket.js';
 import { writeAuditLog } from '../services/auditService.js';
 import { getClientIp } from '../utils/clientIp.js';
 import { resolveActorFromRequest, withActor } from '../utils/auditResolve.js';
+import { persistStaffProfileFields } from '../services/staffFieldSuggestionService.js';
 import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 
 const router = express.Router();
@@ -75,11 +76,12 @@ const ALL_STAFF_SQL = `
     t.bank_branch,
     t.bank_account_name,
     'teacher' AS staff_type,
-    ARRAY_TO_STRING(t.subjects_taught, ', ') AS position,
-    NULL::varchar AS department,
+    COALESCE(NULLIF(TRIM(t.position), ''), ARRAY_TO_STRING(t.subjects_taught, ', ')) AS position,
+    t.department,
     t.passport_photo_url
   FROM teachers t
   WHERE t.tenant_id = $1
+    AND COALESCE(t.is_deleted, false) = false
     AND COALESCE(NULLIF(LOWER(TRIM(t.employment_status)), ''), 'active') IN ('active', 'suspended')
 
   UNION ALL
@@ -109,6 +111,7 @@ const ALL_STAFF_SQL = `
     o.passport_photo_url
   FROM other_staff o
   WHERE o.tenant_id = $1
+    AND COALESCE(o.is_deleted, false) = false
     AND COALESCE(NULLIF(LOWER(TRIM(o.employment_status)), ''), 'active') = 'active'
 
   ORDER BY full_name ASC
@@ -135,11 +138,12 @@ router.get('/all-staff', async (req: AuthRequest, res) => {
           t.emergency_contact_name, t.emergency_contact_phone, t.emergency_contact_relationship,
           t.bank_name, t.bank_account_number, t.bank_branch, t.bank_account_name,
           'teacher' AS staff_type,
-          ARRAY_TO_STRING(t.subjects_taught, ', ') AS position,
-          NULL::varchar AS department,
+          COALESCE(NULLIF(TRIM(t.position), ''), ARRAY_TO_STRING(t.subjects_taught, ', ')) AS position,
+          t.department,
           t.passport_photo_url
         FROM teachers t
         WHERE t.tenant_id = $1
+          AND COALESCE(t.is_deleted, false) = false
 
         UNION ALL
 
@@ -154,6 +158,7 @@ router.get('/all-staff', async (req: AuthRequest, res) => {
           o.position, o.department, o.passport_photo_url
         FROM other_staff o
         WHERE o.tenant_id = $1
+          AND COALESCE(o.is_deleted, false) = false
       ) combined
       WHERE 1=1`;
 
@@ -188,6 +193,7 @@ router.get('/without-users', requireRole('super-admin', 'administrator'), async 
       `SELECT o.id, o.staff_id, o.full_name, o.position, o.department, o.passport_photo_url
        FROM other_staff o
        WHERE o.tenant_id = $1
+         AND COALESCE(o.is_deleted, false) = false
          AND COALESCE(NULLIF(LOWER(TRIM(o.employment_status)), ''), 'active') = 'active'
          AND NOT EXISTS (
            SELECT 1 FROM users u
@@ -207,7 +213,7 @@ router.get('/', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const { status } = req.query;
-    let sql = 'SELECT * FROM other_staff WHERE tenant_id = $1';
+    let sql = 'SELECT * FROM other_staff WHERE tenant_id = $1 AND COALESCE(is_deleted, false) = false';
     const params: unknown[] = [tenantId];
     if (status && String(status) !== 'all') {
       sql += ` AND COALESCE(NULLIF(LOWER(TRIM(employment_status)), ''), 'active') = $2`;
@@ -285,6 +291,7 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
     );
 
     const row = result.rows[0];
+    await persistStaffProfileFields(tenantId, row.position, row.department).catch(() => undefined);
     const actor = await resolveActorFromRequest(req);
     const pos = [row.position, row.department].filter(Boolean).join(', ');
     await writeAuditLog({
@@ -354,6 +361,12 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Staff member not found' });
 
+    await persistStaffProfileFields(
+      tenantId,
+      updates.position,
+      updates.department
+    ).catch(() => undefined);
+
     const actor = await resolveActorFromRequest(req);
     await writeAuditLog({
       tenantId,
@@ -381,28 +394,44 @@ router.delete('/:id', requireRole('super-admin', 'administrator'), async (req: A
     const tenantId = req.user!.tenantId!;
     const id = parseInt(String(req.params.id), 10);
     const result = await query(
-      `UPDATE other_staff SET employment_status = 'inactive', updated_at = CURRENT_TIMESTAMP
-       WHERE id = $1 AND tenant_id = $2 RETURNING *`,
+      `UPDATE other_staff
+       SET employment_status = 'inactive',
+           is_deleted = true,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1 AND tenant_id = $2 AND COALESCE(is_deleted, false) = false
+       RETURNING *`,
       [id, tenantId]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Staff member not found' });
+
+    await query(
+      `UPDATE users SET is_active = false, updated_at = CURRENT_TIMESTAMP
+       WHERE tenant_id = $1 AND other_staff_id = $2`,
+      [tenantId, id]
+    ).catch(() => undefined);
 
     const actor = await resolveActorFromRequest(req);
     await writeAuditLog({
       tenantId,
       userId: req.user!.id,
       userRole: req.user!.role,
-      action: 'UPDATE',
+      action: 'SOFT_DELETE',
       entityType: 'OTHER_STAFF',
       entityId: id,
       module: 'staff',
-      summary: withActor(`Staff deactivated — ${result.rows[0].full_name}`, actor),
+      summary: withActor(
+        `Staff soft-deleted — ${result.rows[0].full_name}. Salary history preserved.`,
+        actor
+      ),
       details: { staffId: result.rows[0].staff_id },
       ipAddress: getClientIp(req),
       userAgent: req.get('user-agent') ?? null,
     });
     emitChanged(tenantId, 'deleted');
-    res.json(result.rows[0]);
+    res.json({
+      message: 'Staff member removed from active lists. All salary and payment records are preserved.',
+      ...result.rows[0],
+    });
   } catch (error) {
     console.error('Deactivate other staff error:', error);
     res.status(500).json({ error: 'Failed to deactivate staff member' });

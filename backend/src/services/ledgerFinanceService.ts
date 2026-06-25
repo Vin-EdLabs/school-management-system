@@ -384,6 +384,7 @@ export async function syncMissingLedgerTermFeesForActiveTerm(tenantId: number): 
         AND fs.academic_year_id = t.academic_year_id
         AND fs.term_id = t.id
         AND ${SQL_FEE_STRUCTURE_CLASS_MATCH}
+      INNER JOIN classes c_fs ON c_fs.id = fs.class_id AND c_fs.tenant_id = fs.tenant_id
       WHERE s.tenant_id = $1
         AND COALESCE(s.enrollment_status, 'active') = 'active'
         AND s.class_assigned_id IS NOT NULL
@@ -413,6 +414,7 @@ export async function syncMissingLedgerTermFeesForActiveTerm(tenantId: number): 
           AND fs.academic_year_id = t.academic_year_id
           AND fs.term_id = t.id
           AND ${SQL_FEE_STRUCTURE_CLASS_MATCH}
+        INNER JOIN classes c_fs ON c_fs.id = fs.class_id AND c_fs.tenant_id = fs.tenant_id
         WHERE s.tenant_id = $1
           AND COALESCE(s.enrollment_status, 'active') = 'active'
           AND s.class_assigned_id IS NOT NULL

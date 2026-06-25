@@ -20,6 +20,42 @@ export type ResolvedStudentFeeStructure = {
   discountAmount: number;
 };
 
+const FEE_STRUCTURE_SELECT = `
+  SELECT DISTINCT ON (s.id)
+    fs.id AS fee_structure_id,
+    (${SQL_EFFECTIVE_FEE_STRUCTURE_TOTAL}) AS gross_total,
+    s.is_beneficiary,
+    s.discount_type,
+    s.discount_value
+  FROM students s
+  LEFT JOIN classes c_student ON c_student.id = s.class_assigned_id AND c_student.tenant_id = s.tenant_id
+  INNER JOIN terms t ON t.id = $3 AND t.tenant_id = s.tenant_id
+  INNER JOIN ledger_fee_structures fs ON fs.tenant_id = s.tenant_id
+    AND fs.term_id = t.id
+    AND fs.academic_year_id = t.academic_year_id
+    AND ${SQL_FEE_STRUCTURE_CLASS_MATCH}
+  INNER JOIN classes c_fs ON c_fs.id = fs.class_id AND c_fs.tenant_id = fs.tenant_id
+  WHERE s.tenant_id = $1
+    AND s.id = $2
+  ORDER BY s.id, (fs.class_id = s.class_assigned_id) DESC, fs.id
+`;
+
+function mapResolvedRow(row: Record<string, unknown>): ResolvedStudentFeeStructure {
+  const grossTotal = roundMoney(parseFloat(String(row.gross_total)) || 0);
+  const beneficiary: BeneficiaryStudentRow = {
+    is_beneficiary: row.is_beneficiary as boolean | null,
+    discount_type: row.discount_type as string | null,
+    discount_value: row.discount_value as string | number | null,
+  };
+  const adjusted = beneficiaryAdjustedFee(grossTotal, beneficiary);
+  return {
+    feeStructureId: Number(row.fee_structure_id),
+    grossTotal,
+    netTotal: roundMoney(adjusted.totalFees),
+    discountAmount: roundMoney(adjusted.discountAmount),
+  };
+}
+
 /** Find fee structure for a student in a term (class id or normalized class name). */
 export async function resolveLedgerFeeStructureForStudent(
   client: pg.PoolClient | null,
@@ -28,44 +64,9 @@ export async function resolveLedgerFeeStructureForStudent(
   termId: number
 ): Promise<ResolvedStudentFeeStructure | null> {
   const run: QueryFn = client ? client.query.bind(client) : query;
-
-  const res = await run(
-    `SELECT DISTINCT ON (s.id)
-       fs.id AS fee_structure_id,
-       (${SQL_EFFECTIVE_FEE_STRUCTURE_TOTAL}) AS gross_total,
-       s.is_beneficiary,
-       s.discount_type,
-       s.discount_value
-     FROM students s
-     INNER JOIN classes c_student ON c_student.id = s.class_assigned_id AND c_student.tenant_id = s.tenant_id
-     INNER JOIN ledger_fee_structures fs ON fs.tenant_id = s.tenant_id
-       AND fs.term_id = $3
-       AND ${SQL_FEE_STRUCTURE_CLASS_MATCH}
-     WHERE s.tenant_id = $1
-       AND s.id = $2
-       AND s.class_assigned_id IS NOT NULL
-     ORDER BY s.id, (fs.class_id = s.class_assigned_id) DESC, fs.id`,
-    [tenantId, studentId, termId]
-  );
-
+  const res = await run(FEE_STRUCTURE_SELECT, [tenantId, studentId, termId]);
   if (res.rows.length === 0) return null;
-
-  const row = res.rows[0];
-  const grossTotal = roundMoney(parseFloat(String(row.gross_total)) || 0);
-
-  const beneficiary: BeneficiaryStudentRow = {
-    is_beneficiary: row.is_beneficiary,
-    discount_type: row.discount_type,
-    discount_value: row.discount_value,
-  };
-  const adjusted = beneficiaryAdjustedFee(grossTotal, beneficiary);
-
-  return {
-    feeStructureId: Number(row.fee_structure_id),
-    grossTotal,
-    netTotal: roundMoney(adjusted.totalFees),
-    discountAmount: roundMoney(adjusted.discountAmount),
-  };
+  return mapResolvedRow(res.rows[0]);
 }
 
 /**
@@ -82,7 +83,13 @@ export async function enrichBalanceShapeWithExpectedFees(
   if (!termId) return shape;
 
   const ledgerTermFee = roundMoney(shape.currentTermFee ?? 0);
-  if (ledgerTermFee > 0) return shape;
+  const ledgerOutstanding = roundMoney(shape.outstanding ?? 0);
+  const needsEnrichment =
+    ledgerTermFee <= 0 &&
+    (shape.status === 'NotSet' || ledgerOutstanding <= 0) &&
+    (shape.totalDue ?? 0) <= 0;
+
+  if (!needsEnrichment && ledgerTermFee > 0) return shape;
 
   const resolved = await resolveLedgerFeeStructureForStudent(client, tenantId, studentId, termId);
   if (!resolved) return shape;
@@ -125,4 +132,18 @@ export async function enrichBalanceShapeWithExpectedFees(
       },
     ],
   };
+}
+
+/** Verify student belongs to tenant before returning balance data. */
+export async function assertStudentInTenant(
+  client: pg.PoolClient | null,
+  tenantId: number,
+  studentId: number
+): Promise<boolean> {
+  const run: QueryFn = client ? client.query.bind(client) : query;
+  const res = await run(
+    `SELECT 1 FROM students WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+    [studentId, tenantId]
+  );
+  return res.rows.length > 0;
 }

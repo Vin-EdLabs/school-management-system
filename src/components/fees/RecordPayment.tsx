@@ -21,6 +21,7 @@ import {
   formatBalanceLines,
   type StudentBalance,
 } from '../../services/studentBalance';
+import { resolveStudentDisplayBalance } from '../../utils/resolveStudentDisplayBalance';
 import {
   fetchFeeStructureItemsSummary,
   formatFeeItemLabel,
@@ -93,6 +94,29 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
     [students, formData.studentId]
   );
 
+  const paymentTerm =
+    currentTerm && currentTerm !== 'Not Set' ? currentTerm : null;
+
+  const enrichedStudentBalance = useMemo(() => {
+    if (!studentBalance || !selectedStudent) return studentBalance;
+    const display = resolveStudentDisplayBalance(
+      selectedStudent,
+      studentBalance,
+      feeStructures || [],
+      paymentTerm
+    );
+    return {
+      ...studentBalance,
+      currentTermFee: display.currentTermFee,
+      totalArrears: display.arrears,
+      totalDue: display.totalDue,
+      totalPaid: display.totalPaid,
+      outstanding: display.outstanding,
+      credit: display.credit,
+      status: display.status,
+    };
+  }, [studentBalance, selectedStudent, feeStructures, paymentTerm]);
+
   useEffect(() => {
     if (!formData.studentId || !selectedStudent) {
       setTermBillSummary(null);
@@ -101,7 +125,7 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
     const feeStructureId = resolveFeeStructureId(
       feeStructures,
       selectedStudent.classAssigned,
-      selectedStudent.classId ?? (selectedStudent as { class_id?: number }).class_id,
+      selectedStudent.classAssignedId,
       currentTerm
     );
     if (!feeStructureId) {
@@ -138,25 +162,25 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
 
   const selectedStudentFeeDetails = useMemo(() => {
     if (!formData.studentId || !currentTerm || currentTerm === 'Not Set') return null;
-    if (!studentBalance) return null;
+    if (!enrichedStudentBalance) return null;
     return {
-      currentTermFee: studentBalance.currentTermFee,
-      arrears: studentBalance.totalArrears,
-      creditBroughtForward: studentBalance.creditBroughtForward ?? 0,
-      totalAmountDue: studentBalance.totalDue,
-      totalPaid: studentBalance.totalPaid,
-      creditBalance: studentBalance.credit,
-      individualChargeLines: studentBalance.individualChargeLines ?? [],
-      baseFee: studentBalance.currentTermFee,
+      currentTermFee: enrichedStudentBalance.currentTermFee,
+      arrears: enrichedStudentBalance.totalArrears,
+      creditBroughtForward: enrichedStudentBalance.creditBroughtForward ?? 0,
+      totalAmountDue: enrichedStudentBalance.totalDue,
+      totalPaid: enrichedStudentBalance.totalPaid,
+      creditBalance: enrichedStudentBalance.credit,
+      individualChargeLines: enrichedStudentBalance.individualChargeLines ?? [],
+      baseFee: enrichedStudentBalance.currentTermFee,
       discountAmount: 0,
-      arrearLines: studentBalance.arrearLines,
-      paidLines: studentBalance.paidLines,
+      arrearLines: enrichedStudentBalance.arrearLines,
+      paidLines: enrichedStudentBalance.paidLines,
     };
-  }, [formData.studentId, currentTerm, studentBalance]);
+  }, [formData.studentId, currentTerm, enrichedStudentBalance]);
 
-  const breakdownDisplayLines = studentBalance ? formatBalanceLines(studentBalance) : null;
+  const breakdownDisplayLines = enrichedStudentBalance ? formatBalanceLines(enrichedStudentBalance) : null;
 
-  const outstandingBalance = studentBalance?.outstanding ?? 0;
+  const outstandingBalance = enrichedStudentBalance?.outstanding ?? 0;
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -226,9 +250,12 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
         academicYear: currentYear,
       });
       const res = result.res;
-      const createdPayment = res.payment || res;
+      const createdPayment = (res.payment ?? res) as {
+        receipt_number?: string;
+        receipt_snapshot?: Parameters<typeof parseReceiptSnapshot>[0];
+      };
       const serverBalance = res.balance;
-      const snap = parseReceiptSnapshot(createdPayment.receipt_snapshot ?? createdPayment.receiptSnapshot);
+      const snap = parseReceiptSnapshot(createdPayment.receipt_snapshot);
       const amounts = resolveReceiptDisplayAmounts({
         snap,
         serverBalance,
@@ -245,7 +272,7 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
         paymentMethod,
         term: paymentTerm,
         year: currentYear,
-        receiptNumber: createdPayment.receipt_number || createdPayment.receiptNumber || `R${Date.now().toString().slice(-8)}`,
+        receiptNumber: createdPayment.receipt_number || `R${Date.now().toString().slice(-8)}`,
         notes: paymentNotes,
         remainingBalance: snap?.outstandingAfter ?? amounts.remainingBalance,
         creditBalance: snap?.credit ?? amounts.creditBalance,
@@ -354,7 +381,7 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
                             <span className="font-mono tabular-nums">GHS {Number(item.amount).toFixed(2)}</span>
                           </div>
                         ))}
-                        {(studentBalance?.individualChargeLines ?? []).map((charge) => (
+                        {(enrichedStudentBalance?.individualChargeLines ?? []).map((charge) => (
                           <div key={charge.id} className="flex justify-between py-0.5 border-t border-dashed border-emerald-100 first:border-t-0">
                             <span className="text-slate-600 dark:text-gray-600 text-xs sm:text-sm">
                               {charge.description}
@@ -375,12 +402,12 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
                         <div className="border-t border-emerald-200 pt-2 mt-2 space-y-1">
                           <div className="flex justify-between font-semibold">
                             <span>
-                              {(studentBalance?.individualChargeLines?.length ?? 0) > 0
+                              {(enrichedStudentBalance?.individualChargeLines?.length ?? 0) > 0
                                 ? 'Total Billed'
                                 : 'Total Term Bill'}
                             </span>
                             <span className="font-mono tabular-nums">
-                              GHS {(selectedStudentFeeDetails?.totalAmountDue ?? studentBalance?.totalDue ?? termBillSummary.total).toFixed(2)}
+                              GHS {(selectedStudentFeeDetails?.totalAmountDue ?? enrichedStudentBalance?.totalDue ?? termBillSummary.total).toFixed(2)}
                             </span>
                           </div>
                           <div className="flex justify-between text-emerald-700 dark:text-green-700">
@@ -394,7 +421,7 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
                             <span className="font-mono tabular-nums">
                               GHS {(selectedStudentFeeDetails?.totalAmountDue != null
                                 ? Math.max(0, selectedStudentFeeDetails.totalAmountDue - (selectedStudentFeeDetails.totalPaid ?? 0))
-                                : studentBalance?.outstanding ?? 0
+                                : enrichedStudentBalance?.outstanding ?? 0
                               ).toFixed(2)}
                             </span>
                           </div>

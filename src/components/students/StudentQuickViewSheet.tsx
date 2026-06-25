@@ -38,6 +38,8 @@ import {
   fetchStudentBalance,
   type StudentBalance,
 } from '../../services/studentBalance';
+import { useData } from '../../contexts/DataContext';
+import { resolveStudentDisplayBalance } from '../../utils/resolveStudentDisplayBalance';
 
 type PaymentLite = { studentId?: string; amount: number; date: string; paymentMethod?: string; term?: string };
 
@@ -73,6 +75,7 @@ const StudentQuickViewSheet: React.FC<StudentQuickViewSheetProps> = ({
   onEdit,
   onViewFull,
 }) => {
+  const { ledgerBalances } = useData();
   const [attendance, setAttendance] = useState<AttendanceRow[] | null>(null);
   const [attErr, setAttErr] = useState(false);
   const [grades, setGrades] = useState<GradeRow[] | null>(null);
@@ -147,17 +150,27 @@ const StudentQuickViewSheet: React.FC<StudentQuickViewSheetProps> = ({
   }, [open, student]);
 
   const feeSummary = useMemo(() => {
-    if (!studentBalance) {
+    if (!student) {
       return { termFee: 0, arrears: 0, due: 0, paid: 0, balance: 0 };
     }
+    const term =
+      currentTerm && currentTerm !== 'Not Set' ? currentTerm : undefined;
+    const cached = ledgerBalances?.[String(student.id)];
+    const source = studentBalance ?? cached ?? null;
+    const display = resolveStudentDisplayBalance(
+      student,
+      source,
+      feeStructures || [],
+      term ?? null
+    );
     return {
-      termFee: studentBalance.currentTermFee,
-      arrears: studentBalance.totalArrears,
-      due: studentBalance.totalDue,
-      paid: studentBalance.totalPaid,
-      balance: studentBalance.outstanding,
+      termFee: display.currentTermFee,
+      arrears: display.arrears,
+      due: display.totalDue,
+      paid: display.totalPaid,
+      balance: display.outstanding,
     };
-  }, [studentBalance]);
+  }, [studentBalance, ledgerBalances, student, feeStructures, currentTerm]);
 
   const attStats = useMemo(() => {
     if (!attendance || attendance.length === 0) return { pct: null as number | null, present: 0, absent: 0, n: 0 };

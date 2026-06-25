@@ -11,7 +11,7 @@ import {
   getStudentBalanceFromLedger,
   getArrearsBreakdownFromLedger,
 } from '../services/ledgerBalanceService.js';
-import { enrichBalanceShapeWithExpectedFees } from '../services/effectiveStudentBalanceService.js';
+import { enrichBalanceShapeWithExpectedFees, assertStudentInTenant, resolveLedgerFeeStructureForStudent } from '../services/effectiveStudentBalanceService.js';
 
 const router = express.Router();
 
@@ -181,9 +181,19 @@ router.get('/students/:studentId/balance', async (req: AuthRequest, res) => {
     }
 
     const { ledgerTermId, termLabel } = await resolveActiveLedgerTerm(query, tenantId);
-    const shape = await ledgerBalanceToApiShape(null, tenantId, studentId, ledgerTermId);
+
+    const exists = await assertStudentInTenant(null, tenantId, studentId);
+    if (!exists) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+
+    let shape = await ledgerBalanceToApiShape(null, tenantId, studentId, ledgerTermId);
     if (!shape) {
       return res.status(404).json({ error: 'Student not found' });
+    }
+
+    if (ledgerTermId) {
+      shape = await enrichBalanceShapeWithExpectedFees(null, tenantId, studentId, ledgerTermId, shape);
     }
 
     const arrearsBreakdown = ledgerTermId
@@ -271,7 +281,14 @@ router.get('/students/balances-by-term', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const { classId } = req.query;
-    const { ledgerTermId } = await resolveActiveLedgerTerm(query, tenantId);
+
+    try {
+      await syncMissingLedgerTermFeesForActiveTerm(tenantId);
+    } catch (syncErr) {
+      console.error('[students/balances-by-term] Ledger fee sync failed (continuing):', syncErr);
+    }
+
+    const { ledgerTermId, termLabel } = await resolveActiveLedgerTerm(query, tenantId);
     if (!ledgerTermId) {
       return res.json([]);
     }
@@ -286,21 +303,65 @@ router.get('/students/balances-by-term', async (req: AuthRequest, res) => {
       classIdNum != null && !Number.isNaN(classIdNum) ? classIdNum : null
     );
 
+    const enriched = await Promise.all(
+      rows.map(async (row) => {
+        const rawShape = {
+          currentTermFee: row.termFee,
+          currentTermName: termLabel,
+          activeTermId: ledgerTermId,
+          arrearLines: row.arrears > 0 ? [{ termName: 'Arrears', amount: row.arrears }] : [],
+          totalArrears: row.arrears,
+          creditBroughtForward: row.creditBroughtForward,
+          totalDue: row.totalDue,
+          paidLines:
+            row.amountPaidThisTerm > 0
+              ? [{ termName: `${termLabel || 'Current term'} (this term)`, amount: row.amountPaidThisTerm }]
+              : [],
+          totalPaid: row.amountPaidThisTerm,
+          outstanding: row.outstanding,
+          credit: row.creditBalance,
+          netBalance: row.netBalance,
+          status:
+            row.termFee <= 0 &&
+            (row.individualCharges ?? 0) <= 0 &&
+            row.amountPaidThisTerm <= 0 &&
+            row.arrears <= 0 &&
+            row.creditBroughtForward <= 0
+              ? ('NotSet' as const)
+              : row.netBalance < -0.001
+                ? ('Credit' as const)
+                : row.netBalance > 0.001
+                  ? ('Owing' as const)
+                  : ('Cleared' as const),
+          paymentsMade: row.amountPaidThisTerm,
+          totalCharged: row.totalDue,
+          individualCharges: row.individualCharges ?? 0,
+          individualChargeLines: [],
+          termRows: [],
+        };
+        return enrichBalanceShapeWithExpectedFees(null, tenantId, row.id, ledgerTermId, rawShape);
+      })
+    );
+
     res.json(
-      rows.map((row) => ({
-        id: row.id,
-        first_name: row.firstName,
-        last_name: row.lastName,
-        student_id: row.studentId,
-        admission_number: row.admissionNumber,
-        class_name: row.className,
-        totalFees: row.termFee,
-        totalPaid: row.amountPaidThisTerm,
-        outstanding: row.outstanding,
-        arrears: row.arrears,
-        credit: row.creditBalance,
-        status: row.creditBalance > 0 ? 'Credit' : row.outstanding > 0 ? 'Owing' : 'Cleared',
-      }))
+      enriched.map((shape, i) => {
+        const row = rows[i];
+        return {
+          id: row.id,
+          first_name: row.firstName,
+          last_name: row.lastName,
+          student_id: row.studentId,
+          admission_number: row.admissionNumber,
+          class_name: row.className,
+          totalFees: shape.currentTermFee ?? row.termFee,
+          totalPaid: shape.totalPaid ?? row.amountPaidThisTerm,
+          outstanding: shape.outstanding ?? row.outstanding,
+          arrears: shape.totalArrears ?? row.arrears,
+          credit: shape.credit ?? row.creditBalance,
+          status:
+            (shape.credit ?? 0) > 0 ? 'Credit' : (shape.outstanding ?? 0) > 0 ? 'Owing' : 'Cleared',
+        };
+      })
     );
   } catch (error) {
     console.error('Get student balances error:', error);
@@ -317,7 +378,13 @@ router.get('/class-report', async (req: AuthRequest, res) => {
       return res.status(400).json({ error: 'Term and academic year are required' });
     }
 
-    const { ledgerTermId } = await resolveActiveLedgerTerm(query, tenantId);
+    try {
+      await syncMissingLedgerTermFeesForActiveTerm(tenantId);
+    } catch (syncErr) {
+      console.error('[class-report] Ledger fee sync failed (continuing):', syncErr);
+    }
+
+    const { ledgerTermId, termLabel } = await resolveActiveLedgerTerm(query, tenantId);
     if (!ledgerTermId) {
       return res.json({ term, academicYear, classId: classId || null, students: [], totalOutstanding: 0 });
     }
@@ -332,13 +399,55 @@ router.get('/class-report', async (req: AuthRequest, res) => {
       classIdNum != null && !Number.isNaN(classIdNum) ? classIdNum : null
     );
 
-    const owing = rows.filter((r) => r.outstanding > 0);
+    const enriched = await Promise.all(
+      rows.map(async (row) => {
+        const rawShape = {
+          currentTermFee: row.termFee,
+          currentTermName: termLabel,
+          activeTermId: ledgerTermId,
+          arrearLines: row.arrears > 0 ? [{ termName: 'Arrears', amount: row.arrears }] : [],
+          totalArrears: row.arrears,
+          creditBroughtForward: row.creditBroughtForward,
+          totalDue: row.totalDue,
+          paidLines:
+            row.amountPaidThisTerm > 0
+              ? [{ termName: `${termLabel || 'Current term'} (this term)`, amount: row.amountPaidThisTerm }]
+              : [],
+          totalPaid: row.amountPaidThisTerm,
+          outstanding: row.outstanding,
+          credit: row.creditBalance,
+          netBalance: row.netBalance,
+          status:
+            row.termFee <= 0 &&
+            (row.individualCharges ?? 0) <= 0 &&
+            row.amountPaidThisTerm <= 0 &&
+            row.arrears <= 0 &&
+            row.creditBroughtForward <= 0
+              ? ('NotSet' as const)
+              : row.netBalance < -0.001
+                ? ('Credit' as const)
+                : row.netBalance > 0.001
+                  ? ('Owing' as const)
+                  : ('Cleared' as const),
+          paymentsMade: row.amountPaidThisTerm,
+          totalCharged: row.totalDue,
+          individualCharges: row.individualCharges ?? 0,
+          individualChargeLines: [],
+          termRows: [],
+        };
+        return enrichBalanceShapeWithExpectedFees(null, tenantId, row.id, ledgerTermId, rawShape);
+      })
+    );
+
+    const owing = enriched
+      .map((shape, i) => ({ shape, row: rows[i] }))
+      .filter(({ shape }) => (shape.outstanding ?? 0) > 0);
 
     res.json({
       term,
       academicYear,
       classId: classId || null,
-      students: owing.map((row) => ({
+      students: owing.map(({ shape, row }) => ({
         id: row.id,
         firstName: row.firstName,
         lastName: row.lastName,
@@ -346,13 +455,13 @@ router.get('/class-report', async (req: AuthRequest, res) => {
         studentId: row.studentId,
         admissionNumber: row.admissionNumber,
         className: row.className,
-        totalFees: row.termFee,
-        totalPaid: row.amountPaidThisTerm,
-        outstanding: row.outstanding,
-        outstandingBalance: row.outstanding,
+        totalFees: shape.currentTermFee ?? row.termFee,
+        totalPaid: shape.totalPaid ?? row.amountPaidThisTerm,
+        outstanding: shape.outstanding ?? row.outstanding,
+        outstandingBalance: shape.outstanding ?? row.outstanding,
         status: 'owing' as const,
       })),
-      totalOutstanding: owing.reduce((s, r) => s + r.outstanding, 0),
+      totalOutstanding: owing.reduce((s, { shape }) => s + (shape.outstanding ?? 0), 0),
     });
   } catch (error) {
     console.error('Class report error:', error);

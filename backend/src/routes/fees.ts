@@ -37,8 +37,7 @@ const FEE_SELECT = `
             FROM fee_structure_items fsi
             WHERE fsi.tenant_id = lfs.tenant_id
               AND fsi.fee_structure_id = lfs.id
-              AND fsi.is_active = true
-              AND fsi.amount > 0),
+              AND fsi.is_active = true),
            lfs.total,
            0
          ) AS effective_total

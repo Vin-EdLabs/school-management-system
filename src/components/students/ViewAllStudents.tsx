@@ -108,7 +108,7 @@ function sortStudents(list: Student[], key: SortKey, dir: 'asc' | 'desc'): Stude
 }
 
 const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStudent, variant = 'active', readOnly = false }) => {
-  const { students, classes, setStudentStatus, payments, feeStructures, loading } = useData();
+  const { students, classes, setStudentStatus, payments, feeStructures, loading, refresh } = useData();
   const { currentTerm } = useActiveTerm();
   const { addAuditLog } = useAudit();
   const { school } = useSchool();
@@ -238,6 +238,10 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
     const start = (safePage - 1) * pageSize;
     return sortedStudents.slice(start, start + pageSize);
   }, [sortedStudents, safePage, pageSize]);
+
+  useEffect(() => {
+    void refresh(['fees']);
+  }, [refresh]);
 
   useEffect(() => {
     setPage(1);

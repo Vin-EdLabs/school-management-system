@@ -7,6 +7,7 @@ import {
 } from './ledgerBalanceService.js';
 import { resolveActiveLedgerTerm } from './studentUnifiedBalanceService.js';
 import { syncMissingLedgerTermFeesForActiveTerm } from './ledgerFinanceService.js';
+import { resolveLedgerFeeStructureForStudent } from './effectiveStudentBalanceService.js';
 import { listStudentCharges } from './studentChargesService.js';
 import { loadActiveFeeStructureLinesByClassTerm, loadActiveFeeStructureLinesForStudent } from './feeStructureItemsService.js';
 import {
@@ -242,20 +243,51 @@ export async function resolveInvoiceAmounts(
   classId?: number | null
 ): Promise<ResolvedInvoiceAmounts> {
   const balance = await getStudentBalanceFromLedger(client, tenantId, studentId, termId);
+  const feeResolved =
+    balance.termFee <= 0
+      ? await resolveLedgerFeeStructureForStudent(client, tenantId, studentId, termId)
+      : null;
+  const balanceForLines =
+    feeResolved && balance.termFee <= 0
+      ? {
+          ...balance,
+          termFee: feeResolved.netTotal,
+          totalDue: roundMoney(
+            feeResolved.netTotal + balance.individualCharges + balance.arrears
+          ),
+          outstanding: roundMoney(
+            Math.max(
+              0,
+              feeResolved.netTotal +
+                balance.individualCharges +
+                balance.arrears -
+                balance.paymentsMade -
+                balance.creditFromCarryForward
+            )
+          ),
+        }
+      : balance;
+
   const built = await buildLineItems(
     client,
     tenantId,
     studentId,
     termId,
     termLabel,
-    balance,
+    balanceForLines,
     classId
   );
 
   const creditApplied = roundMoney(balance.creditFromCarryForward);
   const amountPaid = balance.paymentsMade;
   const termFeesBeforeDiscount =
-    built.structureSubtotal > 0 ? built.structureSubtotal : built.termFee > 0 ? built.termFee : balance.termFee;
+    built.structureSubtotal > 0
+      ? built.structureSubtotal
+      : built.termFee > 0
+        ? built.termFee
+        : feeResolved
+          ? feeResolved.netTotal
+          : balance.termFee;
   const totalBilled = roundMoney(
     termFeesBeforeDiscount + balance.individualCharges + balance.arrears
   );
@@ -271,7 +303,7 @@ export async function resolveInvoiceAmounts(
     discountAmount: built.discountAmount,
     discountLabel: built.discountLabel,
     totalBilled,
-    outstanding,
+    outstanding: outstanding > 0 ? outstanding : roundMoney(Math.max(0, totalBilled - amountPaid - creditApplied)),
   };
 }
 
@@ -528,7 +560,7 @@ export async function generateSingleInvoice(
       classAssignedId
     );
 
-    if (amounts.outstanding <= 0 && amounts.totalBilled <= 0) {
+    if (amounts.outstanding <= 0.001 && amounts.totalBilled <= 0.001) {
       await client.query('ROLLBACK');
       return { ok: false, reason: 'zero_balance' };
     }

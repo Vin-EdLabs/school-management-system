@@ -7,7 +7,10 @@ import {
   saveFeeStructureItems,
 } from '../services/feeStructureItemsService.js';
 import { query } from '../db/connection.js';
-import { sqlBeneficiaryAdjustedAmount } from '../utils/beneficiaryFee.js';
+import {
+  SQL_BENEFICIARY_TERM_FEE_DEBIT_EFFECTIVE,
+  SQL_FEE_STRUCTURE_CLASS_MATCH,
+} from '../utils/feeStructureSql.js';
 import { getIO } from '../socket.js';
 
 const router = express.Router();
@@ -21,30 +24,70 @@ const emitTenantDataChanged = (tenantId: number, entity: string, action: 'create
   }
 };
 
-const LEDGER_DEBIT_FROM_STANDARD_FEE = sqlBeneficiaryAdjustedAmount('$4').trim();
-
-async function syncLedgerDebitsForStructure(
-  tenantId: number,
-  feeStructureId: number,
-  total: number
-) {
+/** Post or update term_fee ledger rows for all students matching this fee structure's class. */
+async function syncLedgerDebitsForStructure(tenantId: number, feeStructureId: number) {
   const row = await query(
-    `SELECT class_id, term_id FROM ledger_fee_structures WHERE id = $1 AND tenant_id = $2`,
+    `SELECT fs.class_id, fs.term_id, fs.academic_year_id, t.name AS term_name
+     FROM ledger_fee_structures fs
+     JOIN terms t ON t.id = fs.term_id AND t.tenant_id = fs.tenant_id
+     WHERE fs.id = $1 AND fs.tenant_id = $2`,
     [feeStructureId, tenantId]
   );
   if (row.rows.length === 0) return;
-  const { class_id: classId, term_id: termId } = row.rows[0];
+  const { term_id: termId, academic_year_id: academicYearId, term_name: termName } =
+    row.rows[0];
+
   await query(
-    `UPDATE student_ledger AS sl
-     SET debit = ${LEDGER_DEBIT_FROM_STANDARD_FEE}
-     FROM students AS s
-     WHERE sl.student_id = s.id
-       AND sl.tenant_id = $1
+    `INSERT INTO student_ledger (tenant_id, student_id, academic_year_id, term_id, description, entry_type, debit, credit)
+     SELECT DISTINCT ON (s.id)
+       s.tenant_id,
+       s.id,
+       $3,
+       $2,
+       'Term Fee - ' || $4,
+       'term_fee',
+       (${SQL_BENEFICIARY_TERM_FEE_DEBIT_EFFECTIVE.trim()}),
+       0
+     FROM students s
+     INNER JOIN terms t ON t.id = $2 AND t.tenant_id = $1
+     INNER JOIN classes c_student ON c_student.id = s.class_assigned_id AND c_student.tenant_id = s.tenant_id
+     INNER JOIN ledger_fee_structures fs ON fs.id = $5 AND fs.tenant_id = s.tenant_id
+     INNER JOIN classes c_fs ON c_fs.id = fs.class_id AND c_fs.tenant_id = fs.tenant_id
+     WHERE s.tenant_id = $1
+       AND COALESCE(s.enrollment_status, 'active') = 'active'
+       AND s.class_assigned_id IS NOT NULL
+       AND ${SQL_FEE_STRUCTURE_CLASS_MATCH}
+       AND NOT EXISTS (
+         SELECT 1 FROM student_ledger sl
+         WHERE sl.tenant_id = $1 AND sl.student_id = s.id AND sl.term_id = $2 AND sl.entry_type = 'term_fee'
+       )
+     ORDER BY s.id`,
+    [tenantId, termId, academicYearId, termName, feeStructureId]
+  );
+
+  await query(
+    `UPDATE student_ledger sl
+     SET debit = sub.net_fee
+     FROM (
+       SELECT DISTINCT ON (s.id)
+         s.id AS student_id,
+         (${SQL_BENEFICIARY_TERM_FEE_DEBIT_EFFECTIVE.trim()}) AS net_fee
+       FROM students s
+       INNER JOIN terms t ON t.id = $2 AND t.tenant_id = $1
+       INNER JOIN classes c_student ON c_student.id = s.class_assigned_id AND c_student.tenant_id = s.tenant_id
+       INNER JOIN ledger_fee_structures fs ON fs.id = $3 AND fs.tenant_id = s.tenant_id
+       INNER JOIN classes c_fs ON c_fs.id = fs.class_id AND c_fs.tenant_id = fs.tenant_id
+       WHERE s.tenant_id = $1
+         AND COALESCE(s.enrollment_status, 'active') = 'active'
+         AND s.class_assigned_id IS NOT NULL
+         AND ${SQL_FEE_STRUCTURE_CLASS_MATCH}
+       ORDER BY s.id
+     ) sub
+     WHERE sl.tenant_id = $1
+       AND sl.student_id = sub.student_id
        AND sl.term_id = $2
-       AND sl.entry_type = 'term_fee'
-       AND s.tenant_id = $1
-       AND s.class_assigned_id = $3`,
-    [tenantId, termId, classId, total]
+       AND sl.entry_type = 'term_fee'`,
+    [tenantId, termId, feeStructureId]
   );
 }
 
@@ -106,7 +149,7 @@ router.post(
       if (!saved) {
         return res.status(404).json({ error: 'Fee structure not found' });
       }
-      await syncLedgerDebitsForStructure(tenantId, feeStructureId, saved.total);
+      await syncLedgerDebitsForStructure(tenantId, feeStructureId);
       emitTenantDataChanged(tenantId, 'fee', 'updated');
       res.json(saved);
     } catch (error: any) {

@@ -25,10 +25,23 @@ export type FeeStructureItemsFormProps = {
 const normalizeItems = (items: FeeStructureItem[]): FeeStructureItem[] =>
   items.map((item, index) => ({
     ...item,
-    amount: item.is_active ? Number(item.amount) || 0 : 0,
+    amount: item.is_active
+      ? item.amount == null || Number.isNaN(Number(item.amount))
+        ? null
+        : Number(item.amount)
+      : null,
     sort_order: item.sort_order ?? index + 1,
     is_required: item.is_required ?? item.item_name.trim().toLowerCase() === 'tuition',
   }));
+
+const amountInputValue = (amount: number | null | undefined) =>
+  amount == null || Number.isNaN(Number(amount)) ? '' : amount;
+
+const parseAmountInput = (raw: string): number | null => {
+  if (raw.trim() === '') return null;
+  const n = parseFloat(raw);
+  return Number.isNaN(n) ? null : n;
+};
 
 export const FeeStructureItemsForm: React.FC<FeeStructureItemsFormProps> = ({
   feeStructureId,
@@ -79,7 +92,11 @@ export const FeeStructureItemsForm: React.FC<FeeStructureItemsFormProps> = ({
           ...current,
           ...patch,
           is_active: isActive,
-          amount: isActive ? Number(patch.amount ?? current.amount) || 0 : 0,
+          amount: isActive
+            ? patch.amount !== undefined
+              ? patch.amount
+              : current.amount
+            : null,
         };
       }
       return next;
@@ -135,8 +152,9 @@ export const FeeStructureItemsForm: React.FC<FeeStructureItemsFormProps> = ({
                         type="number"
                         min="0"
                         step="0.01"
-                        value={item.amount || ''}
-                        onChange={e => updateItem(index, { amount: parseFloat(e.target.value) || 0 })}
+                        placeholder="0.00"
+                        value={amountInputValue(item.amount)}
+                        onChange={e => updateItem(index, { amount: parseAmountInput(e.target.value) })}
                         className="h-10"
                       />
                     </div>
@@ -175,9 +193,10 @@ export const FeeStructureItemsForm: React.FC<FeeStructureItemsFormProps> = ({
                     type="number"
                     min="0"
                     step="0.01"
+                    placeholder="0.00"
                     disabled={!item.is_active}
-                    value={item.is_active ? item.amount || '' : '0'}
-                    onChange={e => updateItem(index, { amount: parseFloat(e.target.value) || 0 })}
+                    value={item.is_active ? amountInputValue(item.amount) : ''}
+                    onChange={e => updateItem(index, { amount: parseAmountInput(e.target.value) })}
                     className="h-10"
                   />
                 </div>
@@ -213,7 +232,7 @@ export function validateFeeStructureItemsForm(items: FeeStructureItem[]): Record
   const nextErrors: Record<number, string> = {};
   items.forEach((item, index) => {
     const isTuition = item.item_name.trim().toLowerCase() === 'tuition';
-    const amount = Number(item.amount);
+    const amount = item.amount == null ? NaN : Number(item.amount);
     if (isTuition) {
       if (!item.is_active) {
         nextErrors[index] = 'Tuition is required';

@@ -5,6 +5,7 @@ import {
   getStudentBalanceFromLedger,
   getArrearsBreakdownFromLedger,
 } from './ledgerBalanceService.js';
+import { resolveLedgerFeeStructureForStudent } from './effectiveStudentBalanceService.js';
 
 type QueryFn = typeof query;
 
@@ -430,15 +431,30 @@ export async function getCurrentTermPaymentContext(
 
   const balance = await getStudentBalanceFromLedger(client, tenantId, studentId, ledgerTermId);
 
+  let termFee = balance.termFee;
+  let totalDue = balance.totalDue;
+  let outstandingBefore = balance.outstanding;
+
+  if (termFee <= 0) {
+    const resolved = await resolveLedgerFeeStructureForStudent(client, tenantId, studentId, ledgerTermId);
+    if (resolved) {
+      termFee = resolved.netTotal;
+      totalDue = roundMoney(termFee + balance.arrears + (balance.individualCharges ?? 0));
+      outstandingBefore = roundMoney(
+        Math.max(0, totalDue - balance.paymentsMade - balance.creditFromCarryForward)
+      );
+    }
+  }
+
   return {
     ledgerTermId,
     academicYearId,
     termLabel,
-    termFee: balance.termFee,
+    termFee,
     arrears: balance.arrears,
-    totalDue: balance.totalDue,
+    totalDue,
     totalPaid: balance.paymentsMade,
-    outstandingBefore: balance.outstanding,
+    outstandingBefore,
     creditBroughtForward: balance.creditFromCarryForward,
   };
 }

@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -11,52 +11,59 @@ import { Search, AlertTriangle, Download, DollarSign, Clock, TrendingUp, Wallet 
 import { getActiveAcademicTerm } from '../../utils/feeCalculations';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
 import { shouldTrackStudentFees } from '../students/studentRegistryUtils';
+import { fetchClassStudentBalances, type StudentBalance } from '../../services/studentBalance';
+import { resolveStudentDisplayBalance } from '../../utils/resolveStudentDisplayBalance';
 
 const OutstandingFees = () => {
-  const { students, classes, ledgerBalances } = useData();
+  const { students, classes, ledgerBalances, feeStructures } = useData();
   const { currentTerm } = useActiveTerm();
+  const [liveBalances, setLiveBalances] = useState<Record<string, StudentBalance>>({});
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClass, setSelectedClass] = useState('All');
   const selectedTerm = currentTerm && currentTerm !== 'Not Set' ? currentTerm : getActiveAcademicTerm();
 
+  useEffect(() => {
+    let cancelled = false;
+    void fetchClassStudentBalances()
+      .then((res) => {
+        if (!cancelled) setLiveBalances(res.balances || {});
+      })
+      .catch(() => {
+        if (!cancelled) setLiveBalances({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [students.length, selectedTerm]);
+
+  const balanceMap = useMemo(() => {
+    const merged = { ...ledgerBalances, ...liveBalances };
+    return merged;
+  }, [ledgerBalances, liveBalances]);
+
   const outstandingData = useMemo(() => {
     const studentsArray = Array.isArray(students) ? students : [];
+    const term = selectedTerm;
 
-    return studentsArray.filter(shouldTrackStudentFees).map(student => {
-      const ledgerBalance = ledgerBalances?.[String(student.id)];
-
-      if (ledgerBalance) {
-        const outstanding = Math.max(0, ledgerBalance.outstanding ?? 0);
-        return {
-          studentId: student.id,
-          admissionNo: student.studentId || student.admissionNumber || String(student.id),
-          studentName: `${student.firstName} ${student.lastName}`,
-          className: student.classAssigned,
-          currentTermFee: ledgerBalance.currentTermFee ?? 0,
-          arrears: ledgerBalance.totalArrears ?? 0,
-          creditBalance: ledgerBalance.credit ?? 0,
-          totalAmountDue: ledgerBalance.totalDue ?? 0,
-          totalPaid: ledgerBalance.totalPaid ?? 0,
-          outstanding,
-          paymentHistory: [],
-        };
-      }
+    return studentsArray.filter(shouldTrackStudentFees).map((student) => {
+      const ledgerBalance = balanceMap?.[String(student.id)];
+      const display = resolveStudentDisplayBalance(student, ledgerBalance, feeStructures || [], term);
 
       return {
         studentId: student.id,
         admissionNo: student.studentId || student.admissionNumber || String(student.id),
         studentName: `${student.firstName} ${student.lastName}`,
         className: student.classAssigned,
-        currentTermFee: 0,
-        arrears: 0,
-        creditBalance: 0,
-        totalAmountDue: 0,
-        totalPaid: 0,
-        outstanding: 0,
+        currentTermFee: display.currentTermFee,
+        arrears: display.arrears,
+        creditBalance: display.credit,
+        totalAmountDue: display.totalDue,
+        totalPaid: display.totalPaid,
+        outstanding: display.outstanding,
         paymentHistory: [],
       };
     });
-  }, [students, ledgerBalances]);
+  }, [students, balanceMap, feeStructures, selectedTerm]);
 
   // Filter students with outstanding balances
   const filteredStudents = useMemo(() => {

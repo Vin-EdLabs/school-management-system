@@ -13,7 +13,8 @@ import {
 } from '../services/financeSummaryService.js';
 import { ACTIVE_STUDENT_WHERE } from '../utils/studentEnrollment.js';
 import { getStudentLiveFeeBreakdown } from '../services/studentLiveFeeBreakdownService.js';
-import { resolveLedgerTermFromSettings } from '../services/ledgerFinanceService.js';
+import { resolveLedgerTermFromSettings, syncMissingLedgerTermFeesForActiveTerm } from '../services/ledgerFinanceService.js';
+import { SQL_EFFECTIVE_STUDENT_LEDGER_TOTALS_CTE } from '../utils/feeStructureSql.js';
 
 const router = express.Router();
 
@@ -140,19 +141,8 @@ type ReportPeriod = {
   ledgerTermId: number | null;
 };
 
-/** Per-student ledger totals for the report term (term_fee, arrears, paid, outstanding). */
-const LEDGER_STUDENT_TOTALS_CTE = `
-  student_ledger_totals AS (
-    SELECT
-      sl.student_id,
-      COALESCE(SUM(CASE WHEN sl.entry_type = 'term_fee' THEN sl.debit ELSE 0 END), 0)::numeric AS term_fee,
-      COALESCE(SUM(CASE WHEN sl.entry_type = 'arrears' THEN sl.debit ELSE 0 END), 0)::numeric AS arrears_amt,
-      COALESCE(SUM(CASE WHEN sl.entry_type = 'payment' THEN sl.credit ELSE 0 END), 0)::numeric AS paid_amt,
-      GREATEST(0, COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(sl.credit), 0))::numeric AS outstanding_amt
-    FROM student_ledger sl
-    WHERE sl.tenant_id = $1 AND sl.term_id = $2
-    GROUP BY sl.student_id
-  )`;
+/** Per-student ledger totals for the report term (term_fee, arrears, paid, outstanding) with fee-structure fallback. */
+const LEDGER_STUDENT_TOTALS_CTE = SQL_EFFECTIVE_STUDENT_LEDGER_TOTALS_CTE;
 
 async function loadReportPeriod(req: AuthRequest): Promise<ReportPeriod> {
   const tenantId = req.user!.tenantId!;
@@ -354,6 +344,12 @@ router.get('/financial-summary', async (req: AuthRequest, res) => {
     const { tenantId, term, termMatch, termLike, termOnly, financeFrom, financeTo, academicYearDisplay, academicYear, ledgerTermId } =
       await loadReportPeriod(req);
 
+    try {
+      await syncMissingLedgerTermFeesForActiveTerm(tenantId);
+    } catch (syncErr) {
+      console.error('[financial-summary] Ledger fee sync failed (continuing):', syncErr);
+    }
+
     const feeTotalsRow = ledgerTermId
       ? (
           await query(
@@ -508,6 +504,12 @@ router.get('/outstanding-fees', async (req: AuthRequest, res) => {
       return res.json([]);
     }
 
+    try {
+      await syncMissingLedgerTermFeesForActiveTerm(tenantId);
+    } catch (syncErr) {
+      console.error('[outstanding-fees] Ledger fee sync failed (continuing):', syncErr);
+    }
+
     const outstandingQuery = `
       WITH ${LEDGER_STUDENT_TOTALS_CTE},
       balances AS (
@@ -526,7 +528,7 @@ router.get('/outstanding-fees', async (req: AuthRequest, res) => {
           ) AS days
         FROM students s
         INNER JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
-        INNER JOIN student_ledger_totals slt ON slt.student_id = s.id
+        LEFT JOIN student_ledger_totals slt ON slt.student_id = s.id
         WHERE s.tenant_id = $1 AND ${ACTIVE_STUDENT_WHERE}
       )
       SELECT id, name, class, amount, days
@@ -786,6 +788,12 @@ router.get('/admin-overview', async (req: AuthRequest, res) => {
   try {
     const { tenantId, termMatch, termLike, termOnly, ledgerTermId } = await loadReportPeriod(req);
 
+    try {
+      await syncMissingLedgerTermFeesForActiveTerm(tenantId);
+    } catch (syncErr) {
+      console.error('[admin-overview] Ledger fee sync failed (continuing):', syncErr);
+    }
+
     const feeMixQuery = ledgerTermId
       ? `
         WITH ${LEDGER_STUDENT_TOTALS_CTE},
@@ -796,6 +804,7 @@ router.get('/admin-overview', async (req: AuthRequest, res) => {
             COALESCE(slt.arrears_amt, 0)::numeric AS arrears_amt,
             COALESCE(slt.paid_amt, 0)::numeric AS paid_amt,
             COALESCE(slt.outstanding_amt, 0)::numeric AS outstanding_amt,
+            COALESCE(slt.has_fee_structure, false) AS has_fee_structure,
             (COALESCE(slt.term_fee, 0) + COALESCE(slt.arrears_amt, 0) - COALESCE(slt.paid_amt, 0))::numeric AS net_position
           FROM students s
           LEFT JOIN student_ledger_totals slt ON slt.student_id = s.id
@@ -804,7 +813,7 @@ router.get('/admin-overview', async (req: AuthRequest, res) => {
         categorized AS (
           SELECT
             CASE
-              WHEN term_fee <= 0 AND arrears_amt <= 0 AND paid_amt <= 0 THEN 'noFee'
+              WHEN term_fee <= 0 AND arrears_amt <= 0 AND paid_amt <= 0 AND NOT COALESCE(has_fee_structure, false) THEN 'noFee'
               WHEN net_position < -0.01 THEN 'credit'
               WHEN outstanding_amt <= 0.01 THEN 'paid'
               ELSE 'owing'
@@ -917,32 +926,17 @@ router.get('/admin-overview', async (req: AuthRequest, res) => {
  */
 router.get('/student-fee-roster', async (req: AuthRequest, res) => {
   try {
-    const { tenantId, termMatch, termLike, termOnly } = await loadReportPeriod(req);
+    const { tenantId, ledgerTermId } = await loadReportPeriod(req);
     const className = String(req.query.className || '').trim();
     const search = String(req.query.search || '').trim().toLowerCase();
 
+    if (!ledgerTermId) {
+      res.set('Cache-Control', 'no-store');
+      return res.json([]);
+    }
+
     const rosterQuery = `
-      WITH class_raw_fee AS (
-        SELECT c.id AS class_id, COALESCE(SUM(fs.amount), 0)::numeric AS raw_total
-        FROM classes c
-        LEFT JOIN fee_structures fs ON fs.class_id = c.id
-          AND (fs.tenant_id = $1 OR fs.tenant_id IS NULL)
-          AND (${TERM_PRED_FS})
-        WHERE c.tenant_id = $1
-        GROUP BY c.id
-      ),
-      student_arrears AS (
-        SELECT ta.student_id, COALESCE(SUM(ta.amount), 0)::numeric AS arrears_amt
-        FROM term_arrears ta
-        WHERE ta.tenant_id = $1 AND (${TERM_PRED_TA})
-        GROUP BY ta.student_id
-      ),
-      student_payments AS (
-        SELECT p.student_id, COALESCE(SUM(COALESCE(p.amount_paid, p.amount, 0)), 0)::numeric AS paid_amt
-        FROM payments p
-        WHERE p.tenant_id = $1 AND COALESCE(p.is_voided, false) = false AND (${TERM_PRED_PAY})
-        GROUP BY p.student_id
-      ),
+      WITH ${LEDGER_STUDENT_TOTALS_CTE},
       roster AS (
         SELECT
           s.id,
@@ -953,15 +947,13 @@ router.get('/student-fee-roster', async (req: AuthRequest, res) => {
           TRIM(COALESCE(c.class_name, 'Unassigned')) AS class_name,
           COALESCE(s.gender, '') AS gender,
           LOWER(COALESCE(s.enrollment_status, 'active')) AS enrollment_status,
-          COALESCE(crf.raw_total, 0)::numeric AS raw_fee,
-          COALESCE(sa.arrears_amt, 0)::numeric AS arrears_amt,
-          COALESCE(sp.paid_amt, 0)::numeric AS paid_amt,
-          (${DISCOUNTED_TERM_FEE_SQL})::numeric AS term_fee
+          COALESCE(slt.term_fee, 0)::numeric AS term_fee,
+          COALESCE(slt.arrears_amt, 0)::numeric AS arrears_amt,
+          COALESCE(slt.paid_amt, 0)::numeric AS paid_amt,
+          COALESCE(slt.has_fee_structure, false) AS has_fee_structure
         FROM students s
         LEFT JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
-        LEFT JOIN class_raw_fee crf ON crf.class_id = s.class_assigned_id
-        LEFT JOIN student_arrears sa ON sa.student_id = s.id
-        LEFT JOIN student_payments sp ON sp.student_id = s.id
+        LEFT JOIN student_ledger_totals slt ON slt.student_id = s.id
         WHERE s.tenant_id = $1 AND ${ACTIVE_STUDENT_WHERE}
       )
       SELECT
@@ -974,30 +966,30 @@ router.get('/student-fee-roster', async (req: AuthRequest, res) => {
         gender,
         enrollment_status AS "enrollmentStatus",
         CASE
-          WHEN raw_fee <= 0 AND arrears_amt <= 0 THEN 'No Fee Set'
+          WHEN NOT has_fee_structure AND term_fee <= 0 AND arrears_amt <= 0 AND paid_amt <= 0 THEN 'No Fee Set'
           WHEN (term_fee + arrears_amt - paid_amt) < -0.01 THEN 'Credit Balance'
           WHEN (term_fee + arrears_amt - paid_amt) <= 0.01 THEN 'Fully Paid'
           ELSE 'Amount Owing'
         END AS "feeStatus",
         CASE
-          WHEN raw_fee <= 0 AND arrears_amt <= 0 THEN 0
+          WHEN NOT has_fee_structure AND term_fee <= 0 AND arrears_amt <= 0 AND paid_amt <= 0 THEN 0
           WHEN (term_fee + arrears_amt - paid_amt) < -0.01 THEN ABS(term_fee + arrears_amt - paid_amt)
           WHEN (term_fee + arrears_amt - paid_amt) <= 0.01 THEN 0
           ELSE GREATEST(0, term_fee + arrears_amt - paid_amt)
         END::numeric AS balance
       FROM roster
-      WHERE ($5 = '' OR class_name = $5)
+      WHERE ($3 = '' OR class_name = $3)
         AND (
-          $6 = ''
-          OR LOWER(first_name || ' ' || last_name) LIKE '%' || $6 || '%'
-          OR LOWER(student_id) LIKE '%' || $6 || '%'
-          OR LOWER(COALESCE(admission_number, '')) LIKE '%' || $6 || '%'
+          $4 = ''
+          OR LOWER(first_name || ' ' || last_name) LIKE '%' || $4 || '%'
+          OR LOWER(student_id) LIKE '%' || $4 || '%'
+          OR LOWER(COALESCE(admission_number, '')) LIKE '%' || $4 || '%'
         )
       ORDER BY last_name ASC, first_name ASC
       LIMIT 200
     `;
 
-    const result = await query(rosterQuery, [tenantId, termMatch, termLike, termOnly, className, search]);
+    const result = await query(rosterQuery, [tenantId, ledgerTermId, className, search]);
     res.set('Cache-Control', 'no-store');
     res.json(result.rows);
   } catch (error) {

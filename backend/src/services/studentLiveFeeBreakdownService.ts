@@ -6,6 +6,7 @@ import {
   type StudentBalanceApiShape,
 } from './ledgerBalanceService.js';
 import { resolveActiveLedgerTerm } from './studentUnifiedBalanceService.js';
+import { enrichBalanceShapeWithExpectedFees } from './effectiveStudentBalanceService.js';
 import { query } from '../db/connection.js';
 
 export type LiveFeeLine = { termName: string; amount: number };
@@ -54,7 +55,8 @@ export async function getStudentLiveFeeBreakdown(
 
   const { ledgerTermId } = await resolveActiveLedgerTerm(run, tenantId, activeTermId ?? undefined);
   const shape = await ledgerBalanceToApiShape(client, tenantId, studentId, ledgerTermId);
-  return shape;
+  if (!shape || !ledgerTermId) return shape;
+  return enrichBalanceShapeWithExpectedFees(client, tenantId, studentId, ledgerTermId, shape);
 }
 
 /** Payment context from ledger — used when recording payments. */

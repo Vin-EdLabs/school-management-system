@@ -3,7 +3,7 @@ import { apiService } from './api';
 export type FeeStructureItem = {
   id?: number;
   item_name: string;
-  amount: number;
+  amount: number | null;
   is_active: boolean;
   sort_order: number;
   is_required?: boolean;
@@ -16,11 +16,11 @@ export type FeeStructureItemsSummary = {
 };
 
 export const DEFAULT_FEE_STRUCTURE_ITEMS: FeeStructureItem[] = [
-  { item_name: 'Tuition', amount: 0, is_active: true, sort_order: 1, is_required: true },
-  { item_name: 'PTA', amount: 0, is_active: false, sort_order: 2, is_required: false },
-  { item_name: 'ICT', amount: 0, is_active: false, sort_order: 3, is_required: false },
-  { item_name: 'Library', amount: 0, is_active: false, sort_order: 4, is_required: false },
-  { item_name: 'Exam Fees', amount: 0, is_active: false, sort_order: 5, is_required: false },
+  { item_name: 'Tuition', amount: null, is_active: true, sort_order: 1, is_required: true },
+  { item_name: 'PTA', amount: null, is_active: false, sort_order: 2, is_required: false },
+  { item_name: 'ICT', amount: null, is_active: false, sort_order: 3, is_required: false },
+  { item_name: 'Library', amount: null, is_active: false, sort_order: 4, is_required: false },
+  { item_name: 'Exam Fees', amount: null, is_active: false, sort_order: 5, is_required: false },
 ];
 
 export type FeeStructureRef = {

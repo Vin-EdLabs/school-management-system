@@ -212,7 +212,8 @@ const FeesModule: React.FC<FeesModuleProps> = ({ onNavigate }) => {
               onClick={async () => {
                 try {
                   setRefreshing(true);
-                  await refresh(['fees', 'payments', 'students']);
+                  await apiService.post('/fees/sync-ledger').catch(() => undefined);
+                  await refresh(['fees', 'payments', 'students', 'classes']);
                   setRefreshing(false);
                   setSuccess(true);
                   setTimeout(() => setSuccess(false), 1500);

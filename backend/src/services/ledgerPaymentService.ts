@@ -291,8 +291,25 @@ export async function postStudentActivationTermFee(
   }
 
   const feeRes = await client.query(
-    `SELECT total FROM ledger_fee_structures
-     WHERE tenant_id = $1 AND class_id = $2 AND academic_year_id = $3 AND term_id = $4`,
+    `SELECT fs.total
+     FROM ledger_fee_structures fs
+     INNER JOIN classes c_student ON c_student.id = $2 AND c_student.tenant_id = $1
+     WHERE fs.tenant_id = $1
+       AND fs.academic_year_id = $3
+       AND fs.term_id = $4
+       AND (
+         fs.class_id = $2
+         OR fs.class_id IN (
+           SELECT c_alt.id
+           FROM classes c_alt
+           WHERE c_alt.tenant_id = $1
+             AND LOWER(TRIM(COALESCE(c_alt.class_name, c_alt.name, ''))) =
+                 LOWER(TRIM(COALESCE(c_student.class_name, c_student.name, '')))
+             AND TRIM(COALESCE(c_alt.class_name, c_alt.name, '')) <> ''
+         )
+       )
+     ORDER BY CASE WHEN fs.class_id = $2 THEN 0 ELSE 1 END, fs.id
+     LIMIT 1`,
     [tenantId, classId, academicYearId, termId]
   );
   const termNameRes = await client.query(`SELECT name FROM terms WHERE id = $1`, [termId]);

@@ -4,7 +4,7 @@ import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js'
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { getIO } from '../socket.js';
-import { postFeesForClass, resolveLedgerTermFromSettings } from '../services/ledgerFinanceService.js';
+import { postFeesForClass, resolveLedgerTermFromSettings, syncMissingLedgerTermFeesForActiveTerm } from '../services/ledgerFinanceService.js';
 import { writeAuditLog } from '../services/auditService.js';
 import { formatMoneyGhs, resolveActorFromRequest, resolveClassName, withActor } from '../utils/auditResolve.js';
 import { getClientIp } from '../utils/clientIp.js';
@@ -96,6 +96,24 @@ router.get('/', async (req: AuthRequest, res) => {
   } catch (error) {
     console.error('Get fee structures error:', error);
     res.status(500).json({ error: 'Failed to fetch fee structures' });
+  }
+});
+
+// POST /api/fees/sync-ledger — bill students missing term_fee rows for the active term (idempotent)
+router.post('/sync-ledger', requireRole('super-admin', 'administrator', 'finance'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const result = await syncMissingLedgerTermFeesForActiveTerm(tenantId);
+    res.json({
+      message:
+        result.insertedCount > 0
+          ? `Posted term fees for ${result.insertedCount} student(s).`
+          : 'All eligible students already have term fees posted.',
+      ...result,
+    });
+  } catch (error) {
+    console.error('Sync ledger fees error:', error);
+    res.status(500).json({ error: 'Failed to sync student ledger fees' });
   }
 });
 

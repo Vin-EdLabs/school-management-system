@@ -31,7 +31,33 @@ const StudentBalances = () => {
 
   const classRow = filterClass !== 'all-classes' ? classes.find((c) => c.className === filterClass) : null;
 
-  const roundMoney = (value: number) => Math.round(value * 100) / 100;
+  const normalizeClassName = (name: string) =>
+    String(name || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ');
+
+  const feeStructureMatchesStudent = (
+    fee: { classId?: number | string | null; class_id?: number | string | null; className?: string; class_name?: string; term?: string },
+    student: { classAssignedId?: number | string | null; classAssigned?: string }
+  ) => {
+    const feeClassId = fee.classId ?? fee.class_id;
+    const feeClassName = fee.className ?? fee.class_name ?? '';
+    const studentClassName = student.classAssigned ?? '';
+    const classMatchById =
+      student.classAssignedId != null &&
+      feeClassId != null &&
+      Number(feeClassId) === Number(student.classAssignedId);
+    const classMatchByName =
+      normalizeClassName(feeClassName) !== '' &&
+      normalizeClassName(feeClassName) === normalizeClassName(studentClassName);
+    const classMatch = classMatchById || classMatchByName;
+    const term = String(fee.term || '').trim();
+    return (
+      classMatch &&
+      (term === currentTerm || term.startsWith(currentTerm) || currentTerm.startsWith(term))
+    );
+  };
 
   const getMatchingFeeStructureBaseAmount = (
     student: { classAssigned?: string; classAssignedId?: number | string | null },
@@ -39,18 +65,8 @@ const StudentBalances = () => {
     term: string | null
   ) => {
     if (!term || term === 'Not Set') return 0;
-    const normalizedTerm = term.trim();
     return feeStructures
-      .filter((f) => {
-        const feeClassId = f.classId ?? f.class_id;
-        const classMatch =
-          student.classAssignedId != null && feeClassId != null
-            ? Number(feeClassId) === Number(student.classAssignedId)
-            : (f.className || '').trim() === (student.classAssigned || '').trim();
-        if (!classMatch) return false;
-        const feeTerm = (f.term || '').trim();
-        return !feeTerm || feeTerm === normalizedTerm || feeTerm.startsWith(normalizedTerm) || normalizedTerm.startsWith(feeTerm);
-      })
+      .filter((f) => feeStructureMatchesStudent(f, student))
       .reduce((sum, fee) => sum + (Number(fee.amount) || 0), 0);
   };
 
@@ -95,15 +111,10 @@ const StudentBalances = () => {
 
   const hasFeeStructureForStudent = (student: { classAssignedId?: number | string | null; classAssigned?: string }) => {
     if (!currentTerm || currentTerm === 'Not Set') return false;
-    return (feeStructures || []).some((f) => {
-      const classMatch =
-        student.classAssignedId != null && f.classId != null
-          ? Number(f.classId) === Number(student.classAssignedId)
-          : (f.className || '').trim() === (student.classAssigned || '').trim();
-      const term = String(f.term || '').trim();
-      return classMatch && (term === currentTerm || term.startsWith(currentTerm) || currentTerm.startsWith(term));
-    });
+    return (feeStructures || []).some((f) => feeStructureMatchesStudent(f, student));
   };
+
+  const roundMoney = (value: number) => Math.round(value * 100) / 100;
 
   const currentTermPayments = useMemo(() => {
     const activeTermId = Object.values(ledgerBalances || {})[0]?.activeTermId ?? null;

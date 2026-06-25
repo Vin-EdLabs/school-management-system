@@ -4,6 +4,7 @@ import { authenticate, requireTenant, AuthRequest, requireRole } from '../middle
 import { setTenantContext } from '../middleware/tenant.js';
 import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 import { resolveActiveLedgerTerm } from '../services/studentUnifiedBalanceService.js';
+import { syncMissingLedgerTermFeesForActiveTerm } from '../services/ledgerFinanceService.js';
 import {
   getBatchStudentBalancesFromLedger,
   ledgerBalanceToApiShape,
@@ -30,6 +31,13 @@ router.get('/students/balances', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const { classId } = req.query;
+
+    // Auto-bill students added outside the app (direct DB) before reading balances.
+    try {
+      await syncMissingLedgerTermFeesForActiveTerm(tenantId);
+    } catch (syncErr) {
+      console.error('[students/balances] Ledger fee sync failed (continuing):', syncErr);
+    }
 
     const { ledgerTermId, termLabel } = await resolveActiveLedgerTerm(query, tenantId);
     if (!ledgerTermId) {

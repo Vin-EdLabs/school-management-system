@@ -458,6 +458,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         break;
       }
       case 'fees': {
+        await apiService.post('/fees/sync-ledger').catch(() => undefined);
         const [feesRes, balancesRes] = await Promise.all([
           apiService.get('/fees').catch(() => []),
           apiService.get('/fee-calculations/students/balances').catch(() => ({ balances: {} })),

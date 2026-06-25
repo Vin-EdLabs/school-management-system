@@ -334,6 +334,95 @@ export const postFeesForNewTerm = async (tenantId: number, newTermId: number) =>
 };
 
 /**
+ * Idempotent: posts term_fee ledger debits for active students who have a fee structure
+ * but no term_fee row yet (e.g. students/classes added directly in the database).
+ * Matches fee structures by class id or by normalized class name alias.
+ */
+export async function syncMissingLedgerTermFeesForActiveTerm(tenantId: number): Promise<{
+  termId: number | null;
+  insertedCount: number;
+}> {
+  const settingsRes = await query(
+    `SELECT current_term, current_year FROM school_settings WHERE tenant_id = $1`,
+    [tenantId]
+  );
+  const currentTerm = settingsRes.rows[0]?.current_term;
+  const currentYear = settingsRes.rows[0]?.current_year;
+  if (!currentTerm || !currentYear) {
+    return { termId: null, insertedCount: 0 };
+  }
+
+  const resolved = await resolveLedgerTermFromSettings(tenantId, String(currentYear), String(currentTerm));
+  if (!resolved) {
+    return { termId: null, insertedCount: 0 };
+  }
+
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+
+    const sql = `
+      INSERT INTO student_ledger (tenant_id, student_id, academic_year_id, term_id, description, entry_type, debit, credit)
+      SELECT DISTINCT ON (s.id)
+        s.tenant_id,
+        s.id,
+        t.academic_year_id,
+        t.id,
+        'Term Fee - ' || t.name,
+        'term_fee',
+        (${SQL_BENEFICIARY_TERM_FEE_DEBIT.trim()}),
+        0
+      FROM students s
+      INNER JOIN terms t ON t.id = $2 AND t.tenant_id = $1
+      INNER JOIN classes c_student ON c_student.id = s.class_assigned_id AND c_student.tenant_id = s.tenant_id
+      INNER JOIN ledger_fee_structures fs ON fs.tenant_id = s.tenant_id
+        AND fs.academic_year_id = t.academic_year_id
+        AND fs.term_id = t.id
+        AND (
+          fs.class_id = s.class_assigned_id
+          OR fs.class_id IN (
+            SELECT c_alt.id
+            FROM classes c_alt
+            WHERE c_alt.tenant_id = s.tenant_id
+              AND LOWER(TRIM(COALESCE(c_alt.class_name, c_alt.name, ''))) =
+                  LOWER(TRIM(COALESCE(c_student.class_name, c_student.name, '')))
+              AND TRIM(COALESCE(c_alt.class_name, c_alt.name, '')) <> ''
+          )
+        )
+      WHERE s.tenant_id = $1
+        AND COALESCE(s.enrollment_status, 'active') = 'active'
+        AND s.class_assigned_id IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM student_ledger sl
+          WHERE sl.tenant_id = $1
+            AND sl.student_id = s.id
+            AND sl.term_id = $2
+            AND sl.entry_type = 'term_fee'
+        )
+      ORDER BY s.id, (fs.class_id = s.class_assigned_id) DESC, fs.id
+    `;
+
+    const result = await client.query(sql, [tenantId, resolved.termId]);
+    await client.query('COMMIT');
+
+    const insertedCount = result.rowCount ?? 0;
+    if (insertedCount > 0) {
+      console.log(
+        `[syncMissingLedgerTermFees] Tenant ${tenantId}: inserted ${insertedCount} term_fee row(s) for term ${resolved.termId}`
+      );
+    }
+
+    return { termId: resolved.termId, insertedCount };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('[syncMissingLedgerTermFees] Error:', error);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
  * Switches to a new term (term close carry-forward only).
  * For each student on the closing term:
  *   net_balance = SUM(debit) - SUM(credit)

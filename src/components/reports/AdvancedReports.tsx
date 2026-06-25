@@ -264,78 +264,90 @@ const AdvancedReports = () => {
     if (!periodReady || !activeYearKey || !activeTerm) return;
     setLoading(true);
     setError(null);
+    const params = new URLSearchParams();
+    params.set('term', activeTerm);
+    params.set('year', activeYearKey);
+    const base = `?${params.toString()}`;
+    const bust = `&_=${Date.now()}`;
+
     try {
-      const params = new URLSearchParams();
-      params.set('term', activeTerm);
-      params.set('year', activeYearKey);
-      const base = `?${params.toString()}`;
-      const bust = `&_=${Date.now()}`;
-
-      const finRes = normalizeFinancialSummary(await apiService.get<any>(`/reports/financial-summary${base}${bust}`));
-      setFinancialSummary(finRes);
-
-      const listBust = `?_=${Date.now()}`;
-
-      const [
-        classFeesRes,
-        outstandingRes,
-        expenditureRes,
-        payrollRes,
-        performanceRes,
-        attendanceRes,
-        iveRes,
-        incomeList,
-        expenseList,
-        fundTransfersRes,
-      ] = await Promise.all([
-        apiService.get<any[]>(`/reports/fees-by-class${base}${bust}`),
-        apiService.get<any[]>(`/reports/outstanding-fees${base}${bust}`),
-        apiService.get<any[]>(`/reports/expenditure${base}${bust}`),
-        apiService.get<any[]>(`/reports/payroll-summary${base}${bust}`),
-        apiService.get<any>(`/reports/academic-performance${base}${bust}`),
-        apiService.get<any[]>(`/reports/attendance-summary${base}${bust}`),
-        apiService.get<any[]>(`/reports/income-vs-expenditure${base}${bust}`),
-        apiService.get<any[]>(`/income${listBust}`),
-        apiService.get<any[]>(`/expenses${listBust}`),
-        apiService.get<any[]>(`/reports/fund-transfers?scope=all&limit=500&_=${Date.now()}`),
-      ]);
-
-      setFeesByClass(classFeesRes);
-      setOutstandingFees(outstandingRes);
-      setExpenditure(expenditureRes);
-      setPayroll(payrollRes);
-      setPerformance(performanceRes);
-      setAttendance(
-        attendanceRes
-          .map((a) => ({
-            ...a,
-            date: formatDisplayDate(a.date),
-            rate: a.total > 0 ? (a.present / a.total) * 100 : 0,
-          }))
-          .reverse()
-      );
-      setIncomeVsExpense(iveRes);
-      setIncomeRows(
-        (Array.isArray(incomeList) ? incomeList : []).map((row: any) => ({
-          ...row,
-          Account: row.account_label || 'Unlinked',
-        }))
-      );
-      setExpenseRows(
-        (Array.isArray(expenseList) ? expenseList : []).map((row: any) => ({
-          ...row,
-          Account: row.account_label || 'Unlinked',
-        }))
-      );
-      setFundTransfers(Array.isArray(fundTransfersRes) ? fundTransfersRes : []);
-      setCollectionsByAccount(Array.isArray(finRes?.collectionsByAccount) ? finRes.collectionsByAccount : []);
-      setLastSync(new Date());
-    } catch (err: any) {
-      console.error('Failed to fetch dashboard data:', err);
-      setError(err.message || 'An error occurred while loading report data');
-    } finally {
-      setLoading(false);
+      const finRaw = await apiService.get<any>(`/reports/financial-summary${base}${bust}`).catch((err) => {
+        console.error('Failed to fetch financial summary:', err);
+        return null;
+      });
+      if (finRaw) {
+        const finRes = normalizeFinancialSummary(finRaw);
+        setFinancialSummary(finRes);
+        setCollectionsByAccount(
+          Array.isArray(finRes?.collectionsByAccount) ? finRes.collectionsByAccount : []
+        );
+      } else {
+        setError('Failed to fetch financial summary');
+      }
+    } catch (err: unknown) {
+      console.error('Failed to fetch financial summary:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch financial summary');
     }
+
+    const listBust = `?_=${Date.now()}`;
+
+    const [
+      classFeesRes,
+      outstandingRes,
+      expenditureRes,
+      payrollRes,
+      performanceRes,
+      attendanceRes,
+      iveRes,
+      incomeList,
+      expenseList,
+      fundTransfersRes,
+    ] = await Promise.all([
+      apiService.get<any[]>(`/reports/fees-by-class${base}${bust}`).catch(() => []),
+      apiService.get<any[]>(`/reports/outstanding-fees${base}${bust}`).catch(() => []),
+      apiService.get<any[]>(`/reports/expenditure${base}${bust}`).catch(() => []),
+      apiService.get<any[]>(`/reports/payroll-summary${base}${bust}`).catch(() => []),
+      apiService.get<any>(`/reports/academic-performance${base}${bust}`).catch(() => ({})),
+      apiService.get<any[]>(`/reports/attendance-summary${base}${bust}`).catch(() => []),
+      apiService.get<any[]>(`/reports/income-vs-expenditure${base}${bust}`).catch(() => []),
+      apiService.get<any[]>(`/income${listBust}`).catch(() => []),
+      apiService.get<any[]>(`/expenses${listBust}`).catch(() => []),
+      apiService.get<any[]>(`/reports/fund-transfers?scope=all&limit=500&_=${Date.now()}`).catch(() => []),
+    ]);
+
+    setFeesByClass(classFeesRes);
+    setOutstandingFees(outstandingRes);
+    setExpenditure(expenditureRes);
+    setPayroll(payrollRes);
+    setPerformance(performanceRes);
+    setAttendance(
+      attendanceRes
+        .map((a) => ({
+          ...a,
+          date: formatDisplayDate(a.date),
+          rate: a.total > 0 ? (a.present / a.total) * 100 : 0,
+        }))
+        .reverse()
+    );
+    setIncomeVsExpense(iveRes);
+    setIncomeRows(
+      (Array.isArray(incomeList) ? incomeList : []).map((row: any) => ({
+        ...row,
+        Account: row.account_label || 'Unlinked',
+      }))
+    );
+    setExpenseRows(
+      (Array.isArray(expenseList) ? expenseList : []).map((row: any) => ({
+        ...row,
+        Account: row.account_label || 'Unlinked',
+      }))
+    );
+    setFundTransfers(Array.isArray(fundTransfersRes) ? fundTransfersRes : []);
+    if (!finRaw) {
+      setCollectionsByAccount([]);
+    }
+    setLastSync(new Date());
+    setLoading(false);
   }, [periodReady, activeYearKey, activeTerm]);
 
   const fetchDataRef = useRef(fetchData);

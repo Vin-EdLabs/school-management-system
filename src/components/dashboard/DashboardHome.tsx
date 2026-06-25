@@ -8,6 +8,8 @@ import {
 } from '../../utils/feeCalculations';
 import FinancialSummary from './FinancialSummary';
 import { useAdminOverview, useFinancialSummary, useIncomeVsExpenditure } from '../../hooks/useReportQueries';
+import { useData } from '../../contexts/DataContext';
+import { shouldTrackStudentFees } from '../students/studentRegistryUtils';
 import {
   Users,
   CreditCard,
@@ -56,15 +58,23 @@ function EmptyChart({ label }: { label: string }) {
 }
 
 const DashboardHome = () => {
-  const { data: overview } = useAdminOverview();
-  const { data: financial } = useFinancialSummary();
+  const { students, ledgerBalanceSummary } = useData();
+  const { data: overview, isLoading: overviewLoading, isError: overviewError } = useAdminOverview();
+  const { data: financial, isError: financialError } = useFinancialSummary();
   const { data: monthlyRows = [] } = useIncomeVsExpenditure();
+
+  const localActiveStudentCount = useMemo(
+    () => students.filter(shouldTrackStudentFees).length,
+    [students]
+  );
 
   const currentTerm = getActiveAcademicTerm();
   const currentYear = getActiveAcademicYear();
 
   const stats = useMemo(() => {
-    const totalStudents = overview?.students.total ?? 0;
+    const totalStudents =
+      overview?.students.total ??
+      (!overviewLoading && (overviewError || !overview) ? localActiveStudentCount : 0);
     const pendingStudents = overview?.students.pending ?? 0;
     const alumniStudents = overview?.students.alumni ?? 0;
     const totalTeachers = overview?.teachers.total ?? 0;
@@ -75,7 +85,8 @@ const DashboardHome = () => {
     const expensesThisYear = financial?.totalExpenses ?? 0;
     const netBalance =
       financial?.netBalance ?? openingBalance + totalIncome - expensesThisYear;
-    const outstandingBalances = financial?.outstanding ?? 0;
+    const outstandingBalances =
+      financial?.outstanding ?? ledgerBalanceSummary?.totalOutstanding ?? 0;
 
     return {
       totalStudents,
@@ -90,7 +101,7 @@ const DashboardHome = () => {
       netBalance,
       outstandingBalances,
     };
-  }, [overview, financial]);
+  }, [overview, overviewLoading, overviewError, localActiveStudentCount, financial, ledgerBalanceSummary]);
 
   const classFeesData = useMemo(
     () =>

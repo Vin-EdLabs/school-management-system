@@ -266,11 +266,11 @@ async function listConfiguredClassIds(
        FROM classes c_student
        INNER JOIN classes c_fee
          ON c_fee.tenant_id = c_student.tenant_id
-        AND LOWER(TRIM(COALESCE(c_fee.class_name, c_fee.name, '')))
-          = LOWER(TRIM(COALESCE(c_student.class_name, c_student.name, '')))
+        AND LOWER(TRIM(COALESCE(c_fee.class_name, '')))
+          = LOWER(TRIM(COALESCE(c_student.class_name, '')))
        WHERE c_student.tenant_id = $1
          AND c_fee.id = ANY($2::int[])
-         AND TRIM(COALESCE(c_student.class_name, c_student.name, '')) <> ''`,
+         AND TRIM(COALESCE(c_student.class_name, '')) <> ''`,
       [tenantId, feeClassIds]
     );
     for (const row of aliasRes.rows) {

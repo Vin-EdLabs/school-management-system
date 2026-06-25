@@ -351,19 +351,22 @@ router.get('/financial-summary', async (req: AuthRequest, res) => {
     }
 
     const feeTotalsRow = ledgerTermId
-      ? (
-          await query(
-            `WITH ${LEDGER_STUDENT_TOTALS_CTE}
-             SELECT
-               COALESCE(SUM(COALESCE(slt.term_fee, 0) + COALESCE(slt.arrears_amt, 0)), 0)::numeric AS total_expected,
-               COALESCE(SUM(COALESCE(slt.paid_amt, 0)), 0)::numeric AS total_collected,
-               COALESCE(SUM(COALESCE(slt.outstanding_amt, 0)), 0)::numeric AS total_outstanding
-             FROM students s
-             LEFT JOIN student_ledger_totals slt ON slt.student_id = s.id
-             WHERE s.tenant_id = $1 AND ${ACTIVE_STUDENT_WHERE}`,
-            [tenantId, ledgerTermId]
-          )
-        ).rows[0]
+      ? await query(
+          `WITH ${LEDGER_STUDENT_TOTALS_CTE}
+           SELECT
+             COALESCE(SUM(COALESCE(slt.term_fee, 0) + COALESCE(slt.arrears_amt, 0)), 0)::numeric AS total_expected,
+             COALESCE(SUM(COALESCE(slt.paid_amt, 0)), 0)::numeric AS total_collected,
+             COALESCE(SUM(COALESCE(slt.outstanding_amt, 0)), 0)::numeric AS total_outstanding
+           FROM students s
+           LEFT JOIN student_ledger_totals slt ON slt.student_id = s.id
+           WHERE s.tenant_id = $1 AND ${ACTIVE_STUDENT_WHERE}`,
+          [tenantId, ledgerTermId]
+        )
+          .then((r) => r.rows[0])
+          .catch((feeErr) => {
+            console.error('[financial-summary] fee totals query failed:', feeErr);
+            return { total_expected: 0, total_collected: 0, total_outstanding: 0 };
+          })
       : { total_expected: 0, total_collected: 0, total_outstanding: 0 };
 
     const summaryQuery = `
@@ -385,7 +388,10 @@ router.get('/financial-summary', async (req: AuthRequest, res) => {
       FROM expense_total et, income_total it
     `;
 
-    const result = await query(summaryQuery, [tenantId, financeFrom, financeTo]);
+    const result = await query(summaryQuery, [tenantId, financeFrom, financeTo]).catch((err) => {
+      console.error('[financial-summary] expense/income period query failed:', err);
+      return { rows: [{ total_expenses: 0, total_other_income: 0 }] };
+    });
     const row = result.rows[0];
 
     const totalExpected = parseFloat(feeTotalsRow.total_expected) || 0;
@@ -393,23 +399,43 @@ router.get('/financial-summary', async (req: AuthRequest, res) => {
     const feeOutstanding = parseFloat(feeTotalsRow.total_outstanding) || 0;
 
     const [incomeExpenseAll, activity, cashPosition, collectionsByAccount, fundTransfers] = await Promise.all([
-      getIncomeAndExpenseTotalsAll(tenantId),
+      getIncomeAndExpenseTotalsAll(tenantId).catch((err) => {
+        console.error('[financial-summary] income/expense totals failed:', err);
+        return { otherIncome: 0, totalExpenses: 0 };
+      }),
       getDirectActivityTotals(tenantId, {
         financeFrom,
         financeTo,
         termMatch,
         termLike,
         termOnly,
+      }).catch((err) => {
+        console.error('[financial-summary] activity totals failed:', err);
+        return { feesCollectedPeriod: 0 };
       }),
-      getCashPosition(tenantId),
+      getCashPosition(tenantId).catch((err) => {
+        console.error('[financial-summary] cash position failed:', err);
+        return {
+          totalCashPosition: 0,
+          accountsTotal: 0,
+          legacyUnlinkedNet: 0,
+          accounts: [],
+        };
+      }),
       getCollectionsByAccount(tenantId, {
         financeFrom,
         financeTo,
         termMatch,
         termLike,
         termOnly,
+      }).catch((err) => {
+        console.error('[financial-summary] collections by account failed:', err);
+        return [];
       }),
-      getFundTransfersReport(tenantId, { startDate: financeFrom, endDate: financeTo }),
+      getFundTransfersReport(tenantId, { startDate: financeFrom, endDate: financeTo }).catch((err) => {
+        console.error('[financial-summary] fund transfers failed:', err);
+        return [];
+      }),
     ]);
 
     const otherIncome = incomeExpenseAll.otherIncome;
@@ -483,7 +509,10 @@ router.get('/fees-by-class', async (req: AuthRequest, res) => {
       ORDER BY c.class_name
     `;
 
-    const result = await query(feesByClassQuery, [tenantId, ledgerTermId]);
+    const result = await query(feesByClassQuery, [tenantId, ledgerTermId]).catch((err) => {
+      console.error('[fees-by-class] query failed:', err);
+      return { rows: [] };
+    });
     res.set('Cache-Control', 'no-store');
     res.json(result.rows);
   } catch (error) {
@@ -848,7 +877,10 @@ router.get('/admin-overview', async (req: AuthRequest, res) => {
         FROM students s
         WHERE s.tenant_id = $1`,
         [tenantId]
-      ),
+      ).catch((err) => {
+        console.error('[admin-overview] student counts query failed:', err);
+        return { rows: [{}] };
+      }),
       query(
         `SELECT TRIM(COALESCE(c.class_name, 'Unassigned')) AS full_name, COUNT(*)::int AS count
          FROM students s
@@ -858,15 +890,24 @@ router.get('/admin-overview', async (req: AuthRequest, res) => {
          ORDER BY count DESC, full_name ASC
          LIMIT 20`,
         [tenantId]
-      ),
-      query(feeMixQuery, ledgerTermId ? [tenantId, ledgerTermId] : [tenantId]),
+      ).catch((err) => {
+        console.error('[admin-overview] enrollment query failed:', err);
+        return { rows: [] };
+      }),
+      query(feeMixQuery, ledgerTermId ? [tenantId, ledgerTermId] : []).catch((feeErr) => {
+        console.error('[admin-overview] feeMix query failed:', feeErr);
+        return { rows: [{ paid: 0, owing: 0, no_fee: 0, credit: 0, total_owing: 0 }] };
+      }),
       query(
         `SELECT TRIM(class_name) AS class_name
          FROM classes
          WHERE tenant_id = $1 AND TRIM(COALESCE(class_name, '')) <> ''
          ORDER BY class_name ASC`,
         [tenantId]
-      ),
+      ).catch((err) => {
+        console.error('[admin-overview] class list query failed:', err);
+        return { rows: [] };
+      }),
     ]);
 
     const counts = countsRes.rows[0] || {};

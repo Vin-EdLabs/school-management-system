@@ -45,10 +45,14 @@ function feeStructureMatchesStudent(
     normalizeClassName(feeClassName) !== '' &&
     normalizeClassName(feeClassName) === normalizeClassName(studentClassName);
   const term = String(fee.term || '').trim();
-  return (
-    (classMatchById || classMatchByName) &&
-    (term === currentTerm || term.startsWith(currentTerm) || currentTerm.startsWith(term))
-  );
+  const normTerm = currentTerm.trim();
+  const termMatch =
+    !term ||
+    term === normTerm ||
+    term.startsWith(normTerm) ||
+    normTerm.startsWith(term) ||
+    normTerm.replace(/\s+\d{4}(\/\d{4})?$/, '').trim() === term.replace(/\s+\d{4}(\/\d{4})?$/, '').trim();
+  return (classMatchById || classMatchByName) && termMatch;
 }
 
 function getStructureGrossFee(student: StudentRef, feeStructures: FeeStructureRef[], term: string | null) {
@@ -117,22 +121,33 @@ export function resolveStudentDisplayBalance(
   const totalPaid = balance.totalPaid ?? 0;
   const creditBroughtForward = balance.creditBroughtForward ?? 0;
   const credit = balance.credit ?? 0;
-  const currentTermFee = ledgerTermFee > 0 ? ledgerTermFee : expectedNet;
+
+  const useStructureForTermFee =
+    feeStructureConfigured && expectedNet >= 0 && ledgerTermFee <= 0;
+  const currentTermFee = useStructureForTermFee ? expectedNet : Math.max(ledgerTermFee, expectedNet);
+
+  const ledgerTotalDue = balance.totalDue ?? 0;
   const totalDue = roundMoney(
-    ledgerTermFee > 0 ? balance.totalDue : currentTermFee + individualCharges + arrears
+    useStructureForTermFee || (ledgerTotalDue <= 0 && expectedNet > 0)
+      ? currentTermFee + individualCharges + arrears
+      : ledgerTotalDue > 0
+        ? ledgerTotalDue
+        : currentTermFee + individualCharges + arrears
   );
-  const netBalance =
-    balance.netBalance != null && ledgerTermFee > 0
-      ? balance.netBalance
-      : roundMoney(totalDue - totalPaid - creditBroughtForward);
-  const outstanding =
-    balance.outstanding != null && ledgerTermFee > 0
-      ? balance.outstanding
-      : roundMoney(Math.max(0, netBalance));
+
+  const netBalance = roundMoney(totalDue - totalPaid - creditBroughtForward);
+  const computedOutstanding = roundMoney(Math.max(0, netBalance));
+  const apiOutstanding = balance.outstanding ?? 0;
+  const outstanding = roundMoney(
+    Math.max(computedOutstanding, apiOutstanding > 0 ? apiOutstanding : 0)
+  );
+  const displayCredit = netBalance < -0.001 ? roundMoney(Math.abs(netBalance)) : credit;
 
   let status: StudentBalance['status'] = balance.status;
   if (balance.status === 'NotSet' && feeStructureConfigured) {
-    status = outstanding > 0 ? 'Owing' : 'Cleared';
+    status = netBalance < -0.001 ? 'Credit' : outstanding > 0 ? 'Owing' : 'Cleared';
+  } else if (outstanding > 0 && balance.status === 'Cleared') {
+    status = 'Owing';
   } else if (
     !feeStructureConfigured &&
     ledgerTermFee <= 0 &&
@@ -149,7 +164,7 @@ export function resolveStudentDisplayBalance(
     totalDue,
     totalPaid,
     outstanding,
-    credit,
+    credit: displayCredit,
     status,
     feeStructureConfigured,
   };

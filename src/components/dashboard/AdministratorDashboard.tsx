@@ -9,6 +9,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
 import { useAdminOverview, useStudentFeeRoster } from '../../hooks/useReportQueries';
+import { useData } from '../../contexts/DataContext';
+import { shouldTrackStudentFees } from '../students/studentRegistryUtils';
 import {
   Users,
   GraduationCap,
@@ -64,16 +66,22 @@ function EmptyState({ title, hint }: { title: string; hint: string }) {
 
 const AdministratorDashboard = () => {
   const { currentTerm: activeAcademicTerm, currentYear: activeAcademicYear, isLoading: termLoading, refresh: refreshTerm } = useActiveTerm();
+  const { students } = useData();
   const [selectedClass, setSelectedClass] = useState('all-classes');
   const [search, setSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
   const classFilter = selectedClass === 'all-classes' ? '' : selectedClass;
-  const { data: overview, isLoading: overviewLoading, refetch: refetchOverview } = useAdminOverview();
+  const { data: overview, isLoading: overviewLoading, isError: overviewError, refetch: refetchOverview } = useAdminOverview();
   const { data: roster = [], isLoading: rosterLoading, refetch: refetchRoster } = useStudentFeeRoster({
     className: classFilter,
     search,
   });
+
+  const localActiveStudentCount = useMemo(
+    () => students.filter(shouldTrackStudentFees).length,
+    [students]
+  );
 
   const handleRefreshAll = useCallback(async () => {
     setRefreshing(true);
@@ -86,7 +94,9 @@ const AdministratorDashboard = () => {
 
   const dataLoading = overviewLoading || rosterLoading;
 
-  const totalStudents = overview?.students.total ?? 0;
+  const totalStudents =
+    overview?.students.total ??
+    (!overviewLoading && (overviewError || !overview) ? localActiveStudentCount : 0);
   const pendingStudents = overview?.students.pending ?? 0;
   const alumniStudents = overview?.students.alumni ?? 0;
   const maleStudents = overview?.students.male ?? 0;

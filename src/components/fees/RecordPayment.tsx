@@ -98,24 +98,57 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
     currentTerm && currentTerm !== 'Not Set' ? currentTerm : null;
 
   const enrichedStudentBalance = useMemo(() => {
-    if (!studentBalance || !selectedStudent) return studentBalance;
+    if (!selectedStudent) return studentBalance;
+    const cached = ledgerBalances[formData.studentId];
+    const source = studentBalance ?? cached ?? null;
     const display = resolveStudentDisplayBalance(
       selectedStudent,
-      studentBalance,
+      source,
       feeStructures || [],
       paymentTerm
     );
+    const termBillTotal = termBillSummary?.total ?? 0;
+    const termFee =
+      display.currentTermFee > 0 ? display.currentTermFee : termBillTotal;
+    const individualCharges = source?.individualCharges ?? 0;
+    const totalDue =
+      display.totalDue > 0
+        ? display.totalDue
+        : Math.round((termFee + display.arrears + individualCharges) * 100) / 100;
+    const outstanding =
+      display.outstanding > 0
+        ? display.outstanding
+        : Math.round(Math.max(0, totalDue - display.totalPaid) * 100) / 100;
+    if (!source && termBillTotal <= 0) return null;
     return {
-      ...studentBalance,
-      currentTermFee: display.currentTermFee,
+      ...(source ?? {
+        currentTermName: paymentTerm,
+        activeTermId: null,
+        arrearLines: [],
+        paidLines: [],
+        status: outstanding > 0 ? ('Owing' as const) : ('Cleared' as const),
+        credit: 0,
+        creditBroughtForward: 0,
+        individualCharges: 0,
+        individualChargeLines: [],
+      }),
+      currentTermFee: termFee,
       totalArrears: display.arrears,
-      totalDue: display.totalDue,
+      totalDue,
       totalPaid: display.totalPaid,
-      outstanding: display.outstanding,
+      outstanding,
       credit: display.credit,
       status: display.status,
-    };
-  }, [studentBalance, selectedStudent, feeStructures, paymentTerm]);
+    } as StudentBalance;
+  }, [
+    studentBalance,
+    selectedStudent,
+    feeStructures,
+    paymentTerm,
+    termBillSummary,
+    ledgerBalances,
+    formData.studentId,
+  ]);
 
   useEffect(() => {
     if (!formData.studentId || !selectedStudent) {
@@ -419,10 +452,7 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
                           <div className="flex justify-between font-semibold text-red-700">
                             <span>Outstanding Balance</span>
                             <span className="font-mono tabular-nums">
-                              GHS {(selectedStudentFeeDetails?.totalAmountDue != null
-                                ? Math.max(0, selectedStudentFeeDetails.totalAmountDue - (selectedStudentFeeDetails.totalPaid ?? 0))
-                                : enrichedStudentBalance?.outstanding ?? 0
-                              ).toFixed(2)}
+                              GHS {outstandingBalance.toFixed(2)}
                             </span>
                           </div>
                         </div>
@@ -431,9 +461,11 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
                   </div>
                 )}
 
-                {!selectedStudentFeeDetails ? (
+                {!selectedStudentFeeDetails && !termBillSummary ? (
                   <div className="p-4 bg-emerald-50/60 text-sm text-slate-500 dark:bg-blue-50 dark:text-gray-500">
-                    {balanceLoading ? 'Loading fee breakdown…' : 'No fee structure set for this student\'s class and term.'}
+                    {balanceLoading || termBillLoading
+                      ? 'Loading fee breakdown…'
+                      : 'No fee structure set for this student\'s class and term.'}
                   </div>
                 ) : breakdownDisplayLines ? (
                   <div className="bg-emerald-50/70 px-4 py-3 text-sm dark:bg-blue-50">

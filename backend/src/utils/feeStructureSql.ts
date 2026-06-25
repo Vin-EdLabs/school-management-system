@@ -13,10 +13,10 @@ export const SQL_FEE_STRUCTURE_CLASS_MATCH = `
     (s.class_assigned_id IS NOT NULL AND fs.class_id = s.class_assigned_id)
     OR (
       s.class_assigned_id IS NOT NULL
-      AND ${sqlNormalizeClassName("COALESCE(c_student.class_name, c_student.name, '')")} <>
+      AND ${sqlNormalizeClassName("COALESCE(c_student.class_name, '')")} <>
           ${sqlNormalizeClassName("''")}
-      AND ${sqlNormalizeClassName("COALESCE(c_fs.class_name, c_fs.name, '')")} =
-          ${sqlNormalizeClassName("COALESCE(c_student.class_name, c_student.name, '')")}
+      AND ${sqlNormalizeClassName("COALESCE(c_fs.class_name, '')")} =
+          ${sqlNormalizeClassName("COALESCE(c_student.class_name, '')")}
     )
   )
 `;

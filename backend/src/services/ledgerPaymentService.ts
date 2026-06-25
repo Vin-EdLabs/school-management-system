@@ -303,9 +303,9 @@ export async function postStudentActivationTermFee(
            SELECT c_alt.id
            FROM classes c_alt
            WHERE c_alt.tenant_id = $1
-             AND LOWER(TRIM(COALESCE(c_alt.class_name, c_alt.name, ''))) =
-                 LOWER(TRIM(COALESCE(c_student.class_name, c_student.name, '')))
-             AND TRIM(COALESCE(c_alt.class_name, c_alt.name, '')) <> ''
+             AND LOWER(TRIM(COALESCE(c_alt.class_name, ''))) =
+                 LOWER(TRIM(COALESCE(c_student.class_name, '')))
+             AND TRIM(COALESCE(c_alt.class_name, '')) <> ''
          )
        )
      ORDER BY CASE WHEN fs.class_id = $2 THEN 0 ELSE 1 END, fs.id

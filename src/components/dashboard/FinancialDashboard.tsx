@@ -19,6 +19,7 @@ import {
   useIncomeVsExpenditure,
   useRecentFinanceActivity,
 } from '../../hooks/useReportQueries';
+import { useData } from '../../contexts/DataContext';
 import { useFinanceRealtime } from '../../hooks/useFinanceRealtime';
 import { fetchUnreadBudgetAlerts } from '../../services/termBudgetApi';
 import { cn } from '@/lib/utils';
@@ -333,10 +334,12 @@ function ChartSkeleton() {
 
 const FinancialDashboard = () => {
   const { data: overview } = useAdminOverview();
+  const { ledgerBalanceSummary } = useData();
   const {
     data: financial,
     isLoading: financialLoading,
     isFetching: financialFetching,
+    isError: financialError,
     refetch: refetchFinancial,
   } = useFinancialSummary();
   const currentTerm = getActiveAcademicTerm();
@@ -410,7 +413,8 @@ const FinancialDashboard = () => {
     const totalExpenses = financial?.totalExpenses ?? 0;
     const balanceLeft =
       financial?.netBalance ?? openingBalance + totalCombinedIncome - totalExpenses;
-    const outstandingBalances = financial?.outstanding ?? 0;
+    const outstandingBalances =
+      financial?.outstanding ?? ledgerBalanceSummary?.totalOutstanding ?? 0;
 
     return {
       feesCollected,
@@ -421,7 +425,7 @@ const FinancialDashboard = () => {
       balanceLeft,
       outstandingBalances,
     };
-  }, [financial]);
+  }, [financial, ledgerBalanceSummary]);
 
   const monthlyFinance = useMemo(() => {
     let runningBalance = metrics.openingBalance;
@@ -599,6 +603,18 @@ const FinancialDashboard = () => {
                     </p>
                   )}
                 </div>
+              </div>
+            </div>
+          )}
+          {financialError && (
+            <div className="rounded-xl border border-amber-300/80 bg-amber-50/90 px-4 py-3 dark:border-amber-800 dark:bg-amber-950/40">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm text-amber-900 dark:text-amber-100">
+                  Live finance summary could not be loaded. Showing cached totals where available.
+                </p>
+                <Button type="button" variant="outline" size="sm" onClick={() => void refetchFinancial()}>
+                  Retry
+                </Button>
               </div>
             </div>
           )}

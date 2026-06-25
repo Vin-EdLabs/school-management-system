@@ -314,7 +314,7 @@ const StudentQuickViewSheet: React.FC<StudentQuickViewSheetProps> = ({
                 Fees ({alumni ? 'all time' : currentTerm && currentTerm !== 'Not Set' ? currentTerm : 'all terms'})
               </h3>
               <div className="rounded-lg border bg-card/50 p-3 shadow-sm">
-                {feeErr && !studentBalance ? (
+                {feeErr && !studentBalance && !ledgerBalances?.[String(student.id)] ? (
                   <p className="text-xs text-destructive mb-2">Could not load live fee breakdown.</p>
                 ) : null}
                 <dl className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-sm">

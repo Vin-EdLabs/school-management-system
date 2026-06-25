@@ -843,9 +843,9 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
     try {
       await ensureTeacherUserAccount(tenantId, {
         id: Number(id),
-        staff_id: row!.staff_id,
-        full_name: row!.full_name,
-        email: row!.email || null,
+        staff_id: String(row!.staff_id ?? ''),
+        full_name: String(row!.full_name ?? ''),
+        email: row!.email != null && String(row!.email).trim() !== '' ? String(row!.email) : null,
       });
     } catch {
       /* teacher saved; user link best-effort */

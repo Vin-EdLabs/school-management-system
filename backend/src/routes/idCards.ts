@@ -37,6 +37,10 @@ function canManageCards(role: string): boolean {
   return role === 'super-admin' || role === 'administrator';
 }
 
+function canViewAllCards(role: string): boolean {
+  return canManageCards(role) || role === 'headmaster';
+}
+
 function mapTemplate(row: Awaited<ReturnType<typeof getIdCardTemplate>>) {
   return {
     primaryColor: row.primary_color,
@@ -64,7 +68,7 @@ router.get('/search', async (req: AuthRequest, res) => {
     const like = `%${q}%`;
 
     if (type === 'staff') {
-      if (!canManageCards(role) && role !== 'teacher' && role !== 'staff') {
+      if (!canViewAllCards(role) && role !== 'teacher' && role !== 'staff') {
         return res.status(403).json({ error: 'Not allowed' });
       }
       const params: Array<string | number> = [tenantId, q, like];
@@ -119,19 +123,20 @@ router.get('/search', async (req: AuthRequest, res) => {
       return res.json(rows);
     }
 
-    if (!canManageCards(role)) {
+    if (!canViewAllCards(role)) {
       return res.status(403).json({ error: 'Not allowed' });
     }
 
     const result = await query(
       `SELECT s.id, s.first_name, s.last_name, s.student_id, s.passport_photo_url,
-              c.name AS class_name
+              COALESCE(c.class_name, c.name) AS class_name
        FROM students s
-       LEFT JOIN classes c ON c.id = s.class_assigned_id
+       LEFT JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
        WHERE s.tenant_id = $1
          AND COALESCE(s.enrollment_status, 'active') = 'active'
          AND ($2 = '' OR LOWER(s.first_name || ' ' || s.last_name) LIKE $3
-              OR LOWER(s.student_id) LIKE $3 OR LOWER(COALESCE(c.name, '')) LIKE $3)
+              OR LOWER(s.student_id) LIKE $3
+              OR LOWER(COALESCE(c.class_name, c.name, '')) LIKE $3)
        ORDER BY s.first_name, s.last_name
        LIMIT 50`,
       [tenantId, q, like]
@@ -167,13 +172,14 @@ router.get('/search', async (req: AuthRequest, res) => {
 router.get('/student/:studentId', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
-    if (!canManageCards(normalizeRole(req.user!.role))) {
+    const role = normalizeRole(req.user!.role);
+    if (!canViewAllCards(role)) {
       return res.status(403).json({ error: 'Not allowed' });
     }
     const studentId = parseInt(req.params.studentId, 10);
     const studentRes = await query(
-      `SELECT s.*, c.name AS class_name FROM students s
-       LEFT JOIN classes c ON c.id = s.class_assigned_id
+      `SELECT s.*, COALESCE(c.class_name, c.name) AS class_name FROM students s
+       LEFT JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
        WHERE s.id = $1 AND s.tenant_id = $2`,
       [studentId, tenantId]
     );
@@ -249,6 +255,7 @@ router.get('/student/:studentId', async (req: AuthRequest, res) => {
       colors: mapTemplate(template),
       cardData,
       isSnapshot: !!latest.rows[0],
+      readOnly: !canManageCards(role),
       cardMeta: latest.rows[0]
         ? {
             id: Number(latest.rows[0].id),
@@ -311,7 +318,7 @@ router.get('/staff/:staffId', async (req: AuthRequest, res) => {
       if (role === 'teacher') {
         const link = await query(`SELECT id FROM teachers WHERE id = $1 AND user_id = $2`, [staffId, req.user!.id]);
         if (link.rows.length === 0) return res.status(403).json({ error: 'Not allowed' });
-      } else {
+      } else if (!canViewAllCards(role)) {
         return res.status(403).json({ error: 'Not allowed' });
       }
     }

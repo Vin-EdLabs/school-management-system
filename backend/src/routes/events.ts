@@ -24,7 +24,7 @@ router.use(requireTenant);
 router.use(setTenantContext);
 attachWritableTermGuard(router);
 
-const calendarManageRoles = requireRole('super-admin', 'administrator');
+const calendarManageRoles = requireRole('super-admin', 'administrator', 'headmaster');
 
 // Get all events
 router.get('/', async (req: AuthRequest, res) => {

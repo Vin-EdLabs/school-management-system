@@ -35,6 +35,8 @@ export type TermReportPdfInput = {
   gradeScale: Array<{ letter: string; minPct: number; maxPct: number; description?: string }>;
   teacherRemark?: string | null;
   headmasterRemark?: string | null;
+  headmasterName?: string | null;
+  headmasterTitle?: string | null;
   studentPhotoUrl?: string | null;
 };
 
@@ -308,7 +310,8 @@ export function downloadTermReportCardPdf(input: TermReportPdfInput) {
   doc.line(leftRemarkX + 10, sigY, leftRemarkX + 60, sigY);
   doc.text('Name', leftRemarkX + 10, sigY + 4);
   doc.line(rightRemarkX + 10, sigY, rightRemarkX + 60, sigY);
-  doc.text('Name', rightRemarkX + 10, sigY + 4);
+  const hmSigLabel = [input.headmasterName, input.headmasterTitle].filter(Boolean).join(' — ') || 'Name';
+  doc.text(hmSigLabel, rightRemarkX + 10, sigY + 4);
 
   y += remarkH + 10;
   doc.setFont('helvetica', 'normal');

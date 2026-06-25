@@ -15,7 +15,7 @@ export function useStaffPushSync() {
 
   useEffect(() => {
     if (!isAuthenticated || !user || !schoolId) return;
-    if (user.role !== 'teacher' && user.role !== 'staff') return;
+    if (user.role !== 'teacher' && user.role !== 'staff' && user.role !== 'headmaster') return;
     if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
 
     const key = `${user.id}-${schoolId}`;

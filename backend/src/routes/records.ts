@@ -15,7 +15,7 @@ router.use(setTenantContext);
 attachWritableTermGuard(router);
 
 /** Profile lookup - Admin and Superadmin only. Search by Student ID, Teacher Staff ID, or Staff ID */
-router.get('/profile-lookup', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+router.get('/profile-lookup', requireRole('super-admin', 'administrator', 'headmaster'), async (req: AuthRequest, res) => {
   try {
     let tenantId = req.user!.tenantId;
     if (tenantId == null && req.user!.role === 'super-admin' && req.query.tenantId) {

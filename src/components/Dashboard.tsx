@@ -31,6 +31,7 @@ import ManualAdjustmentsReport from './finance/ManualAdjustmentsReport';
 import TermBudgetModule from './finance/TermBudgetModule';
 import FinanceStatementModule from './finance/FinanceStatementModule';
 import TeacherDashboard from './teacher/TeacherDashboard';
+import ViewAllClasses from './classes/ViewAllClasses';
 import TeacherClassesModule from './teacher/TeacherClassesModule';
 import AttendanceModule from './teacher/AttendanceModule';
 import GradesModule from './teacher/GradesModule';
@@ -55,6 +56,8 @@ import BulkPrintIdCards from './id-cards/BulkPrintIdCards';
 import InvoicesModule from './invoices/InvoicesModule';
 import EndOfYearWizard from './academic/EndOfYearWizard';
 import BirthdayModule from './birthday/BirthdayModule';
+import HeadmasterDashboard from './headmaster/HeadmasterDashboard';
+import AllStaffView from './staff/AllStaffView';
 import GlobalAnnouncementPopup from './announcements/GlobalAnnouncementPopup';
 import SetupProgressGate from './onboarding/SetupProgressGate';
 import ActiveTermWelcomeGate from './onboarding/ActiveTermWelcomeGate';
@@ -94,6 +97,8 @@ const Dashboard = () => {
       return 'dashboard';
     } else if (user?.role === 'teacher' || user?.role === 'staff') {
       return 'teacher-dashboard';
+    } else if (user?.role === 'headmaster') {
+      return 'headmaster-dashboard';
     } else {
       return 'dashboard'; // super-admin
     }
@@ -131,6 +136,9 @@ const Dashboard = () => {
     if (user?.role === 'finance' && activeModule === 'dashboard') {
       setActiveModule('financial-dashboard');
     }
+    if (user?.role === 'headmaster' && activeModule === 'dashboard') {
+      setActiveModule('headmaster-dashboard');
+    }
   }, [user?.role, activeModule]);
 
   const renderActiveModule = () => {
@@ -142,6 +150,11 @@ const Dashboard = () => {
       (activeModule === 'appointment-letter-settings' && hasAccess('settings-full')) ||
       (activeModule === 'admission-letter-settings' && hasAccess('settings-full')) ||
       (activeModule === 'teacher-quizzes' && (hasAccess('grades') || user?.role === 'teacher')) ||
+      (activeModule === 'headmaster-dashboard' && hasAccess('headmaster-dashboard')) ||
+      (activeModule === 'headmaster-all-classes' && hasAccess('headmaster-all-classes')) ||
+      (activeModule === 'headmaster-all-attendance' && hasAccess('headmaster-all-attendance')) ||
+      (activeModule === 'headmaster-all-staff' && hasAccess('headmaster-all-staff')) ||
+      (activeModule === 'headmaster-grades' && hasAccess('headmaster-grades')) ||
       (activeModule === 'academic-reports' && hasAccess('reports'));
     if (!hasModuleAccess) {
       return (
@@ -162,6 +175,26 @@ const Dashboard = () => {
           return <AdministratorDashboard />;
         }
         return <DashboardHome />;
+      case 'headmaster-dashboard':
+        return <HeadmasterDashboard onNavigate={setActiveModule} />;
+      case 'headmaster-all-classes':
+        return <ViewAllClasses readOnly />;
+      case 'headmaster-all-attendance':
+        return <AttendanceModule schoolWideReadOnly />;
+      case 'headmaster-all-staff':
+        return (
+          <div className="p-4 md:p-6 lg:p-8 space-y-6 animate-in fade-in duration-500">
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground">All Staff</h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Teachers and non-teaching staff — read-only school directory.
+              </p>
+            </div>
+            <AllStaffView />
+          </div>
+        );
+      case 'headmaster-grades':
+        return <GradesModule schoolWideReadOnly />;
       case 'financial-dashboard':
         return <FinancialDashboard />;
       case 'teacher-dashboard':
@@ -169,7 +202,7 @@ const Dashboard = () => {
       case 'ai-assistant':
         return <AiChatModule />;
       case 'students':
-        return <StudentsModule />;
+        return <StudentsModule readOnly={hasAccess('students-view-only') && !hasAccess('students')} />;
       case 'teachers':
         return <TeachersModule />;
       case 'other-staff':
@@ -231,7 +264,7 @@ const Dashboard = () => {
       case 'id-card-settings':
         return <IdCardSettings onNavigate={setActiveModule} />;
       case 'id-cards':
-        return <IdCardsModule onNavigate={setActiveModule} />;
+        return <IdCardsModule onNavigate={setActiveModule} readOnly={user?.role === 'headmaster'} />;
       case 'lost-cards':
         return (
           <LostCardsModule
@@ -279,6 +312,9 @@ const Dashboard = () => {
       case 'transport-students':
         return <TransportStudents />;
       default:
+        if (user?.role === 'headmaster') {
+          return <HeadmasterDashboard onNavigate={setActiveModule} />;
+        }
         if (user?.role === 'teacher') {
           return <TeacherDashboard />;
         } else if (user?.role === 'administrator') {

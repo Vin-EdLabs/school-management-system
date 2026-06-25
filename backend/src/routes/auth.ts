@@ -476,8 +476,8 @@ router.post('/session-end', authenticate, async (req: AuthRequest, res) => {
 // Web push for teacher/staff school app (same VAPID keys as parent portal)
 router.get('/push/public-key', authenticate, async (req: AuthRequest, res) => {
   const role = normalizeRole(req.user!.role);
-  if (role !== 'teacher' && role !== 'staff') {
-    return res.status(403).json({ error: 'Only teacher or staff accounts can use school push' });
+  if (role !== 'teacher' && role !== 'staff' && role !== 'headmaster') {
+    return res.status(403).json({ error: 'Only teacher, staff, or headmaster accounts can use school push' });
   }
   const publicKey = getVapidPublicKey();
   if (!publicKey) {
@@ -489,8 +489,8 @@ router.get('/push/public-key', authenticate, async (req: AuthRequest, res) => {
 router.post('/push/subscribe', authenticate, async (req: AuthRequest, res) => {
   try {
     const role = normalizeRole(req.user!.role);
-    if (role !== 'teacher' && role !== 'staff') {
-      return res.status(403).json({ error: 'Only teacher or staff accounts can subscribe' });
+    if (role !== 'teacher' && role !== 'staff' && role !== 'headmaster') {
+      return res.status(403).json({ error: 'Only teacher, staff, or headmaster accounts can subscribe' });
     }
     const tenantId = req.user!.tenantId;
     if (!tenantId) return res.status(400).json({ error: 'School context required' });

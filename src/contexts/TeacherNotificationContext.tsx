@@ -52,7 +52,7 @@ export const TeacherNotificationProvider: React.FC<{ children: React.ReactNode }
   const { socket } = useSocket();
   const [items, setItems] = useState<TeacherNotifItem[]>([]);
 
-  const isRecipient = user?.role === 'teacher' || user?.role === 'staff';
+  const isRecipient = user?.role === 'teacher' || user?.role === 'staff' || user?.role === 'headmaster';
 
   useEffect(() => {
     if (!isRecipient || !user?.tenantId) {
@@ -126,7 +126,10 @@ export const TeacherNotificationProvider: React.FC<{ children: React.ReactNode }
         const myStaffId = user.otherStaffId != null ? Number(user.otherStaffId) : NaN;
 
         const forMe =
-          (user.role === 'teacher' && payeeType === 'teacher' && !Number.isNaN(myTeacherId) && myTeacherId === payeeId) ||
+          ((user.role === 'teacher' || user.role === 'headmaster') &&
+            payeeType === 'teacher' &&
+            !Number.isNaN(myTeacherId) &&
+            myTeacherId === payeeId) ||
           (user.role === 'staff' && payeeType === 'staff' && !Number.isNaN(myStaffId) && myStaffId === payeeId);
 
         if (!forMe) return;

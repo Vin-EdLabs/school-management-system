@@ -6,7 +6,8 @@ import type {
 } from "@/components/ui/toast"
 
 const TOAST_LIMIT = 1
-const TOAST_REMOVE_DELAY = 1000000
+const TOAST_REMOVE_DELAY = 500
+const DEFAULT_TOAST_DURATION = 3000
 
 type ToasterToast = ToastProps & {
   id: string
@@ -137,9 +138,9 @@ function dispatch(action: Action) {
   })
 }
 
-type Toast = Omit<ToasterToast, "id">
+type Toast = Omit<ToasterToast, "id"> & { duration?: number }
 
-function toast({ ...props }: Toast) {
+function toast({ duration = DEFAULT_TOAST_DURATION, ...props }: Toast) {
   const id = genId()
 
   const update = (props: ToasterToast) =>
@@ -160,6 +161,10 @@ function toast({ ...props }: Toast) {
       },
     },
   })
+
+  if (duration > 0) {
+    window.setTimeout(() => dismiss(), duration)
+  }
 
   return {
     id: id,

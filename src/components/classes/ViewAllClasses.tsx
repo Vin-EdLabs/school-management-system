@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/alert-dialog';
 
 
-const ViewAllClasses = () => {
+const ViewAllClasses = ({ readOnly = false }: { readOnly?: boolean }) => {
   const { classes, students, teachers, deleteClass } = useData();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterLevel, setFilterLevel] = useState('all-levels');
@@ -116,7 +116,7 @@ const ViewAllClasses = () => {
           <p className="text-gray-500 mb-6">
             Get started by creating your first class. Classes help organize students by grade level and streams.
           </p>
-          <Button className="bg-blue-600 hover:bg-blue-700">
+          <Button className="bg-blue-600 hover:bg-blue-700" disabled={readOnly}>
             <UserPlus className="w-4 h-4 mr-2" />
             Create First Class
           </Button>
@@ -178,14 +178,14 @@ const ViewAllClasses = () => {
                 <TableHead>Students</TableHead>
                 <TableHead>Main Teacher</TableHead>
                 <TableHead>Capacity</TableHead>
-                <TableHead>Actions</TableHead>
+                {!readOnly && <TableHead>Actions</TableHead>}
               </TableRow>
             </TableHeader>
 
             <TableBody>
               {filteredClasses.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                  <TableCell colSpan={readOnly ? 6 : 7} className="text-center py-8 text-gray-500">
                     No classes found matching your criteria
                   </TableCell>
                 </TableRow>
@@ -251,6 +251,7 @@ const ViewAllClasses = () => {
                             {Math.round(capacityPercentage)}% Full
                           </Badge>
                         </TableCell>
+                        {!readOnly && (
                         <TableCell>
                           <div className="flex items-center space-x-2" onClick={(e) => e.stopPropagation()}>
                             <Button
@@ -296,11 +297,12 @@ const ViewAllClasses = () => {
                             </AlertDialog>
                           </div>
                         </TableCell>
+                        )}
                       </TableRow>
 
                       {isExpanded && (
                         <TableRow key={`${classItem.id}-expanded`} className="bg-gray-50">
-                          <TableCell colSpan={7}>
+                          <TableCell colSpan={readOnly ? 6 : 7}>
                             <div className="p-4">
                               <div className="font-semibold mb-3 flex items-center justify-between">
                                 <span>Class Details</span>
@@ -386,11 +388,13 @@ const ViewAllClasses = () => {
         )}
       </CardContent>
 
+      {!readOnly && (
       <EditClassDialog
         classItem={editingClass}
         open={!!editingClass}
         onClose={() => setEditingClass(null)}
       />
+      )}
     </Card>
   );
 };

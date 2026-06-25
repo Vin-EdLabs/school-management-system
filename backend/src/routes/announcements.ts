@@ -14,7 +14,7 @@ router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
 attachWritableTermGuard(router);
-router.use(requireRole('administrator', 'finance'));
+router.use(requireRole('administrator', 'finance', 'headmaster'));
 
 import { resolveSchoolDisplayName } from '../services/schoolBrandingService.js';
 

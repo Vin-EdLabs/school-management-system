@@ -80,6 +80,7 @@ type ViewAllStudentsProps = {
   onRequestPromoteStudent?: (studentId: string) => void;
   /** active = main registry; inactive = archived students with preserved records */
   variant?: 'active' | 'inactive';
+  readOnly?: boolean;
 };
 
 function sortStudents(list: Student[], key: SortKey, dir: 'asc' | 'desc'): Student[] {
@@ -106,7 +107,7 @@ function sortStudents(list: Student[], key: SortKey, dir: 'asc' | 'desc'): Stude
   return [...list].sort(cmp);
 }
 
-const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStudent, variant = 'active' }) => {
+const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStudent, variant = 'active', readOnly = false }) => {
   const { students, classes, setStudentStatus, payments, feeStructures, loading } = useData();
   const { currentTerm } = useActiveTerm();
   const { addAuditLog } = useAudit();
@@ -517,10 +518,12 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
                     <Download className="mr-2 h-4 w-4" />
                     Export PDF
                   </DropdownMenuItem>
+                  {!readOnly && onRequestPromoteStudent ? (
                   <DropdownMenuItem onClick={bulkPromote}>
                     <TrendingUp className="mr-2 h-4 w-4" />
                     Go to promote (1)
                   </DropdownMenuItem>
+                  ) : null}
                 </DropdownMenuContent>
               </DropdownMenu>
               {selected.size > 0 && (
@@ -824,6 +827,7 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
                                 </TooltipTrigger>
                                 <TooltipContent side="top">Full profile</TooltipContent>
                               </Tooltip>
+                              {!readOnly && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <Button
@@ -839,7 +843,9 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
                                 </TooltipTrigger>
                                 <TooltipContent side="top">Edit</TooltipContent>
                               </Tooltip>
-                              {!isInactiveView ? (
+                              )}
+                              {!readOnly && (
+                              !isInactiveView ? (
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <Button
@@ -871,6 +877,7 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
                                   </TooltipTrigger>
                                   <TooltipContent side="top">Reactivate</TooltipContent>
                                 </Tooltip>
+                              )
                               )}
                             </div>
                           </TableCell>

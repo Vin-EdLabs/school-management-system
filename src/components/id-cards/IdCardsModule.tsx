@@ -10,6 +10,7 @@ import { resolveLogoUrl } from '@/services/tenantService';
 
 type IdCardsModuleProps = {
   onNavigate?: (module: string) => void;
+  readOnly?: boolean;
 };
 
 const panelStyle: React.CSSProperties = {
@@ -20,9 +21,11 @@ const panelStyle: React.CSSProperties = {
   boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
 };
 
-const IdCardsModule: React.FC<IdCardsModuleProps> = ({ onNavigate }) => {
+const IdCardsModule: React.FC<IdCardsModuleProps> = ({ onNavigate, readOnly = false }) => {
   const { user } = useAuth();
   const isAdmin = user?.role === 'administrator' || user?.role === 'super-admin';
+  const isHeadmaster = user?.role === 'headmaster';
+  const canBrowseAll = isAdmin || isHeadmaster;
   const [tab, setTab] = useState<'students' | 'staff'>('students');
   const [query, setQuery] = useState('');
   const debouncedQuery = useDebouncedValue(query, 300);
@@ -66,7 +69,7 @@ const IdCardsModule: React.FC<IdCardsModuleProps> = ({ onNavigate }) => {
   }, [isAdmin, user?.role]);
 
   useEffect(() => {
-    if (!isAdmin && user?.role === 'teacher') return;
+    if (!canBrowseAll && user?.role === 'teacher') return;
     if (!debouncedQuery.trim()) {
       setResults([]);
       return;
@@ -76,9 +79,15 @@ const IdCardsModule: React.FC<IdCardsModuleProps> = ({ onNavigate }) => {
     void apiService
       .get<IDCardSearchResult[]>(`/id-cards/search?type=${type}&q=${encodeURIComponent(debouncedQuery)}`)
       .then(setResults)
-      .catch(() => setResults([]))
+      .catch((err: unknown) => {
+        setResults([]);
+        const message = err instanceof Error ? err.message : 'Search failed';
+        if (!message.toLowerCase().includes('not allowed')) {
+          toast.error(message);
+        }
+      })
       .finally(() => setSearching(false));
-  }, [debouncedQuery, tab, isAdmin, user?.role]);
+  }, [debouncedQuery, tab, canBrowseAll, user?.role]);
 
   const openEditor = (entityType: CardEntityType, row: IDCardSearchResult) => {
     setSelected({
@@ -101,6 +110,7 @@ const IdCardsModule: React.FC<IdCardsModuleProps> = ({ onNavigate }) => {
   }, [state?.entityType, state?.entityId]);
 
   const scheduleSaveOverrides = (data: import('@/types/idCard').IDCardData) => {
+    if (readOnly) return;
     setState((prev) => (prev ? { ...prev, data } : prev));
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
     saveTimerRef.current = window.setTimeout(async () => {
@@ -140,7 +150,7 @@ const IdCardsModule: React.FC<IdCardsModuleProps> = ({ onNavigate }) => {
   }
 
   if (selected && state) {
-    const editMode = !state.readOnly;
+    const editMode = !state.readOnly && !readOnly;
     const exportOptions = {
       entityType: state.entityType,
       data: state.data,

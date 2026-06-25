@@ -46,8 +46,11 @@ import {
   MapPin,
   IdCard,
   AlertTriangle,
+  Crown,
+  School,
 } from 'lucide-react';
 import { resolveLogoUrl } from '../services/tenantService';
+import { headmasterHasTeachingAccess, isHeadmasterRole } from '../utils/headmasterPortal';
 import {
   Sidebar,
   SidebarContent,
@@ -68,6 +71,44 @@ interface AppSidebarProps {
   activeModule: string;
   setActiveModule: (module: string) => void;
 }
+
+const getHeadmasterMenuItems = (hasAccess: (permission: string) => boolean, userRole?: string, hasTeaching?: boolean) => ({
+  myWork: [
+    ...(hasAccess('headmaster-dashboard')
+      ? [{ id: 'headmaster-dashboard', label: 'Dashboard', icon: LayoutDashboard }]
+      : []),
+    ...(hasTeaching && hasAccess('teacher-classes')
+      ? [{ id: 'teacher-classes', label: 'My Classes', icon: BookOpen }]
+      : []),
+    ...(hasTeaching && hasAccess('attendance') ? [{ id: 'attendance', label: 'My Attendance', icon: UserCheck }] : []),
+    ...(hasTeaching && hasAccess('grades') ? [{ id: 'grades', label: 'My Grades', icon: Award }] : []),
+    ...(hasTeaching && hasAccess('grades') ? [{ id: 'teacher-quizzes', label: 'My Assessments', icon: ClipboardList }] : []),
+    ...(hasAccess('teacher-profile') ? [{ id: 'teacher-profile', label: 'My Profile', icon: User }] : []),
+  ],
+  schoolOverview: [
+    ...(hasAccess('headmaster-all-classes') ? [{ id: 'headmaster-all-classes', label: 'All Classes', icon: School }] : []),
+    ...(hasAccess('headmaster-all-attendance')
+      ? [{ id: 'headmaster-all-attendance', label: 'All Attendance', icon: ClipboardList }]
+      : []),
+    ...(hasAccess('headmaster-all-staff') ? [{ id: 'headmaster-all-staff', label: 'All Staff', icon: Users }] : []),
+    ...(hasAccess('students-view-only') ? [{ id: 'students', label: 'All Students', icon: Users }] : []),
+    ...(hasAccess('headmaster-grades') ? [{ id: 'headmaster-grades', label: 'Grades & Reports', icon: Award }] : []),
+    ...(hasAccess('print-fee-status') ? [{ id: 'print-fee-status', label: 'Fees Status', icon: FileText }] : []),
+    ...(hasAccess('id-cards') ? [{ id: 'id-cards', label: 'ID Cards', icon: IdCard }] : []),
+    ...(hasAccess('birthdays') ? [{ id: 'birthdays', label: 'Birthdays', icon: Cake }] : []),
+    ...(hasAccess('records') ? [{ id: 'records', label: 'Records', icon: Search }] : []),
+  ],
+  communication: [
+    ...(hasAccess('push-notifications') ? [{ id: 'push-notifications', label: 'Announcements', icon: BellRing }] : []),
+    ...(hasAccess('parent-desk') ? [{ id: 'parent-desk', label: 'Parents Desk', icon: MessagesSquare }] : []),
+    ...(hasAccess('calendar') ? [{ id: 'calendar', label: 'Calendar', icon: Calendar }] : []),
+  ],
+  management: [
+    ...(hasAccess('settings') || hasAccess('settings-password-only')
+      ? [{ id: 'settings', label: 'Settings', icon: Settings }]
+      : []),
+  ],
+});
 
 const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: string) => ({
   dashboard: [
@@ -170,7 +211,8 @@ const MenuSection: React.FC<{
   itemCounts?: Record<string, number>;
   markCommsRead: (moduleId: string) => Promise<void>;
   termNavigationBlocked: boolean;
-}> = ({ items, label, activeModule, setActiveModule, itemCounts, markCommsRead, termNavigationBlocked }) => {
+  headmasterAccent?: boolean;
+}> = ({ items, label, activeModule, setActiveModule, itemCounts, markCommsRead, termNavigationBlocked, headmasterAccent }) => {
   const { isMobile, setOpenMobile } = useSidebar();
 
   if (items.length === 0) return null;
@@ -235,7 +277,9 @@ const MenuSection: React.FC<{
                   className={cn(
                     "readonly-allowed relative rounded-xl mx-auto w-[calc(100%-12px)] h-10 text-emerald-50/72 transition-all duration-300 group-data-[collapsible=icon]:w-9 group-data-[collapsible=icon]:h-9 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:mx-0 dark:h-9 dark:text-sidebar-foreground/70",
                     activeModule === item.id
-                      ? "bg-gradient-to-r from-emerald-500 to-green-500 text-white shadow-lg shadow-emerald-400/25 ring-1 ring-white/15 before:absolute before:left-1 before:top-1/2 before:h-5 before:w-1 before:-translate-y-1/2 before:rounded-full before:bg-white/80 dark:bg-sidebar-primary dark:bg-none dark:text-sidebar-primary-foreground dark:shadow-sidebar-primary/20 dark:before:hidden"
+                      ? headmasterAccent
+                        ? "bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-lg shadow-amber-400/25 ring-1 ring-white/15 before:absolute before:left-1 before:top-1/2 before:h-5 before:w-1 before:-translate-y-1/2 before:rounded-full before:bg-white/80 dark:bg-amber-600 dark:bg-none dark:text-white dark:shadow-amber-500/20 dark:before:hidden"
+                        : "bg-gradient-to-r from-emerald-500 to-green-500 text-white shadow-lg shadow-emerald-400/25 ring-1 ring-white/15 before:absolute before:left-1 before:top-1/2 before:h-5 before:w-1 before:-translate-y-1/2 before:rounded-full before:bg-white/80 dark:bg-sidebar-primary dark:bg-none dark:text-sidebar-primary-foreground dark:shadow-sidebar-primary/20 dark:before:hidden"
                       : "hover:bg-white/10 hover:text-white dark:hover:bg-sidebar-accent dark:hover:text-sidebar-foreground"
                   )}
                 >
@@ -409,7 +453,11 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
   const [parentDeskUnread, setParentDeskUnread] = useState(0);
   const [supportUnread, setSupportUnread] = useState(0);
 
-  const menuItems = getMenuItems(hasAccess, user?.role);
+  const isHeadmaster = isHeadmasterRole(user?.role);
+  const headmasterMenu = isHeadmaster
+    ? getHeadmasterMenuItems(hasAccess, user?.role, headmasterHasTeachingAccess(user))
+    : null;
+  const menuItems = headmasterMenu ?? getMenuItems(hasAccess, user?.role);
 
   const refreshCommsBadges = useCallback(async () => {
     try {
@@ -474,9 +522,19 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
     <Sidebar
       variant="sidebar"
       collapsible="icon"
-      className="border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl shadow-emerald-950/20 overflow-hidden print:hidden"
+      className={cn(
+        'border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl overflow-hidden print:hidden',
+        isHeadmaster ? 'shadow-amber-950/25' : 'shadow-emerald-950/20'
+      )}
     >
-      <SidebarHeader className="min-h-24 flex items-center justify-center border-b border-white/10 mb-3 px-3 py-4 overflow-hidden bg-[radial-gradient(circle_at_top,rgba(34,197,94,0.22),transparent_65%)] dark:min-h-24 dark:border-sidebar-border dark:bg-none">
+      <SidebarHeader
+        className={cn(
+          'min-h-24 flex items-center justify-center border-b border-white/10 mb-3 px-3 py-4 overflow-hidden dark:min-h-24 dark:border-sidebar-border dark:bg-none',
+          isHeadmaster
+            ? 'bg-[radial-gradient(circle_at_top,rgba(245,158,11,0.22),transparent_65%)]'
+            : 'bg-[radial-gradient(circle_at_top,rgba(34,197,94,0.22),transparent_65%)]'
+        )}
+      >
         <div className="w-11 h-11 rounded-2xl bg-white/10 ring-1 ring-white/15 flex items-center justify-center shadow-xl shadow-emerald-950/25 shrink-0 overflow-hidden backdrop-blur dark:bg-gradient-to-br dark:from-indigo-500 dark:to-blue-600 dark:ring-0 dark:shadow-indigo-500/20">
           {school?.logo_url ? (
             <img
@@ -492,13 +550,34 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
           <GraduationCap className={cn("w-6 h-6 text-white fallback-icon", school?.logo_url ? "hidden" : "")} />
         </div>
         <div className="ml-3 min-w-0 flex-1 overflow-visible transition-all duration-300 group-data-[collapsible=icon]:hidden group-data-[collapsible=icon]:w-0 group-data-[collapsible=icon]:opacity-0">
-          <h2 className="break-words text-sm font-black leading-tight text-white uppercase tracking-tight dark:text-sidebar-foreground">
-            {school?.name || 'EDUNERVE'}
-          </h2>
+          {isHeadmaster ? (
+            <div className="space-y-1">
+              <div className="inline-flex items-center gap-1 rounded-full bg-amber-500/20 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-100 ring-1 ring-amber-400/30">
+                <Crown className="h-3 w-3" />
+                Headmaster
+              </div>
+              <h2 className="break-words text-sm font-black leading-tight text-white uppercase tracking-tight dark:text-sidebar-foreground">
+                {school?.name || 'EDUNERVE'}
+              </h2>
+            </div>
+          ) : (
+            <h2 className="break-words text-sm font-black leading-tight text-white uppercase tracking-tight dark:text-sidebar-foreground">
+              {school?.name || 'EDUNERVE'}
+            </h2>
+          )}
         </div>
       </SidebarHeader>
 
       <SidebarContent className="flex-1 min-h-0 overflow-y-auto scrollbar-hide overscroll-contain px-1 py-3 gap-3 bg-transparent outline-none border-none">
+        {isHeadmaster && headmasterMenu ? (
+          <>
+            <MenuSection items={headmasterMenu.myWork} label="My Work" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} headmasterAccent />
+            <MenuSection items={headmasterMenu.schoolOverview} label="School Overview" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} headmasterAccent />
+            <MenuSection items={headmasterMenu.communication} label="Communication" activeModule={activeModule} setActiveModule={setActiveModule} itemCounts={{ 'parent-desk': parentDeskUnread }} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} headmasterAccent />
+            <MenuSection items={headmasterMenu.management} label="Management" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} headmasterAccent />
+          </>
+        ) : (
+          <>
         <MenuSection items={menuItems.dashboard} label="Overview" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} />
         <MenuSection items={menuItems.academic} label="Academic Central" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} />
         <MenuSection items={menuItems.teaching} label="Teaching Room" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} />
@@ -526,6 +605,8 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
         />
         <MenuSection items={menuItems.configurations} label="Configurations" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} />
         <MenuSection items={menuItems.system} label="System" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} />
+          </>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="border-t border-white/10 p-3 space-y-4 bg-black/10 dark:border-sidebar-border dark:bg-sidebar-accent/50">

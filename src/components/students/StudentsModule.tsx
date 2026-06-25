@@ -13,7 +13,7 @@ import PendingAdmissions from './PendingAdmissions';
 import { Eye, UserPlus, TrendingUp, UserX, GraduationCap, RotateCcw, Clock } from 'lucide-react';
 
 
-const StudentsModule = () => {
+const StudentsModule = ({ readOnly = false }: { readOnly?: boolean }) => {
   const [activeTab, setActiveTab] = useState('view-all');
   const [promoteStudentIdSeed, setPromoteStudentIdSeed] = useState<string | null>(null);
   const { students, refresh } = useData();
@@ -45,9 +45,13 @@ const StudentsModule = () => {
       <div className="mb-6">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">Students</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+              {readOnly ? 'All Students' : 'Students'}
+            </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Manage student information, enrollment, and promotions.{' '}
+              {readOnly
+                ? 'School-wide student records — read-only view.'
+                : 'Manage student information, enrollment, and promotions.'}{' '}
               <span className="tabular-nums">{activeCount} active</span>
               {pendingCount > 0 && <span> · {pendingCount} pending</span>}
               {alumniCount > 0 && <span> · {alumniCount} alumni</span>}
@@ -107,14 +111,18 @@ const StudentsModule = () => {
               </Badge>
             )}
           </TabsTrigger>
+          {!readOnly && (
           <TabsTrigger value="add-student" className="flex items-center gap-2 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-900 data-[state=active]:text-indigo-600 dark:data-[state=active]:text-indigo-400 data-[state=active]:shadow-sm rounded-lg px-6 font-bold text-[11px] uppercase tracking-wider transition-all">
             <UserPlus className="w-4 h-4" />
             Add Student
           </TabsTrigger>
+          )}
+          {!readOnly && (
           <TabsTrigger value="promote" className="flex items-center gap-2 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-900 data-[state=active]:text-indigo-600 dark:data-[state=active]:text-indigo-400 data-[state=active]:shadow-sm rounded-lg px-6 font-bold text-[11px] uppercase tracking-wider transition-all">
             <TrendingUp className="w-4 h-4" />
             Promote
           </TabsTrigger>
+          )}
           <TabsTrigger value="alumni" className="flex items-center gap-2 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-900 data-[state=active]:text-indigo-600 dark:data-[state=active]:text-indigo-400 data-[state=active]:shadow-sm rounded-lg px-6 font-bold text-[11px] uppercase tracking-wider transition-all">
             <GraduationCap className="w-4 h-4" />
             Alumni
@@ -129,7 +137,8 @@ const StudentsModule = () => {
         <TabsContent value="view-all">
           <ViewAllStudents
             variant="active"
-            onRequestPromoteStudent={(id) => {
+            readOnly={readOnly}
+            onRequestPromoteStudent={readOnly ? undefined : (id) => {
               setPromoteStudentIdSeed(id);
               setActiveTab('promote');
             }}
@@ -141,21 +150,25 @@ const StudentsModule = () => {
         </TabsContent>
 
         <TabsContent value="inactive">
-          <ViewAllStudents variant="inactive" />
+          <ViewAllStudents variant="inactive" readOnly={readOnly} />
         </TabsContent>
 
+        {!readOnly && (
         <TabsContent value="add-student">
           <AddStudentForm
             onSuccess={(mode) => setActiveTab(mode === 'pending' ? 'pending' : 'view-all')}
           />
         </TabsContent>
+        )}
 
+        {!readOnly && (
         <TabsContent value="promote">
           <PromoteStudents
             initialStudentId={promoteStudentIdSeed}
             onConsumeInitialStudentId={() => setPromoteStudentIdSeed(null)}
           />
         </TabsContent>
+        )}
 
         <TabsContent value="alumni">
           <AlumniStudents />

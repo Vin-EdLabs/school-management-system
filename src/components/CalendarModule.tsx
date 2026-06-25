@@ -17,6 +17,7 @@ import { toast } from '@/hooks/use-toast';
 import { apiService } from '../services/api';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
+import { isHeadmasterRole } from '../utils/headmasterPortal';
 import { Loader2 } from 'lucide-react';
 
 interface CalendarEvent {
@@ -56,7 +57,8 @@ const formDialogClass =
 export default function CalendarModule() {
   const { schoolId } = useSchool();
   const { user } = useAuth();
-  const canManageEvents = user?.role === 'super-admin' || user?.role === 'administrator';
+  const canManageEvents =
+    user?.role === 'super-admin' || user?.role === 'administrator' || isHeadmasterRole(user?.role);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -339,7 +341,7 @@ export default function CalendarModule() {
           <Alert className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30">
             <Info className="h-4 w-4" />
             <AlertDescription>
-              View-only calendar. Only school administrators can add or edit events.
+              View-only calendar. School administrators and the headmaster can add or edit events.
             </AlertDescription>
           </Alert>
         )}

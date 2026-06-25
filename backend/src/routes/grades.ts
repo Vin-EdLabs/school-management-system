@@ -92,14 +92,33 @@ router.post('/assignments', async (req: AuthRequest, res) => {
   }
 });
 
-// Delete assignment
+// Delete assignment (only when no grades have been entered)
 router.delete('/assignments/:id', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
-    await query(
-      'DELETE FROM grade_assignments WHERE id = $1 AND tenant_id = $2',
-      [req.params.id, tenantId]
+    const assignmentId = req.params.id;
+
+    const graded = await query(
+      `SELECT COUNT(*)::int AS count
+       FROM student_grades sg
+       JOIN grade_assignments ga ON ga.id = sg.assignment_id
+       WHERE sg.assignment_id = $1 AND ga.tenant_id = $2`,
+      [assignmentId, tenantId]
     );
+    if ((graded.rows[0]?.count ?? 0) > 0) {
+      return res.status(400).json({
+        error: 'Cannot delete this assessment because it already has grades recorded.',
+      });
+    }
+
+    const result = await query(
+      'DELETE FROM grade_assignments WHERE id = $1 AND tenant_id = $2 RETURNING id',
+      [assignmentId, tenantId]
+    );
+    if (!result.rows.length) {
+      return res.status(404).json({ error: 'Assessment not found' });
+    }
+
     emitTenantDataChanged(tenantId, 'grade-assignment', 'deleted');
     res.json({ message: 'Assignment deleted' });
   } catch (error) {
@@ -406,7 +425,8 @@ router.get('/term-report', async (req: AuthRequest, res) => {
 
         for (const a of subjectAssignments) {
           const scored = gradeMap[s.id]?.[a.id] ?? 0;
-          const isExam = a.assignment_type.toLowerCase() === 'exam' || a.name.toLowerCase().includes('exam');
+          const typeLabel = String(a.assignment_type || a.name || '').toLowerCase();
+          const isExam = typeLabel === 'exam' || typeLabel.includes('exam');
           if (isExam) {
             examScoreSum += scored;
             examMaxSum += parseFloat(a.max_score);
@@ -507,6 +527,56 @@ router.get('/term-report', async (req: AuthRequest, res) => {
     );
     const releaseInfo = releaseRes.rows[0] || null;
 
+    const headmasterRes = await query(
+      `SELECT COALESCE(t.full_name, u.full_name) AS full_name,
+              COALESCE(NULLIF(TRIM(t.headmaster_title), ''), 'Headmaster') AS headmaster_title
+       FROM users u
+       LEFT JOIN teachers t ON t.id::text = u.teacher_id::text AND t.tenant_id = u.tenant_id
+       WHERE u.tenant_id = $1 AND u.role = 'headmaster' AND u.is_active = true
+       ORDER BY u.id ASC
+       LIMIT 1`,
+      [tenantId]
+    ).catch(async () => {
+      return query(
+        `SELECT COALESCE(t.full_name, u.full_name) AS full_name
+         FROM users u
+         LEFT JOIN teachers t ON t.id::text = u.teacher_id::text AND t.tenant_id = u.tenant_id
+         WHERE u.tenant_id = $1 AND u.role = 'headmaster' AND u.is_active = true
+         ORDER BY u.id ASC
+         LIMIT 1`,
+        [tenantId]
+      );
+    });
+    const headmasterName = headmasterRes.rows[0]?.full_name || null;
+    const headmasterTitle = headmasterRes.rows[0]?.headmaster_title || 'Headmaster';
+
+    // 13. Attendance summary for this class (from attendance module)
+    const classDaysRes = await query(
+      `SELECT COUNT(DISTINCT attendance_date)::int AS total_days
+       FROM attendance
+       WHERE tenant_id = $1 AND class_id = $2`,
+      [tenantId, classId]
+    );
+    const classAttendanceTotalDays = classDaysRes.rows[0]?.total_days ?? 0;
+
+    const attendanceRes = await query(
+      `SELECT
+         student_id,
+         COUNT(*)::int AS total_days,
+         SUM(CASE WHEN present THEN 1 ELSE 0 END)::int AS present_count
+       FROM attendance
+       WHERE tenant_id = $1 AND class_id = $2
+       GROUP BY student_id`,
+      [tenantId, classId]
+    );
+    const attendanceSummary: Record<number, { present: number; totalDays: number }> = {};
+    for (const row of attendanceRes.rows) {
+      attendanceSummary[row.student_id] = {
+        present: row.present_count ?? 0,
+        totalDays: row.total_days ?? classAttendanceTotalDays,
+      };
+    }
+
     return res.json({
       students: reportRows,
       subjects: subjectOrder,
@@ -519,6 +589,10 @@ router.get('/term-report', async (req: AuthRequest, res) => {
       gradeScale,
       teacherRemarks,
       headmasterRemarks,
+      headmasterName,
+      headmasterTitle,
+      attendanceSummary,
+      classAttendanceTotalDays,
       isReleased: releaseInfo?.is_released ?? false,
       releasedAt: releaseInfo?.released_at ?? null,
       releasedByName: releaseInfo?.released_by_name ?? null,
@@ -614,6 +688,7 @@ router.post('/term-report-remarks', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const userId = req.user!.id;
+    const role = String(req.user!.role || '').toLowerCase();
     const { classId, studentId, teacherRemark, headmasterRemark } = req.body;
     if (!classId || !studentId) return res.status(400).json({ error: 'classId and studentId required' });
 
@@ -636,8 +711,12 @@ router.post('/term-report-remarks', async (req: AuthRequest, res) => {
       );
     };
 
-    if (teacherRemark != null) await saveRemark('teacher', String(teacherRemark).trim());
-    if (headmasterRemark != null) await saveRemark('headmaster', String(headmasterRemark).trim());
+    if (role === 'headmaster') {
+      if (headmasterRemark != null) await saveRemark('headmaster', String(headmasterRemark).trim());
+    } else {
+      if (teacherRemark != null) await saveRemark('teacher', String(teacherRemark).trim());
+      if (headmasterRemark != null) await saveRemark('headmaster', String(headmasterRemark).trim());
+    }
 
     emitTenantDataChanged(tenantId, 'term-report-remark', 'updated');
     res.json({ message: 'Term report remarks saved' });

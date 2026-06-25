@@ -570,7 +570,7 @@ router.get('/users', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, r
          AND (u.teacher_id IS NULL OR COALESCE(t.is_deleted, false) = false)
          AND (u.other_staff_id IS NULL OR COALESCE(s.is_deleted, false) = false)
        ORDER BY
-         CASE u.role WHEN 'super-admin' THEN 0 WHEN 'administrator' THEN 1 WHEN 'finance' THEN 2 WHEN 'teacher' THEN 3 WHEN 'staff' THEN 4 ELSE 5 END,
+         CASE u.role WHEN 'super-admin' THEN 0 WHEN 'administrator' THEN 1 WHEN 'headmaster' THEN 2 WHEN 'finance' THEN 3 WHEN 'teacher' THEN 4 WHEN 'staff' THEN 5 ELSE 6 END,
         COALESCE(t.full_name, s.full_name, u.full_name, u.username)`,
       [tenantId]
     );
@@ -599,7 +599,8 @@ router.post('/users/:id/reset-password', requirePrimaryAdminOrSuperAdmin, async 
     }
     
     const targetRole = targetUser.rows[0].role;
-    const minLength = targetRole === 'teacher' || targetRole === 'staff' ? 5 : 6;
+    const minLength =
+      targetRole === 'teacher' || targetRole === 'staff' || targetRole === 'headmaster' ? 5 : 6;
 
     if (!newPassword || newPassword.length < minLength) {
       return res.status(400).json({ error: `New password must be at least ${minLength} characters` });
@@ -645,15 +646,18 @@ router.post('/users', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, 
     if (!username || !password || !role) {
       return res.status(400).json({ error: 'Username, password, and role are required' });
     }
-    if (!['administrator', 'finance', 'teacher', 'staff', 'driver'].includes(role)) {
-      return res.status(400).json({ error: 'Role must be administrator, finance, teacher, staff, or driver' });
+    if (!['administrator', 'finance', 'teacher', 'staff', 'driver', 'headmaster'].includes(role)) {
+      return res.status(400).json({ error: 'Role must be administrator, finance, teacher, staff, driver, or headmaster' });
     }
-    const minLength = role === 'teacher' || role === 'staff' || role === 'driver' ? 5 : 6;
+    const minLength = role === 'teacher' || role === 'staff' || role === 'driver' || role === 'headmaster' ? 5 : 6;
     if (password.length < minLength) {
       return res.status(400).json({ error: `Password must be at least ${minLength} characters` });
     }
-    if ((role === 'administrator' || role === 'finance') && !String(fullName || '').trim()) {
-      return res.status(400).json({ error: 'Full name is required for Administrator and Finance users' });
+    if ((role === 'administrator' || role === 'finance' || role === 'headmaster') && !String(fullName || '').trim()) {
+      return res.status(400).json({ error: 'Full name is required for Administrator, Finance, and Headmaster users' });
+    }
+    if (role === 'headmaster' && !teacherId) {
+      return res.status(400).json({ error: 'Headmaster accounts must be linked to a teacher profile (teacherId)' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -696,7 +700,7 @@ router.patch('/users/:id', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequ
     const { role, isActive, fullName, email } = req.body;
 
     const userCheck = await query(
-      'SELECT id, role, is_primary_admin FROM users WHERE id = $1 AND tenant_id = $2',
+      'SELECT id, role, is_primary_admin, teacher_id FROM users WHERE id = $1 AND tenant_id = $2',
       [id, tenantId]
     );
     if (userCheck.rows.length === 0) return res.status(404).json({ error: 'User not found' });
@@ -714,14 +718,23 @@ router.patch('/users/:id', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequ
     let i = 1;
 
     if (role !== undefined) {
-      if (!['administrator', 'finance'].includes(role)) {
-        return res.status(400).json({ error: 'Only Administrator and Finance roles can be changed here' });
+      const teacherLinked = target.teacher_id != null && String(target.teacher_id).trim() !== '';
+      const isTeachingRoleSwap =
+        teacherLinked &&
+        ((target.role === 'teacher' && role === 'headmaster') ||
+          (target.role === 'headmaster' && role === 'teacher'));
+
+      if (isTeachingRoleSwap) {
+        updates.push(`role = $${i++}`);
+        values.push(role);
+      } else if (['administrator', 'finance'].includes(role) && ['administrator', 'finance'].includes(target.role)) {
+        updates.push(`role = $${i++}`);
+        values.push(role);
+      } else if (role !== target.role) {
+        return res.status(400).json({
+          error: 'Role can only be changed between Administrator/Finance, or between Teacher and Headmaster when linked to a teacher profile',
+        });
       }
-      if (!['administrator', 'finance'].includes(target.role)) {
-        return res.status(400).json({ error: 'Only Administrator and Finance users can have their role changed' });
-      }
-      updates.push(`role = $${i++}`);
-      values.push(role);
     }
 
     if (isActive !== undefined) {
@@ -777,7 +790,7 @@ router.patch('/users/:id', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequ
 });
 
 // Push diagnostics (primary admin or super-admin)
-router.get('/push/stats', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+router.get('/push/stats', requireRole('super-admin', 'administrator', 'headmaster'), async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     if (!tenantId) return res.status(400).json({ error: 'Tenant context required' });
@@ -830,7 +843,7 @@ router.get('/push/stats', requireRole('super-admin', 'administrator'), async (re
 });
 
 // Send test push notification to parent portal devices (primary admin or super-admin)
-router.post('/push/test', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+router.post('/push/test', requireRole('super-admin', 'administrator', 'headmaster'), async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     if (!tenantId) return res.status(400).json({ error: 'Tenant context required' });
@@ -997,7 +1010,7 @@ router.post('/reset-data', requirePrimaryAdminOrSuperAdmin, async (_req: AuthReq
 });
 
 // Appointment letter school-wide configuration
-router.get('/appointment-letter', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+router.get('/appointment-letter', requireRole('super-admin', 'administrator', 'headmaster'), async (req: AuthRequest, res) => {
   try {
     const { getAppointmentLetterConfig } = await import('../services/appointmentLetterService.js');
     const config = await getAppointmentLetterConfig(req.user!.tenantId!);
@@ -1008,7 +1021,7 @@ router.get('/appointment-letter', requireRole('super-admin', 'administrator'), a
   }
 });
 
-router.put('/appointment-letter', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+router.put('/appointment-letter', requireRole('super-admin', 'administrator', 'headmaster'), async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const { saveAppointmentLetterConfig } = await import('../services/appointmentLetterService.js');

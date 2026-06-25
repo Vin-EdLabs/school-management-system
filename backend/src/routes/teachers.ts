@@ -24,6 +24,7 @@ import {
   getAppointmentLetterPdf,
 } from '../services/appointmentLetterService.js';
 import { ensureTeacherUserAccount } from '../services/teacherUserService.js';
+import { canAccessTeacherPortalRoutes, canBroadcastStaffAnnouncements } from '../constants/roles.js';
 import { persistStaffProfileFields } from '../services/staffFieldSuggestionService.js';
 import {
   assignTeacherSubjectClass,
@@ -100,7 +101,7 @@ router.get('/me', async (req: AuthRequest, res) => {
   try {
     const teacherId = req.user!.teacherId;
     const role = req.user!.role;
-    if (!teacherId || (role !== 'teacher' && role !== 'staff')) {
+    if (!canAccessTeacherPortalRoutes(role, teacherId)) {
       return res.status(403).json({ error: 'Not a teacher account' });
     }
     const tenantId = req.user!.tenantId!;
@@ -127,7 +128,7 @@ router.get('/me/classes', async (req: AuthRequest, res) => {
   try {
     const teacherId = req.user!.teacherId;
     const role = req.user!.role;
-    if (!teacherId || (role !== 'teacher' && role !== 'staff')) {
+    if (!canAccessTeacherPortalRoutes(role, teacherId)) {
       return res.status(403).json({ error: 'Not a teacher account' });
     }
     const tenantId = req.user!.tenantId!;
@@ -154,7 +155,7 @@ router.get('/me/subject-classes', async (req: AuthRequest, res) => {
   try {
     const teacherId = req.user!.teacherId;
     const role = req.user!.role;
-    if (!teacherId || (role !== 'teacher' && role !== 'staff')) {
+    if (!canAccessTeacherPortalRoutes(role, teacherId)) {
       return res.status(403).json({ error: 'Not a teacher account' });
     }
     const tenantId = req.user!.tenantId!;
@@ -169,7 +170,7 @@ router.get('/me/subject-classes', async (req: AuthRequest, res) => {
 // Broadcast in-app notice to teachers and payroll staff (socket + bell / toast on client)
 router.post(
   '/announce',
-  requireRole('super-admin', 'administrator', 'finance'),
+  requireRole('super-admin', 'administrator', 'finance', 'headmaster'),
   async (req: AuthRequest, res) => {
     try {
       const tenantId = req.user!.tenantId!;
@@ -268,7 +269,7 @@ router.get('/me/appointment-letters', async (req: AuthRequest, res) => {
   try {
     const teacherId = req.user!.teacherId;
     const role = req.user!.role;
-    if (!teacherId || (role !== 'teacher' && role !== 'staff')) {
+    if (!canAccessTeacherPortalRoutes(role, teacherId)) {
       return res.status(403).json({ error: 'Not a teacher account' });
     }
     const rows = await listAppointmentLetters(req.user!.tenantId!, Number(teacherId));
@@ -283,7 +284,7 @@ router.get('/me/appointment-letters/:letterId/download', async (req: AuthRequest
   try {
     const teacherId = req.user!.teacherId;
     const role = req.user!.role;
-    if (!teacherId || (role !== 'teacher' && role !== 'staff')) {
+    if (!canAccessTeacherPortalRoutes(role, teacherId)) {
       return res.status(403).json({ error: 'Not a teacher account' });
     }
     const tenantId = req.user!.tenantId!;
@@ -401,7 +402,7 @@ router.get('/:id/signature', async (req: AuthRequest, res) => {
 });
 
 // Save teacher signature
-router.put('/:id/signature', requireRole('super-admin', 'administrator', 'teacher'), async (req: AuthRequest, res) => {
+router.put('/:id/signature', requireRole('super-admin', 'administrator', 'teacher', 'headmaster'), async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const { id } = req.params;

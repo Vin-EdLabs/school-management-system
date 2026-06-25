@@ -9,7 +9,8 @@ import { useSocket } from '../../contexts/SocketContext';
 import { apiService } from '../../services/api';
 import { resolveLogoUrl } from '../../services/tenantService';
 import { cn } from '@/lib/utils';
-import { Bell, Bot, User, Clock, Moon, Sun } from 'lucide-react';
+import { Bell, Bot, User, Clock, Moon, Sun, Crown } from 'lucide-react';
+import { isHeadmasterRole } from '../../utils/headmasterPortal';
 import { useTheme } from '../../contexts/ThemeContext';
 import PwaInstallButton from '../common/PwaInstallButton';
 import PersonalTodosWidget, { canUsePersonalTodos } from '../todos/PersonalTodosPanel';
@@ -46,8 +47,11 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
   >([]);
   const [adminUnreadCount, setAdminUnreadCount] = useState(0);
   const pwaLogo = resolveLogoUrl(school?.logo_url ?? null);
-  const showStaffNotifications = user?.role === 'teacher' || user?.role === 'staff';
-  const showAdminNotifications = !!user && ['administrator', 'finance', 'super-admin'].includes(user.role || '');
+  const isHeadmaster = isHeadmasterRole(user?.role);
+  const showStaffNotifications = user?.role === 'teacher' || user?.role === 'staff' || isHeadmaster;
+  const showAdminNotifications =
+    !!user &&
+    (['administrator', 'finance', 'super-admin'].includes(user.role || '') || isHeadmaster);
   const showPersonalTodos = canUsePersonalTodos(user?.role);
   const displayName = user?.fullName?.trim() || user?.username || '';
 
@@ -241,9 +245,16 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
             {getGreeting()}, <span className="text-emerald-700 dark:text-indigo-400">{displayName}</span>
           </h1>
           <div className="flex items-center gap-2">
+            {isHeadmaster ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 dark:bg-amber-950/40 text-[10px] font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider rounded border border-amber-200/80 dark:border-amber-800 shadow-sm">
+                <Crown className="h-3 w-3" />
+                Headmaster
+              </span>
+            ) : (
              <span className="px-2 py-0.5 bg-emerald-50 dark:bg-indigo-950/50 text-[10px] font-bold text-emerald-700 dark:text-indigo-400 uppercase tracking-wider rounded border border-emerald-100/70 dark:border-indigo-900 shadow-sm">
               {user?.role?.replace('-', ' ')}
             </span>
+            )}
           </div>
         </div>
       </div>

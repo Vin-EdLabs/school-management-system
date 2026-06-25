@@ -222,7 +222,7 @@ router.get('/my-salary', async (req: AuthRequest, res) => {
     const tenantId = req.user!.tenantId!;
     const teacherId = req.user!.teacherId;
     const role = req.user!.role;
-    if (role === 'teacher' && teacherId) {
+    if ((role === 'teacher' || role === 'headmaster') && teacherId) {
       const teacherRes = await query(
         'SELECT id, full_name, staff_id, monthly_salary, ssnit_enabled FROM teachers WHERE id = $1 AND tenant_id = $2',
         [teacherId, tenantId]
@@ -325,7 +325,7 @@ router.get('/my-salary', async (req: AuthRequest, res) => {
         paymentHistory: payments,
       });
     }
-    return res.status(403).json({ error: 'Only teachers can view salary here' });
+    return res.status(403).json({ error: 'Only teaching staff with a linked profile can view salary here' });
   } catch (error) {
     console.error('Get my salary error:', error);
     res.status(500).json({ error: 'Failed to fetch salary' });

@@ -438,7 +438,7 @@ export async function ensureSupplementalSchema(): Promise<void> {
   );
   await safe(`CREATE INDEX IF NOT EXISTS idx_other_staff_tenant ON other_staff(tenant_id)`, 'idx_other_staff_tenant');
 
-  await safe(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS emergency_contact_name VARCHAR(255)`, 'teachers.emergency_contact_name');
+  await safe(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS headmaster_title VARCHAR(120) DEFAULT 'Headmaster'`, 'teachers.headmaster_title');
   await safe(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS emergency_contact_phone VARCHAR(100)`, 'teachers.emergency_contact_phone');
   await safe(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS emergency_contact_relationship VARCHAR(100)`, 'teachers.emergency_contact_relationship');
   await safe(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS bank_name VARCHAR(255)`, 'teachers.bank_name');
@@ -493,8 +493,8 @@ export async function ensureSupplementalSchema(): Promise<void> {
     'users.role_check drop'
   );
   await safe(
-    `ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('super-admin', 'administrator', 'finance', 'teacher', 'staff', 'driver'))`,
-    'users.role_check add driver'
+    `ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('super-admin', 'administrator', 'finance', 'teacher', 'staff', 'driver', 'headmaster'))`,
+    'users.role_check add headmaster'
   );
 
   await safe(

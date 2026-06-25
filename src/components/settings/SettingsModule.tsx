@@ -17,6 +17,7 @@ import AcademicTermManager from './AcademicTermManager';
 import ArrearsSyncModal from './ArrearsSyncModal';
 import SchoolManager from './SchoolManager';
 import SignatureStampManager from './SignatureStampManager';
+import HeadmasterSignatureSettings from './HeadmasterSignatureSettings';
 import { getTenantParentPortalUrl } from '../../utils/tenantHost';
 
 interface SchoolSettings {
@@ -250,6 +251,7 @@ const SettingsModule = () => {
 
   if (!hasSettingsFull) {
     const isSchoolAdmin = user?.role === 'administrator';
+    const isHeadmaster = user?.role === 'headmaster';
     // Regular user settings view (password + optional backup for school admins)
     return (
       <div className="p-6 space-y-6">
@@ -261,11 +263,32 @@ const SettingsModule = () => {
             <div>
               <h1 className="text-3xl font-bold text-foreground">Account Settings</h1>
               <p className="text-muted-foreground">
-                {isSchoolAdmin ? 'Change your password and manage school backup' : 'Change your password'}
+                {isHeadmaster
+                  ? 'Change your password and manage your report card signature'
+                  : isSchoolAdmin
+                    ? 'Change your password and manage school backup'
+                    : 'Change your password'}
               </p>
             </div>
           </div>
         </div>
+
+        {isHeadmaster && user?.teacherId && (
+          <Card className="shadow-sm max-w-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Pen className="w-5 h-5 text-purple-600" />
+                <span>Report Card Signature</span>
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Upload or draw your signature. It will auto-fill when you open report cards.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <HeadmasterSignatureSettings teacherId={user.teacherId} />
+            </CardContent>
+          </Card>
+        )}
 
         {isSchoolAdmin && canBackupSchool && (
           <Card className="shadow-sm max-w-md">

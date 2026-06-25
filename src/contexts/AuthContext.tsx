@@ -6,6 +6,7 @@ import { initInactivityTracker, isPWAInstalled, stopInactivityTracker } from '..
 import { clearActiveTermWelcomeDismiss } from '../components/onboarding/ActiveTermWelcomeModal';
 import { startSessionPulse, stopSessionPulse, endSessionPulse } from '../utils/sessionPulse';
 import { isSchoolTenantView } from '../utils/schoolAdminView';
+import { HEADMASTER_MODULES } from '../utils/headmasterPortal';
 
 const PRIMARY_ADMIN_MODULES = [
   'students', 'teachers', 'other-staff', 'classes', 'calendar', 'fees', 'income', 'expenses',
@@ -20,7 +21,7 @@ const PRIMARY_ADMIN_MODULES = [
 
 const PLATFORM_SUPER_ADMIN_MODULES = [...PRIMARY_ADMIN_MODULES, 'schools'] as const;
 
-export type UserRole = 'administrator' | 'finance' | 'super-admin' | 'teacher' | 'staff' | 'driver';
+export type UserRole = 'administrator' | 'finance' | 'super-admin' | 'teacher' | 'staff' | 'driver' | 'headmaster';
 
 interface User {
   id: number;
@@ -226,6 +227,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Staff (non-teaching): similar to teacher
     if (user.role === 'staff') {
       return ['teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'calendar', 'teacher-profile', 'teacher-appointment-letters', 'teacher-payment-history', 'settings', 'settings-password-only'].includes(module);
+    }
+
+    // Headmaster: teacher portal (when linked) + school-wide read-only oversight
+    if (user.role === 'headmaster') {
+      const modules = [...HEADMASTER_MODULES];
+      if (!user.teacherId) {
+        return modules
+          .filter(
+            (m) =>
+              ![
+                'teacher-classes',
+                'attendance',
+                'grades',
+                'teacher-quizzes',
+                'teacher-appointment-letters',
+                'teacher-payment-history',
+              ].includes(m)
+          )
+          .includes(module);
+      }
+      return modules.includes(module as (typeof HEADMASTER_MODULES)[number]);
     }
 
     // Driver: driver role

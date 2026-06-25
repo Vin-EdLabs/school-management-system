@@ -56,11 +56,12 @@ const resolvePhotoUrl = (photoUrl?: string | null) => {
   return `${origin}${normalized}`;
 };
 
-const AttendanceModule = () => {
+const AttendanceModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boolean }) => {
   const { schoolId } = useSchool();
   const { students, classes } = useData();
   const { user } = useAuth();
-  const isAdminViewer = user?.role === 'administrator' || user?.role === 'super-admin';
+  const isAdminViewer =
+    schoolWideReadOnly || user?.role === 'administrator' || user?.role === 'super-admin';
 
   const [teacherClasses, setTeacherClasses] = useState<TeacherClass[]>([]);
   const [selectedClassId, setSelectedClassId] = useState('');

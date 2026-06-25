@@ -45,6 +45,7 @@ import {
   UserCheck,
   Copy,
   Info,
+  Crown,
 } from 'lucide-react';
 
 interface SchoolUser {
@@ -67,6 +68,7 @@ const roleLabels: Record<string, string> = {
   finance: 'Finance',
   teacher: 'Teacher',
   staff: 'Staff',
+  headmaster: 'Headmaster',
 };
 
 const roleColors: Record<string, string> = {
@@ -75,6 +77,7 @@ const roleColors: Record<string, string> = {
   finance: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
   teacher: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
   staff: 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20',
+  headmaster: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20',
 };
 
 const roleIcons: Record<string, React.ElementType> = {
@@ -83,6 +86,7 @@ const roleIcons: Record<string, React.ElementType> = {
   finance: Wallet,
   teacher: GraduationCap,
   staff: UserCheck,
+  headmaster: Crown,
 };
 
 const UsersModule = () => {
@@ -264,7 +268,8 @@ const UsersModule = () => {
     e.preventDefault();
     if (!selectedUser || !resetPassword) return;
     
-    const minLength = selectedUser.role === 'teacher' || selectedUser.role === 'staff' ? 5 : 6;
+    const minLength =
+      selectedUser.role === 'teacher' || selectedUser.role === 'staff' || selectedUser.role === 'headmaster' ? 5 : 6;
     if (resetPassword.length < minLength) {
       toast({ title: 'Error', description: `Password must be at least ${minLength} characters`, variant: 'destructive' });
       return;
@@ -369,7 +374,7 @@ const UsersModule = () => {
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <span className="font-mono text-sm text-foreground/80">{u.username}</span>
-                            {(u.role === 'teacher' || u.role === 'staff') && u.staff_id && (
+                            {(u.role === 'teacher' || u.role === 'staff' || u.role === 'headmaster') && u.staff_id && (
                               <Button
                                 size="sm"
                                 variant="ghost"
@@ -396,6 +401,19 @@ const UsersModule = () => {
                               <SelectContent>
                                 <SelectItem value="administrator">Administrator</SelectItem>
                                 <SelectItem value="finance">Finance</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          ) : !u.is_primary_admin && u.teacher_id && (u.role === 'teacher' || u.role === 'headmaster') ? (
+                            <Select
+                              value={u.role}
+                              onValueChange={(role) => updateUser(u, { role })}
+                            >
+                              <SelectTrigger className="h-9 min-w-[145px]">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="teacher">Teacher</SelectItem>
+                                <SelectItem value="headmaster">Headmaster</SelectItem>
                               </SelectContent>
                             </Select>
                           ) : (
@@ -660,14 +678,14 @@ const UsersModule = () => {
             <form onSubmit={handleResetPassword} className="flex min-h-0 flex-1 flex-col">
               <DialogBody className={detailDialogBodyClass}>
                 <div className="space-y-2">
-                  <Label>New password * (min {selectedUser.role === 'teacher' || selectedUser.role === 'staff' ? 5 : 6} characters)</Label>
+                  <Label>New password * (min {selectedUser.role === 'teacher' || selectedUser.role === 'staff' || selectedUser.role === 'headmaster' ? 5 : 6} characters)</Label>
                   <Input
                     type="password"
                     value={resetPassword}
                     onChange={(e) => setResetPassword(e.target.value)}
                     placeholder="••••••••"
                     required
-                    minLength={selectedUser.role === 'teacher' || selectedUser.role === 'staff' ? 5 : 6}
+                    minLength={selectedUser.role === 'teacher' || selectedUser.role === 'staff' || selectedUser.role === 'headmaster' ? 5 : 6}
                   />
                 </div>
               </DialogBody>

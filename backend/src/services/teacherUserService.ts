@@ -58,7 +58,7 @@ export async function ensureTeacherUserAccount(
       `UPDATE users
        SET full_name = $1,
            email = COALESCE($2, email),
-           role = 'teacher',
+           role = CASE WHEN role = 'headmaster' THEN 'headmaster' ELSE 'teacher' END,
            is_active = $4,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $3`,
@@ -71,16 +71,19 @@ export async function ensureTeacherUserAccount(
   const existingByUsername = await findUserByUsername(username);
   if (existingByUsername && existingByUsername.tenant_id === tenantId) {
     const userId = existingByUsername.id;
+    const currentRoleRes = await query(`SELECT role FROM users WHERE id = $1`, [userId]);
+    const currentRole = String(currentRoleRes.rows[0]?.role || 'teacher');
+    const nextRole = currentRole === 'headmaster' ? 'headmaster' : 'teacher';
     await query(
       `UPDATE users
        SET teacher_id = $1,
            full_name = $2,
            email = COALESCE($3, email),
-           role = 'teacher',
+           role = $6,
            is_active = $5,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $4`,
-      [teacherId, teacher.full_name, teacher.email || null, userId, loginActive]
+      [teacherId, teacher.full_name, teacher.email || null, userId, loginActive, nextRole]
     );
     return { created: false, userId };
   }

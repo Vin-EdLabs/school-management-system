@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, startTransition } from 'react';
 import { ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import {
   fetchFeeStructureItemsSummary,
@@ -32,6 +32,8 @@ type TermBillBreakdownProps = {
   compact?: boolean;
   discountAmount?: number;
   discountLabel?: string;
+  /** When true, starts expanded and loads breakdown immediately (used by lazy cell). */
+  defaultExpanded?: boolean;
 };
 
 const formatMoney = (n: number) =>
@@ -53,13 +55,55 @@ export const TermBillBreakdown: React.FC<TermBillBreakdownProps> = ({
   compact = false,
   discountAmount: discountAmountProp,
   discountLabel,
+  defaultExpanded = false,
 }) => {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const [summary, setSummary] = useState<FeeStructureItemsSummary | null>(summaryProp ?? null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(defaultExpanded);
   const [loadedCharges, setLoadedCharges] = useState<StudentCharge[] | null>(
     individualCharges && individualCharges.length > 0 ? individualCharges : null
   );
+
+  React.useEffect(() => {
+    if (!defaultExpanded) return;
+    const needsSummary = !summary && !breakdownItems?.length && !!feeStructureId;
+    const needsCharges = loadedCharges === null && studentId != null && termId != null;
+    if (!needsSummary && !needsCharges) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    const promises: Promise<unknown>[] = [];
+    if (needsSummary && feeStructureId) {
+      promises.push(
+        fetchFeeStructureItemsSummary(feeStructureId)
+          .then((data) => {
+            if (!cancelled) setSummary(data);
+          })
+          .catch(() => {
+            if (!cancelled) setSummary(null);
+          })
+      );
+    }
+    if (needsCharges) {
+      promises.push(
+        fetchStudentCharges(studentId!, termId)
+          .then((charges) => {
+            if (!cancelled) setLoadedCharges(charges);
+          })
+          .catch(() => {
+            if (!cancelled) setLoadedCharges([]);
+          })
+      );
+    }
+    void Promise.all(promises).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [defaultExpanded, feeStructureId, studentId, termId]);
 
   const propChargeTotal = (individualCharges ?? []).reduce((sum, c) => sum + Number(c.amount), 0);
   const loadedChargeTotal = (loadedCharges ?? []).reduce((sum, c) => sum + Number(c.amount), 0);
@@ -72,15 +116,21 @@ export const TermBillBreakdown: React.FC<TermBillBreakdownProps> = ({
   const shouldShowDiscount = discountAmount > 0;
 
   const handleToggle = async () => {
-    const next = !expanded;
-    setExpanded(next);
-    if (!next) return;
+    if (expanded) {
+      startTransition(() => setExpanded(false));
+      return;
+    }
 
     const needsSummary = !summary && !breakdownItems?.length && !!feeStructureId;
     const needsCharges = loadedCharges === null && studentId != null && termId != null;
-    if (!needsSummary && !needsCharges) return;
+    setLoading(needsSummary || needsCharges);
+    startTransition(() => setExpanded(true));
 
-    setLoading(true);
+    if (!needsSummary && !needsCharges) {
+      setLoading(false);
+      return;
+    }
+
     try {
       const promises = [] as Promise<unknown>[];
       if (needsSummary && feeStructureId) {
@@ -155,7 +205,15 @@ export const TermBillBreakdown: React.FC<TermBillBreakdownProps> = ({
           </button>
         ) : null}
       </div>
-      {expanded && (activeItems.length > 0 || charges.length > 0 || creditAmount > 0 || shouldShowDiscount) && (
+      {expanded && (
+        loading ? (
+          <div className={`mt-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-3 text-xs ${compact ? 'text-right' : ''}`}>
+            <div className={`flex items-center gap-2 text-muted-foreground ${compact ? 'justify-end' : ''}`}>
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Loading breakdown…
+            </div>
+          </div>
+        ) : (activeItems.length > 0 || charges.length > 0 || creditAmount > 0 || shouldShowDiscount) ? (
         <div className={`mt-2 space-y-1 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs ${compact ? 'text-right' : ''}`}>
           {activeItems.map(item => (
             <div key={item.item_name} className="flex justify-between gap-4">
@@ -210,6 +268,7 @@ export const TermBillBreakdown: React.FC<TermBillBreakdownProps> = ({
             </div>
           )}
         </div>
+        ) : null
       )}
     </div>
   );

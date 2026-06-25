@@ -80,5 +80,5 @@ CASE
 END`;
 }
 
-/** Ledger term_fee debit uses `fs.total`. */
+/** @deprecated Prefer SQL_BENEFICIARY_TERM_FEE_DEBIT_EFFECTIVE from feeStructureSql.ts */
 export const SQL_BENEFICIARY_TERM_FEE_DEBIT = sqlBeneficiaryAdjustedAmount('fs.total');

@@ -38,15 +38,23 @@ export function resolveFeeStructureId(
   currentTerm?: string | null
 ): string | null {
   const normalizedTerm = (currentTerm || '').trim();
+  const normalizeClassName = (name: string) =>
+    String(name || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ');
+  const studentClass = normalizeClassName(classAssigned);
+
   const match = feeStructures.find(f => {
     const feeClassId = f.classId ?? f.class_id;
+    const feeClassName = normalizeClassName(f.className ?? '');
     const classMatch =
       (classId != null && feeClassId != null && String(feeClassId) === String(classId)) ||
-      (f.className && f.className.trim() === classAssigned.trim());
+      (feeClassName !== '' && feeClassName === studentClass);
     if (!classMatch) return false;
     if (!normalizedTerm || normalizedTerm === 'Not Set') return true;
     const feeTerm = (f.term || '').trim();
-    return !feeTerm || feeTerm === normalizedTerm || feeTerm.includes(normalizedTerm);
+    return !feeTerm || feeTerm === normalizedTerm || feeTerm.includes(normalizedTerm) || normalizedTerm.includes(feeTerm);
   });
   return match?.id ?? null;
 }

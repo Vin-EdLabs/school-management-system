@@ -1,6 +1,10 @@
 import { query, getClient } from '../db/connection.js';
 import type pg from 'pg';
-import { beneficiaryAdjustedFee, SQL_BENEFICIARY_TERM_FEE_DEBIT } from '../utils/beneficiaryFee.js';
+import { beneficiaryAdjustedFee } from '../utils/beneficiaryFee.js';
+import {
+  SQL_BENEFICIARY_TERM_FEE_DEBIT_EFFECTIVE,
+  SQL_FEE_STRUCTURE_CLASS_MATCH,
+} from '../utils/feeStructureSql.js';
 import { z } from 'zod';
 import { getStudentFullBalance, SQL_TRUE_OUTSTANDING, SQL_TRUE_OUTSTANDING_DEBIT, SQL_EFFECTIVE_CREDIT } from './studentUnifiedBalanceService.js';
 
@@ -294,7 +298,7 @@ export const postFeesForNewTerm = async (tenantId: number, newTermId: number) =>
                 t.id as term_id,
                 'Term Fee - ' || t.name as description,
                 'term_fee' as entry_type,
-                (${SQL_BENEFICIARY_TERM_FEE_DEBIT.trim()}) as debit,
+                (${SQL_BENEFICIARY_TERM_FEE_DEBIT_EFFECTIVE.trim()}) as debit,
                 0 as credit
             FROM students s
             INNER JOIN classes c ON s.class_assigned_id = c.id
@@ -341,6 +345,7 @@ export const postFeesForNewTerm = async (tenantId: number, newTermId: number) =>
 export async function syncMissingLedgerTermFeesForActiveTerm(tenantId: number): Promise<{
   termId: number | null;
   insertedCount: number;
+  repairedCount: number;
 }> {
   const settingsRes = await query(
     `SELECT current_term, current_year FROM school_settings WHERE tenant_id = $1`,
@@ -349,12 +354,12 @@ export async function syncMissingLedgerTermFeesForActiveTerm(tenantId: number): 
   const currentTerm = settingsRes.rows[0]?.current_term;
   const currentYear = settingsRes.rows[0]?.current_year;
   if (!currentTerm || !currentYear) {
-    return { termId: null, insertedCount: 0 };
+    return { termId: null, insertedCount: 0, repairedCount: 0 };
   }
 
   const resolved = await resolveLedgerTermFromSettings(tenantId, String(currentYear), String(currentTerm));
   if (!resolved) {
-    return { termId: null, insertedCount: 0 };
+    return { termId: null, insertedCount: 0, repairedCount: 0 };
   }
 
   const client = await getClient();
@@ -370,7 +375,7 @@ export async function syncMissingLedgerTermFeesForActiveTerm(tenantId: number): 
         t.id,
         'Term Fee - ' || t.name,
         'term_fee',
-        (${SQL_BENEFICIARY_TERM_FEE_DEBIT.trim()}),
+        (${SQL_BENEFICIARY_TERM_FEE_DEBIT_EFFECTIVE.trim()}),
         0
       FROM students s
       INNER JOIN terms t ON t.id = $2 AND t.tenant_id = $1
@@ -378,17 +383,7 @@ export async function syncMissingLedgerTermFeesForActiveTerm(tenantId: number): 
       INNER JOIN ledger_fee_structures fs ON fs.tenant_id = s.tenant_id
         AND fs.academic_year_id = t.academic_year_id
         AND fs.term_id = t.id
-        AND (
-          fs.class_id = s.class_assigned_id
-          OR fs.class_id IN (
-            SELECT c_alt.id
-            FROM classes c_alt
-            WHERE c_alt.tenant_id = s.tenant_id
-              AND LOWER(TRIM(COALESCE(c_alt.class_name, c_alt.name, ''))) =
-                  LOWER(TRIM(COALESCE(c_student.class_name, c_student.name, '')))
-              AND TRIM(COALESCE(c_alt.class_name, c_alt.name, '')) <> ''
-          )
-        )
+        AND ${SQL_FEE_STRUCTURE_CLASS_MATCH}
       WHERE s.tenant_id = $1
         AND COALESCE(s.enrollment_status, 'active') = 'active'
         AND s.class_assigned_id IS NOT NULL
@@ -403,16 +398,46 @@ export async function syncMissingLedgerTermFeesForActiveTerm(tenantId: number): 
     `;
 
     const result = await client.query(sql, [tenantId, resolved.termId]);
+
+    const repairSql = `
+      UPDATE student_ledger sl
+      SET debit = sub.net_fee
+      FROM (
+        SELECT DISTINCT ON (s.id)
+          s.id AS student_id,
+          (${SQL_BENEFICIARY_TERM_FEE_DEBIT_EFFECTIVE.trim()}) AS net_fee
+        FROM students s
+        INNER JOIN terms t ON t.id = $2 AND t.tenant_id = $1
+        INNER JOIN classes c_student ON c_student.id = s.class_assigned_id AND c_student.tenant_id = s.tenant_id
+        INNER JOIN ledger_fee_structures fs ON fs.tenant_id = s.tenant_id
+          AND fs.academic_year_id = t.academic_year_id
+          AND fs.term_id = t.id
+          AND ${SQL_FEE_STRUCTURE_CLASS_MATCH}
+        WHERE s.tenant_id = $1
+          AND COALESCE(s.enrollment_status, 'active') = 'active'
+          AND s.class_assigned_id IS NOT NULL
+        ORDER BY s.id, (fs.class_id = s.class_assigned_id) DESC, fs.id
+      ) sub
+      WHERE sl.tenant_id = $1
+        AND sl.student_id = sub.student_id
+        AND sl.term_id = $2
+        AND sl.entry_type = 'term_fee'
+        AND sl.debit = 0
+        AND sub.net_fee > 0
+    `;
+
+    const repairResult = await client.query(repairSql, [tenantId, resolved.termId]);
     await client.query('COMMIT');
 
     const insertedCount = result.rowCount ?? 0;
-    if (insertedCount > 0) {
+    const repairedCount = repairResult.rowCount ?? 0;
+    if (insertedCount > 0 || repairedCount > 0) {
       console.log(
-        `[syncMissingLedgerTermFees] Tenant ${tenantId}: inserted ${insertedCount} term_fee row(s) for term ${resolved.termId}`
+        `[syncMissingLedgerTermFees] Tenant ${tenantId}: inserted ${insertedCount}, repaired ${repairedCount} term_fee row(s) for term ${resolved.termId}`
       );
     }
 
-    return { termId: resolved.termId, insertedCount };
+    return { termId: resolved.termId, insertedCount, repairedCount };
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('[syncMissingLedgerTermFees] Error:', error);
@@ -578,7 +603,7 @@ export const executeTermSwitchWithArrears = async (
        SELECT
          s.tenant_id, s.id, t.academic_year_id, t.id,
          'Term Fee - ' || t.name, 'term_fee', 
-         (${SQL_BENEFICIARY_TERM_FEE_DEBIT.trim()}), 0
+         (${SQL_BENEFICIARY_TERM_FEE_DEBIT_EFFECTIVE.trim()}), 0
        FROM students s
        INNER JOIN classes c ON s.class_assigned_id = c.id
        INNER JOIN terms t ON t.id = $2 AND t.tenant_id = $1
@@ -654,7 +679,7 @@ export const executePostFeesForNewTerm = async (
                 t.id as term_id,
                 'Term Fee - ' || t.name as description,
                 'term_fee' as entry_type,
-                (${SQL_BENEFICIARY_TERM_FEE_DEBIT.trim()}) as debit,
+                (${SQL_BENEFICIARY_TERM_FEE_DEBIT_EFFECTIVE.trim()}) as debit,
                 0 as credit
             FROM students s
             INNER JOIN classes c ON s.class_assigned_id = c.id

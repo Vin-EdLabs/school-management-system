@@ -31,7 +31,17 @@ const FEE_SELECT = `
          c.class_name, c.level, c.stream,
          t.name AS ledger_term_name,
          ay.name AS academic_year_name,
-         TRIM(CONCAT(t.name, ' ', ay.name)) AS term
+         TRIM(CONCAT(t.name, ' ', ay.name)) AS term,
+         COALESCE(
+           (SELECT SUM(fsi.amount)::numeric
+            FROM fee_structure_items fsi
+            WHERE fsi.tenant_id = lfs.tenant_id
+              AND fsi.fee_structure_id = lfs.id
+              AND fsi.is_active = true
+              AND fsi.amount > 0),
+           lfs.total,
+           0
+         ) AS effective_total
   FROM ledger_fee_structures lfs
   LEFT JOIN classes c ON lfs.class_id = c.id
   LEFT JOIN terms t ON lfs.term_id = t.id
@@ -40,7 +50,12 @@ const FEE_SELECT = `
 
 const mapFeeRow = (row: Record<string, unknown>) => ({
   ...row,
-  amount: row.total != null ? Number(row.total) : 0,
+  amount:
+    row.effective_total != null
+      ? Number(row.effective_total)
+      : row.total != null
+        ? Number(row.total)
+        : 0,
   term: String(row.term || '').trim(),
   due_date: null,
   description: row.description ?? null,
@@ -106,8 +121,10 @@ router.post('/sync-ledger', requireRole('super-admin', 'administrator', 'finance
     const result = await syncMissingLedgerTermFeesForActiveTerm(tenantId);
     res.json({
       message:
-        result.insertedCount > 0
-          ? `Posted term fees for ${result.insertedCount} student(s).`
+        result.insertedCount > 0 || result.repairedCount > 0
+          ? `Posted term fees for ${result.insertedCount} student(s)${
+              result.repairedCount > 0 ? `; repaired ${result.repairedCount} zero-amount row(s).` : '.'
+            }`
           : 'All eligible students already have term fees posted.',
       ...result,
     });

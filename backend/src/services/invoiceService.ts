@@ -6,8 +6,9 @@ import {
   ledgerBalanceToApiShape,
 } from './ledgerBalanceService.js';
 import { resolveActiveLedgerTerm } from './studentUnifiedBalanceService.js';
+import { syncMissingLedgerTermFeesForActiveTerm } from './ledgerFinanceService.js';
 import { listStudentCharges } from './studentChargesService.js';
-import { loadActiveFeeStructureLinesByClassTerm } from './feeStructureItemsService.js';
+import { loadActiveFeeStructureLinesByClassTerm, loadActiveFeeStructureLinesForStudent } from './feeStructureItemsService.js';
 import {
   beneficiaryAdjustedFee,
   formatBeneficiaryDiscountLabel,
@@ -162,19 +163,26 @@ async function buildLineItems(
       classRes.rows[0]?.class_assigned_id != null ? Number(classRes.rows[0].class_assigned_id) : null;
   }
 
-  const feeBreakdown =
+  const studentFeeBreakdown = await loadActiveFeeStructureLinesForStudent(
+    client,
+    tenantId,
+    studentId,
+    termId
+  );
+  const classFeeBreakdown =
     classAssignedId != null
       ? await loadActiveFeeStructureLinesByClassTerm(tenantId, classAssignedId, termId)
       : null;
-  const structureSubtotal = feeBreakdown?.subtotal ?? 0;
+  const effectiveBreakdown = studentFeeBreakdown ?? classFeeBreakdown;
+  const structureSubtotal = effectiveBreakdown?.subtotal ?? 0;
   const { termFee, discountAmount, discountLabel } = resolveTermFeeDiscount(
     structureSubtotal,
     balance.termFee,
     student
   );
 
-  if (feeBreakdown?.lines?.length) {
-    for (const line of feeBreakdown.lines) {
+  if (effectiveBreakdown?.lines?.length) {
+    for (const line of effectiveBreakdown.lines) {
       if (line.amount > 0) items.push({ description: line.label, amount: line.amount });
     }
     if (discountAmount > 0 && discountLabel) {
@@ -459,6 +467,12 @@ export async function generateSingleInvoice(
     generatedByUserId?: number | null;
   } = {}
 ): Promise<GenerateInvoiceResult> {
+  try {
+    await syncMissingLedgerTermFeesForActiveTerm(tenantId);
+  } catch (syncErr) {
+    console.error('[generateSingleInvoice] Ledger fee sync failed (continuing):', syncErr);
+  }
+
   const client = await getClient();
   try {
     await client.query('BEGIN');
@@ -605,6 +619,12 @@ export async function generateBulkInvoices(
     generatedByUserId?: number | null;
   } = {}
 ): Promise<BulkInvoiceSummary> {
+  try {
+    await syncMissingLedgerTermFeesForActiveTerm(tenantId);
+  } catch (syncErr) {
+    console.error('[generateBulkInvoices] Ledger fee sync failed (continuing):', syncErr);
+  }
+
   const run: QueryFn = query;
   const { ledgerTermId } = await resolveActiveLedgerTerm(run, tenantId, options.termId ?? undefined);
   if (!ledgerTermId) {

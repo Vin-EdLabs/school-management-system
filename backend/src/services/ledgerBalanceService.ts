@@ -2,6 +2,7 @@ import type pg from 'pg';
 import { query } from '../db/connection.js';
 import { resolveActiveLedgerTerm } from './studentUnifiedBalanceService.js';
 import { listStudentCharges } from './studentChargesService.js';
+import { enrichBalanceShapeWithExpectedFees } from './effectiveStudentBalanceService.js';
 
 type QueryFn = typeof query;
 
@@ -372,6 +373,7 @@ export type StudentBalanceApiShape = {
     createdByName: string | null;
     reason: string | null;
   }>;
+  discountAmount?: number;
 };
 
 function deriveBalanceStatus(balance: LedgerBalance): StudentBalanceApiShape['status'] {
@@ -448,7 +450,7 @@ export async function ledgerBalanceToApiShape(
   const status = deriveBalanceStatus(balance);
   const label = termLabel || 'Current term';
 
-  return {
+  const baseShape: StudentBalanceApiShape = {
     currentTermFee: balance.termFee,
     currentTermName: label,
     activeTermId: effectiveTermId,
@@ -481,4 +483,12 @@ export async function ledgerBalanceToApiShape(
       },
     ],
   };
+
+  return enrichBalanceShapeWithExpectedFees(
+    client,
+    tenantId,
+    studentId,
+    effectiveTermId,
+    baseShape
+  );
 }

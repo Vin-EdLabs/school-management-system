@@ -149,8 +149,9 @@ const StudentBalances = () => {
       };
     }
 
+    const feeStructureConfigured = hasFeeStructureForStudent(student);
+
     if (!balance) {
-      const hasFeeStructure = structureGrossFee > 0;
       const currentTermFee = expectedNetTermFee;
       const totalAmountDue = currentTermFee;
       return {
@@ -160,11 +161,13 @@ const StudentBalances = () => {
         creditBalance: 0,
         totalAmountDue,
         totalPaid: 0,
-        balance: hasFeeStructure ? totalAmountDue : 0,
-        feeStatus: hasFeeStructure
-          ? { status: 'Outstanding', balance: totalAmountDue }
+        balance: feeStructureConfigured ? totalAmountDue : 0,
+        feeStatus: feeStructureConfigured
+          ? totalAmountDue > 0
+            ? { status: 'Outstanding', balance: totalAmountDue }
+            : { status: 'Paid', balance: 0 }
           : { status: 'No Fee Set', balance: 0 },
-        feeStructureMissing: !hasFeeStructure,
+        feeStructureMissing: !feeStructureConfigured,
         paymentCount: countTermPayments(student.id),
         individualCharges: 0,
         individualChargeLines: [],
@@ -187,7 +190,7 @@ const StudentBalances = () => {
     const creditBroughtForward = balance.creditBroughtForward ?? 0;
     const totalPaid = balance.totalPaid ?? 0;
     const currentTermFee = ledgerTermFee > 0 ? ledgerTermFee : expectedNetTermFee;
-    const termFeePosted = ledgerTermFee > 0 || expectedNetTermFee > 0;
+    const termFeePosted = ledgerTermFee > 0 || feeStructureConfigured;
     const totalAmountDue = roundMoney(
       currentTermFee + individualCharges + arrears
     );
@@ -201,24 +204,23 @@ const StudentBalances = () => {
         : roundMoney(Math.max(0, netBalance));
 
     if (balance.status === 'NotSet') {
-      const hasFeeStructure = structureGrossFee > 0;
       return {
         ...student,
         currentTermFee,
         arrears,
         creditBroughtForward,
         creditBalance,
-        totalAmountDue: hasFeeStructure ? totalAmountDue : balance.totalDue,
+        totalAmountDue: feeStructureConfigured ? totalAmountDue : balance.totalDue,
         totalPaid,
-        balance: hasFeeStructure ? outstanding : 0,
-        feeStatus: hasFeeStructure
+        balance: feeStructureConfigured ? outstanding : 0,
+        feeStatus: feeStructureConfigured
           ? outstanding > 0
             ? totalPaid > 0
               ? { status: 'Partially Paid', balance: outstanding }
               : { status: 'Outstanding', balance: outstanding }
             : { status: 'Paid', balance: 0 }
           : { status: 'No Fee Set', balance: 0 },
-        feeStructureMissing: !hasFeeStructure,
+        feeStructureMissing: !feeStructureConfigured,
         paymentCount: countTermPayments(student.id),
         individualCharges,
         individualChargeLines: balance.individualChargeLines ?? [],
@@ -238,7 +240,7 @@ const StudentBalances = () => {
     const feeStructureMissing = !hasFeeStructure && currentTermFee <= 0;
 
     let feeStatus: { status: string; balance: number };
-    if (!termFeePosted && totalPaid <= 0 && totalAmountDue <= 0 && creditBalance <= 0) {
+    if (!termFeePosted && !feeStructureConfigured && totalPaid <= 0 && totalAmountDue <= 0 && creditBalance <= 0) {
       feeStatus = { status: 'No Fee Set', balance: 0 };
     } else if (netBalance < -0.001) {
       feeStatus = { status: 'Credit', balance: creditBalance > 0 ? creditBalance : Math.abs(netBalance) };

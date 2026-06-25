@@ -1,3 +1,4 @@
+import type pg from 'pg';
 import { query, getClient } from '../db/connection.js';
 
 export type FeeStructureItemInput = {
@@ -26,13 +27,20 @@ export function buildItemsSummaryLabel(items: Array<{ item_name: string }>): str
 
 export function validateFeeStructureItems(items: FeeStructureItemInput[]): string | null {
   const tuition = items.find(i => i.item_name.trim().toLowerCase() === 'tuition');
-  if (!tuition || !tuition.is_active || Number(tuition.amount) <= 0) {
-    return 'Tuition must be present with an amount greater than 0';
+  if (!tuition || !tuition.is_active) {
+    return 'Tuition must be present and enabled';
+  }
+  const tuitionAmount = Number(tuition.amount);
+  if (Number.isNaN(tuitionAmount) || tuitionAmount < 0) {
+    return 'Tuition amount cannot be negative';
   }
   for (const item of items) {
     if (item.item_name.trim().toLowerCase() === 'tuition') continue;
     if (item.is_active && Number(item.amount) <= 0) {
       return `${item.item_name} is enabled but has no amount`;
+    }
+    if (item.is_active && Number(item.amount) < 0) {
+      return `${item.item_name} amount cannot be negative`;
     }
   }
   return null;
@@ -130,6 +138,33 @@ export async function loadActiveFeeStructureLinesByClassTerm(
 
   const lines = linesFromFeeStructureItems(items);
   const subtotal = Math.round(lines.reduce((sum, line) => sum + line.amount, 0) * 100) / 100;
+  return { lines, subtotal };
+}
+
+/** Resolve fee structure by student (class id or normalized class name) then load line items. */
+export async function loadActiveFeeStructureLinesForStudent(
+  client: pg.PoolClient | null,
+  tenantId: number,
+  studentId: number,
+  termId: number
+): Promise<{ lines: Array<{ label: string; amount: number }>; subtotal: number } | null> {
+  const { resolveLedgerFeeStructureForStudent } = await import('./effectiveStudentBalanceService.js');
+  const resolved = await resolveLedgerFeeStructureForStudent(client, tenantId, studentId, termId);
+  if (!resolved) return null;
+
+  const items = await getFeeStructureItems(tenantId, resolved.feeStructureId);
+  if (!items) {
+    if (resolved.grossTotal < 0) return null;
+    return {
+      lines: resolved.grossTotal > 0 ? [{ label: 'Tuition Fee', amount: resolved.grossTotal }] : [],
+      subtotal: resolved.grossTotal,
+    };
+  }
+
+  const lines = linesFromFeeStructureItems(items);
+  const subtotal = Math.round(
+    (lines.reduce((sum, line) => sum + line.amount, 0) || resolved.grossTotal) * 100
+  ) / 100;
   return { lines, subtotal };
 }
 

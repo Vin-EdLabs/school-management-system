@@ -127,7 +127,7 @@ export const FeeStructureItemsForm: React.FC<FeeStructureItemsFormProps> = ({
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <p className="font-semibold text-foreground">{formatFeeItemLabel(item.item_name)}</p>
-                      <p className="text-xs text-muted-foreground">Required for all students</p>
+                      <p className="text-xs text-muted-foreground">Required — use GHS 0.00 if this class has no fees (e.g. Creche)</p>
                     </div>
                     <div className="flex items-center gap-2 sm:w-44">
                       <Label className="text-xs text-muted-foreground shrink-0">GHS</Label>
@@ -194,6 +194,8 @@ export const FeeStructureItemsForm: React.FC<FeeStructureItemsFormProps> = ({
             <p className="text-sm font-semibold text-emerald-950">Total Term Bill</p>
             {activeLabel ? (
               <p className="text-xs text-emerald-800/80 mt-0.5">{activeLabel}</p>
+            ) : total <= 0 ? (
+              <p className="text-xs text-emerald-800/80 mt-0.5">No fee charged for this class</p>
             ) : (
               <p className="text-xs text-emerald-800/80 mt-0.5">Add tuition to calculate total</p>
             )}
@@ -211,10 +213,17 @@ export function validateFeeStructureItemsForm(items: FeeStructureItem[]): Record
   const nextErrors: Record<number, string> = {};
   items.forEach((item, index) => {
     const isTuition = item.item_name.trim().toLowerCase() === 'tuition';
-    if (isTuition && (!item.is_active || Number(item.amount) <= 0)) {
-      nextErrors[index] = 'Tuition must be greater than 0';
-    } else if (item.is_active && !isTuition && Number(item.amount) <= 0) {
+    const amount = Number(item.amount);
+    if (isTuition) {
+      if (!item.is_active) {
+        nextErrors[index] = 'Tuition is required';
+      } else if (Number.isNaN(amount) || amount < 0) {
+        nextErrors[index] = 'Enter a valid amount (0 or more)';
+      }
+    } else if (item.is_active && (Number.isNaN(amount) || amount <= 0)) {
       nextErrors[index] = 'Enter an amount greater than 0';
+    } else if (item.is_active && amount < 0) {
+      nextErrors[index] = 'Amount cannot be negative';
     }
   });
   return nextErrors;

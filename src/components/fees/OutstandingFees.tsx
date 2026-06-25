@@ -26,17 +26,18 @@ const OutstandingFees = () => {
       const ledgerBalance = ledgerBalances?.[String(student.id)];
 
       if (ledgerBalance) {
+        const outstanding = Math.max(0, ledgerBalance.outstanding ?? 0);
         return {
           studentId: student.id,
           admissionNo: student.studentId || student.admissionNumber || String(student.id),
           studentName: `${student.firstName} ${student.lastName}`,
           className: student.classAssigned,
-          currentTermFee: ledgerBalance.currentTermFee,
-          arrears: ledgerBalance.totalArrears,
-          creditBalance: ledgerBalance.credit,
-          totalAmountDue: ledgerBalance.totalDue,
-          totalPaid: ledgerBalance.totalPaid,
-          outstanding: Math.max(0, ledgerBalance.outstanding),
+          currentTermFee: ledgerBalance.currentTermFee ?? 0,
+          arrears: ledgerBalance.totalArrears ?? 0,
+          creditBalance: ledgerBalance.credit ?? 0,
+          totalAmountDue: ledgerBalance.totalDue ?? 0,
+          totalPaid: ledgerBalance.totalPaid ?? 0,
+          outstanding,
           paymentHistory: [],
         };
       }
@@ -55,7 +56,7 @@ const OutstandingFees = () => {
         paymentHistory: [],
       };
     });
-  }, [students, ledgerBalances, selectedTerm]);
+  }, [students, ledgerBalances]);
 
   // Filter students with outstanding balances
   const filteredStudents = useMemo(() => {

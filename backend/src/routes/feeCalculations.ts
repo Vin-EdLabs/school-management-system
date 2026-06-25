@@ -11,6 +11,7 @@ import {
   getStudentBalanceFromLedger,
   getArrearsBreakdownFromLedger,
 } from '../services/ledgerBalanceService.js';
+import { enrichBalanceShapeWithExpectedFees } from '../services/effectiveStudentBalanceService.js';
 
 const router = express.Router();
 
@@ -55,31 +56,9 @@ router.get('/students/balances', async (req: AuthRequest, res) => {
     );
 
     const balances: Record<string, Awaited<ReturnType<typeof ledgerBalanceToApiShape>>> = {};
-    let studentsOwing = 0;
-    let studentsCredit = 0;
-    let studentsWithArrears = 0;
-    let totalOutstanding = 0;
-    let totalCredit = 0;
-    let totalArrearsAmount = 0;
 
     for (const row of rows) {
-      if (row.outstanding > 0) {
-        studentsOwing++;
-        totalOutstanding += row.outstanding;
-      }
-      if (row.netBalance < -0.001) {
-        studentsCredit++;
-        totalCredit += row.creditBalance > 0 ? row.creditBalance : roundMoney(Math.abs(row.netBalance));
-      } else if (row.creditBalance > 0) {
-        studentsCredit++;
-        totalCredit += row.creditBalance;
-      }
-      if (row.arrears > 0) {
-        studentsWithArrears++;
-        totalArrearsAmount += row.arrears;
-      }
-
-      balances[String(row.id)] = {
+      const rawShape = {
         currentTermFee: row.termFee,
         currentTermName: termLabel,
         activeTermId: ledgerTermId,
@@ -101,12 +80,12 @@ router.get('/students/balances', async (req: AuthRequest, res) => {
           row.amountPaidThisTerm <= 0 &&
           row.arrears <= 0 &&
           row.creditBroughtForward <= 0
-            ? 'NotSet'
+            ? ('NotSet' as const)
             : row.netBalance < -0.001
-              ? 'Credit'
+              ? ('Credit' as const)
               : row.netBalance > 0.001
-                ? 'Owing'
-                : 'Cleared',
+                ? ('Owing' as const)
+                : ('Cleared' as const),
         paymentsMade: row.amountPaidThisTerm,
         totalCharged: row.totalDue,
         individualCharges: row.individualCharges ?? 0,
@@ -123,6 +102,45 @@ router.get('/students/balances', async (req: AuthRequest, res) => {
           },
         ],
       };
+
+      balances[String(row.id)] = await enrichBalanceShapeWithExpectedFees(
+        null,
+        tenantId,
+        row.id,
+        ledgerTermId,
+        rawShape
+      );
+    }
+
+    let studentsOwing = 0;
+    let studentsCredit = 0;
+    let studentsWithArrears = 0;
+    let totalOutstanding = 0;
+    let totalCredit = 0;
+    let totalArrearsAmount = 0;
+
+    for (const shape of Object.values(balances)) {
+      if (!shape) continue;
+      const outstanding = roundMoney(shape.outstanding ?? 0);
+      const credit = roundMoney(shape.credit ?? 0);
+      const arrears = roundMoney(shape.totalArrears ?? 0);
+      const netBalance = shape.netBalance ?? 0;
+
+      if (outstanding > 0) {
+        studentsOwing++;
+        totalOutstanding += outstanding;
+      }
+      if (netBalance < -0.001) {
+        studentsCredit++;
+        totalCredit += credit > 0 ? credit : roundMoney(Math.abs(netBalance));
+      } else if (credit > 0) {
+        studentsCredit++;
+        totalCredit += credit;
+      }
+      if (arrears > 0) {
+        studentsWithArrears++;
+        totalArrearsAmount += arrears;
+      }
     }
 
     res.json({
@@ -154,6 +172,12 @@ router.get('/students/:studentId/balance', async (req: AuthRequest, res) => {
     const studentId = parseInt(String(req.params.studentId), 10);
     if (Number.isNaN(studentId)) {
       return res.status(400).json({ error: 'Invalid student id' });
+    }
+
+    try {
+      await syncMissingLedgerTermFeesForActiveTerm(tenantId);
+    } catch (syncErr) {
+      console.error('[students/:studentId/balance] Ledger fee sync failed (continuing):', syncErr);
     }
 
     const { ledgerTermId, termLabel } = await resolveActiveLedgerTerm(query, tenantId);

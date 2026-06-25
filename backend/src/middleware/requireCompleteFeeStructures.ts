@@ -25,16 +25,7 @@ export async function requireCompleteFeeStructures(
       return;
     }
 
-    const rawTermId = req.body?.term_id ?? req.body?.termId ?? req.query?.term_id ?? req.query?.termId;
-    const termId =
-      rawTermId != null && String(rawTermId).trim() !== ''
-        ? parseInt(String(rawTermId), 10)
-        : undefined;
-
-    const result = await checkFeeStructureCompleteness(
-      tenantId,
-      termId != null && !Number.isNaN(termId) ? termId : undefined
-    );
+    const result = await checkFeeStructureCompleteness(tenantId);
 
     if (result.complete) {
       next();

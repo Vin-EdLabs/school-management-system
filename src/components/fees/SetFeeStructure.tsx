@@ -118,7 +118,7 @@ const SetFeeStructure = () => {
       const structureId = String(created.id);
       const saved = await saveFeeStructureItems(structureId, feeItems);
 
-      void queryClient.invalidateQueries({ queryKey: feeStructureCheckKey(activeAcademicTermId) });
+      void queryClient.invalidateQueries({ queryKey: feeStructureCheckKey() });
 
       toast({
         title: 'Fee structure saved',
@@ -166,7 +166,7 @@ const SetFeeStructure = () => {
         dueDate: editForm.dueDate || undefined,
         description: editForm.description || undefined,
       });
-      void queryClient.invalidateQueries({ queryKey: feeStructureCheckKey(activeAcademicTermId) });
+      void queryClient.invalidateQueries({ queryKey: feeStructureCheckKey() });
       toast({
         title: 'Fee structure saved',
         description: `Total Term Bill: GHS ${saved.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
@@ -186,7 +186,7 @@ const SetFeeStructure = () => {
     setIsSubmitting(true);
     try {
       await deleteFeeStructure(fee.id);
-      void queryClient.invalidateQueries({ queryKey: feeStructureCheckKey(activeAcademicTermId) });
+      void queryClient.invalidateQueries({ queryKey: feeStructureCheckKey() });
       toast({ title: 'Fee structure deleted' });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to delete';

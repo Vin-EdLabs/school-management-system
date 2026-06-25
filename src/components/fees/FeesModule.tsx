@@ -57,7 +57,7 @@ const FeesModule: React.FC<FeesModuleProps> = ({ onNavigate }) => {
   const [structureModalDismissed, setStructureModalDismissed] = useState(false);
 
   const { data: structureCheck, isLoading: structureLoading } = useFeeStructureCheck(
-    activeAcademicTermId,
+    null,
     hasActiveTerm
   );
 

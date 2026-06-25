@@ -99,20 +99,25 @@ router.get('/', async (req: AuthRequest, res) => {
   }
 });
 
-// GET /api/fees/structure-check?term_id= — verify all classes have fee structures for the term
+// GET /api/fees/structure-check — verify all in-use classes have fee structures for the active term
 router.get('/structure-check', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const rawTermId = req.query.term_id ?? req.query.termId;
-    const termId =
+    const academicTermId =
       rawTermId != null && String(rawTermId).trim() !== ''
         ? parseInt(String(rawTermId), 10)
         : undefined;
+    const termHint =
+      req.query.term != null && String(req.query.term).trim() !== ''
+        ? String(req.query.term).trim()
+        : undefined;
 
-    const result = await checkFeeStructureCompleteness(
-      tenantId,
-      termId != null && !Number.isNaN(termId) ? termId : undefined
-    );
+    const result = await checkFeeStructureCompleteness(tenantId, {
+      academicTermId:
+        academicTermId != null && !Number.isNaN(academicTermId) ? academicTermId : undefined,
+      termHint,
+    });
 
     return res.json({
       complete: result.complete,

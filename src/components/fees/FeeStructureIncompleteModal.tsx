@@ -44,8 +44,8 @@ const FeeStructureIncompleteModal: React.FC<FeeStructureIncompleteModalProps> = 
             <div className="min-w-0">
               <DialogTitle>Fee structure not configured</DialogTitle>
               <DialogDescription className="mt-1.5">
-                Fee structures have not been set for the following classes this term. Configure them
-                before recording any payments.
+                Fee structures have not been set for the following classes with enrolled students
+                this term. Configure them before recording any payments.
               </DialogDescription>
             </div>
           </div>

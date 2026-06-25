@@ -11,19 +11,21 @@ export type FeeStructureCheckResult = {
   term_id: number | null;
 };
 
-export function feeStructureCheckKey(termId: number | null | undefined) {
-  return ['fee-structure-check', termId ?? 'active'] as const;
+/** Stable key — check always uses school_settings (same source as saving fees). */
+export const FEE_STRUCTURE_CHECK_KEY = ['fee-structure-check', 'active'] as const;
+
+export function feeStructureCheckKey(_termId?: number | null) {
+  return FEE_STRUCTURE_CHECK_KEY;
 }
 
-export function useFeeStructureCheck(termId: number | null | undefined, enabled = true) {
+export function useFeeStructureCheck(_termId?: number | null, enabled = true) {
   return useQuery({
-    queryKey: feeStructureCheckKey(termId),
-    queryFn: async () => {
-      const query = termId != null ? `?term_id=${termId}` : '';
-      return apiService.get<FeeStructureCheckResult>(`/fees/structure-check${query}`);
-    },
+    queryKey: FEE_STRUCTURE_CHECK_KEY,
+    queryFn: async () => apiService.get<FeeStructureCheckResult>('/fees/structure-check'),
     enabled,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30 * 1000,
     gcTime: 30 * 60 * 1000,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 }

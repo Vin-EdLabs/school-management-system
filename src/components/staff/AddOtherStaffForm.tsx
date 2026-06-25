@@ -10,6 +10,15 @@ import { apiService } from '@/services/api';
 import { toast } from '@/hooks/use-toast';
 import { Loader2, UserPlus, Camera } from 'lucide-react';
 import StaffOptionalSections from './StaffOptionalSections';
+import StaffFieldSelect from '../common/StaffFieldSelect';
+import { FormFieldError, FormValidationSummary } from '@/components/common/FormFieldError';
+import {
+  clearFieldError,
+  fieldInvalidClass,
+  getOtherStaffValidationRules,
+  scrollToFormField,
+  validateFormFields,
+} from '@/utils/formValidation';
 import type { OtherStaffRecord } from './otherStaffTypes';
 
 interface AddOtherStaffFormProps {
@@ -48,6 +57,8 @@ const AddOtherStaffForm: React.FC<AddOtherStaffFormProps> = ({ onSuccess }) => {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [showEmergency, setShowEmergency] = useState(false);
   const [showBank, setShowBank] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [validationSummary, setValidationSummary] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const submitLock = useRef(false);
 
@@ -55,19 +66,36 @@ const AddOtherStaffForm: React.FC<AddOtherStaffFormProps> = ({ onSuccess }) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  const runValidation = () => {
+    const result = validateFormFields(getOtherStaffValidationRules(form));
+    if (result.ok) {
+      setFieldErrors({});
+      setValidationSummary('');
+      return true;
+    }
+    setFieldErrors(result.errors);
+    setValidationSummary(result.summary);
+    scrollToFormField(result.firstFieldId, result.firstSectionId);
+    toast({
+      title: 'Missing required information',
+      description: result.summary,
+      variant: 'destructive',
+    });
+    return false;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting || submitLock.current) return;
-    if (!form.full_name.trim()) {
-      toast({ title: 'Validation Error', description: 'Full name is required', variant: 'destructive' });
-      return;
-    }
+    if (!runValidation()) return;
 
     setIsSubmitting(true);
     submitLock.current = true;
     try {
       const body = {
         ...form,
+        date_of_birth: form.date_of_birth.trim() || null,
+        employment_date: form.employment_date.trim() || null,
         monthly_salary: form.monthly_salary ? parseFloat(form.monthly_salary) : 0,
         ssnit_enabled: form.ssnit_enabled,
         emergency_contact_name: form.emergency_contact_name || null,
@@ -126,15 +154,20 @@ const AddOtherStaffForm: React.FC<AddOtherStaffFormProps> = ({ onSuccess }) => {
       </CardHeader>
       <CardContent className="px-4 py-5 sm:px-6 md:px-8 md:py-6">
         <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FormValidationSummary message={validationSummary} />
+          <div id="other-staff-personal" className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="full_name">Full Name *</Label>
+              <Label htmlFor="other-staff-full-name">Full Name *</Label>
               <Input
-                id="full_name"
+                id="other-staff-full-name"
                 value={form.full_name}
-                onChange={(e) => set('full_name', e.target.value)}
-                required
+                onChange={(e) => {
+                  clearFieldError(fieldErrors, 'other-staff-full-name', setFieldErrors);
+                  set('full_name', e.target.value);
+                }}
+                className={fieldInvalidClass(!!fieldErrors['other-staff-full-name'])}
               />
+              <FormFieldError message={fieldErrors['other-staff-full-name']} />
             </div>
             <div className="space-y-2">
               <Label>Gender</Label>
@@ -220,25 +253,33 @@ const AddOtherStaffForm: React.FC<AddOtherStaffFormProps> = ({ onSuccess }) => {
           </div>
 
           <p className="text-sm font-semibold text-foreground pt-2 border-t border-border/60">Employment Details</p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="position">Position</Label>
-              <Input
-                id="position"
-                value={form.position}
-                onChange={(e) => set('position', e.target.value)}
-                placeholder="e.g. Bus Driver, Security, Accountant"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="department">Department</Label>
-              <Input
-                id="department"
-                value={form.department}
-                onChange={(e) => set('department', e.target.value)}
-                placeholder="e.g. Finance"
-              />
-            </div>
+          <div id="other-staff-employment" className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <StaffFieldSelect
+              field="position"
+              id="other-staff-position"
+              label="Position"
+              value={form.position}
+              onChange={(value) => {
+                clearFieldError(fieldErrors, 'other-staff-position', setFieldErrors);
+                set('position', value);
+              }}
+              placeholder="e.g. Bus Driver, Security, Accountant"
+              required
+              error={fieldErrors['other-staff-position']}
+            />
+            <StaffFieldSelect
+              field="department"
+              id="other-staff-department"
+              label="Department"
+              value={form.department}
+              onChange={(value) => {
+                clearFieldError(fieldErrors, 'other-staff-department', setFieldErrors);
+                set('department', value);
+              }}
+              placeholder="e.g. Finance"
+              required
+              error={fieldErrors['other-staff-department']}
+            />
             <div className="space-y-2">
               <Label>Employment Type</Label>
               <Select value={form.employment_type} onValueChange={(v) => set('employment_type', v)}>

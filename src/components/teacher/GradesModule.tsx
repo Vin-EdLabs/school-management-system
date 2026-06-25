@@ -19,6 +19,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { formatDisplayDate, formatDisplayDateTime } from '../../utils/dateFormat';
 import { downloadTermReportCardPdf } from '../reports/buildTermReportCardPdf';
 import SignaturePad from '@/components/common/SignaturePad';
+import type { SubjectClassGroupedByClass, TeacherSubjectClassesResponse } from '@/types/teacherSubjectClass';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -201,6 +202,7 @@ const GradesModule = () => {
   const reportCardRef = useRef<HTMLDivElement>(null);
 
   const [teacherClasses, setTeacherClasses] = useState<TeacherClass[]>([]);
+  const [subjectClassesByClass, setSubjectClassesByClass] = useState<SubjectClassGroupedByClass[]>([]);
   const [selectedClassId, setSelectedClassId] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -271,6 +273,22 @@ const GradesModule = () => {
   const allClassesAsTeacherClass = useMemo<TeacherClass[]>(() => {
     return classes.map(c => ({ id: Number(c.id), class_name: c.className }));
   }, [classes]);
+
+  const subjectsForSelectedClass = useMemo(() => {
+    if (isAdminViewer) return globalSubjects;
+    const row = subjectClassesByClass.find((c) => String(c.class_id) === selectedClassId);
+    const allowed = new Set((row?.subjects || []).map((s) => s.subject_name.toLowerCase()));
+    if (!allowed.size) return [];
+    return globalSubjects.filter((s) => allowed.has(s.name.toLowerCase()));
+  }, [isAdminViewer, globalSubjects, subjectClassesByClass, selectedClassId]);
+
+  useEffect(() => {
+    if (isAdminViewer) return;
+    void apiService
+      .get<TeacherSubjectClassesResponse>('/teachers/me/subject-classes')
+      .then((d) => setSubjectClassesByClass(d.by_class || []))
+      .catch(() => setSubjectClassesByClass([]));
+  }, [isAdminViewer, schoolId]);
 
   useEffect(() => {
     if (isAdminViewer) {
@@ -1858,10 +1876,12 @@ const GradesModule = () => {
                   <SelectValue placeholder="Choose subject…" />
                 </SelectTrigger>
                 <SelectContent>
-                  {globalSubjects.length > 0 ? (
-                    globalSubjects.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)
+                  {subjectsForSelectedClass.length > 0 ? (
+                    subjectsForSelectedClass.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)
                   ) : (
-                    <div className="px-2 py-3 text-sm text-gray-500 text-center italic">No subjects defined in system</div>
+                    <div className="px-2 py-3 text-sm text-gray-500 text-center italic">
+                      {isAdminViewer ? 'No subjects defined in system' : 'No subjects assigned for this class'}
+                    </div>
                   )}
                   <div className="border-t my-1" />
                   <SelectItem value="__custom__">+ Other (type below)</SelectItem>

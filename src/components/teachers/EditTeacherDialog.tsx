@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { useData, type Teacher } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
-import { X, Camera } from 'lucide-react';
+import { Camera } from 'lucide-react';
 import { apiService } from '@/services/api';
 import LazyTeacherAvatar from './LazyTeacherAvatar';
 import { teacherStatusBadge } from './TeacherStatusModals';
@@ -17,6 +17,22 @@ import StaffOptionalSections from '../staff/StaffOptionalSections';
 import StaffFieldSelect from '../common/StaffFieldSelect';
 import PasswordConfirmDialog from '../common/PasswordConfirmDialog';
 import { persistStaffProfileFields } from '@/services/staffFieldApi';
+import TeacherSubjectClassAssignment from './TeacherSubjectClassAssignment';
+import { FormFieldError, FormValidationSummary } from '@/components/common/FormFieldError';
+import {
+  flattenSubjectClassMap,
+  deriveSubjectNamesFromMap,
+  groupedToSubjectClassMap,
+  type SubjectClassMap,
+  type TeacherSubjectClassesResponse,
+} from '@/types/teacherSubjectClass';
+import {
+  clearFieldError,
+  fieldInvalidClass,
+  getTeacherValidationRules,
+  scrollToFormField,
+  validateFormFields,
+} from '@/utils/formValidation';
 
 interface EditTeacherDialogProps {
   teacher: Teacher | null;
@@ -31,9 +47,13 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
   onClose,
   onSuccess
 }) => {
-  const { updateTeacher, subjects } = useData();
+  const { updateTeacher, subjects, classes } = useData();
   const { user } = useAuth();
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [validationSummary, setValidationSummary] = useState('');
+  const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
+  const [subjectClassMap, setSubjectClassMap] = useState<SubjectClassMap>({});
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -66,54 +86,72 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
       setShowPasswordDialog(false);
       setPhotoFile(null);
       setPhotoPreview(null);
+      setFieldErrors({});
+      setValidationSummary('');
     }
   }, [open]);
 
   useEffect(() => {
-    if (teacher) {
-      setFormData({
-        fullName: teacher.fullName,
-        gender: teacher.gender,
-        dateOfBirth: teacher.dateOfBirth,
-        phoneNumber: teacher.phoneNumber,
-        email: teacher.email,
-        address: teacher.address,
-        subjectsTaught: teacher.subjectsTaught,
-        employmentDate: teacher.employmentDate,
-        monthlySalary: teacher.monthlySalary.toString(),
-        notes: teacher.notes,
-        emergencyContactName: teacher.emergencyContactName || '',
-        emergencyContactPhone: teacher.emergencyContactPhone || '',
-        emergencyContactRelationship: teacher.emergencyContactRelationship || '',
-        bankName: teacher.bankName || '',
-        bankAccountName: teacher.bankAccountName || '',
-        bankAccountNumber: teacher.bankAccountNumber || '',
-        bankBranch: teacher.bankBranch || '',
-        position: teacher.position || '',
-        department: teacher.department || '',
-      });
-      setShowEmergency(!!(teacher.emergencyContactName || teacher.emergencyContactPhone));
-      setShowBank(!!(teacher.bankName || teacher.bankAccountNumber));
-      setPhotoFile(null);
-      setPhotoPreview(null);
-    }
-  }, [teacher]);
+    if (!teacher || !open) return;
+    setFormData({
+      fullName: teacher.fullName,
+      gender: teacher.gender,
+      dateOfBirth: teacher.dateOfBirth,
+      phoneNumber: teacher.phoneNumber,
+      email: teacher.email,
+      address: teacher.address,
+      subjectsTaught: teacher.subjectsTaught,
+      employmentDate: teacher.employmentDate,
+      monthlySalary: teacher.monthlySalary.toString(),
+      notes: teacher.notes,
+      emergencyContactName: teacher.emergencyContactName || '',
+      emergencyContactPhone: teacher.emergencyContactPhone || '',
+      emergencyContactRelationship: teacher.emergencyContactRelationship || '',
+      bankName: teacher.bankName || '',
+      bankAccountName: teacher.bankAccountName || '',
+      bankAccountNumber: teacher.bankAccountNumber || '',
+      bankBranch: teacher.bankBranch || '',
+      position: teacher.position || '',
+      department: teacher.department || '',
+    });
+    setShowEmergency(!!(teacher.emergencyContactName || teacher.emergencyContactPhone));
+    setShowBank(!!(teacher.bankName || teacher.bankAccountNumber));
+    setPhotoFile(null);
+    setPhotoPreview(null);
+  }, [teacher, open]);
 
-  const handleAddSubject = (subject: string) => {
-    if (!formData.subjectsTaught.includes(subject)) {
-      setFormData(prev => ({
-        ...prev,
-        subjectsTaught: [...prev.subjectsTaught, subject]
-      }));
-    }
-  };
+  useEffect(() => {
+    if (!teacher || !open) return;
 
-  const handleRemoveSubject = (subject: string) => {
-    setFormData(prev => ({
-      ...prev,
-      subjectsTaught: prev.subjectsTaught.filter(s => s !== subject)
-    }));
-  };
+    void (async () => {
+      try {
+        const data = await apiService.get<TeacherSubjectClassesResponse>(
+          `/teachers/${teacher.id}/subject-classes`
+        );
+        const mapped = groupedToSubjectClassMap(data);
+        if (mapped.selectedSubjectIds.length > 0) {
+          setSelectedSubjectIds(mapped.selectedSubjectIds);
+          setSubjectClassMap(mapped.subjectClassMap);
+          return;
+        }
+      } catch {
+        /* legacy fallback */
+      }
+      const legacyIds = (teacher.subjectsTaught || [])
+        .map((name) => subjects.find((s) => s.name === name)?.id)
+        .filter(Boolean) as string[];
+      setSelectedSubjectIds(legacyIds);
+      const legacyMap: SubjectClassMap = {};
+      for (const sid of legacyIds) {
+        legacyMap[sid] = (teacher.assignedClassIds || []).length
+          ? [...teacher.assignedClassIds!]
+          : teacher.classAssignedId
+            ? [String(teacher.classAssignedId)]
+            : [''];
+      }
+      setSubjectClassMap(legacyMap);
+    })();
+  }, [teacher?.id, open, subjects]);
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -124,17 +162,32 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
 
   const performUpdate = async () => {
     if (!teacher) return;
+
+    const missingClass = selectedSubjectIds.some(
+      (sid) => !(subjectClassMap[sid] || []).some((cid) => cid && cid.trim() !== '')
+    );
+    if (selectedSubjectIds.length > 0 && missingClass) {
+      toast({
+        title: 'Class required for each subject',
+        description: 'Assign at least one class for every subject you added.',
+        variant: 'destructive',
+      });
+      scrollToFormField('teacher-subject-class-assignment');
+      return;
+    }
+
+    const subjectClassAssignments = flattenSubjectClassMap(subjectClassMap);
     const salaryValue = formData.monthlySalary.trim() === '' ? 0 : parseFloat(formData.monthlySalary) || 0;
     try {
       await updateTeacher(teacher.id, {
         fullName: formData.fullName,
         gender: formData.gender,
-        dateOfBirth: formData.dateOfBirth || undefined,
+        dateOfBirth: formData.dateOfBirth.trim(),
         phoneNumber: formData.phoneNumber,
         email: formData.email,
         address: formData.address,
-        subjectsTaught: formData.subjectsTaught,
-        employmentDate: formData.employmentDate || undefined,
+        subjectsTaught: deriveSubjectNamesFromMap(subjectClassMap, subjects),
+        employmentDate: formData.employmentDate.trim(),
         monthlySalary: salaryValue,
         notes: formData.notes,
         emergencyContactName: showEmergency ? formData.emergencyContactName : '',
@@ -144,8 +197,9 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
         bankAccountName: showBank ? formData.bankAccountName : '',
         bankAccountNumber: showBank ? formData.bankAccountNumber : '',
         bankBranch: showBank ? formData.bankBranch : '',
-        position: formData.position.trim() || undefined,
-        department: formData.department.trim() || undefined,
+        position: formData.position.trim(),
+        department: formData.department.trim(),
+        subjectClassAssignments,
       });
 
       await persistStaffProfileFields(formData.position, formData.department);
@@ -170,12 +224,27 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
     }
   };
 
+  const runValidation = () => {
+    const result = validateFormFields(getTeacherValidationRules(formData));
+    if (result.ok) {
+      setFieldErrors({});
+      setValidationSummary('');
+      return true;
+    }
+    setFieldErrors(result.errors);
+    setValidationSummary(result.summary);
+    scrollToFormField(result.firstFieldId, result.firstSectionId);
+    toast({
+      title: 'Missing required information',
+      description: result.summary,
+      variant: 'destructive',
+    });
+    return false;
+  };
+
   const handleUpdateClick = async () => {
     if (!teacher) return;
-    if (!formData.fullName || !formData.email || !formData.phoneNumber) {
-      toast({ title: "Validation Error", description: "Please fill in all required fields", variant: "destructive" });
-      return;
-    }
+    if (!runValidation()) return;
     // Super-admin can update without password; tenant users must verify their password
     if (user?.role === 'super-admin') {
       await performUpdate();
@@ -203,6 +272,7 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
 
         <DialogBody className="px-6 py-4">
         <div className="space-y-4">
+          <FormValidationSummary message={validationSummary} />
           <div className="space-y-3">
             <Label>Passport Photo</Label>
             <div className="flex items-center gap-4">
@@ -238,24 +308,34 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div id="teacher-personal" className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Staff ID</Label>
               <Input value={teacher.staffId} readOnly disabled className="bg-slate-50 cursor-not-allowed" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="fullName">Full Name *</Label>
+              <Label htmlFor="teacher-fullName">Full Name *</Label>
               <Input
-                id="fullName"
+                id="teacher-fullName"
                 value={formData.fullName}
-                onChange={(e) => setFormData(prev => ({ ...prev, fullName: e.target.value }))}
-                required
+                onChange={(e) => {
+                  clearFieldError(fieldErrors, 'teacher-fullName', setFieldErrors);
+                  setFormData(prev => ({ ...prev, fullName: e.target.value }));
+                }}
+                className={fieldInvalidClass(!!fieldErrors['teacher-fullName'])}
               />
+              <FormFieldError message={fieldErrors['teacher-fullName']} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="gender">Gender *</Label>
-              <Select value={formData.gender} onValueChange={(value) => setFormData(prev => ({ ...prev, gender: value }))}>
-                <SelectTrigger>
+              <Label htmlFor="teacher-gender">Gender *</Label>
+              <Select
+                value={formData.gender}
+                onValueChange={(value) => {
+                  clearFieldError(fieldErrors, 'teacher-gender', setFieldErrors);
+                  setFormData(prev => ({ ...prev, gender: value }));
+                }}
+              >
+                <SelectTrigger id="teacher-gender" className={fieldInvalidClass(!!fieldErrors['teacher-gender'])}>
                   <SelectValue placeholder="Select gender" />
                 </SelectTrigger>
                 <SelectContent>
@@ -263,6 +343,7 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
                   <SelectItem value="Female">Female</SelectItem>
                 </SelectContent>
               </Select>
+              <FormFieldError message={fieldErrors['teacher-gender']} />
             </div>
           </div>
 
@@ -277,25 +358,33 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="phoneNumber">Phone Number *</Label>
+              <Label htmlFor="teacher-phoneNumber">Phone Number *</Label>
               <Input
-                id="phoneNumber"
+                id="teacher-phoneNumber"
                 value={formData.phoneNumber}
-                onChange={(e) => setFormData(prev => ({ ...prev, phoneNumber: e.target.value }))}
-                required
+                onChange={(e) => {
+                  clearFieldError(fieldErrors, 'teacher-phoneNumber', setFieldErrors);
+                  setFormData(prev => ({ ...prev, phoneNumber: e.target.value }));
+                }}
+                className={fieldInvalidClass(!!fieldErrors['teacher-phoneNumber'])}
               />
+              <FormFieldError message={fieldErrors['teacher-phoneNumber']} />
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="email">Email Address *</Label>
+            <Label htmlFor="teacher-email">Email Address *</Label>
             <Input
-              id="email"
+              id="teacher-email"
               type="email"
               value={formData.email}
-              onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-              required
+              onChange={(e) => {
+                clearFieldError(fieldErrors, 'teacher-email', setFieldErrors);
+                setFormData(prev => ({ ...prev, email: e.target.value }));
+              }}
+              className={fieldInvalidClass(!!fieldErrors['teacher-email'])}
             />
+            <FormFieldError message={fieldErrors['teacher-email']} />
           </div>
 
           <div className="space-y-2">
@@ -327,32 +416,14 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
             />
           </div>
 
-          <div className="space-y-2">
-            <Label>Subjects Taught</Label>
-            <Select onValueChange={handleAddSubject}>
-              <SelectTrigger>
-                <SelectValue placeholder="Add subjects" />
-              </SelectTrigger>
-              <SelectContent>
-                {subjects.filter(subject => !formData.subjectsTaught.includes(subject.name)).map((subject) => (
-                  <SelectItem key={subject.id} value={subject.name}>
-                    {subject.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <div className="flex flex-wrap gap-2 mt-2">
-              {formData.subjectsTaught.map((subject) => (
-                <Badge key={subject} variant="secondary" className="flex items-center space-x-1">
-                  <span>{subject}</span>
-                  <X
-                    className="w-3 h-3 cursor-pointer"
-                    onClick={() => handleRemoveSubject(subject)}
-                  />
-                </Badge>
-              ))}
-            </div>
-          </div>
+          <TeacherSubjectClassAssignment
+            subjects={subjects}
+            classes={classes}
+            selectedSubjectIds={selectedSubjectIds}
+            subjectClassMap={subjectClassMap}
+            onSelectedSubjectIdsChange={setSelectedSubjectIds}
+            onSubjectClassMapChange={setSubjectClassMap}
+          />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -440,7 +511,13 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
       title="Confirm teacher update"
       description="Enter your password to save changes to this teacher profile."
       confirmLabel="Confirm update"
-      onConfirmed={performUpdate}
+      onConfirmed={async () => {
+        if (!runValidation()) {
+          setShowPasswordDialog(false);
+          return;
+        }
+        await performUpdate();
+      }}
     />
     </>
   );

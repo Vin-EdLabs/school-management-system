@@ -12,6 +12,15 @@ import { uploadStudentPhotoInBackground } from '@/hooks/useStudentCache';
 import { toast } from '@/hooks/use-toast';
 import { Loader2, Save, UserPlus, Camera, X, GraduationCap as ScholarshipIcon } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
+import { FormFieldError, FormValidationSummary } from '@/components/common/FormFieldError';
+import { cn } from '@/lib/utils';
+import {
+  clearFieldError,
+  fieldInvalidClass,
+  getStudentValidationRules,
+  scrollToFormField,
+  validateFormFields,
+} from '@/utils/formValidation';
 
 interface AddStudentFormProps {
   onSuccess?: (mode?: 'active' | 'pending') => void;
@@ -33,6 +42,8 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [siblingSearch, setSiblingSearch] = useState('');
   const [selectedSiblings, setSelectedSiblings] = useState<any[]>([]);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [validationSummary, setValidationSummary] = useState('');
   const [previewPhoto, setPreviewPhoto] = useState<{ url: string; name: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -98,10 +109,29 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
   });
 
   const handleInputChange = (field: string, value: unknown) => {
+    clearFieldError(fieldErrors, field, setFieldErrors);
     setFormData(prev => ({
       ...prev,
       [field]: value
     }));
+  };
+
+  const runValidation = (requiresClass: boolean) => {
+    const result = validateFormFields(getStudentValidationRules(formData, { requiresClass }));
+    if (result.ok) {
+      setFieldErrors({});
+      setValidationSummary('');
+      return true;
+    }
+    setFieldErrors(result.errors);
+    setValidationSummary(result.summary);
+    scrollToFormField(result.firstFieldId, result.firstSectionId);
+    toast({
+      title: 'Missing required information',
+      description: result.summary,
+      variant: 'destructive',
+    });
+    return false;
   };
 
   const computedAge = useMemo(() => {
@@ -142,27 +172,7 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
     if (isSubmitting) return;
 
     const requiresClass = enrollmentStatus === 'active';
-    if (
-      !formData.firstName ||
-      !formData.lastName ||
-      !formData.gender ||
-      !formData.dateOfBirth ||
-      !formData.nationality ||
-      (requiresClass && !formData.classAssigned) ||
-      !formData.dateOfAdmission ||
-      !formData.guardianName ||
-      !formData.guardianContact ||
-      !formData.homeAddress
-    ) {
-      toast({
-        title: 'Validation Error',
-        description: requiresClass
-          ? 'Please fill in all required fields marked with *'
-          : 'Please fill in all required fields (class can be assigned when approving admission)',
-        variant: 'destructive',
-      });
-      return;
-    }
+    if (!runValidation(requiresClass)) return;
 
     const classObj = formData.classAssigned ? classes.find((c) => c.className === formData.classAssigned) : undefined;
     const classAssignedId = classObj ? parseInt(classObj.id, 10) : undefined;
@@ -253,6 +263,7 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
           }}
           className="space-y-10"
         >
+          <FormValidationSummary message={validationSummary} />
           {/* Passport Photo Section */}
           <div className="bg-slate-50/30 dark:bg-slate-800/20 p-6 rounded-[1.5rem] border border-slate-200/50 dark:border-slate-700/50 space-y-4">
             <Label className="text-sm font-medium text-slate-700 dark:text-slate-300 ml-1">Passport photo</Label>
@@ -299,7 +310,7 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
             </div>
 
             {/* Personal Information */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div id="student-personal" className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2.5">
                 <Label htmlFor="firstName" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">First Name <span className="text-red-500">*</span></Label>
                 <Input
@@ -307,9 +318,12 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
                   value={formData.firstName}
                   onChange={(e) => handleInputChange('firstName', e.target.value)}
                   placeholder="e.g. Michael"
-                  required
-                  className="h-12 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20 font-medium"
+                  className={cn(
+                    'h-12 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20 font-medium',
+                    fieldInvalidClass(!!fieldErrors.firstName)
+                  )}
                 />
+                <FormFieldError message={fieldErrors.firstName} />
               </div>
               <div className="space-y-2.5">
                 <Label htmlFor="lastName" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Last Name <span className="text-red-500">*</span></Label>
@@ -318,17 +332,20 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
                   value={formData.lastName}
                   onChange={(e) => handleInputChange('lastName', e.target.value)}
                   placeholder="e.g. Mensah"
-                  required
-                  className="h-12 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20 font-medium"
+                  className={cn(
+                    'h-12 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20 font-medium',
+                    fieldInvalidClass(!!fieldErrors.lastName)
+                  )}
                 />
+                <FormFieldError message={fieldErrors.lastName} />
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div id="student-personal-details" className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="space-y-2.5">
                 <Label htmlFor="gender" className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Gender <span className="text-red-500">*</span></Label>
                 <Select value={formData.gender} onValueChange={(value) => handleInputChange('gender', value)}>
-                  <SelectTrigger className="h-12 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl">
+                  <SelectTrigger id="gender" className={cn('h-12 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl', fieldInvalidClass(!!fieldErrors.gender))}>
                     <SelectValue placeholder="Select gender" />
                   </SelectTrigger>
                   <SelectContent className="rounded-xl border-slate-200 dark:border-slate-800 shadow-xl">
@@ -336,6 +353,7 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
                     <SelectItem value="Female" className="rounded-lg">Female</SelectItem>
                   </SelectContent>
                 </Select>
+                <FormFieldError message={fieldErrors.gender} />
               </div>
               <div className="space-y-2.5">
                 <Label htmlFor="dateOfBirth" className="text-sm font-medium text-slate-700 dark:text-slate-300 ml-1">
@@ -346,9 +364,12 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
                   type="date"
                   value={formData.dateOfBirth}
                   onChange={(e) => handleInputChange('dateOfBirth', e.target.value)}
-                  required
-                  className="h-12 bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-700 rounded-xl text-base antialiased [text-rendering:optimizeLegibility]"
+                  className={cn(
+                    'h-12 bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-700 rounded-xl text-base antialiased [text-rendering:optimizeLegibility]',
+                    fieldInvalidClass(!!fieldErrors.dateOfBirth)
+                  )}
                 />
+                <FormFieldError message={fieldErrors.dateOfBirth} />
                 {computedAge !== null && (
                   <p
                     className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-900 antialiased [text-rendering:optimizeLegibility] dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
@@ -367,9 +388,9 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
                   value={formData.nationality}
                   onChange={(e) => handleInputChange('nationality', e.target.value)}
                   placeholder="Enter nationality"
-                  required
-                  className="h-12 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl"
+                  className={cn('h-12 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl', fieldInvalidClass(!!fieldErrors.nationality))}
                 />
+                <FormFieldError message={fieldErrors.nationality} />
               </div>
             </div>
 
@@ -380,7 +401,7 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
             </div>
 
             {/* School Information */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div id="student-enrollment" className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2.5">
                 <Label className="text-sm font-medium text-slate-700 dark:text-slate-300 ml-1">Student ID & admission</Label>
                 <div className="flex h-12 items-center rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-400">
@@ -393,7 +414,7 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
                 </Label>
                 <p className="text-[11px] text-muted-foreground ml-1">Optional when saving as pending — assign class on approval.</p>
                 <Select value={formData.classAssigned} onValueChange={(value) => handleInputChange('classAssigned', value)}>
-                  <SelectTrigger className="h-12 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl">
+                  <SelectTrigger id="classAssigned" className={cn('h-12 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl', fieldInvalidClass(!!fieldErrors.classAssigned))}>
                     <SelectValue placeholder="Select class" />
                   </SelectTrigger>
                   <SelectContent className="rounded-xl border-slate-200 dark:border-slate-800 shadow-xl">
@@ -404,6 +425,7 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
                     ))}
                   </SelectContent>
                 </Select>
+                <FormFieldError message={fieldErrors.classAssigned} />
               </div>
             </div>
 
@@ -414,7 +436,7 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
             </div>
 
             {/* Guardian Information */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div id="student-guardian" className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2.5">
                 <Label htmlFor="guardianName" className="text-sm font-medium text-slate-700 dark:text-slate-300 ml-1">
                   Guardian name <span className="text-red-500">*</span>
@@ -424,9 +446,9 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
                   value={formData.guardianName}
                   onChange={(e) => handleInputChange('guardianName', e.target.value)}
                   placeholder="Enter primary guardian"
-                  required
-                  className="h-12 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl"
+                  className={cn('h-12 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl', fieldInvalidClass(!!fieldErrors.guardianName))}
                 />
+                <FormFieldError message={fieldErrors.guardianName} />
               </div>
               <div className="space-y-2.5">
                 <Label htmlFor="guardianContact" className="text-sm font-medium text-slate-700 dark:text-slate-300 ml-1">
@@ -437,9 +459,9 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
                   value={formData.guardianContact}
                   onChange={(e) => handleInputChange('guardianContact', e.target.value)}
                   placeholder="Phone or Email"
-                  required
-                  className="h-12 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl"
+                  className={cn('h-12 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl', fieldInvalidClass(!!fieldErrors.guardianContact))}
                 />
+                <FormFieldError message={fieldErrors.guardianContact} />
               </div>
             </div>
 
@@ -498,9 +520,9 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
                 onChange={(e) => handleInputChange('homeAddress', e.target.value)}
                 placeholder="Street, area, city…"
                 rows={3}
-                required
-                className="bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20"
+                className={cn('bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl', fieldInvalidClass(!!fieldErrors.homeAddress))}
               />
+              <FormFieldError message={fieldErrors.homeAddress} />
             </div>
 
             <div className="flex items-center gap-3">
@@ -656,9 +678,9 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
                   type="date"
                   value={formData.dateOfAdmission}
                   onChange={(e) => handleInputChange('dateOfAdmission', e.target.value)}
-                  required
-                  className="h-12 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl"
+                  className={cn('h-12 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 rounded-xl', fieldInvalidClass(!!fieldErrors.dateOfAdmission))}
                 />
+                <FormFieldError message={fieldErrors.dateOfAdmission} />
               </div>
             </div>
 

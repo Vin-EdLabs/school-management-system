@@ -7,6 +7,8 @@ import { useSchool } from '../../contexts/SchoolContext';
 import { type TeacherMySalaryResponse, formatTeacherMoney, salaryStatusBadgeClass } from './teacherSalaryPortal';
 import LazyTeacherAvatar from '../teachers/LazyTeacherAvatar';
 import TeacherAppointmentLettersPanel from './TeacherAppointmentLettersPanel';
+import TeacherSubjectClassDisplay from '../teachers/TeacherSubjectClassDisplay';
+import type { TeacherSubjectClassesResponse } from '@/types/teacherSubjectClass';
 
 interface TeacherProfile {
   id: number;
@@ -31,6 +33,7 @@ const TeacherProfileModule = () => {
   const { schoolId } = useSchool();
   const [profile, setProfile] = useState<TeacherProfile | null>(null);
   const [teacherClasses, setTeacherClasses] = useState<TeacherClass[]>([]);
+  const [subjectClasses, setSubjectClasses] = useState<TeacherSubjectClassesResponse | null>(null);
   const [salaryInfo, setSalaryInfo] = useState<TeacherMySalaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -42,14 +45,16 @@ const TeacherProfileModule = () => {
     const load = async () => {
       setLoading(true);
       try {
-        const [profRes, classesRes, salaryRes] = await Promise.all([
+        const [profRes, classesRes, salaryRes, subjectClassRes] = await Promise.all([
           apiService.get<TeacherProfile>('/teachers/me').catch(() => null),
           apiService.get<TeacherClass[]>('/teachers/me/classes').catch(() => []),
           apiService.get<TeacherMySalaryResponse>('/payroll/my-salary').catch(() => null),
+          apiService.get<TeacherSubjectClassesResponse>('/teachers/me/subject-classes').catch(() => null),
         ]);
         setProfile(profRes);
         setTeacherClasses(Array.isArray(classesRes) ? classesRes : []);
         setSalaryInfo(salaryRes);
+        setSubjectClasses(subjectClassRes);
       } catch {
         setProfile(null);
       } finally {
@@ -130,10 +135,13 @@ const TeacherProfileModule = () => {
             </div>
           </div>
           <div>
-            <p className="text-sm text-gray-600 mb-2">Subjects Taught</p>
-            <div className="flex flex-wrap gap-2">
-              {profile.subjects_taught?.length ? profile.subjects_taught.map((s, i) => <Badge key={i} variant="secondary">{s}</Badge>) : <span className="text-gray-500">None</span>}
-            </div>
+            <p className="text-sm text-gray-600 mb-2">Teaching assignments</p>
+            <TeacherSubjectClassDisplay
+              bySubject={subjectClasses?.by_subject}
+              byClass={subjectClasses?.by_class}
+              layout="both"
+              emptyMessage="No subject-class assignments configured yet."
+            />
           </div>
         </CardContent>
       </Card>

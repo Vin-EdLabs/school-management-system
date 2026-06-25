@@ -176,7 +176,7 @@ const ViewAllClasses = () => {
                 <TableHead>Level</TableHead>
                 <TableHead>Stream</TableHead>
                 <TableHead>Students</TableHead>
-                <TableHead>Assigned Teacher</TableHead>
+                <TableHead>Main Teacher</TableHead>
                 <TableHead>Capacity</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>

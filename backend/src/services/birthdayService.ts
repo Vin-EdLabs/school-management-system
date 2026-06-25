@@ -452,15 +452,184 @@ export async function getStudentBirthdaysForParent(
   }));
 }
 
-export async function getClassTeacherIds(
+export async function getTeacherAssignedClassIds(
   tenantId: number,
   teacherId: number
 ): Promise<number[]> {
+  const baseUnion = `
+    SELECT ct.class_id
+    FROM class_teachers ct
+    WHERE ct.tenant_id = $1 AND ct.teacher_id = $2
+    UNION
+    SELECT t.class_assigned_id AS class_id
+    FROM teachers t
+    WHERE t.tenant_id = $1 AND t.id = $2 AND t.class_assigned_id IS NOT NULL
+  `;
+
+  try {
+    const res = await query(
+      `SELECT DISTINCT class_id FROM (
+         ${baseUnion}
+         UNION
+         SELECT tsc.class_id
+         FROM teacher_subject_classes tsc
+         WHERE tsc.tenant_id = $1 AND tsc.teacher_id = $2
+       ) AS all_classes
+       WHERE class_id IS NOT NULL`,
+      [tenantId, teacherId]
+    );
+    return res.rows.map((r) => Number(r.class_id));
+  } catch (e: unknown) {
+    const err = e as { code?: string };
+    if (err.code !== '42P01') throw e;
+    const res = await query(
+      `SELECT DISTINCT class_id FROM (
+         ${baseUnion}
+       ) AS all_classes
+       WHERE class_id IS NOT NULL`,
+      [tenantId, teacherId]
+    );
+    return res.rows.map((r) => Number(r.class_id));
+  }
+}
+
+function mapStudentBirthdayRow(row: {
+  id: number;
+  first_name: string;
+  last_name: string;
+  date_of_birth: string;
+  class_assigned_id?: number | null;
+  class_name?: string | null;
+  passport_photo_url?: string | null;
+}): BirthdayPerson {
+  return {
+    id: row.id,
+    fullName: `${row.first_name} ${row.last_name}`,
+    type: 'student',
+    dateOfBirth: row.date_of_birth,
+    age: birthdayAge(row.date_of_birth),
+    classId: row.class_assigned_id ?? null,
+    className: row.class_name || null,
+    photoUrl: row.passport_photo_url || null,
+  };
+}
+
+export async function getStudentBirthdaysTodayForClasses(
+  tenantId: number,
+  classIds: number[]
+): Promise<BirthdayPerson[]> {
+  if (classIds.length === 0) return [];
+
+  const today = new Date();
+  const currentMonth = today.getMonth() + 1;
+  const currentDay = today.getDate();
+  const placeholders = classIds.map((_, i) => `$${i + 4}`).join(',');
+
   const res = await query(
-    `SELECT class_id FROM class_teachers WHERE tenant_id = $1 AND teacher_id = $2`,
-    [tenantId, teacherId]
+    `SELECT DISTINCT ON (s.id) s.id, s.first_name, s.last_name, s.date_of_birth,
+            s.class_assigned_id, s.passport_photo_url,
+            c.class_name
+     FROM students s
+     LEFT JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
+     WHERE s.tenant_id = $1
+       AND s.class_assigned_id IN (${placeholders})
+       AND s.date_of_birth IS NOT NULL
+       AND EXTRACT(MONTH FROM s.date_of_birth::date) = $2
+       AND EXTRACT(DAY FROM s.date_of_birth::date) = $3
+       AND (s.enrollment_status IS NULL OR s.enrollment_status = 'active')
+     ORDER BY s.id`,
+    [tenantId, currentMonth, currentDay, ...classIds]
   );
-  return res.rows.map((r) => r.class_id);
+
+  return res.rows.map(mapStudentBirthdayRow);
+}
+
+export async function getMyClassesBirthdaysToday(
+  tenantId: number,
+  teacherId: number
+): Promise<BirthdayPerson[]> {
+  const classIds = await getTeacherAssignedClassIds(tenantId, teacherId);
+  return getStudentBirthdaysTodayForClasses(tenantId, classIds);
+}
+
+export async function getBirthdaysForMonthForClasses(
+  tenantId: number,
+  year: number,
+  month: number,
+  classIds: number[],
+  options?: { fromDay?: number }
+): Promise<BirthdayGroup[]> {
+  if (classIds.length === 0) return [];
+
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const fromDay = options?.fromDay ?? 1;
+  const placeholders = classIds.map((_, i) => `$${i + 4}`).join(',');
+
+  const studentsRes = await query(
+    `SELECT s.id, s.first_name, s.last_name, s.date_of_birth,
+            s.class_assigned_id, s.passport_photo_url,
+            EXTRACT(DAY FROM s.date_of_birth::date)::int AS birth_day,
+            c.class_name
+     FROM students s
+     LEFT JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
+     WHERE s.tenant_id = $1
+       AND s.class_assigned_id IN (${placeholders})
+       AND s.date_of_birth IS NOT NULL
+       AND EXTRACT(MONTH FROM s.date_of_birth::date) = $2
+       AND EXTRACT(DAY FROM s.date_of_birth::date) >= $3
+       AND (s.enrollment_status IS NULL OR s.enrollment_status = 'active')`,
+    [tenantId, month, fromDay, ...classIds]
+  );
+
+  const people: Array<BirthdayPerson & { day: number }> = studentsRes.rows.map((row) => ({
+    ...mapStudentBirthdayRow(row),
+    age: ageOnBirthday(row.date_of_birth, year),
+    day: Number(row.birth_day),
+  }));
+
+  people.sort((a, b) => a.day - b.day);
+
+  const groups: Record<string, BirthdayPerson[]> = {};
+  for (const item of people) {
+    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(item.day).padStart(2, '0')}`;
+    if (!groups[dateStr]) groups[dateStr] = [];
+    const { day, ...person } = item;
+    groups[dateStr].push(person);
+  }
+
+  return Object.entries(groups).map(([date, groupPeople]) => {
+    const d = new Date(date + 'T12:00:00');
+    return { date, dayLabel: dayNames[d.getDay()], people: groupPeople };
+  });
+}
+
+export async function getTeacherClassesBirthdaysByMonthSections(
+  tenantId: number,
+  teacherId: number
+): Promise<{
+  label: string;
+  year: number;
+  month: number;
+  groups: BirthdayGroup[];
+}> {
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth() + 1;
+  const classIds = await getTeacherAssignedClassIds(tenantId, teacherId);
+  const groups = await getBirthdaysForMonthForClasses(
+    tenantId,
+    currentYear,
+    currentMonth,
+    classIds,
+    { fromDay: 1 }
+  );
+
+  return {
+    label: monthLabel(currentYear, currentMonth),
+    year: currentYear,
+    month: currentMonth,
+    groups,
+  };
 }
 
 /** Returns true only the first time a birthday wish is claimed for this person on this date. */

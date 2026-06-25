@@ -7,6 +7,8 @@ import { apiService } from '../../services/api';
 import { useSchool } from '../../contexts/SchoolContext';
 import { type TeacherMySalaryResponse, formatTeacherMoney, salaryStatusBadgeClass } from './teacherSalaryPortal';
 import { formatDisplayDate } from '../../utils/dateFormat';
+import TeacherSubjectClassDisplay from '../teachers/TeacherSubjectClassDisplay';
+import type { TeacherSubjectClassesResponse } from '@/types/teacherSubjectClass';
 
 interface TeacherProfile {
   id: number;
@@ -44,6 +46,7 @@ const TeacherDashboard = () => {
   const [profile, setProfile] = useState<TeacherProfile | null>(null);
   const [teacherClasses, setTeacherClasses] = useState<TeacherClass[]>([]);
   const [salaryInfo, setSalaryInfo] = useState<SalaryInfo | null>(null);
+  const [subjectClasses, setSubjectClasses] = useState<TeacherSubjectClassesResponse | null>(null);
   const [birthdayStudents, setBirthdayStudents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [profileError, setProfileError] = useState(false);
@@ -57,16 +60,18 @@ const TeacherDashboard = () => {
       setLoading(true);
       setProfileError(false);
       try {
-        const [profRes, classesRes, salaryRes, birthdayRes] = await Promise.all([
+        const [profRes, classesRes, salaryRes, birthdayRes, subjectClassRes] = await Promise.all([
           apiService.get<TeacherProfile>('/teachers/me').catch(() => null),
           apiService.get<TeacherClass[]>('/teachers/me/classes').catch(() => []),
           apiService.get<SalaryInfo>('/payroll/my-salary').catch(() => null),
           apiService.get<any[]>('/birthdays/my-classes/today').catch(() => []),
+          apiService.get<TeacherSubjectClassesResponse>('/teachers/me/subject-classes').catch(() => null),
         ]);
         setProfile(profRes);
         setTeacherClasses(Array.isArray(classesRes) ? classesRes : []);
         setSalaryInfo(salaryRes);
         setBirthdayStudents(Array.isArray(birthdayRes) ? birthdayRes : []);
+        setSubjectClasses(subjectClassRes);
         if (!profRes) setProfileError(true);
       } catch {
         setProfileError(true);
@@ -152,7 +157,7 @@ const TeacherDashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Subjects</p>
-                <p className="text-2xl sm:text-3xl font-bold text-gray-900">{profile.subjects_taught?.length || 0}</p>
+                <p className="text-2xl sm:text-3xl font-bold text-gray-900">{subjectClasses?.by_subject?.length || profile.subjects_taught?.length || 0}</p>
               </div>
               <ClipboardCheck className="w-8 h-8 text-purple-500" />
             </div>
@@ -177,7 +182,7 @@ const TeacherDashboard = () => {
           <CardHeader className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/20 pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
               <Cake className="w-5 h-5 text-amber-500" />
-              Birthday Students Today!
+              My Students&apos; Birthdays Today
               <Badge className="ml-auto bg-amber-500 text-white">{birthdayStudents.length}</Badge>
             </CardTitle>
           </CardHeader>
@@ -255,9 +260,14 @@ const TeacherDashboard = () => {
               <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between sm:gap-4"><span className="text-sm text-gray-600 shrink-0">Phone</span><span className="text-right sm:text-left">{profile.phone_number || '—'}</span></div>
               <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between sm:gap-4"><span className="text-sm text-gray-600 shrink-0">Classes</span><span className="text-right sm:text-left break-words">{teacherClasses.map(c => c.class_name).join(', ') || 'None'}</span></div>
               <div>
-                <span className="text-sm text-gray-600">Subjects:</span>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {profile.subjects_taught?.length ? profile.subjects_taught.map((s, i) => <Badge key={i} variant="outline">{s}</Badge>) : <span className="text-gray-500">None</span>}
+                <span className="text-sm text-gray-600">Teaching assignments:</span>
+                <div className="mt-2">
+                  <TeacherSubjectClassDisplay
+                    bySubject={subjectClasses?.by_subject}
+                    byClass={subjectClasses?.by_class}
+                    layout="by-subject"
+                    emptyMessage="None"
+                  />
                 </div>
               </div>
             </div>

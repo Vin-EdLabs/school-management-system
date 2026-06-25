@@ -19,7 +19,9 @@ import {
 import AppointmentLetterGeneratorDialog from './AppointmentLetterGeneratorDialog';
 import { useData } from '../../contexts/DataContext';
 import StaffDeleteConfirmDialog from '../common/StaffDeleteConfirmDialog';
+import TeacherSubjectClassDisplay from './TeacherSubjectClassDisplay';
 import TeacherStatusHistory from './TeacherStatusHistory';
+import type { TeacherSubjectClassesResponse } from '@/types/teacherSubjectClass';
 
 interface TeacherDetailsDialogProps {
   teacher: Teacher | null;
@@ -44,6 +46,7 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
   const [letterPreview, setLetterPreview] = useState<AppointmentLetterData | null>(null);
   const [showLetterGenerator, setShowLetterGenerator] = useState(false);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [subjectClasses, setSubjectClasses] = useState<TeacherSubjectClassesResponse | null>(null);
 
   const status = teacher?.status || 'active';
   const badge = teacher ? teacherStatusBadge(status) : null;
@@ -83,6 +86,23 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
     })();
     return () => { cancelled = true; };
   }, [open, teacher?.id, teacher?.hasPassportPhoto]);
+
+  useEffect(() => {
+    if (!open || !teacher) {
+      setSubjectClasses(null);
+      return;
+    }
+    void (async () => {
+      try {
+        const data = await apiService.get<TeacherSubjectClassesResponse>(
+          `/teachers/${teacher.id}/subject-classes`
+        );
+        setSubjectClasses(data);
+      } catch {
+        setSubjectClasses(null);
+      }
+    })();
+  }, [open, teacher?.id]);
 
   if (!teacher) return null;
 
@@ -189,13 +209,19 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
             <Separator />
 
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800/75 dark:text-emerald-300/80">Subjects</p>
-              <div className="flex flex-wrap gap-2 mt-2">
-                {teacher.subjectsTaught.map((subject, index) => (
-                  <Badge key={index} variant="secondary">{subject}</Badge>
-                ))}
-              </div>
-              <p className="mt-2 text-sm break-words">Class: {teacher.classAssigned || 'No class assigned'}</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800/75 dark:text-emerald-300/80 mb-2">
+                Teaching assignments
+              </p>
+              <TeacherSubjectClassDisplay
+                bySubject={subjectClasses?.by_subject}
+                byClass={subjectClasses?.by_class}
+                layout="both"
+                emptyMessage={
+                  teacher.subjectsTaught.length
+                    ? `${teacher.subjectsTaught.join(', ')} — class links not configured yet.`
+                    : 'No subject-class assignments yet.'
+                }
+              />
             </div>
 
             <Separator />

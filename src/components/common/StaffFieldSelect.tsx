@@ -1,9 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useStaffFieldSuggestions } from '@/hooks/useStaffFieldSuggestions';
 import type { StaffFieldType } from '@/services/staffFieldApi';
+import { FormFieldError } from '@/components/common/FormFieldError';
+import { fieldInvalidClass } from '@/utils/formValidation';
 
 const OTHER_VALUE = '__other__';
 const OTHER_LABEL = 'Other (type new)';
@@ -17,6 +19,7 @@ type StaffFieldSelectProps = {
   disabled?: boolean;
   id?: string;
   required?: boolean;
+  error?: string;
 };
 
 function normalizeKey(name: string): string {
@@ -32,6 +35,7 @@ const StaffFieldSelect: React.FC<StaffFieldSelectProps> = ({
   disabled,
   id,
   required,
+  error,
 }) => {
   const { names } = useStaffFieldSuggestions(field);
   const options = useMemo(() => {
@@ -41,19 +45,32 @@ const StaffFieldSelect: React.FC<StaffFieldSelectProps> = ({
     return [...saved, OTHER_LABEL];
   }, [names]);
 
-  const valueInList = !!value && options.some((o) => normalizeKey(o) === normalizeKey(value) && o !== OTHER_LABEL);
+  const valueInList = useMemo(
+    () => !!value && options.some((o) => o !== OTHER_LABEL && normalizeKey(o) === normalizeKey(value)),
+    [value, options]
+  );
 
-  const [mode, setMode] = useState<'select' | 'other'>(() => {
-    if (value && !options.some((o) => o !== OTHER_LABEL && normalizeKey(o) === normalizeKey(value))) {
-      return 'other';
+  const [mode, setMode] = useState<'select' | 'other'>('select');
+  const [otherName, setOtherName] = useState('');
+
+  useEffect(() => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      setMode('select');
+      setOtherName('');
+      return;
     }
-    return 'select';
-  });
-  const [otherName, setOtherName] = useState(() => {
-    if (value && mode === 'other') return value;
-    if (value && !valueInList) return value;
-    return '';
-  });
+    const match = options.find(
+      (o) => o !== OTHER_LABEL && normalizeKey(o) === normalizeKey(trimmed)
+    );
+    if (match) {
+      setMode('select');
+      setOtherName('');
+    } else {
+      setMode('other');
+      setOtherName(trimmed);
+    }
+  }, [value, options]);
 
   const handleSelect = (selected: string) => {
     if (selected === OTHER_VALUE) {
@@ -86,7 +103,7 @@ const StaffFieldSelect: React.FC<StaffFieldSelectProps> = ({
       {mode === 'select' ? (
         <>
           <Select value={selectValue} onValueChange={handleSelect} disabled={disabled}>
-            <SelectTrigger id={id} type="button">
+            <SelectTrigger id={id} type="button" className={fieldInvalidClass(!!error)}>
               <SelectValue placeholder={placeholder || `Select ${label.toLowerCase()}`} />
             </SelectTrigger>
             <SelectContent>
@@ -117,20 +134,31 @@ const StaffFieldSelect: React.FC<StaffFieldSelectProps> = ({
             placeholder={placeholder || `Enter ${label.toLowerCase()}`}
             disabled={disabled}
             autoFocus
+            className={fieldInvalidClass(!!error)}
           />
           <button
             type="button"
             className="text-xs text-primary hover:underline font-medium"
             onClick={() => {
+              const typed = otherName.trim();
+              const match = options.find(
+                (o) => o !== OTHER_LABEL && normalizeKey(o) === normalizeKey(typed)
+              );
+              if (match) {
+                setMode('select');
+                setOtherName('');
+                onChange(match);
+                return;
+              }
               setMode('select');
               setOtherName('');
-              onChange('');
             }}
           >
             ← Back to saved list
           </button>
         </div>
       )}
+      <FormFieldError message={error} />
     </div>
   );
 };

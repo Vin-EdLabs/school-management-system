@@ -172,9 +172,17 @@ const TeacherQuizModule = () => {
         .then((r) => setTeacherClasses(Array.isArray(r) ? r : []))
         .catch(() => setTeacherClasses([]));
       apiService
-        .get<{ subjects_taught?: string[] }>('/teachers/me')
-        .then((r) => setTeacherSubjects(Array.isArray(r?.subjects_taught) ? r.subjects_taught : []))
-        .catch(() => setTeacherSubjects([]));
+        .get<{ by_subject?: Array<{ subject_name: string }> }>('/teachers/me/subject-classes')
+        .then((r) => {
+          const names = (r?.by_subject || []).map((s) => s.subject_name).filter(Boolean);
+          setTeacherSubjects(names.length ? names : []);
+        })
+        .catch(() => {
+          apiService
+            .get<{ subjects_taught?: string[] }>('/teachers/me')
+            .then((r) => setTeacherSubjects(Array.isArray(r?.subjects_taught) ? r.subjects_taught : []))
+            .catch(() => setTeacherSubjects([]));
+        });
     } else {
       setTeacherClasses([]);
       setTeacherSubjects([]);

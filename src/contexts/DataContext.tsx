@@ -87,6 +87,8 @@ export interface Teacher {
   bankAccountName?: string;
   position?: string;
   department?: string;
+  assignedClassIds?: string[];
+  subjectClassAssignments?: Array<{ subject_id: number; class_id: number }>;
 }
 
 function normalizeTeacherStatus(raw: string | null | undefined): TeacherStatus {
@@ -96,7 +98,7 @@ function normalizeTeacherStatus(raw: string | null | undefined): TeacherStatus {
   return 'active';
 }
 
-interface Class {
+export interface Class {
   id: string;
   className: string;
   level: string;
@@ -177,7 +179,7 @@ interface Expense {
   vendor?: string;
 }
 
-interface Subject {
+export interface Subject {
   id: string;
   name: string;
   code?: string;
@@ -311,6 +313,11 @@ const mapTeacher = (backendTeacher: any): Teacher => ({
   bankAccountName: backendTeacher.bank_account_name || undefined,
   position: backendTeacher.position || undefined,
   department: backendTeacher.department || undefined,
+  assignedClassIds: Array.isArray(backendTeacher.assigned_class_ids)
+    ? backendTeacher.assigned_class_ids.map((id: number) => String(id))
+    : backendTeacher.class_assigned_id
+      ? [String(backendTeacher.class_assigned_id)]
+      : [],
 });
 
 // Helper function to map frontend teacher to backend format (only defined fields for partial updates)
@@ -318,13 +325,13 @@ const mapTeacherToBackend = (teacher: Partial<Teacher>): any => {
   const out: Record<string, unknown> = {};
   if (teacher.fullName !== undefined) out.full_name = teacher.fullName;
   if (teacher.gender !== undefined) out.gender = teacher.gender;
-  if (teacher.dateOfBirth !== undefined) out.date_of_birth = teacher.dateOfBirth;
+  if (teacher.dateOfBirth !== undefined) out.date_of_birth = teacher.dateOfBirth.trim() || null;
   if (teacher.phoneNumber !== undefined) out.phone_number = teacher.phoneNumber;
   if (teacher.email !== undefined) out.email = teacher.email;
   if (teacher.address !== undefined) out.address = teacher.address;
   if (teacher.subjectsTaught !== undefined) out.subjects_taught = teacher.subjectsTaught;
   if (teacher.classAssignedId !== undefined) out.class_assigned_id = teacher.classAssignedId;
-  if (teacher.employmentDate !== undefined) out.employment_date = teacher.employmentDate;
+  if (teacher.employmentDate !== undefined) out.employment_date = teacher.employmentDate.trim() || null;
   if (teacher.monthlySalary !== undefined) out.monthly_salary = teacher.monthlySalary;
   if (teacher.employmentStatus !== undefined) out.employment_status = teacher.employmentStatus;
   if (teacher.notes !== undefined) out.notes = teacher.notes;
@@ -335,8 +342,16 @@ const mapTeacherToBackend = (teacher: Partial<Teacher>): any => {
   if (teacher.bankAccountNumber !== undefined) out.bank_account_number = teacher.bankAccountNumber;
   if (teacher.bankBranch !== undefined) out.bank_branch = teacher.bankBranch;
   if (teacher.bankAccountName !== undefined) out.bank_account_name = teacher.bankAccountName;
-  if (teacher.position !== undefined) out.position = teacher.position;
-  if (teacher.department !== undefined) out.department = teacher.department;
+  if (teacher.position !== undefined) out.position = String(teacher.position).trim() || null;
+  if (teacher.department !== undefined) out.department = String(teacher.department).trim() || null;
+  if (teacher.assignedClassIds !== undefined) {
+    out.class_ids = teacher.assignedClassIds
+      .map((id) => parseInt(String(id), 10))
+      .filter((n) => !Number.isNaN(n));
+  }
+  if (teacher.subjectClassAssignments !== undefined) {
+    out.subject_class_assignments = teacher.subjectClassAssignments;
+  }
   return out;
 };
 

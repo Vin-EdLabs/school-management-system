@@ -5,7 +5,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -18,17 +17,35 @@ import { Loader2, UserPlus, X, Copy, KeyRound, Camera } from 'lucide-react';
 import { apiService } from '@/services/api';
 import StaffOptionalSections from '../staff/StaffOptionalSections';
 import StaffFieldSelect from '../common/StaffFieldSelect';
+import TeacherSubjectClassAssignment from './TeacherSubjectClassAssignment';
+import { FormFieldError, FormValidationSummary } from '@/components/common/FormFieldError';
 import { persistStaffProfileFields } from '@/services/staffFieldApi';
+import {
+  flattenSubjectClassMap,
+  deriveSubjectNamesFromMap,
+  type SubjectClassMap,
+} from '@/types/teacherSubjectClass';
+import {
+  clearFieldError,
+  fieldInvalidClass,
+  getTeacherValidationRules,
+  scrollToFormField,
+  validateFormFields,
+} from '@/utils/formValidation';
 
 interface AddTeacherFormProps {
   onSuccess: () => void;
 }
 
 const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
-  const { addTeacher, subjects } = useData();
+  const { addTeacher, subjects, classes } = useData();
   const [credentialsOpen, setCredentialsOpen] = useState(false);
   const [loginCredentials, setLoginCredentials] = useState<{ staffId: string; password: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [validationSummary, setValidationSummary] = useState('');
+  const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
+  const [subjectClassMap, setSubjectClassMap] = useState<SubjectClassMap>({});
   const [formData, setFormData] = useState({
     fullName: '',
     gender: '',
@@ -37,7 +54,6 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
     email: '',
     address: '',
     subjectsTaught: [] as string[],
-    classAssigned: '',
     employmentDate: '',
     monthlySalary: '',
     notes: '',
@@ -57,34 +73,44 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const submitLock = useRef(false);
 
-  const handleAddSubject = (subject: string) => {
-    if (!formData.subjectsTaught.includes(subject)) {
-      setFormData(prev => ({
-        ...prev,
-        subjectsTaught: [...prev.subjectsTaught, subject]
-      }));
+  const runValidation = () => {
+    const result = validateFormFields(getTeacherValidationRules(formData));
+    if (result.ok) {
+      setFieldErrors({});
+      setValidationSummary('');
+      return true;
     }
-  };
-
-  const handleRemoveSubject = (subject: string) => {
-    setFormData(prev => ({
-      ...prev,
-      subjectsTaught: prev.subjectsTaught.filter(s => s !== subject)
-    }));
+    setFieldErrors(result.errors);
+    setValidationSummary(result.summary);
+    scrollToFormField(result.firstFieldId, result.firstSectionId);
+    toast({
+      title: 'Missing required information',
+      description: result.summary,
+      variant: 'destructive',
+    });
+    return false;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting || submitLock.current) return;
 
-    if (!formData.fullName || !formData.email || !formData.phoneNumber || !formData.gender) {
+    if (!runValidation()) return;
+
+    const missingClass = selectedSubjectIds.some(
+      (sid) => !(subjectClassMap[sid] || []).some((cid) => cid && cid.trim() !== '')
+    );
+    if (selectedSubjectIds.length > 0 && missingClass) {
       toast({
-        title: "Validation Error",
-        description: "Please fill in all required fields",
-        variant: "destructive"
+        title: 'Class required for each subject',
+        description: 'Assign at least one class for every subject you added.',
+        variant: 'destructive',
       });
+      scrollToFormField('teacher-subject-class-assignment');
       return;
     }
+
+    const subjectClassAssignments = flattenSubjectClassMap(subjectClassMap);
 
     // Convert salary to number for storage, default to 0 if empty or invalid
     const salaryValue = formData.monthlySalary.trim() === '' ? 0 : parseFloat(formData.monthlySalary) || 0;
@@ -96,6 +122,8 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
         ...formData,
         monthlySalary: salaryValue,
         employmentStatus: 'Active',
+        subjectsTaught: deriveSubjectNamesFromMap(subjectClassMap, subjects),
+        subjectClassAssignments,
         emergencyContactName: formData.emergencyContactName || undefined,
         emergencyContactPhone: formData.emergencyContactPhone || undefined,
         emergencyContactRelationship: formData.emergencyContactRelationship || undefined,
@@ -131,7 +159,6 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
         setCredentialsOpen(true);
       }
 
-      // Reset form
       setFormData({
         fullName: '',
         gender: '',
@@ -140,7 +167,6 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
         email: '',
         address: '',
         subjectsTaught: [],
-        classAssigned: '',
         employmentDate: '',
         monthlySalary: '',
         notes: '',
@@ -154,6 +180,10 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
         position: '',
         department: '',
       });
+      setSelectedSubjectIds([]);
+      setSubjectClassMap({});
+      setFieldErrors({});
+      setValidationSummary('');
       setShowEmergency(false);
       setShowBank(false);
       setPhotoFile(null);
@@ -184,20 +214,31 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
         </CardHeader>
         <CardContent className="px-4 py-5 sm:px-6 md:px-8 md:py-6">
           <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormValidationSummary message={validationSummary} />
+            <div id="teacher-personal" className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="fullName">Full Name *</Label>
+                <Label htmlFor="teacher-fullName">Full Name *</Label>
                 <Input
-                  id="fullName"
+                  id="teacher-fullName"
                   value={formData.fullName}
-                  onChange={(e) => setFormData(prev => ({ ...prev, fullName: e.target.value }))}
-                  required
+                  onChange={(e) => {
+                    clearFieldError(fieldErrors, 'teacher-fullName', setFieldErrors);
+                    setFormData(prev => ({ ...prev, fullName: e.target.value }));
+                  }}
+                  className={fieldInvalidClass(!!fieldErrors['teacher-fullName'])}
                 />
+                <FormFieldError message={fieldErrors['teacher-fullName']} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="gender">Gender *</Label>
-                <Select value={formData.gender} onValueChange={(value) => setFormData(prev => ({ ...prev, gender: value }))}>
-                  <SelectTrigger>
+                <Label htmlFor="teacher-gender">Gender *</Label>
+                <Select
+                  value={formData.gender}
+                  onValueChange={(value) => {
+                    clearFieldError(fieldErrors, 'teacher-gender', setFieldErrors);
+                    setFormData(prev => ({ ...prev, gender: value }));
+                  }}
+                >
+                  <SelectTrigger id="teacher-gender" className={fieldInvalidClass(!!fieldErrors['teacher-gender'])}>
                     <SelectValue placeholder="Select gender" />
                   </SelectTrigger>
                   <SelectContent>
@@ -205,6 +246,7 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
                     <SelectItem value="Female">Female</SelectItem>
                   </SelectContent>
                 </Select>
+                <FormFieldError message={fieldErrors['teacher-gender']} />
               </div>
             </div>
 
@@ -219,25 +261,33 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="phoneNumber">Phone Number *</Label>
+                <Label htmlFor="teacher-phoneNumber">Phone Number *</Label>
                 <Input
-                  id="phoneNumber"
+                  id="teacher-phoneNumber"
                   value={formData.phoneNumber}
-                  onChange={(e) => setFormData(prev => ({ ...prev, phoneNumber: e.target.value }))}
-                  required
+                  onChange={(e) => {
+                    clearFieldError(fieldErrors, 'teacher-phoneNumber', setFieldErrors);
+                    setFormData(prev => ({ ...prev, phoneNumber: e.target.value }));
+                  }}
+                  className={fieldInvalidClass(!!fieldErrors['teacher-phoneNumber'])}
                 />
+                <FormFieldError message={fieldErrors['teacher-phoneNumber']} />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email Address *</Label>
+              <Label htmlFor="teacher-email">Email Address *</Label>
               <Input
-                id="email"
+                id="teacher-email"
                 type="email"
                 value={formData.email}
-                onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                required
+                onChange={(e) => {
+                  clearFieldError(fieldErrors, 'teacher-email', setFieldErrors);
+                  setFormData(prev => ({ ...prev, email: e.target.value }));
+                }}
+                className={fieldInvalidClass(!!fieldErrors['teacher-email'])}
               />
+              <FormFieldError message={fieldErrors['teacher-email']} />
             </div>
 
             <div className="space-y-2">
@@ -269,32 +319,14 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label>Subjects Taught</Label>
-              <Select onValueChange={handleAddSubject}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Add subjects" />
-                </SelectTrigger>
-                <SelectContent>
-                  {subjects.filter(subject => !formData.subjectsTaught.includes(subject.name)).map((subject) => (
-                    <SelectItem key={subject.id} value={subject.name}>
-                      {subject.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div className="flex flex-wrap gap-2 mt-2">
-                {formData.subjectsTaught.map((subject) => (
-                  <Badge key={subject} variant="secondary" className="flex items-center space-x-1">
-                    <span>{subject}</span>
-                    <X
-                      className="w-3 h-3 cursor-pointer"
-                      onClick={() => handleRemoveSubject(subject)}
-                    />
-                  </Badge>
-                ))}
-              </div>
-            </div>
+            <TeacherSubjectClassAssignment
+              subjects={subjects}
+              classes={classes}
+              selectedSubjectIds={selectedSubjectIds}
+              subjectClassMap={subjectClassMap}
+              onSelectedSubjectIdsChange={setSelectedSubjectIds}
+              onSubjectClassMapChange={setSubjectClassMap}
+            />
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">

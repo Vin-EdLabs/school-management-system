@@ -553,18 +553,26 @@ router.get('/subjects', authenticateParent, async (req: ParentRequest, res) => {
     if (!subjectRows.rows.length) return res.json({ subjects: [] });
 
     const teachersForClass = await query(
-      `SELECT DISTINCT t.subjects_taught
+      `SELECT DISTINCT s.name
+       FROM teacher_subject_classes tsc
+       JOIN subjects s ON s.id = tsc.subject_id AND s.tenant_id = tsc.tenant_id
+       WHERE tsc.tenant_id = $1 AND tsc.class_id = $2
+       UNION
+       SELECT DISTINCT unnest(t.subjects_taught) AS name
        FROM teachers t
        LEFT JOIN class_teachers ct ON ct.teacher_id = t.id AND ct.tenant_id = t.tenant_id
        WHERE t.tenant_id = $1
-         AND (t.class_assigned_id = $2 OR ct.class_id = $2)`,
+         AND (t.class_assigned_id = $2 OR ct.class_id = $2)
+         AND NOT EXISTS (
+           SELECT 1 FROM teacher_subject_classes tsc2
+           WHERE tsc2.tenant_id = $1 AND tsc2.class_id = $2
+         )`,
       [tenantId, studentCtx.classId]
     ).catch(() => ({ rows: [] as any[] }));
 
     const teacherSubjects = new Set<string>();
-    for (const row of teachersForClass.rows as { subjects_taught?: string[] }[]) {
-      const arr = Array.isArray(row.subjects_taught) ? row.subjects_taught : [];
-      for (const s of arr) teacherSubjects.add(normalizeSubject(s));
+    for (const row of teachersForClass.rows as { name?: string }[]) {
+      if (row.name) teacherSubjects.add(normalizeSubject(row.name));
     }
 
     const systemSubjects = new Set<string>();

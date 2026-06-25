@@ -368,6 +368,23 @@ const runMigrations = async () => {
       )
     `).catch(() => { });
 
+    // Teacher subject-class junction: subject taught in specific class context
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS teacher_subject_classes (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        teacher_id INTEGER NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+        subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+        class_id INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (tenant_id, teacher_id, subject_id, class_id)
+      )
+    `).catch(() => { });
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_teacher_subject_classes_teacher
+      ON teacher_subject_classes (tenant_id, teacher_id)
+    `).catch(() => { });
+
     // Per-school extra class levels (dropdown); standard levels are defined in API (DEFAULT_CLASS_LEVELS)
     await client.query(`
       CREATE TABLE IF NOT EXISTS school_class_levels (

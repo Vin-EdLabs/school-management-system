@@ -6,7 +6,8 @@ import {
   getUpcomingBirthdays,
   getBirthdaysByMonthSections,
   getClassBirthdaysToday,
-  getClassTeacherIds,
+  getMyClassesBirthdaysToday,
+  getTeacherClassesBirthdaysByMonthSections,
   sendBirthdayNotifications,
   getBirthdayMessageConfig,
   saveBirthdayMessageConfig,
@@ -49,7 +50,10 @@ router.get('/today', async (req: AuthRequest, res: any) => {
   try {
     const tenantId = resolveTenantId(req);
     const birthdays = await getBirthdaysToday(tenantId);
-    await sendBirthdayNotifications(tenantId, birthdays);
+    const role = req.user?.role;
+    if (role === 'super-admin' || role === 'administrator') {
+      await sendBirthdayNotifications(tenantId, birthdays);
+    }
     res.json(birthdays);
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Failed to fetch birthdays' });
@@ -89,15 +93,40 @@ router.get('/my-classes/today', async (req: AuthRequest, res: any) => {
     const teacherId = req.user?.teacherId;
     if (!teacherId) return res.status(403).json({ error: 'Only teachers can access this' });
 
-    const classIds = await getClassTeacherIds(tenantId, parseInt(teacherId));
-    if (classIds.length === 0) return res.json([]);
+    const birthdays = await getMyClassesBirthdaysToday(tenantId, parseInt(teacherId, 10));
+    res.json(birthdays);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to fetch class birthdays' });
+  }
+});
 
-    const allBirthdays: any[] = [];
-    for (const classId of classIds) {
-      const birthdays = await getClassBirthdaysToday(tenantId, classId);
-      allBirthdays.push(...birthdays);
+router.get('/my-classes/upcoming', async (req: AuthRequest, res: any) => {
+  try {
+    const tenantId = resolveTenantId(req);
+    const teacherId = req.user?.teacherId;
+    if (!teacherId) return res.status(403).json({ error: 'Only teachers can access this' });
+
+    if (req.query.scope === 'months') {
+      const sections = await getTeacherClassesBirthdaysByMonthSections(
+        tenantId,
+        parseInt(teacherId, 10)
+      );
+      return res.json(sections);
     }
-    res.json(allBirthdays);
+
+    const days = parseInt(req.query.days as string, 10) || 30;
+    const sections = await getTeacherClassesBirthdaysByMonthSections(
+      tenantId,
+      parseInt(teacherId, 10)
+    );
+    const upcoming = sections.groups.filter((group) => {
+      const groupDate = new Date(group.date + 'T12:00:00');
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const diff = Math.ceil((groupDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      return diff >= 0 && diff <= days;
+    });
+    res.json(upcoming);
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Failed to fetch class birthdays' });
   }

@@ -13,6 +13,14 @@ import { useAuth } from '../../contexts/AuthContext';
 import { uploadStudentPhotoInBackground } from '@/hooks/useStudentCache';
 import { toast } from '@/hooks/use-toast';
 import PasswordConfirmDialog from '@/components/common/PasswordConfirmDialog';
+import { FormFieldError, FormValidationSummary } from '@/components/common/FormFieldError';
+import {
+  clearFieldError,
+  fieldInvalidClass,
+  getStudentValidationRules,
+  scrollToFormField,
+  validateFormFields,
+} from '@/utils/formValidation';
 import { Camera, Trash2, GraduationCap as ScholarshipIcon, UserPlus, X } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 
@@ -70,6 +78,8 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
   const { user } = useAuth();
   const [formData, setFormData] = useState<Student | null>(null);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [validationSummary, setValidationSummary] = useState('');
   const [previewPhoto, setPreviewPhoto] = useState<{ url: string; name: string } | null>(null);
   const [siblingSearch, setSiblingSearch] = useState('');
   const [selectedSiblings, setSelectedSiblings] = useState<any[]>([]);
@@ -161,6 +171,7 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
 
   const handleInputChange = (field: keyof Student, value: string | number) => {
     if (formData) {
+      clearFieldError(fieldErrors, field, setFieldErrors);
       const updates: any = { [field]: value };
 
       // If class changed, find and update classAssignedId
@@ -238,30 +249,29 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
     }
   };
 
+  const runValidation = () => {
+    if (!formData) return false;
+    const result = validateFormFields(getStudentValidationRules(formData, { requiresClass: true }));
+    if (result.ok) {
+      setFieldErrors({});
+      setValidationSummary('');
+      return true;
+    }
+    setFieldErrors(result.errors);
+    setValidationSummary(result.summary);
+    scrollToFormField(result.firstFieldId, result.firstSectionId);
+    toast({
+      title: 'Missing required information',
+      description: result.summary,
+      variant: 'destructive',
+    });
+    return false;
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData) return;
-
-    // Validation
-    if (
-      !formData.firstName ||
-      !formData.lastName ||
-      !formData.gender ||
-      !formData.dateOfBirth ||
-      !formData.nationality ||
-      !formData.classAssigned ||
-      !formData.dateOfAdmission ||
-      !formData.guardianName ||
-      !formData.guardianContact ||
-      !formData.homeAddress
-    ) {
-      toast({
-        title: "Validation Error",
-        description: "Please fill in all required fields marked with *",
-        variant: "destructive"
-      });
-      return;
-    }
+    if (!runValidation()) return;
 
     if (user?.role === 'super-admin') {
       void performUpdate();
@@ -282,6 +292,7 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
 
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           <DialogBody className="space-y-6 px-6 py-4">
+          <FormValidationSummary message={validationSummary} />
           {/* Passport Photo */}
           <div className="space-y-3">
             <h3 className="font-semibold text-lg">Passport Photo</h3>
@@ -337,7 +348,7 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
           </div>
 
           {/* Personal Information */}
-          <div className="space-y-4">
+          <div id="student-personal" className="space-y-4">
             <h3 className="font-semibold text-lg">Personal Information</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -346,8 +357,9 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
                   id="firstName"
                   value={formData.firstName}
                   onChange={(e) => handleInputChange('firstName', e.target.value)}
-                  required
+                  className={fieldInvalidClass(!!fieldErrors.firstName)}
                 />
+                <FormFieldError message={fieldErrors.firstName} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="lastName">Last Name *</Label>
@@ -355,13 +367,14 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
                   id="lastName"
                   value={formData.lastName}
                   onChange={(e) => handleInputChange('lastName', e.target.value)}
-                  required
+                  className={fieldInvalidClass(!!fieldErrors.lastName)}
                 />
+                <FormFieldError message={fieldErrors.lastName} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="gender">Gender *</Label>
                 <Select value={formData.gender} onValueChange={(value) => handleInputChange('gender', value)}>
-                  <SelectTrigger>
+                  <SelectTrigger id="gender" className={fieldInvalidClass(!!fieldErrors.gender)}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -369,6 +382,7 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
                     <SelectItem value="Female">Female</SelectItem>
                   </SelectContent>
                 </Select>
+                <FormFieldError message={fieldErrors.gender} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="dateOfBirth">Date of Birth *</Label>
@@ -377,8 +391,9 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
                   type="date"
                   value={formData.dateOfBirth}
                   onChange={(e) => handleInputChange('dateOfBirth', e.target.value)}
-                  required
+                  className={fieldInvalidClass(!!fieldErrors.dateOfBirth)}
                 />
+                <FormFieldError message={fieldErrors.dateOfBirth} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="nationality">Nationality *</Label>
@@ -386,8 +401,9 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
                   id="nationality"
                   value={formData.nationality}
                   onChange={(e) => handleInputChange('nationality', e.target.value)}
-                  required
+                  className={fieldInvalidClass(!!fieldErrors.nationality)}
                 />
+                <FormFieldError message={fieldErrors.nationality} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="enrollmentStatus">Enrollment status</Label>
@@ -419,13 +435,13 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
           </div>
 
           {/* Academic Information */}
-          <div className="space-y-4">
+          <div id="student-enrollment" className="space-y-4">
             <h3 className="font-semibold text-lg">Academic Information</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="classAssigned">Class Assigned *</Label>
                 <Select value={formData.classAssigned} onValueChange={(value) => handleInputChange('classAssigned', value)}>
-                  <SelectTrigger>
+                  <SelectTrigger id="classAssigned" className={fieldInvalidClass(!!fieldErrors.classAssigned)}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -436,6 +452,7 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
                     ))}
                   </SelectContent>
                 </Select>
+                <FormFieldError message={fieldErrors.classAssigned} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="dateOfAdmission">Date of Admission *</Label>
@@ -444,8 +461,9 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
                   type="date"
                   value={formData.dateOfAdmission}
                   onChange={(e) => handleInputChange('dateOfAdmission', e.target.value)}
-                  required
+                  className={fieldInvalidClass(!!fieldErrors.dateOfAdmission)}
                 />
+                <FormFieldError message={fieldErrors.dateOfAdmission} />
               </div>
               <div className="md:col-span-2 space-y-2">
                 <Label htmlFor="previousSchool">Previous School</Label>
@@ -459,7 +477,7 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
           </div>
 
           {/* Guardian Information */}
-          <div className="space-y-4">
+          <div id="student-guardian" className="space-y-4">
             <h3 className="font-semibold text-lg">Guardian Information</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -468,8 +486,9 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
                   id="guardianName"
                   value={formData.guardianName}
                   onChange={(e) => handleInputChange('guardianName', e.target.value)}
-                  required
+                  className={fieldInvalidClass(!!fieldErrors.guardianName)}
                 />
+                <FormFieldError message={fieldErrors.guardianName} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="guardianContact">Guardian Contact *</Label>
@@ -477,8 +496,9 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
                   id="guardianContact"
                   value={formData.guardianContact}
                   onChange={(e) => handleInputChange('guardianContact', e.target.value)}
-                  required
+                  className={fieldInvalidClass(!!fieldErrors.guardianContact)}
                 />
+                <FormFieldError message={fieldErrors.guardianContact} />
               </div>
               <div className="md:col-span-2 space-y-2">
                 <Label htmlFor="homeAddress">Home Address *</Label>
@@ -486,8 +506,9 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
                   id="homeAddress"
                   value={formData.homeAddress}
                   onChange={(e) => handleInputChange('homeAddress', e.target.value)}
-                  required
+                  className={fieldInvalidClass(!!fieldErrors.homeAddress)}
                 />
+                <FormFieldError message={fieldErrors.homeAddress} />
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
@@ -822,7 +843,13 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
       title="Confirm student update"
       description="Enter your password to save changes to this student profile."
       confirmLabel="Confirm update"
-      onConfirmed={performUpdate}
+      onConfirmed={async () => {
+        if (!runValidation()) {
+          setShowPasswordDialog(false);
+          return;
+        }
+        await performUpdate();
+      }}
     />
     </>
   );

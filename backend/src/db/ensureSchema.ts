@@ -116,6 +116,25 @@ export async function ensureSupplementalSchema(): Promise<void> {
     'subjects'
   );
 
+  await safe(
+    `
+    CREATE TABLE IF NOT EXISTS teacher_subject_classes (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      teacher_id INTEGER NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+      subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+      class_id INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE (tenant_id, teacher_id, subject_id, class_id)
+    )
+  `,
+    'teacher_subject_classes'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_teacher_subject_classes_teacher ON teacher_subject_classes (tenant_id, teacher_id)`,
+    'idx_teacher_subject_classes_teacher'
+  );
+
   // --- student_class_enrollments ---
   await safe(
     `

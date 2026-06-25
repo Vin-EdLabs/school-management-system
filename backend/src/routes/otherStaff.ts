@@ -349,7 +349,10 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
     for (const key of allowed) {
       if (updates[key] !== undefined) {
         fields.push(`${key} = $${p++}`);
-        values.push(updates[key]);
+        const val = updates[key];
+        values.push(
+          (key === 'date_of_birth' || key === 'employment_date') && val === '' ? null : val
+        );
       }
     }
     if (fields.length === 0) return res.status(400).json({ error: 'No fields to update' });

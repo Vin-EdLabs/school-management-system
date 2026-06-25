@@ -21,6 +21,14 @@ import StaffFieldSelect from '../common/StaffFieldSelect';
 import PasswordConfirmDialog from '../common/PasswordConfirmDialog';
 import { persistStaffProfileFields } from '@/services/staffFieldApi';
 import { useAuth } from '../../contexts/AuthContext';
+import { FormFieldError, FormValidationSummary } from '@/components/common/FormFieldError';
+import {
+  clearFieldError,
+  fieldInvalidClass,
+  getOtherStaffValidationRules,
+  scrollToFormField,
+  validateFormFields,
+} from '@/utils/formValidation';
 import type { OtherStaffRecord } from './otherStaffTypes';
 
 export type { OtherStaffRecord } from './otherStaffTypes';
@@ -67,6 +75,8 @@ const OtherStaffFormDialog: React.FC<Props> = ({ open, onClose, staff, onSuccess
   const [showEmergency, setShowEmergency] = useState(false);
   const [showBank, setShowBank] = useState(false);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [validationSummary, setValidationSummary] = useState('');
 
   useEffect(() => {
     if (!open) {
@@ -123,12 +133,27 @@ const OtherStaffFormDialog: React.FC<Props> = ({ open, onClose, staff, onSuccess
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  const runValidation = () => {
+    const result = validateFormFields(getOtherStaffValidationRules(form));
+    if (result.ok) {
+      setFieldErrors({});
+      setValidationSummary('');
+      return true;
+    }
+    setFieldErrors(result.errors);
+    setValidationSummary(result.summary);
+    scrollToFormField(result.firstFieldId, result.firstSectionId);
+    toast({
+      title: 'Missing required information',
+      description: result.summary,
+      variant: 'destructive',
+    });
+    return false;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.full_name.trim()) {
-      toast({ title: 'Error', description: 'Full name is required', variant: 'destructive' });
-      return;
-    }
+    if (!runValidation()) return;
     if (isEdit && user?.role !== 'super-admin') {
       setShowPasswordDialog(true);
       return;
@@ -141,6 +166,8 @@ const OtherStaffFormDialog: React.FC<Props> = ({ open, onClose, staff, onSuccess
     try {
       const body = {
         ...form,
+        date_of_birth: form.date_of_birth.trim() || null,
+        employment_date: form.employment_date.trim() || null,
         monthly_salary: form.monthly_salary ? parseFloat(form.monthly_salary) : 0,
         ssnit_enabled: form.ssnit_enabled,
         emergency_contact_name: form.emergency_contact_name || null,
@@ -196,8 +223,9 @@ const OtherStaffFormDialog: React.FC<Props> = ({ open, onClose, staff, onSuccess
               : 'Register non-teaching staff for payroll, transport, and optional system access.'}
           </p>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+        <form onSubmit={handleSubmit} noValidate className="flex min-h-0 flex-1 flex-col">
           <DialogBody className="space-y-5 overflow-y-auto px-6 py-4">
+            <FormValidationSummary message={validationSummary} />
             <div className="rounded-3xl border border-emerald-100 bg-emerald-50/70 p-4 text-sm text-emerald-900 shadow-sm">
               <div className="flex items-start gap-3">
                 <div className="mt-0.5 rounded-full bg-emerald-100 p-2 text-emerald-700">
@@ -213,10 +241,19 @@ const OtherStaffFormDialog: React.FC<Props> = ({ open, onClose, staff, onSuccess
                 </div>
               </div>
             </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div id="other-staff-personal" className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2 md:col-span-2">
-              <Label>Full Name *</Label>
-              <Input value={form.full_name} onChange={(e) => set('full_name', e.target.value)} required />
+              <Label htmlFor="other-staff-full-name">Full Name *</Label>
+              <Input
+                id="other-staff-full-name"
+                value={form.full_name}
+                onChange={(e) => {
+                  clearFieldError(fieldErrors, 'other-staff-full-name', setFieldErrors);
+                  set('full_name', e.target.value);
+                }}
+                className={fieldInvalidClass(!!fieldErrors['other-staff-full-name'])}
+              />
+              <FormFieldError message={fieldErrors['other-staff-full-name']} />
             </div>
             <div className="space-y-2">
               <Label>Gender</Label>
@@ -229,8 +266,13 @@ const OtherStaffFormDialog: React.FC<Props> = ({ open, onClose, staff, onSuccess
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Date of Birth</Label>
-              <Input type="date" value={form.date_of_birth} onChange={(e) => set('date_of_birth', e.target.value)} />
+              <Label htmlFor="other-staff-dob">Date of Birth (Optional)</Label>
+              <Input
+                id="other-staff-dob"
+                type="date"
+                value={form.date_of_birth}
+                onChange={(e) => set('date_of_birth', e.target.value)}
+              />
             </div>
             <div className="space-y-2">
               <Label>Phone</Label>
@@ -273,22 +315,32 @@ const OtherStaffFormDialog: React.FC<Props> = ({ open, onClose, staff, onSuccess
           </div>
 
           <p className="text-sm font-medium text-foreground pt-2">Employment</p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div id="other-staff-employment" className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <StaffFieldSelect
               field="position"
               id="other-staff-position"
               label="Position"
               value={form.position}
-              onChange={(value) => set('position', value)}
+              onChange={(value) => {
+                clearFieldError(fieldErrors, 'other-staff-position', setFieldErrors);
+                set('position', value);
+              }}
               placeholder="e.g. Bus Driver, Accountant"
+              required
+              error={fieldErrors['other-staff-position']}
             />
             <StaffFieldSelect
               field="department"
               id="other-staff-department"
               label="Department"
               value={form.department}
-              onChange={(value) => set('department', value)}
+              onChange={(value) => {
+                clearFieldError(fieldErrors, 'other-staff-department', setFieldErrors);
+                set('department', value);
+              }}
               placeholder="e.g. Finance"
+              required
+              error={fieldErrors['other-staff-department']}
             />
             <div className="space-y-2">
               <Label>Employment Type</Label>
@@ -376,7 +428,13 @@ const OtherStaffFormDialog: React.FC<Props> = ({ open, onClose, staff, onSuccess
       title="Confirm staff update"
       description="Enter your password to save changes to this staff profile."
       confirmLabel="Confirm update"
-      onConfirmed={performSave}
+      onConfirmed={async () => {
+        if (!runValidation()) {
+          setShowPasswordDialog(false);
+          return;
+        }
+        await performSave();
+      }}
     />
     </>
   );

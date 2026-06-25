@@ -106,6 +106,7 @@ const BirthdayModule = () => {
   const { schoolId } = useSchool();
   const { user } = useAuth();
   const isAdmin = user?.role === 'super-admin' || user?.role === 'administrator';
+  const isTeacherClassView = user?.role === 'teacher' || !!user?.teacherId;
   const [todayBirthdays, setTodayBirthdays] = useState<BirthdayPerson[]>([]);
   const [monthSection, setMonthSection] = useState<MonthSection | null>(null);
   const [loading, setLoading] = useState(true);
@@ -119,10 +120,17 @@ const BirthdayModule = () => {
       setLoading(true);
       try {
         apiService.setTenantContext(schoolId);
-        const [todayRes, sectionsRes] = await Promise.all([
-          apiService.get<BirthdayPerson[]>('/birthdays/today'),
-          apiService.get<MonthSection>('/birthdays/upcoming?scope=months'),
-        ]);
+        const [todayRes, sectionsRes] = await Promise.all(
+          isTeacherClassView
+            ? [
+                apiService.get<BirthdayPerson[]>('/birthdays/my-classes/today'),
+                apiService.get<MonthSection>('/birthdays/my-classes/upcoming?scope=months'),
+              ]
+            : [
+                apiService.get<BirthdayPerson[]>('/birthdays/today'),
+                apiService.get<MonthSection>('/birthdays/upcoming?scope=months'),
+              ]
+        );
         setTodayBirthdays(Array.isArray(todayRes) ? todayRes : []);
         setMonthSection(sectionsRes);
       } catch {
@@ -133,7 +141,7 @@ const BirthdayModule = () => {
       }
     };
     fetchBirthdays();
-  }, [schoolId]);
+  }, [schoolId, isTeacherClassView]);
 
   useEffect(() => {
     if (!schoolId || !isAdmin) {
@@ -176,7 +184,7 @@ const BirthdayModule = () => {
   };
 
   const todayStudents = todayBirthdays.filter((p) => p.type === 'student');
-  const todayTeachers = todayBirthdays.filter((p) => p.type === 'teacher');
+  const todayTeachers = isTeacherClassView ? [] : todayBirthdays.filter((p) => p.type === 'teacher');
   const monthCount = monthSection?.groups.reduce((sum, g) => sum + g.people.length, 0) ?? 0;
 
   return (
@@ -186,8 +194,14 @@ const BirthdayModule = () => {
           <Cake className="w-6 h-6 text-white" />
         </div>
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-gray-100">Birthdays</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Celebrate students and teachers on their special day</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-gray-100">
+            {isTeacherClassView ? 'My Class Birthdays' : 'Birthdays'}
+          </h1>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {isTeacherClassView
+              ? 'Students in your classes who are celebrating birthdays'
+              : 'Celebrate students and teachers on their special day'}
+          </p>
         </div>
       </div>
 
@@ -289,7 +303,7 @@ const BirthdayModule = () => {
               <CardHeader className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/20 pb-3">
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <Gift className="w-5 h-5 text-amber-500" />
-                  Today's Birthdays
+                  {isTeacherClassView ? "Today's Class Birthdays" : "Today's Birthdays"}
                   <Badge className="ml-auto bg-amber-500 text-white">{todayBirthdays.length}</Badge>
                 </CardTitle>
               </CardHeader>
@@ -357,8 +371,14 @@ const BirthdayModule = () => {
             <Card>
               <CardContent className="p-8 text-center">
                 <Cake className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                <h3 className="text-lg font-medium text-gray-700 mb-1">No birthdays today</h3>
-                <p className="text-sm text-gray-500">See remaining birthdays for this month below.</p>
+                <h3 className="text-lg font-medium text-gray-700 mb-1">
+                  {isTeacherClassView ? 'No class birthdays today' : 'No birthdays today'}
+                </h3>
+                <p className="text-sm text-gray-500">
+                  {isTeacherClassView
+                    ? 'None of your students have a birthday today. See upcoming class birthdays below.'
+                    : 'See remaining birthdays for this month below.'}
+                </p>
               </CardContent>
             </Card>
           )}
@@ -367,7 +387,9 @@ const BirthdayModule = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Calendar className="w-5 h-5 text-blue-500" />
-                {monthSection?.label ?? 'This Month'}
+                {isTeacherClassView
+                  ? `Upcoming in ${monthSection?.label ?? 'this month'}`
+                  : (monthSection?.label ?? 'This Month')}
                 <Badge variant="secondary" className="ml-auto">
                   {monthCount} this month
                 </Badge>

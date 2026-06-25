@@ -25,6 +25,14 @@ import {
 } from '../services/appointmentLetterService.js';
 import { ensureTeacherUserAccount } from '../services/teacherUserService.js';
 import { persistStaffProfileFields } from '../services/staffFieldSuggestionService.js';
+import {
+  assignTeacherSubjectClass,
+  getTeacherSubjectClassesGrouped,
+  removeTeacherSubjectClass,
+  syncTeacherClassAssignments,
+  syncTeacherSubjectClasses,
+  type SubjectClassPair,
+} from '../services/teacherSubjectClassService.js';
 
 function generatePin(): string {
   return String(Math.floor(10000 + Math.random() * 90000));
@@ -50,6 +58,15 @@ function stripTeacherPhotoForList(row: Record<string, unknown>) {
   const { passport_photo_url, ...rest } = row;
   return { ...rest, has_passport_photo: has };
 }
+
+const ASSIGNED_CLASS_IDS_SQL = `
+  COALESCE(
+    (SELECT array_agg(ct.class_id ORDER BY ct.is_main DESC NULLS LAST, ct.class_id)
+     FROM class_teachers ct
+     WHERE ct.teacher_id = t.id AND ct.tenant_id = t.tenant_id),
+    ARRAY[]::int[]
+  ) AS assigned_class_ids
+`;
 
 const router = express.Router();
 
@@ -132,6 +149,23 @@ router.get('/me/classes', async (req: AuthRequest, res) => {
   }
 });
 
+// Teacher portal: subject-class assignments (source of truth for scoped teaching)
+router.get('/me/subject-classes', async (req: AuthRequest, res) => {
+  try {
+    const teacherId = req.user!.teacherId;
+    const role = req.user!.role;
+    if (!teacherId || (role !== 'teacher' && role !== 'staff')) {
+      return res.status(403).json({ error: 'Not a teacher account' });
+    }
+    const tenantId = req.user!.tenantId!;
+    const data = await getTeacherSubjectClassesGrouped(tenantId, Number(teacherId));
+    res.json(data);
+  } catch (error) {
+    console.error('Get me subject-classes error:', error);
+    res.status(500).json({ error: 'Failed to fetch subject-class assignments' });
+  }
+});
+
 // Broadcast in-app notice to teachers and payroll staff (socket + bell / toast on client)
 router.post(
   '/announce',
@@ -181,6 +215,7 @@ router.get('/', async (req: AuthRequest, res) => {
 
     let queryText = `
       SELECT t.*, ${TEACHER_CLASS_NAME_SQL.trim()},
+        ${ASSIGNED_CLASS_IDS_SQL.trim()},
         c.level, c.stream
       FROM teachers t
       LEFT JOIN classes c ON t.class_assigned_id = c.id
@@ -455,6 +490,74 @@ router.get('/:id/status-history', requireRole('super-admin', 'administrator'), a
   }
 });
 
+// Subject-class assignment endpoints (must be registered before GET /:id)
+router.get('/:id/subject-classes', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const teacherId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(teacherId)) return res.status(400).json({ error: 'Invalid teacher id' });
+
+    const teacherCheck = await query(
+      `SELECT id FROM teachers WHERE id = $1 AND tenant_id = $2 AND COALESCE(is_deleted, false) = false`,
+      [teacherId, tenantId]
+    );
+    if (teacherCheck.rows.length === 0) return res.status(404).json({ error: 'Teacher not found' });
+
+    const data = await getTeacherSubjectClassesGrouped(tenantId, teacherId);
+    res.json(data);
+  } catch (error) {
+    console.error('Get teacher subject-classes error:', error);
+    res.status(500).json({ error: 'Failed to fetch subject-class assignments' });
+  }
+});
+
+router.post(
+  '/:id/subject-class',
+  requireRole('super-admin', 'administrator'),
+  async (req: AuthRequest, res) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const teacherId = parseInt(req.params.id, 10);
+      const subjectId = parseInt(String(req.body?.subject_id), 10);
+      const classId = parseInt(String(req.body?.class_id), 10);
+      if (!Number.isFinite(teacherId) || !Number.isFinite(subjectId) || !Number.isFinite(classId)) {
+        return res.status(400).json({ error: 'teacher id, subject_id, and class_id are required' });
+      }
+      await assignTeacherSubjectClass(tenantId, teacherId, subjectId, classId);
+      emitTenantDataChanged(tenantId, 'teacher', 'updated');
+      const data = await getTeacherSubjectClassesGrouped(tenantId, teacherId);
+      res.json(data);
+    } catch (error: any) {
+      if (error?.status === 404) return res.status(404).json({ error: error.message });
+      console.error('Assign subject-class error:', error);
+      res.status(500).json({ error: 'Failed to assign subject to class' });
+    }
+  }
+);
+
+router.delete(
+  '/:id/subject-class',
+  requireRole('super-admin', 'administrator'),
+  async (req: AuthRequest, res) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const teacherId = parseInt(req.params.id, 10);
+      const subjectId = parseInt(String(req.body?.subject_id), 10);
+      const classId = parseInt(String(req.body?.class_id), 10);
+      if (!Number.isFinite(teacherId) || !Number.isFinite(subjectId) || !Number.isFinite(classId)) {
+        return res.status(400).json({ error: 'teacher id, subject_id, and class_id are required' });
+      }
+      await removeTeacherSubjectClass(tenantId, teacherId, subjectId, classId);
+      emitTenantDataChanged(tenantId, 'teacher', 'updated');
+      const data = await getTeacherSubjectClassesGrouped(tenantId, teacherId);
+      res.json(data);
+    } catch (error) {
+      console.error('Remove subject-class error:', error);
+      res.status(500).json({ error: 'Failed to remove subject-class assignment' });
+    }
+  }
+);
+
 router.get('/:id', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
@@ -464,6 +567,7 @@ router.get('/:id', async (req: AuthRequest, res) => {
     try {
       result = await query(
         `SELECT t.*, ${TEACHER_CLASS_NAME_SQL.trim()},
+           ${ASSIGNED_CLASS_IDS_SQL.trim()},
            c.level, c.stream
          FROM teachers t
          LEFT JOIN classes c ON t.class_assigned_id = c.id
@@ -565,6 +669,16 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
     const teacherId = result.rows[0].id;
     const created = result.rows[0];
 
+    if (Array.isArray(teacherData.subject_class_assignments) && teacherData.subject_class_assignments.length > 0) {
+      await syncTeacherSubjectClasses(
+        tenantId,
+        teacherId,
+        teacherData.subject_class_assignments as SubjectClassPair[]
+      );
+    } else if (Array.isArray(teacherData.class_ids) && teacherData.class_ids.length > 0) {
+      await syncTeacherClassAssignments(tenantId, teacherId, teacherData.class_ids);
+    }
+
     await query(
       `UPDATE teachers SET status = 'active' WHERE id = $1 AND tenant_id = $2`,
       [teacherId, tenantId]
@@ -643,12 +757,16 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
   try {
     const tenantId = req.user!.tenantId!;
     const { id } = req.params;
-    const updates = req.body;
-    
+    const updates = { ...req.body };
+    const classIds = updates.class_ids;
+    const subjectClassAssignments = updates.subject_class_assignments;
+    delete updates.class_ids;
+    delete updates.subject_class_assignments;
+
     const updateFields: string[] = [];
     const values: any[] = [];
     let paramCount = 1;
-    
+
     const allowedFields = [
       'full_name', 'gender', 'date_of_birth', 'phone_number', 'email',
       'address', 'subjects_taught', 'class_assigned_id', 'employment_date',
@@ -660,25 +778,53 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
     for (const field of allowedFields) {
       if (updates[field] !== undefined) {
         updateFields.push(`${field} = $${paramCount}`);
-        values.push(updates[field]);
+        const val = updates[field];
+        values.push(
+          (field === 'date_of_birth' || field === 'employment_date') && val === '' ? null : val
+        );
         paramCount++;
       }
     }
     
-    if (updateFields.length === 0) {
+    if (updateFields.length === 0 && classIds === undefined && subjectClassAssignments === undefined) {
       return res.status(400).json({ error: 'No valid fields to update' });
     }
-    
-    updateFields.push(`updated_at = CURRENT_TIMESTAMP`);
-    values.push(tenantId, id);
-    
-    const result = await query(
-      `UPDATE teachers SET ${updateFields.join(', ')} WHERE tenant_id = $${paramCount} AND id = $${paramCount + 1} RETURNING *`,
-      values
-    );
-    
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Teacher not found' });
+
+    let row: Record<string, unknown> | null = null;
+
+    if (updateFields.length > 0) {
+      updateFields.push(`updated_at = CURRENT_TIMESTAMP`);
+      values.push(tenantId, id);
+
+      const result = await query(
+        `UPDATE teachers SET ${updateFields.join(', ')} WHERE tenant_id = $${paramCount} AND id = $${paramCount + 1} RETURNING *`,
+        values
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Teacher not found' });
+      }
+      row = result.rows[0];
+    } else {
+      const existing = await query(`SELECT * FROM teachers WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
+      if (existing.rows.length === 0) {
+        return res.status(404).json({ error: 'Teacher not found' });
+      }
+      row = existing.rows[0];
+    }
+
+    if (subjectClassAssignments !== undefined) {
+      await syncTeacherSubjectClasses(
+        tenantId,
+        Number(id),
+        subjectClassAssignments as SubjectClassPair[]
+      );
+      const refreshed = await query(`SELECT * FROM teachers WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
+      row = refreshed.rows[0];
+    } else if (classIds !== undefined) {
+      await syncTeacherClassAssignments(tenantId, Number(id), classIds);
+      const refreshed = await query(`SELECT * FROM teachers WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
+      row = refreshed.rows[0];
     }
 
     await persistStaffProfileFields(
@@ -691,20 +837,20 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
       `UPDATE users
        SET full_name = $1, email = $2, updated_at = CURRENT_TIMESTAMP
        WHERE tenant_id = $3 AND teacher_id::text = $4::text`,
-      [result.rows[0].full_name, result.rows[0].email || null, tenantId, id]
+      [row!.full_name, row!.email || null, tenantId, id]
     ).catch(() => {});
 
     try {
       await ensureTeacherUserAccount(tenantId, {
         id: Number(id),
-        staff_id: result.rows[0].staff_id,
-        full_name: result.rows[0].full_name,
-        email: result.rows[0].email || null,
+        staff_id: row!.staff_id,
+        full_name: row!.full_name,
+        email: row!.email || null,
       });
     } catch {
       /* teacher saved; user link best-effort */
     }
-    
+
     const actor = await resolveActorFromRequest(req);
     await writeAuditLog({
       tenantId,
@@ -714,14 +860,14 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
       entityType: 'TEACHER',
       entityId: parseInt(id, 10),
       module: 'academics',
-      summary: withActor(`Teacher profile updated — ${result.rows[0].full_name}`, actor),
-      details: { fullName: result.rows[0].full_name, staffId: result.rows[0].staff_id },
+      summary: withActor(`Teacher profile updated — ${row!.full_name}`, actor),
+      details: { fullName: row!.full_name, staffId: row!.staff_id },
       ipAddress: getClientIp(req),
       userAgent: req.get('user-agent') ?? null,
     });
     emitTenantDataChanged(tenantId, 'teacher', 'updated');
-    
-    res.json(result.rows[0]);
+
+    res.json(row);
   } catch (error) {
     console.error('Update teacher error:', error);
     res.status(500).json({ error: 'Failed to update teacher' });
@@ -934,6 +1080,10 @@ router.delete('/:id', requireRole('super-admin', 'administrator'), async (req: A
     }
 
     await query('DELETE FROM class_teachers WHERE teacher_id = $1 AND tenant_id = $2', [teacherId, tenantId]);
+    await query('DELETE FROM teacher_subject_classes WHERE teacher_id = $1 AND tenant_id = $2', [
+      teacherId,
+      tenantId,
+    ]).catch(() => undefined);
     await query(
       'UPDATE classes SET assigned_teacher_id = NULL WHERE assigned_teacher_id = $1 AND tenant_id = $2',
       [teacherId, tenantId]

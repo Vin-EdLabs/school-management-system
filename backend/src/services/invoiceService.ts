@@ -6,8 +6,7 @@ import {
   ledgerBalanceToApiShape,
 } from './ledgerBalanceService.js';
 import { resolveActiveLedgerTerm } from './studentUnifiedBalanceService.js';
-import { syncMissingLedgerTermFeesForActiveTerm } from './ledgerFinanceService.js';
-import { syncMissingPaymentLedgerCredits } from './ledgerBackfillService.js';
+import { ensureTenantLedgerSynced } from './ledgerBackfillService.js';
 import { resolveLedgerFeeStructureForStudent } from './effectiveStudentBalanceService.js';
 import { listStudentCharges } from './studentChargesService.js';
 import { loadActiveFeeStructureLinesByClassTerm, loadActiveFeeStructureLinesForStudent } from './feeStructureItemsService.js';
@@ -501,14 +500,9 @@ export async function generateSingleInvoice(
   } = {}
 ): Promise<GenerateInvoiceResult> {
   try {
-    await syncMissingLedgerTermFeesForActiveTerm(tenantId);
+    await ensureTenantLedgerSynced(tenantId);
   } catch (syncErr) {
-    console.error('[generateSingleInvoice] Ledger fee sync failed (continuing):', syncErr);
-  }
-  try {
-    await syncMissingPaymentLedgerCredits(tenantId);
-  } catch (paySyncErr) {
-    console.error('[generateSingleInvoice] Payment ledger sync failed (continuing):', paySyncErr);
+    console.error('[generateSingleInvoice] Ledger sync failed (continuing):', syncErr);
   }
 
   const client = await getClient();
@@ -658,14 +652,9 @@ export async function generateBulkInvoices(
   } = {}
 ): Promise<BulkInvoiceSummary> {
   try {
-    await syncMissingLedgerTermFeesForActiveTerm(tenantId);
+    await ensureTenantLedgerSynced(tenantId);
   } catch (syncErr) {
-    console.error('[generateBulkInvoices] Ledger fee sync failed (continuing):', syncErr);
-  }
-  try {
-    await syncMissingPaymentLedgerCredits(tenantId);
-  } catch (paySyncErr) {
-    console.error('[generateBulkInvoices] Payment ledger sync failed (continuing):', paySyncErr);
+    console.error('[generateBulkInvoices] Ledger sync failed (continuing):', syncErr);
   }
 
   const run: QueryFn = query;

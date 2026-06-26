@@ -424,7 +424,6 @@ export async function getStudentBirthdaysForParent(
   const currentMonth = today.getMonth() + 1;
   const currentDay = today.getDate();
 
-  const placeholders = studentIds.map((_, i) => `$${i + 5}`).join(',');
   const res = await query(
     `SELECT s.id, s.first_name, s.last_name, s.date_of_birth,
             s.class_assigned_id, s.passport_photo_url,
@@ -432,12 +431,12 @@ export async function getStudentBirthdaysForParent(
      FROM students s
      LEFT JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
      WHERE s.tenant_id = $1
-       AND s.id IN (${placeholders})
+       AND s.id = ANY($4::int[])
        AND s.date_of_birth IS NOT NULL
        AND EXTRACT(MONTH FROM s.date_of_birth::date) = $2
        AND EXTRACT(DAY FROM s.date_of_birth::date) = $3
        AND (s.enrollment_status IS NULL OR s.enrollment_status = 'active')`,
-    [tenantId, currentMonth, currentDay, ...studentIds]
+    [tenantId, currentMonth, currentDay, studentIds]
   );
 
   return res.rows.map((row) => ({
@@ -523,7 +522,6 @@ export async function getStudentBirthdaysTodayForClasses(
   const today = new Date();
   const currentMonth = today.getMonth() + 1;
   const currentDay = today.getDate();
-  const placeholders = classIds.map((_, i) => `$${i + 4}`).join(',');
 
   const res = await query(
     `SELECT DISTINCT ON (s.id) s.id, s.first_name, s.last_name, s.date_of_birth,
@@ -532,13 +530,13 @@ export async function getStudentBirthdaysTodayForClasses(
      FROM students s
      LEFT JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
      WHERE s.tenant_id = $1
-       AND s.class_assigned_id IN (${placeholders})
+       AND s.class_assigned_id = ANY($4::int[])
        AND s.date_of_birth IS NOT NULL
        AND EXTRACT(MONTH FROM s.date_of_birth::date) = $2
        AND EXTRACT(DAY FROM s.date_of_birth::date) = $3
        AND (s.enrollment_status IS NULL OR s.enrollment_status = 'active')
      ORDER BY s.id`,
-    [tenantId, currentMonth, currentDay, ...classIds]
+    [tenantId, currentMonth, currentDay, classIds]
   );
 
   return res.rows.map(mapStudentBirthdayRow);
@@ -563,7 +561,6 @@ export async function getBirthdaysForMonthForClasses(
 
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const fromDay = options?.fromDay ?? 1;
-  const placeholders = classIds.map((_, i) => `$${i + 4}`).join(',');
 
   const studentsRes = await query(
     `SELECT s.id, s.first_name, s.last_name, s.date_of_birth,
@@ -573,12 +570,12 @@ export async function getBirthdaysForMonthForClasses(
      FROM students s
      LEFT JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
      WHERE s.tenant_id = $1
-       AND s.class_assigned_id IN (${placeholders})
+       AND s.class_assigned_id = ANY($4::int[])
        AND s.date_of_birth IS NOT NULL
        AND EXTRACT(MONTH FROM s.date_of_birth::date) = $2
        AND EXTRACT(DAY FROM s.date_of_birth::date) >= $3
        AND (s.enrollment_status IS NULL OR s.enrollment_status = 'active')`,
-    [tenantId, month, fromDay, ...classIds]
+    [tenantId, month, fromDay, classIds]
   );
 
   const people: Array<BirthdayPerson & { day: number }> = studentsRes.rows.map((row) => ({

@@ -13,7 +13,8 @@ import {
 } from '../services/financeSummaryService.js';
 import { ACTIVE_STUDENT_WHERE } from '../utils/studentEnrollment.js';
 import { getStudentLiveFeeBreakdown } from '../services/studentLiveFeeBreakdownService.js';
-import { resolveLedgerTermFromSettings, syncMissingLedgerTermFeesForActiveTerm } from '../services/ledgerFinanceService.js';
+import { resolveLedgerTermFromSettings } from '../services/ledgerFinanceService.js';
+import { ensureTenantLedgerSynced } from '../services/ledgerBackfillService.js';
 import { SQL_EFFECTIVE_STUDENT_LEDGER_TOTALS_CTE } from '../utils/feeStructureSql.js';
 
 const router = express.Router();
@@ -201,6 +202,9 @@ async function loadReportPeriod(req: AuthRequest): Promise<ReportPeriod> {
 router.get('/fee-status', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
+
+    await ensureTenantLedgerSynced(tenantId);
+
     const { classId, academicPeriodId, term: queryTerm, academicYear: queryYear, status = 'all' } = req.query;
 
     if (!classId) {
@@ -355,9 +359,9 @@ router.get('/financial-summary', async (req: AuthRequest, res) => {
       await loadReportPeriod(req);
 
     try {
-      await syncMissingLedgerTermFeesForActiveTerm(tenantId);
+      await ensureTenantLedgerSynced(tenantId);
     } catch (syncErr) {
-      console.error('[financial-summary] Ledger fee sync failed (continuing):', syncErr);
+      console.error('[financial-summary] Ledger sync failed (continuing):', syncErr);
     }
 
     const feeTotalsRow = ledgerTermId
@@ -544,9 +548,9 @@ router.get('/outstanding-fees', async (req: AuthRequest, res) => {
     }
 
     try {
-      await syncMissingLedgerTermFeesForActiveTerm(tenantId);
+      await ensureTenantLedgerSynced(tenantId);
     } catch (syncErr) {
-      console.error('[outstanding-fees] Ledger fee sync failed (continuing):', syncErr);
+      console.error('[outstanding-fees] Ledger sync failed (continuing):', syncErr);
     }
 
     const outstandingQuery = `
@@ -828,9 +832,9 @@ router.get('/admin-overview', async (req: AuthRequest, res) => {
     const { tenantId, termMatch, termLike, termOnly, ledgerTermId } = await loadReportPeriod(req);
 
     try {
-      await syncMissingLedgerTermFeesForActiveTerm(tenantId);
+      await ensureTenantLedgerSynced(tenantId);
     } catch (syncErr) {
-      console.error('[admin-overview] Ledger fee sync failed (continuing):', syncErr);
+      console.error('[admin-overview] Ledger sync failed (continuing):', syncErr);
     }
 
     const feeMixQuery = ledgerTermId

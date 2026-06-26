@@ -4,8 +4,7 @@ import { authenticate, requireTenant, AuthRequest, requireRole } from '../middle
 import { setTenantContext } from '../middleware/tenant.js';
 import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 import { resolveActiveLedgerTerm } from '../services/studentUnifiedBalanceService.js';
-import { syncMissingLedgerTermFeesForActiveTerm } from '../services/ledgerFinanceService.js';
-import { syncMissingPaymentLedgerCredits } from '../services/ledgerBackfillService.js';
+import { ensureTenantLedgerSynced } from '../services/ledgerBackfillService.js';
 import {
   getBatchStudentBalancesFromLedger,
   ledgerBalanceToApiShape,
@@ -36,15 +35,9 @@ router.get('/students/balances', async (req: AuthRequest, res) => {
 
     // Auto-bill students added outside the app (direct DB) before reading balances.
     try {
-      await syncMissingLedgerTermFeesForActiveTerm(tenantId);
+      await ensureTenantLedgerSynced(tenantId);
     } catch (syncErr) {
-      console.error('[students/balances] Ledger fee sync failed (continuing):', syncErr);
-    }
-
-    try {
-      await syncMissingPaymentLedgerCredits(tenantId);
-    } catch (paySyncErr) {
-      console.error('[students/balances] Payment ledger sync failed (continuing):', paySyncErr);
+      console.error('[students/balances] Ledger sync failed (continuing):', syncErr);
     }
 
     const { ledgerTermId, termLabel } = await resolveActiveLedgerTerm(query, tenantId);
@@ -289,9 +282,9 @@ router.get('/students/balances-by-term', async (req: AuthRequest, res) => {
     const { classId } = req.query;
 
     try {
-      await syncMissingLedgerTermFeesForActiveTerm(tenantId);
+      await ensureTenantLedgerSynced(tenantId);
     } catch (syncErr) {
-      console.error('[students/balances-by-term] Ledger fee sync failed (continuing):', syncErr);
+      console.error('[students/balances-by-term] Ledger sync failed (continuing):', syncErr);
     }
 
     const { ledgerTermId, termLabel } = await resolveActiveLedgerTerm(query, tenantId);
@@ -385,9 +378,9 @@ router.get('/class-report', async (req: AuthRequest, res) => {
     }
 
     try {
-      await syncMissingLedgerTermFeesForActiveTerm(tenantId);
+      await ensureTenantLedgerSynced(tenantId);
     } catch (syncErr) {
-      console.error('[class-report] Ledger fee sync failed (continuing):', syncErr);
+      console.error('[class-report] Ledger sync failed (continuing):', syncErr);
     }
 
     const { ledgerTermId, termLabel } = await resolveActiveLedgerTerm(query, tenantId);

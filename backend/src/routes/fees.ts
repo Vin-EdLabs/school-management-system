@@ -4,7 +4,8 @@ import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js'
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { getIO } from '../socket.js';
-import { postFeesForClass, resolveLedgerTermFromSettings, syncMissingLedgerTermFeesForActiveTerm } from '../services/ledgerFinanceService.js';
+import { postFeesForClass, resolveLedgerTermFromSettings } from '../services/ledgerFinanceService.js';
+import { ensureTenantLedgerSynced } from '../services/ledgerBackfillService.js';
 import { writeAuditLog } from '../services/auditService.js';
 import { formatMoneyGhs, resolveActorFromRequest, resolveClassName, withActor } from '../utils/auditResolve.js';
 import { getClientIp } from '../utils/clientIp.js';
@@ -117,15 +118,9 @@ router.get('/', async (req: AuthRequest, res) => {
 router.post('/sync-ledger', requireRole('super-admin', 'administrator', 'finance'), async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
-    const result = await syncMissingLedgerTermFeesForActiveTerm(tenantId);
+    await ensureTenantLedgerSynced(tenantId);
     res.json({
-      message:
-        result.insertedCount > 0 || result.repairedCount > 0
-          ? `Posted term fees for ${result.insertedCount} student(s)${
-              result.repairedCount > 0 ? `; repaired ${result.repairedCount} zero-amount row(s).` : '.'
-            }`
-          : 'All eligible students already have term fees posted.',
-      ...result,
+      message: 'Ledger sync completed (term fees and payment credits backfilled where missing).',
     });
   } catch (error) {
     console.error('Sync ledger fees error:', error);

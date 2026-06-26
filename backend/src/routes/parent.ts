@@ -9,6 +9,7 @@ import { writeAuditLog } from '../services/auditService.js';
 import { beneficiaryAdjustedFee, type BeneficiaryStudentRow } from '../utils/beneficiaryFee.js';
 import { buildStudentFinanceStatement } from '../services/studentFinanceStatementService.js';
 import { getStudentLiveFeeBreakdown } from '../services/studentLiveFeeBreakdownService.js';
+import { ensureTenantLedgerSynced } from '../services/ledgerBackfillService.js';
 import { resolveActiveLedgerTerm } from '../services/studentUnifiedBalanceService.js';
 import { getStudentBirthdaysForParent } from '../services/birthdayService.js';
 import { loadActiveFeeStructureLinesByClassTerm } from '../services/feeStructureItemsService.js';
@@ -1564,6 +1565,8 @@ router.get('/finance', authenticateParent, async (req: ParentRequest, res) => {
       return res.status(404).json({ error: 'Student not found' });
     }
     const student = studentRow.rows[0];
+
+    await ensureTenantLedgerSynced(tenantId);
 
     const { ledgerTermId } = await resolveActiveLedgerTerm(query, tenantId);
     const balance = await getStudentLiveFeeBreakdown(null, tenantId, studentId, ledgerTermId);

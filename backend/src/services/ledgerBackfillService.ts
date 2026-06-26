@@ -1,5 +1,5 @@
 import { getClient, query } from '../db/connection.js';
-import { resolveLedgerTermFromSettings } from './ledgerFinanceService.js';
+import { resolveLedgerTermFromSettings, syncMissingLedgerTermFeesForActiveTerm } from './ledgerFinanceService.js';
 import { beneficiaryAdjustedFee } from '../utils/beneficiaryFee.js';
 
 export type LedgerBackfillResult = {
@@ -8,6 +8,20 @@ export type LedgerBackfillResult = {
   studentsProcessed: number;
   message: string;
 };
+
+/** Idempotent backfill before fee reads (bulk-imported / direct-DB students). */
+export async function ensureTenantLedgerSynced(tenantId: number): Promise<void> {
+  try {
+    await syncMissingLedgerTermFeesForActiveTerm(tenantId);
+  } catch (err) {
+    console.error('[ensureTenantLedgerSynced] term fee sync failed (continuing):', err);
+  }
+  try {
+    await syncMissingPaymentLedgerCredits(tenantId);
+  } catch (err) {
+    console.error('[ensureTenantLedgerSynced] payment sync failed (continuing):', err);
+  }
+}
 
 /**
  * Idempotent: writes student_ledger payment credits for payments that have term_id

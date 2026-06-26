@@ -54,9 +54,14 @@ export async function getStudentLiveFeeBreakdown(
   if (studentRes.rows.length === 0) return null;
 
   const { ledgerTermId } = await resolveActiveLedgerTerm(run, tenantId, activeTermId ?? undefined);
-  const shape = await ledgerBalanceToApiShape(client, tenantId, studentId, ledgerTermId);
-  if (!shape || !ledgerTermId) return shape;
-  return enrichBalanceShapeWithExpectedFees(client, tenantId, studentId, ledgerTermId, shape);
+  const termIdForBalance = ledgerTermId ?? activeTermId ?? null;
+  const shape = await ledgerBalanceToApiShape(client, tenantId, studentId, termIdForBalance);
+  if (!shape) return null;
+
+  const effectiveTermId = shape.activeTermId ?? ledgerTermId ?? activeTermId ?? null;
+  if (!effectiveTermId) return shape;
+
+  return enrichBalanceShapeWithExpectedFees(client, tenantId, studentId, effectiveTermId, shape);
 }
 
 /** Payment context from ledger — used when recording payments. */

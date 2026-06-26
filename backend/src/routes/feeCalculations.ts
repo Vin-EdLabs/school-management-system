@@ -103,13 +103,18 @@ router.get('/students/balances', async (req: AuthRequest, res) => {
         ],
       };
 
-      balances[String(row.id)] = await enrichBalanceShapeWithExpectedFees(
-        null,
-        tenantId,
-        row.id,
-        ledgerTermId,
-        rawShape
-      );
+      try {
+        balances[String(row.id)] = await enrichBalanceShapeWithExpectedFees(
+          null,
+          tenantId,
+          row.id,
+          ledgerTermId,
+          rawShape
+        );
+      } catch (enrichErr) {
+        console.error(`[students/balances] enrich failed for student ${row.id}:`, enrichErr);
+        balances[String(row.id)] = rawShape;
+      }
     }
 
     let studentsOwing = 0;

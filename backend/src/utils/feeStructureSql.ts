@@ -21,6 +21,17 @@ export const SQL_FEE_STRUCTURE_CLASS_MATCH = `
   )
 `;
 
+/**
+ * Join fee structures to students for the active ledger term.
+ * `c_fs` must be joined before SQL_FEE_STRUCTURE_CLASS_MATCH is applied (WHERE, not fs ON).
+ */
+export const SQL_JOIN_LEDGER_FEE_STRUCTURES_FOR_TERM = `
+  INNER JOIN ledger_fee_structures fs ON fs.tenant_id = s.tenant_id
+    AND fs.term_id = t.id
+    AND fs.academic_year_id = t.academic_year_id
+  INNER JOIN classes c_fs ON c_fs.id = fs.class_id AND c_fs.tenant_id = fs.tenant_id
+`;
+
 /** Active fee_structure_items sum, falling back to ledger_fee_structures.total (includes GHS 0 tuition). */
 export const SQL_EFFECTIVE_FEE_STRUCTURE_TOTAL = `COALESCE(
   (SELECT SUM(fsi.amount)::numeric
@@ -60,12 +71,9 @@ export const SQL_EFFECTIVE_STUDENT_LEDGER_TOTALS_CTE = `
     FROM students s
     LEFT JOIN classes c_student ON c_student.id = s.class_assigned_id AND c_student.tenant_id = s.tenant_id
     INNER JOIN terms t ON t.id = $2 AND t.tenant_id = s.tenant_id
-    INNER JOIN ledger_fee_structures fs ON fs.tenant_id = s.tenant_id
-      AND fs.term_id = t.id
-      AND fs.academic_year_id = t.academic_year_id
-      AND ${SQL_FEE_STRUCTURE_CLASS_MATCH}
-    INNER JOIN classes c_fs ON c_fs.id = fs.class_id AND c_fs.tenant_id = fs.tenant_id
+    ${SQL_JOIN_LEDGER_FEE_STRUCTURES_FOR_TERM}
     WHERE s.tenant_id = $1
+      AND (${SQL_FEE_STRUCTURE_CLASS_MATCH})
     ORDER BY s.id, (fs.class_id = s.class_assigned_id) DESC, fs.id
   ),
   student_ledger_totals AS (

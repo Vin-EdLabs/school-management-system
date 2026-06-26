@@ -4,6 +4,7 @@ import { beneficiaryAdjustedFee } from '../utils/beneficiaryFee.js';
 import {
   SQL_BENEFICIARY_TERM_FEE_DEBIT_EFFECTIVE,
   SQL_FEE_STRUCTURE_CLASS_MATCH,
+  SQL_JOIN_LEDGER_FEE_STRUCTURES_FOR_TERM,
 } from '../utils/feeStructureSql.js';
 import { z } from 'zod';
 import { getStudentFullBalance, SQL_TRUE_OUTSTANDING, SQL_TRUE_OUTSTANDING_DEBIT, SQL_EFFECTIVE_CREDIT } from './studentUnifiedBalanceService.js';
@@ -380,12 +381,9 @@ export async function syncMissingLedgerTermFeesForActiveTerm(tenantId: number): 
       FROM students s
       INNER JOIN terms t ON t.id = $2 AND t.tenant_id = $1
       INNER JOIN classes c_student ON c_student.id = s.class_assigned_id AND c_student.tenant_id = s.tenant_id
-      INNER JOIN ledger_fee_structures fs ON fs.tenant_id = s.tenant_id
-        AND fs.academic_year_id = t.academic_year_id
-        AND fs.term_id = t.id
-        AND ${SQL_FEE_STRUCTURE_CLASS_MATCH}
-      INNER JOIN classes c_fs ON c_fs.id = fs.class_id AND c_fs.tenant_id = fs.tenant_id
+      ${SQL_JOIN_LEDGER_FEE_STRUCTURES_FOR_TERM}
       WHERE s.tenant_id = $1
+        AND (${SQL_FEE_STRUCTURE_CLASS_MATCH})
         AND COALESCE(s.enrollment_status, 'active') = 'active'
         AND s.class_assigned_id IS NOT NULL
         AND NOT EXISTS (
@@ -410,12 +408,9 @@ export async function syncMissingLedgerTermFeesForActiveTerm(tenantId: number): 
         FROM students s
         INNER JOIN terms t ON t.id = $2 AND t.tenant_id = $1
         INNER JOIN classes c_student ON c_student.id = s.class_assigned_id AND c_student.tenant_id = s.tenant_id
-        INNER JOIN ledger_fee_structures fs ON fs.tenant_id = s.tenant_id
-          AND fs.academic_year_id = t.academic_year_id
-          AND fs.term_id = t.id
-          AND ${SQL_FEE_STRUCTURE_CLASS_MATCH}
-        INNER JOIN classes c_fs ON c_fs.id = fs.class_id AND c_fs.tenant_id = fs.tenant_id
+        ${SQL_JOIN_LEDGER_FEE_STRUCTURES_FOR_TERM}
         WHERE s.tenant_id = $1
+          AND (${SQL_FEE_STRUCTURE_CLASS_MATCH})
           AND COALESCE(s.enrollment_status, 'active') = 'active'
           AND s.class_assigned_id IS NOT NULL
         ORDER BY s.id, (fs.class_id = s.class_assigned_id) DESC, fs.id

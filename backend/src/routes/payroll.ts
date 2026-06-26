@@ -345,7 +345,7 @@ router.get('/history', requireRole('super-admin', 'administrator', 'finance'), a
       SELECT sp.*,
         CASE WHEN sp.payee_type = 'teacher' THEN t.full_name ELSE s.full_name END AS display_name,
         CASE WHEN sp.payee_type = 'teacher' THEN t.staff_id ELSE s.staff_id END AS display_staff_id,
-        CASE WHEN sp.payee_type = 'teacher' THEN COALESCE(c.class_name, 'Teacher') ELSE COALESCE(s.role, 'Staff') END AS display_role
+        CASE WHEN sp.payee_type = 'teacher' THEN COALESCE(c.class_name, 'Teacher') ELSE COALESCE(s.position, 'Staff') END AS display_role
       FROM salary_payments sp
       LEFT JOIN teachers t ON sp.payee_type = 'teacher' AND sp.payee_id = t.id AND t.tenant_id = sp.tenant_id
       LEFT JOIN classes c ON t.class_assigned_id = c.id
@@ -455,7 +455,7 @@ router.get('/detail', requireRole('super-admin', 'administrator', 'finance'), as
         id: s.id,
         name: s.full_name,
         staffId: s.staff_id,
-        position: s.role || 'Staff',
+        position: s.position || 'Staff',
         monthlySalary: parseFloat(s.monthly_salary || 0),
         ssnitEnabled: s.ssnit_enabled !== false,
         employmentStatus: s.employment_status,

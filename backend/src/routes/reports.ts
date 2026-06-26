@@ -44,13 +44,23 @@ const TERM_PRED_FS = `
     OR $2 LIKE TRIM(fs.term) || '%' OR TRIM(fs.term) LIKE $2 || '%'
     OR $4 LIKE TRIM(fs.term) || '%' OR TRIM(fs.term) LIKE $4 || '%'
   )`;
-const TERM_PRED_PAY = `
+/** Fee structure / payments / arrears term matching — param indices are 1-based ($n). */
+function termPredPay(alias: string, termMatchIdx: number, termLikeIdx: number, termOnlyIdx: number): string {
+  const p = `${alias}.`;
+  const m = `$${termMatchIdx}`;
+  const l = `$${termLikeIdx}`;
+  const o = `$${termOnlyIdx}`;
+  return `
   (
-    TRIM(COALESCE(p.term, '')) = ''
-    OR p.term = $2 OR p.term = $4 OR p.term LIKE $3
-    OR $2 LIKE TRIM(p.term) || '%' OR TRIM(p.term) LIKE $2 || '%'
-    OR $4 LIKE TRIM(p.term) || '%' OR TRIM(p.term) LIKE $4 || '%'
+    TRIM(COALESCE(${p}term, '')) = ''
+    OR ${p}term = ${m} OR ${p}term = ${o} OR ${p}term LIKE ${l}
+    OR ${m} LIKE TRIM(${p}term) || '%' OR TRIM(${p}term) LIKE ${m} || '%'
+    OR ${o} LIKE TRIM(${p}term) || '%' OR TRIM(${p}term) LIKE ${o} || '%'
   )`;
+}
+
+/** Default payment term match when $2=termMatch, $3=termLike, $4=termOnly (tenant is $1). */
+const TERM_PRED_PAY = termPredPay('p', 2, 3, 4);
 const TERM_PRED_TA = `
   (
     TRIM(COALESCE(ta.current_term, '')) = ''
@@ -551,7 +561,7 @@ router.get('/outstanding-fees', async (req: AuthRequest, res) => {
             (
               SELECT EXTRACT(DAY FROM NOW() - MAX(COALESCE(p2.payment_date, p2.created_at::date)::timestamp))::int
               FROM payments p2
-              WHERE p2.tenant_id = $1 AND p2.student_id = s.id AND COALESCE(p2.is_voided, false) = false AND (${TERM_PRED_PAY.replace(/p\./g, 'p2.')})
+              WHERE p2.tenant_id = $1 AND p2.student_id = s.id AND COALESCE(p2.is_voided, false) = false AND (${termPredPay('p2', 3, 4, 5)})
             ),
             0
           ) AS days
@@ -645,7 +655,7 @@ router.get('/payroll-summary', async (req: AuthRequest, res) => {
       UNION ALL
       SELECT 
         s.full_name as name,
-        COALESCE(s.role, 'Staff') as role,
+        COALESCE(s.position, 'Staff') as role,
         s.monthly_salary::numeric as basic,
         CASE WHEN COALESCE(s.ssnit_enabled, true) = false THEN 0::numeric
           ELSE round((s.monthly_salary * COALESCE(ps.default_ssnit_percent, 5.5) / 100)::numeric, 2) END as ssnit,

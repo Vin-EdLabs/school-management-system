@@ -106,10 +106,18 @@ export async function getStudentBalanceFromLedger(
        COALESCE(SUM(CASE WHEN entry_type = 'arrears' THEN debit ELSE 0 END), 0) AS arrears,
        COALESCE(SUM(CASE WHEN entry_type IN (${CREDIT_AVAILABLE_SQL}) THEN credit ELSE 0 END), 0) AS credit_available,
        COALESCE(SUM(CASE WHEN entry_type = 'payment' THEN credit ELSE 0 END), 0) AS payments_made,
-       COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) AS net_balance
+       COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) AS net_balance,
+       COALESCE((
+         SELECT SUM(p.amount)::numeric
+         FROM payments p
+         WHERE p.tenant_id = $2
+           AND p.student_id = $1
+           AND p.term_id = $3
+           AND COALESCE(p.is_voided, false) = false
+       ), 0) AS payments_table_total
      FROM student_ledger
      WHERE student_id = $1 AND tenant_id = $2 ${termFilter}`,
-    params
+    termId != null && !Number.isNaN(Number(termId)) ? [studentId, tenantId, termId] : params
   );
 
   const row = res.rows[0] || {};
@@ -117,8 +125,14 @@ export async function getStudentBalanceFromLedger(
   const individualCharges = roundMoney(parseFloat(row.individual_charges) || 0);
   const arrears = roundMoney(parseFloat(row.arrears) || 0);
   const creditFromCarryForward = roundMoney(parseFloat(row.credit_available) || 0);
-  const paymentsMade = roundMoney(parseFloat(row.payments_made) || 0);
-  const netBalance = roundMoney(parseFloat(row.net_balance) || 0);
+  const ledgerPaymentsMade = roundMoney(parseFloat(row.payments_made) || 0);
+  const paymentsTableTotal =
+    termId != null && !Number.isNaN(Number(termId))
+      ? roundMoney(parseFloat(row.payments_table_total) || 0)
+      : 0;
+  const paymentsMade = roundMoney(Math.max(ledgerPaymentsMade, paymentsTableTotal));
+  const paymentGap = roundMoney(Math.max(0, paymentsMade - ledgerPaymentsMade));
+  const netBalance = roundMoney((parseFloat(row.net_balance) || 0) - paymentGap);
   const totalDue = roundMoney(termFee + individualCharges + arrears);
   const outstanding = roundMoney(Math.max(0, netBalance));
   /** Overpayment in the current term (or net credit after payments) — not the same as brought-forward credit lines. */
@@ -242,17 +256,26 @@ export async function getBatchStudentBalancesFromLedger(
        COALESCE(SUM(CASE WHEN sl.entry_type = 'student_charge' THEN sl.debit ELSE 0 END), 0) AS individual_charges,
        COALESCE(SUM(CASE WHEN sl.entry_type = 'arrears' THEN sl.debit ELSE 0 END), 0) AS arrears,
        COALESCE(SUM(CASE WHEN sl.entry_type IN (${CREDIT_AVAILABLE_SQL}) THEN sl.credit ELSE 0 END), 0) AS credit_brought_forward,
-       COALESCE(SUM(CASE WHEN sl.entry_type = 'payment' THEN sl.credit ELSE 0 END), 0) AS amount_paid_this_term,
-       COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(sl.credit), 0) AS net_balance
+       COALESCE(SUM(CASE WHEN sl.entry_type = 'payment' THEN sl.credit ELSE 0 END), 0) AS ledger_paid,
+       COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(sl.credit), 0) AS net_balance,
+       COALESCE(pay_sum.paid, 0) AS payments_table_total
      FROM students s
      LEFT JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
      LEFT JOIN student_ledger sl ON sl.student_id = s.id
        AND sl.tenant_id = s.tenant_id
        AND sl.term_id = $2
+     LEFT JOIN LATERAL (
+       SELECT COALESCE(SUM(p.amount), 0)::numeric AS paid
+       FROM payments p
+       WHERE p.tenant_id = s.tenant_id
+         AND p.student_id = s.id
+         AND p.term_id = $2
+         AND COALESCE(p.is_voided, false) = false
+     ) pay_sum ON true
      WHERE s.tenant_id = $1
        AND COALESCE(s.enrollment_status, 'active') = 'active'
        ${classFilter}
-     GROUP BY s.id, s.first_name, s.last_name, s.student_id, s.admission_number, c.class_name
+     GROUP BY s.id, s.first_name, s.last_name, s.student_id, s.admission_number, c.class_name, pay_sum.paid
      ORDER BY GREATEST(0, COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(sl.credit), 0)) DESC`,
     params
   );
@@ -262,8 +285,11 @@ export async function getBatchStudentBalancesFromLedger(
     const individualCharges = roundMoney(parseFloat(row.individual_charges) || 0);
     const arrears = roundMoney(parseFloat(row.arrears) || 0);
     const creditBroughtForward = roundMoney(parseFloat(row.credit_brought_forward) || 0);
-    const amountPaidThisTerm = roundMoney(parseFloat(row.amount_paid_this_term) || 0);
-    const netBalance = roundMoney(parseFloat(row.net_balance) || 0);
+    const ledgerPaid = roundMoney(parseFloat(row.ledger_paid) || 0);
+    const paymentsTableTotal = roundMoney(parseFloat(row.payments_table_total) || 0);
+    const amountPaidThisTerm = roundMoney(Math.max(ledgerPaid, paymentsTableTotal));
+    const paymentGap = roundMoney(Math.max(0, amountPaidThisTerm - ledgerPaid));
+    const netBalance = roundMoney((parseFloat(row.net_balance) || 0) - paymentGap);
     const totalDue = roundMoney(termFee + individualCharges + arrears);
     const outstanding = roundMoney(Math.max(0, netBalance));
     const creditBalance = roundMoney(netBalance < -0.001 ? Math.abs(netBalance) : 0);

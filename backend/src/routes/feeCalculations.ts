@@ -5,6 +5,7 @@ import { setTenantContext } from '../middleware/tenant.js';
 import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 import { resolveActiveLedgerTerm } from '../services/studentUnifiedBalanceService.js';
 import { syncMissingLedgerTermFeesForActiveTerm } from '../services/ledgerFinanceService.js';
+import { syncMissingPaymentLedgerCredits } from '../services/ledgerBackfillService.js';
 import {
   getBatchStudentBalancesFromLedger,
   ledgerBalanceToApiShape,
@@ -38,6 +39,12 @@ router.get('/students/balances', async (req: AuthRequest, res) => {
       await syncMissingLedgerTermFeesForActiveTerm(tenantId);
     } catch (syncErr) {
       console.error('[students/balances] Ledger fee sync failed (continuing):', syncErr);
+    }
+
+    try {
+      await syncMissingPaymentLedgerCredits(tenantId);
+    } catch (paySyncErr) {
+      console.error('[students/balances] Payment ledger sync failed (continuing):', paySyncErr);
     }
 
     const { ledgerTermId, termLabel } = await resolveActiveLedgerTerm(query, tenantId);

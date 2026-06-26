@@ -7,6 +7,7 @@ import {
 } from './ledgerBalanceService.js';
 import { resolveActiveLedgerTerm } from './studentUnifiedBalanceService.js';
 import { syncMissingLedgerTermFeesForActiveTerm } from './ledgerFinanceService.js';
+import { syncMissingPaymentLedgerCredits } from './ledgerBackfillService.js';
 import { resolveLedgerFeeStructureForStudent } from './effectiveStudentBalanceService.js';
 import { listStudentCharges } from './studentChargesService.js';
 import { loadActiveFeeStructureLinesByClassTerm, loadActiveFeeStructureLinesForStudent } from './feeStructureItemsService.js';
@@ -504,6 +505,11 @@ export async function generateSingleInvoice(
   } catch (syncErr) {
     console.error('[generateSingleInvoice] Ledger fee sync failed (continuing):', syncErr);
   }
+  try {
+    await syncMissingPaymentLedgerCredits(tenantId);
+  } catch (paySyncErr) {
+    console.error('[generateSingleInvoice] Payment ledger sync failed (continuing):', paySyncErr);
+  }
 
   const client = await getClient();
   try {
@@ -655,6 +661,11 @@ export async function generateBulkInvoices(
     await syncMissingLedgerTermFeesForActiveTerm(tenantId);
   } catch (syncErr) {
     console.error('[generateBulkInvoices] Ledger fee sync failed (continuing):', syncErr);
+  }
+  try {
+    await syncMissingPaymentLedgerCredits(tenantId);
+  } catch (paySyncErr) {
+    console.error('[generateBulkInvoices] Payment ledger sync failed (continuing):', paySyncErr);
   }
 
   const run: QueryFn = query;

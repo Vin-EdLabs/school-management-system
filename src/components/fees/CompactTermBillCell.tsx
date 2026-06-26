@@ -1,6 +1,14 @@
-import React, { memo, useState, startTransition } from 'react';
+import React, { lazy, memo, Suspense, useState } from 'react';
 import { ChevronDown, Loader2 } from 'lucide-react';
-import TermBillBreakdown from './TermBillBreakdown';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { prefetchFeeStructureItemsSummary } from '../../services/feeStructureItems';
+
+const TermBillBreakdown = lazy(() => import('./TermBillBreakdown'));
 
 type CompactTermBillCellProps = {
   total: number;
@@ -33,8 +41,7 @@ const CompactTermBillCell: React.FC<CompactTermBillCellProps> = ({
   discountAmount,
   discountLabel,
 }) => {
-  const [expanded, setExpanded] = useState(false);
-  const [pending, setPending] = useState(false);
+  const [open, setOpen] = useState(false);
 
   const canExpand = Boolean(
     feeStructureId ||
@@ -43,17 +50,18 @@ const CompactTermBillCell: React.FC<CompactTermBillCellProps> = ({
       (studentId != null && termId != null)
   );
 
-  const openBreakdown = () => {
-    if (!canExpand || expanded) return;
-    setPending(true);
-    startTransition(() => {
-      setExpanded(true);
-      setPending(false);
-    });
+  const warmCache = () => {
+    if (feeStructureId) prefetchFeeStructureItemsSummary(feeStructureId);
   };
 
-  if (!expanded) {
-    return (
+  const openBreakdown = () => {
+    if (!canExpand) return;
+    warmCache();
+    setOpen(true);
+  };
+
+  return (
+    <>
       <div className="inline-flex flex-col items-end gap-0.5">
         <span className="font-mono tabular-nums font-medium">
           GHS {formatMoney(total)}
@@ -62,39 +70,48 @@ const CompactTermBillCell: React.FC<CompactTermBillCellProps> = ({
           <button
             type="button"
             onClick={openBreakdown}
-            disabled={pending}
+            onMouseEnter={warmCache}
+            onFocus={warmCache}
             className="inline-flex items-center gap-1 text-xs text-emerald-700 hover:text-emerald-900 underline-offset-2 hover:underline dark:text-emerald-400 self-end"
           >
-            {pending ? (
-              <>
-                <Loader2 className="h-3 w-3 animate-spin" />
-                Loading…
-              </>
-            ) : (
-              <>
-                View breakdown
-                <ChevronDown className="h-3 w-3" />
-              </>
-            )}
+            View breakdown
+            <ChevronDown className="h-3 w-3" />
           </button>
         ) : null}
       </div>
-    );
-  }
 
-  return (
-    <TermBillBreakdown
-      total={total}
-      feeStructureId={feeStructureId}
-      individualCharges={individualCharges}
-      individualChargeAmount={individualChargeAmount}
-      studentId={studentId}
-      termId={termId}
-      compact
-      defaultExpanded
-      discountAmount={discountAmount}
-      discountLabel={discountLabel}
-    />
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Term bill — GHS {formatMoney(total)}</DialogTitle>
+          </DialogHeader>
+          {open ? (
+            <Suspense
+              fallback={
+                <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading breakdown…
+                </div>
+              }
+            >
+              <TermBillBreakdown
+                total={total}
+                feeStructureId={feeStructureId}
+                individualCharges={individualCharges}
+                individualChargeAmount={individualChargeAmount}
+                studentId={studentId}
+                termId={termId}
+                discountAmount={discountAmount}
+                discountLabel={discountLabel}
+                chargesPreloaded
+                panelOnly
+                defaultExpanded
+              />
+            </Suspense>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 

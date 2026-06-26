@@ -75,13 +75,12 @@ const StudentQuickViewSheet: React.FC<StudentQuickViewSheetProps> = ({
   onEdit,
   onViewFull,
 }) => {
-  const { ledgerBalances } = useData();
+  const { ledgerBalances, loadDomains } = useData();
   const [attendance, setAttendance] = useState<AttendanceRow[] | null>(null);
   const [attErr, setAttErr] = useState(false);
   const [grades, setGrades] = useState<GradeRow[] | null>(null);
   const [gradesErr, setGradesErr] = useState(false);
   const [studentBalance, setStudentBalance] = useState<StudentBalance | null>(null);
-  const [feeErr, setFeeErr] = useState(false);
 
   useEffect(() => {
     if (!open || !student) {
@@ -90,35 +89,38 @@ const StudentQuickViewSheet: React.FC<StudentQuickViewSheetProps> = ({
       setStudentBalance(null);
       setAttErr(false);
       setGradesErr(false);
-      setFeeErr(false);
       return;
     }
+    const sid = student.id;
+    const cachedBalance = ledgerBalances?.[String(sid)];
+    if (cachedBalance) {
+      setStudentBalance(cachedBalance);
+    } else {
+      setStudentBalance(null);
+      void loadDomains(['fees'], { silent: true });
+    }
+
     let cancelled = false;
     (async () => {
       setAttendance(null);
       setGrades(null);
-      setStudentBalance(null);
-      const sid = student.id;
       const classId = student.classAssignedId;
-      try {
-        const rows = await apiService.get<AttendanceRow[]>(
-          `/attendance/student?studentId=${encodeURIComponent(sid)}`
-        );
-        if (!cancelled) setAttendance(Array.isArray(rows) ? rows : []);
-      } catch {
-        if (!cancelled) {
-          setAttendance([]);
-          setAttErr(true);
-        }
-      }
-      try {
-        const breakdown = await fetchStudentBalance(sid);
-        if (!cancelled) setStudentBalance(breakdown);
-      } catch {
-        if (!cancelled) {
-          setStudentBalance(null);
-          setFeeErr(true);
-        }
+      const attendancePromise = apiService
+        .get<AttendanceRow[]>(`/attendance/student?studentId=${encodeURIComponent(sid)}`)
+        .then((rows) => (Array.isArray(rows) ? rows : []))
+        .catch(() => {
+          if (!cancelled) setAttErr(true);
+          return [] as AttendanceRow[];
+        });
+      const balancePromise = fetchStudentBalance(sid)
+        .then((breakdown) => breakdown)
+        .catch(() => null);
+
+      const [rows, breakdown] = await Promise.all([attendancePromise, balancePromise]);
+      if (cancelled) return;
+      setAttendance(rows);
+      if (breakdown) {
+        setStudentBalance(breakdown);
       }
       if (!classId) {
         try {
@@ -147,7 +149,7 @@ const StudentQuickViewSheet: React.FC<StudentQuickViewSheetProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [open, student]);
+  }, [open, student, ledgerBalances, loadDomains]);
 
   const feeSummary = useMemo(() => {
     if (!student) {
@@ -314,9 +316,6 @@ const StudentQuickViewSheet: React.FC<StudentQuickViewSheetProps> = ({
                 Fees ({alumni ? 'all time' : currentTerm && currentTerm !== 'Not Set' ? currentTerm : 'all terms'})
               </h3>
               <div className="rounded-lg border bg-card/50 p-3 shadow-sm">
-                {feeErr && !studentBalance && !ledgerBalances?.[String(student.id)] ? (
-                  <p className="text-xs text-destructive mb-2">Could not load live fee breakdown.</p>
-                ) : null}
                 <dl className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-sm">
                   <div>
                     <dt className="text-[11px] text-muted-foreground">Arrears</dt>

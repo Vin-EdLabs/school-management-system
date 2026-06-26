@@ -34,12 +34,25 @@ type TermBillBreakdownProps = {
   discountLabel?: string;
   /** When true, starts expanded and loads breakdown immediately (used by lazy cell). */
   defaultExpanded?: boolean;
+  /** Renders only the breakdown panel (no inline toggle) — for dialogs. */
+  panelOnly?: boolean;
+  /** Parent already supplied charge lines from batch balance — skip per-student fetch. */
+  chargesPreloaded?: boolean;
 };
 
 const formatMoney = (n: number) =>
   n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const roundMoney = (n: number) => Math.round(n * 100) / 100;
+
+type ChargeLine = {
+  id: number;
+  description: string;
+  amount: number;
+  date?: string | null;
+  status?: string | null;
+  reason?: string | null;
+};
 
 export const TermBillBreakdown: React.FC<TermBillBreakdownProps> = ({
   total,
@@ -56,18 +69,27 @@ export const TermBillBreakdown: React.FC<TermBillBreakdownProps> = ({
   discountAmount: discountAmountProp,
   discountLabel,
   defaultExpanded = false,
+  panelOnly = false,
+  chargesPreloaded = false,
 }) => {
-  const [expanded, setExpanded] = useState(defaultExpanded);
+  const chargesFromParent = chargesPreloaded || individualCharges !== undefined;
+  const [expanded, setExpanded] = useState(defaultExpanded || panelOnly);
   const [summary, setSummary] = useState<FeeStructureItemsSummary | null>(summaryProp ?? null);
-  const [loading, setLoading] = useState(defaultExpanded);
-  const [loadedCharges, setLoadedCharges] = useState<StudentCharge[] | null>(
-    individualCharges && individualCharges.length > 0 ? individualCharges : null
+  const [loading, setLoading] = useState(defaultExpanded || panelOnly);
+  const [loadedCharges, setLoadedCharges] = useState<ChargeLine[] | null>(
+    chargesFromParent ? (individualCharges ?? []) : null
   );
 
+  const shouldFetchCharges =
+    !chargesFromParent &&
+    studentId != null &&
+    termId != null &&
+    Number(individualChargeAmount ?? 0) > 0;
+
   React.useEffect(() => {
-    if (!defaultExpanded) return;
+    if (!defaultExpanded && !panelOnly) return;
     const needsSummary = !summary && !breakdownItems?.length && !!feeStructureId;
-    const needsCharges = loadedCharges === null && studentId != null && termId != null;
+    const needsCharges = loadedCharges === null && shouldFetchCharges;
     if (!needsSummary && !needsCharges) {
       setLoading(false);
       return;
@@ -103,7 +125,7 @@ export const TermBillBreakdown: React.FC<TermBillBreakdownProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [defaultExpanded, feeStructureId, studentId, termId]);
+  }, [defaultExpanded, panelOnly, feeStructureId, studentId, termId, shouldFetchCharges]);
 
   const propChargeTotal = (individualCharges ?? []).reduce((sum, c) => sum + Number(c.amount), 0);
   const loadedChargeTotal = (loadedCharges ?? []).reduce((sum, c) => sum + Number(c.amount), 0);
@@ -122,7 +144,7 @@ export const TermBillBreakdown: React.FC<TermBillBreakdownProps> = ({
     }
 
     const needsSummary = !summary && !breakdownItems?.length && !!feeStructureId;
-    const needsCharges = loadedCharges === null && studentId != null && termId != null;
+    const needsCharges = loadedCharges === null && shouldFetchCharges;
     setLoading(needsSummary || needsCharges);
     startTransition(() => setExpanded(true));
 
@@ -167,6 +189,74 @@ export const TermBillBreakdown: React.FC<TermBillBreakdownProps> = ({
   const canExpand = Boolean(
     feeStructureId || breakdownItems?.length || propCharges.length > 0 || creditAmount > 0 || extraChargeSummary > 0 || (studentId != null && termId != null)
   );
+
+  if (panelOnly) {
+    return (
+      <div className={className}>
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading breakdown…
+          </div>
+        ) : (activeItems.length > 0 || charges.length > 0 || creditAmount > 0 || shouldShowDiscount) ? (
+          <div className="space-y-1 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-sm">
+            {activeItems.map((item) => (
+              <div key={item.item_name} className="flex justify-between gap-4">
+                <span className="text-muted-foreground">{formatFeeItemLabel(item.item_name)}</span>
+                <span className="font-mono tabular-nums">GHS {formatMoney(Number(item.amount))}</span>
+              </div>
+            ))}
+            {shouldShowDiscount ? (
+              <div className="flex justify-between gap-4 text-amber-700">
+                <span>{discountLabel ?? 'Beneficiary Discount'}</span>
+                <span className="font-mono tabular-nums">-GHS {formatMoney(discountAmount)}</span>
+              </div>
+            ) : null}
+            {charges.length > 0 ? (
+              <div className="pt-2">
+                <div className="text-xs text-muted-foreground mb-1">── Individual Charges ──</div>
+                <div className="space-y-1">
+                  {charges.map((c: any) => (
+                    <div key={`charge-${c.id}`} className="flex justify-between gap-4">
+                      <div className="text-muted-foreground">
+                        <div>{c.description}</div>
+                        {c.reason ? <div className="text-[11px] text-muted-foreground/70 mt-0.5">{c.reason}</div> : null}
+                      </div>
+                      <div className="text-right">
+                        <div className="font-mono tabular-nums">GHS {formatMoney(Number(c.amount))}</div>
+                        {c.status ? (
+                          <div className="text-[10px] uppercase tracking-wide text-muted-foreground mt-0.5">
+                            {c.status}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : extraChargeSummary > 0 ? (
+              <div className="pt-2">
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Individual charges</span>
+                  <span className="font-mono tabular-nums">GHS {formatMoney(extraChargeSummary)}</span>
+                </div>
+              </div>
+            ) : null}
+            {creditAmount > 0 ? (
+              <div className="pt-2">
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Credit Balance</span>
+                  <span className="font-mono tabular-nums text-blue-700">-GHS {formatMoney(creditAmount)}</span>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <p className="py-4 text-center text-sm text-muted-foreground">No breakdown items available.</p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className={className}>

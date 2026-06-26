@@ -77,10 +77,37 @@ export async function saveFeeStructureItems(
   });
 }
 
+const summaryCache = new Map<string, Promise<FeeStructureItemsSummary>>();
+
+/** Warm the cache without awaiting (e.g. on hover or page load). */
+export function prefetchFeeStructureItemsSummary(feeStructureId: string | number): void {
+  const key = String(feeStructureId);
+  if (!key || summaryCache.has(key)) return;
+  summaryCache.set(
+    key,
+    apiService
+      .get<FeeStructureItemsSummary>(`/fees/${feeStructureId}/items/summary`)
+      .catch((err) => {
+        summaryCache.delete(key);
+        throw err;
+      })
+  );
+}
+
 export async function fetchFeeStructureItemsSummary(
   feeStructureId: string | number
 ): Promise<FeeStructureItemsSummary> {
-  return apiService.get<FeeStructureItemsSummary>(`/fees/${feeStructureId}/items/summary`);
+  const key = String(feeStructureId);
+  const cached = summaryCache.get(key);
+  if (cached) return cached;
+  const request = apiService.get<FeeStructureItemsSummary>(`/fees/${feeStructureId}/items/summary`);
+  summaryCache.set(key, request);
+  try {
+    return await request;
+  } catch (err) {
+    summaryCache.delete(key);
+    throw err;
+  }
 }
 
 export function formatFeeItemLabel(name: string): string {

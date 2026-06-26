@@ -174,12 +174,6 @@ router.get('/students/:studentId/balance', async (req: AuthRequest, res) => {
       return res.status(400).json({ error: 'Invalid student id' });
     }
 
-    try {
-      await syncMissingLedgerTermFeesForActiveTerm(tenantId);
-    } catch (syncErr) {
-      console.error('[students/:studentId/balance] Ledger fee sync failed (continuing):', syncErr);
-    }
-
     const { ledgerTermId, termLabel } = await resolveActiveLedgerTerm(query, tenantId);
 
     const exists = await assertStudentInTenant(null, tenantId, studentId);

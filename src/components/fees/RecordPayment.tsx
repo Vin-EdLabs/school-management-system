@@ -42,7 +42,7 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
   paymentDisabledReason = null,
   onBlockedSubmit,
 }) => {
-  const { students, payments, feeStructures, ledgerBalances } = useData();
+  const { students, payments, feeStructures, ledgerBalances, loadDomains } = useData();
   const { currentTerm, currentYear } = useActiveTerm();
   const { readOnly: termReadOnly } = useTermReadOnly();
   const recordPayment = useRecordPayment();
@@ -71,9 +71,11 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
     const cached = ledgerBalances[formData.studentId];
     if (cached) {
       setStudentBalance(cached);
+    } else {
+      void loadDomains(['fees'], { silent: true });
     }
     let cancelled = false;
-    setBalanceLoading(true);
+    setBalanceLoading(!cached);
     void fetchStudentBalance(formData.studentId)
       .then((b) => {
         if (!cancelled) setStudentBalance(b);
@@ -87,7 +89,7 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [formData.studentId, payments, ledgerBalances]);
+  }, [formData.studentId, payments, ledgerBalances, loadDomains]);
 
   const selectedStudent = useMemo(
     () => students.find(s => s.id === formData.studentId),

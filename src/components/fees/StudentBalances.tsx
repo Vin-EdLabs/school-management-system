@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -15,7 +15,8 @@ import { formatDisplayDate } from '../../utils/dateFormat';
 import type { StudentBalance } from '../../services/studentBalance';
 import type { Payment } from '../../contexts/DataContext';
 import CompactTermBillCell from './CompactTermBillCell';
-import { resolveFeeStructureId } from '../../services/feeStructureItems';
+import { resolveFeeStructureId, prefetchFeeStructureItemsSummary } from '../../services/feeStructureItems';
+import { resolveStudentDisplayBalance } from '../../utils/resolveStudentDisplayBalance';
 import { GenerateInvoiceBulkButton, GenerateInvoiceButton } from '../invoices/GenerateInvoiceActions';
 
 const StudentBalances = () => {
@@ -130,8 +131,6 @@ const StudentBalances = () => {
   const calculateStudentBalance = (student: any, balance: StudentBalance | undefined) => {
     const termNotConfigured = !currentTerm || currentTerm === 'Not Set';
     const discountDetails = getBeneficiaryDiscountDetails(student, feeStructures || [], currentTerm);
-    const structureGrossFee = getMatchingFeeStructureBaseAmount(student, feeStructures || [], currentTerm);
-    const expectedNetTermFee = roundMoney(Math.max(0, structureGrossFee - discountDetails.discountAmount));
 
     if (termNotConfigured) {
       return {
@@ -149,131 +148,57 @@ const StudentBalances = () => {
       };
     }
 
-    const feeStructureConfigured = hasFeeStructureForStudent(student);
-
-    if (!balance) {
-      const currentTermFee = expectedNetTermFee;
-      const totalAmountDue = currentTermFee;
-      return {
-        ...student,
-        currentTermFee,
-        arrears: 0,
-        creditBalance: 0,
-        totalAmountDue,
-        totalPaid: 0,
-        balance: feeStructureConfigured ? totalAmountDue : 0,
-        feeStatus: feeStructureConfigured
-          ? totalAmountDue > 0
-            ? { status: 'Outstanding', balance: totalAmountDue }
-            : { status: 'Paid', balance: 0 }
-          : { status: 'No Fee Set', balance: 0 },
-        feeStructureMissing: !feeStructureConfigured,
-        paymentCount: countTermPayments(student.id),
-        individualCharges: 0,
-        individualChargeLines: [],
-        discountAmount: discountDetails.discountAmount,
-        discountLabel: discountDetails.discountLabel,
-        activeTermId: activeAcademicTermId ?? null,
-        feeStructureId: resolveFeeStructureId(
-          feeStructures || [],
-          student.classAssigned,
-          student.classAssignedId,
-          currentTerm
-        ),
-      };
-    }
-
-    const ledgerTermFee = balance.currentTermFee ?? 0;
-    const individualCharges = balance.individualCharges ?? 0;
-    const arrears = balance.totalArrears ?? 0;
-    const creditBalance = balance.credit ?? 0;
-    const creditBroughtForward = balance.creditBroughtForward ?? 0;
-    const totalPaid = balance.totalPaid ?? 0;
-    const currentTermFee = ledgerTermFee > 0 ? ledgerTermFee : expectedNetTermFee;
-    const termFeePosted = ledgerTermFee > 0 || feeStructureConfigured;
-    const totalAmountDue = roundMoney(
-      currentTermFee + individualCharges + arrears
+    const display = resolveStudentDisplayBalance(
+      student,
+      balance,
+      feeStructures || [],
+      currentTerm
     );
-    const netBalance =
-      balance.netBalance != null && ledgerTermFee > 0
-        ? balance.netBalance
-        : roundMoney(totalAmountDue - totalPaid - creditBroughtForward);
-    const outstanding =
-      balance.outstanding != null && ledgerTermFee > 0
-        ? balance.outstanding
-        : roundMoney(Math.max(0, netBalance));
-
-    if (balance.status === 'NotSet') {
-      return {
-        ...student,
-        currentTermFee,
-        arrears,
-        creditBroughtForward,
-        creditBalance,
-        totalAmountDue: feeStructureConfigured ? totalAmountDue : balance.totalDue,
-        totalPaid,
-        balance: feeStructureConfigured ? outstanding : 0,
-        feeStatus: feeStructureConfigured
-          ? outstanding > 0
-            ? totalPaid > 0
-              ? { status: 'Partially Paid', balance: outstanding }
-              : { status: 'Outstanding', balance: outstanding }
-            : { status: 'Paid', balance: 0 }
-          : { status: 'No Fee Set', balance: 0 },
-        feeStructureMissing: !feeStructureConfigured,
-        paymentCount: countTermPayments(student.id),
-        individualCharges,
-        individualChargeLines: balance.individualChargeLines ?? [],
-        discountAmount: discountDetails.discountAmount,
-        discountLabel: discountDetails.discountLabel,
-        activeTermId: balance.activeTermId ?? activeAcademicTermId ?? null,
-        feeStructureId: resolveFeeStructureId(
-          feeStructures || [],
-          student.classAssigned,
-          student.classAssignedId,
-          currentTerm
-        ),
-      };
-    }
-
-    const hasFeeStructure = hasFeeStructureForStudent(student);
-    const feeStructureMissing = !hasFeeStructure && currentTermFee <= 0;
+    const creditBroughtForward = balance?.creditBroughtForward ?? 0;
+    const individualCharges = balance?.individualCharges ?? 0;
+    const netBalance = roundMoney(display.totalDue - display.totalPaid - creditBroughtForward);
 
     let feeStatus: { status: string; balance: number };
-    if (!termFeePosted && !feeStructureConfigured && totalPaid <= 0 && totalAmountDue <= 0 && creditBalance <= 0) {
+    if (
+      !display.feeStructureConfigured &&
+      display.totalDue <= 0 &&
+      display.totalPaid <= 0 &&
+      display.outstanding <= 0
+    ) {
       feeStatus = { status: 'No Fee Set', balance: 0 };
-    } else if (netBalance < -0.001) {
-      feeStatus = { status: 'Credit', balance: creditBalance > 0 ? creditBalance : Math.abs(netBalance) };
-    } else if (Math.abs(netBalance) < 0.001) {
+    } else if (netBalance < -0.001 || display.credit > 0) {
+      feeStatus = {
+        status: 'Credit',
+        balance: display.credit > 0 ? display.credit : Math.abs(netBalance),
+      };
+    } else if (display.outstanding <= 0.001) {
       feeStatus = { status: 'Paid', balance: 0 };
-    } else if (netBalance > 0 && totalPaid > 0) {
-      feeStatus = { status: 'Partially Paid', balance: outstanding };
-    } else if (netBalance > 0 && arrears > 0 && totalPaid === 0) {
-      feeStatus = { status: 'Outstanding + Arrears', balance: outstanding };
-    } else if (netBalance > 0) {
-      feeStatus = { status: 'Outstanding', balance: outstanding };
+    } else if (display.totalPaid > 0) {
+      feeStatus = { status: 'Partially Paid', balance: display.outstanding };
+    } else if (display.arrears > 0) {
+      feeStatus = { status: 'Outstanding + Arrears', balance: display.outstanding };
     } else {
-      feeStatus = { status: 'Paid', balance: 0 };
+      feeStatus = { status: 'Outstanding', balance: display.outstanding };
     }
 
     return {
       ...student,
-      currentTermFee,
-      arrears,
+      currentTermFee: display.currentTermFee,
+      arrears: display.arrears,
       creditBroughtForward,
-      creditBalance,
-      totalAmountDue: ledgerTermFee > 0 ? balance.totalDue : totalAmountDue,
-      totalPaid,
-      balance: outstanding,
+      creditBalance: display.credit,
+      totalAmountDue: display.totalDue,
+      totalPaid: display.totalPaid,
+      balance: display.outstanding,
       netBalance,
       feeStatus,
-      feeStructureMissing,
+      feeStructureMissing: !display.feeStructureConfigured && display.currentTermFee <= 0,
       paymentCount: countTermPayments(student.id),
       individualCharges,
-      individualChargeLines: balance.individualChargeLines ?? [],
+      individualChargeLines: balance?.individualChargeLines ?? [],
       discountAmount: discountDetails.discountAmount,
       discountLabel: discountDetails.discountLabel,
-      activeTermId: balance.activeTermId ?? activeAcademicTermId ?? null,
+      activeTermId: balance?.activeTermId ?? activeAcademicTermId ?? null,
       feeStructureId: resolveFeeStructureId(
         feeStructures || [],
         student.classAssigned,
@@ -293,7 +218,22 @@ const StudentBalances = () => {
       .map((student) => calculateStudentBalance(student, ledgerBalances[String(student.id)]));
   }, [students, ledgerBalances, classRow, currentTerm, currentTermPayments, feeStructures, activeAcademicTermId]);
 
-  const filteredStudents = studentsWithBalances.filter(student => {
+  useEffect(() => {
+    const ids = new Set(
+      studentsWithBalances
+        .map((s) => s.feeStructureId)
+        .filter((id): id is string => Boolean(id))
+    );
+    if (ids.size === 0) return;
+    const timer = window.setTimeout(() => {
+      for (const id of ids) {
+        prefetchFeeStructureItemsSummary(id);
+      }
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [studentsWithBalances]);
+
+  const filteredStudents = useMemo(() => studentsWithBalances.filter(student => {
     const matchesSearch = searchTerm === '' || 
       student.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       student.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -310,7 +250,7 @@ const StudentBalances = () => {
       (filterStatus === 'arrears' && student.arrears > 0);
 
     return matchesSearch && matchesClass && matchesStatus;
-  });
+  }), [studentsWithBalances, searchTerm, filterClass, filterStatus]);
 
   const totalOutstanding = filteredStudents.reduce(
     (sum, student) => sum + (student.balance > 0 ? student.balance : 0),

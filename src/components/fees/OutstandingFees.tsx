@@ -10,7 +10,7 @@ import { toast } from '@/hooks/use-toast';
 import { Search, AlertTriangle, Download, DollarSign, Clock, TrendingUp, Wallet } from 'lucide-react';
 import { getActiveAcademicTerm } from '../../utils/feeCalculations';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
-import { shouldTrackStudentFees } from '../students/studentRegistryUtils';
+import { shouldTrackStudentFees, isTermFeeClassStudent } from '../students/studentRegistryUtils';
 import { fetchClassStudentBalances, type StudentBalance } from '../../services/studentBalance';
 import { resolveStudentDisplayBalance } from '../../utils/resolveStudentDisplayBalance';
 
@@ -45,7 +45,10 @@ const OutstandingFees = () => {
     const studentsArray = Array.isArray(students) ? students : [];
     const term = selectedTerm;
 
-    return studentsArray.filter(shouldTrackStudentFees).map((student) => {
+    return studentsArray
+      .filter(shouldTrackStudentFees)
+      .filter((student) => isTermFeeClassStudent(student, classes || []))
+      .map((student) => {
       const ledgerBalance = balanceMap?.[String(student.id)];
       const display = resolveStudentDisplayBalance(student, ledgerBalance, feeStructures || [], term);
 
@@ -63,7 +66,7 @@ const OutstandingFees = () => {
         paymentHistory: [],
       };
     });
-  }, [students, balanceMap, feeStructures, selectedTerm]);
+  }, [students, balanceMap, feeStructures, selectedTerm, classes]);
 
   // Filter students with outstanding balances
   const filteredStudents = useMemo(() => {
@@ -79,7 +82,9 @@ const OutstandingFees = () => {
 
   // Calculate summary statistics — all figures from ledger balances
   const summaryStats = useMemo(() => {
-    const studentsArray = Array.isArray(students) ? students.filter(shouldTrackStudentFees) : [];
+    const studentsArray = Array.isArray(students)
+      ? students.filter(shouldTrackStudentFees).filter((s) => isTermFeeClassStudent(s, classes || []))
+      : [];
     const totalStudents = studentsArray.length;
     const owingStudents = outstandingData.filter(student => student.outstanding > 0);
     const creditStudents = outstandingData.filter(student => student.creditBalance > 0);

@@ -257,9 +257,9 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
         monthly_salary, ssnit_number, ssnit_enabled,
         emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
         bank_name, bank_account_number, bank_branch, bank_account_name,
-        employment_status, notes
+        employment_status, notes, qualification, specialization
       ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27
       ) RETURNING *`,
       [
         tenantId,
@@ -287,6 +287,8 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
         d.bank_account_name || null,
         (d.employment_status || 'active').toLowerCase(),
         d.notes || null,
+        d.qualification ? String(d.qualification).trim() : null,
+        d.specialization ? String(d.specialization).trim() : null,
       ]
     );
 
@@ -342,6 +344,7 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
       'position', 'department', 'employment_type', 'employment_date', 'monthly_salary', 'ssnit_number',
       'ssnit_enabled', 'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
       'bank_name', 'bank_account_number', 'bank_branch', 'bank_account_name', 'employment_status', 'notes',
+      'qualification', 'specialization',
     ];
     const fields: string[] = [];
     const values: unknown[] = [];
@@ -389,6 +392,38 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
   } catch (error) {
     console.error('Update other staff error:', error);
     res.status(500).json({ error: 'Failed to update staff member' });
+  }
+});
+
+router.post('/:id/profile-pdf-audit', authenticate, requireRole('super-admin', 'administrator', 'finance', 'headmaster'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const id = parseInt(String(req.params.id), 10);
+    const row = await query(
+      `SELECT id, full_name FROM other_staff
+       WHERE id = $1 AND tenant_id = $2 AND COALESCE(is_deleted, false) = false`,
+      [id, tenantId]
+    );
+    if (row.rows.length === 0) return res.status(404).json({ error: 'Staff member not found' });
+
+    const fullName = String(row.rows[0].full_name || '').trim();
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'EXPORT',
+      entityType: 'staff_profile',
+      entityId: id,
+      module: 'staff',
+      summary: `Profile PDF downloaded — ${fullName}`,
+      details: { staffType: 'other_staff', fullName },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Other staff profile PDF audit error:', error);
+    res.status(500).json({ error: 'Failed to log profile export' });
   }
 });
 

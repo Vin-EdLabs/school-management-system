@@ -66,6 +66,8 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
     bankBranch: '',
     position: '',
     department: '',
+    qualification: '',
+    specialization: '',
   });
   const [showEmergency, setShowEmergency] = useState(false);
   const [showBank, setShowBank] = useState(false);
@@ -298,6 +300,27 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
                 onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
                 rows={2}
               />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="teacher-qualification">Qualification</Label>
+                <Input
+                  id="teacher-qualification"
+                  value={formData.qualification}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, qualification: e.target.value }))}
+                  placeholder="e.g. B.Ed, HND, PGDE, Diploma in Basic Education"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="teacher-specialization">Specialization</Label>
+                <Input
+                  id="teacher-specialization"
+                  value={formData.specialization}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, specialization: e.target.value }))}
+                  placeholder="e.g. Mathematics & ICT, English & Social Studies"
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

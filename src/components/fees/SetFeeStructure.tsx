@@ -74,6 +74,15 @@ const SetFeeStructure = () => {
       return;
     }
 
+    if (isDailyFeeClass(formData.classId)) {
+      toast({
+        title: 'Daily fee class',
+        description: 'This class uses Daily Fees. Set its structure under Finance → Daily Fees.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     const validationErrors = validateFeeStructureItemsForm(feeItems);
     if (Object.keys(validationErrors).length > 0) {
       setItemErrors(validationErrors);
@@ -196,11 +205,30 @@ const SetFeeStructure = () => {
     }
   };
 
-  const currentTermFees = feeStructures.filter(f =>
-    !f.term ||
-    f.term === currentTerm ||
-    (typeof f.term === 'string' && f.term.includes(currentTerm))
+  const termFeeClasses = classes.filter(
+    (cls) => cls.feeMode !== 'daily' && cls.className && cls.className.trim() !== ''
   );
+
+  const isDailyFeeClass = (classId: number | string | undefined) => {
+    if (classId == null) return false;
+    const cls = classes.find((c) => String(c.id) === String(classId));
+    return cls?.feeMode === 'daily';
+  };
+
+  const currentTermFees = feeStructures.filter((f) => {
+    if (isDailyFeeClass(f.classId ?? (f as { class_id?: number }).class_id)) return false;
+    return (
+      !f.term ||
+      f.term === currentTerm ||
+      (typeof f.term === 'string' && f.term.includes(currentTerm))
+    );
+  });
+
+  const configuredClassIds = new Set(
+    currentTermFees.map((f) => String(f.classId ?? (f as { class_id?: number }).class_id))
+  );
+
+  const unsetTermFeeClasses = termFeeClasses.filter((cls) => !configuredClassIds.has(String(cls.id)));
 
   const resolveFeeClassLabel = (fee: { className?: string; classId?: number; class_id?: number }) => {
     const classId = fee.classId ?? fee.class_id;
@@ -254,11 +282,17 @@ const SetFeeStructure = () => {
                   <SelectValue placeholder="Select class" />
                 </SelectTrigger>
                 <SelectContent>
-                  {classes.filter(cls => cls.className && cls.className.trim() !== '').map((cls) => (
-                    <SelectItem key={cls.id} value={cls.id}>
-                      {cls.className}{cls.level ? ` (${cls.level})` : ''}
+                  {unsetTermFeeClasses.length === 0 ? (
+                    <SelectItem value="__none__" disabled>
+                      All term-fee classes are configured
                     </SelectItem>
-                  ))}
+                  ) : (
+                    unsetTermFeeClasses.map((cls) => (
+                      <SelectItem key={cls.id} value={cls.id}>
+                        {cls.className}{cls.level ? ` (${cls.level})` : ''}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>

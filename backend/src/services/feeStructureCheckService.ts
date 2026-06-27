@@ -185,6 +185,26 @@ async function listClassesRequiringFeeStructures(
   }
 }
 
+async function listDailyFeeConfiguredClassIds(tenantId: number): Promise<Set<number>> {
+  const res = await query(
+    `SELECT DISTINCT dfs.class_id
+     FROM daily_fee_structures dfs
+     INNER JOIN classes c ON c.id = dfs.class_id AND c.tenant_id = dfs.tenant_id
+     WHERE dfs.tenant_id = $1
+       AND COALESCE(c.fee_mode, 'term') = 'daily'`,
+    [tenantId]
+  );
+  return new Set(res.rows.map((r) => Number(r.class_id)));
+}
+
+async function listDailyFeeClassIds(tenantId: number): Promise<Set<number>> {
+  const res = await query(
+    `SELECT id FROM classes WHERE tenant_id = $1 AND COALESCE(fee_mode, 'term') = 'daily'`,
+    [tenantId]
+  );
+  return new Set(res.rows.map((r) => Number(r.id)));
+}
+
 async function listConfiguredClassIds(
   tenantId: number,
   ctx: FeeCheckContext
@@ -302,6 +322,9 @@ export async function checkFeeStructureCompleteness(
   }
 
   const classesRequiringFees = await listClassesRequiringFeeStructures(tenantId);
+  const dailyClassIds = await listDailyFeeClassIds(tenantId);
+  const termFeeClassesOnly = classesRequiringFees.filter((c) => !dailyClassIds.has(c.id));
+  const dailyClassesRequiring = classesRequiringFees.filter((c) => dailyClassIds.has(c.id));
 
   if (classesRequiringFees.length === 0) {
     return {
@@ -314,15 +337,24 @@ export async function checkFeeStructureCompleteness(
   }
 
   const configuredIds = await listConfiguredClassIds(tenantId, ctx);
+  const dailyConfigured = await listDailyFeeConfiguredClassIds(tenantId);
 
-  const missing_classes = classesRequiringFees
+  const missingTerm = termFeeClassesOnly
     .filter((c) => !configuredIds.has(c.id))
     .map((c) => ({ id: String(c.id), name: c.name }));
 
+  const missingDaily = dailyClassesRequiring
+    .filter((c) => !dailyConfigured.has(c.id))
+    .map((c) => ({ id: String(c.id), name: c.name }));
+
+  const missing_classes = [...missingTerm, ...missingDaily];
+
+  const total_classes = termFeeClassesOnly.length + dailyClassesRequiring.length;
+
   return {
     complete: missing_classes.length === 0,
-    total_classes: classesRequiringFees.length,
-    configured_classes: classesRequiringFees.length - missing_classes.length,
+    total_classes,
+    configured_classes: total_classes - missing_classes.length,
     missing_classes,
     term_id: ctx.primaryTermId,
   };

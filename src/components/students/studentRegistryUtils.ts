@@ -17,6 +17,24 @@ export function isActiveEnrolledStudent(student: { enrollmentStatus?: string }):
   return normalizeEnrollmentStatus(student.enrollmentStatus) === 'active';
 }
 
+/** Term-fee billing only — daily fee classes use the separate Daily Fees module. */
+export function isTermFeeClassStudent(
+  student: { classAssignedId?: number | string | null; classAssigned?: string },
+  classes: Array<{ id?: number | string; className?: string; feeMode?: 'term' | 'daily' }>
+): boolean {
+  const classId = student.classAssignedId;
+  if (classId != null) {
+    const cls = classes.find((c) => Number(c.id) === Number(classId));
+    if (cls) return cls.feeMode !== 'daily';
+  }
+  const className = String(student.classAssigned || '').trim();
+  if (className) {
+    const cls = classes.find((c) => String(c.className || '').trim() === className);
+    if (cls) return cls.feeMode !== 'daily';
+  }
+  return true;
+}
+
 export function isPendingStudent(student: { enrollmentStatus?: string }): boolean {
   return normalizeEnrollmentStatus(student.enrollmentStatus) === 'pending';
 }

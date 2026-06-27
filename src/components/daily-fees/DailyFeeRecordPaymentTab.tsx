@@ -1,17 +1,17 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useData } from '../../contexts/DataContext';
 import { apiService } from '../../services/api';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, Receipt } from 'lucide-react';
+import { Loader2, Save } from 'lucide-react';
 import PaymentAccountSelect from '../common/PaymentAccountSelect';
-import ReceiptPrinter from '../common/ReceiptPrinter';
 import { formatDisplayDate } from '../../utils/dateFormat';
+import { cn } from '@/lib/utils';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,24 +27,45 @@ type PaymentType = 'daily' | 'weekly' | 'monthly' | 'termly';
 type StudentRow = {
   studentId: number;
   studentName: string;
-  admissionNumber: string;
+  studentCode: string;
+  admissionNumber: string | null;
   hasPassportPhoto: boolean;
-  status: 'covered' | 'pending' | 'school_closed' | 'expired';
+  status: 'covered' | 'paid' | 'pending' | 'school_closed' | 'expired';
+  currentPaymentType?: string | null;
   paidUntil: string | null;
   nextDueDate: string | null;
   lastPaymentType: string | null;
   lastPaymentDate: string | null;
   lastPaidUntil: string | null;
+  lastPaymentAmount: number | null;
+  lastCoverageStart: string | null;
+  lastCoverageEnd: string | null;
+  lastPaymentMethod: string | null;
 };
 
 type StructureRates = {
-  daily_rate: string;
-  weekly_rate: string;
-  monthly_rate: string;
-  termly_rate: string;
+  daily_rate: number | string;
+  weekly_rate: number | string;
+  monthly_rate: number | string;
+  termly_rate: number | string;
 };
 
-type Props = { disabled?: boolean };
+type DailyClassRow = {
+  id: number;
+  class_name: string;
+  structure_id: number | null;
+  daily_rate?: string;
+  weekly_rate?: string;
+  monthly_rate?: string;
+  termly_rate?: string;
+};
+
+type Props = {
+  disabled?: boolean;
+  initialClassId?: string;
+  onClassConsumed?: () => void;
+  listKey?: number;
+};
 
 const PAYMENT_TYPES: { id: PaymentType; label: string }[] = [
   { id: 'daily', label: 'Daily' },
@@ -53,12 +74,17 @@ const PAYMENT_TYPES: { id: PaymentType; label: string }[] = [
   { id: 'termly', label: 'Termly' },
 ];
 
-const DailyFeeRecordPaymentTab: React.FC<Props> = ({ disabled }) => {
-  const { classes } = useData();
-  const dailyClasses = useMemo(
-    () => classes.filter((c) => c.feeMode === 'daily'),
-    [classes]
-  );
+const money = (n: number) =>
+  n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const DailyFeeRecordPaymentTab: React.FC<Props> = ({
+  disabled,
+  initialClassId = '',
+  onClassConsumed,
+  listKey = 0,
+}) => {
+  const [dailyClasses, setDailyClasses] = useState<DailyClassRow[]>([]);
+  const [classesLoading, setClassesLoading] = useState(false);
 
   const [classId, setClassId] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
@@ -66,58 +92,84 @@ const DailyFeeRecordPaymentTab: React.FC<Props> = ({ disabled }) => {
   const [hasStructure, setHasStructure] = useState(true);
   const [loading, setLoading] = useState(false);
   const [rates, setRates] = useState<StructureRates | null>(null);
-  const [rowTypes, setRowTypes] = useState<Record<number, PaymentType>>({});
-  const [rowAmounts, setRowAmounts] = useState<Record<number, string>>({});
-  const [rowAccounts, setRowAccounts] = useState<Record<number, { id: string; method: string }>>({});
-  const [confirmRow, setConfirmRow] = useState<StudentRow | null>(null);
-  const [collecting, setCollecting] = useState(false);
-  const [summary, setSummary] = useState({ totalCollected: 0, paidToday: 0 });
-  const [showReceipt, setShowReceipt] = useState(false);
-  const [receiptData, setReceiptData] = useState<any>(null);
+  const [paymentAccountId, setPaymentAccountId] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('Cash');
+  const [selections, setSelections] = useState<Record<number, PaymentType>>({});
+  const [saving, setSaving] = useState(false);
+  const [summary, setSummary] = useState({ totalCollected: 0, paidToday: 0, totalStudents: 0 });
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
 
   const rateFor = (type: PaymentType, r: StructureRates | null): number => {
     if (!r) return 0;
-    const map: Record<PaymentType, string> = {
+    const map: Record<PaymentType, number | string> = {
       daily: r.daily_rate,
       weekly: r.weekly_rate,
       monthly: r.monthly_rate,
       termly: r.termly_rate,
     };
-    return parseFloat(map[type]) || 0;
+    return parseFloat(String(map[type])) || 0;
   };
 
-  const loadCollections = useCallback(async () => {
-    if (!classId) return;
-    setLoading(true);
+  const loadDailyClasses = useCallback(async () => {
+    setClassesLoading(true);
     try {
-      const [coll, struct, sum] = await Promise.all([
-        apiService.get<{ students: StudentRow[]; hasStructure: boolean }>(
-          `/daily-fees/collections?classId=${classId}&date=${date}`
-        ),
-        apiService.get<{ structure: StructureRates | null }>(`/daily-fees/structure/${classId}`),
-        apiService.get<{ totalCollected: number; paidToday: number }>(
+      const rows = await apiService.get<DailyClassRow[]>('/daily-fees/classes');
+      const ready = (Array.isArray(rows) ? rows : []).filter((c) => c.structure_id != null);
+      setDailyClasses(ready);
+      if (ready.length === 1 && !initialClassId) {
+        setClassId(String(ready[0].id));
+      }
+    } catch {
+      setDailyClasses([]);
+    } finally {
+      setClassesLoading(false);
+    }
+  }, [initialClassId]);
+
+  useEffect(() => {
+    void loadDailyClasses();
+  }, [loadDailyClasses, listKey]);
+
+  useEffect(() => {
+    if (initialClassId) {
+      setClassId(initialClassId);
+      onClassConsumed?.();
+    }
+  }, [initialClassId, onClassConsumed]);
+
+  useEffect(() => {
+    setSelections({});
+  }, [classId, date]);
+
+  const loadCollections = useCallback(async (quiet = false) => {
+    if (!classId) return;
+    if (!quiet) setLoading(true);
+    try {
+      const [coll, sum] = await Promise.all([
+        apiService.get<{
+          students: StudentRow[];
+          hasStructure: boolean;
+          structure: StructureRates | null;
+        }>(`/daily-fees/collections?classId=${classId}&date=${date}`),
+        apiService.get<{ totalCollected: number; paidToday: number; totalStudents: number }>(
           `/daily-fees/payments/summary?classId=${classId}&date=${date}`
         ),
       ]);
       setStudents(coll.students || []);
-      setHasStructure(coll.hasStructure !== false);
-      setRates(struct.structure);
-      setSummary({ totalCollected: sum.totalCollected || 0, paidToday: sum.paidToday || 0 });
-
-      const types: Record<number, PaymentType> = {};
-      const amounts: Record<number, string> = {};
-      for (const s of coll.students || []) {
-        if (s.status === 'pending' || s.status === 'expired') {
-          types[s.studentId] = 'daily';
-          amounts[s.studentId] = String(rateFor('daily', struct.structure));
-        }
-      }
-      setRowTypes(types);
-      setRowAmounts(amounts);
+      const structureOk = coll.hasStructure !== false && !!coll.structure;
+      setHasStructure(structureOk);
+      setRates(coll.structure);
+      setSummary({
+        totalCollected: sum.totalCollected || 0,
+        paidToday: sum.paidToday || 0,
+        totalStudents: sum.totalStudents ?? (coll.students?.length || 0),
+      });
     } catch (err: any) {
-      toast({ title: 'Failed to load', description: err?.message, variant: 'destructive' });
+      if (!quiet) {
+        toast({ title: 'Failed to load', description: err?.message, variant: 'destructive' });
+      }
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, [classId, date]);
 
@@ -127,16 +179,22 @@ const DailyFeeRecordPaymentTab: React.FC<Props> = ({ disabled }) => {
 
   const statusBadge = (s: StudentRow) => {
     switch (s.status) {
-      case 'covered':
+      case 'paid':
         return (
           <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+            Paid{s.currentPaymentType ? ` (${s.currentPaymentType})` : ''}
+          </Badge>
+        );
+      case 'covered':
+        return (
+          <Badge className="bg-violet-100 text-violet-800 hover:bg-violet-100">
             Covered until {formatDisplayDate(s.paidUntil || '')}
           </Badge>
         );
       case 'expired':
         return (
           <Badge variant="destructive">
-            Expired since {formatDisplayDate(s.lastPaidUntil || '')}
+            Due — last covered {formatDisplayDate(s.lastPaidUntil || '')}
           </Badge>
         );
       case 'school_closed':
@@ -146,88 +204,168 @@ const DailyFeeRecordPaymentTab: React.FC<Props> = ({ disabled }) => {
     }
   };
 
-  const handleCollect = async (student: StudentRow) => {
-    const pType = rowTypes[student.studentId] || 'daily';
-    const amount = parseFloat(rowAmounts[student.studentId] || '0');
-    const acct = rowAccounts[student.studentId];
-    if (!amount || amount <= 0) {
-      toast({ title: 'Invalid amount', variant: 'destructive' });
-      return;
-    }
-    setCollecting(true);
+  const toggleSelection = (studentId: number, pType: PaymentType) => {
+    setSelections((prev) => {
+      if (prev[studentId] === pType) {
+        const next = { ...prev };
+        delete next[studentId];
+        return next;
+      }
+      return { ...prev, [studentId]: pType };
+    });
+  };
+
+  const applySavedPayments = (
+    saved: Array<{
+      payment: { student_id: number; payment_type: string; amount_paid: string; coverage_end_date: string };
+      coverageEndDate: string;
+      amount: number;
+      paymentType: string;
+    }>
+  ) => {
+    setStudents((prev) =>
+      prev.map((s) => {
+        const hit = saved.find((r) => Number(r.payment.student_id) === s.studentId);
+        if (!hit) return s;
+        const pType = hit.paymentType;
+        const isMultiDay = pType === 'weekly' || pType === 'monthly' || pType === 'termly';
+        return {
+          ...s,
+          status: isMultiDay ? 'covered' : 'paid',
+          currentPaymentType: pType,
+          paidUntil: hit.coverageEndDate,
+          lastPaymentType: pType,
+          lastPaymentDate: date,
+          lastPaymentAmount: hit.amount,
+          lastCoverageEnd: hit.coverageEndDate,
+          lastPaidUntil: hit.coverageEndDate,
+        };
+      })
+    );
+    setSummary((prev) => ({
+      ...prev,
+      paidToday: prev.paidToday + saved.length,
+      totalCollected: prev.totalCollected + saved.reduce((sum, r) => sum + r.amount, 0),
+    }));
+  };
+
+  const saveAll = async () => {
+    const entries = Object.entries(selections);
+    if (entries.length === 0 || disabled || !hasStructure || saving) return;
+
+    const items = entries.map(([studentId, paymentType]) => ({
+      studentId: parseInt(studentId, 10),
+      paymentType,
+      amountPaid: rateFor(paymentType, rates),
+    }));
+
+    setSaving(true);
     try {
-      const res = await apiService.post<any>('/daily-fees/payments', {
-        studentId: student.studentId,
+      const res = await apiService.post<{
+        saved: number;
+        payments: Array<{
+          payment: { student_id: number; payment_type: string; amount_paid: string; coverage_end_date: string };
+          coverageEndDate: string;
+          amount: number;
+          paymentType: string;
+        }>;
+      }>('/daily-fees/payments/batch', {
         classId: parseInt(classId, 10),
-        paymentType: pType,
-        amountPaid: amount,
         paymentDate: date,
-        paymentMethod: acct?.method || 'Cash',
-        paymentAccountId: acct?.id ? parseInt(acct.id, 10) : undefined,
+        paymentMethod,
+        paymentAccountId: paymentAccountId ? parseInt(paymentAccountId, 10) : undefined,
+        items,
       });
-      const cls = dailyClasses.find((c) => String(c.id) === classId);
-      setReceiptData({
-        studentName: res.studentName,
-        studentId: student.admissionNumber,
-        className: cls?.className || '',
-        amount,
-        date,
-        paymentMethod: acct?.method || 'Cash',
-        term: res.termLabel || '',
-        receiptNumber: res.receiptNumber,
-        isDailyFee: true,
-        dailyFeeType: pType,
-        coverageStart: String(res.payment?.coverage_start_date || '').slice(0, 10) || undefined,
-        coverageEnd: res.coverageEndDate,
-        recordedBy: res.receiptSnapshot?.recordedBy,
-        notes: `Daily Fee — ${pType}`,
+
+      const saved = res.payments || [];
+      applySavedPayments(saved);
+      setSelections({});
+      toast({
+        title: 'Saved',
+        description: `${saved.length} payment${saved.length === 1 ? '' : 's'} recorded.`,
       });
-      setShowReceipt(true);
-      toast({ title: 'Payment recorded' });
-      await loadCollections();
+      void loadCollections(true);
     } catch (err: any) {
-      toast({ title: 'Collection failed', description: err?.message, variant: 'destructive' });
+      toast({ title: 'Could not save', description: err?.message, variant: 'destructive' });
     } finally {
-      setCollecting(false);
-      setConfirmRow(null);
+      setSaving(false);
     }
   };
 
   const markTodayClosed = async () => {
     try {
       await apiService.post('/daily-fees/closure-days', { closureDate: date, reason: 'Marked from daily collections' });
-      toast({ title: 'Today marked as school closed' });
-      await loadCollections();
+      toast({ title: 'School closed for this date' });
+      setShowCloseConfirm(false);
+      void loadCollections(true);
     } catch (err: any) {
       toast({ title: 'Failed', description: err?.message, variant: 'destructive' });
     }
   };
 
+  const singleClass = dailyClasses.length === 1;
+  const className = dailyClasses.find((c) => String(c.id) === classId)?.class_name || '';
+  const selectionCount = Object.keys(selections).length;
+  const selectionTotal = Object.values(selections).reduce((sum, pt) => sum + rateFor(pt, rates), 0);
+
   return (
     <div className="space-y-4">
-      <Card>
-        <CardContent className="flex flex-wrap gap-4 pt-6">
-          <div className="min-w-[200px] flex-1 space-y-2">
-            <Label>Class (daily fee mode)</Label>
-            <Select value={classId} onValueChange={setClassId} disabled={disabled}>
-              <SelectTrigger>
-                <SelectValue placeholder={dailyClasses.length ? 'Select class' : 'No daily-fee classes yet'} />
-              </SelectTrigger>
-              <SelectContent>
-                {dailyClasses.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    {c.className}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {dailyClasses.length === 0 && (
-              <p className="text-xs text-amber-700">Set up a class on the Fee Structure tab first.</p>
+      <Card className="border-emerald-100/80 shadow-sm">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-lg">
+            {singleClass && className ? `Collecting — ${className}` : 'Select class to collect'}
+          </CardTitle>
+          {!singleClass && (
+            <p className="text-sm text-muted-foreground">Choose a daily-fee class, tick payments, then save</p>
+          )}
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {classesLoading ? (
+            <div className="flex justify-center py-4">
+              <Loader2 className="h-6 w-6 animate-spin text-emerald-600" />
+            </div>
+          ) : dailyClasses.length === 0 ? (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              No daily-fee classes ready yet. Go to <strong>Fee Structure</strong>, set up a class, and save.
+            </p>
+          ) : !singleClass ? (
+            <div className="flex flex-wrap gap-2">
+              {dailyClasses.map((c) => (
+                <Button
+                  key={c.id}
+                  type="button"
+                  variant={String(c.id) === classId ? 'default' : 'outline'}
+                  className={String(c.id) === classId ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
+                  onClick={() => setClassId(String(c.id))}
+                  disabled={disabled}
+                >
+                  {c.class_name}
+                  {c.daily_rate ? ` · GHS ${parseFloat(String(c.daily_rate)).toFixed(2)}/day` : ''}
+                </Button>
+              ))}
+            </div>
+          ) : null}
+
+          <div className={cn('flex flex-wrap gap-4', !singleClass && 'border-t pt-4')}>
+            {!singleClass && (
+              <div className="min-w-[200px] flex-1 space-y-2">
+                <Label>Class</Label>
+                <Select value={classId} onValueChange={setClassId} disabled={disabled || dailyClasses.length === 0}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={dailyClasses.length ? 'Select class' : 'No classes yet'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {dailyClasses.map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>{c.class_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             )}
-          </div>
-          <div className="space-y-2">
-            <Label>Collection date</Label>
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} disabled={disabled} />
+            <div className="space-y-2">
+              <Label>Collection date</Label>
+              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} disabled={disabled} />
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -239,9 +377,25 @@ const DailyFeeRecordPaymentTab: React.FC<Props> = ({ disabled }) => {
       )}
 
       {classId && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Students</CardTitle>
+        <Card className="border-slate-200/80 shadow-sm">
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <CardTitle className="text-lg">Students{className ? ` — ${className}` : ''}</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Tick fee boxes, then press Save. Receipts are available in Payment History.
+              </p>
+            </div>
+            <div className="w-full sm:w-56">
+              <PaymentAccountSelect
+                value={paymentAccountId}
+                onChange={(id, method) => {
+                  setPaymentAccountId(id);
+                  setPaymentMethod(method);
+                }}
+                disabled={disabled || saving}
+                label="Payment method"
+              />
+            </div>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -253,60 +407,55 @@ const DailyFeeRecordPaymentTab: React.FC<Props> = ({ disabled }) => {
             ) : (
               <div className="space-y-3">
                 {students.map((s) => {
-                  const canCollect = (s.status === 'pending' || s.status === 'expired') && hasStructure && !disabled;
-                  const pType = rowTypes[s.studentId] || 'daily';
+                  const canCollect =
+                    (s.status === 'pending' || s.status === 'expired') && hasStructure && !disabled;
+                  const selectedType = selections[s.studentId];
+
                   return (
                     <div
                       key={s.studentId}
-                      className="flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between"
+                      className={cn(
+                        'flex flex-col gap-3 rounded-xl border p-4 transition-colors lg:flex-row lg:items-center lg:justify-between',
+                        selectedType && 'border-emerald-300 bg-emerald-50/30'
+                      )}
                     >
-                      <div>
-                        <p className="font-medium">{s.studentName}</p>
-                        <p className="text-xs text-slate-500">{s.admissionNumber}</p>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium">{s.studentName}</p>
+                          <span className="font-mono text-xs text-slate-500">{s.studentCode}</span>
+                        </div>
                         <div className="mt-2">{statusBadge(s)}</div>
                       </div>
+
                       {canCollect && (
-                        <div className="flex flex-wrap items-end gap-2">
-                          <div className="flex gap-1">
-                            {PAYMENT_TYPES.map((pt) => (
-                              <Button
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:max-w-xl">
+                          {PAYMENT_TYPES.filter((pt) => rateFor(pt.id, rates) > 0).map((pt) => {
+                            const amt = rateFor(pt.id, rates);
+                            const checked = selectedType === pt.id;
+                            return (
+                              <label
                                 key={pt.id}
-                                size="sm"
-                                variant={pType === pt.id ? 'default' : 'outline'}
-                                onClick={() => {
-                                  setRowTypes((prev) => ({ ...prev, [s.studentId]: pt.id }));
-                                  setRowAmounts((prev) => ({
-                                    ...prev,
-                                    [s.studentId]: String(rateFor(pt.id, rates)),
-                                  }));
-                                }}
+                                className={cn(
+                                  'flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2.5 text-sm transition-colors',
+                                  checked
+                                    ? 'border-emerald-500 bg-emerald-50 ring-1 ring-emerald-200'
+                                    : 'hover:border-emerald-400 hover:bg-emerald-50/50',
+                                  saving && 'pointer-events-none opacity-60'
+                                )}
                               >
-                                {pt.label}
-                              </Button>
-                            ))}
-                          </div>
-                          <Input
-                            className="w-24"
-                            type="number"
-                            value={rowAmounts[s.studentId] || ''}
-                            onChange={(e) =>
-                              setRowAmounts((prev) => ({ ...prev, [s.studentId]: e.target.value }))
-                            }
-                          />
-                          <div className="w-40">
-                            <PaymentAccountSelect
-                              value={rowAccounts[s.studentId]?.id}
-                              onChange={(id, method) =>
-                                setRowAccounts((prev) => ({
-                                  ...prev,
-                                  [s.studentId]: { id, method },
-                                }))
-                              }
-                            />
-                          </div>
-                          <Button size="sm" onClick={() => setConfirmRow(s)}>
-                            Collect
-                          </Button>
+                                <Checkbox
+                                  checked={checked}
+                                  disabled={saving}
+                                  onCheckedChange={() => toggleSelection(s.studentId, pt.id)}
+                                  className="shrink-0 data-[state=checked]:border-emerald-600 data-[state=checked]:bg-emerald-600"
+                                />
+                                <span className="leading-tight">
+                                  <span className="block font-medium">{pt.label}</span>
+                                  <span className="block text-xs text-slate-600">GHS {money(amt)}</span>
+                                </span>
+                              </label>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -317,46 +466,65 @@ const DailyFeeRecordPaymentTab: React.FC<Props> = ({ disabled }) => {
 
             <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
               <p className="text-sm font-medium">
-                {summary.paidToday} collected today — GHS {summary.totalCollected.toFixed(2)}
+                {summary.totalStudents || students.length} student{(summary.totalStudents || students.length) === 1 ? '' : 's'}
+                {' · '}
+                {summary.paidToday} paid today — GHS {summary.totalCollected.toFixed(2)}
+                {selectionCount > 0 && (
+                  <span className="ml-2 text-emerald-700">
+                    ({selectionCount} selected — GHS {money(selectionTotal)})
+                  </span>
+                )}
               </p>
-              <Button variant="outline" size="sm" onClick={markTodayClosed} disabled={disabled}>
-                Mark School Closed for Today
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowCloseConfirm(true)}
+                  disabled={disabled || saving}
+                >
+                  Mark School Closed
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                  onClick={() => void saveAll()}
+                  disabled={disabled || saving || selectionCount === 0 || !hasStructure}
+                >
+                  {saving ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving…
+                    </>
+                  ) : (
+                    <>
+                      <Save className="mr-2 h-4 w-4" />
+                      Save {selectionCount > 0 ? `(${selectionCount})` : ''}
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
       )}
 
-      <AlertDialog open={!!confirmRow} onOpenChange={(o) => !o && setConfirmRow(null)}>
+      <AlertDialog open={showCloseConfirm} onOpenChange={setShowCloseConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirm collection</AlertDialogTitle>
+            <AlertDialogTitle>Mark school closed?</AlertDialogTitle>
             <AlertDialogDescription>
-              Collect GHS {rowAmounts[confirmRow?.studentId || 0] || '0'} from {confirmRow?.studentName} —{' '}
-              {rowTypes[confirmRow?.studentId || 0] || 'daily'} payment?
+              This will mark <strong>{formatDisplayDate(date)}</strong> as a non-school day for daily fee collections.
+              Students will not be charged for this date, and anyone with active weekly or monthly coverage will have
+              their coverage extended by one school day. This cannot be undone from here except by removing the closure
+              on the Fee Structure tab.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={collecting}
-              onClick={() => confirmRow && handleCollect(confirmRow)}
-            >
-              {collecting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Confirm
-            </AlertDialogAction>
+            <AlertDialogAction onClick={() => void markTodayClosed()}>Confirm closure</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {receiptData && (
-        <ReceiptPrinter
-          show={showReceipt}
-          receiptData={receiptData}
-          onPrint={() => setShowReceipt(false)}
-          onClose={() => setShowReceipt(false)}
-        />
-      )}
     </div>
   );
 };

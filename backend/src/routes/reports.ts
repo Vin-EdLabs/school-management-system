@@ -155,6 +155,9 @@ type ReportPeriod = {
 /** Per-student ledger totals for the report term (term_fee, arrears, paid, outstanding) with fee-structure fallback. */
 const LEDGER_STUDENT_TOTALS_CTE = SQL_EFFECTIVE_STUDENT_LEDGER_TOTALS_CTE;
 
+/** Exclude daily-fee class students from term fee dashboard metrics. */
+const TERM_FEE_STUDENT_CLASS_FILTER = `(c.id IS NULL OR COALESCE(c.fee_mode, 'term') != 'daily')`;
+
 async function loadReportPeriod(req: AuthRequest): Promise<ReportPeriod> {
   const tenantId = req.user!.tenantId!;
   const settingsResult = await query(
@@ -850,8 +853,10 @@ router.get('/admin-overview', async (req: AuthRequest, res) => {
             COALESCE(slt.has_fee_structure, false) AS has_fee_structure,
             (COALESCE(slt.term_fee, 0) + COALESCE(slt.arrears_amt, 0) - COALESCE(slt.paid_amt, 0))::numeric AS net_position
           FROM students s
+          LEFT JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
           LEFT JOIN student_ledger_totals slt ON slt.student_id = s.id
           WHERE s.tenant_id = $1 AND ${ACTIVE_STUDENT_WHERE}
+            AND ${TERM_FEE_STUDENT_CLASS_FILTER}
         ),
         categorized AS (
           SELECT
@@ -873,7 +878,7 @@ router.get('/admin-overview', async (req: AuthRequest, res) => {
         FROM categorized`
       : `SELECT 0::int AS paid, 0::int AS owing, 0::int AS no_fee, 0::int AS credit, 0::numeric AS total_owing`;
 
-    const [countsRes, enrollmentRes, feeMixRes, classesRes] = await Promise.all([
+    const [countsRes, enrollmentRes, feeMixRes, classesRes, paymentTrendRes] = await Promise.all([
       query(
         `SELECT
           COUNT(*) FILTER (WHERE ${ACTIVE_STUDENT_WHERE})::int AS student_total,
@@ -887,6 +892,8 @@ router.get('/admin-overview', async (req: AuthRequest, res) => {
           (SELECT COALESCE(SUM(t.monthly_salary), 0)::numeric FROM teachers t WHERE t.tenant_id = $1 AND COALESCE(t.status, 'active') = 'active') AS teacher_salary_budget,
           (SELECT COUNT(*)::int FROM teachers t WHERE t.tenant_id = $1 AND LOWER(TRIM(COALESCE(t.gender, ''))) = 'male') AS teacher_male,
           (SELECT COUNT(*)::int FROM teachers t WHERE t.tenant_id = $1 AND LOWER(TRIM(COALESCE(t.gender, ''))) = 'female') AS teacher_female,
+          (SELECT COUNT(*)::int FROM other_staff o WHERE o.tenant_id = $1 AND COALESCE(o.is_deleted, false) = false) AS other_staff_total,
+          (SELECT COUNT(*)::int FROM other_staff o WHERE o.tenant_id = $1 AND COALESCE(o.is_deleted, false) = false AND COALESCE(o.employment_status, 'active') = 'active') AS other_staff_active,
           (SELECT COUNT(*)::int FROM classes c WHERE c.tenant_id = $1 AND TRIM(COALESCE(c.class_name, '')) <> '') AS class_total
         FROM students s
         WHERE s.tenant_id = $1`,
@@ -920,6 +927,40 @@ router.get('/admin-overview', async (req: AuthRequest, res) => {
         [tenantId]
       ).catch((err) => {
         console.error('[admin-overview] class list query failed:', err);
+        return { rows: [] };
+      }),
+      query(
+        `WITH days AS (
+           SELECT generate_series(CURRENT_DATE - INTERVAL '29 days', CURRENT_DATE, INTERVAL '1 day')::date AS day
+         ),
+         term_pay AS (
+           SELECT p.payment_date::date AS day, COALESCE(SUM(p.amount), 0)::numeric AS amount
+           FROM payments p
+           WHERE p.tenant_id = $1
+             AND COALESCE(p.is_voided, false) = false
+             AND COALESCE(p.payment_category, 'term_fee') = 'term_fee'
+             AND p.payment_date >= CURRENT_DATE - INTERVAL '29 days'
+           GROUP BY 1
+         ),
+         daily_pay AS (
+           SELECT dfp.payment_date::date AS day, COALESCE(SUM(dfp.amount_paid), 0)::numeric AS amount
+           FROM daily_fee_payments dfp
+           WHERE dfp.tenant_id = $1
+             AND dfp.payment_date >= CURRENT_DATE - INTERVAL '29 days'
+           GROUP BY 1
+         )
+         SELECT
+           d.day::text AS date,
+           COALESCE(t.amount, 0)::numeric AS term_fees,
+           COALESCE(dp.amount, 0)::numeric AS daily_fees,
+           (COALESCE(t.amount, 0) + COALESCE(dp.amount, 0))::numeric AS total
+         FROM days d
+         LEFT JOIN term_pay t ON t.day = d.day
+         LEFT JOIN daily_pay dp ON dp.day = d.day
+         ORDER BY d.day ASC`,
+        [tenantId]
+      ).catch((err) => {
+        console.error('[admin-overview] payment trend query failed:', err);
         return { rows: [] };
       }),
     ]);
@@ -958,6 +999,10 @@ router.get('/admin-overview', async (req: AuthRequest, res) => {
         male: Number(counts.teacher_male) || 0,
         female: Number(counts.teacher_female) || 0,
       },
+      otherStaff: {
+        total: Number(counts.other_staff_total) || 0,
+        active: Number(counts.other_staff_active) || 0,
+      },
       classes: { total: Number(counts.class_total) || 0 },
       feeStatus: {
         paid: Number(feeMix.paid) || 0,
@@ -968,6 +1013,12 @@ router.get('/admin-overview', async (req: AuthRequest, res) => {
       },
       enrollmentByClass,
       classNames: classesRes.rows.map((r) => String(r.class_name)).filter(Boolean),
+      paymentTrend: paymentTrendRes.rows.map((row) => ({
+        date: String(row.date).slice(0, 10),
+        termFees: parseFloat(row.term_fees) || 0,
+        dailyFees: parseFloat(row.daily_fees) || 0,
+        total: parseFloat(row.total) || 0,
+      })),
     });
   } catch (error) {
     console.error('Admin overview error:', error);
@@ -1010,6 +1061,7 @@ router.get('/student-fee-roster', async (req: AuthRequest, res) => {
         LEFT JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
         LEFT JOIN student_ledger_totals slt ON slt.student_id = s.id
         WHERE s.tenant_id = $1 AND ${ACTIVE_STUDENT_WHERE}
+          AND ${TERM_FEE_STUDENT_CLASS_FILTER}
       )
       SELECT
         id,

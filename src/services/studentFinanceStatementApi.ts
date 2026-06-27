@@ -79,6 +79,19 @@ export type StatementAdjustmentRow = {
   reason: string;
 };
 
+export type DailyFeeStatementRow = {
+  date: string;
+  description: string;
+  amount: number;
+  method: string;
+};
+
+export type DailyFeePaymentsSection = {
+  termLabel: string;
+  rows: DailyFeeStatementRow[];
+  total: number;
+};
+
 export type AccountSummary = {
   totalFeesBilled: number;
   totalAmountPaid: number;
@@ -121,6 +134,7 @@ export type StudentFinanceStatement = {
   paymentsTotal: number;
   adjustments: StatementAdjustmentRow[];
   adjustmentsTotal: number;
+  dailyFeePayments?: DailyFeePaymentsSection | null;
   accountSummary: AccountSummary;
   variant: 'official' | 'parent_portal';
 };

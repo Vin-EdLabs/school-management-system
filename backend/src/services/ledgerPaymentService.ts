@@ -77,8 +77,8 @@ export async function recordPaymentWithLedger(
     let insertResult;
     try {
       insertResult = await client.query(
-        `INSERT INTO payments (tenant_id, student_id, amount, payment_date, payment_method, payment_account_id, term, term_id, notes, receipt_number, base_receipt_number, receipt_snapshot)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, $11::jsonb) RETURNING *`,
+        `INSERT INTO payments (tenant_id, student_id, amount, payment_date, payment_method, payment_account_id, term, term_id, notes, receipt_number, base_receipt_number, receipt_snapshot, payment_category)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, $11::jsonb, 'term_fee') RETURNING *`,
         [
           input.tenantId,
           input.studentId,
@@ -95,8 +95,8 @@ export async function recordPaymentWithLedger(
       );
     } catch {
       insertResult = await client.query(
-        `INSERT INTO payments (tenant_id, student_id, amount, payment_date, payment_method, payment_account_id, term, term_id, notes, receipt_number, base_receipt_number)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10) RETURNING *`,
+        `INSERT INTO payments (tenant_id, student_id, amount, payment_date, payment_method, payment_account_id, term, term_id, notes, receipt_number, base_receipt_number, payment_category)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, 'term_fee') RETURNING *`,
         [
           input.tenantId,
           input.studentId,

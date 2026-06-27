@@ -10,6 +10,29 @@ function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+/** Only term-fee rows in `payments` — excludes daily fee collections. */
+export const TERM_PAYMENT_CATEGORY_SQL = `COALESCE(p.payment_category, 'term_fee') = 'term_fee'`;
+
+/** Exclude daily_fee mirror credits synced into student_ledger from term balance math. */
+export const LEDGER_TERM_CREDIT_SQL = `CASE
+  WHEN sl.payment_id IS NOT NULL AND EXISTS (
+    SELECT 1 FROM payments p
+    WHERE p.id = sl.payment_id AND p.payment_category = 'daily_fee'
+  ) THEN 0
+  ELSE sl.credit
+END`;
+
+export const LEDGER_TERM_CREDIT_SQL_UNALIASED = `CASE
+  WHEN payment_id IS NOT NULL AND EXISTS (
+    SELECT 1 FROM payments p
+    WHERE p.id = student_ledger.payment_id AND p.payment_category = 'daily_fee'
+  ) THEN 0
+  ELSE credit
+END`;
+
+/** Active students in term-fee classes only (daily fee classes use a separate system). */
+export const TERM_FEE_CLASS_FILTER_SQL = `COALESCE(c.fee_mode, 'term') != 'daily'`;
+
 /** Carried credit visible in the current term (not consumed until term close). */
 export const CREDIT_AVAILABLE_ENTRY_TYPES = ['carry_forward_credit', 'credit_brought_forward'] as const;
 
@@ -105,8 +128,8 @@ export async function getStudentBalanceFromLedger(
        COALESCE(SUM(CASE WHEN entry_type = 'student_charge' THEN debit ELSE 0 END), 0) AS individual_charges,
        COALESCE(SUM(CASE WHEN entry_type = 'arrears' THEN debit ELSE 0 END), 0) AS arrears,
        COALESCE(SUM(CASE WHEN entry_type IN (${CREDIT_AVAILABLE_SQL}) THEN credit ELSE 0 END), 0) AS credit_available,
-       COALESCE(SUM(CASE WHEN entry_type = 'payment' THEN credit ELSE 0 END), 0) AS payments_made,
-       COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) AS net_balance,
+       COALESCE(SUM(CASE WHEN entry_type = 'payment' THEN (${LEDGER_TERM_CREDIT_SQL_UNALIASED}) ELSE 0 END), 0) AS payments_made,
+       COALESCE(SUM(debit), 0) - COALESCE(SUM(${LEDGER_TERM_CREDIT_SQL_UNALIASED}), 0) AS net_balance,
        COALESCE((
          SELECT SUM(p.amount)::numeric
          FROM payments p
@@ -114,6 +137,7 @@ export async function getStudentBalanceFromLedger(
            AND p.student_id = $1
            AND p.term_id = $3
            AND COALESCE(p.is_voided, false) = false
+           AND COALESCE(p.payment_category, 'term_fee') = 'term_fee'
        ), 0) AS payments_table_total
      FROM student_ledger
      WHERE student_id = $1 AND tenant_id = $2 ${termFilter}`,
@@ -256,8 +280,8 @@ export async function getBatchStudentBalancesFromLedger(
        COALESCE(SUM(CASE WHEN sl.entry_type = 'student_charge' THEN sl.debit ELSE 0 END), 0) AS individual_charges,
        COALESCE(SUM(CASE WHEN sl.entry_type = 'arrears' THEN sl.debit ELSE 0 END), 0) AS arrears,
        COALESCE(SUM(CASE WHEN sl.entry_type IN (${CREDIT_AVAILABLE_SQL}) THEN sl.credit ELSE 0 END), 0) AS credit_brought_forward,
-       COALESCE(SUM(CASE WHEN sl.entry_type = 'payment' THEN sl.credit ELSE 0 END), 0) AS ledger_paid,
-       COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(sl.credit), 0) AS net_balance,
+       COALESCE(SUM(CASE WHEN sl.entry_type = 'payment' THEN (${LEDGER_TERM_CREDIT_SQL}) ELSE 0 END), 0) AS ledger_paid,
+       COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(${LEDGER_TERM_CREDIT_SQL}), 0) AS net_balance,
        COALESCE(pay_sum.paid, 0) AS payments_table_total
      FROM students s
      LEFT JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
@@ -271,12 +295,14 @@ export async function getBatchStudentBalancesFromLedger(
          AND p.student_id = s.id
          AND p.term_id = $2
          AND COALESCE(p.is_voided, false) = false
+         AND COALESCE(p.payment_category, 'term_fee') = 'term_fee'
      ) pay_sum ON true
      WHERE s.tenant_id = $1
        AND COALESCE(s.enrollment_status, 'active') = 'active'
+       AND ${TERM_FEE_CLASS_FILTER_SQL}
        ${classFilter}
      GROUP BY s.id, s.first_name, s.last_name, s.student_id, s.admission_number, c.class_name, pay_sum.paid
-     ORDER BY GREATEST(0, COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(sl.credit), 0)) DESC`,
+     ORDER BY GREATEST(0, COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(${LEDGER_TERM_CREDIT_SQL}), 0)) DESC`,
     params
   );
 
@@ -326,9 +352,9 @@ export async function getTermByTermLedgerSummary(
        t.id AS term_id,
        TRIM(t.name || ' ' || ay.name) AS term_label,
        COALESCE(SUM(CASE WHEN sl.entry_type IN ('term_fee', 'student_charge') THEN sl.debit ELSE 0 END), 0) AS fee_billed,
-       COALESCE(SUM(CASE WHEN sl.entry_type = 'payment' THEN sl.credit ELSE 0 END), 0) AS amount_paid,
-       COALESCE(SUM(CASE WHEN sl.entry_type IN (${CREDIT_AVAILABLE_SQL}) THEN sl.credit ELSE 0 END), 0) AS credit,
-       COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(sl.credit), 0) AS net_balance
+       COALESCE(SUM(CASE WHEN sl.entry_type = 'payment' THEN (${LEDGER_TERM_CREDIT_SQL}) ELSE 0 END), 0) AS amount_paid,
+       COALESCE(SUM(CASE WHEN sl.entry_type IN (${CREDIT_AVAILABLE_SQL}) THEN (${LEDGER_TERM_CREDIT_SQL}) ELSE 0 END), 0) AS credit,
+       COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(${LEDGER_TERM_CREDIT_SQL}), 0) AS net_balance
      FROM student_ledger sl
      JOIN terms t ON t.id = sl.term_id AND t.tenant_id = sl.tenant_id
      JOIN academic_years ay ON ay.id = t.academic_year_id

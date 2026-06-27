@@ -629,10 +629,11 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
         email, address, subjects_taught, class_assigned_id, employment_date,
         monthly_salary, employment_status, notes, position, department,
         emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
-        bank_name, bank_account_number, bank_branch, bank_account_name
+        bank_name, bank_account_number, bank_branch, bank_account_name,
+        qualification, specialization
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
-        $17, $18, $19, $20, $21, $22, $23
+        $17, $18, $19, $20, $21, $22, $23, $24, $25
       ) RETURNING *`,
       [
         tenantId,
@@ -658,6 +659,8 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
         teacherData.bank_account_number || null,
         teacherData.bank_branch || null,
         teacherData.bank_account_name || null,
+        teacherData.qualification ? String(teacherData.qualification).trim() : null,
+        teacherData.specialization ? String(teacherData.specialization).trim() : null,
       ]
     );
 
@@ -774,6 +777,7 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
       'monthly_salary', 'employment_status', 'notes', 'position', 'department',
       'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
       'bank_name', 'bank_account_number', 'bank_branch', 'bank_account_name',
+      'qualification', 'specialization',
     ];
     
     for (const field of allowedFields) {
@@ -1059,6 +1063,37 @@ router.get('/:id/appointment-letters/:letterId/download', async (req: AuthReques
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to download letter' });
+  }
+});
+
+router.post('/:id/profile-pdf-audit', authenticate, requireRole('super-admin', 'administrator', 'finance', 'headmaster'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const teacherId = parseInt(String(req.params.id), 10);
+    const row = await query(
+      'SELECT id, full_name FROM teachers WHERE id = $1 AND tenant_id = $2 AND COALESCE(is_deleted, false) = false',
+      [teacherId, tenantId]
+    );
+    if (row.rows.length === 0) return res.status(404).json({ error: 'Teacher not found' });
+
+    const fullName = String(row.rows[0].full_name || '').trim();
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'EXPORT',
+      entityType: 'staff_profile',
+      entityId: teacherId,
+      module: 'academics',
+      summary: `Profile PDF downloaded — ${fullName}`,
+      details: { staffType: 'teacher', fullName },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Teacher profile PDF audit error:', error);
+    res.status(500).json({ error: 'Failed to log profile export' });
   }
 });
 

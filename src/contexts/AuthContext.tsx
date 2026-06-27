@@ -135,6 +135,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           clearActiveTermWelcomeDismiss(loginTenantId);
         }
 
+        try {
+          sessionStorage.setItem('personal-todos-login-blink', '1');
+        } catch {
+          /* ignore */
+        }
+
         // Add audit log for login (will be handled by backend)
         setTimeout(() => {
           const event = new CustomEvent('userLogin', {

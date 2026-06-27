@@ -87,6 +87,8 @@ export interface Teacher {
   bankAccountName?: string;
   position?: string;
   department?: string;
+  qualification?: string;
+  specialization?: string;
   assignedClassIds?: string[];
   subjectClassAssignments?: Array<{ subject_id: number; class_id: number }>;
 }
@@ -315,6 +317,8 @@ const mapTeacher = (backendTeacher: any): Teacher => ({
   bankAccountName: backendTeacher.bank_account_name || undefined,
   position: backendTeacher.position || undefined,
   department: backendTeacher.department || undefined,
+  qualification: backendTeacher.qualification || undefined,
+  specialization: backendTeacher.specialization || undefined,
   assignedClassIds: Array.isArray(backendTeacher.assigned_class_ids)
     ? backendTeacher.assigned_class_ids.map((id: number) => String(id))
     : backendTeacher.class_assigned_id
@@ -346,6 +350,8 @@ const mapTeacherToBackend = (teacher: Partial<Teacher>): any => {
   if (teacher.bankAccountName !== undefined) out.bank_account_name = teacher.bankAccountName;
   if (teacher.position !== undefined) out.position = String(teacher.position).trim() || null;
   if (teacher.department !== undefined) out.department = String(teacher.department).trim() || null;
+  if (teacher.qualification !== undefined) out.qualification = String(teacher.qualification).trim() || null;
+  if (teacher.specialization !== undefined) out.specialization = String(teacher.specialization).trim() || null;
   if (teacher.assignedClassIds !== undefined) {
     out.class_ids = teacher.assignedClassIds
       .map((id) => parseInt(String(id), 10))

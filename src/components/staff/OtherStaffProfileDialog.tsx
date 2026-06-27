@@ -16,11 +16,14 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { apiService } from '@/services/api';
 import { toast } from '@/hooks/use-toast';
-import { Pencil, Phone, Mail, MapPin, Briefcase, Banknote, User, Calendar, Hash, Trash2 } from 'lucide-react';
+import { Pencil, Phone, Mail, MapPin, Briefcase, Banknote, User, Calendar, Hash, Trash2, Download, Loader2 } from 'lucide-react';
 import OtherStaffFormDialog from './OtherStaffFormDialog';
 import StaffDeleteConfirmDialog from '../common/StaffDeleteConfirmDialog';
 import type { OtherStaffRecord } from './otherStaffTypes';
 import StaffPhotoLightbox from './StaffPhotoLightbox';
+import { useSchool } from '../../contexts/SchoolContext';
+import { resolveLogoUrl } from '../../services/tenantService';
+import { downloadOtherStaffProfilePdf } from '@/utils/staffProfilePdf';
 
 export type { OtherStaffRecord } from './otherStaffTypes';
 
@@ -48,6 +51,8 @@ const OtherStaffProfileDialog: React.FC<Props> = ({ staffId, open, onClose, onUp
   const [toggling, setToggling] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const { school } = useSchool();
 
   useEffect(() => {
     if (!open || staffId == null) {
@@ -116,17 +121,59 @@ const OtherStaffProfileDialog: React.FC<Props> = ({ staffId, open, onClose, onUp
 
   const isActive = (staff?.employment_status || 'active').toLowerCase() === 'active';
 
+  const handleDownloadProfile = async () => {
+    if (!staff) return;
+    setDownloadingPdf(true);
+    try {
+      await downloadOtherStaffProfilePdf(
+        staff,
+        school?.name || 'School',
+        resolveLogoUrl(school?.logo_url)
+      );
+      toast({ title: 'Profile downloaded' });
+    } catch (e: unknown) {
+      toast({
+        title: 'Download failed',
+        description: e instanceof Error ? e.message : 'Could not generate PDF',
+        variant: 'destructive',
+      });
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
   return (
     <>
       <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
         <DialogContent className={detailDialogContentWideClass}>
           <DialogHeader className={detailDialogHeaderClass}>
-            <DialogTitle>Staff profile</DialogTitle>
-            {staff ? (
-              <p className="text-sm text-muted-foreground">
-                {staff.full_name} · {staff.staff_id}
-              </p>
-            ) : null}
+            <div className="flex flex-wrap items-start justify-between gap-3 w-full">
+              <div>
+                <DialogTitle>Staff profile</DialogTitle>
+                {staff ? (
+                  <p className="text-sm text-muted-foreground">
+                    {staff.full_name} · {staff.staff_id}
+                  </p>
+                ) : null}
+              </div>
+              {staff ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => void handleDownloadProfile()}
+                  disabled={downloadingPdf}
+                >
+                  {downloadingPdf ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="mr-2 h-4 w-4" />
+                  )}
+                  Download Profile
+                </Button>
+              ) : null}
+            </div>
           </DialogHeader>
           <DialogBody className={`${detailDialogBodyClass} space-y-6`}>
           {loading ? (
@@ -161,6 +208,8 @@ const OtherStaffProfileDialog: React.FC<Props> = ({ staffId, open, onClose, onUp
                   <DetailRow icon={Mail} label="Email" value={staff.email || '—'} />
                   <DetailRow icon={MapPin} label="Address" value={staff.home_address || '—'} />
                   <DetailRow icon={User} label="Gender" value={staff.gender || '—'} />
+                  <DetailRow icon={User} label="Qualification" value={staff.qualification || '—'} />
+                  <DetailRow icon={User} label="Specialization" value={staff.specialization || '—'} />
                 </div>
                 <div>
                   <DetailRow icon={Briefcase} label="Employment type" value={staff.employment_type || '—'} />

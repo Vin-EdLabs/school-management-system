@@ -56,6 +56,8 @@ const emptyForm = () => ({
   bank_branch: '',
   bank_account_name: '',
   notes: '',
+  qualification: '',
+  specialization: '',
 });
 
 type Props = {
@@ -111,6 +113,8 @@ const OtherStaffFormDialog: React.FC<Props> = ({ open, onClose, staff, onSuccess
         bank_branch: staff.bank_branch || '',
         bank_account_name: staff.bank_account_name || '',
         notes: staff.notes || '',
+        qualification: staff.qualification || '',
+        specialization: staff.specialization || '',
       });
       setShowEmergency(!!(
         staff.emergency_contact_name ||
@@ -289,6 +293,22 @@ const OtherStaffFormDialog: React.FC<Props> = ({ open, onClose, staff, onSuccess
             <div className="space-y-2">
               <Label>National ID</Label>
               <Input value={form.national_id} onChange={(e) => set('national_id', e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Qualification</Label>
+              <Input
+                value={form.qualification}
+                onChange={(e) => set('qualification', e.target.value)}
+                placeholder="e.g. B.Ed, HND, PGDE, Diploma in Basic Education"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Specialization</Label>
+              <Input
+                value={form.specialization}
+                onChange={(e) => set('specialization', e.target.value)}
+                placeholder="e.g. Mathematics & ICT, English & Social Studies"
+              />
             </div>
             <div className="space-y-2">
               <Label>Passport Photo</Label>

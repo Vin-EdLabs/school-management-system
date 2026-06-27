@@ -1,4 +1,5 @@
 import express from 'express';
+import type pg from 'pg';
 import { query, getClient } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest, requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
@@ -10,15 +11,21 @@ import { resolvePaymentAccountForTransaction } from '../services/paymentAccountS
 import { resolveActiveLedgerTerm } from '../services/studentUnifiedBalanceService.js';
 import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 import {
+  getClassOverviewReport,
+  getStudentReport,
+} from '../services/dailyFeeReportService.js';
+import {
   calculateCoverageEndDate,
   calculateNextDueDate,
   getDailyFeeStructure,
   getFirstSchoolDayOnOrAfter,
   getStudentStatusForDate,
+  listStudentsInClass,
   rateForPaymentType,
   recalculatePaymentsOnClosureChange,
   schoolDaysForPaymentType,
   upsertCollectionRecordsForPayment,
+  serializeDailyFeeStructureForApi,
   type DailyPaymentType,
 } from '../services/dailyFeeService.js';
 
@@ -69,6 +76,131 @@ async function resolveTermContext(tenantId: number) {
   return { termId: ledgerTermId, academicYearId, termLabel };
 }
 
+type RecordPaymentInput = {
+  tenantId: number;
+  userId: number;
+  studentId: number;
+  classId: number;
+  paymentType: DailyPaymentType;
+  amountPaid?: number;
+  paymentDate: string;
+  paymentMethod?: string;
+  paymentAccountId?: number | null;
+  notes?: string | null;
+};
+
+async function recordDailyFeePayment(client: pg.PoolClient, input: RecordPaymentInput) {
+  const {
+    tenantId,
+    userId,
+    studentId: sid,
+    classId: cid,
+    paymentType: pType,
+    amountPaid,
+    paymentDate,
+    paymentMethod,
+    paymentAccountId,
+    notes,
+  } = input;
+
+  const { termId, academicYearId, termLabel } = await resolveTermContext(tenantId);
+  const structure = await getDailyFeeStructure(query, tenantId, cid, termId);
+  if (!structure) {
+    throw new Error('Daily fee structure not configured for this class');
+  }
+
+  const payDate = String(paymentDate || new Date().toISOString().slice(0, 10)).slice(0, 10);
+  const schoolDays = schoolDaysForPaymentType(pType, structure);
+  const coverageStart = await getFirstSchoolDayOnOrAfter(query, tenantId, termId, payDate);
+  const coverageEnd = await calculateCoverageEndDate(query, tenantId, termId, coverageStart, schoolDays);
+  const nextDue = await calculateNextDueDate(query, tenantId, termId, coverageEnd);
+
+  const expectedAmount = rateForPaymentType(pType, structure);
+  const amount = Number(amountPaid) > 0 ? Number(amountPaid) : expectedAmount;
+  if (amount <= 0) throw new Error('Amount must be greater than zero');
+
+  const resolved = await resolvePaymentAccountForTransaction(
+    tenantId,
+    paymentAccountId ? parseInt(String(paymentAccountId), 10) : null,
+    paymentMethod
+  );
+
+  const studentRes = await query(
+    `SELECT first_name, last_name, student_id FROM students WHERE id = $1 AND tenant_id = $2`,
+    [sid, tenantId]
+  );
+  if (studentRes.rows.length === 0) throw new Error('Student not found');
+  const studentName = `${studentRes.rows[0].first_name} ${studentRes.rows[0].last_name}`.trim();
+  const paymentNotes = `Daily Fee (${pType}) — ${studentName}`;
+
+  const payIns = await client.query(
+    `INSERT INTO daily_fee_payments
+       (tenant_id, student_id, class_id, term_id, academic_year_id, payment_type, amount_paid,
+        payment_date, coverage_start_date, coverage_end_date, school_days_covered, next_due_date,
+        payment_method, payment_account_id, receipt_number, notes, recorded_by_user_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8::date,$9::date,$10::date,$11,$12::date,$13,$14,NULL,$15,$16)
+     RETURNING *`,
+    [
+      tenantId,
+      sid,
+      cid,
+      termId,
+      academicYearId,
+      pType,
+      amount,
+      payDate,
+      coverageStart,
+      coverageEnd,
+      schoolDays,
+      nextDue,
+      resolved.paymentMethod,
+      resolved.paymentAccountId,
+      notes || null,
+      userId,
+    ]
+  );
+
+  const dailyPayment = payIns.rows[0];
+
+  await upsertCollectionRecordsForPayment(
+    client,
+    tenantId,
+    Number(dailyPayment.id),
+    sid,
+    cid,
+    termId,
+    coverageStart,
+    coverageEnd
+  );
+
+  await client.query(
+    `INSERT INTO payments
+       (tenant_id, student_id, amount, payment_date, payment_method, payment_account_id, term, term_id, notes, receipt_number, base_receipt_number, receipt_snapshot, is_voided, payment_category)
+     VALUES ($1,$2,$3,$4::date,$5,$6,$7,$8,$9,NULL,NULL,NULL,false,'daily_fee')`,
+    [
+      tenantId,
+      sid,
+      amount,
+      payDate,
+      resolved.paymentMethod,
+      resolved.paymentAccountId,
+      termLabel,
+      termId,
+      paymentNotes,
+    ]
+  );
+
+  return {
+    payment: dailyPayment,
+    coverageEndDate: coverageEnd,
+    nextDueDate: nextDue,
+    studentName,
+    termLabel,
+    amount,
+    paymentType: pType,
+  };
+}
+
 router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
@@ -77,17 +209,54 @@ attachWritableTermGuard(router);
 router.get('/classes', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
+    const { termId } = await resolveTermContext(tenantId);
     const result = await query(
-      `SELECT id, class_name, COALESCE(fee_mode, 'term') AS fee_mode
-       FROM classes
-       WHERE tenant_id = $1 AND COALESCE(fee_mode, 'term') = 'daily'
-       ORDER BY class_name`,
-      [tenantId]
+      `SELECT c.id, c.class_name, COALESCE(c.fee_mode, 'term') AS fee_mode,
+              dfs.id AS structure_id,
+              dfs.daily_rate, dfs.weekly_rate, dfs.monthly_rate, dfs.termly_rate, dfs.school_days_count
+       FROM classes c
+       LEFT JOIN LATERAL (
+         SELECT d.id, d.daily_rate, d.weekly_rate, d.monthly_rate, d.termly_rate, d.school_days_count
+         FROM daily_fee_structures d
+         WHERE d.class_id = c.id AND d.tenant_id = c.tenant_id
+         ORDER BY (d.term_id = $2) DESC, d.updated_at DESC NULLS LAST, d.id DESC
+         LIMIT 1
+       ) dfs ON true
+       WHERE c.tenant_id = $1 AND COALESCE(c.fee_mode, 'term') = 'daily'
+       ORDER BY c.class_name`,
+      [tenantId, termId]
     );
     res.json(result.rows);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Daily fees classes error:', error);
-    res.status(500).json({ error: 'Failed to fetch daily fee classes' });
+    res.status(error?.message?.includes('active term') ? 400 : 500).json({
+      error: error?.message || 'Failed to fetch daily fee classes',
+    });
+  }
+});
+
+router.get('/structures', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const { termId, termLabel } = await resolveTermContext(tenantId);
+    const result = await query(
+      `SELECT dfs.id, dfs.class_id, dfs.term_id, dfs.school_days_count,
+              dfs.daily_rate, dfs.weekly_rate, dfs.monthly_rate, dfs.termly_rate,
+              dfs.updated_at,
+              c.class_name,
+              COALESCE(c.fee_mode, 'term') AS fee_mode
+       FROM daily_fee_structures dfs
+       JOIN classes c ON c.id = dfs.class_id AND c.tenant_id = dfs.tenant_id
+       WHERE dfs.tenant_id = $1 AND dfs.term_id = $2
+       ORDER BY c.class_name`,
+      [tenantId, termId]
+    );
+    res.json({ termId, termLabel, structures: result.rows });
+  } catch (error: any) {
+    console.error('Daily fee structures list error:', error);
+    res.status(error?.message?.includes('active term') ? 400 : 500).json({
+      error: error?.message || 'Failed to fetch daily fee structures',
+    });
   }
 });
 
@@ -106,7 +275,7 @@ router.get('/structure/:classId', async (req: AuthRequest, res) => {
     const structure = await getDailyFeeStructure(query, tenantId, classId, termId);
     res.json({
       class: classRes.rows[0],
-      structure,
+      structure: serializeDailyFeeStructureForApi(structure),
       termId,
     });
   } catch (error: any) {
@@ -374,41 +543,21 @@ router.get('/collections', async (req: AuthRequest, res) => {
 
     if (!classId) return res.status(400).json({ error: 'classId is required' });
 
-    const { termId, academicYearId } = await resolveTermContext(tenantId);
+    const { termId } = await resolveTermContext(tenantId);
 
-    let studentsRes;
-    if (academicYearId) {
-      studentsRes = await query(
-        `SELECT s.id, s.first_name, s.last_name, s.student_id, s.admission_number,
-                (CASE WHEN s.passport_photo_url IS NOT NULL AND length(s.passport_photo_url) > 0
-                      THEN true ELSE false END) AS has_passport_photo
-         FROM student_class_enrollments e
-         JOIN students s ON s.id = e.student_id AND s.tenant_id = e.tenant_id
-         WHERE e.class_id = $1 AND e.tenant_id = $2 AND e.academic_year_id = $3
-           AND e.status IN ('active', 'repeat')
-         ORDER BY s.first_name, s.last_name`,
-        [classId, tenantId, academicYearId]
-      );
-    } else {
-      studentsRes = await query(
-        `SELECT s.id, s.first_name, s.last_name, s.student_id, s.admission_number,
-                (CASE WHEN s.passport_photo_url IS NOT NULL AND length(s.passport_photo_url) > 0
-                      THEN true ELSE false END) AS has_passport_photo
-         FROM students s
-         WHERE s.class_assigned_id = $1 AND s.tenant_id = $2
-           AND COALESCE(s.enrollment_status, 'active') = 'active'
-         ORDER BY s.first_name, s.last_name`,
-        [classId, tenantId]
-      );
-    }
+    const studentRows = await listStudentsInClass(query, tenantId, classId);
 
     const structure = await getDailyFeeStructure(query, tenantId, classId, termId);
 
     const rows = [];
-    for (const s of studentsRes.rows) {
+    for (const s of studentRows) {
       const status = await getStudentStatusForDate(query, tenantId, s.id, termId, date);
       const lastPayRes = await query(
-        `SELECT payment_type, payment_date::text AS payment_date, coverage_end_date::text AS coverage_end_date, next_due_date::text AS next_due_date
+        `SELECT payment_type, payment_date::text AS payment_date,
+                coverage_start_date::text AS coverage_start_date,
+                coverage_end_date::text AS coverage_end_date,
+                next_due_date::text AS next_due_date,
+                receipt_number, amount_paid::text AS amount_paid, payment_method
          FROM daily_fee_payments
          WHERE tenant_id = $1 AND student_id = $2 AND term_id = $3
          ORDER BY payment_date DESC, id DESC LIMIT 1`,
@@ -419,18 +568,32 @@ router.get('/collections', async (req: AuthRequest, res) => {
       rows.push({
         studentId: s.id,
         studentName: `${s.first_name} ${s.last_name}`.trim(),
-        admissionNumber: s.admission_number || s.student_id,
+        studentCode: String(s.student_id || ''),
+        admissionNumber: s.admission_number || null,
         hasPassportPhoto: s.has_passport_photo,
         status: status.status,
+        currentPaymentType: status.paymentType || null,
         paidUntil: status.paidUntil || null,
         nextDueDate: status.nextDueDate ?? (last?.next_due_date ? String(last.next_due_date).slice(0, 10) : null),
         lastPaymentType: last?.payment_type || null,
         lastPaymentDate: last?.payment_date ? String(last.payment_date).slice(0, 10) : null,
         lastPaidUntil: status.lastPaidUntil || null,
+        lastReceiptNumber: last?.receipt_number || null,
+        lastPaymentAmount: last?.amount_paid ? parseFloat(String(last.amount_paid)) : null,
+        lastCoverageStart: last?.coverage_start_date ? String(last.coverage_start_date).slice(0, 10) : null,
+        lastCoverageEnd: last?.coverage_end_date ? String(last.coverage_end_date).slice(0, 10) : null,
+        lastPaymentMethod: last?.payment_method || null,
       });
     }
 
-    res.json({ date, classId, termId, hasStructure: !!structure, students: rows });
+    res.json({
+      date,
+      classId,
+      termId,
+      hasStructure: !!structure,
+      structure: serializeDailyFeeStructureForApi(structure),
+      students: rows,
+    });
   } catch (error: any) {
     console.error('Daily collections error:', error);
     res.status(error?.message?.includes('active term') ? 400 : 500).json({
@@ -462,113 +625,21 @@ router.post('/payments', requireRole('super-admin', 'administrator', 'finance'),
       return res.status(400).json({ error: 'studentId, classId, and paymentType are required' });
     }
 
-    const { termId, academicYearId, termLabel } = await resolveTermContext(tenantId);
-    const structure = await getDailyFeeStructure(query, tenantId, cid, termId);
-    if (!structure) {
-      return res.status(400).json({ error: 'Daily fee structure not configured for this class' });
-    }
-
-    const payDate = String(paymentDate || new Date().toISOString().slice(0, 10)).slice(0, 10);
-    const schoolDays = schoolDaysForPaymentType(pType, structure);
-    const coverageStart = await getFirstSchoolDayOnOrAfter(query, tenantId, termId, payDate);
-    const coverageEnd = await calculateCoverageEndDate(query, tenantId, termId, coverageStart, schoolDays);
-    const nextDue = await calculateNextDueDate(query, tenantId, termId, coverageEnd);
-
-    const expectedAmount = rateForPaymentType(pType, structure);
-    const amount = Number(amountPaid) > 0 ? Number(amountPaid) : expectedAmount;
-    if (amount <= 0) return res.status(400).json({ error: 'Amount must be greater than zero' });
-
-    let resolvedMethod = paymentMethod || 'Cash';
-    let resolvedAccountId: number | null = null;
-    const resolved = await resolvePaymentAccountForTransaction(
-      tenantId,
-      paymentAccountId ? parseInt(String(paymentAccountId), 10) : null,
-      paymentMethod
-    );
-    resolvedAccountId = resolved.paymentAccountId;
-    resolvedMethod = resolved.paymentMethod;
-
-    const studentRes = await query(
-      `SELECT first_name, last_name, student_id FROM students WHERE id = $1 AND tenant_id = $2`,
-      [sid, tenantId]
-    );
-    if (studentRes.rows.length === 0) return res.status(404).json({ error: 'Student not found' });
-    const studentName = `${studentRes.rows[0].first_name} ${studentRes.rows[0].last_name}`.trim();
-    const receiptNumber = await generateReceiptNumber(tenantId);
-    const paymentNotes = `Daily Fee (${pType}) — ${studentName}`;
     const actor = await resolveActorFromRequest(req);
-
-    const receiptSnapshot = {
-      type: 'daily_fee',
-      paymentType: pType,
-      coverageStart,
-      coverageEnd,
-      nextDueDate: nextDue,
-      studentName,
-      recordedBy: actor,
-    };
-
     await client.query('BEGIN');
 
-    const payIns = await client.query(
-      `INSERT INTO daily_fee_payments
-         (tenant_id, student_id, class_id, term_id, academic_year_id, payment_type, amount_paid,
-          payment_date, coverage_start_date, coverage_end_date, school_days_covered, next_due_date,
-          payment_method, payment_account_id, receipt_number, notes, recorded_by_user_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::date,$9::date,$10::date,$11,$12::date,$13,$14,$15,$16,$17)
-       RETURNING *`,
-      [
-        tenantId,
-        sid,
-        cid,
-        termId,
-        academicYearId,
-        pType,
-        amount,
-        payDate,
-        coverageStart,
-        coverageEnd,
-        schoolDays,
-        nextDue,
-        resolvedMethod,
-        resolvedAccountId,
-        receiptNumber,
-        notes || null,
-        userId,
-      ]
-    );
-
-    const dailyPayment = payIns.rows[0];
-
-    await upsertCollectionRecordsForPayment(
-      client,
+    const result = await recordDailyFeePayment(client, {
       tenantId,
-      Number(dailyPayment.id),
-      sid,
-      cid,
-      termId,
-      coverageStart,
-      coverageEnd
-    );
-
-    await client.query(
-      `INSERT INTO payments
-         (tenant_id, student_id, amount, payment_date, payment_method, payment_account_id, term, term_id, notes, receipt_number, base_receipt_number, receipt_snapshot, is_voided)
-       VALUES ($1,$2,$3,$4::date,$5,$6,$7,$8,$9,$10,$10,$11::jsonb,false)`,
-      [
-        tenantId,
-        sid,
-        amount,
-        payDate,
-        resolvedMethod,
-        resolvedAccountId,
-        termLabel,
-        termId,
-        paymentNotes,
-        receiptNumber,
-        JSON.stringify(receiptSnapshot),
-      ]
-    );
+      userId,
+      studentId: sid,
+      classId: cid,
+      paymentType: pType,
+      amountPaid,
+      paymentDate,
+      paymentMethod,
+      paymentAccountId,
+      notes,
+    });
 
     await client.query('COMMIT');
 
@@ -578,32 +649,170 @@ router.post('/payments', requireRole('super-admin', 'administrator', 'finance'),
       userRole: req.user!.role,
       action: 'CREATE',
       entityType: 'daily_fee_payment',
-      entityId: Number(dailyPayment.id),
+      entityId: Number(result.payment.id),
       module: 'finance',
       summary: withActor(
-        `Daily fee ${pType} payment of ${formatMoneyGhs(amount)} for ${studentName}`,
+        `Daily fee ${pType} payment of ${formatMoneyGhs(result.amount)} for ${result.studentName}`,
         actor
       ),
-      details: { studentId: sid, classId: cid, paymentType: pType, amount, coverageEnd },
+      details: { studentId: sid, classId: cid, paymentType: pType, amount: result.amount, coverageEnd: result.coverageEndDate },
       ipAddress: getClientIp(req),
       userAgent: req.get('user-agent'),
     });
 
     emitChanged(tenantId);
 
-    res.status(201).json({
-      payment: dailyPayment,
-      receiptNumber,
-      coverageEndDate: coverageEnd,
-      nextDueDate: nextDue,
-      receiptSnapshot,
-      studentName,
-      termLabel,
-    });
+    res.status(201).json(result);
   } catch (error: any) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('Record daily fee payment error:', error);
     res.status(500).json({ error: error?.message || 'Failed to record payment' });
+  } finally {
+    client.release();
+  }
+});
+
+router.post('/payments/batch', requireRole('super-admin', 'administrator', 'finance'), async (req: AuthRequest, res) => {
+  const client = await getClient();
+  try {
+    const tenantId = req.user!.tenantId!;
+    const userId = req.user!.id;
+    const { classId, paymentDate, paymentMethod, paymentAccountId, items, notes } = req.body;
+
+    const cid = parseInt(String(classId), 10);
+    if (!cid || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'classId and items array are required' });
+    }
+
+    const actor = await resolveActorFromRequest(req);
+    await client.query('BEGIN');
+
+    const saved = [];
+    for (const item of items) {
+      const sid = parseInt(String(item.studentId), 10);
+      const pType = String(item.paymentType) as DailyPaymentType;
+      if (!sid || !pType) continue;
+
+      const result = await recordDailyFeePayment(client, {
+        tenantId,
+        userId,
+        studentId: sid,
+        classId: cid,
+        paymentType: pType,
+        amountPaid: item.amountPaid,
+        paymentDate,
+        paymentMethod,
+        paymentAccountId,
+        notes,
+      });
+      saved.push(result);
+    }
+
+    await client.query('COMMIT');
+
+    if (saved.length > 0) {
+      await writeAuditLog({
+        tenantId,
+        userId,
+        userRole: req.user!.role,
+        action: 'CREATE',
+        entityType: 'daily_fee_payment_batch',
+        entityId: Number(saved[0].payment.id),
+        module: 'finance',
+        summary: withActor(`Batch daily fee collection — ${saved.length} payment(s)`, actor),
+        details: { classId: cid, count: saved.length },
+        ipAddress: getClientIp(req),
+        userAgent: req.get('user-agent'),
+      });
+      emitChanged(tenantId);
+    }
+
+    res.status(201).json({ saved: saved.length, payments: saved });
+  } catch (error: any) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Batch daily fee payment error:', error);
+    res.status(500).json({ error: error?.message || 'Failed to record payments' });
+  } finally {
+    client.release();
+  }
+});
+
+router.post('/payments/:id/receipt', requireRole('super-admin', 'administrator', 'finance'), async (req: AuthRequest, res) => {
+  const client = await getClient();
+  try {
+    const tenantId = req.user!.tenantId!;
+    const userId = req.user!.id;
+    const paymentId = parseInt(String(req.params.id), 10);
+    if (!paymentId) return res.status(400).json({ error: 'Invalid payment id' });
+
+    const payRes = await query(
+      `SELECT dfp.*, s.first_name, s.last_name, s.student_id AS student_code, s.admission_number, c.class_name
+       FROM daily_fee_payments dfp
+       JOIN students s ON s.id = dfp.student_id AND s.tenant_id = dfp.tenant_id
+       JOIN classes c ON c.id = dfp.class_id AND c.tenant_id = dfp.tenant_id
+       WHERE dfp.id = $1 AND dfp.tenant_id = $2`,
+      [paymentId, tenantId]
+    );
+    if (payRes.rows.length === 0) return res.status(404).json({ error: 'Payment not found' });
+
+    const payment = payRes.rows[0];
+    const studentName = `${payment.first_name} ${payment.last_name}`.trim();
+    const actor = await resolveActorFromRequest(req);
+
+    let receiptNumber = payment.receipt_number as string | null;
+    const receiptSnapshot = {
+      type: 'daily_fee',
+      paymentType: payment.payment_type,
+      coverageStart: String(payment.coverage_start_date).slice(0, 10),
+      coverageEnd: String(payment.coverage_end_date).slice(0, 10),
+      nextDueDate: payment.next_due_date ? String(payment.next_due_date).slice(0, 10) : null,
+      studentName,
+      recordedBy: actor,
+    };
+
+    await client.query('BEGIN');
+
+    if (!receiptNumber) {
+      receiptNumber = await generateReceiptNumber(tenantId);
+      await client.query(
+        `UPDATE daily_fee_payments SET receipt_number = $1 WHERE id = $2 AND tenant_id = $3`,
+        [receiptNumber, paymentId, tenantId]
+      );
+      await client.query(
+        `UPDATE payments
+         SET receipt_number = $1, base_receipt_number = $1, receipt_snapshot = $2::jsonb
+         WHERE id = (
+           SELECT id FROM payments
+           WHERE tenant_id = $3 AND student_id = $4 AND payment_date = $5::date
+             AND amount = $6 AND notes LIKE 'Daily Fee%'
+             AND (receipt_number IS NULL OR receipt_number = '')
+           ORDER BY id DESC
+           LIMIT 1
+         )`,
+        [receiptNumber, JSON.stringify(receiptSnapshot), tenantId, payment.student_id, payment.payment_date, payment.amount_paid]
+      );
+    }
+
+    await client.query('COMMIT');
+
+    res.json({
+      receiptNumber,
+      receiptSnapshot,
+      studentName,
+      studentCode: payment.student_code,
+      admissionNumber: payment.admission_number,
+      className: payment.class_name,
+      amount: parseFloat(String(payment.amount_paid)),
+      paymentDate: String(payment.payment_date).slice(0, 10),
+      paymentMethod: payment.payment_method,
+      paymentType: payment.payment_type,
+      coverageStart: receiptSnapshot.coverageStart,
+      coverageEnd: receiptSnapshot.coverageEnd,
+    });
+  } catch (error: any) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Generate daily fee receipt error:', error);
+    res.status(500).json({ error: error?.message || 'Failed to generate receipt' });
   } finally {
     client.release();
   }
@@ -635,28 +844,17 @@ router.get('/payments/summary', async (req: AuthRequest, res) => {
     let coveredCount = 0;
 
     if (classId) {
-      const coll = await query(
-        `SELECT student_id FROM daily_fee_payments WHERE tenant_id = $1 AND term_id = $2 AND class_id = $3`,
-        [tenantId, termId, classId]
-      );
-      const collections = await query(
-        `SELECT COUNT(DISTINCT student_id)::int AS c FROM (
-           SELECT s.id AS student_id FROM students s
-           WHERE s.class_assigned_id = $3 AND s.tenant_id = $1
-             AND COALESCE(s.enrollment_status, 'active') = 'active'
-         ) x`,
-        [tenantId, termId, classId]
-      );
-      totalStudents = collections.rows[0]?.c || 0;
+      const studentRows = await listStudentsInClass(query, tenantId, classId);
+      totalStudents = studentRows.length;
 
-      const listRes = await query(
-        `SELECT id FROM students WHERE class_assigned_id = $1 AND tenant_id = $2 AND COALESCE(enrollment_status, 'active') = 'active'`,
-        [classId, tenantId]
-      );
-      for (const s of listRes.rows) {
-        const st = await getStudentStatusForDate(query, tenantId, s.id, termId, date);
-        if (st.status === 'covered') coveredCount += 1;
-        else if (st.status === 'pending' || st.status === 'expired') pendingToday += 1;
+      for (const s of studentRows) {
+        try {
+          const st = await getStudentStatusForDate(query, tenantId, s.id, termId, date);
+          if (st.status === 'covered' || st.status === 'paid') coveredCount += 1;
+          else if (st.status === 'pending' || st.status === 'expired') pendingToday += 1;
+        } catch (statusErr) {
+          console.error('Daily fee summary status error for student', s.id, statusErr);
+        }
       }
     }
 
@@ -668,6 +866,7 @@ router.get('/payments/summary', async (req: AuthRequest, res) => {
       coveredCount,
     });
   } catch (error: any) {
+    console.error('Daily fee payments summary error:', error);
     res.status(500).json({ error: error?.message || 'Failed to fetch summary' });
   }
 });
@@ -751,6 +950,50 @@ router.get('/payments', async (req: AuthRequest, res) => {
   } catch (error: any) {
     console.error('List daily fee payments error:', error);
     res.status(500).json({ error: error?.message || 'Failed to fetch payments' });
+  }
+});
+
+router.get('/reports/class-overview', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const classId = parseInt(String(req.query.classId ?? ''), 10);
+    const termIdParam = parseInt(String(req.query.termId ?? ''), 10);
+    if (Number.isNaN(classId) || Number.isNaN(termIdParam)) {
+      return res.status(400).json({ error: 'classId and termId are required' });
+    }
+    const { ledgerTermId } = await resolveActiveLedgerTerm(query, tenantId, termIdParam);
+    if (!ledgerTermId) {
+      return res.status(400).json({ error: 'Term not found' });
+    }
+    const data = await getClassOverviewReport(tenantId, classId, ledgerTermId);
+    res.json(data);
+  } catch (error: any) {
+    console.error('Daily fee class overview report error:', error);
+    res.status(error?.message === 'Class not found' || error?.message === 'Term not found' ? 404 : 500).json({
+      error: error?.message || 'Failed to load class overview report',
+    });
+  }
+});
+
+router.get('/reports/student', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const studentId = parseInt(String(req.query.studentId ?? ''), 10);
+    const termIdParam = parseInt(String(req.query.termId ?? ''), 10);
+    if (Number.isNaN(studentId) || Number.isNaN(termIdParam)) {
+      return res.status(400).json({ error: 'studentId and termId are required' });
+    }
+    const { ledgerTermId } = await resolveActiveLedgerTerm(query, tenantId, termIdParam);
+    if (!ledgerTermId) {
+      return res.status(400).json({ error: 'Term not found' });
+    }
+    const data = await getStudentReport(tenantId, studentId, ledgerTermId);
+    res.json(data);
+  } catch (error: any) {
+    console.error('Daily fee student report error:', error);
+    res.status(error?.message === 'Student not found' || error?.message === 'Term not found' ? 404 : 500).json({
+      error: error?.message || 'Failed to load student report',
+    });
   }
 });
 

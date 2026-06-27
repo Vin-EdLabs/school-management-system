@@ -488,7 +488,7 @@ export async function studentHasInvoiceForTerm(
 
 export type GenerateInvoiceResult =
   | { ok: true; invoice: InvoiceRecord; refreshed?: boolean }
-  | { ok: false; reason: 'duplicate' | 'zero_balance' | 'not_found' | 'no_term' };
+  | { ok: false; reason: 'duplicate' | 'zero_balance' | 'not_found' | 'no_term' | 'daily_fee_class' };
 
 export async function generateSingleInvoice(
   tenantId: number,
@@ -521,15 +521,20 @@ export async function generateSingleInvoice(
     }
 
     const studentRes = await run(
-      `SELECT s.id, s.first_name, s.last_name, s.student_id, s.class_assigned_id, c.class_name
+      `SELECT s.id, s.first_name, s.last_name, s.student_id, s.class_assigned_id, c.class_name, c.fee_mode
        FROM students s
-       LEFT JOIN classes c ON c.id = s.class_assigned_id
+       LEFT JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
        WHERE s.id = $1 AND s.tenant_id = $2`,
       [studentId, tenantId]
     );
     if (studentRes.rows.length === 0) {
       await client.query('ROLLBACK');
       return { ok: false, reason: 'not_found' };
+    }
+
+    if (String(studentRes.rows[0].fee_mode || 'term') === 'daily') {
+      await client.query('ROLLBACK');
+      return { ok: false, reason: 'daily_fee_class' };
     }
 
     if (await studentHasInvoiceForTerm(client, tenantId, studentId, ledgerTermId)) {
@@ -680,8 +685,10 @@ export async function generateBulkInvoices(
   const studentsRes = await run(
     `SELECT s.id, s.first_name, s.last_name
      FROM students s
+     LEFT JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
      WHERE s.tenant_id = $1
        AND COALESCE(s.enrollment_status, 'active') = 'active'
+       AND COALESCE(c.fee_mode, 'term') != 'daily'
        ${classFilter}
      ORDER BY s.last_name, s.first_name`,
     params
@@ -714,6 +721,7 @@ export async function generateBulkInvoices(
         zero_balance: 'Zero balance — nothing to invoice',
         not_found: 'Student not found',
         no_term: 'No active term',
+        daily_fee_class: 'Daily fee class — term invoices do not apply',
       };
       if (result.reason === 'duplicate') {
         const existing = await fetchInvoiceForStudentTerm(tenantId, studentId, ledgerTermId);

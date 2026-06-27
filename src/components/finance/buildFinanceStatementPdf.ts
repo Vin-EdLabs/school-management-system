@@ -86,7 +86,7 @@ export async function downloadFinanceStatementPdf(
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
         pagebreak: {
           mode: ['css', 'legacy'],
-          before: ['.fs-payment-section', '.fs-account-summary-section'],
+          before: ['.fs-payment-section', '.fs-daily-fee-section', '.fs-account-summary-section'],
         },
       })
       .from(clone)

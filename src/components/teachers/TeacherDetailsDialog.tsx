@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFoo
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
-import { User, Mail, Phone, MapPin, FileText, Ban, UserX, UserCheck, Trash2 } from 'lucide-react';
+import { User, Mail, Phone, MapPin, FileText, Ban, UserX, UserCheck, Trash2, Download, Loader2 } from 'lucide-react';
 import { formatDisplayDate } from '../../utils/dateFormat';
 import type { Teacher } from '../../contexts/DataContext';
 import LazyTeacherAvatar from './LazyTeacherAvatar';
@@ -18,6 +18,9 @@ import {
 } from './AppointmentLetterDocument';
 import AppointmentLetterGeneratorDialog from './AppointmentLetterGeneratorDialog';
 import { useData } from '../../contexts/DataContext';
+import { useSchool } from '../../contexts/SchoolContext';
+import { resolveLogoUrl } from '../../services/tenantService';
+import { downloadTeacherProfilePdf } from '@/utils/staffProfilePdf';
 import StaffDeleteConfirmDialog from '../common/StaffDeleteConfirmDialog';
 import TeacherSubjectClassDisplay from './TeacherSubjectClassDisplay';
 import TeacherStatusHistory from './TeacherStatusHistory';
@@ -36,7 +39,9 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
 }) => {
   const { user } = useAuth();
   const { refresh, deleteTeacher } = useData();
+  const { school } = useSchool();
   const isAdmin = user?.role === 'super-admin' || user?.role === 'administrator';
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [statusMode, setStatusMode] = useState<'suspend' | 'deactivate' | 'reactivate' | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -103,6 +108,28 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
       }
     })();
   }, [open, teacher?.id]);
+
+  const handleDownloadProfile = async () => {
+    if (!teacher) return;
+    setDownloadingPdf(true);
+    try {
+      await downloadTeacherProfilePdf(
+        teacher,
+        subjectClasses,
+        school?.name || 'School',
+        resolveLogoUrl(school?.logo_url)
+      );
+      toast({ title: 'Profile downloaded' });
+    } catch (e: unknown) {
+      toast({
+        title: 'Download failed',
+        description: e instanceof Error ? e.message : 'Could not generate PDF',
+        variant: 'destructive',
+      });
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
 
   if (!teacher) return null;
 
@@ -176,15 +203,32 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
       <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
         <DialogContent className={detailDialogContentWideClass}>
           <DialogHeader className={detailDialogHeaderClass}>
-            <DialogTitle className="flex flex-wrap items-center gap-3 pr-0">
-              {photoUrl ? (
-                <StaffPhotoLightbox src={photoUrl} name={teacher.fullName} size="sm" />
-              ) : (
-                <LazyTeacherAvatar teacherId={teacher.id} fullName={teacher.fullName} hasPassportPhoto={teacher.hasPassportPhoto} eager />
-              )}
-              <span className="min-w-0 break-words">Teacher profile</span>
-              {badge ? <Badge className={badge.className}>{badge.label}</Badge> : null}
-            </DialogTitle>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <DialogTitle className="flex flex-wrap items-center gap-3 pr-0">
+                {photoUrl ? (
+                  <StaffPhotoLightbox src={photoUrl} name={teacher.fullName} size="sm" />
+                ) : (
+                  <LazyTeacherAvatar teacherId={teacher.id} fullName={teacher.fullName} hasPassportPhoto={teacher.hasPassportPhoto} eager />
+                )}
+                <span className="min-w-0 break-words">Teacher profile</span>
+                {badge ? <Badge className={badge.className}>{badge.label}</Badge> : null}
+              </DialogTitle>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                onClick={() => void handleDownloadProfile()}
+                disabled={downloadingPdf}
+              >
+                {downloadingPdf ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="mr-2 h-4 w-4" />
+                )}
+                Download Profile
+              </Button>
+            </div>
             {photoUrl ? <p className="text-sm text-muted-foreground">Click photo to view full size</p> : null}
           </DialogHeader>
 
@@ -196,6 +240,8 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
               </DetailField>
               <DetailField label="Position">{teacher.position || '—'}</DetailField>
               <DetailField label="Department">{teacher.department || '—'}</DetailField>
+              <DetailField label="Qualification">{teacher.qualification || '—'}</DetailField>
+              <DetailField label="Specialization">{teacher.specialization || '—'}</DetailField>
             </div>
 
             <Separator />

@@ -55,6 +55,7 @@ export async function syncMissingPaymentLedgerCredits(tenantId: number): Promise
        INNER JOIN terms t ON t.id = p.term_id AND t.tenant_id = p.tenant_id
        WHERE p.tenant_id = $1
          AND COALESCE(p.is_voided, false) = false
+         AND COALESCE(p.payment_category, 'term_fee') = 'term_fee'
          AND p.term_id IS NOT NULL
          AND COALESCE(p.amount, 0) > 0
          AND NOT EXISTS (
@@ -71,6 +72,7 @@ export async function syncMissingPaymentLedgerCredits(tenantId: number): Promise
        FROM payments p
        WHERE p.tenant_id = $1
          AND COALESCE(p.is_voided, false) = false
+         AND COALESCE(p.payment_category, 'term_fee') = 'term_fee'
          AND p.term_id IS NULL
        ORDER BY p.payment_date ASC, p.id ASC`,
       [tenantId]
@@ -190,6 +192,7 @@ export async function runLedgerBackfill(
        INNER JOIN terms t ON t.id = p.term_id AND t.tenant_id = p.tenant_id
        WHERE p.tenant_id = $1
          AND COALESCE(p.is_voided, false) = false
+         AND COALESCE(p.payment_category, 'term_fee') = 'term_fee'
          AND p.term_id IS NOT NULL
          AND COALESCE(p.amount, 0) > 0
          AND NOT EXISTS (

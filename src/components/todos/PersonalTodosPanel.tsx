@@ -90,7 +90,7 @@ function formatReminderPreview(value: string): string {
   });
 }
 
-function groupTodos(todos: PersonalTodo[]) {
+export function groupTodos(todos: PersonalTodo[]) {
   const now = new Date();
   const endToday = endOfDay(now);
   const active = todos.filter((t) => !t.is_completed);
@@ -116,7 +116,11 @@ function groupTodos(todos: PersonalTodo[]) {
   return { today, upcoming, noReminder, completed };
 }
 
-const REMINDER_BADGE_WINDOW_MS = 30 * 1000;
+/** Pending tasks due today (same grouping as the "Today" section). */
+export function countTodayPendingTodos(todos: PersonalTodo[]): number {
+  return groupTodos(todos).today.length;
+}
+
 const ACTIVE_REMINDERS_KEY = 'personal-todo-active-reminders';
 
 function loadStoredReminders(): ReminderPopup[] {
@@ -136,14 +140,6 @@ function saveStoredReminders(reminders: ReminderPopup[]) {
   } catch {
     /* ignore quota errors */
   }
-}
-
-function computeBadgeCount(todos: PersonalTodo[], now: number): number {
-  return todos.filter((t) => {
-    if (t.is_completed || !t.reminder_at) return false;
-    const diff = new Date(t.reminder_at).getTime() - now;
-    return diff >= 0 && diff <= REMINDER_BADGE_WINDOW_MS;
-  }).length;
 }
 
 function TodoReminderStack({
@@ -330,7 +326,8 @@ const PersonalTodosWidget: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
   const [activeReminders, setActiveReminders] = useState<ReminderPopup[]>(() => loadStoredReminders());
-  const [now, setNow] = useState(() => Date.now());
+  const [loginBlink, setLoginBlink] = useState(false);
+  const loginBlinkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const adjustTextareaHeight = useCallback(() => {
     const el = textareaRef.current;
@@ -370,11 +367,6 @@ const PersonalTodosWidget: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
     saveStoredReminders(activeReminders);
   }, [activeReminders]);
 
@@ -389,8 +381,41 @@ const PersonalTodosWidget: React.FC = () => {
     setActiveReminders((prev) => prev.filter((r) => r.id !== id));
   }, []);
 
-  const badgeCount = useMemo(() => computeBadgeCount(todos, now), [todos, now]);
+  const todayPendingCount = useMemo(() => countTodayPendingTodos(todos), [todos]);
   const reminderPreview = useMemo(() => formatReminderPreview(reminderDraft), [reminderDraft]);
+
+  const startLoginBlink = useCallback(() => {
+    if (todayPendingCount <= 0) return;
+    setLoginBlink(true);
+    if (loginBlinkTimerRef.current) clearTimeout(loginBlinkTimerRef.current);
+    loginBlinkTimerRef.current = setTimeout(() => {
+      setLoginBlink(false);
+      loginBlinkTimerRef.current = null;
+    }, 4000);
+  }, [todayPendingCount]);
+
+  useEffect(() => {
+    return () => {
+      if (loginBlinkTimerRef.current) clearTimeout(loginBlinkTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    const onLogin = () => startLoginBlink();
+    window.addEventListener('userLogin', onLogin);
+    return () => window.removeEventListener('userLogin', onLogin);
+  }, [startLoginBlink]);
+
+  useEffect(() => {
+    if (loading || todayPendingCount <= 0) return;
+    try {
+      if (sessionStorage.getItem('personal-todos-login-blink') !== '1') return;
+      sessionStorage.removeItem('personal-todos-login-blink');
+    } catch {
+      return;
+    }
+    startLoginBlink();
+  }, [loading, todayPendingCount, startLoginBlink]);
 
   useEffect(() => {
     if (!socket) return;
@@ -519,7 +544,7 @@ const PersonalTodosWidget: React.FC = () => {
               'relative h-11 gap-2 rounded-2xl px-3 sm:px-4 text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 dark:text-slate-300 dark:hover:text-indigo-300 dark:hover:bg-indigo-950/50 touch-manipulation transition-all duration-300',
               open &&
                 'bg-emerald-50 text-emerald-800 shadow-[0_0_0_2px_rgba(16,185,129,0.5),0_0_24px_rgba(16,185,129,0.35)] ring-2 ring-emerald-400/60 ring-offset-2 ring-offset-background dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-500/50',
-              badgeCount > 0 && !open && 'animate-pulse'
+              loginBlink && !open && 'animate-pulse ring-2 ring-amber-400/50 ring-offset-2 ring-offset-background'
             )}
             title="My to-dos"
           >
@@ -528,9 +553,14 @@ const PersonalTodosWidget: React.FC = () => {
             )}
             <ListTodo className={cn('h-5 w-5 shrink-0', open && 'text-emerald-700 dark:text-emerald-400')} />
             <span className="hidden sm:inline text-sm font-semibold">My to-dos</span>
-            {badgeCount > 0 && (
-              <span className="absolute -top-1 -right-1 flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold leading-none text-white shadow-sm">
-                {badgeCount > 9 ? '9+' : badgeCount}
+            {todayPendingCount > 0 && (
+              <span
+                className={cn(
+                  'absolute -top-1 -right-1 flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold leading-none text-white shadow-sm',
+                  loginBlink && 'animate-pulse ring-2 ring-amber-300 ring-offset-1 ring-offset-background'
+                )}
+              >
+                {todayPendingCount > 9 ? '9+' : todayPendingCount}
               </span>
             )}
           </Button>

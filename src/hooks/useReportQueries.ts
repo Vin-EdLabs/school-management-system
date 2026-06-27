@@ -69,10 +69,12 @@ export type AdminOverviewData = {
     other: number;
   };
   teachers: { total: number; active?: number; monthlySalaryBudget?: number; male: number; female: number };
+  otherStaff?: { total: number; active: number };
   classes: { total: number };
   feeStatus: { paid: number; owing: number; noFee: number; credit: number; totalOwing: number };
   enrollmentByClass: { fullName: string; name: string; count: number }[];
   classNames: string[];
+  paymentTrend?: Array<{ date: string; termFees: number; dailyFees: number; total: number }>;
 };
 
 export type StudentFeeRosterRow = {
@@ -328,5 +330,57 @@ export function useOutstandingFeesReport(active = true) {
     enabled: enabledForTenant(schoolId, active),
     staleTime: 15_000,
     refetchOnMount: 'always',
+  });
+}
+
+export type AttendanceSummaryRow = { date: string; present: number; total: number };
+
+export function useAttendanceSummary(active = true) {
+  const { schoolId } = useSchool();
+  return useQuery({
+    queryKey: ['reports', 'attendance-summary', schoolId],
+    queryFn: () => apiService.get<AttendanceSummaryRow[]>('/reports/attendance-summary'),
+    enabled: enabledForTenant(schoolId, active),
+    staleTime: 30_000,
+  });
+}
+
+export type AcademicPerformanceData = {
+  schoolAverage: number;
+  classPerformance: Array<{ name: string; score: string | number }>;
+  topPerformers: Array<{ name: string; class: string; score: string | number }>;
+};
+
+export function useAcademicPerformance(active = true) {
+  const { schoolId } = useSchool();
+  return useQuery({
+    queryKey: ['reports', 'academic-performance', schoolId],
+    queryFn: () => apiService.get<AcademicPerformanceData>('/reports/academic-performance'),
+    enabled: enabledForTenant(schoolId, active),
+    staleTime: 60_000,
+  });
+}
+
+export type AuditLogItem = {
+  id: number;
+  created_at: string;
+  action: string;
+  summary?: string | null;
+  username?: string | null;
+  user_full_name?: string | null;
+  module?: string | null;
+  status?: string | null;
+};
+
+export function useRecentAuditLogs(limit = 8, active = true) {
+  const { schoolId } = useSchool();
+  return useQuery({
+    queryKey: ['audit', 'recent', schoolId, limit],
+    queryFn: async () => {
+      const res = await apiService.get<{ items: AuditLogItem[] }>(`/audit?limit=${limit}&offset=0`);
+      return res?.items ?? [];
+    },
+    enabled: enabledForTenant(schoolId, active),
+    staleTime: 20_000,
   });
 }

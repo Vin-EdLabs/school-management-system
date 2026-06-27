@@ -1,11 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useData } from '../../contexts/DataContext';
 import { apiService } from '../../services/api';
 import { toast } from '@/hooks/use-toast';
 import { Download, Loader2, Receipt } from 'lucide-react';
@@ -29,14 +28,16 @@ type PaymentRow = {
   receipt_number: string;
 };
 
-type Props = { disabled?: boolean };
+type Props = { disabled?: boolean; listKey?: number };
 
-const DailyFeePaymentHistoryTab: React.FC<Props> = ({ disabled }) => {
-  const { classes } = useData();
-  const dailyClasses = useMemo(
-    () => classes.filter((c) => c.feeMode === 'daily'),
-    [classes]
-  );
+const DailyFeePaymentHistoryTab: React.FC<Props> = ({ disabled, listKey = 0 }) => {
+  const [dailyClasses, setDailyClasses] = useState<{ id: number; class_name: string }[]>([]);
+
+  useEffect(() => {
+    void apiService.get<{ id: number; class_name: string; structure_id?: number }[]>('/daily-fees/classes').then((rows) => {
+      setDailyClasses((Array.isArray(rows) ? rows : []).filter((c) => c.structure_id != null));
+    }).catch(() => setDailyClasses([]));
+  }, [listKey]);
 
   const [classId, setClassId] = useState('');
   const [studentSearch, setStudentSearch] = useState('');
@@ -122,23 +123,52 @@ const DailyFeePaymentHistoryTab: React.FC<Props> = ({ disabled }) => {
     URL.revokeObjectURL(url);
   };
 
-  const openReceipt = (p: PaymentRow) => {
-    setReceiptData({
-      studentName: `${p.first_name} ${p.last_name}`,
-      studentId: p.admission_number || p.student_code,
-      className: p.class_name,
-      amount: parseFloat(p.amount_paid),
-      date: p.payment_date?.slice(0, 10),
-      paymentMethod: p.payment_method,
-      term: '',
-      receiptNumber: p.receipt_number,
-      isDailyFee: true,
-      dailyFeeType: p.payment_type,
-      coverageStart: p.coverage_start_date?.slice(0, 10),
-      coverageEnd: p.coverage_end_date?.slice(0, 10),
-      notes: `Daily Fee — ${p.payment_type}`,
-    });
-    setShowReceipt(true);
+  const [generatingReceiptId, setGeneratingReceiptId] = useState<number | null>(null);
+
+  const openReceipt = async (p: PaymentRow) => {
+    setGeneratingReceiptId(p.id);
+    try {
+      const data = await apiService.post<{
+        receiptNumber: string;
+        studentName: string;
+        studentCode: string;
+        admissionNumber: string;
+        className: string;
+        amount: number;
+        paymentDate: string;
+        paymentMethod: string;
+        paymentType: string;
+        coverageStart: string;
+        coverageEnd: string;
+      }>(`/daily-fees/payments/${p.id}/receipt`, {});
+
+      setPayments((rows) =>
+        rows.map((row) =>
+          row.id === p.id ? { ...row, receipt_number: data.receiptNumber } : row
+        )
+      );
+
+      setReceiptData({
+        studentName: data.studentName,
+        studentId: data.admissionNumber || data.studentCode,
+        className: data.className,
+        amount: data.amount,
+        date: data.paymentDate,
+        paymentMethod: data.paymentMethod,
+        term: '',
+        receiptNumber: data.receiptNumber,
+        isDailyFee: true,
+        dailyFeeType: data.paymentType,
+        coverageStart: data.coverageStart,
+        coverageEnd: data.coverageEnd,
+        notes: `Daily Fee — ${data.paymentType}`,
+      });
+      setShowReceipt(true);
+    } catch (err: any) {
+      toast({ title: 'Receipt failed', description: err?.message, variant: 'destructive' });
+    } finally {
+      setGeneratingReceiptId(null);
+    }
   };
 
   const typeBadge = (t: string) => {
@@ -165,7 +195,7 @@ const DailyFeePaymentHistoryTab: React.FC<Props> = ({ disabled }) => {
             <SelectContent>
               <SelectItem value="all">All classes</SelectItem>
               {dailyClasses.map((c) => (
-                <SelectItem key={c.id} value={String(c.id)}>{c.className}</SelectItem>
+                <SelectItem key={c.id} value={String(c.id)}>{c.class_name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -239,7 +269,7 @@ const DailyFeePaymentHistoryTab: React.FC<Props> = ({ disabled }) => {
                       <td className="py-3 pr-3">{formatDisplayDate(p.payment_date?.slice(0, 10))}</td>
                       <td className="py-3 pr-3">
                         <div>{p.first_name} {p.last_name}</div>
-                        <div className="text-xs text-slate-500">{p.admission_number || p.student_code}</div>
+                        <div className="text-xs text-slate-500 font-mono">{p.student_code}</div>
                       </td>
                       <td className="py-3 pr-3">{p.class_name}</td>
                       <td className="py-3 pr-3">{typeBadge(p.payment_type)}</td>
@@ -250,9 +280,21 @@ const DailyFeePaymentHistoryTab: React.FC<Props> = ({ disabled }) => {
                       <td className="py-3 pr-3">{p.next_due_date ? formatDisplayDate(p.next_due_date.slice(0, 10)) : '—'}</td>
                       <td className="py-3 pr-3">{p.payment_method}</td>
                       <td className="py-3">
-                        <Button size="sm" variant="ghost" onClick={() => openReceipt(p)}>
-                          <Receipt className="h-4 w-4" />
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={generatingReceiptId === p.id}
+                          onClick={() => void openReceipt(p)}
+                        >
+                          {generatingReceiptId === p.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Receipt className="h-4 w-4" />
+                          )}
                         </Button>
+                        {p.receipt_number && (
+                          <span className="mt-1 block font-mono text-[10px] text-slate-500">{p.receipt_number}</span>
+                        )}
                       </td>
                     </tr>
                   ))}

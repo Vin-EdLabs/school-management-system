@@ -239,6 +239,14 @@ export async function ensureSupplementalSchema(): Promise<void> {
   // --- protect financial records on student delete ---
   await safe(`ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_student_id_fkey`, 'payments fk drop');
   await safe(
+    `ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_category VARCHAR(20) DEFAULT 'term_fee'`,
+    'payments payment_category'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_payments_category ON payments(tenant_id, student_id, payment_category)`,
+    'idx_payments_category'
+  );
+  await safe(
     `
     ALTER TABLE payments ADD CONSTRAINT payments_student_id_fkey
       FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE SET NULL
@@ -633,6 +641,8 @@ export async function ensureSupplementalSchema(): Promise<void> {
   // --- teachers: position, department, soft delete ---
   await safe(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS position VARCHAR(150)`, 'teachers.position');
   await safe(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS department VARCHAR(150)`, 'teachers.department');
+  await safe(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS qualification TEXT`, 'teachers.qualification');
+  await safe(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS specialization TEXT`, 'teachers.specialization');
   await safe(
     `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT false`,
     'teachers.is_deleted'
@@ -641,6 +651,8 @@ export async function ensureSupplementalSchema(): Promise<void> {
     `ALTER TABLE other_staff ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT false`,
     'other_staff.is_deleted'
   );
+  await safe(`ALTER TABLE other_staff ADD COLUMN IF NOT EXISTS qualification TEXT`, 'other_staff.qualification');
+  await safe(`ALTER TABLE other_staff ADD COLUMN IF NOT EXISTS specialization TEXT`, 'other_staff.specialization');
 
   await safe(
     `

@@ -87,6 +87,19 @@ export type StatementAdjustmentRow = {
   reason: string;
 };
 
+export type DailyFeeStatementRow = {
+  date: string;
+  description: string;
+  amount: number;
+  method: string;
+};
+
+export type DailyFeePaymentsSection = {
+  termLabel: string;
+  rows: DailyFeeStatementRow[];
+  total: number;
+};
+
 export type AccountSummary = {
   totalFeesBilled: number;
   totalAmountPaid: number;
@@ -141,6 +154,7 @@ export type StudentFinanceStatement = {
   paymentsTotal: number;
   adjustments: StatementAdjustmentRow[];
   adjustmentsTotal: number;
+  dailyFeePayments: DailyFeePaymentsSection | null;
   accountSummary: AccountSummary;
   variant: FinanceStatementVariant;
 };
@@ -427,6 +441,73 @@ function roleDisplayName(role: string | null | undefined): string | null {
   return role;
 }
 
+function formatStatementDate(dateStr: string): string {
+  const d = dateStr.slice(0, 10);
+  if (!d) return '—';
+  const [y, m, day] = d.split('-').map(Number);
+  if (!y || !m || !day) return d;
+  return new Date(Date.UTC(y, m - 1, day)).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
+function formatDailyFeeDescription(
+  paymentType: string,
+  coverageStart: string,
+  coverageEnd: string
+): string {
+  const typeLabel = paymentType.charAt(0).toUpperCase() + paymentType.slice(1);
+  const start = formatStatementDate(coverageStart);
+  const end = formatStatementDate(coverageEnd);
+  if (paymentType === 'daily' || start === end) {
+    return `Daily Payment — ${start}`;
+  }
+  return `${typeLabel} Payment — covers ${start} to ${end}`;
+}
+
+async function buildDailyFeePaymentsSection(
+  tenantId: number,
+  studentId: number,
+  termId: number | null,
+  termLabel: string
+): Promise<DailyFeePaymentsSection | null> {
+  if (!termId) return null;
+
+  const res = await query(
+    `SELECT dfp.payment_date::text AS payment_date,
+            dfp.payment_type,
+            dfp.amount_paid::text AS amount_paid,
+            COALESCE(pa.account_name, dfp.payment_method, 'Cash') AS method_label,
+            dfp.coverage_start_date::text AS coverage_start_date,
+            dfp.coverage_end_date::text AS coverage_end_date
+     FROM daily_fee_payments dfp
+     LEFT JOIN payment_accounts pa ON pa.id = dfp.payment_account_id
+     WHERE dfp.tenant_id = $1 AND dfp.student_id = $2 AND dfp.term_id = $3
+     ORDER BY dfp.payment_date ASC, dfp.id ASC`,
+    [tenantId, studentId, termId]
+  );
+
+  if (res.rows.length === 0) return null;
+
+  const rows: DailyFeeStatementRow[] = res.rows.map((r: Record<string, unknown>) => {
+    const paymentType = String(r.payment_type || 'daily');
+    const coverageStart = String(r.coverage_start_date || '').slice(0, 10);
+    const coverageEnd = String(r.coverage_end_date || '').slice(0, 10);
+    return {
+      date: String(r.payment_date || '').slice(0, 10),
+      description: formatDailyFeeDescription(paymentType, coverageStart, coverageEnd),
+      amount: roundMoney(parseFloat(String(r.amount_paid)) || 0),
+      method: String(r.method_label || 'Cash'),
+    };
+  });
+
+  const total = roundMoney(rows.reduce((s, r) => s + r.amount, 0));
+  return { termLabel, rows, total };
+}
+
 export async function buildStudentFinanceStatement(
   tenantId: number,
   studentId: number,
@@ -619,6 +700,7 @@ export async function buildStudentFinanceStatement(
      LEFT JOIN payments orig ON orig.id = p.corrects_payment_id
      LEFT JOIN payments repl ON repl.id = p.corrected_by_payment_id
      WHERE p.tenant_id = $1 AND p.student_id = $2
+       AND COALESCE(p.payment_category, 'term_fee') = 'term_fee'
      ORDER BY p.payment_date ASC, p.id ASC`,
     [tenantId, studentId]
   );
@@ -672,8 +754,19 @@ export async function buildStudentFinanceStatement(
 
   const adjustmentsTotal = roundMoney(adjustments.reduce((s, a) => s + a.amount, 0));
 
+  const activeTermLabel =
+    termRows.find((r) => r.termId === ledgerTermId)?.termName ||
+    String(settings.current_term || '').trim() ||
+    'Current Term';
+  const dailyFeePayments = await buildDailyFeePaymentsSection(
+    tenantId,
+    studentId,
+    ledgerTermId,
+    activeTermLabel
+  );
+
   const totalFeesBilled = termSummaryTotals.feeBilled;
-  const totalAmountPaid = termSummaryTotals.amountPaid;
+  const totalAmountPaid = paymentsTotal;
   const balanceDelta = roundMoney(totalFeesBilled - totalAmountPaid);
   let accountStatus: AccountSummary['accountStatus'] = 'CLEARED';
   let balanceKind: AccountSummary['balanceKind'] = 'NONE';
@@ -745,6 +838,7 @@ export async function buildStudentFinanceStatement(
     paymentsTotal,
     adjustments,
     adjustmentsTotal,
+    dailyFeePayments,
     accountSummary,
     variant,
   };

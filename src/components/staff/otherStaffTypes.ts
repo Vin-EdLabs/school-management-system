@@ -25,4 +25,6 @@ export type OtherStaffRecord = {
   bank_account_name?: string;
   employment_status?: string;
   notes?: string;
+  qualification?: string;
+  specialization?: string;
 };

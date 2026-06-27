@@ -1,22 +1,38 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CalendarDays, Settings2, CreditCard, History } from 'lucide-react';
+import { CalendarDays, Settings2, CreditCard, History, BarChart3 } from 'lucide-react';
 import { useActiveTerm } from '../../hooks/useActiveTerm';
 import { useFinanceRealtime } from '../../hooks/useFinanceRealtime';
 import { useData } from '../../contexts/DataContext';
 import DailyFeeStructureTab from './DailyFeeStructureTab';
 import DailyFeeRecordPaymentTab from './DailyFeeRecordPaymentTab';
 import DailyFeePaymentHistoryTab from './DailyFeePaymentHistoryTab';
+import DailyFeeReportsTab from './DailyFeeReportsTab';
 import { Button } from '@/components/ui/button';
 import { TriangleAlert } from 'lucide-react';
 
 const DailyFeesModule: React.FC<{ onNavigate?: (moduleId: string) => void }> = ({ onNavigate }) => {
   const { refresh } = useData();
-  const { hasActiveTerm, isLoading: termLoading } = useActiveTerm();
+  const { hasActiveTerm, isLoading: termLoading, currentTerm } = useActiveTerm();
   const [activeTab, setActiveTab] = useState('structure');
+  const [collectClassId, setCollectClassId] = useState('');
+  const [structureListKey, setStructureListKey] = useState(0);
+
+  const bumpStructures = useCallback(() => {
+    setStructureListKey((k) => k + 1);
+    void refresh(['classes']);
+  }, [refresh]);
+
+  const goToCollect = useCallback((classId: string) => {
+    setCollectClassId(classId);
+    setActiveTab('record');
+  }, []);
 
   useFinanceRealtime({
-    onInvalidate: () => void refresh(['classes', 'students', 'payments']),
+    onInvalidate: () => {
+      bumpStructures();
+      void refresh(['classes', 'students', 'payments']);
+    },
   });
 
   return (
@@ -41,14 +57,14 @@ const DailyFeesModule: React.FC<{ onNavigate?: (moduleId: string) => void }> = (
         </div>
       )}
 
-      <div className="mb-6 flex items-center space-x-3 rounded-[1.35rem] border border-white/70 bg-white/70 p-4 shadow-[0_18px_45px_rgba(15,23,42,0.05)] backdrop-blur-xl dark:rounded-none dark:border-transparent dark:bg-transparent dark:p-0 dark:shadow-none">
+      <div className="mb-6 flex items-center space-x-3 rounded-[1.35rem] border border-emerald-100/80 bg-gradient-to-r from-white via-emerald-50/40 to-white p-4 shadow-[0_18px_45px_rgba(16,185,129,0.08)] backdrop-blur-xl dark:from-slate-900 dark:via-slate-900 dark:to-slate-900">
         <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-[#146C43] via-emerald-600 to-[#22C55E] shadow-lg shadow-emerald-500/20">
           <CalendarDays className="h-6 w-6 text-white" />
         </div>
         <div>
           <h1 className="text-xl font-bold text-slate-900 dark:text-white">Daily Fee Collections</h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Manage daily, weekly, monthly and termly fee collections
+            Configure rates · record payments · view history and reports
           </p>
         </div>
       </div>
@@ -67,16 +83,34 @@ const DailyFeesModule: React.FC<{ onNavigate?: (moduleId: string) => void }> = (
             <History className="h-4 w-4" />
             Payment History
           </TabsTrigger>
+          <TabsTrigger value="reports" className="gap-2 rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm">
+            <BarChart3 className="h-4 w-4" />
+            Reports
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="structure">
-          <DailyFeeStructureTab disabled={!hasActiveTerm} />
+          <DailyFeeStructureTab
+            disabled={!hasActiveTerm}
+            currentTerm={currentTerm}
+            listKey={structureListKey}
+            onStructureSaved={bumpStructures}
+            onCollectClass={goToCollect}
+          />
         </TabsContent>
         <TabsContent value="record">
-          <DailyFeeRecordPaymentTab disabled={!hasActiveTerm} />
+          <DailyFeeRecordPaymentTab
+            disabled={!hasActiveTerm}
+            initialClassId={collectClassId}
+            onClassConsumed={() => setCollectClassId('')}
+            listKey={structureListKey}
+          />
         </TabsContent>
         <TabsContent value="history">
-          <DailyFeePaymentHistoryTab disabled={!hasActiveTerm} />
+          <DailyFeePaymentHistoryTab disabled={!hasActiveTerm} listKey={structureListKey} />
+        </TabsContent>
+        <TabsContent value="reports">
+          <DailyFeeReportsTab disabled={!hasActiveTerm} listKey={structureListKey} />
         </TabsContent>
       </Tabs>
     </div>

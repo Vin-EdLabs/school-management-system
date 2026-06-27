@@ -174,7 +174,7 @@ const Dashboard = () => {
         }
         // Show different dashboard based on role
         if (user?.role === 'administrator') {
-          return <AdministratorDashboard />;
+          return <AdministratorDashboard onNavigate={setActiveModule} />;
         }
         return <DashboardHome />;
       case 'headmaster-dashboard':
@@ -322,7 +322,7 @@ const Dashboard = () => {
         if (user?.role === 'teacher') {
           return <TeacherDashboard />;
         } else if (user?.role === 'administrator') {
-          return <AdministratorDashboard />;
+          return <AdministratorDashboard onNavigate={setActiveModule} />;
         }
         return <DashboardHome />;
     }

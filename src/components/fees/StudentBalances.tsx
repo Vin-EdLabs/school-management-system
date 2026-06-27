@@ -10,7 +10,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
 import { Search, AlertCircle, CreditCard, TrendingUp } from 'lucide-react';
 import { getActiveAcademicTerm } from '../../utils/feeCalculations';
-import { isActiveEnrolledStudent } from '../students/studentRegistryUtils';
+import { isActiveEnrolledStudent, isTermFeeClassStudent } from '../students/studentRegistryUtils';
 import { formatDisplayDate } from '../../utils/dateFormat';
 import type { StudentBalance } from '../../services/studentBalance';
 import type { Payment } from '../../contexts/DataContext';
@@ -211,12 +211,13 @@ const StudentBalances = () => {
   const studentsWithBalances = useMemo(() => {
     return (students || [])
       .filter(isActiveEnrolledStudent)
+      .filter((student) => isTermFeeClassStudent(student, classes || []))
       .filter((student) => {
         if (!classRow) return true;
         return String(student.classAssignedId) === String(classRow.id) || student.classAssigned === classRow.className;
       })
       .map((student) => calculateStudentBalance(student, ledgerBalances[String(student.id)]));
-  }, [students, ledgerBalances, classRow, currentTerm, currentTermPayments, feeStructures, activeAcademicTermId]);
+  }, [students, ledgerBalances, classRow, currentTerm, currentTermPayments, feeStructures, activeAcademicTermId, classes]);
 
   useEffect(() => {
     const ids = new Set(

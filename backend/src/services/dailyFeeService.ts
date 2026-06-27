@@ -4,7 +4,7 @@ import { query, getClient } from '../db/connection.js';
 type QueryFn = typeof query;
 
 export type DailyPaymentType = 'daily' | 'weekly' | 'monthly' | 'termly';
-export type DailyStudentStatus = 'covered' | 'pending' | 'school_closed' | 'expired';
+export type DailyStudentStatus = 'covered' | 'paid' | 'pending' | 'school_closed' | 'expired';
 
 export type DailyFeeStructure = {
   id: number;
@@ -17,6 +17,49 @@ export type DailyFeeStructure = {
   termlyRate: number;
   schoolDaysCount: number;
 };
+
+export type DailyFeeStructureApi = {
+  id: number;
+  class_id: number;
+  term_id: number;
+  academic_year_id: number;
+  daily_rate: number;
+  weekly_rate: number;
+  monthly_rate: number;
+  termly_rate: number;
+  school_days_count: number;
+};
+
+export function serializeDailyFeeStructureForApi(
+  row: DailyFeeStructure | null
+): DailyFeeStructureApi | null {
+  if (!row) return null;
+  return {
+    id: row.id,
+    class_id: row.classId,
+    term_id: row.termId,
+    academic_year_id: row.academicYearId,
+    daily_rate: row.dailyRate,
+    weekly_rate: row.weeklyRate,
+    monthly_rate: row.monthlyRate,
+    termly_rate: row.termlyRate,
+    school_days_count: row.schoolDaysCount,
+  };
+}
+
+function mapStructureRow(r: Record<string, unknown>): DailyFeeStructure {
+  return {
+    id: Number(r.id),
+    classId: Number(r.class_id),
+    termId: Number(r.term_id),
+    academicYearId: Number(r.academic_year_id),
+    dailyRate: Number(r.daily_rate),
+    weeklyRate: Number(r.weekly_rate),
+    monthlyRate: Number(r.monthly_rate),
+    termlyRate: Number(r.termly_rate),
+    schoolDaysCount: Number(r.school_days_count),
+  };
+}
 
 export type StudentDailyStatus = {
   status: DailyStudentStatus;
@@ -192,11 +235,30 @@ export async function getStudentStatusForDate(
     return { status: 'school_closed' };
   }
 
+  const onDateRes = await run(
+    `SELECT payment_type, coverage_end_date::text AS coverage_end_date
+     FROM daily_fee_payments
+     WHERE tenant_id = $1 AND student_id = $2 AND term_id = $3 AND payment_date = $4::date
+     ORDER BY id DESC
+     LIMIT 1`,
+    [tenantId, studentId, termId, date]
+  );
+
+  if (onDateRes.rows.length > 0) {
+    const paymentType = String(onDateRes.rows[0].payment_type);
+    const paidUntil = String(onDateRes.rows[0].coverage_end_date).slice(0, 10);
+    if (paymentType === 'weekly' || paymentType === 'monthly' || paymentType === 'termly') {
+      return { status: 'covered', paidUntil, paymentType };
+    }
+    return { status: 'paid', paidUntil, paymentType };
+  }
+
   const coverRes = await run(
     `SELECT coverage_end_date::text AS coverage_end_date, payment_type
      FROM daily_fee_payments
      WHERE tenant_id = $1 AND student_id = $2 AND term_id = $3
        AND coverage_start_date <= $4::date AND coverage_end_date >= $4::date
+       AND payment_type IN ('weekly', 'monthly', 'termly')
      ORDER BY coverage_end_date DESC
      LIMIT 1`,
     [tenantId, studentId, termId, date]
@@ -210,44 +272,15 @@ export async function getStudentStatusForDate(
     };
   }
 
-  const today = formatDateOnly(new Date());
   const lastRes = await run(
-    `SELECT coverage_end_date::text AS coverage_end_date, next_due_date::text AS next_due_date
+    `SELECT coverage_end_date::text AS coverage_end_date, next_due_date::text AS next_due_date, payment_type
      FROM daily_fee_payments
      WHERE tenant_id = $1 AND student_id = $2 AND term_id = $3
+       AND payment_type IN ('weekly', 'monthly', 'termly')
      ORDER BY coverage_end_date DESC
      LIMIT 1`,
     [tenantId, studentId, termId]
   );
-
-  if (lastRes.rows.length > 0) {
-    const lastEnd = String(lastRes.rows[0].coverage_end_date).slice(0, 10);
-    if (date >= today && parseDateOnly(date).getTime() <= parseDateOnly(today).getTime() + 86400000 * 365) {
-      if (parseDateOnly(lastEnd).getTime() < parseDateOnly(date).getTime()) {
-        return {
-          status: 'expired',
-          lastPaidUntil: lastEnd,
-          nextDueDate: lastRes.rows[0].next_due_date
-            ? String(lastRes.rows[0].next_due_date).slice(0, 10)
-            : null,
-        };
-      }
-    } else if (date === today || parseDateOnly(date).getTime() >= parseDateOnly(today).getTime()) {
-      if (parseDateOnly(lastEnd).getTime() < parseDateOnly(date).getTime()) {
-        return {
-          status: 'expired',
-          lastPaidUntil: lastEnd,
-          nextDueDate: lastRes.rows[0].next_due_date
-            ? String(lastRes.rows[0].next_due_date).slice(0, 10)
-            : null,
-        };
-      }
-    }
-  }
-
-  if (parseDateOnly(date).getTime() >= parseDateOnly(today).getTime() || date === today) {
-    return { status: 'pending' };
-  }
 
   if (lastRes.rows.length > 0) {
     const lastEnd = String(lastRes.rows[0].coverage_end_date).slice(0, 10);
@@ -258,6 +291,7 @@ export async function getStudentStatusForDate(
         nextDueDate: lastRes.rows[0].next_due_date
           ? String(lastRes.rows[0].next_due_date).slice(0, 10)
           : null,
+        paymentType: lastRes.rows[0].payment_type,
       };
     }
   }
@@ -387,24 +421,63 @@ export async function getDailyFeeStructure(
   classId: number,
   termId: number
 ): Promise<DailyFeeStructure | null> {
-  const res = await run(
+  const exact = await run(
     `SELECT id, class_id, term_id, academic_year_id,
             daily_rate, weekly_rate, monthly_rate, termly_rate, school_days_count
      FROM daily_fee_structures
      WHERE tenant_id = $1 AND class_id = $2 AND term_id = $3`,
     [tenantId, classId, termId]
   );
-  if (res.rows.length === 0) return null;
-  const r = res.rows[0];
-  return {
-    id: Number(r.id),
-    classId: Number(r.class_id),
-    termId: Number(r.term_id),
-    academicYearId: Number(r.academic_year_id),
-    dailyRate: Number(r.daily_rate),
-    weeklyRate: Number(r.weekly_rate),
-    monthlyRate: Number(r.monthly_rate),
-    termlyRate: Number(r.termly_rate),
-    schoolDaysCount: Number(r.school_days_count),
-  };
+  if (exact.rows.length > 0) {
+    return mapStructureRow(exact.rows[0]);
+  }
+
+  const fallback = await run(
+    `SELECT id, class_id, term_id, academic_year_id,
+            daily_rate, weekly_rate, monthly_rate, termly_rate, school_days_count
+     FROM daily_fee_structures
+     WHERE tenant_id = $1 AND class_id = $2
+     ORDER BY updated_at DESC NULLS LAST, id DESC
+     LIMIT 1`,
+    [tenantId, classId]
+  );
+  if (fallback.rows.length === 0) return null;
+  return mapStructureRow(fallback.rows[0]);
+}
+
+export type ClassStudentRow = {
+  id: number;
+  first_name: string;
+  last_name: string;
+  student_id: string;
+  admission_number: string | null;
+  has_passport_photo: boolean;
+};
+
+/** Active students in a class — roster (class_assigned_id) plus any active enrollment row. */
+export async function listStudentsInClass(
+  run: QueryFn,
+  tenantId: number,
+  classId: number
+): Promise<ClassStudentRow[]> {
+  const res = await run(
+    `SELECT s.id, s.first_name, s.last_name, s.student_id, s.admission_number,
+            (CASE WHEN s.passport_photo_url IS NOT NULL AND length(s.passport_photo_url) > 0
+                  THEN true ELSE false END) AS has_passport_photo
+     FROM students s
+     WHERE s.tenant_id = $1
+       AND COALESCE(s.enrollment_status, 'active') = 'active'
+       AND (
+         s.class_assigned_id = $2
+         OR EXISTS (
+           SELECT 1 FROM student_class_enrollments e
+           WHERE e.student_id = s.id AND e.tenant_id = s.tenant_id
+             AND e.class_id = $2
+             AND e.status IN ('active', 'repeat')
+         )
+       )
+     ORDER BY s.first_name, s.last_name`,
+    [tenantId, classId]
+  );
+  return res.rows as ClassStudentRow[];
 }

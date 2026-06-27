@@ -347,6 +347,40 @@ export const FinanceStatementPreview = forwardRef<HTMLDivElement, FinanceStateme
         </section>
       ) : null}
 
+      {statement.dailyFeePayments && statement.dailyFeePayments.rows.length > 0 ? (
+        <section className="fs-daily-fee-section">
+          <h3>Daily Fee Payments</h3>
+          <p className="text-sm text-muted-foreground mb-2">
+            Daily fee collections for {statement.dailyFeePayments.termLabel} (informational only — not part of term fee balance).
+          </p>
+          <table className="fs-table-payment">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Description</th>
+                <th>Amount</th>
+                <th>Method</th>
+              </tr>
+            </thead>
+            <tbody>
+              {statement.dailyFeePayments.rows.map((row, idx) => (
+                <tr key={`${row.date}-${idx}`}>
+                  <td>{formatDisplayDate(row.date, row.date)}</td>
+                  <td>{row.description}</td>
+                  <td>{money(row.amount)}</td>
+                  <td>{row.method}</td>
+                </tr>
+              ))}
+              <tr className="fs-totals-row">
+                <td colSpan={2} />
+                <td>Total Daily Fees Paid This Term:</td>
+                <td>{money(statement.dailyFeePayments.total)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+      ) : null}
+
       <section className="fs-account-summary-section">
         <div className="fs-summary-box">
           <h4>ACCOUNT SUMMARY</h4>

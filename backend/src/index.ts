@@ -59,6 +59,7 @@ import tenantBackupRoutes from './routes/tenantBackup.js';
 import announcementsRoutes from './routes/announcements.js';
 import invoiceRoutes from './routes/invoices.js';
 import transportRoutes from './routes/transport.js';
+import dailyFeesRoutes from './routes/dailyFees.js';
 import { startInvoiceStatusJob } from './jobs/invoiceStatusJob.js';
 import { initSocket } from './socket.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -203,6 +204,7 @@ app.use('/api/messages', messagesRoutes);
 app.use('/api/student', studentLearningRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/transport', transportRoutes);
+app.use('/api/daily-fees', dailyFeesRoutes);
 
 // Error handling middleware
 app.use(errorHandler);

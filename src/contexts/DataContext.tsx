@@ -101,6 +101,7 @@ function normalizeTeacherStatus(raw: string | null | undefined): TeacherStatus {
 export interface Class {
   id: string;
   className: string;
+  name?: string;
   level: string;
   stream: string;
   assignedTeacher: string;
@@ -109,6 +110,7 @@ export interface Class {
   students: string[];
   studentCount?: number;
   isFinalClass?: boolean;
+  feeMode?: 'term' | 'daily';
 }
 
 export interface FeeStructure {
@@ -359,6 +361,7 @@ const mapTeacherToBackend = (teacher: Partial<Teacher>): any => {
 const mapClass = (backendClass: any): Class => ({
   id: backendClass.id.toString(),
   className: backendClass.class_name || backendClass.name || '',
+  name: backendClass.class_name || backendClass.name || '',
   level: backendClass.level || '',
   stream: backendClass.stream || '',
   assignedTeacher: backendClass.teacher_name || '',
@@ -367,6 +370,7 @@ const mapClass = (backendClass: any): Class => ({
   students: [],
   studentCount: backendClass.student_count || 0,
   isFinalClass: !!backendClass.is_final_class,
+  feeMode: backendClass.fee_mode === 'daily' ? 'daily' : 'term',
 });
 
 // Helper function to map frontend class to backend format

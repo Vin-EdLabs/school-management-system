@@ -10,6 +10,7 @@ import OtherStaffModule from './staff/OtherStaffModule';
 import ClassesModule from './classes/ClassesModule';
 import CalendarModule from './CalendarModule';
 import FeesModule from './fees/FeesModule';
+import DailyFeesModule from './daily-fees/DailyFeesModule';
 import IncomeModule from './income/IncomeModule';
 import ExpensesModule from './expenses/ExpensesModule';
 import PayrollModule from './payroll/PayrollModule';
@@ -77,6 +78,7 @@ const Dashboard = () => {
   const [activeModule, setActiveModule] = useState(() => {
     const path = window.location.pathname;
     if (path.includes('/finance/transactions')) return 'transactions';
+    if (path.includes('/finance/daily-fees')) return 'daily-fees';
     if (path.includes('/lost-cards/')) {
       try {
         const id = path.split('/lost-cards/')[1]?.split('/')[0];
@@ -227,6 +229,8 @@ const Dashboard = () => {
         return <TeacherQuizModule />;
       case 'fees':
         return <FeesModule onNavigate={setActiveModule} />;
+      case 'daily-fees':
+        return <DailyFeesModule onNavigate={setActiveModule} />;
       case 'invoices':
         return <InvoicesModule />;
       case 'finance-statement':

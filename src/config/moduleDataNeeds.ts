@@ -10,6 +10,7 @@ export const MODULE_DATA_NEEDS: Record<string, DataDomain[]> = {
   classes: ['classes', 'students', 'teachers'],
   subjects: ['subjects'],
   fees: ['fees', 'payments', 'students', 'classes'],
+  'daily-fees': ['classes', 'students', 'payments'],
   invoices: ['classes', 'students'],
   'finance-statement': ['students'],
   income: ['income'],

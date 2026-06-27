@@ -34,6 +34,12 @@ interface ReceiptData {
     chain: Array<{ receiptNumber: string; amount: number; isVoided: boolean }>;
     rootReceiptNumber?: string;
   };
+  /** Daily fee receipt fields */
+  isDailyFee?: boolean;
+  dailyFeeType?: string;
+  coverageStart?: string;
+  coverageEnd?: string;
+  recordedBy?: string;
 }
 
 interface ReceiptPrinterProps {
@@ -96,13 +102,17 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
     value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const paymentStatus =
-    creditBalance > 0.0001
+    receiptData.isDailyFee
+      ? 'DAILY FEE PAYMENT'
+      : creditBalance > 0.0001
       ? 'CREDIT BALANCE'
       : balanceAfter > 0.0001
         ? 'PARTIAL PAYMENT'
         : 'FULL PAYMENT';
   const statusColor =
-    creditBalance > 0.0001 ? '#059669' : balanceAfter > 0.0001 ? '#ea580c' : '#16a34a';
+    receiptData.isDailyFee
+      ? '#146C43'
+      : creditBalance > 0.0001 ? '#059669' : balanceAfter > 0.0001 ? '#ea580c' : '#16a34a';
   const currentTime = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
   const buildReceiptHtml = () => `
@@ -170,13 +180,20 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
               <div class="row"><span class="label">Name:</span><span class="value">${receiptData.studentName}</span></div>
               <div class="row"><span class="label">ID:</span><span class="value">${receiptData.studentId}</span></div>
               <div class="row"><span class="label">Class:</span><span class="value">${receiptData.className}</span></div>
+              ${receiptData.isDailyFee ? `
+              <div class="row"><span class="label">Payment Type:</span><span class="value">Daily Fee — ${(receiptData.dailyFeeType || '').charAt(0).toUpperCase() + (receiptData.dailyFeeType || '').slice(1)}</span></div>
+              ${receiptData.coverageStart && receiptData.coverageEnd ? `<div class="row"><span class="label">Coverage:</span><span class="value">${formatDisplayDate(receiptData.coverageStart)} → ${formatDisplayDate(receiptData.coverageEnd)}</span></div>` : ''}
+              ${receiptData.recordedBy ? `<div class="row"><span class="label">Recorded by:</span><span class="value">${receiptData.recordedBy}</span></div>` : ''}
+              ` : `
               <div class="row"><span class="label">Term:</span><span class="value">${receiptData.term}</span></div>
+              `}
               <div class="row"><span class="label">Method:</span><span class="value">${receiptData.paymentMethod}</span></div>
             </div>
             <div class="amount-box">
               <div class="amount-label">Amount Paid</div>
               <div class="amount-total">GHS ${(receiptData.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             </div>
+            ${receiptData.isDailyFee ? '' : `
             <div class="section">
               <div class="section-title">Breakdown</div>
               <table class="charges-table">
@@ -218,6 +235,7 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
                 <span style="color:${statusColor}; font-weight:700;">${paymentStatus}</span>
               </div>
             </div>
+            `}
             ${receiptData.notes ? `<div class="notes">Note: ${receiptData.notes}</div>` : ''}
             <div class="footer">
               <p class="thanks">${receiptSettings?.receipt_footer || 'THANK YOU!'}</p>
@@ -312,9 +330,38 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
                 <span className="text-slate-600 font-bold">Class:</span>
                 <span className="font-black text-slate-950">{receiptData.className}</span>
               </div>
+              {receiptData.isDailyFee ? (
+                <>
+                  <div className="flex justify-between">
+                    <span className="text-slate-600 font-bold">Payment Type:</span>
+                    <span className="font-black text-slate-950">
+                      Daily Fee — {(receiptData.dailyFeeType || '').charAt(0).toUpperCase() + (receiptData.dailyFeeType || '').slice(1)}
+                    </span>
+                  </div>
+                  {receiptData.coverageStart && receiptData.coverageEnd && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-600 font-bold">Covers:</span>
+                      <span className="font-black text-slate-950 text-right">
+                        {formatDisplayDate(receiptData.coverageStart)} → {formatDisplayDate(receiptData.coverageEnd)}
+                      </span>
+                    </div>
+                  )}
+                  {receiptData.recordedBy && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-600 font-bold">Recorded by:</span>
+                      <span className="font-black text-slate-950">{receiptData.recordedBy}</span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="flex justify-between">
+                  <span className="text-slate-600 font-bold">Term:</span>
+                  <span className="font-black text-slate-950">{receiptData.term}</span>
+                </div>
+              )}
               <div className="flex justify-between">
-                <span className="text-slate-600 font-bold">Term:</span>
-                <span className="font-black text-slate-950">{receiptData.term}</span>
+                <span className="text-slate-600 font-bold">Method:</span>
+                <span className="font-black text-slate-950">{receiptData.paymentMethod}</span>
               </div>
             </div>
 
@@ -323,6 +370,7 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
               <p className="text-xl font-black text-slate-950">GHS {(receiptData.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
             </div>
 
+            {!receiptData.isDailyFee && (
             <div className="space-y-1 text-[10px] mb-4">
               <div className="flex justify-between border-b border-slate-200 pb-1 mb-1 font-black text-slate-800 text-[8px] uppercase">
                 <span>Breakdown</span>
@@ -375,6 +423,7 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
                 </div>
               )}
             </div>
+            )}
 
             {receiptData.notes && (
               <div className="text-[8px] font-medium italic text-slate-700 border-t border-dashed border-slate-300 pt-2 mb-4">

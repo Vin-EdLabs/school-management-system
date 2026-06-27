@@ -15,6 +15,7 @@ import {
   GraduationCap,
   BookOpen,
   DollarSign,
+  CalendarDays,
   TrendingUp,
   TrendingDown,
   BarChart3,
@@ -154,6 +155,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
   ],
   financial: [
     ...(hasAccess('fees') ? [{ id: 'fees', label: 'Fees', icon: DollarSign }] : []),
+    ...(hasAccess('daily-fees') || hasAccess('fees') ? [{ id: 'daily-fees', label: 'Daily Fees', icon: CalendarDays }] : []),
     ...(hasAccess('invoices') ? [{ id: 'invoices', label: 'Invoices', icon: FileText }] : []),
     ...(hasAccess('finance-statement') ? [{ id: 'finance-statement', label: 'Finance Statement', icon: FileText }] : []),
     ...(hasAccess('income') ? [{ id: 'income', label: 'Income', icon: TrendingUp }] : []),
@@ -249,11 +251,16 @@ const MenuSection: React.FC<{
 
                     if (item.id === 'transactions') {
                       window.history.pushState({}, '', `${prefix}/finance/transactions`);
+                    } else if (item.id === 'daily-fees') {
+                      window.history.pushState({}, '', `${prefix}/finance/daily-fees`);
                     } else {
                       // Remove any subpaths if navigating back to main modules
                       let base = window.location.pathname;
                       if (base.includes('/finance/transactions')) {
                         base = base.replace(/\/finance\/transactions\/?$/, '') || '/';
+                      }
+                      if (base.includes('/finance/daily-fees')) {
+                        base = base.replace(/\/finance\/daily-fees\/?$/, '') || '/';
                       }
                       const subpaths = [
                         '/transport/map',

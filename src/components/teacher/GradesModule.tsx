@@ -38,6 +38,7 @@ import {
   normalizeTeacherRemarks,
 } from '../reports/termReportTypes';
 import SignaturePad from '@/components/common/SignaturePad';
+import PasswordConfirmDialog from '@/components/common/PasswordConfirmDialog';
 import type { SubjectClassGroupedByClass, TeacherSubjectClassesResponse } from '@/types/teacherSubjectClass';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -190,6 +191,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
   const { students, classes, subjects: globalSubjects } = useData();
   const { user } = useAuth();
   const isHeadmasterGradesMode = user?.role === 'headmaster' && schoolWideReadOnly;
+  const isSchoolAdmin = user?.role === 'administrator' || user?.role === 'super-admin';
   const isAdminViewer =
     (schoolWideReadOnly && !isHeadmasterGradesMode) ||
     user?.role === 'administrator' ||
@@ -229,6 +231,13 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
   const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
   const [deleteAssignmentTarget, setDeleteAssignmentTarget] = useState<Assignment | null>(null);
   const [deleteAssignmentLoading, setDeleteAssignmentLoading] = useState(false);
+
+  const deleteTargetGradeCount = useMemo(() => {
+    if (!deleteAssignmentTarget) return 0;
+    return grades.filter(
+      (g) => g.assignment_id === deleteAssignmentTarget.id && g.score != null
+    ).length;
+  }, [deleteAssignmentTarget, grades]);
 
   const [sigPadType, setSigPadType] = useState<'teacher' | 'head'>('teacher');
   const [isSigPadOpen, setIsSigPadOpen] = useState(false);
@@ -406,6 +415,15 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
     return ids;
   }, [grades]);
 
+  const canDeleteAssessment = useCallback(
+    (assignmentId: number) => {
+      if (isHeadmasterGradesMode) return false;
+      if (gradedAssignmentIds.has(assignmentId)) return isSchoolAdmin;
+      return !isAdminViewer || isSchoolAdmin;
+    },
+    [gradedAssignmentIds, isHeadmasterGradesMode, isSchoolAdmin, isAdminViewer]
+  );
+
   // Build grade rows including moved students
   const gradeRows = useMemo<GradeRow[]>(() => {
     if (!selectedAssignmentId) return [];
@@ -534,12 +552,13 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
     }
   };
 
-  const handleDeleteAssignment = async () => {
+  const handleDeleteAssignment = async (password?: string) => {
     if (!deleteAssignmentTarget) return;
-    if (gradedAssignmentIds.has(deleteAssignmentTarget.id)) {
+    const isGraded = gradedAssignmentIds.has(deleteAssignmentTarget.id);
+    if (isGraded && !isSchoolAdmin) {
       toast({
         title: 'Cannot delete',
-        description: 'This assessment already has grades recorded.',
+        description: 'Only school administrators can delete assessments that already have grades.',
         variant: 'destructive',
       });
       setDeleteAssignmentTarget(null);
@@ -547,8 +566,17 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
     }
     setDeleteAssignmentLoading(true);
     try {
-      await (apiService as any).delete(`/grades/assignments/${deleteAssignmentTarget.id}`);
-      toast({ title: 'Assessment deleted' });
+      if (isGraded) {
+        await apiService.delete(`/grades/assignments/${deleteAssignmentTarget.id}`, {
+          password: password ?? '',
+        });
+      } else {
+        await apiService.delete(`/grades/assignments/${deleteAssignmentTarget.id}`);
+      }
+      toast({
+        title: isGraded ? 'Graded assessment deleted' : 'Assessment deleted',
+        description: isGraded ? 'All recorded grades for this assessment were removed.' : undefined,
+      });
       if (selectedAssignmentId === String(deleteAssignmentTarget.id)) setSelectedAssignmentId('');
       setDeleteAssignmentTarget(null);
       await loadAssignments();
@@ -1157,11 +1185,19 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                 <p className="text-sm font-medium text-gray-800 truncate">{a.name}</p>
                                 <p className="text-xs text-gray-500">{a.assignment_type} · {a.max_score} marks</p>
                               </div>
-                              {!isAdminViewer && !gradedAssignmentIds.has(a.id) && (
+                              {canDeleteAssessment(a.id) && (
                                 <button
                                   onClick={e => { e.stopPropagation(); setDeleteAssignmentTarget(a); }}
-                                  className="ml-2 text-gray-300 hover:text-red-500 shrink-0 transition-colors"
-                                  title="Delete assessment"
+                                  className={`ml-2 shrink-0 transition-colors ${
+                                    gradedAssignmentIds.has(a.id)
+                                      ? 'text-red-300 hover:text-red-600'
+                                      : 'text-gray-300 hover:text-red-500'
+                                  }`}
+                                  title={
+                                    gradedAssignmentIds.has(a.id)
+                                      ? 'Delete graded assessment (admin)'
+                                      : 'Delete assessment'
+                                  }
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -2165,15 +2201,15 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
       />
 
       <AlertDialog
-        open={!!deleteAssignmentTarget}
+        open={!!deleteAssignmentTarget && !gradedAssignmentIds.has(deleteAssignmentTarget.id)}
         onOpenChange={(open) => { if (!open && !deleteAssignmentLoading) setDeleteAssignmentTarget(null); }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent className="rounded-[1rem] border-t-4 border-red-500 shadow-[0_20px_60px_rgba(0,0,0,0.15)]">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete assessment?</AlertDialogTitle>
             <AlertDialogDescription>
               {deleteAssignmentTarget
-                ? `Are you sure you want to delete "${deleteAssignmentTarget.name}"? This cannot be undone. Assessments with grades cannot be deleted.`
+                ? `Are you sure you want to delete "${deleteAssignmentTarget.name}"? This cannot be undone.`
                 : 'Are you sure you want to delete this assessment?'}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -2192,6 +2228,28 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <PasswordConfirmDialog
+        open={
+          !!deleteAssignmentTarget &&
+          gradedAssignmentIds.has(deleteAssignmentTarget.id) &&
+          isSchoolAdmin
+        }
+        onOpenChange={(open) => {
+          if (!open && !deleteAssignmentLoading) setDeleteAssignmentTarget(null);
+        }}
+        destructive
+        title="Delete graded assessment?"
+        description={
+          deleteAssignmentTarget
+            ? `This will permanently delete "${deleteAssignmentTarget.name}" and remove all ${deleteTargetGradeCount} recorded grade(s). Enter your administrator password to confirm.`
+            : 'Enter your password to confirm deletion.'
+        }
+        confirmLabel={deleteAssignmentLoading ? 'Deleting…' : 'Delete assessment'}
+        onConfirmed={async (password) => {
+          await handleDeleteAssignment(password);
+        }}
+      />
 
     </div>
   );

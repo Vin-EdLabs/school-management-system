@@ -38,7 +38,7 @@ export const MODULE_DATA_NEEDS: Record<string, DataDomain[]> = {
   'teacher-appointment-letters': [],
   'teacher-payment-history': [],
   'teacher-quizzes': ['classes', 'subjects'],
-  'headmaster-dashboard': [],
+  'headmaster-dashboard': ['students', 'classes'],
   'headmaster-all-classes': ['students', 'classes'],
   'headmaster-all-attendance': ['students', 'classes'],
   'headmaster-all-staff': ['teachers'],

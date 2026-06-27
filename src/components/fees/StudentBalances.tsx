@@ -474,6 +474,7 @@ const StudentBalances = () => {
                     <TableCell>
                       <CompactTermBillCell
                         total={student.currentTermFee ?? 0}
+                        studentLabel={`${student.firstName} ${student.lastName}`.trim()}
                         feeStructureId={student.feeStructureId}
                         individualCharges={student.individualChargeLines}
                         individualChargeAmount={student.individualCharges}

@@ -25,7 +25,8 @@ type PasswordConfirmDialogProps = {
   title?: string;
   description?: string;
   confirmLabel?: string;
-  onConfirmed: () => void | Promise<void>;
+  destructive?: boolean;
+  onConfirmed: (password: string) => void | Promise<void>;
 };
 
 const PasswordConfirmDialog: React.FC<PasswordConfirmDialogProps> = ({
@@ -34,6 +35,7 @@ const PasswordConfirmDialog: React.FC<PasswordConfirmDialogProps> = ({
   title = 'Confirm with your password',
   description = 'Enter your account password to save these changes.',
   confirmLabel = 'Confirm & save',
+  destructive = false,
   onConfirmed,
 }) => {
   const { verifyPassword } = useAuth();
@@ -60,9 +62,10 @@ const PasswordConfirmDialog: React.FC<PasswordConfirmDialogProps> = ({
         toast({ title: 'Incorrect password', description: 'Please try again', variant: 'destructive' });
         return;
       }
+      const confirmedPassword = password;
       setPassword('');
       onOpenChange(false);
-      await onConfirmed();
+      await onConfirmed(confirmedPassword);
     } finally {
       setConfirming(false);
     }
@@ -70,10 +73,24 @@ const PasswordConfirmDialog: React.FC<PasswordConfirmDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={`${detailDialogContentClass} sm:max-w-md`}>
+      <DialogContent
+        className={`${detailDialogContentClass} sm:max-w-md ${destructive ? 'border-t-red-500' : ''}`}
+      >
         <DialogHeader className={detailDialogHeaderClass}>
-          <DialogTitle className="flex items-center gap-2 text-emerald-900 dark:text-emerald-100">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+          <DialogTitle
+            className={`flex items-center gap-2 ${
+              destructive
+                ? 'text-red-900 dark:text-red-100'
+                : 'text-emerald-900 dark:text-emerald-100'
+            }`}
+          >
+            <span
+              className={`flex h-9 w-9 items-center justify-center rounded-xl ${
+                destructive
+                  ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
+                  : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+              }`}
+            >
               <KeyRound className="h-4 w-4" />
             </span>
             {title}
@@ -107,7 +124,13 @@ const PasswordConfirmDialog: React.FC<PasswordConfirmDialogProps> = ({
           <Button type="button" variant="outline" className="rounded-xl" onClick={() => onOpenChange(false)} disabled={confirming}>
             Cancel
           </Button>
-          <Button type="button" variant="primaryAction" className="rounded-xl" onClick={() => void handleConfirm()} disabled={confirming}>
+          <Button
+            type="button"
+            variant={destructive ? 'destructive' : 'primaryAction'}
+            className="rounded-xl"
+            onClick={() => void handleConfirm()}
+            disabled={confirming}
+          >
             {confirming ? 'Checking…' : confirmLabel}
           </Button>
         </DialogFooter>

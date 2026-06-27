@@ -18,6 +18,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useSchool } from '@/contexts/SchoolContext';
 import { useData } from '@/contexts/DataContext';
 import { apiService } from '@/services/api';
+import { useEnsureData } from '@/hooks/useEnsureData';
 import { formatDisplayDate } from '@/utils/dateFormat';
 
 type HeadmasterDashboardProps = {
@@ -28,6 +29,7 @@ const HeadmasterDashboard: React.FC<HeadmasterDashboardProps> = ({ onNavigate })
   const { user } = useAuth();
   const { school } = useSchool();
   const { students, classes } = useData();
+  useEnsureData(['students', 'classes']);
   const [upcomingEvents, setUpcomingEvents] = useState(0);
   const [totalStaff, setTotalStaff] = useState(0);
 

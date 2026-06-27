@@ -1,5 +1,6 @@
 import express from 'express';
-import { query } from '../db/connection.js';
+import bcrypt from 'bcryptjs';
+import { query, getClient } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
@@ -92,11 +93,14 @@ router.post('/assignments', async (req: AuthRequest, res) => {
   }
 });
 
-// Delete assignment (only when no grades have been entered)
+// Delete assignment — ungraded: teachers/admins; graded: administrators only with password
 router.delete('/assignments/:id', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
+    const userId = req.user!.id;
+    const role = req.user!.role;
     const assignmentId = req.params.id;
+    const password = typeof req.body?.password === 'string' ? req.body.password : '';
 
     const graded = await query(
       `SELECT COUNT(*)::int AS count
@@ -105,22 +109,57 @@ router.delete('/assignments/:id', async (req: AuthRequest, res) => {
        WHERE sg.assignment_id = $1 AND ga.tenant_id = $2`,
       [assignmentId, tenantId]
     );
-    if ((graded.rows[0]?.count ?? 0) > 0) {
-      return res.status(400).json({
-        error: 'Cannot delete this assessment because it already has grades recorded.',
-      });
+    const gradedCount = graded.rows[0]?.count ?? 0;
+    const hasGrades = gradedCount > 0;
+
+    if (hasGrades) {
+      if (role !== 'administrator' && role !== 'super-admin') {
+        return res.status(403).json({
+          error: 'Only school administrators can delete assessments that already have grades recorded.',
+        });
+      }
+      if (!password.trim()) {
+        return res.status(400).json({
+          error: 'Password required to delete a graded assessment.',
+        });
+      }
+      const userResult = await query('SELECT password_hash FROM users WHERE id = $1', [userId]);
+      if (userResult.rows.length === 0) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      const valid = await bcrypt.compare(password, userResult.rows[0].password_hash);
+      if (!valid) {
+        return res.status(401).json({ error: 'Incorrect password' });
+      }
     }
 
-    const result = await query(
-      'DELETE FROM grade_assignments WHERE id = $1 AND tenant_id = $2 RETURNING id',
-      [assignmentId, tenantId]
-    );
-    if (!result.rows.length) {
-      return res.status(404).json({ error: 'Assessment not found' });
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+      if (hasGrades) {
+        await client.query(
+          'DELETE FROM student_grades WHERE assignment_id = $1 AND tenant_id = $2',
+          [assignmentId, tenantId]
+        );
+      }
+      const result = await client.query(
+        'DELETE FROM grade_assignments WHERE id = $1 AND tenant_id = $2 RETURNING id',
+        [assignmentId, tenantId]
+      );
+      if (!result.rows.length) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Assessment not found' });
+      }
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
     }
 
     emitTenantDataChanged(tenantId, 'grade-assignment', 'deleted');
-    res.json({ message: 'Assignment deleted' });
+    res.json({ message: 'Assignment deleted', gradesRemoved: hasGrades ? gradedCount : 0 });
   } catch (error) {
     console.error('Delete assignment error:', error);
     res.status(500).json({ error: 'Failed to delete assignment' });

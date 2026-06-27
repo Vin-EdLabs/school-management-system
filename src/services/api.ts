@@ -257,10 +257,14 @@ export class ApiService {
     });
   }
 
-  async delete<T>(endpoint: string): Promise<T> {
+  async delete<T>(endpoint: string, data?: unknown): Promise<T> {
     const response = await fetch(this.buildURL(endpoint), {
       method: 'DELETE',
-      headers: this.getAuthHeaders(),
+      headers:
+        data != null
+          ? { ...this.getAuthHeaders(), 'Content-Type': 'application/json' }
+          : this.getAuthHeaders(),
+      body: data != null ? JSON.stringify(data) : undefined,
     });
     const payload = await readResponseJson<Record<string, unknown>>(response);
     if (!response.ok) {

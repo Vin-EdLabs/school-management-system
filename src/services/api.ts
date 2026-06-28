@@ -14,7 +14,8 @@ async function readResponseJson<T>(response: Response): Promise<T> {
 }
 
 function stableStringify(value: unknown): string {
-  if (value == null || typeof value !== 'object') return JSON.stringify(value);
+  if (value === undefined) return 'undefined';
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
   return `{${Object.keys(value as Record<string, unknown>)
     .sort()
@@ -22,10 +23,11 @@ function stableStringify(value: unknown): string {
     .join(',')}}`;
 }
 
-function hashRequestKey(input: string): string {
+function hashRequestKey(input: string | undefined): string {
+  const safe = input ?? '';
   let hash = 0;
-  for (let i = 0; i < input.length; i += 1) {
-    hash = (hash * 31 + input.charCodeAt(i)) | 0;
+  for (let i = 0; i < safe.length; i += 1) {
+    hash = (hash * 31 + safe.charCodeAt(i)) | 0;
   }
   return Math.abs(hash).toString(36);
 }
@@ -127,6 +129,10 @@ export class ApiService {
     localStorage.removeItem('currentSchoolId');
   }
 
+  getBaseUrl() {
+    return this.baseURL;
+  }
+
   private buildURL(endpoint: string, addTenantId = true): string {
     let url = `${this.baseURL}${endpoint}`;
     if (addTenantId && this.tenantId !== null && !endpoint.includes('tenantId=')) {
@@ -208,14 +214,15 @@ export class ApiService {
     });
   }
 
-  async post<T>(endpoint: string, data: any, options?: { skipTenant?: boolean }): Promise<T> {
-    const key = this.mutationKey('POST', endpoint, data);
+  async post<T>(endpoint: string, data: unknown = {}, options?: { skipTenant?: boolean }): Promise<T> {
+    const body = data ?? {};
+    const key = this.mutationKey('POST', endpoint, body);
     return this.withMutationGuard(key, async () => {
       const headers = { ...this.getAuthHeaders(), 'X-Idempotency-Key': key };
       const response = await fetch(this.buildURL(endpoint, !options?.skipTenant), {
         method: 'POST',
         headers,
-        body: JSON.stringify(data),
+        body: JSON.stringify(body),
       });
       const payload = await readResponseJson<Record<string, unknown>>(response);
       if (!response.ok) {

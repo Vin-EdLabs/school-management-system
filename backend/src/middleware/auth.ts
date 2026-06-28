@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { query } from '../db/connection.js';
+import { buildAuditContextFromAuth, enrichImpersonatorTenant, runWithAuditContext } from './auditContext.js';
 
 export interface AuthRequest extends Request {
   user?: {
@@ -12,6 +13,14 @@ export interface AuthRequest extends Request {
     isPrimaryAdmin?: boolean;
     teacherId?: string | null;
     otherStaffId?: number | null;
+  };
+  /** Real admin when JWT is an impersonation token */
+  impersonator?: {
+    id: number;
+    role: string;
+    tenantId?: number | null;
+    username?: string;
+    fullName?: string | null;
   };
 }
 
@@ -35,6 +44,32 @@ export const authenticate = async (
     }
     
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as any;
+
+    if (decoded.impersonatorId) {
+      const impRes = await query(
+        `SELECT u.id, u.username, u.role, u.tenant_id, COALESCE(u.full_name, u.username) AS full_name
+         FROM users u WHERE u.id = $1 AND COALESCE(u.is_active, true) = true`,
+        [decoded.impersonatorId]
+      );
+      if (impRes.rows.length > 0) {
+        const imp = impRes.rows[0];
+        req.impersonator = {
+          id: imp.id,
+          role: normalizeRole(imp.role),
+          tenantId: imp.tenant_id ?? null,
+          username: imp.username,
+          fullName: imp.full_name,
+        };
+      } else if (decoded.impersonatorRole) {
+        req.impersonator = {
+          id: parseInt(String(decoded.impersonatorId), 10),
+          role: normalizeRole(decoded.impersonatorRole),
+          tenantId: null,
+          username: undefined,
+          fullName: undefined,
+        };
+      }
+    }
     
     // Verify user still exists (support both modern and legacy schemas)
     const attempts: Array<{ sql: string; params: any[] }> = [
@@ -89,8 +124,12 @@ export const authenticate = async (
       teacherId: row.teacher_id ? String(row.teacher_id) : null,
       otherStaffId: row.other_staff_id || null,
     };
-    
-    next();
+
+    const ctx = buildAuditContextFromAuth(req);
+    if (ctx.impersonator) {
+      ctx.impersonator = await enrichImpersonatorTenant(ctx.impersonator, query);
+    }
+    runWithAuditContext(ctx, () => next());
   } catch (error) {
     return res.status(401).json({ error: 'Invalid token' });
   }

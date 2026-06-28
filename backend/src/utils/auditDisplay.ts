@@ -292,19 +292,27 @@ export function polishStoredSummary(
 
 /** API response: fill empty module/summary; normalize `details` to object when possible. */
 export function enrichAuditLogRow(row: Record<string, unknown>): Record<string, unknown> {
-  const username = row.username != null ? String(row.username) : null;
-  const full =
-    row.user_full_name != null && String(row.user_full_name).trim()
-      ? String(row.user_full_name).trim()
-      : username;
   const details = parseAuditDetails(row.details);
   const beforeValues = parseAuditDetails(row.before_values);
   const afterValues = parseAuditDetails(row.after_values);
   const entityLabel = resolveEntityLabelFromRow(row);
+  const impersonatorName =
+    details?.impersonatorName != null ? String(details.impersonatorName).trim() : '';
+  const actingAsName = details?.actingAsName != null ? String(details.actingAsName).trim() : '';
+  const username = row.username != null ? String(row.username) : null;
+  let full =
+    row.user_full_name != null && String(row.user_full_name).trim()
+      ? String(row.user_full_name).trim()
+      : username;
+  if (impersonatorName && details?.impersonation === true) {
+    full = impersonatorName;
+  }
   const base: Record<string, unknown> = {
     ...row,
     details: details ?? row.details,
     entity_label: entityLabel || row.entity_label || null,
+    user_full_name: full,
+    acting_as_name: actingAsName || null,
   };
   const moduleRaw = row.module != null ? String(row.module).trim() : '';
   const summaryRaw = row.summary != null ? String(row.summary).trim() : '';

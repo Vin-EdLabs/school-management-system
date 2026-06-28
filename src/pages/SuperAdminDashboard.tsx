@@ -86,6 +86,7 @@ import {
   DollarSign,
   Activity,
   Megaphone,
+  UserRoundSearch,
 } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import SuperAdminLoginForm from '../components/SuperAdminLoginForm';
@@ -95,6 +96,10 @@ import { useTheme } from '../contexts/ThemeContext';
 import PwaInstallButton from '../components/common/PwaInstallButton';
 import SystemHealthModule from '../components/superadmin/SystemHealthModule';
 import GlobalAnnouncementsModule from '../components/superadmin/GlobalAnnouncementsModule';
+import { SchoolProvider } from '../contexts/SchoolContext';
+import { ImpersonationProvider } from '../contexts/ImpersonationContext';
+import ImpersonationShell from '../components/impersonation/ImpersonationShell';
+import BecomeUserPanel from '../components/impersonation/BecomeUserPanel';
 
 interface School {
   id: number;
@@ -204,7 +209,7 @@ function schoolResetDisplayName(school: { name: string; settings_school_name?: s
 
 const SuperAdminDashboard = () => {
   const navigate = useNavigate();
-  const { user, logout, loading: authLoading } = useAuth();
+  const { user, logout, loading: authLoading, isPlatformSuperAdmin } = useAuth();
   const { socket } = useSocket();
   const { theme, toggleTheme } = useTheme();
   const darkMode = theme === 'dark';
@@ -247,6 +252,7 @@ const SuperAdminDashboard = () => {
     secondaryColor: '#7c3aed',
   });
   const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [becomeUserOpen, setBecomeUserOpen] = useState(false);
   const [editLogoFile, setEditLogoFile] = useState<File | null>(null);
   const [superAdmins, setSuperAdmins] = useState<Array<{ id: number; username: string; email?: string; full_name?: string; phone?: string }>>([]);
   const [showCreateSuperAdmin, setShowCreateSuperAdmin] = useState(false);
@@ -1030,8 +1036,11 @@ const SuperAdminDashboard = () => {
   ];
 
   return (
-    <div className={darkMode ? 'dark' : ''}>
-      <SidebarProvider>
+    <SchoolProvider schoolIdFromUrl={null}>
+      <ImpersonationProvider returnModule="super-admin">
+        <ImpersonationShell>
+          <div className={darkMode ? 'dark' : ''}>
+            <SidebarProvider>
         <Sidebar variant="sidebar" collapsible="icon" className="border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl">
           <SidebarHeader className="border-b border-slate-200/80 dark:border-slate-800 px-6 py-6">
             <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -1101,6 +1110,17 @@ const SuperAdminDashboard = () => {
 
           <SidebarFooter className="border-t border-slate-200 dark:border-slate-800 p-2">
             <SidebarMenu>
+              {isPlatformSuperAdmin && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={() => setBecomeUserOpen(true)}
+                    className="rounded-xl mx-2 text-amber-600/90 hover:text-amber-700 hover:bg-amber-500/10 transition-colors"
+                  >
+                    <UserRoundSearch className="h-4 w-4" />
+                    <span>Become a User</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
               <SidebarMenuItem>
                 <SidebarMenuButton
                   onClick={() => window.open('/', '_blank')}
@@ -2738,7 +2758,11 @@ const SuperAdminDashboard = () => {
           </div>
         </main>
       </SidebarProvider>
-    </div>
+          </div>
+        </ImpersonationShell>
+        <BecomeUserPanel open={becomeUserOpen} onClose={() => setBecomeUserOpen(false)} />
+      </ImpersonationProvider>
+    </SchoolProvider>
   );
 };
 

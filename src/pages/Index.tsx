@@ -15,11 +15,7 @@ const Index = () => {
     return (
       <>
         <AuditLoginTracker />
-        <BrandedLoadingScreen
-          logoUrl={school?.logo_url}
-          label="Loading…"
-          active={authLoading}
-        />
+        <BrandedLoadingScreen logoUrl={school?.logo_url} label="Loading…" active />
       </>
     );
   }

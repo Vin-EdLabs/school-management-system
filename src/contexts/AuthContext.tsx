@@ -5,6 +5,7 @@ import { apiService } from '../services/api';
 import { initInactivityTracker, isPWAInstalled, stopInactivityTracker } from '../utils/inactivityTracker';
 import { clearActiveTermWelcomeDismiss } from '../components/onboarding/ActiveTermWelcomeModal';
 import { startSessionPulse, stopSessionPulse, endSessionPulse } from '../utils/sessionPulse';
+import { saveStaffImpersonationToken, tokenHasImpersonator, isStaffImpersonationActive } from '../utils/impersonationHelpers';
 import { isSchoolTenantView } from '../utils/schoolAdminView';
 import { HEADMASTER_MODULES } from '../utils/headmasterPortal';
 
@@ -41,17 +42,35 @@ interface AuthContextType {
   token: string | null;
   login: (username: string, password: string, role: UserRole, tenantId?: number) => Promise<boolean>;
   logout: () => void;
+  applySession: (token: string, userPayload: Record<string, unknown>) => void;
   changePassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
   verifyPassword: (password: string) => Promise<boolean>;
   hasAccess: (module: string) => boolean;
-  /** Super-admin on the platform dashboard — not when viewing a school. */
   isPlatformSuperAdmin: boolean;
-  /** Primary admin powers (includes super-admin acting inside a school). */
   actsAsPrimaryAdmin: boolean;
   loading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+function userFromStoragePayload(raw: string): User | null {
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (parsed.id == null) return null;
+    return {
+      id: Number(parsed.id),
+      username: String(parsed.username || ''),
+      fullName: (parsed.fullName as string | null) ?? null,
+      role: parsed.role as UserRole,
+      tenantId: parsed.tenantId != null ? Number(parsed.tenantId) : null,
+      teacherId: parsed.teacherId != null ? String(parsed.teacherId) : undefined,
+      otherStaffId: parsed.otherStaffId != null ? Number(parsed.otherStaffId) : null,
+      isPrimaryAdmin: parsed.isPrimaryAdmin === true,
+    };
+  } catch {
+    return null;
+  }
+}
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { pathname } = useLocation();
@@ -67,39 +86,98 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     (user?.role === 'super-admin' && inSchoolView);
 
   useEffect(() => {
-    const token = localStorage.getItem('authToken');
+    let cancelled = false;
+    const bootstrapToken = localStorage.getItem('authToken');
     const savedUser = localStorage.getItem('rosaGardensUser');
 
-    if (token && savedUser) {
-      // Verify token is still valid
-      apiService.get('/auth/me')
+    if (bootstrapToken && savedUser) {
+      const cachedUser = userFromStoragePayload(savedUser);
+      if (cachedUser) {
+        setToken(bootstrapToken);
+        setUser(cachedUser);
+        setIsAuthenticated(true);
+        if (tokenHasImpersonator(bootstrapToken)) {
+          saveStaffImpersonationToken(bootstrapToken);
+        }
+        const tid = cachedUser.tenantId;
+        if (tid != null && Number.isFinite(tid)) {
+          apiService.setTenantContext(tid);
+        }
+      }
+
+      apiService
+        .get('/auth/me')
         .then((response: any) => {
+          if (cancelled) return;
+          const currentToken = localStorage.getItem('authToken');
+          if (!currentToken || currentToken !== bootstrapToken) return;
+
           if (response.user) {
             setIsAuthenticated(true);
-            setToken(token);
+            setToken(currentToken);
             setUser({
               ...response.user,
               isPrimaryAdmin: response.user.isPrimaryAdmin,
               otherStaffId: response.user.otherStaffId ?? null,
             });
-            // start inactivity tracking for non-PWA / non-parent sessions
-            try { initInactivityTracker(); } catch (e) { /* ignore */ }
-            try { startSessionPulse(); } catch (e) { /* ignore */ }
+            if (response.impersonation?.active) {
+              sessionStorage.setItem(
+                'impersonation_meta',
+                JSON.stringify({ ...response.impersonation, active: true, mode: 'staff' })
+              );
+              if (tokenHasImpersonator(currentToken)) {
+                saveStaffImpersonationToken(currentToken);
+              }
+            } else if (!isStaffImpersonationActive()) {
+              sessionStorage.removeItem('impersonation_meta');
+            }
+            if (
+              response.user.role === 'super-admin' ||
+              (response.user.role === 'administrator' && response.user.isPrimaryAdmin)
+            ) {
+              sessionStorage.setItem('impersonation_admin_eligible', '1');
+            }
+            try {
+              initInactivityTracker();
+            } catch {
+              /* ignore */
+            }
+            try {
+              startSessionPulse();
+            } catch {
+              /* ignore */
+            }
           } else {
             localStorage.removeItem('authToken');
             localStorage.removeItem('rosaGardensUser');
+            setIsAuthenticated(false);
+            setUser(null);
+            setToken(null);
           }
         })
         .catch(() => {
+          if (cancelled) return;
+          const currentToken = localStorage.getItem('authToken');
+          if (!currentToken || currentToken !== bootstrapToken) return;
+          if (tokenHasImpersonator(currentToken) && savedUser && userFromStoragePayload(savedUser)) {
+            return;
+          }
           localStorage.removeItem('authToken');
           localStorage.removeItem('rosaGardensUser');
+          setIsAuthenticated(false);
+          setUser(null);
+          setToken(null);
         })
         .finally(() => {
-          setLoading(false);
+          if (!cancelled) setLoading(false);
         });
     } else {
       setLoading(false);
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const login = async (username: string, password: string, role: UserRole, tenantId?: number): Promise<boolean> => {
@@ -140,6 +218,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } catch {
           /* ignore */
         }
+        if (
+          response.user.role === 'super-admin' ||
+          (response.user.role === 'administrator' && response.user.isPrimaryAdmin)
+        ) {
+          try {
+            sessionStorage.setItem('impersonation_admin_eligible', '1');
+          } catch {
+            /* ignore */
+          }
+        }
 
         // Add audit log for login (will be handled by backend)
         setTimeout(() => {
@@ -167,6 +255,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const applySession = (newToken: string, userPayload: Record<string, unknown>) => {
+    localStorage.setItem('authToken', newToken);
+    localStorage.setItem('rosaGardensUser', JSON.stringify(userPayload));
+    setIsAuthenticated(true);
+    setToken(newToken);
+    setUser({
+      id: Number(userPayload.id),
+      username: String(userPayload.username || ''),
+      fullName: (userPayload.fullName as string | null) ?? null,
+      role: userPayload.role as UserRole,
+      tenantId: userPayload.tenantId != null ? Number(userPayload.tenantId) : null,
+      teacherId: userPayload.teacherId != null ? String(userPayload.teacherId) : undefined,
+      otherStaffId: userPayload.otherStaffId != null ? Number(userPayload.otherStaffId) : null,
+      isPrimaryAdmin: userPayload.isPrimaryAdmin === true,
+    });
+    const tid = userPayload.tenantId != null ? Number(userPayload.tenantId) : null;
+    if (tid && Number.isFinite(tid)) {
+      apiService.setTenantContext(tid);
+      localStorage.setItem('currentSchoolId', String(tid));
+    }
+    if (tokenHasImpersonator(newToken)) {
+      saveStaffImpersonationToken(newToken);
+    }
+    setLoading(false);
+  };
+
   const logout = () => {
     const token = localStorage.getItem('authToken');
     if (token) {
@@ -181,6 +295,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setToken(null);
     localStorage.removeItem('authToken');
     localStorage.removeItem('rosaGardensUser');
+    sessionStorage.removeItem('impersonation_meta');
+    sessionStorage.removeItem('impersonation_admin_backup');
+    sessionStorage.removeItem('impersonation_admin_eligible');
+    localStorage.removeItem('impersonation_admin_backup');
   };
 
   const changePassword = async (currentPassword: string, newPassword: string): Promise<boolean> => {
@@ -272,6 +390,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       token,
       login,
       logout,
+      applySession,
       changePassword,
       verifyPassword,
       hasAccess,

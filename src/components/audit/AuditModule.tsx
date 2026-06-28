@@ -63,6 +63,7 @@ type ServerAuditRow = {
   user_role?: string | null;
   username?: string | null;
   user_full_name?: string | null;
+  acting_as_name?: string | null;
   ip_address?: string | null;
   user_agent?: string | null;
 };
@@ -442,6 +443,7 @@ const AuditModule = () => {
                         <div className="font-medium">{r.user_full_name || r.username || '—'}</div>
                         <div className="text-xs text-muted-foreground">
                           {[
+                            r.acting_as_name ? `viewing as ${r.acting_as_name}` : null,
                             r.username && r.user_full_name && r.user_full_name !== r.username ? `@${r.username}` : null,
                             r.user_role || null,
                           ]

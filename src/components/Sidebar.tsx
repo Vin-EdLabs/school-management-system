@@ -49,6 +49,7 @@ import {
   AlertTriangle,
   Crown,
   School,
+  UserRoundSearch,
 } from 'lucide-react';
 import { resolveLogoUrl } from '../services/tenantService';
 import { headmasterHasTeachingAccess, isHeadmasterRole } from '../utils/headmasterPortal';
@@ -67,6 +68,8 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
+import { useImpersonationOptional } from '../contexts/ImpersonationContext';
+import BecomeUserPanel from './impersonation/BecomeUserPanel';
 
 interface AppSidebarProps {
   activeModule: string;
@@ -451,7 +454,7 @@ const CollapsibleMenuSection: React.FC<{
 };
 
 export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveModule }) => {
-  const { logout, hasAccess, user } = useAuth();
+  const { logout, hasAccess, user, actsAsPrimaryAdmin, isPlatformSuperAdmin } = useAuth();
   const { hasActiveTerm, isLoading: activeTermLoading } = useActiveTerm();
   const termNavigationBlocked = !activeTermLoading && !hasActiveTerm;
   const { school } = useSchool();
@@ -459,6 +462,13 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
   const { socket } = useSocket();
   const [parentDeskUnread, setParentDeskUnread] = useState(0);
   const [supportUnread, setSupportUnread] = useState(0);
+  const [becomeUserOpen, setBecomeUserOpen] = useState(false);
+  const impersonation = useImpersonationOptional();
+  const adminEligible =
+    typeof sessionStorage !== 'undefined' && sessionStorage.getItem('impersonation_admin_eligible') === '1';
+  const showBecomeUser =
+    !impersonation?.isImpersonating &&
+    !!(actsAsPrimaryAdmin || isPlatformSuperAdmin || adminEligible || user?.role === 'super-admin');
 
   const isHeadmaster = isHeadmasterRole(user?.role);
   const headmasterMenu = isHeadmaster
@@ -618,17 +628,38 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
 
       <SidebarFooter className="border-t border-white/10 p-3 space-y-4 bg-black/10 dark:border-sidebar-border dark:bg-sidebar-accent/50">
         <SidebarMenu>
+          {showBecomeUser && (
+            <SidebarMenuItem className="flex justify-center">
+              <SidebarMenuButton
+                onClick={() => {
+                  if (isMobile) setOpenMobile(false);
+                  setBecomeUserOpen(true);
+                }}
+                className="rounded-xl w-full h-10 text-amber-200/90 hover:text-amber-50 hover:bg-amber-500/15 transition-all group-data-[collapsible=icon]:w-10 group-data-[collapsible=icon]:justify-center"
+                tooltip="Become a User"
+              >
+                <UserRoundSearch className="h-4.5 w-4.5 shrink-0" />
+                <span className="font-bold text-xs uppercase tracking-tight ml-3 group-data-[collapsible=icon]:hidden">Become a User</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          )}
           <SidebarMenuItem className="flex justify-center">
             <SidebarMenuButton
               onClick={() => {
                 if (isMobile) setOpenMobile(false);
+                if (impersonation?.isImpersonating) {
+                  void impersonation.exitImpersonation();
+                  return;
+                }
                 logout();
               }}
               className="rounded-xl w-full h-10 text-sidebar-foreground/60 hover:text-red-500 hover:bg-red-500/10 transition-all group-data-[collapsible=icon]:w-10 group-data-[collapsible=icon]:justify-center"
-              tooltip="Terminate Session"
+              tooltip={impersonation?.isImpersonating ? 'Exit impersonation' : 'Terminate Session'}
             >
               <LogOut className="h-4.5 w-4.5 shrink-0" />
-              <span className="font-bold text-xs uppercase tracking-tight ml-3 group-data-[collapsible=icon]:hidden">Sign Out</span>
+              <span className="font-bold text-xs uppercase tracking-tight ml-3 group-data-[collapsible=icon]:hidden">
+                {impersonation?.isImpersonating ? 'Exit View' : 'Sign Out'}
+              </span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -642,6 +673,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
           </div>
         </div>
       </SidebarFooter>
+      <BecomeUserPanel open={becomeUserOpen} onClose={() => setBecomeUserOpen(false)} />
     </Sidebar>
   );
 };

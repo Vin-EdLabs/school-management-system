@@ -30,6 +30,15 @@ import {
 import InvoiceDocument from '@/components/invoices/InvoiceDocument';
 import { buildInvoiceFilename, downloadInvoicePdf } from '@/components/invoices/buildInvoicePdf';
 import { createRoot } from 'react-dom/client';
+import ParentImpersonationBanner, {
+  parentImpersonationActive,
+  parentImpersonationBannerOffsetClass,
+} from '@/components/impersonation/ParentImpersonationBanner';
+import { exitParentImpersonation, restoreAdminSession, prepareReturnToAdminDashboard, applyPostExitTenantContext, resolvePostImpersonationPath, readAdminBackup, ensureMinimumTransition, readImpersonationTransition, clearImpersonationTransition, isParentImpersonationTransitionReady, PARENT_IMPERSONATION_TRANSITION_MS } from '@/utils/impersonationHelpers';
+import ImpersonationTransitionOverlay from '@/components/impersonation/ImpersonationTransitionOverlay';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
+import { apiService } from '@/services/api';
 
 function resolveApiBase(): string {
   if (import.meta.env.VITE_API_BASE_URL) return import.meta.env.VITE_API_BASE_URL;
@@ -366,6 +375,8 @@ interface ParentPortalProps {
 }
 
 const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoolLogoUrl, primaryColor, secondaryColor }) => {
+  const navigate = useNavigate();
+  const { applySession } = useAuth();
   const brandPrimary = primaryColor || '#7c3aed';
   const brandSecondary = secondaryColor || '#db2777';
   const [token, setToken] = useState<string | null>(() =>
@@ -376,6 +387,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     return s ? JSON.parse(s) : null;
   });
   const [mustChangePassword, setMustChangePassword] = useState(() => {
+    if (parentImpersonationActive(tenantId)) return false;
     try {
       const stored = localStorage.getItem(`parent_student_${tenantId}`);
       if (stored) return !!JSON.parse(stored).must_change_password;
@@ -396,6 +408,12 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   const [showPassword, setShowPassword] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState('');
+  const [impersonationBootstrapping, setImpersonationBootstrapping] = useState(() =>
+    parentImpersonationActive(tenantId) && !localStorage.getItem(`parent_student_${tenantId}`)
+  );
+  const [exitTransition, setExitTransition] = useState<{ message: string; phase: 'enter' | 'exit' } | null>(
+    null
+  );
 
   // Password change form
   const [pwNew, setPwNew] = useState('');
@@ -697,6 +715,31 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   };
 
   const handleLogout = () => {
+    if (parentImpersonationActive(tenantId)) {
+      void (async () => {
+        const startedAt = Date.now();
+        setExitTransition({ message: 'Returning to your account…', phase: 'exit' });
+        try {
+          const restored = await exitParentImpersonation(tenantId);
+          const merged = restoreAdminSession(restored.token, restored.user, restored.backup);
+          applyPostExitTenantContext(merged as Record<string, unknown>, restored.backup);
+          applySession(restored.token, merged as Record<string, unknown>);
+          prepareReturnToAdminDashboard(restored.backup);
+          await ensureMinimumTransition(startedAt);
+          navigate(resolvePostImpersonationPath(merged as Record<string, unknown>, restored.backup), {
+            replace: true,
+          });
+        } catch {
+          const backup = readAdminBackup();
+          await ensureMinimumTransition(startedAt);
+          navigate(resolvePostImpersonationPath(backup?.user ?? {}, backup), { replace: true });
+        } finally {
+          setExitTransition(null);
+        }
+      })();
+      return;
+    }
+
     if (token && 'serviceWorker' in navigator) {
       navigator.serviceWorker.ready
         .then((reg) => reg.pushManager.getSubscription())
@@ -954,20 +997,109 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     };
   }, [showNotifPanel]);
 
+  /** Rehydrate parent impersonation session from storage (no full page reload). */
+  const rehydrateParentImpersonation = useCallback(() => {
+    if (!parentImpersonationActive(tenantId)) return;
+    const storedToken = localStorage.getItem(`parent_token_${tenantId}`);
+    const storedStudent = localStorage.getItem(`parent_student_${tenantId}`);
+    if (storedToken) setToken(storedToken);
+    if (storedStudent) {
+      try {
+        const info = { ...JSON.parse(storedStudent), must_change_password: false } as StudentInfo;
+        setStudent(info);
+        setMustChangePassword(false);
+      } catch {
+        // ignore invalid cache
+      }
+    }
+    if (storedToken && storedStudent && isParentImpersonationTransitionReady(tenantId)) {
+      clearImpersonationTransition();
+      setImpersonationBootstrapping(false);
+    }
+  }, [tenantId]);
+
+  useEffect(() => {
+    rehydrateParentImpersonation();
+    const onReady = (e: Event) => {
+      const detail = (e as CustomEvent<{ tenantId?: number }>).detail;
+      if (detail?.tenantId != null && detail.tenantId !== tenantId) return;
+      rehydrateParentImpersonation();
+    };
+    window.addEventListener('parent-impersonation-session-ready', onReady);
+    return () => window.removeEventListener('parent-impersonation-session-ready', onReady);
+  }, [rehydrateParentImpersonation, tenantId]);
+
+  /** Keep transition visible until profile is cached and minimum preload time elapsed */
+  useEffect(() => {
+    if (!parentImpersonationActive(tenantId)) return;
+    const tick = () => {
+      if (isParentImpersonationTransitionReady(tenantId)) {
+        rehydrateParentImpersonation();
+        setImpersonationBootstrapping(false);
+      }
+    };
+    tick();
+    const interval = window.setInterval(tick, 150);
+    return () => window.clearInterval(interval);
+  }, [tenantId, rehydrateParentImpersonation]);
+
   /** Restore forced password-change state when reopening the portal with an existing session. */
   useEffect(() => {
+    if (!parentImpersonationActive(tenantId)) return;
+    const storedToken = localStorage.getItem(`parent_token_${tenantId}`);
+    if (!storedToken) return;
+    if (student) {
+      if (!token) setToken(storedToken);
+      return;
+    }
+
+    let cancelled = false;
+    setImpersonationBootstrapping(true);
+    void (async () => {
+      try {
+        const me = (await parentFetch('/parent/me', {}, storedToken)) as StudentInfo;
+        if (cancelled) return;
+        const info = { ...me, must_change_password: false } as StudentInfo;
+        setToken(storedToken);
+        setStudent(info);
+        setMustChangePassword(false);
+        localStorage.setItem(`parent_student_${tenantId}`, JSON.stringify(info));
+      } catch {
+        if (!cancelled && storedToken) setToken(storedToken);
+      } finally {
+        if (!cancelled) {
+          const waitMs = readImpersonationTransition()?.durationMs ?? PARENT_IMPERSONATION_TRANSITION_MS;
+          const started = readImpersonationTransition()?.startedAt ?? Date.now();
+          const remaining = Math.max(0, waitMs - (Date.now() - started));
+          window.setTimeout(() => {
+            if (!cancelled) setImpersonationBootstrapping(false);
+          }, remaining);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId, student, token]);
+
+  useEffect(() => {
     if (!token) return;
+    if (parentImpersonationActive(tenantId)) {
+      setMustChangePassword(false);
+    }
     let cancelled = false;
     void (async () => {
       try {
         const me = await parentFetch('/parent/me', {}, token) as StudentInfo;
         if (cancelled) return;
+        const forcePwChange = parentImpersonationActive(tenantId) ? false : !!me.must_change_password;
         setStudent((prev) => {
-          const next = { ...(prev || {}), ...me, must_change_password: !!me.must_change_password } as StudentInfo;
+          const next = { ...(prev || {}), ...me, must_change_password: forcePwChange } as StudentInfo;
           localStorage.setItem(`parent_student_${tenantId}`, JSON.stringify(next));
           return next;
         });
-        if (me.must_change_password) setMustChangePassword(true);
+        if (forcePwChange) setMustChangePassword(true);
+        else setMustChangePassword(false);
       } catch {
         // token expired or network issue — login screen handles invalid sessions
       }
@@ -1543,6 +1675,19 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   // ── SCREENS ──
 
   // ── Login screen ─────────────────────────────────────────────────────────────
+  const parentImp = parentImpersonationActive(tenantId);
+  const pendingParentTransition = parentImp && !isParentImpersonationTransitionReady(tenantId);
+
+  if (parentImp && (pendingParentTransition || impersonationBootstrapping || !token || !student)) {
+    const transition = readImpersonationTransition();
+    return (
+      <ImpersonationTransitionOverlay
+        message={transition?.message || 'Opening parent portal…'}
+        phase={transition?.phase || 'enter'}
+      />
+    );
+  }
+
   if (!token || !student) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4" style={{ background: premiumLoginGradient }}>
@@ -1651,7 +1796,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   }
 
   // ── Force password change screen ──────────────────────────────────────────────
-  if (mustChangePassword) {
+  if (mustChangePassword && !parentImpersonationActive(tenantId)) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4" style={{ background: premiumLoginGradient }}>
         <div className="w-full max-w-md">
@@ -1812,7 +1957,11 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   }
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#F8F7FF] bg-[radial-gradient(circle_at_top_left,rgba(192,132,252,0.34),transparent_32%),radial-gradient(circle_at_top_right,rgba(236,72,153,0.20),transparent_28%),linear-gradient(180deg,#FFFFFF_0%,#F8F7FF_45%,#F4EEFF_100%)] text-slate-950">
+    <div className={`overflow-x-hidden bg-[#F8F7FF] bg-[radial-gradient(circle_at_top_left,rgba(192,132,252,0.34),transparent_32%),radial-gradient(circle_at_top_right,rgba(236,72,153,0.20),transparent_28%),linear-gradient(180deg,#FFFFFF_0%,#F8F7FF_45%,#F4EEFF_100%)] text-slate-950 ${parentImpersonationBannerOffsetClass(tenantId)}`}>
+      {exitTransition ? (
+        <ImpersonationTransitionOverlay message={exitTransition.message} phase={exitTransition.phase} />
+      ) : null}
+      <ParentImpersonationBanner tenantId={tenantId} />
       {newQuizPopup && (
         <div className="fixed inset-0 z-[90] bg-slate-900/45 backdrop-blur-[1px] flex items-center justify-center p-4">
           <div className="w-full max-w-md rounded-2xl bg-white border shadow-2xl p-5">

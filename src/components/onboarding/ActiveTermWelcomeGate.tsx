@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSchool } from '@/contexts/SchoolContext';
 import { useActiveTerm } from '@/contexts/ActiveTermContext';
+import { isStaffImpersonationActive } from '@/utils/impersonationHelpers';
 import ActiveTermWelcomeModal, {
   dismissActiveTermWelcomeForSession,
   isActiveTermWelcomeDismissed,
@@ -61,7 +62,7 @@ const ActiveTermWelcomeGate: React.FC<ActiveTermWelcomeGateProps> = ({
     }
   }, [hasActiveTerm]);
 
-  if (!shouldWelcome) return null;
+  if (!shouldWelcome || isStaffImpersonationActive()) return null;
 
   const displayName = user?.fullName || user?.username || 'Admin';
   const schoolName = school?.name || 'your school';

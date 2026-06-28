@@ -6,6 +6,11 @@ import { getVapidPublicKey } from '../services/webPushService.js';
 import { resolveTenant, TenantRequest } from '../middleware/tenantResolver.js';
 import { authenticate, requireRole, validateTenantAccess, AuthRequest } from '../middleware/auth.js';
 import { writeAuditLog } from '../services/auditService.js';
+import {
+  buildAuditContextFromParent,
+  enrichImpersonatorTenant,
+  runWithAuditContext,
+} from '../middleware/auditContext.js';
 import { beneficiaryAdjustedFee, type BeneficiaryStudentRow } from '../utils/beneficiaryFee.js';
 import { buildStudentFinanceStatement } from '../services/studentFinanceStatementService.js';
 import { getStudentLiveFeeBreakdown } from '../services/studentLiveFeeBreakdownService.js';
@@ -74,7 +79,7 @@ function parentJwtExpiresIn(): jwt.SignOptions['expiresIn'] {
 // ── Parent JWT middleware ─────────────────────────────────────────────────────
 
 interface ParentRequest extends express.Request {
-  parent?: { accountId: number; studentId: number; tenantId: number };
+  parent?: { accountId: number; studentId: number; tenantId: number; impersonatorId?: number | null };
 }
 
 const authenticateParent = async (
@@ -99,8 +104,23 @@ const authenticateParent = async (
       accountId: row.rows[0].id,
       studentId: row.rows[0].student_id,
       tenantId: row.rows[0].tenant_id,
+      impersonatorId: decoded.impersonatorId ? parseInt(String(decoded.impersonatorId), 10) : null,
     };
-    next();
+
+    let ctx = buildAuditContextFromParent({
+      impersonatorId: req.parent.impersonatorId,
+      impersonatorRole: decoded.impersonatorRole ?? null,
+      tenantId: req.parent.tenantId,
+      studentId: req.parent.studentId,
+      accountId: req.parent.accountId,
+    });
+    if (ctx.impersonator) {
+      ctx = {
+        ...ctx,
+        impersonator: await enrichImpersonatorTenant(ctx.impersonator, query),
+      };
+    }
+    runWithAuditContext(ctx, () => next());
   } catch {
     return res.status(401).json({ error: 'Invalid token' });
   }
@@ -423,10 +443,13 @@ router.post('/notifications/read-all', authenticateParent, async (req: ParentReq
 
 router.get('/me', authenticateParent, async (req: ParentRequest, res) => {
   try {
-    const { studentId, tenantId } = req.parent!;
+    const { studentId, tenantId, impersonatorId } = req.parent!;
     const profile = await fetchParentStudentProfile(tenantId, studentId);
     if (!profile) {
       return res.status(404).json({ error: 'Student not found' });
+    }
+    if (impersonatorId) {
+      profile.must_change_password = false;
     }
     res.json(profile);
   } catch (error) {

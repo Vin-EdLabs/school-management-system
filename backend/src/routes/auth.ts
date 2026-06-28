@@ -421,6 +421,16 @@ router.get('/me', authenticate, async (req: AuthRequest, res) => {
         isPrimaryAdmin: user.is_primary_admin === true,
         tenant,
       },
+      impersonation: req.impersonator
+        ? {
+            active: true,
+            impersonatorId: req.impersonator.id,
+            impersonatorName: req.impersonator.fullName || req.impersonator.username,
+            targetName: user.full_name,
+            targetRole: normalizeRole(user.role),
+            schoolName: tenant?.name || null,
+          }
+        : { active: false },
     });
   } catch (error) {
     console.error('Get user error:', error);

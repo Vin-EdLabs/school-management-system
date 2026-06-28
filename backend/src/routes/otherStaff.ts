@@ -55,6 +55,124 @@ async function nextOtherStaffId(tenantId: number): Promise<string> {
   return `STF${String(maxNum + 1).padStart(3, '0')}`;
 }
 
+function resolveRouteTenantId(req: AuthRequest): number | null {
+  const fromQuery = parseInt(String(req.query.tenantId ?? ''), 10);
+  if (req.user?.role === 'super-admin' && Number.isFinite(fromQuery) && fromQuery > 0) {
+    return fromQuery;
+  }
+  const fromUser = req.user?.tenantId;
+  if (fromUser != null && Number.isFinite(Number(fromUser)) && Number(fromUser) > 0) {
+    return Number(fromUser);
+  }
+  return null;
+}
+
+async function handleCreateStaffUser(req: AuthRequest, res: express.Response) {
+  try {
+    const tenantId = resolveRouteTenantId(req);
+    if (!tenantId) {
+      return res.status(400).json({ error: 'School context required (tenantId)' });
+    }
+
+    const id = parseInt(String(req.params.id), 10);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ error: 'Invalid staff id' });
+    }
+
+    const { username, password, role } = req.body ?? {};
+    if (!username?.trim() || !password || !role) {
+      return res.status(400).json({ error: 'Username, password, and role are required' });
+    }
+    const allowedRoles = ['staff', 'finance', 'administrator', 'driver', 'headmaster'];
+    if (!allowedRoles.includes(String(role))) {
+      return res.status(400).json({ error: 'Invalid role for staff user' });
+    }
+    const minLength = role === 'staff' || role === 'driver' || role === 'headmaster' ? 5 : 6;
+    if (String(password).length < minLength) {
+      return res.status(400).json({ error: `Password must be at least ${minLength} characters` });
+    }
+
+    const staffRes = await query('SELECT * FROM other_staff WHERE id = $1 AND tenant_id = $2', [id, tenantId]);
+    if (staffRes.rows.length === 0) return res.status(404).json({ error: 'Staff member not found' });
+
+    const existing = await query(
+      `SELECT id FROM users WHERE tenant_id = $1 AND other_staff_id = $2 AND COALESCE(is_active, true) = true`,
+      [tenantId, id]
+    );
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: 'This staff member already has a user account' });
+    }
+
+    const staff = staffRes.rows[0];
+    const passwordHash = await bcrypt.hash(String(password), 10);
+    const insertRes = await query(
+      `INSERT INTO users (tenant_id, username, password_hash, role, full_name, email, other_staff_id, is_primary_admin, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, false, true)
+       RETURNING id, username, role`,
+      [
+        tenantId,
+        String(username).trim(),
+        passwordHash,
+        role,
+        staff.full_name,
+        staff.email || null,
+        id,
+      ]
+    );
+
+    const created = insertRes.rows[0];
+    const actor = await resolveActorFromRequest(req);
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'CREATE',
+      entityType: 'USER',
+      entityId: created.id,
+      module: 'users',
+      summary: withActor(
+        `User account created for ${staff.full_name} — Role: ${role}`,
+        actor
+      ),
+      details: { username: created.username, role: created.role, staffId: staff.staff_id, otherStaffId: id },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
+
+    try {
+      getIO().to(`tenant:${tenantId}`).emit('tenant-data-changed', {
+        tenantId,
+        entity: 'user',
+        action: 'created',
+        at: Date.now(),
+      });
+    } catch {
+      /* noop */
+    }
+
+    res.status(201).json({ ok: true, username: created.username, role: created.role });
+  } catch (error: unknown) {
+    console.error('Create staff user error:', error);
+    const pg = error as { code?: string; message?: string; detail?: string };
+    if (pg.code === '23505') {
+      return res.status(409).json({ error: 'Username already exists' });
+    }
+    if (pg.code === '23514') {
+      return res.status(400).json({ error: 'Invalid role for this user account' });
+    }
+    if (pg.code === '42703') {
+      return res.status(500).json({
+        error: 'Database schema is out of date. Run backend migrations and restart the server.',
+        detail: pg.message,
+      });
+    }
+    res.status(500).json({
+      error: 'Failed to create user account',
+      detail: pg.message || 'Unknown error',
+    });
+  }
+}
+
 const ALL_STAFF_SQL = `
   SELECT
     t.id,
@@ -120,6 +238,10 @@ const ALL_STAFF_SQL = `
 router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
+
+/** User account creation is not term-gated (matches Settings → Users). */
+router.post('/:id/create-user', requireRole('super-admin', 'administrator'), handleCreateStaffUser);
+
 attachWritableTermGuard(router);
 
 router.get('/all-staff', async (req: AuthRequest, res) => {
@@ -499,68 +621,6 @@ router.post(
     }
   }
 );
-
-router.post('/:id/create-user', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
-  try {
-    const tenantId = req.user!.tenantId!;
-    const id = parseInt(String(req.params.id), 10);
-    const { username, password, role } = req.body;
-    if (!username?.trim() || !password || !role) {
-      return res.status(400).json({ error: 'Username, password, and role are required' });
-    }
-    const allowedRoles = ['staff', 'finance', 'administrator'];
-    if (!allowedRoles.includes(role)) {
-      return res.status(400).json({ error: 'Invalid role for staff user' });
-    }
-
-    const staffRes = await query('SELECT * FROM other_staff WHERE id = $1 AND tenant_id = $2', [id, tenantId]);
-    if (staffRes.rows.length === 0) return res.status(404).json({ error: 'Staff member not found' });
-
-    const existing = await query(
-      `SELECT id FROM users WHERE tenant_id = $1 AND other_staff_id = $2 AND COALESCE(is_active, true) = true`,
-      [tenantId, id]
-    );
-    if (existing.rows.length > 0) {
-      return res.status(409).json({ error: 'This staff member already has a user account' });
-    }
-
-    const staff = staffRes.rows[0];
-    const passwordHash = await bcrypt.hash(String(password), 10);
-    const insertRes = await query(
-      `INSERT INTO users (tenant_id, username, password_hash, role, full_name, phone, other_staff_id, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, true)
-       ON CONFLICT (tenant_id, username) DO NOTHING
-       RETURNING id`,
-      [tenantId, String(username).trim(), passwordHash, role, staff.full_name, staff.phone_number, id]
-    );
-    if (insertRes.rows.length === 0) {
-      return res.status(409).json({ error: 'Username already exists' });
-    }
-
-    const actor = await resolveActorFromRequest(req);
-    await writeAuditLog({
-      tenantId,
-      userId: req.user!.id,
-      userRole: req.user!.role,
-      action: 'CREATE',
-      entityType: 'USER',
-      entityId: id,
-      module: 'users',
-      summary: withActor(
-        `User account created for ${staff.full_name} — Role: ${role}`,
-        actor
-      ),
-      details: { username, role, staffId: staff.staff_id },
-      ipAddress: getClientIp(req),
-      userAgent: req.get('user-agent') ?? null,
-    });
-    res.status(201).json({ ok: true, username: String(username).trim(), role });
-  } catch (error) {
-    console.error('Create staff user error:', error);
-    const detail = error instanceof Error ? error.message : 'Unknown error';
-    res.status(500).json({ error: 'Failed to create user account', detail });
-  }
-});
 
 export { ALL_STAFF_SQL };
 export default router;

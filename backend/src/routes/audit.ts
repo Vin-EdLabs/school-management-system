@@ -31,14 +31,33 @@ const AUDIT_USER_DISPLAY_SEARCH = `COALESCE(NULLIF(TRIM(u.full_name), ''), NULLI
 const TENANT_HIDDEN_AUDIT_ACTIONS = ['BACKUP_EXPORT', 'FULL_RESET', 'BACKUP_IMPORT', 'BACKUP_VALIDATE'];
 const TENANT_HIDDEN_AUDIT_MODULES = ['superadmin', 'platform'];
 
+/** Hide platform + super-admin impersonation from school tenant audit views. */
 function tenantAuditExclusionSql(alias = 'al'): string {
   return ` AND ${alias}.action NOT IN ('${TENANT_HIDDEN_AUDIT_ACTIONS.join("','")}')
-           AND COALESCE(${alias}.module, '') NOT IN ('${TENANT_HIDDEN_AUDIT_MODULES.join("','")}')`;
+           AND COALESCE(${alias}.module, '') NOT IN ('${TENANT_HIDDEN_AUDIT_MODULES.join("','")}')
+           AND COALESCE(${alias}.details->>'platformScope', 'false') <> 'true'
+           AND NOT (
+             COALESCE(${alias}.user_role, '') IN ('super-admin', 'superadmin')
+             AND (
+               ${alias}.action IN ('IMPERSONATION_START', 'IMPERSONATION_END')
+               OR COALESCE(${alias}.details->>'impersonation', 'false') = 'true'
+               OR COALESCE(${alias}.module, '') = 'impersonation'
+             )
+           )`;
 }
 
 function tenantAuditJoinExclusionSql(alias = 'al'): string {
   return `${alias}.action NOT IN ('${TENANT_HIDDEN_AUDIT_ACTIONS.join("','")}')
-          AND COALESCE(${alias}.module, '') NOT IN ('${TENANT_HIDDEN_AUDIT_MODULES.join("','")}')`;
+          AND COALESCE(${alias}.module, '') NOT IN ('${TENANT_HIDDEN_AUDIT_MODULES.join("','")}')
+          AND COALESCE(${alias}.details->>'platformScope', 'false') <> 'true'
+          AND NOT (
+            COALESCE(${alias}.user_role, '') IN ('super-admin', 'superadmin')
+            AND (
+              ${alias}.action IN ('IMPERSONATION_START', 'IMPERSONATION_END')
+              OR COALESCE(${alias}.details->>'impersonation', 'false') = 'true'
+              OR COALESCE(${alias}.module, '') = 'impersonation'
+            )
+          )`;
 }
 
 function buildTenantAuditWhere(
@@ -532,6 +551,7 @@ router.post('/log', async (req: AuthRequest, res) => {
     if (module != null && String(module).length > 120) {
       return res.status(400).json({ error: 'module too long' });
     }
+    const baseSummary = summary != null ? String(summary).slice(0, 2000) : null;
     await writeAuditLog({
       tenantId,
       userId: user.id,
@@ -541,8 +561,8 @@ router.post('/log', async (req: AuthRequest, res) => {
       entityId: entityId != null && entityId !== '' ? parseInt(String(entityId), 10) : null,
       module: module != null ? String(module).slice(0, 120) : 'general',
       status: status === 'failed' ? 'failed' : 'success',
-      summary: summary != null ? String(summary).slice(0, 2000) : null,
-      details: details && typeof details === 'object' ? details : null,
+      summary: baseSummary,
+      details: details && typeof details === 'object' ? (details as Record<string, unknown>) : null,
       ipAddress: getClientIp(req),
       userAgent: req.get('user-agent') || null,
     });

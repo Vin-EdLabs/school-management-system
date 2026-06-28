@@ -7,6 +7,7 @@ import { startReceiptLockJob } from './jobs/receiptLockJob.js';
 import { startTeacherSuspensionJob } from './jobs/teacherSuspensionJob.js';
 import { startTodoReminderJob } from './jobs/todoReminderJob.js';
 import authRoutes from './routes/auth.js';
+import impersonationRoutes from './routes/impersonation.js';
 import schoolRoutes from './routes/schools.js';
 import studentRoutes from './routes/students.js';
 import teacherRoutes from './routes/teachers.js';
@@ -158,6 +159,7 @@ app.use('/api/school-registrations', schoolRegistrationsRoutes);
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/auth/impersonate', impersonationRoutes);
 app.use('/api/schools', schoolRoutes);
 app.use('/api/schools', academicCycleRoutes);
 app.use('/api/super-admin/tenants', tenantBackupRoutes);

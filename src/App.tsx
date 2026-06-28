@@ -25,6 +25,8 @@ import { detectTenantSlugFromHost, getSubdomainUrl, normalizeLegacyPathOnSubdoma
 import { PwaUpdateManager } from "@/components/pwa/PwaUpdateManager";
 import { NetworkStatusBanner } from "@/components/ui/NetworkStatusBanner";
 import { BrandedLoadingScreen } from "@/components/common/BrandedLoading";
+import { PARENT_IMPERSONATE_HANDOFF_KEY, STAFF_IMPERSONATE_HANDOFF_KEY } from "@/utils/impersonationHelpers";
+import ImpersonationTransitionGate from "@/components/impersonation/ImpersonationTransitionGate";
 import { PublicErrorPage } from "@/components/common/PublicErrorPage";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import {
@@ -91,6 +93,12 @@ const LegacyPortalRedirect = () => {
       return;
     }
 
+    if (sessionStorage.getItem(PARENT_IMPERSONATE_HANDOFF_KEY) === tenantId) {
+      sessionStorage.removeItem(PARENT_IMPERSONATE_HANDOFF_KEY);
+      setRedirecting(false);
+      return;
+    }
+
     if (isNaN(Number(tenantId))) {
       const targetBase = getSubdomainUrl(tenantId);
       const restOfPath = window.location.pathname.replace(new RegExp(`^/portal/${tenantId}`), '/portal');
@@ -125,9 +133,19 @@ const IndexWithSchool = () => {
   const slug = routeSlug || detectTenantSlugFromHost();
   const [resolvedId, setResolvedId] = React.useState<number | null>(() => {
     const id = schoolId ? parseInt(schoolId, 10) : null;
+    if (id && !isNaN(id) && sessionStorage.getItem(STAFF_IMPERSONATE_HANDOFF_KEY) === String(id)) {
+      sessionStorage.removeItem(STAFF_IMPERSONATE_HANDOFF_KEY);
+      return id;
+    }
     return id && !isNaN(id) ? id : null;
   });
-  const [resolving, setResolving] = React.useState(!schoolId && !!slug);
+  const [resolving, setResolving] = React.useState(() => {
+    const id = schoolId ? parseInt(schoolId, 10) : null;
+    if (id && !isNaN(id) && sessionStorage.getItem(STAFF_IMPERSONATE_HANDOFF_KEY) === String(id)) {
+      return false;
+    }
+    return !schoolId && !!slug;
+  });
   const [schoolPortalError, setSchoolPortalError] = React.useState<SchoolPortalErrorState | null>(null);
   const [resolveAttempt, setResolveAttempt] = React.useState(0);
 
@@ -158,6 +176,13 @@ const IndexWithSchool = () => {
   React.useEffect(() => {
     setSchoolPortalError(null);
     const schoolIdNum = schoolId ? parseInt(schoolId, 10) : null;
+
+    if (schoolIdNum && sessionStorage.getItem(STAFF_IMPERSONATE_HANDOFF_KEY) === String(schoolIdNum)) {
+      sessionStorage.removeItem(STAFF_IMPERSONATE_HANDOFF_KEY);
+      setResolvedId(schoolIdNum);
+      setResolving(false);
+      return;
+    }
 
     if (schoolId && (schoolIdNum === null || Number.isNaN(schoolIdNum))) {
       setResolvedId(null);
@@ -288,6 +313,7 @@ const App = () => {
       <ThemeProvider>
         <BrowserRouter>
         <AuthProvider>
+          <ImpersonationTransitionGate />
           <SocketProvider>
             <TeacherNotificationProvider>
             <TooltipProvider>

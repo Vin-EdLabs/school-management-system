@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSchool } from '@/contexts/SchoolContext';
 import { useSetupProgress } from '@/hooks/useSetupProgress';
+import { isStaffImpersonationActive } from '@/utils/impersonationHelpers';
 import SetupProgressModal, {
   dismissSetupForSession,
   isSetupDismissedForSession,
@@ -71,7 +72,7 @@ const SetupProgressGate: React.FC<SetupProgressGateProps> = ({ activeModule, set
     }
   }, [isComplete]);
 
-  if (!isPrimarySchoolAdmin || loadFailed || isComplete) {
+  if (!isPrimarySchoolAdmin || loadFailed || isComplete || isStaffImpersonationActive()) {
     return null;
   }
 

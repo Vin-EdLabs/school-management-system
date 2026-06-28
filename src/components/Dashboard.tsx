@@ -70,6 +70,9 @@ import { useStaffPushSync } from '../hooks/useStaffPushSync';
 import { useEnsureData } from '../hooks/useEnsureData';
 import { useFinanceRealtime } from '../hooks/useFinanceRealtime';
 import { domainsForModule } from '../config/moduleDataNeeds';
+import { ImpersonationProvider } from '../contexts/ImpersonationContext';
+import ImpersonationShell from './impersonation/ImpersonationShell';
+import { IMPERSONATION_GO_MODULE_KEY } from '../utils/impersonationHelpers';
 
 const Dashboard = () => {
   const { hasAccess, user } = useAuth();
@@ -142,6 +145,14 @@ const Dashboard = () => {
       setActiveModule('headmaster-dashboard');
     }
   }, [user?.role, activeModule]);
+
+  /** After impersonation start/exit — land on the correct dashboard module */
+  useEffect(() => {
+    const goMod = sessionStorage.getItem(IMPERSONATION_GO_MODULE_KEY);
+    if (!goMod || !user) return;
+    sessionStorage.removeItem(IMPERSONATION_GO_MODULE_KEY);
+    setActiveModule(goMod);
+  }, [user?.id, user?.role]);
 
   const renderActiveModule = () => {
     // Check access before rendering
@@ -329,20 +340,24 @@ const Dashboard = () => {
   };
 
   return (
-    <SidebarWrapper
-      activeModule={activeModule}
-      setActiveModule={setActiveModule}
-    >
-      <GlobalAnnouncementPopup />
-      <ActiveTermWelcomeGate activeModule={activeModule} setActiveModule={setActiveModule} />
-      <SetupProgressGate activeModule={activeModule} setActiveModule={setActiveModule} />
-      <ActiveTermRequiredShell
-        activeModule={activeModule}
-        onOpenSettings={() => setActiveModule('settings')}
-      >
-        <TermReadOnlyShell activeModule={activeModule}>{renderActiveModule()}</TermReadOnlyShell>
-      </ActiveTermRequiredShell>
-    </SidebarWrapper>
+    <ImpersonationProvider returnModule={activeModule}>
+      <ImpersonationShell>
+        <SidebarWrapper
+          activeModule={activeModule}
+          setActiveModule={setActiveModule}
+        >
+          <GlobalAnnouncementPopup />
+          <ActiveTermWelcomeGate activeModule={activeModule} setActiveModule={setActiveModule} />
+          <SetupProgressGate activeModule={activeModule} setActiveModule={setActiveModule} />
+          <ActiveTermRequiredShell
+            activeModule={activeModule}
+            onOpenSettings={() => setActiveModule('settings')}
+          >
+            <TermReadOnlyShell activeModule={activeModule}>{renderActiveModule()}</TermReadOnlyShell>
+          </ActiveTermRequiredShell>
+        </SidebarWrapper>
+      </ImpersonationShell>
+    </ImpersonationProvider>
   );
 };
 

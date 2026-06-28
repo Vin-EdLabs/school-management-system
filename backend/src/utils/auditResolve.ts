@@ -95,11 +95,27 @@ export async function resolveTenantName(
   return res.rows[0]?.name ? String(res.rows[0].name) : `School ${tenantId}`;
 }
 
-/** Actor display name from an authenticated request. */
+/** Actor display name from an authenticated request (impersonator when viewing as another user). */
 export async function resolveActorFromRequest(req: AuthRequest): Promise<string> {
+  if (req.impersonator?.id) {
+    if (req.impersonator.fullName?.trim()) return req.impersonator.fullName.trim();
+    if (req.impersonator.username?.trim()) return req.impersonator.username.trim();
+    const name = await resolveUserDisplayName(req.impersonator.id);
+    return name || `User #${req.impersonator.id}`;
+  }
   if (!req.user?.id) return req.user?.username || 'Unknown user';
   const name = await resolveUserDisplayName(req.user.id);
   return name || req.user.username || 'Unknown user';
+}
+
+/** User id to store on audit_logs — always the real admin when impersonating. */
+export function resolveAuditUserId(req: AuthRequest): number | null {
+  return req.impersonator?.id ?? req.user?.id ?? null;
+}
+
+/** Role to store on audit_logs when impersonating. */
+export function resolveAuditUserRole(req: AuthRequest): string | null {
+  return req.impersonator?.role ?? req.user?.role ?? null;
 }
 
 /** Append "by {name}" when summary does not already mention the actor. */

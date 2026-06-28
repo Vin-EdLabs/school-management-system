@@ -191,11 +191,13 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
   const { students, classes, subjects: globalSubjects } = useData();
   const { user } = useAuth();
   const isHeadmasterGradesMode = user?.role === 'headmaster' && schoolWideReadOnly;
+  const isHeadmasterUser = user?.role === 'headmaster';
   const isSchoolAdmin = user?.role === 'administrator' || user?.role === 'super-admin';
   const isAdminViewer =
     (schoolWideReadOnly && !isHeadmasterGradesMode) ||
     user?.role === 'administrator' ||
     user?.role === 'super-admin';
+  const canEditHeadmasterRemarks = isHeadmasterUser && !isAdminViewer;
   const seesAllClasses = isAdminViewer || isHeadmasterGradesMode;
   const printRef = useRef<HTMLDivElement>(null);
   const reportCardRef = useRef<HTMLDivElement>(null);
@@ -229,6 +231,13 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
   const [reportLoading, setReportLoading] = useState(false);
   const [releaseLoading, setReleaseLoading] = useState(false);
   const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
+  const [remarksHydratedStudentId, setRemarksHydratedStudentId] = useState<number | null>(null);
+  const [remarksDirty, setRemarksDirty] = useState(false);
+  const markRemarksDirty = useCallback(() => setRemarksDirty(true), []);
+  const [unsavedDialogOpen, setUnsavedDialogOpen] = useState(false);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const pendingNavActionRef = useRef<(() => void | Promise<void>) | null>(null);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [deleteAssignmentTarget, setDeleteAssignmentTarget] = useState<Assignment | null>(null);
   const [deleteAssignmentLoading, setDeleteAssignmentLoading] = useState(false);
 
@@ -252,7 +261,11 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
       try {
         if (user?.teacherId) {
           const tRes = await apiService.get<{ signature?: string | null }>(`/teachers/${user.teacherId}/signature`);
-          if (tRes?.signature && user?.role !== 'headmaster') setClassTeacherSig(tRes.signature);
+          if (tRes?.signature) {
+            if (user?.role !== 'headmaster' || !schoolWideReadOnly) {
+              setClassTeacherSig(tRes.signature);
+            }
+          }
         }
         if (user?.role === 'headmaster' && user?.teacherId) {
           const hmRes = await apiService.get<{ signature?: string | null }>(`/teachers/${user.teacherId}/signature`);
@@ -270,7 +283,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
       }
     };
     void load();
-  }, [user?.teacherId, user?.role]);
+  }, [user?.teacherId, user?.role, schoolWideReadOnly]);
 
   // Refresh headmaster signature when opening report cards (e.g. after saving in Settings)
   useEffect(() => {
@@ -617,15 +630,31 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
   };
 
   // Ghanaian basic school report sheet fields
-  const [conductDraft, setConductDraft] = useState('Humble');
-  const [attitudeDraft, setAttitudeDraft] = useState('Dependable');
-  const [interestDraft, setInterestDraft] = useState('Sports');
+  const [conductDraft, setConductDraft] = useState('');
+  const [attitudeDraft, setAttitudeDraft] = useState('');
+  const [interestDraft, setInterestDraft] = useState('');
   const [attendanceDraft, setAttendanceDraft] = useState('');
   const [attendanceOutOfDraft, setAttendanceOutOfDraft] = useState('');
   const [promotedToDraft, setPromotedToDraft] = useState('');
   const [classPromotedTo, setClassPromotedTo] = useState('');
   const [promotedOverrides, setPromotedOverrides] = useState<Record<number, string>>({});
-  const [reopeningDateDraft, setReopeningDateDraft] = useState('21st April, 2026');
+  const [reopeningDateDraft, setReopeningDateDraft] = useState('');
+  const [applyPromotedLoading, setApplyPromotedLoading] = useState(false);
+
+  const buildArchiveSignaturesPayload = useCallback(() => ({
+    classTeacherSig: classTeacherSig || null,
+    headTeacherSig: headTeacherSig || null,
+    headmasterTitle: termReport?.headmasterTitle || 'Headmaster',
+    headmasterName: termReport?.headmasterName || null,
+  }), [classTeacherSig, headTeacherSig, termReport?.headmasterTitle, termReport?.headmasterName]);
+
+  const syncSignaturesToRecords = useCallback(async (signatures: ReturnType<typeof buildArchiveSignaturesPayload>) => {
+    if (!selectedClassId || !termReport) return;
+    await apiService.post('/grades/sync-report-signatures', {
+      classId: Number(selectedClassId),
+      signatures,
+    });
+  }, [selectedClassId, termReport]);
 
   const saveSignature = (dataUrl: string) => {
     if (sigPadType === 'teacher') {
@@ -643,6 +672,13 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
       }
       setIsSigPadOpen(false);
       toast({ title: 'Signature saved' });
+      const signatures = {
+        classTeacherSig: sigPadType === 'teacher' ? dataUrl : classTeacherSig || null,
+        headTeacherSig: sigPadType === 'head' ? dataUrl : headTeacherSig || null,
+        headmasterTitle: termReport?.headmasterTitle || 'Headmaster',
+        headmasterName: termReport?.headmasterName || null,
+      };
+      void syncSignaturesToRecords(signatures).catch(() => {});
   };
 
   const getPromotedToForStudent = useCallback((studentId: number) => {
@@ -669,21 +705,140 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
     setPromotedToDraft(overrides[studentId] ?? (classDefault || parsed.promotedTo));
     setReopeningDateDraft(parsed.reopeningDate);
     setHeadmasterRemarkDraft(report.headmasterRemarks?.[studentId] || '');
+    setRemarksHydratedStudentId(studentId);
+    setRemarksDirty(false);
   }, [classPromotedTo, promotedOverrides]);
 
+  const mergeFreshRemarksForStudent = useCallback(async (studentId: number, report: TermReport): Promise<TermReport> => {
+    if (!selectedClassId) return report;
+    try {
+      const fresh = await apiService.get<{ teacherRemark?: string; headmasterRemark?: string }>(
+        `/grades/term-report-remarks?classId=${selectedClassId}&studentId=${studentId}`
+      );
+      return {
+        ...report,
+        teacherRemarks: {
+          ...normalizeTeacherRemarks(report.teacherRemarks),
+          [studentId]:
+            fresh.teacherRemark !== undefined && fresh.teacherRemark !== null
+              ? fresh.teacherRemark
+              : (report.teacherRemarks?.[studentId] ?? ''),
+        },
+        headmasterRemarks: {
+          ...(report.headmasterRemarks || {}),
+          [studentId]:
+            fresh.headmasterRemark !== undefined && fresh.headmasterRemark !== null
+              ? fresh.headmasterRemark
+              : (report.headmasterRemarks?.[studentId] ?? ''),
+        },
+      };
+    } catch {
+      return report;
+    }
+  }, [selectedClassId]);
+
   const handlePromotedToChange = (value: string) => {
+    markRemarksDirty();
     setPromotedToDraft(value);
     if (!selectedReportStudentId) return;
     if (promotedOverrides[selectedReportStudentId] !== undefined) {
-      setPromotedOverrides((prev) => ({ ...prev, [selectedReportStudentId]: value }));
+      if (classPromotedTo && value.trim() === classPromotedTo) {
+        setPromotedOverrides((prev) => {
+          const next = { ...prev };
+          delete next[selectedReportStudentId];
+          return next;
+        });
+      } else {
+        setPromotedOverrides((prev) => ({ ...prev, [selectedReportStudentId]: value }));
+      }
     } else if (!classPromotedTo) {
       setClassPromotedTo(value);
     } else if (value !== classPromotedTo) {
       setPromotedOverrides((prev) => ({ ...prev, [selectedReportStudentId]: value }));
-    } else {
-      setClassPromotedTo(value);
     }
   };
+
+  const handleApplyPromotedToAll = useCallback(async () => {
+    if (!selectedClassId || !termReport || isAdminViewer || isHeadmasterGradesMode) return;
+    const newDefault = promotedToDraft.trim();
+    if (!newDefault) {
+      toast({ title: 'Enter a class name', description: 'Type the promoted-to class before applying.', variant: 'destructive' });
+      return;
+    }
+
+    const keptOverrides: Record<number, string> = {};
+    for (const [id, val] of Object.entries(promotedOverrides)) {
+      const trimmed = String(val).trim();
+      if (trimmed && trimmed !== newDefault) {
+        keptOverrides[Number(id)] = trimmed;
+      }
+    }
+
+    setApplyPromotedLoading(true);
+    try {
+      const studentsToUpdate = termReport.students.filter((s) => keptOverrides[s.studentId] === undefined);
+      const updatedRemarks: Record<number, string> = {
+        ...normalizeTeacherRemarks(termReport.teacherRemarks),
+      };
+      const signatures = buildArchiveSignaturesPayload();
+
+      for (const s of studentsToUpdate) {
+        const existing = parseTeacherRemarkDetails(updatedRemarks[s.studentId] || '');
+        const att = resolveAttendanceForStudent(s.studentId, existing, termReport);
+        const isCurrent = s.studentId === selectedReportStudentId;
+        const serialized = JSON.stringify({
+          text: isCurrent ? teacherRemarkDraft : existing.text,
+          conduct: isCurrent ? conductDraft : existing.conduct,
+          attitude: isCurrent ? attitudeDraft : existing.attitude,
+          interest: isCurrent ? interestDraft : existing.interest,
+          attendance: isCurrent ? attendanceDraft : (existing.attendance || att.attendance),
+          attendanceOutOf: isCurrent ? attendanceOutOfDraft : (existing.attendanceOutOf || att.attendanceOutOf),
+          promotedTo: newDefault,
+          reopeningDate: isCurrent ? reopeningDateDraft : existing.reopeningDate,
+        });
+        await apiService.post('/grades/term-report-remarks', {
+          classId: Number(selectedClassId),
+          studentId: s.studentId,
+          teacherRemark: serialized,
+          signatures,
+        });
+        updatedRemarks[s.studentId] = serialized;
+      }
+
+      const nextReport: TermReport = { ...termReport, teacherRemarks: updatedRemarks };
+      const studentIds = nextReport.students.map((st) => st.studentId);
+      const promotedState = derivePromotedToState(nextReport.teacherRemarks || {}, studentIds);
+
+      setClassPromotedTo(newDefault);
+      setPromotedOverrides(keptOverrides);
+      setTermReport(nextReport);
+
+      if (selectedReportStudentId) {
+        applyStudentReportFields(selectedReportStudentId, nextReport, {
+          classPromotedTo: newDefault,
+          promotedOverrides: keptOverrides,
+        });
+      }
+
+      setRemarksDirty(false);
+      setAutoSaveStatus('saved');
+      toast({
+        title: 'Applied to all students',
+        description:
+          keptOverrides && Object.keys(keptOverrides).length > 0
+            ? `Promoted to "${newDefault}" for the class. Custom entries were kept.`
+            : `Promoted to "${newDefault}" for every student in this class.`,
+      });
+    } catch (e: any) {
+      toast({ title: 'Could not apply to all', description: e?.message, variant: 'destructive' });
+    } finally {
+      setApplyPromotedLoading(false);
+    }
+  }, [
+    selectedClassId, termReport, isAdminViewer, isHeadmasterGradesMode, promotedToDraft, promotedOverrides,
+    teacherRemarkDraft, conductDraft, attitudeDraft, interestDraft, attendanceDraft, attendanceOutOfDraft,
+    reopeningDateDraft, selectedReportStudentId, buildArchiveSignaturesPayload, applyStudentReportFields,
+  ]);
 
   // ── Term report ──────────────────────────────────────────────────────────────
 
@@ -692,23 +847,58 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
     options?: { silent?: boolean; skipBulk?: boolean }
   ): Promise<Record<number, string> | null> => {
     if (!selectedClassId || !termReport) return null;
+
+    const resolvedPromotedTo =
+      targetStudentId === selectedReportStudentId
+        ? (promotedToDraft.trim() || promotedOverrides[targetStudentId] || classPromotedTo || '')
+        : (promotedOverrides[targetStudentId] || classPromotedTo || '');
+
+    const serializedTeacherRemark = JSON.stringify({
+      text: targetStudentId === selectedReportStudentId ? teacherRemarkDraft : parseTeacherRemarkDetails(termReport.teacherRemarks?.[targetStudentId] || '').text,
+      conduct: targetStudentId === selectedReportStudentId ? conductDraft : parseTeacherRemarkDetails(termReport.teacherRemarks?.[targetStudentId] || '').conduct,
+      attitude: targetStudentId === selectedReportStudentId ? attitudeDraft : parseTeacherRemarkDetails(termReport.teacherRemarks?.[targetStudentId] || '').attitude,
+      interest: targetStudentId === selectedReportStudentId ? interestDraft : parseTeacherRemarkDetails(termReport.teacherRemarks?.[targetStudentId] || '').interest,
+      attendance: targetStudentId === selectedReportStudentId ? attendanceDraft : parseTeacherRemarkDetails(termReport.teacherRemarks?.[targetStudentId] || '').attendance,
+      attendanceOutOf: targetStudentId === selectedReportStudentId ? attendanceOutOfDraft : parseTeacherRemarkDetails(termReport.teacherRemarks?.[targetStudentId] || '').attendanceOutOf,
+      promotedTo: resolvedPromotedTo,
+      reopeningDate: targetStudentId === selectedReportStudentId ? reopeningDateDraft : parseTeacherRemarkDetails(termReport.teacherRemarks?.[targetStudentId] || '').reopeningDate,
+    });
+
+    const headmasterValue =
+      targetStudentId === selectedReportStudentId
+        ? headmasterRemarkDraft
+        : (termReport.headmasterRemarks?.[targetStudentId] || '');
+
     if (isHeadmasterGradesMode) {
       if (!options?.silent) setRemarkSaving(true);
       try {
-        await apiService.post('/grades/term-report-remarks', {
+        const res = await apiService.post<{ headmasterRemark?: string; teacherRemark?: string }>('/grades/term-report-remarks', {
           classId: Number(selectedClassId),
           studentId: targetStudentId,
-          headmasterRemark: headmasterRemarkDraft,
+          headmasterRemark: headmasterValue,
+          signatures: buildArchiveSignaturesPayload(),
         });
-        setTermReport((prev) => prev ? {
-          ...prev,
-          headmasterRemarks: { ...prev.headmasterRemarks, [targetStudentId]: headmasterRemarkDraft },
-        } : prev);
-        if (!options?.silent) toast({ title: 'Saved', description: 'Term report remarks have been saved.' });
-        return normalizeTeacherRemarks(termReport.teacherRemarks);
+        const nextReport: TermReport = {
+          ...termReport,
+          headmasterRemarks: {
+            ...(termReport.headmasterRemarks || {}),
+            [targetStudentId]: res.headmasterRemark ?? headmasterValue,
+          },
+        };
+        setTermReport(nextReport);
+        if (targetStudentId === selectedReportStudentId) {
+          const studentIds = nextReport.students.map((s) => s.studentId);
+          const promotedState = derivePromotedToState(nextReport.teacherRemarks || {}, studentIds);
+          applyStudentReportFields(targetStudentId, nextReport, promotedState);
+        }
+        setRemarksDirty(false);
+        if (!options?.silent) toast({ title: 'Saved', description: 'Report card details saved.' });
+        return normalizeTeacherRemarks(nextReport.teacherRemarks);
       } catch (e: any) {
         if (!options?.silent) {
           toast({ title: 'Error saving remarks', description: e?.message, variant: 'destructive' });
+        } else {
+          toast({ title: 'Auto-save failed', description: e?.message, variant: 'destructive' });
         }
         return null;
       } finally {
@@ -718,29 +908,32 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
 
     if (isAdminViewer) return null;
 
-    const serializedTeacherRemark = JSON.stringify({
-      text: teacherRemarkDraft,
-      conduct: conductDraft,
-      attitude: attitudeDraft,
-      interest: interestDraft,
-      attendance: attendanceDraft,
-      attendanceOutOf: attendanceOutOfDraft,
-      promotedTo: promotedOverrides[targetStudentId] ?? classPromotedTo,
-      reopeningDate: reopeningDateDraft,
-    });
-
     if (!options?.silent) setRemarkSaving(true);
     try {
-      await apiService.post('/grades/term-report-remarks', {
+      const saveBody: {
+        classId: number;
+        studentId: number;
+        teacherRemark: string;
+        headmasterRemark?: string;
+        signatures: ReturnType<typeof buildArchiveSignaturesPayload>;
+      } = {
         classId: Number(selectedClassId),
         studentId: targetStudentId,
         teacherRemark: serializedTeacherRemark,
-        headmasterRemark: headmasterRemarkDraft,
-      });
+        signatures: buildArchiveSignaturesPayload(),
+      };
+      if (isHeadmasterUser) {
+        saveBody.headmasterRemark = headmasterValue;
+      }
+
+      const res = await apiService.post<{ teacherRemark?: string; headmasterRemark?: string }>(
+        '/grades/term-report-remarks',
+        saveBody
+      );
 
       const updatedTeacherRemarks: Record<number, string> = {
         ...normalizeTeacherRemarks(termReport.teacherRemarks),
-        [targetStudentId]: serializedTeacherRemark,
+        [targetStudentId]: res.teacherRemark ?? serializedTeacherRemark,
       };
 
       if (!options?.skipBulk && promotedOverrides[targetStudentId] === undefined && classPromotedTo) {
@@ -753,7 +946,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
           const bulkRemark = JSON.stringify({
             ...existing,
             promotedTo: classPromotedTo,
-            reopeningDate: reopeningDateDraft,
+            reopeningDate: existing.reopeningDate,
             attendance: existing.attendance || att.attendance,
             attendanceOutOf: existing.attendanceOutOf || att.attendanceOutOf,
           });
@@ -761,51 +954,193 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
             classId: Number(selectedClassId),
             studentId: s.studentId,
             teacherRemark: bulkRemark,
+            signatures: buildArchiveSignaturesPayload(),
           });
           updatedTeacherRemarks[s.studentId] = bulkRemark;
         }
       }
 
-      setTermReport((prev) => prev ? {
-        ...prev,
+      const nextReport: TermReport = {
+        ...termReport,
         teacherRemarks: updatedTeacherRemarks,
-        headmasterRemarks: { ...prev.headmasterRemarks, [targetStudentId]: headmasterRemarkDraft },
-      } : prev);
+        ...(isHeadmasterUser
+          ? {
+              headmasterRemarks: {
+                ...(termReport.headmasterRemarks || {}),
+                [targetStudentId]: res.headmasterRemark ?? headmasterValue,
+              },
+            }
+          : {}),
+      };
 
-      const studentIds = termReport.students.map((s) => s.studentId);
-      const promotedState = derivePromotedToState(updatedTeacherRemarks, studentIds);
+      const studentIds = nextReport.students.map((s) => s.studentId);
+      const promotedState = derivePromotedToState(nextReport.teacherRemarks || {}, studentIds);
       setClassPromotedTo(promotedState.classPromotedTo);
       setPromotedOverrides(promotedState.promotedOverrides);
+      setTermReport(nextReport);
 
-      if (!options?.silent) {
-        toast({ title: 'Saved', description: 'Term report remarks have been saved.' });
+      if (targetStudentId === selectedReportStudentId) {
+        applyStudentReportFields(targetStudentId, nextReport, promotedState);
       }
-      return updatedTeacherRemarks;
+
+      setRemarksDirty(false);
+      if (!options?.silent) {
+        toast({ title: 'Saved', description: 'Report card details saved.' });
+      }
+      return normalizeTeacherRemarks(nextReport.teacherRemarks);
     } catch (e: any) {
       if (!options?.silent) {
         toast({ title: 'Error saving remarks', description: e?.message, variant: 'destructive' });
+      } else {
+        toast({ title: 'Auto-save failed', description: e?.message, variant: 'destructive' });
       }
       return null;
     } finally {
       if (!options?.silent) setRemarkSaving(false);
     }
   }, [
-    selectedClassId, termReport, isHeadmasterGradesMode, isAdminViewer,
+    selectedClassId, termReport, isHeadmasterGradesMode, isHeadmasterUser, isAdminViewer,
     teacherRemarkDraft, conductDraft, attitudeDraft, interestDraft,
     attendanceDraft, attendanceOutOfDraft, classPromotedTo, promotedOverrides,
-    reopeningDateDraft, headmasterRemarkDraft,
+    reopeningDateDraft, headmasterRemarkDraft, promotedToDraft, selectedReportStudentId,
+    mergeFreshRemarksForStudent, applyStudentReportFields, buildArchiveSignaturesPayload,
   ]);
 
-  const handleLoadReport = async () => {
-    setActiveTab('report');
-    if (
-      selectedReportStudentId &&
-      termReport &&
-      !isHeadmasterGradesMode &&
-      !isAdminViewer
-    ) {
-      await saveReportRemarksForStudent(selectedReportStudentId, { silent: true });
+  const saveAllStudentsRemarksBeforeRelease = useCallback(async () => {
+    if (!selectedClassId || !termReport) return;
+    if (selectedReportStudentId) {
+      await saveReportRemarksForStudent(selectedReportStudentId, { silent: true, skipBulk: true });
     }
+    if (isHeadmasterGradesMode || isAdminViewer) return;
+
+    for (const s of termReport.students) {
+      if (s.studentId === selectedReportStudentId) continue;
+      const existing = parseTeacherRemarkDetails(termReport.teacherRemarks?.[s.studentId] || '');
+      const promotedTo = promotedOverrides[s.studentId] ?? classPromotedTo ?? existing.promotedTo;
+      const att = resolveAttendanceForStudent(s.studentId, existing, termReport);
+      const serialized = JSON.stringify({
+        text: existing.text,
+        conduct: existing.conduct,
+        attitude: existing.attitude,
+        interest: existing.interest,
+        attendance: existing.attendance || att.attendance,
+        attendanceOutOf: existing.attendanceOutOf || att.attendanceOutOf,
+        promotedTo,
+        reopeningDate: existing.reopeningDate,
+      });
+      if (serialized === (termReport.teacherRemarks?.[s.studentId] || '')) continue;
+      await apiService.post('/grades/term-report-remarks', {
+        classId: Number(selectedClassId),
+        studentId: s.studentId,
+        teacherRemark: serialized,
+        signatures: buildArchiveSignaturesPayload(),
+      });
+    }
+  }, [
+    selectedClassId, termReport, selectedReportStudentId, isHeadmasterGradesMode, isAdminViewer,
+    saveReportRemarksForStudent, promotedOverrides, classPromotedTo, reopeningDateDraft, buildArchiveSignaturesPayload,
+  ]);
+
+  const flushPendingRemarksSave = useCallback(async (): Promise<boolean> => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+    if (!selectedReportStudentId || !termReport || isAdminViewer || !remarksDirty) return true;
+    setAutoSaveStatus('saving');
+    const result = await saveReportRemarksForStudent(selectedReportStudentId, { silent: true, skipBulk: true });
+    if (result !== null) {
+      setAutoSaveStatus('saved');
+      return true;
+    }
+    setAutoSaveStatus('error');
+    return false;
+  }, [selectedReportStudentId, termReport, isAdminViewer, remarksDirty, saveReportRemarksForStudent]);
+
+  const runWithUnsavedGuard = useCallback((action: () => void | Promise<void>) => {
+    if (activeTab !== 'report' || isAdminViewer || !remarksDirty || !selectedReportStudentId) {
+      void action();
+      return;
+    }
+    pendingNavActionRef.current = action;
+    setUnsavedDialogOpen(true);
+  }, [activeTab, isAdminViewer, remarksDirty, selectedReportStudentId]);
+
+  const handleUnsavedSaveAndContinue = async () => {
+    const action = pendingNavActionRef.current;
+    pendingNavActionRef.current = null;
+    setUnsavedDialogOpen(false);
+    const ok = await flushPendingRemarksSave();
+    if (!ok) {
+      toast({ title: 'Save failed', description: 'Your report card changes could not be saved.', variant: 'destructive' });
+      return;
+    }
+    if (action) await action();
+  };
+
+  const handleUnsavedDiscard = async () => {
+    const action = pendingNavActionRef.current;
+    pendingNavActionRef.current = null;
+    setUnsavedDialogOpen(false);
+    setRemarksDirty(false);
+    if (action) await action();
+  };
+
+  useEffect(() => {
+    if (
+      activeTab !== 'report' ||
+      !selectedReportStudentId ||
+      !termReport ||
+      isAdminViewer ||
+      !remarksDirty ||
+      remarksHydratedStudentId !== selectedReportStudentId
+    ) {
+      return;
+    }
+
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(() => {
+      setAutoSaveStatus('saving');
+      void saveReportRemarksForStudent(selectedReportStudentId, { silent: true, skipBulk: true }).then((result) => {
+        setAutoSaveStatus(result !== null ? 'saved' : 'error');
+      });
+    }, 800);
+
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+  }, [
+    activeTab, selectedReportStudentId, termReport, isAdminViewer, remarksDirty, remarksHydratedStudentId,
+    teacherRemarkDraft, headmasterRemarkDraft, conductDraft, attitudeDraft, interestDraft,
+    attendanceDraft, attendanceOutOfDraft, promotedToDraft, reopeningDateDraft,
+    saveReportRemarksForStudent,
+  ]);
+
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (activeTab !== 'report' || isAdminViewer || !remarksDirty || !selectedReportStudentId) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [activeTab, isAdminViewer, remarksDirty, selectedReportStudentId]);
+
+  const handleClassChange = (classId: string) => {
+    if (classId === selectedClassId) return;
+    runWithUnsavedGuard(() => {
+      setSelectedClassId(classId);
+      setTermReport(null);
+      setSelectedReportStudentId(null);
+      setRemarksHydratedStudentId(null);
+      setRemarksDirty(false);
+      setAutoSaveStatus('idle');
+      setActiveTab('grades');
+    });
+  };
+
+  const loadReportInternal = async () => {
+    setActiveTab('report');
     setReportLoading(true);
     try {
       const data = await apiService.get<TermReport>(`/grades/term-report?classId=${selectedClassId}`);
@@ -821,16 +1156,29 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
           ? selectedReportStudentId
           : firstStudentId;
       setSelectedReportStudentId(keepStudentId);
+      let reportWithFresh = data;
       if (keepStudentId) {
-        applyStudentReportFields(keepStudentId, data, promotedState);
+        reportWithFresh = await mergeFreshRemarksForStudent(keepStudentId, data);
+        applyStudentReportFields(keepStudentId, reportWithFresh, promotedState);
       } else {
         setTeacherRemarkDraft('');
         setHeadmasterRemarkDraft('');
+        setRemarksHydratedStudentId(null);
+        setRemarksDirty(false);
       }
-      setTermReport(data);
+      setTermReport(reportWithFresh);
+      setAutoSaveStatus('idle');
     } catch (e: any) {
       toast({ title: 'Failed to load report', description: e?.message, variant: 'destructive' });
     } finally { setReportLoading(false); }
+  };
+
+  const handleLoadReport = async () => {
+    if (activeTab === 'report' && remarksDirty && selectedReportStudentId && !isAdminViewer) {
+      const ok = await flushPendingRemarksSave();
+      if (!ok) return;
+    }
+    await loadReportInternal();
   };
 
   const handleToggleRelease = async () => {
@@ -838,30 +1186,28 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
     setShowReleaseConfirm(true);
   };
 
-  const handleSelectReportStudent = async (studentId: number) => {
-    if (studentId === selectedReportStudentId) return;
-
-    let reportSnapshot = termReport;
-    if (selectedReportStudentId && reportSnapshot && !isHeadmasterGradesMode && !isAdminViewer) {
-      const updatedRemarks = await saveReportRemarksForStudent(selectedReportStudentId, { silent: true });
-      if (updatedRemarks) {
-        reportSnapshot = { ...reportSnapshot, teacherRemarks: updatedRemarks };
-      }
-    }
-
+  const switchToReportStudent = async (studentId: number) => {
     setSelectedReportStudentId(studentId);
-    if (reportSnapshot) {
-      const studentIds = reportSnapshot.students.map((s) => s.studentId);
-      const promotedState = derivePromotedToState(reportSnapshot.teacherRemarks || {}, studentIds);
-      setClassPromotedTo(promotedState.classPromotedTo);
-      setPromotedOverrides(promotedState.promotedOverrides);
-      applyStudentReportFields(studentId, reportSnapshot, promotedState);
-    }
+    setRemarksHydratedStudentId(null);
+    if (!termReport) return;
+    const studentIds = termReport.students.map((s) => s.studentId);
+    const withFresh = await mergeFreshRemarksForStudent(studentId, termReport);
+    const promotedState = derivePromotedToState(withFresh.teacherRemarks || {}, studentIds);
+    setClassPromotedTo(promotedState.classPromotedTo);
+    setPromotedOverrides(promotedState.promotedOverrides);
+    setTermReport(withFresh);
+    applyStudentReportFields(studentId, withFresh, promotedState);
+    setAutoSaveStatus('idle');
+  };
+
+  const handleSelectReportStudent = (studentId: number) => {
+    if (studentId === selectedReportStudentId) return;
+    runWithUnsavedGuard(() => switchToReportStudent(studentId));
   };
 
   const saveReportRemarks = async () => {
     if (!selectedReportStudentId) return;
-    await saveReportRemarksForStudent(selectedReportStudentId);
+    await saveReportRemarksForStudent(selectedReportStudentId, { skipBulk: true });
   };
 
   const downloadTermReportPdf = () => {
@@ -916,13 +1262,23 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
     const newState = !termReport.isReleased;
     setReleaseLoading(true);
     try {
-      await apiService.post('/grades/release-report', { classId: Number(selectedClassId), release: newState });
+      await saveAllStudentsRemarksBeforeRelease();
+      await apiService.post('/grades/release-report', {
+        classId: Number(selectedClassId),
+        release: newState,
+        signatures: {
+          classTeacherSig: classTeacherSig || null,
+          headTeacherSig: headTeacherSig || null,
+          headmasterTitle: termReport.headmasterTitle || 'Headmaster',
+          headmasterName: termReport.headmasterName || null,
+        },
+      });
       setTermReport(prev => prev ? { ...prev, isReleased: newState } : prev);
       toast({
         title: newState ? 'Report Released' : 'Report Hidden',
         description: newState
-          ? 'Parents can now view the term report on the portal.'
-          : 'The report has been hidden from the parent portal.',
+          ? 'Parents can now view this term report.'
+          : 'Report hidden from parents. Your saved copy remains in Student Records.',
       });
     } catch (e: any) {
       toast({ title: 'Error', description: e?.message, variant: 'destructive' });
@@ -948,6 +1304,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
         .name-col{text-align:left}
         .pos-1{background:#fef9c3}.pos-2{background:#f1f5f9}.pos-3{background:#fff7ed}
         h2,p{text-align:center;margin:4px 0}
+        .student-photo-print{display:none!important}
       </style></head><body>${content.innerHTML}</body></html>
     `);
     win.document.close();
@@ -1044,7 +1401,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
         <CardContent className="pt-4 px-4 sm:px-6">
           <div className="space-y-1.5">
             <Label>Class</Label>
-            <Select value={selectedClassId} onValueChange={setSelectedClassId}>
+            <Select value={selectedClassId} onValueChange={handleClassChange}>
               <SelectTrigger className="h-12 min-h-[48px] text-base sm:text-sm rounded-xl"><SelectValue placeholder="Select a class" /></SelectTrigger>
               <SelectContent>
                 {teacherClasses.map(c => (
@@ -1072,16 +1429,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                     void handleLoadReport();
                     return;
                   }
-                  if (
-                    activeTab === 'report' &&
-                    selectedReportStudentId &&
-                    termReport &&
-                    !isHeadmasterGradesMode &&
-                    !isAdminViewer
-                  ) {
-                    void saveReportRemarksForStudent(selectedReportStudentId, { silent: true });
-                  }
-                  setActiveTab('grades');
+                  runWithUnsavedGuard(() => setActiveTab('grades'));
                 }}
                 className={`flex items-center gap-1.5 px-4 min-h-[48px] shrink-0 text-sm font-medium border-b-2 transition-colors touch-manipulation ${activeTab === tab.key ? 'border-purple-600 text-purple-700' : 'border-transparent text-gray-500 hover:text-gray-700'
                   }`}
@@ -1518,7 +1866,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                           </Button>
                         )}
                         <Button variant="outline" size="sm" onClick={handlePrint}>
-                          <Printer className="w-4 h-4 mr-2" /> Print
+                          <Printer className="w-4 h-4 mr-2" /> Print Class Table
                         </Button>
                       </div>
                     </CardTitle>
@@ -1557,6 +1905,13 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                           <Button size="sm" onClick={saveReportRemarks} disabled={!selectedReportStudentId || remarkSaving}>
                             <Save className="w-4 h-4 mr-1.5" /> {remarkSaving ? 'Saving...' : 'Save Report Details'}
                           </Button>
+                          {autoSaveStatus === 'saving' ? (
+                            <span className="text-xs text-slate-500">Auto-saving…</span>
+                          ) : autoSaveStatus === 'saved' && !remarksDirty ? (
+                            <span className="text-xs text-green-600">All changes saved</span>
+                          ) : remarksDirty ? (
+                            <span className="text-xs text-amber-600">Unsaved changes</span>
+                          ) : null}
                         </div>
                       </div>
 
@@ -1659,11 +2014,12 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                   <input 
                                     type="text" 
                                     value={reopeningDateDraft} 
-                                    onChange={(e) => setReopeningDateDraft(e.target.value)}
+                                    onChange={(e) => { setReopeningDateDraft(e.target.value); markRemarksDirty(); }}
                                     readOnly={isHeadmasterGradesMode || isAdminViewer}
+                                    placeholder="Enter reopening date"
                                     className="flex-grow border-b border-black font-extrabold text-sm pl-2 bg-transparent focus:outline-none uppercase border-none py-0 m-0 no-print"
                                   />
-                                  <span className="hidden print:inline flex-grow border-b border-black font-extrabold text-sm pl-2 uppercase">{reopeningDateDraft}</span>
+                                  <span className="hidden print:inline flex-grow border-b border-black font-extrabold text-sm pl-2 uppercase">{reopeningDateDraft || '—'}</span>
                                 </div>
                               </div>
 
@@ -1718,7 +2074,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                   <input 
                                     type="text" 
                                     value={attendanceDraft} 
-                                    onChange={(e) => setAttendanceDraft(e.target.value)}
+                                    onChange={(e) => { setAttendanceDraft(e.target.value); markRemarksDirty(); }}
                                     placeholder="Present days"
                                     className="border-b border-black font-bold pl-2 bg-transparent focus:outline-none w-16 no-print text-center"
                                   />
@@ -1728,7 +2084,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                   <input 
                                     type="text" 
                                     value={attendanceOutOfDraft} 
-                                    onChange={(e) => setAttendanceOutOfDraft(e.target.value)}
+                                    onChange={(e) => { setAttendanceOutOfDraft(e.target.value); markRemarksDirty(); }}
                                     readOnly={isHeadmasterGradesMode || isAdminViewer}
                                     placeholder="Total days"
                                     className="border-b border-black font-bold pl-2 bg-transparent focus:outline-none w-16 no-print text-center"
@@ -1740,10 +2096,6 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                     type="text" 
                                     value={promotedToDraft} 
                                     onChange={(e) => handlePromotedToChange(e.target.value)}
-                                    onBlur={() => {
-                                      if (!selectedReportStudentId || isHeadmasterGradesMode || isAdminViewer) return;
-                                      void saveReportRemarksForStudent(selectedReportStudentId, { silent: true });
-                                    }}
                                     placeholder="Next class name if promoted"
                                     readOnly={isHeadmasterGradesMode || isAdminViewer}
                                     className="flex-grow border-b border-black font-bold pl-2 bg-transparent focus:outline-none no-print uppercase"
@@ -1751,17 +2103,16 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                   {!isHeadmasterGradesMode && !isAdminViewer && promotedToDraft && (
                                     <button
                                       type="button"
-                                      onClick={() => {
-                                        setClassPromotedTo(promotedToDraft);
-                                        setPromotedOverrides({});
-                                        toast({ title: 'Class default updated', description: 'Save to apply this promoted-to value for all students.' });
-                                      }}
-                                      className="no-print text-[9px] text-purple-600 hover:underline font-bold uppercase whitespace-nowrap"
+                                      disabled={applyPromotedLoading}
+                                      onClick={() => void handleApplyPromotedToAll()}
+                                      className="no-print text-[9px] text-purple-600 hover:underline font-bold uppercase whitespace-nowrap disabled:opacity-50"
                                     >
-                                      Apply to all
+                                      {applyPromotedLoading ? 'Applying…' : 'Apply to all'}
                                     </button>
                                   )}
-                                  <span className="hidden print:inline flex-grow border-b border-black font-bold pl-2 uppercase">{getPromotedToForStudent(selectedReportStudentId) || '—'}</span>
+                                  <span className="hidden print:inline flex-grow border-b border-black font-bold pl-2 uppercase">
+                                    {getPromotedToForStudent(selectedReportStudentId) || promotedToDraft || '—'}
+                                  </span>
                                 </div>
 
                                 <div className="flex items-center text-xs">
@@ -1769,11 +2120,11 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                   <input 
                                     type="text" 
                                     value={conductDraft} 
-                                    onChange={(e) => setConductDraft(e.target.value)}
+                                    onChange={(e) => { setConductDraft(e.target.value); markRemarksDirty(); }}
                                     readOnly={isHeadmasterGradesMode || isAdminViewer}
                                     className="flex-grow border-b border-black font-bold pl-2 bg-transparent focus:outline-none no-print uppercase"
                                   />
-                                  <span className="hidden print:inline flex-grow border-b border-black font-bold pl-2 uppercase">{conductDraft}</span>
+                                  <span className="hidden print:inline flex-grow border-b border-black font-bold pl-2 uppercase">{conductDraft || '—'}</span>
                                 </div>
 
                                 <div className="flex items-center text-xs">
@@ -1781,11 +2132,11 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                   <input 
                                     type="text" 
                                     value={attitudeDraft} 
-                                    onChange={(e) => setAttitudeDraft(e.target.value)}
+                                    onChange={(e) => { setAttitudeDraft(e.target.value); markRemarksDirty(); }}
                                     readOnly={isHeadmasterGradesMode || isAdminViewer}
                                     className="flex-grow border-b border-black font-bold pl-2 bg-transparent focus:outline-none no-print uppercase"
                                   />
-                                  <span className="hidden print:inline flex-grow border-b border-black font-bold pl-2 uppercase">{attitudeDraft}</span>
+                                  <span className="hidden print:inline flex-grow border-b border-black font-bold pl-2 uppercase">{attitudeDraft || '—'}</span>
                                 </div>
 
                                 <div className="flex items-center text-xs">
@@ -1793,18 +2144,18 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                   <input 
                                     type="text" 
                                     value={interestDraft} 
-                                    onChange={(e) => setInterestDraft(e.target.value)}
+                                    onChange={(e) => { setInterestDraft(e.target.value); markRemarksDirty(); }}
                                     readOnly={isHeadmasterGradesMode || isAdminViewer}
                                     className="flex-grow border-b border-black font-bold pl-2 bg-transparent focus:outline-none no-print uppercase"
                                   />
-                                  <span className="hidden print:inline flex-grow border-b border-black font-bold pl-2 uppercase">{interestDraft}</span>
+                                  <span className="hidden print:inline flex-grow border-b border-black font-bold pl-2 uppercase">{interestDraft || '—'}</span>
                                 </div>
 
                                 <div className="flex items-start text-xs">
                                   <span className="font-bold uppercase min-w-[180px] pt-1">CLASS TEACHER'S REMARKS:</span>
                                   <textarea
                                     value={teacherRemarkDraft} 
-                                    onChange={(e) => setTeacherRemarkDraft(e.target.value)}
+                                    onChange={(e) => { setTeacherRemarkDraft(e.target.value); markRemarksDirty(); }}
                                     readOnly={isHeadmasterGradesMode || isAdminViewer}
                                     rows={2}
                                     className="flex-grow border-b border-black font-bold pl-2 bg-transparent focus:outline-none no-print resize-none uppercase"
@@ -1816,10 +2167,10 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                   <span className="font-bold uppercase min-w-[180px] pt-1">HEADMASTER'S REMARKS:</span>
                                   <textarea
                                     value={headmasterRemarkDraft}
-                                    onChange={(e) => setHeadmasterRemarkDraft(e.target.value)}
-                                    readOnly={isAdminViewer && !isHeadmasterGradesMode}
+                                    onChange={(e) => { setHeadmasterRemarkDraft(e.target.value); markRemarksDirty(); }}
+                                    readOnly={!canEditHeadmasterRemarks}
                                     rows={2}
-                                    placeholder={isHeadmasterGradesMode ? 'Enter your remarks for this student…' : 'Headmaster remarks'}
+                                    placeholder={canEditHeadmasterRemarks ? 'Enter headmaster remarks for this student…' : 'Headmaster remarks'}
                                     className="flex-grow border-b border-black font-bold pl-2 bg-transparent focus:outline-none no-print resize-none uppercase"
                                   />
                                   <span className="hidden print:inline flex-grow border-b border-black font-bold pl-2 uppercase">{headmasterRemarkDraft || '—'}</span>
@@ -1988,7 +2339,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                   <td className={`border border-gray-200 px-3 py-2 sticky left-0 z-10 ${rowBg}`}>
                                     <div className="flex items-center gap-2">
                                       {/* Passport photo */}
-                                      <div className="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center shrink-0 text-white text-xs font-bold">
+                                      <div className="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center shrink-0 text-white text-xs font-bold student-photo-print">
                                         {photoUrl
                                           ? <img src={resolvePhotoUrl(photoUrl)} alt={`${s.firstName} ${s.lastName}`} className="w-full h-full object-cover" loading="lazy" />
                                           : `${s.firstName[0]}${s.lastName[0]}`}
@@ -2147,51 +2498,62 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showReleaseConfirm} onOpenChange={setShowReleaseConfirm}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+      <AlertDialog open={unsavedDialogOpen} onOpenChange={(open) => { if (!open) { pendingNavActionRef.current = null; setUnsavedDialogOpen(false); } }}>
+        <AlertDialogContent className="rounded-[1rem] border-t-4 border-amber-500 shadow-[0_20px_60px_rgba(0,0,0,0.15)]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Save report card changes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved changes for this student&apos;s report card. Save before leaving?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <Button type="button" variant="outline" onClick={() => void handleUnsavedDiscard()}>
+              Discard
+            </Button>
+            <AlertDialogAction onClick={(e) => { e.preventDefault(); void handleUnsavedSaveAndContinue(); }}>
+              Save &amp; continue
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showReleaseConfirm} onOpenChange={setShowReleaseConfirm}>
+        <AlertDialogContent className={`rounded-[1rem] border-t-4 shadow-[0_20px_60px_rgba(0,0,0,0.15)] ${
+          termReport?.isReleased ? 'border-orange-500' : 'border-green-500'
+        }`}>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
               {termReport?.isReleased ? <EyeOff className="w-5 h-5 text-orange-600" /> : <Send className="w-5 h-5 text-green-600" />}
               {termReport?.isReleased ? 'Hide Results from Parents?' : 'Release Results to Parents?'}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 pt-1">
-            <div className={`rounded-xl border p-3 text-sm ${
-              termReport?.isReleased
-                ? 'border-orange-200 bg-orange-50 text-orange-700'
-                : 'border-green-200 bg-green-50 text-green-700'
-            }`}>
+            </AlertDialogTitle>
+            <AlertDialogDescription>
               {termReport?.isReleased
-                ? 'Parents will no longer see this report in their portal until you release it again.'
-                : 'Parents will be able to view this report immediately in their portal.'}
-            </div>
-            <div className="flex items-center justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowReleaseConfirm(false)}
-                disabled={releaseLoading}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                onClick={confirmToggleRelease}
-                disabled={releaseLoading}
-                className={termReport?.isReleased
-                  ? 'bg-orange-600 hover:bg-orange-700 text-white'
-                  : 'bg-green-600 hover:bg-green-700 text-white'}
-              >
-                {releaseLoading
-                  ? 'Please wait...'
-                  : termReport?.isReleased
-                    ? 'Yes, Hide Results'
-                    : 'Yes, Release Results'}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+                ? 'Parents will no longer see this report in their portal. Your saved report card stays in Student Records.'
+                : 'Parents will be able to view this report in their portal.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={releaseLoading}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={releaseLoading}
+              onClick={(e) => {
+                e.preventDefault();
+                void confirmToggleRelease();
+              }}
+              className={termReport?.isReleased
+                ? 'bg-orange-600 hover:bg-orange-700'
+                : 'bg-green-600 hover:bg-green-700'}
+            >
+              {releaseLoading
+                ? 'Please wait...'
+                : termReport?.isReleased
+                  ? 'Yes, Hide Results'
+                  : 'Yes, Release Results'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <SignaturePad
         open={isSigPadOpen}

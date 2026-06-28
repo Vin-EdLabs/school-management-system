@@ -20,6 +20,12 @@ import { getStudentBirthdaysForParent } from '../services/birthdayService.js';
 import { loadActiveFeeStructureLinesByClassTerm } from '../services/feeStructureItemsService.js';
 import { listAdmissionLetters, getAdmissionLetterPdf } from '../services/admissionLetterService.js';
 import { getInvoiceById, getInvoicePdfPayload, listInvoices } from '../services/invoiceService.js';
+import {
+  buildParentReportFromArchive,
+  getArchivedReportForStudentTerm,
+} from '../services/reportCardArchiveService.js';
+import { getSchoolActiveTermYear } from '../services/gradesTermContext.js';
+import { loadStudentTermRemarks } from '../services/termReportRemarksService.js';
 
 const router = express.Router();
 
@@ -1412,22 +1418,33 @@ router.get('/term-report', authenticateParent, async (req: ParentRequest, res) =
       });
     }
 
-    const remarksRes = await query(
-      `SELECT remark_type, remark
-       FROM term_report_comments
-       WHERE tenant_id = $1 AND student_id = $2
-         AND class_id = $3 AND term = $4 AND academic_year = $5 AND subject IS NULL`,
-      [tenantId, studentId, classId, currentTerm, currentYear]
+    const archivedRow = await getArchivedReportForStudentTerm(
+      tenantId,
+      studentId,
+      currentTerm,
+      currentYear
     );
-    const teacherRemark = remarksRes.rows.find((r: any) => r.remark_type === 'teacher')?.remark || '';
-    const headmasterRemark = remarksRes.rows.find((r: any) => r.remark_type === 'headmaster')?.remark || '';
+    if (archivedRow) {
+      return res.json({
+        report: buildParentReportFromArchive(archivedRow, studentId),
+      });
+    }
 
-    // Get all assignments for this class
+    const { teacherRemark, headmasterRemark } = await loadStudentTermRemarks(
+      tenantId,
+      classId,
+      studentId,
+      currentTerm,
+      currentYear
+    );
+
+    // Get all assignments for this class (current term only)
     const assignmentsRes = await query(
       `SELECT id, subject, name, assignment_type, max_score
        FROM grade_assignments WHERE tenant_id = $1 AND class_id = $2
+         AND term = $3 AND academic_year = $4
        ORDER BY subject, name`,
-      [tenantId, classId]
+      [tenantId, classId, currentTerm, currentYear]
     );
     const assignments = assignmentsRes.rows;
     if (assignments.length === 0) {

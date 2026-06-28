@@ -6,6 +6,11 @@ import { setTenantContext } from '../middleware/tenant.js';
 import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 import { isGraduatedEnrollment } from '../services/studentFeeBalanceService.js';
 import { resolveSchoolDisplayName } from '../services/schoolBrandingService.js';
+import {
+  getReportCardArchiveById,
+  getStudentAcademicTranscript,
+  getStudentReportCardArchiveList,
+} from '../services/reportCardArchiveService.js';
 
 const router = express.Router();
 
@@ -74,6 +79,107 @@ router.get('/profile-lookup', requireRole('super-admin', 'administrator', 'headm
     res.status(500).json({ error: 'Failed to lookup profile' });
   }
 });
+
+/** List all archived report cards for a student */
+router.get(
+  '/students/:studentId/report-card-archive',
+  requireRole('super-admin', 'administrator', 'headmaster'),
+  async (req: AuthRequest, res) => {
+    try {
+      let tenantId = req.user!.tenantId;
+      if (tenantId == null && req.user!.role === 'super-admin' && req.query.tenantId) {
+        tenantId = parseInt(String(req.query.tenantId), 10);
+      }
+      if (tenantId == null) {
+        return res.status(400).json({ error: 'School context required' });
+      }
+      const studentId = parseInt(String(req.params.studentId), 10);
+      if (!Number.isFinite(studentId)) {
+        return res.status(400).json({ error: 'Invalid student ID' });
+      }
+
+      const studentCheck = await query(
+        'SELECT id FROM students WHERE id = $1 AND tenant_id = $2',
+        [studentId, tenantId]
+      );
+      if (!studentCheck.rows.length) {
+        return res.status(404).json({ error: 'Student not found' });
+      }
+
+      const archives = await getStudentReportCardArchiveList(tenantId, studentId);
+      res.json({ archives });
+    } catch (error) {
+      console.error('Report card archive list error:', error);
+      res.status(500).json({ error: 'Failed to fetch report card history' });
+    }
+  }
+);
+
+/** Get a single archived report card (full snapshot) */
+router.get(
+  '/report-card-archive/:archiveId',
+  requireRole('super-admin', 'administrator', 'headmaster'),
+  async (req: AuthRequest, res) => {
+    try {
+      let tenantId = req.user!.tenantId;
+      if (tenantId == null && req.user!.role === 'super-admin' && req.query.tenantId) {
+        tenantId = parseInt(String(req.query.tenantId), 10);
+      }
+      if (tenantId == null) {
+        return res.status(400).json({ error: 'School context required' });
+      }
+      const archiveId = parseInt(String(req.params.archiveId), 10);
+      if (!Number.isFinite(archiveId)) {
+        return res.status(400).json({ error: 'Invalid archive ID' });
+      }
+
+      const archive = await getReportCardArchiveById(tenantId, archiveId);
+      if (!archive) {
+        return res.status(404).json({ error: 'Archived report card not found' });
+      }
+
+      res.json({ archive });
+    } catch (error) {
+      console.error('Report card archive detail error:', error);
+      res.status(500).json({ error: 'Failed to fetch archived report card' });
+    }
+  }
+);
+
+/** Academic transcript across all archived terms */
+router.get(
+  '/students/:studentId/academic-transcript',
+  requireRole('super-admin', 'administrator', 'headmaster'),
+  async (req: AuthRequest, res) => {
+    try {
+      let tenantId = req.user!.tenantId;
+      if (tenantId == null && req.user!.role === 'super-admin' && req.query.tenantId) {
+        tenantId = parseInt(String(req.query.tenantId), 10);
+      }
+      if (tenantId == null) {
+        return res.status(400).json({ error: 'School context required' });
+      }
+      const studentId = parseInt(String(req.params.studentId), 10);
+      if (!Number.isFinite(studentId)) {
+        return res.status(400).json({ error: 'Invalid student ID' });
+      }
+
+      const studentCheck = await query(
+        'SELECT id FROM students WHERE id = $1 AND tenant_id = $2',
+        [studentId, tenantId]
+      );
+      if (!studentCheck.rows.length) {
+        return res.status(404).json({ error: 'Student not found' });
+      }
+
+      const transcript = await getStudentAcademicTranscript(tenantId, studentId);
+      res.json(transcript);
+    } catch (error) {
+      console.error('Academic transcript error:', error);
+      res.status(500).json({ error: 'Failed to fetch academic transcript' });
+    }
+  }
+);
 
 function buildStudentDetails(student: any) {
   return {

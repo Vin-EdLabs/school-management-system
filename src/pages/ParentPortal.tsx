@@ -30,6 +30,8 @@ import {
 import InvoiceDocument from '@/components/invoices/InvoiceDocument';
 import { buildInvoiceFilename, downloadInvoicePdf } from '@/components/invoices/buildInvoicePdf';
 import { createRoot } from 'react-dom/client';
+import ParentReportCardMobileViewport from '@/components/parent/ParentReportCardMobileViewport';
+import { parseTeacherRemarkDetails } from '@/components/reports/termReportTypes';
 import ParentImpersonationBanner, {
   parentImpersonationActive,
   parentImpersonationBannerOffsetClass,
@@ -212,36 +214,6 @@ const calculateBECE = (subjectScores: Record<string, { score: number }>) => {
   const aggregate = coreSum + electiveSum;
 
   return { cores, bestElectives, aggregate };
-};
-
-const parseTeacherRemarkDetails = (rawRemark: string) => {
-  try {
-    if (rawRemark && rawRemark.trim().startsWith('{')) {
-      const parsed = JSON.parse(rawRemark);
-      return {
-        text: parsed.text ?? '',
-        conduct: parsed.conduct ?? 'Humble',
-        attitude: parsed.attitude ?? 'Dependable',
-        interest: parsed.interest ?? 'Sports',
-        attendance: parsed.attendance ?? '',
-        attendanceOutOf: parsed.attendanceOutOf ?? '67',
-        promotedTo: parsed.promotedTo ?? '',
-        reopeningDate: parsed.reopeningDate ?? '21st April, 2026',
-      };
-    }
-  } catch (e) {
-    // fallback
-  }
-  return {
-    text: rawRemark ?? '',
-    conduct: 'Humble',
-    attitude: 'Dependable',
-    interest: 'Sports',
-    attendance: '',
-    attendanceOutOf: '67',
-    promotedTo: '',
-    reopeningDate: '21st April, 2026',
-  };
 };
 
 const positionSuffix = (n: number) =>
@@ -2133,7 +2105,9 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
       {/* ── Content ── */}
       <main
-        className={`relative z-10 max-w-6xl mx-auto px-3.5 sm:px-6 pt-24 pb-28 sm:pt-32 sm:pb-8${showSwitchOverlay ? ' overflow-hidden' : ''}`}
+        className={`relative z-10 max-w-6xl mx-auto px-3.5 sm:px-6 pb-28 sm:pb-8${
+          parentImpersonationActive(tenantId) ? ' pt-[7.5rem] sm:pt-[9.5rem]' : ' pt-24 sm:pt-32'
+        }${showSwitchOverlay ? ' overflow-hidden' : ''}`}
         aria-hidden={showSwitchOverlay ? true : undefined}
       >
         {showSwitchOverlay ? (
@@ -2469,15 +2443,36 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               </div>
             ) : (() => {
               const { report } = termReport;
-              const myRecord = report.students.find((s: any) => s.isCurrentStudent);
-              if (!myRecord) return null;
+              const myRecord =
+                report.students?.find((s: any) => s.isCurrentStudent) ||
+                report.students?.find((s: any) => Number(s.studentId) === Number(report.myStudentId)) ||
+                report.students?.find((s: any) => Number(s.studentId) === Number(student?.id));
+
+              if (!myRecord) {
+                return (
+                  <div className="bg-white border border-gray-200 rounded-xl p-8 text-center shadow-sm">
+                    <Clock className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                    <p className="text-sm font-medium text-gray-600">Report card data could not be loaded for this student.</p>
+                    <p className="text-xs text-gray-400 mt-1">Pull down to refresh or contact the school if this continues.</p>
+                  </div>
+                );
+              }
 
               const bece = calculateBECE(myRecord.subjectScores);
               const photoUrl = resolveMediaUrl(myRecord.passportPhotoUrl);
-              const parsedRemarks = parseTeacherRemarkDetails(report.teacherRemark || '');
+              const parsedFromRemark = parseTeacherRemarkDetails(report.teacherRemark || '');
+              const parsedRemarks = { ...parsedFromRemark };
+              if (report.attendance) {
+                parsedRemarks.attendance = report.attendance.attendance || parsedRemarks.attendance;
+                parsedRemarks.attendanceOutOf = report.attendance.attendanceOutOf || parsedRemarks.attendanceOutOf;
+              }
 
               return (
-                <div className="space-y-4">
+                <div className="space-y-4 w-full max-w-full overflow-x-hidden">
+                  <ParentReportCardMobileViewport
+                    contentRef={reportCardRef}
+                    layoutKey={myRecord.studentId}
+                  >
                   {/* Beautiful Report Card Container */}
                   <div
                     ref={reportCardRef}
@@ -2565,7 +2560,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                       </div>
                       <div className="flex items-center">
                         <span className="font-bold uppercase min-w-[130px]">REOPENING DATE:</span>
-                        <span className="flex-grow border-b border-black font-extrabold text-sm pl-2 uppercase">{parsedRemarks.reopeningDate}</span>
+                        <span className="flex-grow border-b border-black font-extrabold text-sm pl-2 uppercase">{parsedRemarks.reopeningDate || '—'}</span>
                       </div>
                     </div>
 
@@ -2629,17 +2624,17 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
                       <div className="flex items-center text-xs">
                         <span className="font-bold uppercase min-w-[100px]">CONDUCT:</span>
-                        <span className="flex-grow border-b border-black font-bold pl-2 uppercase">{parsedRemarks.conduct}</span>
+                        <span className="flex-grow border-b border-black font-bold pl-2 uppercase">{parsedRemarks.conduct || '—'}</span>
                       </div>
 
                       <div className="flex items-center text-xs">
                         <span className="font-bold uppercase min-w-[100px]">ATTITUDE:</span>
-                        <span className="flex-grow border-b border-black font-bold pl-2 uppercase">{parsedRemarks.attitude}</span>
+                        <span className="flex-grow border-b border-black font-bold pl-2 uppercase">{parsedRemarks.attitude || '—'}</span>
                       </div>
 
                       <div className="flex items-center text-xs">
                         <span className="font-bold uppercase min-w-[100px]">INTEREST:</span>
-                        <span className="flex-grow border-b border-black font-bold pl-2 uppercase">{parsedRemarks.interest}</span>
+                        <span className="flex-grow border-b border-black font-bold pl-2 uppercase">{parsedRemarks.interest || '—'}</span>
                       </div>
 
                       <div className="flex items-start text-xs">
@@ -2713,6 +2708,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                     </div>
 
                   </div>
+                  </ParentReportCardMobileViewport>
                 </div>
               );
             })()}

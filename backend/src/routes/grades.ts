@@ -7,6 +7,14 @@ import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.j
 import { getIO } from '../socket.js';
 import { sendPushToStudentParents } from '../services/webPushService.js';
 import { resolveSchoolDisplayName } from '../services/schoolBrandingService.js';
+import { archiveClassReportCardsOnRelease, archiveStudentReportCard } from '../services/reportCardArchiveService.js';
+import { getSchoolActiveTermYear } from '../services/gradesTermContext.js';
+import {
+  getSchoolTermYear,
+  loadClassTermRemarks,
+  loadStudentTermRemarks,
+  upsertTermReportRemark,
+} from '../services/termReportRemarksService.js';
 
 const router = express.Router();
 
@@ -33,10 +41,15 @@ router.get('/assignments', async (req: AuthRequest, res) => {
     const { classId, subject } = req.query;
     if (!classId) return res.status(400).json({ error: 'classId required' });
 
-    let sql = `SELECT id, class_id, subject, name, assignment_type, max_score, due_date, created_at
+    const { term, academicYear } = await getSchoolActiveTermYear(tenantId);
+    if (!term || !academicYear) {
+      return res.status(400).json({ error: 'No active academic term is set for this school' });
+    }
+
+    let sql = `SELECT id, class_id, subject, name, assignment_type, max_score, due_date, created_at, term, academic_year
                FROM grade_assignments
-               WHERE tenant_id = $1 AND class_id = $2`;
-    const params: any[] = [tenantId, classId];
+               WHERE tenant_id = $1 AND class_id = $2 AND term = $3 AND academic_year = $4`;
+    const params: any[] = [tenantId, classId, term, academicYear];
 
     if (subject) {
       params.push(subject);
@@ -59,11 +72,16 @@ router.get('/subjects', async (req: AuthRequest, res) => {
     const { classId } = req.query;
     if (!classId) return res.status(400).json({ error: 'classId required' });
 
+    const { term, academicYear } = await getSchoolActiveTermYear(tenantId);
+    if (!term || !academicYear) {
+      return res.json([]);
+    }
+
     const result = await query(
       `SELECT DISTINCT subject FROM grade_assignments
-       WHERE tenant_id = $1 AND class_id = $2
+       WHERE tenant_id = $1 AND class_id = $2 AND term = $3 AND academic_year = $4
        ORDER BY subject`,
-      [tenantId, classId]
+      [tenantId, classId, term, academicYear]
     );
     res.json(result.rows.map((r: any) => r.subject));
   } catch (error) {
@@ -80,10 +98,16 @@ router.post('/assignments', async (req: AuthRequest, res) => {
     if (!classId || !name || !subject) {
       return res.status(400).json({ error: 'classId, subject, and name required' });
     }
+
+    const { term, academicYear } = await getSchoolActiveTermYear(tenantId);
+    if (!term || !academicYear) {
+      return res.status(400).json({ error: 'No active academic term is set. Activate a term before adding assessments.' });
+    }
+
     const result = await query(
-      `INSERT INTO grade_assignments (tenant_id, class_id, subject, name, assignment_type, max_score, due_date)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [tenantId, classId, subject.trim(), name.trim(), assignmentType || 'Test', parseFloat(maxScore) || 100, dueDate || null]
+      `INSERT INTO grade_assignments (tenant_id, class_id, subject, name, assignment_type, max_score, due_date, term, academic_year)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      [tenantId, classId, subject.trim(), name.trim(), assignmentType || 'Test', parseFloat(maxScore) || 100, dueDate || null, term, academicYear]
     );
     emitTenantDataChanged(tenantId, 'grade-assignment', 'created');
     res.status(201).json(result.rows[0]);
@@ -195,15 +219,19 @@ router.get('/', async (req: AuthRequest, res) => {
         [tenantId, assignmentId]
       );
     } else if (classId) {
+      const { term, academicYear } = await getSchoolActiveTermYear(tenantId);
+      if (!term || !academicYear) {
+        return res.json([]);
+      }
       result = await query(
         `SELECT ${gradeSelect}
          FROM student_grades g
          JOIN students s ON g.student_id = s.id AND s.tenant_id = g.tenant_id
          JOIN grade_assignments a ON g.assignment_id = a.id
          LEFT JOIN users u ON g.graded_by = u.id
-         WHERE g.tenant_id = $1 AND a.class_id = $2
+         WHERE g.tenant_id = $1 AND a.class_id = $2 AND a.term = $3 AND a.academic_year = $4
          ORDER BY a.subject, a.name, s.first_name, s.last_name`,
-        [tenantId, classId]
+        [tenantId, classId, term, academicYear]
       );
     } else if (studentId) {
       result = await query(
@@ -373,13 +401,15 @@ router.get('/term-report', async (req: AuthRequest, res) => {
     const { classId } = req.query;
     if (!classId) return res.status(400).json({ error: 'classId required' });
 
-    // 1. All assignments for this class grouped by subject
+    const { term: activeTerm, academicYear: activeYear } = await getSchoolActiveTermYear(tenantId);
+
+    // 1. All assignments for this class grouped by subject (current term only)
     const assignmentsRes = await query(
       `SELECT id, subject, name, assignment_type, max_score
        FROM grade_assignments
-       WHERE tenant_id = $1 AND class_id = $2
+       WHERE tenant_id = $1 AND class_id = $2 AND term = $3 AND academic_year = $4
        ORDER BY subject, assignment_type, name`,
-      [tenantId, classId]
+      [tenantId, classId, activeTerm, activeYear]
     );
     const assignments: any[] = assignmentsRes.rows;
 
@@ -542,19 +572,13 @@ router.get('/term-report', async (req: AuthRequest, res) => {
       { letter: 'F', minPct: 0, maxPct: 49, description: 'Fail' },
     ];
 
-    // 11. Load saved remarks for this class/term
-    const remarksRes = await query(
-      `SELECT student_id, remark_type, remark
-       FROM term_report_comments
-       WHERE tenant_id = $1 AND class_id = $2 AND term = $3 AND academic_year = $4 AND subject IS NULL`,
-      [tenantId, classId, currentTerm, currentYear]
+    // 11. Load saved remarks for this class/term (latest row per student)
+    const { teacherRemarks, headmasterRemarks } = await loadClassTermRemarks(
+      tenantId,
+      Number(classId),
+      currentTerm,
+      currentYear
     );
-    const teacherRemarks: Record<number, string> = {};
-    const headmasterRemarks: Record<number, string> = {};
-    for (const row of remarksRes.rows) {
-      if (row.remark_type === 'teacher') teacherRemarks[row.student_id] = row.remark || '';
-      if (row.remark_type === 'headmaster') headmasterRemarks[row.student_id] = row.remark || '';
-    }
 
     // 12. Check release status
     const releaseRes = await query(
@@ -649,7 +673,7 @@ router.post('/release-report', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const userId = req.user!.id;
-    const { classId, release } = req.body; // release: boolean
+    const { classId, release, signatures } = req.body; // release: boolean
     if (!classId) return res.status(400).json({ error: 'classId required' });
 
     const settingsRes = await query(
@@ -670,6 +694,18 @@ router.post('/release-report', async (req: AuthRequest, res) => {
     );
 
     emitTenantDataChanged(tenantId, 'term-report-release', 'updated');
+
+    // Always snapshot to permanent records (release or hide). First snapshot is immutable.
+    const archiveResult = await archiveClassReportCardsOnRelease(
+      tenantId,
+      Number(classId),
+      userId,
+      signatures || undefined
+    ).catch((err) => {
+      console.error('Report card archive error:', err);
+      return { archived: 0, updated: 0 };
+    });
+
     if (release !== false) {
       const studentsRes = await query(
         `SELECT id FROM students WHERE tenant_id = $1 AND class_assigned_id = $2`,
@@ -683,7 +719,10 @@ router.post('/release-report', async (req: AuthRequest, res) => {
         }).catch(() => {});
       }
     }
-    res.json({ message: release !== false ? 'Report released to parents' : 'Report hidden from parents' });
+    res.json({
+      message: release !== false ? 'Report released to parents' : 'Report hidden from parents',
+      archive: archiveResult,
+    });
   } catch (error) {
     console.error('Release report error:', error);
     res.status(500).json({ error: 'Failed to update report release status' });
@@ -696,26 +735,14 @@ router.get('/term-report-remarks', async (req: AuthRequest, res) => {
     const { classId, studentId } = req.query;
     if (!classId || !studentId) return res.status(400).json({ error: 'classId and studentId required' });
 
-    const settingsRes = await query(
-      'SELECT current_term, current_year FROM school_settings WHERE tenant_id = $1',
-      [tenantId]
+    const { term, academicYear } = await getSchoolTermYear(tenantId);
+    const result = await loadStudentTermRemarks(
+      tenantId,
+      Number(classId),
+      Number(studentId),
+      term,
+      academicYear
     );
-    const currentTerm = settingsRes.rows[0]?.current_term || '';
-    const currentYear = settingsRes.rows[0]?.current_year || '';
-
-    const remarksRes = await query(
-      `SELECT remark_type, remark
-       FROM term_report_comments
-       WHERE tenant_id = $1 AND class_id = $2 AND student_id = $3
-         AND term = $4 AND academic_year = $5 AND subject IS NULL`,
-      [tenantId, Number(classId), Number(studentId), currentTerm, currentYear]
-    );
-
-    const result: any = { teacherRemark: '', headmasterRemark: '' };
-    for (const row of remarksRes.rows) {
-      if (row.remark_type === 'teacher') result.teacherRemark = row.remark || '';
-      if (row.remark_type === 'headmaster') result.headmasterRemark = row.remark || '';
-    }
     res.json(result);
   } catch (error) {
     console.error('Fetch term report remarks error:', error);
@@ -728,40 +755,78 @@ router.post('/term-report-remarks', async (req: AuthRequest, res) => {
     const tenantId = req.user!.tenantId!;
     const userId = req.user!.id;
     const role = String(req.user!.role || '').toLowerCase();
-    const { classId, studentId, teacherRemark, headmasterRemark } = req.body;
+    const { classId, studentId, teacherRemark, headmasterRemark, signatures } = req.body;
     if (!classId || !studentId) return res.status(400).json({ error: 'classId and studentId required' });
 
-    const settingsRes = await query(
-      'SELECT current_term, current_year FROM school_settings WHERE tenant_id = $1',
-      [tenantId]
-    );
-    const currentTerm = settingsRes.rows[0]?.current_term || '';
-    const currentYear = settingsRes.rows[0]?.current_year || '';
+    const { term, academicYear } = await getSchoolTermYear(tenantId);
+    if (!term || !academicYear) {
+      return res.status(400).json({ error: 'No active academic term is set for this school' });
+    }
 
-    const saveRemark = async (type: string, remark: string | null | undefined) => {
-      if (remark == null) return;
-      await query(
-        `INSERT INTO term_report_comments
-         (tenant_id, class_id, student_id, term, academic_year, subject, remark_type, remark, updated_by, updated_at)
-         VALUES ($1, $2, $3, $4, $5, NULL, $6, $7, $8, NOW())
-         ON CONFLICT (tenant_id, student_id, class_id, term, academic_year, subject, remark_type)
-         DO UPDATE SET remark = EXCLUDED.remark, updated_by = EXCLUDED.updated_by, updated_at = NOW()`,
-        [tenantId, Number(classId), Number(studentId), currentTerm, currentYear, type, remark, userId]
-      );
-    };
+    const saved = { teacherRemark: '', headmasterRemark: '' };
 
     if (role === 'headmaster') {
-      if (headmasterRemark != null) await saveRemark('headmaster', String(headmasterRemark).trim());
+      if (teacherRemark != null) {
+        const value = String(teacherRemark);
+        await upsertTermReportRemark(
+          tenantId, Number(classId), Number(studentId), term, academicYear, 'teacher', value, userId
+        );
+        saved.teacherRemark = value;
+      }
+      if (headmasterRemark != null) {
+        const value = String(headmasterRemark);
+        await upsertTermReportRemark(
+          tenantId, Number(classId), Number(studentId), term, academicYear, 'headmaster', value, userId
+        );
+        saved.headmasterRemark = value;
+      }
     } else {
-      if (teacherRemark != null) await saveRemark('teacher', String(teacherRemark).trim());
-      if (headmasterRemark != null) await saveRemark('headmaster', String(headmasterRemark).trim());
+      if (teacherRemark != null) {
+        const value = String(teacherRemark);
+        await upsertTermReportRemark(
+          tenantId, Number(classId), Number(studentId), term, academicYear, 'teacher', value, userId
+        );
+        saved.teacherRemark = value;
+      }
+      // Headmaster remarks are only written by the headmaster role.
     }
 
     emitTenantDataChanged(tenantId, 'term-report-remark', 'updated');
-    res.json({ message: 'Term report remarks saved' });
+
+    await archiveStudentReportCard(
+      tenantId,
+      Number(classId),
+      Number(studentId),
+      userId,
+      signatures || undefined
+    ).catch((err) => {
+      console.error('Report card archive on save error:', err);
+    });
+
+    res.json({ message: 'Term report remarks saved', ...saved });
   } catch (error) {
     console.error('Save term report remarks error:', error);
     res.status(500).json({ error: 'Failed to save term report remarks' });
+  }
+});
+
+router.post('/sync-report-signatures', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const userId = req.user!.id;
+    const { classId, signatures } = req.body;
+    if (!classId) return res.status(400).json({ error: 'classId required' });
+
+    const result = await archiveClassReportCardsOnRelease(
+      tenantId,
+      Number(classId),
+      userId,
+      signatures || undefined
+    );
+    res.json({ message: 'Report card signatures synced to records', ...result });
+  } catch (error) {
+    console.error('Sync report signatures error:', error);
+    res.status(500).json({ error: 'Failed to sync report card signatures' });
   }
 });
 

@@ -52,34 +52,61 @@ export type ParsedTeacherRemark = {
   reopeningDate: string;
 };
 
+/** Legacy auto-fill values — treat as empty when loading or displaying. */
+const LEGACY_REMARK_PLACEHOLDERS: Record<keyof Omit<ParsedTeacherRemark, 'text'>, Set<string>> = {
+  conduct: new Set(['Humble']),
+  attitude: new Set(['Dependable']),
+  interest: new Set(['Sports']),
+  attendance: new Set(),
+  attendanceOutOf: new Set(),
+  promotedTo: new Set(),
+  reopeningDate: new Set(['21st April, 2026']),
+};
+
+function cleanRemarkField(
+  field: keyof Omit<ParsedTeacherRemark, 'text'>,
+  value: unknown
+): string {
+  const s = String(value ?? '').trim();
+  if (!s) return '';
+  if (LEGACY_REMARK_PLACEHOLDERS[field].has(s)) return '';
+  return s;
+}
+
 export function parseTeacherRemarkDetails(rawRemark: string): ParsedTeacherRemark {
   try {
     if (rawRemark && rawRemark.trim().startsWith('{')) {
       const parsed = JSON.parse(rawRemark);
       return {
-        text: parsed.text ?? '',
-        conduct: parsed.conduct ?? 'Humble',
-        attitude: parsed.attitude ?? 'Dependable',
-        interest: parsed.interest ?? 'Sports',
-        attendance: parsed.attendance ?? '',
-        attendanceOutOf: parsed.attendanceOutOf ?? '',
-        promotedTo: parsed.promotedTo ?? '',
-        reopeningDate: parsed.reopeningDate ?? '21st April, 2026',
+        text: String(parsed.text ?? '').trim(),
+        conduct: cleanRemarkField('conduct', parsed.conduct),
+        attitude: cleanRemarkField('attitude', parsed.attitude),
+        interest: cleanRemarkField('interest', parsed.interest),
+        attendance: cleanRemarkField('attendance', parsed.attendance),
+        attendanceOutOf: cleanRemarkField('attendanceOutOf', parsed.attendanceOutOf),
+        promotedTo: cleanRemarkField('promotedTo', parsed.promotedTo),
+        reopeningDate: cleanRemarkField('reopeningDate', parsed.reopeningDate),
       };
     }
   } catch {
     // fallback
   }
   return {
-    text: rawRemark ?? '',
-    conduct: 'Humble',
-    attitude: 'Dependable',
-    interest: 'Sports',
+    text: String(rawRemark ?? '').trim(),
+    conduct: '',
+    attitude: '',
+    interest: '',
     attendance: '',
     attendanceOutOf: '',
     promotedTo: '',
-    reopeningDate: '21st April, 2026',
+    reopeningDate: '',
   };
+}
+
+/** Class teacher remarks line only — never the raw JSON blob. */
+export function teacherRemarkTextForDisplay(rawRemark: string): string {
+  const parsed = parseTeacherRemarkDetails(rawRemark);
+  return parsed.text;
 }
 
 export function normalizeTeacherRemarks(

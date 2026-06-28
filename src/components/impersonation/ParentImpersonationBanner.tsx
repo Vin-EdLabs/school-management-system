@@ -17,7 +17,7 @@ import ImpersonationTransitionOverlay from './ImpersonationTransitionOverlay';
 import { toast } from '@/hooks/use-toast';
 
 const BANNER_CLASS =
-  'relative sticky top-0 z-[300] flex shrink-0 items-center justify-center border-b border-amber-600/30 bg-amber-500 px-4 py-2 text-amber-950 print:hidden';
+  'relative sticky top-0 z-[300] flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-amber-600/30 bg-amber-500 px-3 py-2 text-amber-950 sm:px-4 print:hidden';
 
 /** Parent portal impersonation banner with Exit */
 const ParentImpersonationBanner: React.FC<{ tenantId: number }> = ({ tenantId }) => {
@@ -67,18 +67,20 @@ const ParentImpersonationBanner: React.FC<{ tenantId: number }> = ({ tenantId })
   return (
     <>
       <div className={BANNER_CLASS}>
-        <div className="flex max-w-[min(100%,40rem)] items-center justify-center gap-2 px-16 text-center">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           <AlertTriangle className="h-4 w-4 shrink-0" />
-          <p className="truncate text-sm font-medium leading-tight">
+          <p className="min-w-0 text-xs font-medium leading-snug sm:text-sm">
             Parent portal · Viewing as{' '}
             <span className="font-bold">{meta.targetName || 'Student'}</span>
-            {meta.schoolName ? ` · ${meta.schoolName}` : ''}
+            {meta.schoolName ? (
+              <span className="hidden sm:inline">{` · ${meta.schoolName}`}</span>
+            ) : null}
           </p>
         </div>
         <Button
           type="button"
           size="sm"
-          className="absolute right-4 top-1/2 h-7 -translate-y-1/2 shrink-0 gap-1.5 bg-amber-950 px-3 text-xs text-amber-50 hover:bg-amber-900"
+          className="h-8 shrink-0 gap-1.5 bg-amber-950 px-3 text-xs text-amber-50 hover:bg-amber-900"
           disabled={exiting}
           onClick={() => void handleExit()}
         >

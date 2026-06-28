@@ -10,9 +10,10 @@ import { useSchool } from '../../contexts/SchoolContext';
 import { apiService } from '../../services/api';
 import { resolveLogoUrl } from '../../services/tenantService';
 import { cn } from '@/lib/utils';
-import { Search, User, FileText, DollarSign, Award, UserCheck, History, Printer, FileDown, FileSpreadsheet } from 'lucide-react';
+import { Search, User, FileText, DollarSign, Award, UserCheck, History, Printer, FileDown, FileSpreadsheet, GraduationCap } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { StudentLedgerStatementPanel } from './StudentLedgerStatementPanel';
+import { StudentReportCardHistory } from './StudentReportCardHistory';
 
 type ProfileType = 'student' | 'teacher' | 'staff' | null;
 
@@ -287,6 +288,7 @@ function StudentProfileView({ profile, onPrint, onExportPDF, onExportExcel }: { 
           <TabsTrigger value="details"><FileText className="h-4 w-4 mr-1" /> Student Details</TabsTrigger>
           <TabsTrigger value="fees"><DollarSign className="h-4 w-4 mr-1" /> Statement</TabsTrigger>
           <TabsTrigger value="academic"><Award className="h-4 w-4 mr-1" /> Academic</TabsTrigger>
+          <TabsTrigger value="report-cards"><GraduationCap className="h-4 w-4 mr-1" /> Report Card History</TabsTrigger>
           <TabsTrigger value="attendance"><UserCheck className="h-4 w-4 mr-1" /> Attendance</TabsTrigger>
           <TabsTrigger value="activity"><History className="h-4 w-4 mr-1" /> Activity Log</TabsTrigger>
         </TabsList>
@@ -386,6 +388,10 @@ function StudentProfileView({ profile, onPrint, onExportPDF, onExportExcel }: { 
               <p className="mt-4 text-sm font-medium">Term Average: {acad.termAverage ?? 0}%</p>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="report-cards" className="space-y-4 records-tab-panel" data-print-label="Report Card History">
+          <StudentReportCardHistory studentId={h.id} studentName={h.fullName} />
         </TabsContent>
 
         <TabsContent value="attendance" className="space-y-4 records-tab-panel" data-print-label="Attendance">

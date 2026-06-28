@@ -48,10 +48,11 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
   const [adminUnreadCount, setAdminUnreadCount] = useState(0);
   const pwaLogo = resolveLogoUrl(school?.logo_url ?? null);
   const isHeadmaster = isHeadmasterRole(user?.role);
-  const showStaffNotifications = user?.role === 'teacher' || user?.role === 'staff' || isHeadmaster;
-  const showAdminNotifications =
-    !!user &&
-    (['administrator', 'finance', 'super-admin'].includes(user.role || '') || isHeadmaster);
+  const showTeacherBell = user?.role === 'teacher' || user?.role === 'staff';
+  const showAdminBell =
+    !!user && (['administrator', 'finance', 'super-admin'].includes(user.role || '') || isHeadmaster);
+  const showAdminNotifications = showAdminBell;
+  const headmasterCombinedUnread = isHeadmaster ? unreadCount + adminUnreadCount : adminUnreadCount;
   const showPersonalTodos = canUsePersonalTodos(user?.role);
   const displayName = user?.fullName?.trim() || user?.username || '';
 
@@ -285,7 +286,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
             logoUrl={pwaLogo}
             className="h-10 w-10 rounded-xl text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-indigo-950/50"
           />
-          {showStaffNotifications && (
+          {showTeacherBell && (
             <Popover open={notifOpen} onOpenChange={setNotifOpen}>
               <PopoverTrigger asChild>
                 <Button
@@ -345,7 +346,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
               </PopoverContent>
             </Popover>
           )}
-          {showAdminNotifications && (
+          {showAdminBell && (
             <Popover open={notifOpen} onOpenChange={setNotifOpen}>
               <PopoverTrigger asChild>
                 <Button
@@ -353,25 +354,68 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
                   variant="ghost"
                   size="icon"
                   className="relative h-10 w-10 shrink-0 rounded-xl text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-indigo-950/50 touch-manipulation"
-                  title="School messages"
+                  title={isHeadmaster ? 'Notifications' : 'School messages'}
                 >
                   <Bell className="h-5 w-5" />
-                  {adminUnreadCount > 0 && (
+                  {headmasterCombinedUnread > 0 && (
                     <span className="absolute -top-0.5 -right-0.5 flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
-                      {adminUnreadCount > 9 ? '9+' : adminUnreadCount}
+                      {headmasterCombinedUnread > 9 ? '9+' : headmasterCombinedUnread}
                     </span>
                   )}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-[min(100vw-1.5rem,22rem)] p-0" align="end" sideOffset={8}>
                 <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-                  <p className="text-xs font-semibold text-foreground">School Messages</p>
+                  <p className="text-xs font-semibold text-foreground">
+                    {isHeadmaster ? 'Notifications' : 'School Messages'}
+                  </p>
+                  {isHeadmaster && items.length > 0 && (
+                    <button
+                      type="button"
+                      className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+                      onClick={() => markAllRead()}
+                    >
+                      Mark all read
+                    </button>
+                  )}
                 </div>
-                <ScrollArea className="max-h-[min(50vh,260px)]">
+                <ScrollArea className="max-h-[min(50vh,320px)]">
+                  {isHeadmaster && items.length > 0 && (
+                    <div className="space-y-1 border-b border-border p-2 pb-3">
+                      <p className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                        Staff alerts
+                      </p>
+                      {items.map((n) => (
+                        <button
+                          key={n.id}
+                          type="button"
+                          onClick={() => markRead(n.id)}
+                          className={`w-full rounded-lg border p-2.5 text-left transition-colors touch-manipulation ${
+                            n.read
+                              ? 'border-border bg-card hover:bg-muted/50'
+                              : 'border-indigo-200/80 bg-indigo-50/60 hover:bg-indigo-100/70 dark:border-indigo-900 dark:bg-indigo-950/40 dark:hover:bg-indigo-950/60'
+                          }`}
+                        >
+                          <p className="text-sm font-semibold text-foreground">{n.title}</p>
+                          <p className="mt-0.5 line-clamp-3 text-xs text-muted-foreground">{n.body}</p>
+                          <p className="mt-1 text-[10px] text-muted-foreground">{new Date(n.at).toLocaleString()}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   {adminNotifications.length === 0 ? (
-                    <p className="p-4 text-xs text-muted-foreground">No unread school messages.</p>
+                    !(isHeadmaster && items.length > 0) ? (
+                      <p className="p-4 text-xs text-muted-foreground">
+                        {isHeadmaster ? 'No notifications yet.' : 'No unread school messages.'}
+                      </p>
+                    ) : null
                   ) : (
                     <div className="space-y-1 p-2">
+                      {isHeadmaster && (
+                        <p className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                          School messages
+                        </p>
+                      )}
                       {adminNotifications.map((notification) => (
                         <button
                           key={notification.id}

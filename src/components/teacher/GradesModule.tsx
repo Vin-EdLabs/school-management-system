@@ -20,7 +20,7 @@ import { toast } from '@/hooks/use-toast';
 import {
   BookOpen, Plus, Eye, ArrowRight, Trophy, Printer,
   ChevronDown, ChevronRight, Trash2, PencilLine, Save,
-  X, Clock, UserCheck, History, Send, EyeOff, CheckCircle2,
+  X, Clock, UserCheck, History, Send, EyeOff, CheckCircle2, AlertTriangle,
 } from 'lucide-react';
 import { apiService } from '../../services/api';
 import { useSchool } from '../../contexts/SchoolContext';
@@ -34,16 +34,19 @@ import {
   type TermReportStudent,
   parseTeacherRemarkDetails,
   derivePromotedToState,
+  deriveReopeningDateState,
   resolveAttendanceForStudent,
   normalizeTeacherRemarks,
+  listIncompleteReportFieldsForStudent,
 } from '../reports/termReportTypes';
 import SignaturePad from '@/components/common/SignaturePad';
+import StaffReportCardViewport from '@/components/reports/StaffReportCardViewport';
 import PasswordConfirmDialog from '@/components/common/PasswordConfirmDialog';
 import type { SubjectClassGroupedByClass, TeacherSubjectClassesResponse } from '@/types/teacherSubjectClass';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface TeacherClass { id: number; class_name: string; }
+interface TeacherClass { id: number; class_name: string; is_main?: boolean; }
 
 interface Assignment {
   id: number;
@@ -253,6 +256,25 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
   const [classTeacherSig, setClassTeacherSig] = useState('');
   const [headTeacherSig, setHeadTeacherSig] = useState('');
   const [sigLoaded, setSigLoaded] = useState(false);
+
+  const isMainClassTeacherForClass = useMemo(() => {
+    if (isHeadmasterGradesMode || isAdminViewer) return false;
+    if (termReport?.isMainClassTeacherForUser != null) return !!termReport.isMainClassTeacherForUser;
+    const row = teacherClasses.find((c) => String(c.id) === selectedClassId);
+    return !!row?.is_main;
+  }, [
+    isHeadmasterGradesMode,
+    isAdminViewer,
+    termReport?.isMainClassTeacherForUser,
+    teacherClasses,
+    selectedClassId,
+  ]);
+  const canEditClassTeacherReport =
+    !isAdminViewer && !isHeadmasterGradesMode && isMainClassTeacherForClass;
+  const canAdminControlRelease = isSchoolAdmin && seesAllClasses;
+  const canReleaseToParents =
+    canEditClassTeacherReport || isHeadmasterGradesMode || canAdminControlRelease;
+  const canDrawHeadmasterSignature = isHeadmasterGradesMode && !isAdminViewer;
 
   // Load signatures from DB on mount
   useEffect(() => {
@@ -638,8 +660,11 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
   const [promotedToDraft, setPromotedToDraft] = useState('');
   const [classPromotedTo, setClassPromotedTo] = useState('');
   const [promotedOverrides, setPromotedOverrides] = useState<Record<number, string>>({});
+  const [classReopeningDate, setClassReopeningDate] = useState('');
   const [reopeningDateDraft, setReopeningDateDraft] = useState('');
   const [applyPromotedLoading, setApplyPromotedLoading] = useState(false);
+  const reopeningApplyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [reopeningApplyStatus, setReopeningApplyStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
 
   const buildArchiveSignaturesPayload = useCallback(() => ({
     classTeacherSig: classTeacherSig || null,
@@ -657,6 +682,14 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
   }, [selectedClassId, termReport]);
 
   const saveSignature = (dataUrl: string) => {
+    if (sigPadType === 'teacher' && !canEditClassTeacherReport) {
+      toast({ title: 'Not allowed', description: 'Only the main class teacher can sign the report card.', variant: 'destructive' });
+      return;
+    }
+    if (sigPadType === 'head' && !canDrawHeadmasterSignature) {
+      toast({ title: 'Not allowed', description: 'Only the headmaster can sign here.', variant: 'destructive' });
+      return;
+    }
     if (sigPadType === 'teacher') {
         setClassTeacherSig(dataUrl);
         if (user?.teacherId) {
@@ -703,11 +736,97 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
     setAttendanceDraft(attendance.attendance);
     setAttendanceOutOfDraft(attendance.attendanceOutOf);
     setPromotedToDraft(overrides[studentId] ?? (classDefault || parsed.promotedTo));
-    setReopeningDateDraft(parsed.reopeningDate);
+    setReopeningDateDraft(classReopeningDate || parsed.reopeningDate);
     setHeadmasterRemarkDraft(report.headmasterRemarks?.[studentId] || '');
     setRemarksHydratedStudentId(studentId);
     setRemarksDirty(false);
-  }, [classPromotedTo, promotedOverrides]);
+  }, [classPromotedTo, promotedOverrides, classReopeningDate]);
+
+  const applyReopeningDateToAll = useCallback(async (date: string) => {
+    if (!selectedClassId || !termReport || !canEditClassTeacherReport) return;
+    const trimmed = date.trim();
+    if (!trimmed) return;
+
+    setReopeningApplyStatus('saving');
+    try {
+      const updatedRemarks: Record<number, string> = {
+        ...normalizeTeacherRemarks(termReport.teacherRemarks),
+      };
+      const signatures = buildArchiveSignaturesPayload();
+      let changed = 0;
+
+      for (const s of termReport.students) {
+        const existing = parseTeacherRemarkDetails(updatedRemarks[s.studentId] || '');
+        if (existing.reopeningDate === trimmed) continue;
+        const isCurrent = s.studentId === selectedReportStudentId;
+        const att = resolveAttendanceForStudent(s.studentId, existing, termReport);
+        const serialized = JSON.stringify({
+          text: isCurrent ? teacherRemarkDraft : existing.text,
+          conduct: isCurrent ? conductDraft : existing.conduct,
+          attitude: isCurrent ? attitudeDraft : existing.attitude,
+          interest: isCurrent ? interestDraft : existing.interest,
+          attendance: isCurrent ? attendanceDraft : (existing.attendance || att.attendance),
+          attendanceOutOf: isCurrent ? attendanceOutOfDraft : (existing.attendanceOutOf || att.attendanceOutOf),
+          promotedTo: isCurrent
+            ? (promotedToDraft.trim() || promotedOverrides[s.studentId] || classPromotedTo || existing.promotedTo)
+            : (promotedOverrides[s.studentId] || classPromotedTo || existing.promotedTo),
+          reopeningDate: trimmed,
+        });
+        await apiService.post('/grades/term-report-remarks', {
+          classId: Number(selectedClassId),
+          studentId: s.studentId,
+          teacherRemark: serialized,
+          signatures,
+        });
+        updatedRemarks[s.studentId] = serialized;
+        changed += 1;
+      }
+
+      if (changed > 0) {
+        const nextReport: TermReport = { ...termReport, teacherRemarks: updatedRemarks };
+        setClassReopeningDate(trimmed);
+        setTermReport(nextReport);
+        setRemarksDirty(false);
+        setAutoSaveStatus('saved');
+      }
+      setReopeningApplyStatus('saved');
+      window.setTimeout(() => setReopeningApplyStatus('idle'), 2000);
+    } catch {
+      setReopeningApplyStatus('idle');
+    }
+  }, [
+    selectedClassId,
+    termReport,
+    canEditClassTeacherReport,
+    selectedReportStudentId,
+    teacherRemarkDraft,
+    conductDraft,
+    attitudeDraft,
+    interestDraft,
+    attendanceDraft,
+    attendanceOutOfDraft,
+    promotedToDraft,
+    promotedOverrides,
+    classPromotedTo,
+    buildArchiveSignaturesPayload,
+  ]);
+
+  const handleReopeningDateChange = useCallback((value: string) => {
+    setReopeningDateDraft(value);
+    setClassReopeningDate(value);
+    markRemarksDirty();
+    if (reopeningApplyTimerRef.current) clearTimeout(reopeningApplyTimerRef.current);
+    if (!value.trim() || !canEditClassTeacherReport) return;
+    reopeningApplyTimerRef.current = setTimeout(() => {
+      void applyReopeningDateToAll(value);
+    }, 700);
+  }, [applyReopeningDateToAll, canEditClassTeacherReport, markRemarksDirty]);
+
+  useEffect(() => {
+    return () => {
+      if (reopeningApplyTimerRef.current) clearTimeout(reopeningApplyTimerRef.current);
+    };
+  }, []);
 
   const mergeFreshRemarksForStudent = useCallback(async (studentId: number, report: TermReport): Promise<TermReport> => {
     if (!selectedClassId) return report;
@@ -794,7 +913,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
           attendance: isCurrent ? attendanceDraft : (existing.attendance || att.attendance),
           attendanceOutOf: isCurrent ? attendanceOutOfDraft : (existing.attendanceOutOf || att.attendanceOutOf),
           promotedTo: newDefault,
-          reopeningDate: isCurrent ? reopeningDateDraft : existing.reopeningDate,
+          reopeningDate: isCurrent ? reopeningDateDraft : (classReopeningDate || existing.reopeningDate),
         });
         await apiService.post('/grades/term-report-remarks', {
           classId: Number(selectedClassId),
@@ -861,7 +980,9 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
       attendance: targetStudentId === selectedReportStudentId ? attendanceDraft : parseTeacherRemarkDetails(termReport.teacherRemarks?.[targetStudentId] || '').attendance,
       attendanceOutOf: targetStudentId === selectedReportStudentId ? attendanceOutOfDraft : parseTeacherRemarkDetails(termReport.teacherRemarks?.[targetStudentId] || '').attendanceOutOf,
       promotedTo: resolvedPromotedTo,
-      reopeningDate: targetStudentId === selectedReportStudentId ? reopeningDateDraft : parseTeacherRemarkDetails(termReport.teacherRemarks?.[targetStudentId] || '').reopeningDate,
+      reopeningDate: targetStudentId === selectedReportStudentId
+        ? reopeningDateDraft
+        : (classReopeningDate || parseTeacherRemarkDetails(termReport.teacherRemarks?.[targetStudentId] || '').reopeningDate),
     });
 
     const headmasterValue =
@@ -946,7 +1067,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
           const bulkRemark = JSON.stringify({
             ...existing,
             promotedTo: classPromotedTo,
-            reopeningDate: existing.reopeningDate,
+            reopeningDate: classReopeningDate || existing.reopeningDate,
             attendance: existing.attendance || att.attendance,
             attendanceOutOf: existing.attendanceOutOf || att.attendanceOutOf,
           });
@@ -1003,6 +1124,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
     teacherRemarkDraft, conductDraft, attitudeDraft, interestDraft,
     attendanceDraft, attendanceOutOfDraft, classPromotedTo, promotedOverrides,
     reopeningDateDraft, headmasterRemarkDraft, promotedToDraft, selectedReportStudentId,
+    classReopeningDate,
     mergeFreshRemarksForStudent, applyStudentReportFields, buildArchiveSignaturesPayload,
   ]);
 
@@ -1026,7 +1148,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
         attendance: existing.attendance || att.attendance,
         attendanceOutOf: existing.attendanceOutOf || att.attendanceOutOf,
         promotedTo,
-        reopeningDate: existing.reopeningDate,
+        reopeningDate: classReopeningDate || existing.reopeningDate,
       });
       if (serialized === (termReport.teacherRemarks?.[s.studentId] || '')) continue;
       await apiService.post('/grades/term-report-remarks', {
@@ -1038,7 +1160,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
     }
   }, [
     selectedClassId, termReport, selectedReportStudentId, isHeadmasterGradesMode, isAdminViewer,
-    saveReportRemarksForStudent, promotedOverrides, classPromotedTo, reopeningDateDraft, buildArchiveSignaturesPayload,
+    saveReportRemarksForStudent, promotedOverrides, classPromotedTo, classReopeningDate, reopeningDateDraft, buildArchiveSignaturesPayload,
   ]);
 
   const flushPendingRemarksSave = useCallback(async (): Promise<boolean> => {
@@ -1148,8 +1270,10 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
       const firstStudentId = data.students?.[0]?.studentId ?? null;
       const studentIds = (data.students || []).map((s) => s.studentId);
       const promotedState = derivePromotedToState(data.teacherRemarks || {}, studentIds);
+      const reopeningState = deriveReopeningDateState(data.teacherRemarks || {}, studentIds);
       setClassPromotedTo(promotedState.classPromotedTo);
       setPromotedOverrides(promotedState.promotedOverrides);
+      setClassReopeningDate(reopeningState.classReopeningDate);
       const keepStudentId =
         selectedReportStudentId &&
         data.students.some((s) => s.studentId === selectedReportStudentId)
@@ -1167,6 +1291,12 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
         setRemarksDirty(false);
       }
       setTermReport(reportWithFresh);
+      if (data.reportSignatures?.classTeacherSig) {
+        setClassTeacherSig(data.reportSignatures.classTeacherSig);
+      }
+      if (data.reportSignatures?.headTeacherSig) {
+        setHeadTeacherSig(data.reportSignatures.headTeacherSig);
+      }
       setAutoSaveStatus('idle');
     } catch (e: any) {
       toast({ title: 'Failed to load report', description: e?.message, variant: 'destructive' });
@@ -1181,8 +1311,16 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
     await loadReportInternal();
   };
 
-  const handleToggleRelease = async () => {
+  const handleToggleRelease = () => {
     if (!selectedClassId || !termReport) return;
+    if (termReport.isReleased) {
+      setShowReleaseConfirm(true);
+      return;
+    }
+    if (!termReport.isReleased && !releaseReadiness.ok && !canAdminControlRelease) {
+      releaseAttentionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      return;
+    }
     setShowReleaseConfirm(true);
   };
 
@@ -1193,8 +1331,10 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
     const studentIds = termReport.students.map((s) => s.studentId);
     const withFresh = await mergeFreshRemarksForStudent(studentId, termReport);
     const promotedState = derivePromotedToState(withFresh.teacherRemarks || {}, studentIds);
+    const reopeningState = deriveReopeningDateState(withFresh.teacherRemarks || {}, studentIds);
     setClassPromotedTo(promotedState.classPromotedTo);
     setPromotedOverrides(promotedState.promotedOverrides);
+    setClassReopeningDate(reopeningState.classReopeningDate);
     setTermReport(withFresh);
     applyStudentReportFields(studentId, withFresh, promotedState);
     setAutoSaveStatus('idle');
@@ -1257,9 +1397,115 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
     });
   };
 
+  const releaseReadiness = useMemo(() => {
+    const signatureIssues: string[] = [];
+    const studentsNeedingAttention: Array<{ studentId: number; name: string; missing: string[] }> = [];
+
+    if (!termReport) {
+      return { ok: false, signatureIssues, studentsNeedingAttention };
+    }
+
+    if (!classTeacherSig?.trim()) {
+      signatureIssues.push('Class teacher signature');
+    }
+    if (!headTeacherSig?.trim()) {
+      signatureIssues.push('Headmaster signature');
+    }
+
+    for (const s of termReport.students) {
+      const teacherRaw = (() => {
+        if (s.studentId === selectedReportStudentId && canEditClassTeacherReport) {
+          return JSON.stringify({
+            text: teacherRemarkDraft,
+            conduct: conductDraft,
+            attitude: attitudeDraft,
+            interest: interestDraft,
+            attendance: attendanceDraft,
+            attendanceOutOf: attendanceOutOfDraft,
+            promotedTo: promotedOverrides[s.studentId] ?? classPromotedTo ?? '',
+            reopeningDate: reopeningDateDraft,
+          });
+        }
+        const parsed = parseTeacherRemarkDetails(termReport.teacherRemarks?.[s.studentId] || '');
+        return JSON.stringify({
+          ...parsed,
+          promotedTo: promotedOverrides[s.studentId] ?? classPromotedTo ?? parsed.promotedTo,
+          reopeningDate: classReopeningDate || parsed.reopeningDate,
+        });
+      })();
+      const headRaw =
+        s.studentId === selectedReportStudentId && canEditHeadmasterRemarks
+          ? headmasterRemarkDraft
+          : (termReport.headmasterRemarks?.[s.studentId] || '');
+      const missing = listIncompleteReportFieldsForStudent(teacherRaw, headRaw, s.studentId, termReport);
+      if (missing.length > 0) {
+        studentsNeedingAttention.push({
+          studentId: s.studentId,
+          name: `${s.firstName} ${s.lastName}`.trim(),
+          missing,
+        });
+      }
+    }
+
+    const ok = signatureIssues.length === 0 && studentsNeedingAttention.length === 0;
+    return { ok, signatureIssues, studentsNeedingAttention };
+  }, [
+    termReport,
+    classTeacherSig,
+    headTeacherSig,
+    selectedReportStudentId,
+    canEditClassTeacherReport,
+    canEditHeadmasterRemarks,
+    teacherRemarkDraft,
+    conductDraft,
+    attitudeDraft,
+    interestDraft,
+    attendanceDraft,
+    attendanceOutOfDraft,
+    reopeningDateDraft,
+    headmasterRemarkDraft,
+    promotedOverrides,
+    classPromotedTo,
+    classReopeningDate,
+  ]);
+
+  const releaseAttentionRef = useRef<HTMLDivElement>(null);
+
+  const buildTeacherRemarkPayloadForStudent = useCallback((studentId: number) => {
+    if (studentId === selectedReportStudentId && canEditClassTeacherReport) {
+      return JSON.stringify({
+        text: teacherRemarkDraft,
+        conduct: conductDraft,
+        attitude: attitudeDraft,
+        interest: interestDraft,
+        attendance: attendanceDraft,
+        attendanceOutOf: attendanceOutOfDraft,
+        promotedTo: getPromotedToForStudent(studentId),
+        reopeningDate: reopeningDateDraft,
+      });
+    }
+    return termReport?.teacherRemarks?.[studentId] || '';
+  }, [
+    selectedReportStudentId,
+    canEditClassTeacherReport,
+    teacherRemarkDraft,
+    conductDraft,
+    attitudeDraft,
+    interestDraft,
+    attendanceDraft,
+    attendanceOutOfDraft,
+    reopeningDateDraft,
+    getPromotedToForStudent,
+    termReport?.teacherRemarks,
+  ]);
+
   const confirmToggleRelease = async () => {
     if (!selectedClassId || !termReport) return;
     const newState = !termReport.isReleased;
+    if (newState && !releaseReadiness.ok && !canAdminControlRelease) {
+      setShowReleaseConfirm(false);
+      return;
+    }
     setReleaseLoading(true);
     try {
       await saveAllStudentsRemarksBeforeRelease();
@@ -1280,8 +1526,13 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
           ? 'Parents can now view this term report.'
           : 'Report hidden from parents. Your saved copy remains in Student Records.',
       });
-    } catch (e: any) {
-      toast({ title: 'Error', description: e?.message, variant: 'destructive' });
+    } catch (e: unknown) {
+      const err = e as { message?: string };
+      toast({
+        title: 'Could not update release',
+        description: err?.message || 'Please try again.',
+        variant: 'destructive',
+      });
     } finally {
       setReleaseLoading(false);
       setShowReleaseConfirm(false);
@@ -1850,19 +2101,34 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                           </div>
                         )}
                         {/* Toggle release (teachers + headmaster; hidden for read-only admins) */}
-                        {(!isAdminViewer || isHeadmasterGradesMode) && (
+                        {canReleaseToParents && (
                           <Button
                             size="sm"
-                            variant={termReport.isReleased ? 'outline' : 'default'}
+                            variant={
+                              termReport.isReleased
+                                ? 'outline'
+                                : (releaseReadiness.ok || canAdminControlRelease)
+                                  ? 'default'
+                                  : 'secondary'
+                            }
                             onClick={handleToggleRelease}
-                            disabled={releaseLoading}
-                            className={termReport.isReleased
-                              ? 'border-orange-300 text-orange-700 hover:bg-orange-50'
-                              : 'bg-green-600 hover:bg-green-700 text-white'}
+                            disabled={
+                              releaseLoading ||
+                              (!termReport.isReleased && !releaseReadiness.ok && !canAdminControlRelease)
+                            }
+                            className={
+                              termReport.isReleased
+                                ? 'border-orange-300 text-orange-700 hover:bg-orange-50'
+                                : (releaseReadiness.ok || canAdminControlRelease)
+                                  ? 'bg-green-600 hover:bg-green-700 text-white'
+                                  : 'bg-slate-200 text-slate-500 cursor-not-allowed hover:bg-slate-200'
+                            }
                           >
                             {termReport.isReleased
                               ? <><EyeOff className="w-3.5 h-3.5 mr-1.5" /> Hide from Parents</>
-                              : <><Send className="w-3.5 h-3.5 mr-1.5" /> Release to Parents</>}
+                              : (releaseReadiness.ok || canAdminControlRelease)
+                                ? <><Send className="w-3.5 h-3.5 mr-1.5" /> Release to Parents</>
+                                : <><AlertTriangle className="w-3.5 h-3.5 mr-1.5" /> Complete Reports First</>}
                           </Button>
                         )}
                         <Button variant="outline" size="sm" onClick={handlePrint}>
@@ -1882,6 +2148,88 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                   </CardHeader>
                   <CardContent>
                     <div className="mb-6 space-y-6">
+                      {!canEditClassTeacherReport && !isHeadmasterGradesMode && !isAdminViewer && (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                          Only the <strong>main class teacher</strong> can fill report details, sign, and release this report to parents.
+                          Subject teachers can view grades but cannot edit the class report card.
+                        </div>
+                      )}
+                      {canAdminControlRelease && (
+                        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                          As <strong>school admin</strong>, you can release or hide this report for parents even if a teacher or headmaster already released or hid it.
+                        </div>
+                      )}
+                      {canReleaseToParents && !termReport.isReleased && !releaseReadiness.ok && !canAdminControlRelease && (
+                        <div
+                          ref={releaseAttentionRef}
+                          className="rounded-xl border border-amber-200/90 bg-gradient-to-br from-amber-50 via-orange-50/40 to-amber-50 p-4 sm:p-5 shadow-sm"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100">
+                              <AlertTriangle className="h-5 w-5 text-amber-700" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <h3 className="text-sm font-bold text-amber-950">
+                                {releaseReadiness.studentsNeedingAttention.length > 0
+                                  ? `${releaseReadiness.studentsNeedingAttention.length} student${releaseReadiness.studentsNeedingAttention.length === 1 ? '' : 's'} need attention before release`
+                                  : 'Add signatures before release'}
+                              </h3>
+                              <p className="mt-1 text-xs text-amber-800/90">
+                                Complete every field below for each student. Signatures must also be in place. Release stays disabled until everything is done.
+                              </p>
+                              {releaseReadiness.signatureIssues.length > 0 && (
+                                <div className="mt-3">
+                                  <p className="text-[10px] font-bold uppercase tracking-wider text-amber-900/80">Missing signatures</p>
+                                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                    {releaseReadiness.signatureIssues.map((item) => (
+                                      <span
+                                        key={item}
+                                        className="inline-flex items-center rounded-full border border-amber-200 bg-white/90 px-2.5 py-0.5 text-xs font-medium text-amber-950"
+                                      >
+                                        {item}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {releaseReadiness.studentsNeedingAttention.length > 0 && (
+                                <ul className="mt-3 space-y-2 max-h-[min(42vh,300px)] overflow-y-auto pr-1">
+                                  {releaseReadiness.studentsNeedingAttention.map((row) => (
+                                    <li
+                                      key={row.studentId}
+                                      className="rounded-lg border border-amber-100/90 bg-white/95 p-3 shadow-sm"
+                                    >
+                                      <button
+                                        type="button"
+                                        onClick={() => void switchToReportStudent(row.studentId)}
+                                        className="text-left text-sm font-semibold text-slate-900 hover:text-emerald-700 hover:underline"
+                                      >
+                                        {row.name}
+                                      </button>
+                                      <div className="mt-2 flex flex-wrap gap-1">
+                                        {row.missing.map((field) => (
+                                          <span
+                                            key={field}
+                                            className="inline-flex rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-950"
+                                          >
+                                            {field}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      {canReleaseToParents && !termReport.isReleased && releaseReadiness.ok && (
+                        <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-2.5 text-sm text-green-800">
+                          <CheckCircle2 className="h-4 w-4 shrink-0" />
+                          <span>All students are ready — you can release to parents.</span>
+                        </div>
+                      )}
                       <div className="flex flex-col sm:flex-row gap-3 items-end justify-between bg-slate-50 dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
                         <div className="flex-1 min-w-[200px]">
                           <Label className="text-sm text-slate-700 dark:text-slate-300 font-semibold mb-1.5 block">Select Student for Report Card</Label>
@@ -1902,7 +2250,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                           <Button size="sm" variant="outline" onClick={handlePrintReportCard} disabled={!selectedReportStudentId}>
                             <Printer className="w-4 h-4 mr-1.5" /> Print Report Card
                           </Button>
-                          <Button size="sm" onClick={saveReportRemarks} disabled={!selectedReportStudentId || remarkSaving}>
+                          <Button size="sm" onClick={saveReportRemarks} disabled={!selectedReportStudentId || remarkSaving || (!canEditClassTeacherReport && !canEditHeadmasterRemarks)}>
                             <Save className="w-4 h-4 mr-1.5" /> {remarkSaving ? 'Saving...' : 'Save Report Details'}
                           </Button>
                           {autoSaveStatus === 'saving' ? (
@@ -1921,14 +2269,27 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                         const bece = calculateBECE(student.subjectScores);
                         const sourceStudent = students.find(st => Number(st.id) === Number(student.studentId));
                         const photoUrl = sourceStudent?.passportPhotoUrl || (student as any).passportPhotoUrl || '';
+                        const showSubjectPositionColumn = termReport.subjects.some((subj) => {
+                          const sScore = student.subjectScores[subj];
+                          return sScore != null && sScore.score != null && !Number.isNaN(Number(sScore.score));
+                        });
 
                         return (
-                          <div className="space-y-4">
-                            {/* Beautiful Report Card Container */}
+                          <div
+                            className="space-y-4 w-full max-w-full"
+                            style={{ width: '100%', maxWidth: '100%', overflowX: 'hidden', boxSizing: 'border-box' }}
+                          >
+                            <StaffReportCardViewport layoutKey={selectedReportStudentId}>
                             <div 
+                              id="admin-report-card"
                               ref={reportCardRef} 
-                              className="bg-white text-slate-950 p-6 md:p-8 border-2 border-black rounded shadow-lg max-w-4xl mx-auto space-y-4"
-                              style={{ fontFamily: "'Times New Roman', Times, serif" }}
+                              className="report-wrapper bg-white text-slate-950 p-4 sm:p-6 md:p-8 border-2 border-black rounded shadow-lg max-w-4xl mx-auto space-y-4 [&_*]:box-border [&_img]:max-w-full"
+                              style={{
+                                fontFamily: "'Times New Roman', Times, serif",
+                                width: '100%',
+                                maxWidth: '100%',
+                                boxSizing: 'border-box',
+                              }}
                             >
                               {/* Header Layout */}
                               <table className="w-full border-collapse">
@@ -1981,66 +2342,78 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
 
                               {/* Details Grid */}
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2.5 gap-x-6 mb-4 text-xs">
-                                <div className="flex items-center">
-                                  <span className="font-bold uppercase min-w-[130px]">NAME:</span>
+                                <div className="flex items-center min-w-0">
+                                  <span className="font-bold uppercase min-w-[90px] sm:min-w-[130px] shrink-0">NAME:</span>
                                   <span className="flex-grow border-b border-black font-extrabold text-sm pl-2 uppercase">{student.firstName} {student.lastName}</span>
                                 </div>
                                 <div className="flex items-center">
-                                  <span className="font-bold uppercase min-w-[130px]">BASIC:</span>
+                                  <span className="font-bold uppercase min-w-[90px] sm:min-w-[130px] shrink-0">BASIC:</span>
                                   <span className="flex-grow border-b border-black font-extrabold text-sm pl-2 uppercase">{termReport.className}</span>
                                 </div>
                                 <div className="flex items-center">
-                                  <span className="font-bold uppercase min-w-[130px]">ACADEMIC YEAR:</span>
+                                  <span className="font-bold uppercase min-w-[90px] sm:min-w-[130px] shrink-0">ACADEMIC YEAR:</span>
                                   <span className="flex-grow border-b border-black font-extrabold text-sm pl-2">{termReport.currentYear}</span>
                                 </div>
                                 <div className="flex items-center">
-                                  <span className="font-bold uppercase min-w-[130px]">TERM:</span>
+                                  <span className="font-bold uppercase min-w-[90px] sm:min-w-[130px] shrink-0">TERM:</span>
                                   <span className="flex-grow border-b border-black font-extrabold text-sm pl-2">{termReport.currentTerm}</span>
                                 </div>
                                 <div className="flex items-center">
-                                  <span className="font-bold uppercase min-w-[130px]">POSITION:</span>
+                                  <span className="font-bold uppercase min-w-[90px] sm:min-w-[130px] shrink-0">POSITION:</span>
                                   <span className="flex-grow border-b border-black font-extrabold text-sm pl-2">{positionSuffix(student.position)}</span>
                                 </div>
                                 <div className="flex items-center">
-                                  <span className="font-bold uppercase min-w-[130px]">TOTAL MARKS:</span>
+                                  <span className="font-bold uppercase min-w-[90px] sm:min-w-[130px] shrink-0">TOTAL MARKS:</span>
                                   <span className="flex-grow border-b border-black font-extrabold text-sm pl-2">{student.grandTotal}</span>
                                 </div>
                                 <div className="flex items-center">
-                                  <span className="font-bold uppercase min-w-[130px]">NO. ON ROLL:</span>
+                                  <span className="font-bold uppercase min-w-[90px] sm:min-w-[130px] shrink-0">NO. ON ROLL:</span>
                                   <span className="flex-grow border-b border-black font-extrabold text-sm pl-2">{termReport.students.length}</span>
                                 </div>
-                                <div className="flex items-center">
-                                  <span className="font-bold uppercase min-w-[130px]">REOPENING DATE:</span>
-                                  <input 
-                                    type="text" 
-                                    value={reopeningDateDraft} 
-                                    onChange={(e) => { setReopeningDateDraft(e.target.value); markRemarksDirty(); }}
-                                    readOnly={isHeadmasterGradesMode || isAdminViewer}
-                                    placeholder="Enter reopening date"
-                                    className="flex-grow border-b border-black font-extrabold text-sm pl-2 bg-transparent focus:outline-none uppercase border-none py-0 m-0 no-print"
-                                  />
-                                  <span className="hidden print:inline flex-grow border-b border-black font-extrabold text-sm pl-2 uppercase">{reopeningDateDraft || '—'}</span>
+                                <div className="flex flex-col gap-0.5">
+                                  <div className="flex items-center">
+                                    <span className="font-bold uppercase min-w-[90px] sm:min-w-[130px] shrink-0">REOPENING DATE:</span>
+                                    <input 
+                                      type="text" 
+                                      value={reopeningDateDraft} 
+                                      onChange={(e) => handleReopeningDateChange(e.target.value)}
+                                      readOnly={!canEditClassTeacherReport}
+                                      placeholder="Enter reopening date"
+                                      className="flex-grow border-b border-black font-extrabold text-sm pl-2 bg-transparent focus:outline-none uppercase border-none py-0 m-0 no-print"
+                                    />
+                                    <span className="hidden print:inline flex-grow border-b border-black font-extrabold text-sm pl-2 uppercase">{reopeningDateDraft || '—'}</span>
+                                  </div>
+                                  {canEditClassTeacherReport && (
+                                    <p className="text-[10px] text-slate-500 pl-[90px] sm:pl-[130px] no-print">
+                                      {reopeningApplyStatus === 'saving'
+                                        ? 'Applying to all students…'
+                                        : reopeningApplyStatus === 'saved'
+                                          ? 'Applied to all students in this class'
+                                          : 'Applies to all students in this class'}
+                                    </p>
+                                  )}
                                 </div>
                               </div>
 
                               {/* Subjects Table */}
-                              <table className="w-full border-collapse mb-4 text-xs border-all">
+                              <table className="staff-report-subjects-table w-full border-collapse mb-4 border-all">
                                 <thead>
                                   <tr>
-                                    <th className="border-2 border-black bg-slate-50 p-2 text-left font-bold uppercase w-1/3">SUBJECTS</th>
-                                    <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase w-20">Class Score<br/>40%</th>
-                                    <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase w-20">Exams Score<br/>60%</th>
-                                    <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase w-20">Total Score<br/>100%</th>
-                                    <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase w-14">Grade</th>
-                                    <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase w-16">Position</th>
-                                    <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase">Remarks</th>
+                                    <th className="col-subjects border-2 border-black bg-slate-50 font-bold uppercase">SUBJECTS</th>
+                                    <th className="col-class-score border-2 border-black bg-slate-50 font-bold uppercase">Class Score<br/>40%</th>
+                                    <th className="col-exam-score border-2 border-black bg-slate-50 font-bold uppercase">Exams Score<br/>60%</th>
+                                    <th className="col-total-score border-2 border-black bg-slate-50 font-bold uppercase">Total Score<br/>100%</th>
+                                    <th className="col-grade border-2 border-black bg-slate-50 font-bold uppercase">Grade</th>
+                                    {showSubjectPositionColumn ? (
+                                      <th className="col-position border-2 border-black bg-slate-50 font-bold uppercase">Position</th>
+                                    ) : null}
+                                    <th className="border-2 border-black bg-slate-50 font-bold uppercase">Remarks</th>
                                   </tr>
                                 </thead>
                                 <tbody>
                                   {termReport.subjects.map(subj => {
                                     const sScore = student.subjectScores[subj];
                                     const gr = sScore ? getGhanaianGradeInfo(sScore.score) : { grade: '', remark: '—' };
-                                    // Subject position calculation
                                     const sortedList = [...termReport.students].sort((a,b) => (b.subjectScores[subj]?.score || 0) - (a.subjectScores[subj]?.score || 0));
                                     let subPos = 1;
                                     for (let i = 0; i < sortedList.length; i++) {
@@ -2054,13 +2427,15 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
 
                                     return (
                                       <tr key={subj}>
-                                        <td className="border-2 border-black p-2 font-bold text-left uppercase">{subj}</td>
-                                        <td className="border-2 border-black p-2 font-bold text-center">{sScore ? sScore.classScore?.toFixed(1) : '—'}</td>
-                                        <td className="border-2 border-black p-2 font-bold text-center">{sScore ? sScore.examScore?.toFixed(1) : '—'}</td>
-                                        <td className="border-2 border-black p-2 font-extrabold text-center">{sScore ? sScore.score?.toFixed(1) : '—'}</td>
-                                        <td className="border-2 border-black p-2 font-bold text-center">{gr.grade}</td>
-                                        <td className="border-2 border-black p-2 font-bold text-center">{sScore ? positionSuffix(subPos) : '—'}</td>
-                                        <td className="border-2 border-black p-2 font-bold uppercase text-[10px] text-left">{gr.remark}</td>
+                                        <td className="col-subjects border-2 border-black font-bold uppercase">{subj}</td>
+                                        <td className="col-class-score border-2 border-black font-bold">{sScore ? sScore.classScore?.toFixed(1) : '—'}</td>
+                                        <td className="col-exam-score border-2 border-black font-bold">{sScore ? sScore.examScore?.toFixed(1) : '—'}</td>
+                                        <td className="col-total-score border-2 border-black font-extrabold">{sScore ? sScore.score?.toFixed(1) : '—'}</td>
+                                        <td className="col-grade border-2 border-black font-bold">{gr.grade || '—'}</td>
+                                        {showSubjectPositionColumn ? (
+                                          <td className="col-position border-2 border-black font-bold">{sScore ? positionSuffix(subPos) : '—'}</td>
+                                        ) : null}
+                                        <td className="border-2 border-black font-bold uppercase text-left">{gr.remark}</td>
                                       </tr>
                                     );
                                   })}
@@ -2085,7 +2460,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                     type="text" 
                                     value={attendanceOutOfDraft} 
                                     onChange={(e) => { setAttendanceOutOfDraft(e.target.value); markRemarksDirty(); }}
-                                    readOnly={isHeadmasterGradesMode || isAdminViewer}
+                                    readOnly={!canEditClassTeacherReport}
                                     placeholder="Total days"
                                     className="border-b border-black font-bold pl-2 bg-transparent focus:outline-none w-16 no-print text-center"
                                   />
@@ -2097,10 +2472,10 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                     value={promotedToDraft} 
                                     onChange={(e) => handlePromotedToChange(e.target.value)}
                                     placeholder="Next class name if promoted"
-                                    readOnly={isHeadmasterGradesMode || isAdminViewer}
+                                    readOnly={!canEditClassTeacherReport}
                                     className="flex-grow border-b border-black font-bold pl-2 bg-transparent focus:outline-none no-print uppercase"
                                   />
-                                  {!isHeadmasterGradesMode && !isAdminViewer && promotedToDraft && (
+                                  {canEditClassTeacherReport && promotedToDraft && (
                                     <button
                                       type="button"
                                       disabled={applyPromotedLoading}
@@ -2121,7 +2496,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                     type="text" 
                                     value={conductDraft} 
                                     onChange={(e) => { setConductDraft(e.target.value); markRemarksDirty(); }}
-                                    readOnly={isHeadmasterGradesMode || isAdminViewer}
+                                    readOnly={!canEditClassTeacherReport}
                                     className="flex-grow border-b border-black font-bold pl-2 bg-transparent focus:outline-none no-print uppercase"
                                   />
                                   <span className="hidden print:inline flex-grow border-b border-black font-bold pl-2 uppercase">{conductDraft || '—'}</span>
@@ -2133,7 +2508,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                     type="text" 
                                     value={attitudeDraft} 
                                     onChange={(e) => { setAttitudeDraft(e.target.value); markRemarksDirty(); }}
-                                    readOnly={isHeadmasterGradesMode || isAdminViewer}
+                                    readOnly={!canEditClassTeacherReport}
                                     className="flex-grow border-b border-black font-bold pl-2 bg-transparent focus:outline-none no-print uppercase"
                                   />
                                   <span className="hidden print:inline flex-grow border-b border-black font-bold pl-2 uppercase">{attitudeDraft || '—'}</span>
@@ -2145,35 +2520,35 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                     type="text" 
                                     value={interestDraft} 
                                     onChange={(e) => { setInterestDraft(e.target.value); markRemarksDirty(); }}
-                                    readOnly={isHeadmasterGradesMode || isAdminViewer}
+                                    readOnly={!canEditClassTeacherReport}
                                     className="flex-grow border-b border-black font-bold pl-2 bg-transparent focus:outline-none no-print uppercase"
                                   />
                                   <span className="hidden print:inline flex-grow border-b border-black font-bold pl-2 uppercase">{interestDraft || '—'}</span>
                                 </div>
 
-                                <div className="flex items-start text-xs">
-                                  <span className="font-bold uppercase min-w-[180px] pt-1">CLASS TEACHER'S REMARKS:</span>
+                                <div className="flex items-start text-xs min-w-0">
+                                  <span className="font-bold uppercase min-w-[180px] pt-1 shrink-0">CLASS TEACHER'S REMARKS:</span>
                                   <textarea
                                     value={teacherRemarkDraft} 
                                     onChange={(e) => { setTeacherRemarkDraft(e.target.value); markRemarksDirty(); }}
-                                    readOnly={isHeadmasterGradesMode || isAdminViewer}
+                                    readOnly={!canEditClassTeacherReport}
                                     rows={2}
-                                    className="flex-grow border-b border-black font-bold pl-2 bg-transparent focus:outline-none no-print resize-none uppercase"
+                                    className="staff-report-remarks-field flex-grow border-b border-black font-bold pl-2 bg-transparent focus:outline-none no-print resize-none uppercase min-w-0"
                                   />
-                                  <span className="hidden print:inline flex-grow border-b border-black font-bold pl-2 uppercase">{teacherRemarkDraft || '—'}</span>
+                                  <span className="staff-report-remarks-field hidden print:inline flex-grow border-b border-black font-bold pl-2 uppercase">{teacherRemarkDraft || '—'}</span>
                                 </div>
 
-                                <div className="flex items-start text-xs">
-                                  <span className="font-bold uppercase min-w-[180px] pt-1">HEADMASTER'S REMARKS:</span>
+                                <div className="flex items-start text-xs min-w-0">
+                                  <span className="font-bold uppercase min-w-[180px] pt-1 shrink-0">HEADMASTER'S REMARKS:</span>
                                   <textarea
                                     value={headmasterRemarkDraft}
                                     onChange={(e) => { setHeadmasterRemarkDraft(e.target.value); markRemarksDirty(); }}
                                     readOnly={!canEditHeadmasterRemarks}
                                     rows={2}
                                     placeholder={canEditHeadmasterRemarks ? 'Enter headmaster remarks for this student…' : 'Headmaster remarks'}
-                                    className="flex-grow border-b border-black font-bold pl-2 bg-transparent focus:outline-none no-print resize-none uppercase"
+                                    className="staff-report-remarks-field flex-grow border-b border-black font-bold pl-2 bg-transparent focus:outline-none no-print resize-none uppercase min-w-0"
                                   />
-                                  <span className="hidden print:inline flex-grow border-b border-black font-bold pl-2 uppercase">{headmasterRemarkDraft || '—'}</span>
+                                  <span className="staff-report-remarks-field hidden print:inline flex-grow border-b border-black font-bold pl-2 uppercase">{headmasterRemarkDraft || '—'}</span>
                                 </div>
                               </div>
 
@@ -2183,7 +2558,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                   {classTeacherSig ? (
                                     <div className="relative group">
                                       <img src={classTeacherSig} alt="Teacher Signature" className="h-12 object-contain" />
-                                      {!isHeadmasterGradesMode && (
+                                      {canEditClassTeacherReport && (
                                       <button 
                                         onClick={() => { setClassTeacherSig(''); if (user?.teacherId) { apiService.put(`/teachers/${user.teacherId}/signature`, { signature: null }).catch(() => {}); } }}
                                         className="absolute -top-4 -right-4 bg-red-100 text-red-600 rounded-full p-0.5 text-[8px] no-print hover:bg-red-200"
@@ -2198,7 +2573,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                   <div className="w-full border-t border-black pt-1 font-bold uppercase text-[10px] tracking-wider">
                                     CLASS TEACHER'S SIGNATURE
                                   </div>
-                                  {!isHeadmasterGradesMode && !isAdminViewer && (
+                                  {!isHeadmasterGradesMode && canEditClassTeacherReport && (
                                   <button 
                                     onClick={() => { setSigPadType('teacher'); setIsSigPadOpen(true); }}
                                     className="no-print mt-1 text-[9px] text-purple-600 hover:underline font-bold uppercase"
@@ -2211,7 +2586,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                   {headTeacherSig ? (
                                     <div className="relative group">
                                       <img src={headTeacherSig} alt="Head Teacher Signature" className="h-12 object-contain" />
-                                      {(isHeadmasterGradesMode || !isAdminViewer) && (
+                                      {canDrawHeadmasterSignature && (
                                       <button 
                                         onClick={() => {
                                           setHeadTeacherSig('');
@@ -2233,7 +2608,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                   <div className="w-full border-t border-black pt-1 font-bold uppercase text-[10px] tracking-wider">
                                     {termReport.headmasterTitle || 'HEADMASTER'}'S SIGNATURE
                                   </div>
-                                  {(isHeadmasterGradesMode || !isAdminViewer) && (
+                                  {canDrawHeadmasterSignature && (
                                   <button 
                                     onClick={() => { setSigPadType('head'); setIsSigPadOpen(true); }}
                                     className="no-print mt-1 text-[9px] text-purple-600 hover:underline font-bold uppercase"
@@ -2287,6 +2662,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                               </div>
 
                             </div>
+                            </StaffReportCardViewport>
                           </div>
                         );
                       })()}
@@ -2530,7 +2906,9 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
             <AlertDialogDescription>
               {termReport?.isReleased
                 ? 'Parents will no longer see this report in their portal. Your saved report card stays in Student Records.'
-                : 'Parents will be able to view this report in their portal.'}
+                : canAdminControlRelease && !releaseReadiness.ok
+                  ? 'Some report fields may still be incomplete. As school admin you can release anyway — parents will see the report in their portal.'
+                  : 'Parents will be able to view this report in their portal.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

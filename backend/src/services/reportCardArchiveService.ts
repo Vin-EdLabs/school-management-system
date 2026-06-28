@@ -337,26 +337,31 @@ export async function resolveArchiveSignatures(
 ): Promise<ArchiveSignatures> {
   const classTeacherRes = await query(
     `SELECT t.signature, t.full_name
-     FROM teachers t
-     WHERE t.tenant_id = $2
-       AND t.signature IS NOT NULL
-       AND TRIM(t.signature) <> ''
-       AND (
-         EXISTS (
-           SELECT 1 FROM classes c
-           WHERE c.id = $1 AND c.tenant_id = $2 AND c.assigned_teacher_id = t.id
-         )
-         OR t.class_assigned_id = $1
-       )
-     ORDER BY
-       CASE WHEN EXISTS (
-         SELECT 1 FROM classes c
-         WHERE c.id = $1 AND c.tenant_id = $2 AND c.assigned_teacher_id = t.id
-       ) THEN 0 ELSE 1 END,
-       t.updated_at DESC NULLS LAST
+     FROM class_teachers ct
+     JOIN teachers t ON t.id = ct.teacher_id AND t.tenant_id = ct.tenant_id
+     WHERE ct.tenant_id = $2 AND ct.class_id = $1 AND ct.is_main = true
+       AND t.signature IS NOT NULL AND TRIM(t.signature) <> ''
      LIMIT 1`,
     [classId, tenantId]
   );
+
+  let classTeacherRow = classTeacherRes.rows[0];
+  if (!classTeacherRow) {
+    const fallbackRes = await query(
+      `SELECT t.signature, t.full_name
+       FROM classes c
+       JOIN teachers t ON t.id = c.assigned_teacher_id AND t.tenant_id = c.tenant_id
+       WHERE c.id = $1 AND c.tenant_id = $2
+         AND t.signature IS NOT NULL AND TRIM(t.signature) <> ''
+         AND NOT EXISTS (
+           SELECT 1 FROM class_teachers ct
+           WHERE ct.class_id = c.id AND ct.tenant_id = c.tenant_id AND ct.is_main = true
+         )
+       LIMIT 1`,
+      [classId, tenantId]
+    );
+    classTeacherRow = fallbackRes.rows[0];
+  }
 
   const headmasterRes = await query(
     `SELECT COALESCE(t.full_name, u.full_name) AS full_name,
@@ -378,7 +383,7 @@ export async function resolveArchiveSignatures(
 
   const classTeacherSig =
     overrides?.classTeacherSig ||
-    classTeacherRes.rows[0]?.signature ||
+    classTeacherRow?.signature ||
     null;
   const headTeacherSig =
     overrides?.headTeacherSig ||
@@ -566,6 +571,85 @@ export async function archiveClassReportCardsOnRelease(
   }
 
   return { archived, updated };
+}
+
+export type ReportReleaseStudentGap = {
+  studentId: number;
+  name: string;
+  missing: string[];
+};
+
+export type ReportReleaseValidation = {
+  ok: boolean;
+  errors: string[];
+  students: ReportReleaseStudentGap[];
+};
+
+function listIncompleteRemarkFields(
+  teacherRemarkRaw: string,
+  headmasterRemark: string,
+  studentId: number,
+  report: BuiltTermReport
+): string[] {
+  const parsed = parseTeacherRemarkBundle(teacherRemarkRaw);
+  const attendance = resolveAttendanceDisplay(studentId, parsed, report);
+  const missing: string[] = [];
+
+  if (!parsed.conduct) missing.push('Conduct');
+  if (!parsed.attitude) missing.push('Attitude');
+  if (!parsed.interest) missing.push('Interest');
+  if (!attendance.attendance) missing.push('Attendance');
+  if (!attendance.attendanceOutOf) missing.push('Attendance (out of)');
+  if (!parsed.promotedTo) missing.push('Promoted To');
+  if (!parsed.reopeningDate) missing.push('Reopening Date');
+  if (!parsed.text) missing.push("Class Teacher's Remarks");
+  if (!String(headmasterRemark || '').trim()) missing.push("Headmaster's Remarks");
+
+  return missing;
+}
+
+/** Ensure every student remark field and both signatures exist before parent release. */
+export async function validateClassReportReadyForRelease(
+  tenantId: number,
+  classId: number,
+  signatureOverrides?: ArchiveSignatures
+): Promise<ReportReleaseValidation> {
+  const report = await buildTermReportData(tenantId, classId);
+  const errors: string[] = [];
+  const students: ReportReleaseStudentGap[] = [];
+
+  if (!report) {
+    return { ok: false, errors: ['No grades or assessments found for this class.'], students: [] };
+  }
+
+  const signatures = await resolveArchiveSignatures(tenantId, classId, signatureOverrides);
+  if (!String(signatures.classTeacherSig || '').trim()) {
+    errors.push('Class teacher signature is required before releasing to parents.');
+  }
+  if (!String(signatures.headTeacherSig || '').trim()) {
+    errors.push('Headmaster signature is required before releasing to parents.');
+  }
+
+  for (const student of report.students) {
+    const teacherRaw = report.teacherRemarks[student.studentId] || '';
+    const headRaw = report.headmasterRemarks[student.studentId] || '';
+    const missing = listIncompleteRemarkFields(teacherRaw, headRaw, student.studentId, report);
+    if (missing.length > 0) {
+      students.push({
+        studentId: student.studentId,
+        name: `${student.firstName} ${student.lastName}`.trim(),
+        missing,
+      });
+    }
+  }
+
+  if (students.length > 0) {
+    errors.push(
+      `${students.length} student${students.length === 1 ? '' : 's'} still ha${students.length === 1 ? 's' : 've'} incomplete report details.`
+    );
+  }
+
+  return { ok: errors.length === 0, errors, students };
 }
 
 export async function getStudentReportCardArchiveList(tenantId: number, studentId: number) {

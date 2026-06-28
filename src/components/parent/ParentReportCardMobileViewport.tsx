@@ -1,102 +1,117 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 
 const MOBILE_MAX_WIDTH = 767;
-const MIN_READABLE_SCALE = 0.72;
+const MIN_READABLE_SCALE = 0.68;
 
 type Props = {
   children: React.ReactNode;
-  contentRef: React.RefObject<HTMLDivElement>;
   /** Re-run scale when report content changes */
   layoutKey?: string | number | null;
+  /** DOM id on the report card root (must match the scaled element) */
+  containerId?: string;
+  /** DOM id on the viewport wrapper */
+  viewportId?: string;
 };
 
+const DEFAULT_CONTAINER_ID = 'report-card-container';
+const DEFAULT_VIEWPORT_ID = 'report-card-viewport';
+
 /**
- * Scales the parent-portal report card to fit mobile viewport width (no horizontal scroll).
- * Desktop (md+) is unchanged — children render at full size.
+ * Scales the parent-portal report card to fit mobile width.
+ * Falls back to horizontal scroll if scale would be unreadably small.
+ * Desktop (md+) is unchanged.
  */
-const ParentReportCardMobileViewport: React.FC<Props> = ({ children, contentRef, layoutKey }) => {
-  const [scale, setScale] = useState(1);
-  const [scaledHeight, setScaledHeight] = useState<number | undefined>(undefined);
-  const [naturalWidth, setNaturalWidth] = useState<number | undefined>(undefined);
-
-  const recomputeScale = useCallback(() => {
-    const el = contentRef.current;
-    const isMobile = window.matchMedia(`(max-width: ${MOBILE_MAX_WIDTH}px)`).matches;
-
-    if (!el || !isMobile) {
-      setScale(1);
-      setScaledHeight(undefined);
-      setNaturalWidth(undefined);
-      return;
-    }
-
-    const width = el.scrollWidth || el.offsetWidth;
-    const height = el.offsetHeight;
-    if (!width) return;
-
-    const horizontalPadding = 28;
-    const available = Math.max(window.innerWidth - horizontalPadding, 280);
-    let nextScale = available / width;
-
-    if (window.innerWidth < 360) {
-      nextScale = Math.max(nextScale, MIN_READABLE_SCALE);
-    }
-
-    nextScale = Math.min(1, nextScale);
-
-    setNaturalWidth(width);
-    setScale(nextScale);
-    setScaledHeight(height * nextScale);
-  }, [contentRef]);
-
+const ParentReportCardMobileViewport: React.FC<Props> = ({
+  children,
+  layoutKey,
+  containerId = DEFAULT_CONTAINER_ID,
+  viewportId = DEFAULT_VIEWPORT_ID,
+}) => {
   useEffect(() => {
-    recomputeScale();
+    const scaleToFit = () => {
+      const reportEl = document.getElementById(containerId);
+      const viewport = document.getElementById(viewportId);
+      if (!reportEl) return;
 
-    const el = contentRef.current;
-    const ro = el ? new ResizeObserver(() => recomputeScale()) : null;
-    if (el && ro) ro.observe(el);
+      const isMobile = window.matchMedia(`(max-width: ${MOBILE_MAX_WIDTH}px)`).matches;
 
-    window.addEventListener('resize', recomputeScale);
-    window.addEventListener('orientationchange', recomputeScale);
+      if (!isMobile) {
+        reportEl.style.transform = 'none';
+        reportEl.style.transformOrigin = '';
+        reportEl.style.marginBottom = '0';
+        if (viewport) {
+          viewport.style.overflowX = '';
+          viewport.style.WebkitOverflowScrolling = '';
+        }
+        return;
+      }
+
+      const containerWidth =
+        viewport?.clientWidth ||
+        reportEl.parentElement?.clientWidth ||
+        window.innerWidth;
+
+      const reportWidth = reportEl.scrollWidth;
+
+      if (reportWidth <= containerWidth) {
+        reportEl.style.transform = 'none';
+        reportEl.style.transformOrigin = '';
+        reportEl.style.marginBottom = '0';
+        if (viewport) {
+          viewport.style.overflowX = 'hidden';
+        }
+        return;
+      }
+
+      const scale = containerWidth / reportWidth;
+
+      if (scale < MIN_READABLE_SCALE) {
+        reportEl.style.transform = 'none';
+        reportEl.style.transformOrigin = '';
+        reportEl.style.marginBottom = '0';
+        if (viewport) {
+          viewport.style.overflowX = 'auto';
+          (viewport.style as CSSStyleDeclaration & { webkitOverflowScrolling?: string }).webkitOverflowScrolling = 'touch';
+        }
+        return;
+      }
+
+      if (viewport) {
+        viewport.style.overflowX = 'hidden';
+      }
+      reportEl.style.transform = `scale(${scale})`;
+      reportEl.style.transformOrigin = 'top left';
+      reportEl.style.marginBottom = `${-reportEl.offsetHeight * (1 - scale)}px`;
+    };
+
+    scaleToFit();
+
+    const reportEl = document.getElementById(containerId);
+    const ro = reportEl ? new ResizeObserver(scaleToFit) : null;
+    if (reportEl && ro) ro.observe(reportEl);
+
+    window.addEventListener('resize', scaleToFit);
+    window.addEventListener('orientationchange', scaleToFit);
 
     return () => {
       ro?.disconnect();
-      window.removeEventListener('resize', recomputeScale);
-      window.removeEventListener('orientationchange', recomputeScale);
+      window.removeEventListener('resize', scaleToFit);
+      window.removeEventListener('orientationchange', scaleToFit);
     };
-  }, [contentRef, layoutKey, recomputeScale]);
-
-  const isScaled = scale < 1 && naturalWidth;
+  }, [layoutKey, containerId, viewportId]);
 
   return (
-    <div className="w-full max-w-full overflow-x-hidden md:overflow-visible">
-      <div
-        className="mx-auto md:contents"
-        style={
-          isScaled
-            ? {
-                width: naturalWidth * scale,
-                height: scaledHeight,
-                maxWidth: '100%',
-                overflow: 'hidden',
-              }
-            : undefined
-        }
-      >
-        <div
-          style={
-            isScaled
-              ? {
-                  width: naturalWidth,
-                  transform: `scale(${scale})`,
-                  transformOrigin: 'top left',
-                }
-              : undefined
-          }
-        >
-          {children}
-        </div>
-      </div>
+    <div
+      id={viewportId}
+      className="w-full max-w-full md:overflow-visible"
+      style={{
+        width: '100%',
+        maxWidth: '100%',
+        overflowX: 'hidden',
+        boxSizing: 'border-box',
+      }}
+    >
+      {children}
     </div>
   );
 };

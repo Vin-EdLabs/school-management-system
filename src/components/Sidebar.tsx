@@ -468,6 +468,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
     typeof sessionStorage !== 'undefined' && sessionStorage.getItem('impersonation_admin_eligible') === '1';
   const showBecomeUser =
     !impersonation?.isImpersonating &&
+    !isHeadmasterRole(user?.role) &&
     !!(actsAsPrimaryAdmin || isPlatformSuperAdmin || adminEligible || user?.role === 'super-admin');
 
   const isHeadmaster = isHeadmasterRole(user?.role);

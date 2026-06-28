@@ -39,6 +39,13 @@ export interface TermReport {
   headmasterRemarks?: Record<number, string>;
   attendanceSummary?: Record<number, { present: number; totalDays: number }>;
   classAttendanceTotalDays?: number;
+  isMainClassTeacherForUser?: boolean;
+  reportSignatures?: {
+    classTeacherSig?: string | null;
+    headTeacherSig?: string | null;
+    headmasterTitle?: string | null;
+    headmasterName?: string | null;
+  };
 }
 
 export type ParsedTeacherRemark = {
@@ -154,6 +161,27 @@ export function derivePromotedToState(
   return { classPromotedTo, promotedOverrides };
 }
 
+export function deriveReopeningDateState(
+  teacherRemarks: Record<number | string, string>,
+  studentIds: number[]
+): { classReopeningDate: string } {
+  const normalized = normalizeTeacherRemarks(teacherRemarks);
+  const counts = new Map<string, number>();
+  for (const id of studentIds) {
+    const d = parseTeacherRemarkDetails(normalized[id] || '').reopeningDate.trim();
+    if (d) counts.set(d, (counts.get(d) || 0) + 1);
+  }
+  let classReopeningDate = '';
+  let maxCount = 0;
+  for (const [val, cnt] of counts) {
+    if (cnt > maxCount) {
+      maxCount = cnt;
+      classReopeningDate = val;
+    }
+  }
+  return { classReopeningDate };
+}
+
 export function resolveAttendanceForStudent(
   studentId: number,
   parsed: ParsedTeacherRemark,
@@ -176,4 +204,40 @@ export function resolveAttendanceForStudent(
   }
 
   return { attendance, attendanceOutOf };
+}
+
+const REPORT_FIELD_LABELS = {
+  conduct: 'Conduct',
+  attitude: 'Attitude',
+  interest: 'Interest',
+  attendance: 'Attendance',
+  attendanceOutOf: 'Attendance (out of)',
+  promotedTo: 'Promoted To',
+  reopeningDate: 'Reopening Date',
+  text: "Class Teacher's Remarks",
+  headmaster: "Headmaster's Remarks",
+} as const;
+
+/** Returns human-readable labels for fields still empty on a student's report card. */
+export function listIncompleteReportFieldsForStudent(
+  teacherRemarkRaw: string,
+  headmasterRemark: string,
+  studentId: number,
+  report: Pick<TermReport, 'attendanceSummary' | 'classAttendanceTotalDays'>
+): string[] {
+  const parsed = parseTeacherRemarkDetails(teacherRemarkRaw);
+  const attendance = resolveAttendanceForStudent(studentId, parsed, report);
+  const missing: string[] = [];
+
+  if (!parsed.conduct) missing.push(REPORT_FIELD_LABELS.conduct);
+  if (!parsed.attitude) missing.push(REPORT_FIELD_LABELS.attitude);
+  if (!parsed.interest) missing.push(REPORT_FIELD_LABELS.interest);
+  if (!attendance.attendance) missing.push(REPORT_FIELD_LABELS.attendance);
+  if (!attendance.attendanceOutOf) missing.push(REPORT_FIELD_LABELS.attendanceOutOf);
+  if (!parsed.promotedTo) missing.push(REPORT_FIELD_LABELS.promotedTo);
+  if (!parsed.reopeningDate) missing.push(REPORT_FIELD_LABELS.reopeningDate);
+  if (!parsed.text) missing.push(REPORT_FIELD_LABELS.text);
+  if (!String(headmasterRemark || '').trim()) missing.push(REPORT_FIELD_LABELS.headmaster);
+
+  return missing;
 }

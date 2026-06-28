@@ -36,7 +36,7 @@ import ParentImpersonationBanner, {
   parentImpersonationActive,
   parentImpersonationBannerOffsetClass,
 } from '@/components/impersonation/ParentImpersonationBanner';
-import { exitParentImpersonation, restoreAdminSession, prepareReturnToAdminDashboard, applyPostExitTenantContext, resolvePostImpersonationPath, readAdminBackup, ensureMinimumTransition, readImpersonationTransition, clearImpersonationTransition, isParentImpersonationTransitionReady, PARENT_IMPERSONATION_TRANSITION_MS } from '@/utils/impersonationHelpers';
+import { exitParentImpersonation, restoreAdminSession, prepareReturnToAdminDashboard, applyPostExitTenantContext, resolvePostImpersonationPath, readAdminBackup, beginImpersonationTransition, clearImpersonationTransition, runWithTransitionMinimum, readImpersonationTransition, isParentImpersonationTransitionReady, PARENT_IMPERSONATION_TRANSITION_MS, IMPERSONATION_TRANSITION_MS } from '@/utils/impersonationHelpers';
 import ImpersonationTransitionOverlay from '@/components/impersonation/ImpersonationTransitionOverlay';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -383,9 +383,6 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   const [impersonationBootstrapping, setImpersonationBootstrapping] = useState(() =>
     parentImpersonationActive(tenantId) && !localStorage.getItem(`parent_student_${tenantId}`)
   );
-  const [exitTransition, setExitTransition] = useState<{ message: string; phase: 'enter' | 'exit' } | null>(
-    null
-  );
 
   // Password change form
   const [pwNew, setPwNew] = useState('');
@@ -690,23 +687,20 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     if (parentImpersonationActive(tenantId)) {
       void (async () => {
         const startedAt = Date.now();
-        setExitTransition({ message: 'Returning to your account…', phase: 'exit' });
+        beginImpersonationTransition('Returning to your account…', 'exit', IMPERSONATION_TRANSITION_MS);
         try {
-          const restored = await exitParentImpersonation(tenantId);
+          const restored = await runWithTransitionMinimum(startedAt, () => exitParentImpersonation(tenantId));
           const merged = restoreAdminSession(restored.token, restored.user, restored.backup);
           applyPostExitTenantContext(merged as Record<string, unknown>, restored.backup);
           applySession(restored.token, merged as Record<string, unknown>);
           prepareReturnToAdminDashboard(restored.backup);
-          await ensureMinimumTransition(startedAt);
           navigate(resolvePostImpersonationPath(merged as Record<string, unknown>, restored.backup), {
             replace: true,
           });
         } catch {
+          clearImpersonationTransition();
           const backup = readAdminBackup();
-          await ensureMinimumTransition(startedAt);
           navigate(resolvePostImpersonationPath(backup?.user ?? {}, backup), { replace: true });
-        } finally {
-          setExitTransition(null);
         }
       })();
       return;
@@ -1930,9 +1924,6 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
   return (
     <div className={`overflow-x-hidden bg-[#F8F7FF] bg-[radial-gradient(circle_at_top_left,rgba(192,132,252,0.34),transparent_32%),radial-gradient(circle_at_top_right,rgba(236,72,153,0.20),transparent_28%),linear-gradient(180deg,#FFFFFF_0%,#F8F7FF_45%,#F4EEFF_100%)] text-slate-950 ${parentImpersonationBannerOffsetClass(tenantId)}`}>
-      {exitTransition ? (
-        <ImpersonationTransitionOverlay message={exitTransition.message} phase={exitTransition.phase} />
-      ) : null}
       <ParentImpersonationBanner tenantId={tenantId} />
       {newQuizPopup && (
         <div className="fixed inset-0 z-[90] bg-slate-900/45 backdrop-blur-[1px] flex items-center justify-center p-4">
@@ -2412,7 +2403,10 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
         {/* ── Position tab ── */}
         {activeTab === 'position' && (
-          <div className="space-y-4">
+          <div
+            className="space-y-4 w-full max-w-full"
+            style={parentImp ? { paddingTop: '40px', boxSizing: 'border-box' } : { boxSizing: 'border-box' }}
+          >
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
                 <Trophy className="w-5 h-5 text-yellow-500" /> Terminal Report
@@ -2460,24 +2454,55 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
               const bece = calculateBECE(myRecord.subjectScores);
               const photoUrl = resolveMediaUrl(myRecord.passportPhotoUrl);
-              const parsedFromRemark = parseTeacherRemarkDetails(report.teacherRemark || '');
+              const parsedFromRemark = report.parsedRemark
+                ? {
+                    text: String(report.parsedRemark.text ?? '').trim(),
+                    conduct: String(report.parsedRemark.conduct ?? '').trim(),
+                    attitude: String(report.parsedRemark.attitude ?? '').trim(),
+                    interest: String(report.parsedRemark.interest ?? '').trim(),
+                    attendance: String(report.parsedRemark.attendance ?? '').trim(),
+                    attendanceOutOf: String(report.parsedRemark.attendanceOutOf ?? '').trim(),
+                    promotedTo: String(report.parsedRemark.promotedTo ?? '').trim(),
+                    reopeningDate: String(report.parsedRemark.reopeningDate ?? '').trim(),
+                  }
+                : parseTeacherRemarkDetails(report.teacherRemark || '');
               const parsedRemarks = { ...parsedFromRemark };
               if (report.attendance) {
                 parsedRemarks.attendance = report.attendance.attendance || parsedRemarks.attendance;
                 parsedRemarks.attendanceOutOf = report.attendance.attendanceOutOf || parsedRemarks.attendanceOutOf;
               }
+              const reportSignatures = (report.signatures || {}) as {
+                classTeacherSig?: string | null;
+                headTeacherSig?: string | null;
+                headmasterTitle?: string | null;
+              };
+              const resolveSigUrl = (url?: string | null) => {
+                if (!url) return '';
+                if (url.startsWith('data:') || /^https?:\/\//i.test(url)) return url;
+                return resolveMediaUrl(url) || url;
+              };
+              const classTeacherSigUrl = resolveSigUrl(reportSignatures.classTeacherSig);
+              const headTeacherSigUrl = resolveSigUrl(reportSignatures.headTeacherSig);
+              const headmasterSigTitle = reportSignatures.headmasterTitle || report.headmasterTitle || 'HEADMASTER';
 
               return (
-                <div className="space-y-4 w-full max-w-full overflow-x-hidden">
-                  <ParentReportCardMobileViewport
-                    contentRef={reportCardRef}
-                    layoutKey={myRecord.studentId}
-                  >
+                <div
+                  className="space-y-4 w-full max-w-full"
+                  style={{ width: '100%', maxWidth: '100%', overflowX: 'hidden', boxSizing: 'border-box' }}
+                >
+                  <ParentReportCardMobileViewport layoutKey={myRecord.studentId}>
                   {/* Beautiful Report Card Container */}
                   <div
+                    id="report-card-container"
                     ref={reportCardRef}
-                    className="report-wrapper bg-white text-slate-950 p-6 md:p-8 border-2 border-black rounded shadow-lg max-w-4xl mx-auto space-y-4"
-                    style={{ fontFamily: "'Times New Roman', Times, serif" }}
+                    className="report-wrapper parent-report-card-inner bg-white text-slate-950 p-4 sm:p-6 md:p-8 border-2 border-black rounded shadow-lg max-w-4xl mx-auto space-y-4 [&_*]:box-border [&_img]:max-w-full"
+                    style={{
+                      fontFamily: "'Times New Roman', Times, serif",
+                      width: '100%',
+                      maxWidth: '100%',
+                      overflowX: 'hidden',
+                      boxSizing: 'border-box',
+                    }}
                   >
                     {/* Header Layout */}
                     <table className="w-full border-collapse">
@@ -2530,51 +2555,52 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
                     {/* Details Grid */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2.5 gap-x-6 mb-4 text-xs">
-                      <div className="flex items-center">
-                        <span className="font-bold uppercase min-w-[130px]">NAME:</span>
+                      <div className="flex items-center min-w-0">
+                        <span className="font-bold uppercase min-w-[90px] sm:min-w-[130px] shrink-0">NAME:</span>
                         <span className="flex-grow border-b border-black font-extrabold text-sm pl-2 uppercase">{myRecord.firstName} {myRecord.lastName}</span>
                       </div>
                       <div className="flex items-center">
-                        <span className="font-bold uppercase min-w-[130px]">BASIC:</span>
+                        <span className="font-bold uppercase min-w-[90px] sm:min-w-[130px] shrink-0">BASIC:</span>
                         <span className="flex-grow border-b border-black font-extrabold text-sm pl-2 uppercase">{report.className}</span>
                       </div>
                       <div className="flex items-center">
-                        <span className="font-bold uppercase min-w-[130px]">ACADEMIC YEAR:</span>
+                        <span className="font-bold uppercase min-w-[90px] sm:min-w-[130px] shrink-0">ACADEMIC YEAR:</span>
                         <span className="flex-grow border-b border-black font-extrabold text-sm pl-2">{report.currentYear}</span>
                       </div>
                       <div className="flex items-center">
-                        <span className="font-bold uppercase min-w-[130px]">TERM:</span>
+                        <span className="font-bold uppercase min-w-[90px] sm:min-w-[130px] shrink-0">TERM:</span>
                         <span className="flex-grow border-b border-black font-extrabold text-sm pl-2">{report.currentTerm}</span>
                       </div>
                       <div className="flex items-center">
-                        <span className="font-bold uppercase min-w-[130px]">POSITION:</span>
+                        <span className="font-bold uppercase min-w-[90px] sm:min-w-[130px] shrink-0">POSITION:</span>
                         <span className="flex-grow border-b border-black font-extrabold text-sm pl-2">{positionSuffix(myRecord.position)}</span>
                       </div>
                       <div className="flex items-center">
-                        <span className="font-bold uppercase min-w-[130px]">TOTAL MARKS:</span>
+                        <span className="font-bold uppercase min-w-[90px] sm:min-w-[130px] shrink-0">TOTAL MARKS:</span>
                         <span className="flex-grow border-b border-black font-extrabold text-sm pl-2">{myRecord.grandTotal}</span>
                       </div>
                       <div className="flex items-center">
-                        <span className="font-bold uppercase min-w-[130px]">NO. ON ROLL:</span>
+                        <span className="font-bold uppercase min-w-[90px] sm:min-w-[130px] shrink-0">NO. ON ROLL:</span>
                         <span className="flex-grow border-b border-black font-extrabold text-sm pl-2">{report.totalStudents}</span>
                       </div>
                       <div className="flex items-center">
-                        <span className="font-bold uppercase min-w-[130px]">REOPENING DATE:</span>
+                        <span className="font-bold uppercase min-w-[90px] sm:min-w-[130px] shrink-0">REOPENING DATE:</span>
                         <span className="flex-grow border-b border-black font-extrabold text-sm pl-2 uppercase">{parsedRemarks.reopeningDate || '—'}</span>
                       </div>
                     </div>
 
-                    {/* Subjects Table */}
-                    <table className="w-full border-collapse mb-4 text-xs border-all">
+                    {/* Subjects Table — scale on mobile; scroll fallback if still too wide */}
+                    <div className="w-full overflow-visible" style={{ overflow: 'visible' }}>
+                    <table className="w-full border-collapse mb-4 text-[9px] sm:text-xs border-all table-fixed md:table-auto">
                       <thead>
                         <tr>
-                          <th className="border-2 border-black bg-slate-50 p-2 text-left font-bold uppercase w-1/3">SUBJECTS</th>
-                          <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase w-20">Class Score<br />40%</th>
-                          <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase w-20">Exams Score<br />60%</th>
-                          <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase w-20">Total Score<br />100%</th>
-                          <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase w-14">Grade</th>
-                          <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase w-16">Position</th>
-                          <th className="border-2 border-black bg-slate-50 p-2 font-bold uppercase">Remarks</th>
+                          <th className="border-2 border-black bg-slate-50 p-1 sm:p-2 text-left font-bold uppercase w-[24%] md:w-1/3">SUBJECTS</th>
+                          <th className="border-2 border-black bg-slate-50 p-1 sm:p-2 font-bold uppercase w-[11%] md:w-20">Class Score<br />40%</th>
+                          <th className="border-2 border-black bg-slate-50 p-1 sm:p-2 font-bold uppercase w-[11%] md:w-20">Exams Score<br />60%</th>
+                          <th className="border-2 border-black bg-slate-50 p-1 sm:p-2 font-bold uppercase w-[11%] md:w-20">Total Score<br />100%</th>
+                          <th className="border-2 border-black bg-slate-50 p-1 sm:p-2 font-bold uppercase w-[9%] md:w-14">Grade</th>
+                          <th className="border-2 border-black bg-slate-50 p-1 sm:p-2 font-bold uppercase w-[10%] md:w-16">Position</th>
+                          <th className="border-2 border-black bg-slate-50 p-1 sm:p-2 font-bold uppercase">Remarks</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2596,18 +2622,19 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
                           return (
                             <tr key={subj}>
-                              <td className="border-2 border-black p-2 font-bold text-left uppercase">{subj}</td>
-                              <td className="border-2 border-black p-2 font-bold text-center">{sScore ? sScore.classScore?.toFixed(1) : '—'}</td>
-                              <td className="border-2 border-black p-2 font-bold text-center">{sScore ? sScore.examScore?.toFixed(1) : '—'}</td>
-                              <td className="border-2 border-black p-2 font-extrabold text-center">{sScore ? sScore.score?.toFixed(1) : '—'}</td>
-                              <td className="border-2 border-black p-2 font-bold text-center">{gr.grade}</td>
-                              <td className="border-2 border-black p-2 font-bold text-center">{sScore ? positionSuffix(subPos) : '—'}</td>
-                              <td className="border-2 border-black p-2 font-bold uppercase text-[10px] text-left">{gr.remark}</td>
+                              <td className="border-2 border-black p-1 sm:p-2 font-bold text-left uppercase break-words">{subj}</td>
+                              <td className="border-2 border-black p-1 sm:p-2 font-bold text-center">{sScore ? sScore.classScore?.toFixed(1) : '—'}</td>
+                              <td className="border-2 border-black p-1 sm:p-2 font-bold text-center">{sScore ? sScore.examScore?.toFixed(1) : '—'}</td>
+                              <td className="border-2 border-black p-1 sm:p-2 font-extrabold text-center">{sScore ? sScore.score?.toFixed(1) : '—'}</td>
+                              <td className="border-2 border-black p-1 sm:p-2 font-bold text-center">{gr.grade}</td>
+                              <td className="border-2 border-black p-1 sm:p-2 font-bold text-center">{sScore ? positionSuffix(subPos) : '—'}</td>
+                              <td className="border-2 border-black p-1 sm:p-2 font-bold uppercase text-[8px] sm:text-[10px] text-left break-words">{gr.remark}</td>
                             </tr>
                           );
                         })}
                       </tbody>
                     </table>
+                    </div>
 
                     {/* Remarks Section */}
                     <div className="space-y-3 mb-4">
@@ -2651,16 +2678,32 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                     </div>
                     {/* Signatures Area */}
                     <div className="grid grid-cols-2 gap-12 mt-12 mb-4 text-center text-xs">
-                      <div className="flex flex-col items-center">
-                        <div className="h-12" />
+                      <div className="flex flex-col items-center justify-end min-h-[85px]">
+                        {classTeacherSigUrl ? (
+                          <img
+                            src={classTeacherSigUrl}
+                            alt="Class teacher signature"
+                            className="h-12 max-w-full object-contain mb-1"
+                          />
+                        ) : (
+                          <div className="h-12" />
+                        )}
                         <div className="w-full border-t border-black pt-1 font-bold uppercase text-[10px] tracking-wider">
                           CLASS TEACHER'S SIGNATURE
                         </div>
                       </div>
-                      <div className="flex flex-col items-center">
-                        <div className="h-12" />
+                      <div className="flex flex-col items-center justify-end min-h-[85px]">
+                        {headTeacherSigUrl ? (
+                          <img
+                            src={headTeacherSigUrl}
+                            alt="Headmaster signature"
+                            className="h-12 max-w-full object-contain mb-1"
+                          />
+                        ) : (
+                          <div className="h-12" />
+                        )}
                         <div className="w-full border-t border-black pt-1 font-bold uppercase text-[10px] tracking-wider">
-                          HEAD TEACHER'S SIGNATURE
+                          {headmasterSigTitle}'S SIGNATURE
                         </div>
                       </div>
                     </div>

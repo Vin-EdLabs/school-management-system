@@ -1,0 +1,88 @@
+/* Staff (admin/teacher/headmaster) terminal report preview — not parent portal */
+
+.staff-report-subjects-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.staff-report-subjects-table th,
+.staff-report-subjects-table td {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: normal;
+  padding: 4px 3px;
+  font-size: 11px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.staff-report-subjects-table th:first-child,
+.staff-report-subjects-table td:first-child {
+  text-align: left;
+  min-width: 80px;
+}
+
+.staff-report-subjects-table .col-subjects {
+  min-width: 100px;
+}
+
+.staff-report-subjects-table .col-class-score,
+.staff-report-subjects-table .col-exam-score,
+.staff-report-subjects-table .col-total-score {
+  min-width: 55px;
+}
+
+.staff-report-subjects-table .col-grade {
+  min-width: 40px;
+}
+
+.staff-report-subjects-table .col-position {
+  min-width: 60px;
+}
+
+.staff-report-remarks-field {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: normal;
+  max-width: 100%;
+  min-width: 0;
+}
+
+@media (min-width: 768px) {
+  .staff-report-subjects-table th,
+  .staff-report-subjects-table td {
+    font-size: 12px;
+    padding: 6px 4px;
+  }
+}
+
+@media print {
+  body {
+    margin: 0;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  #admin-report-card {
+    width: 210mm !important;
+    max-width: 210mm !important;
+    transform: none !important;
+    margin-bottom: 0 !important;
+    font-size: 12pt;
+  }
+
+  .staff-report-card-scroll {
+    overflow: visible !important;
+  }
+
+  .staff-report-card-inner-wrap {
+    min-width: 0 !important;
+  }
+
+  .staff-report-subjects-table {
+    page-break-inside: avoid;
+  }
+}

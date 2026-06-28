@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSocket } from '../../contexts/SocketContext';
+import { isHeadmasterRole } from '../../utils/headmasterPortal';
 import {
   fetchUnreadAnnouncements,
   markAnnouncementRead,
@@ -37,7 +38,9 @@ const GlobalAnnouncementPopup: React.FC = () => {
     isAuthenticated &&
     !authLoading &&
     user &&
-    (user.role === 'administrator' || user.role === 'finance');
+    (user.role === 'administrator' ||
+      user.role === 'finance' ||
+      isHeadmasterRole(user.role));
 
   const loadUnread = useCallback(async () => {
     if (!shouldCheck) return;

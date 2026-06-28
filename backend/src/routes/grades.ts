@@ -7,7 +7,8 @@ import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.j
 import { getIO } from '../socket.js';
 import { sendPushToStudentParents } from '../services/webPushService.js';
 import { resolveSchoolDisplayName } from '../services/schoolBrandingService.js';
-import { archiveClassReportCardsOnRelease, archiveStudentReportCard } from '../services/reportCardArchiveService.js';
+import { archiveClassReportCardsOnRelease, archiveStudentReportCard, validateClassReportReadyForRelease, resolveArchiveSignatures } from '../services/reportCardArchiveService.js';
+import { assertMainClassTeacher, isMainClassTeacher } from '../services/classTeacherAccess.js';
 import { getSchoolActiveTermYear } from '../services/gradesTermContext.js';
 import {
   getSchoolTermYear,
@@ -640,6 +641,13 @@ router.get('/term-report', async (req: AuthRequest, res) => {
       };
     }
 
+    const isMainClassTeacherForUser = await isMainClassTeacher(
+      tenantId,
+      Number(classId),
+      req.user!.teacherId != null ? Number(req.user!.teacherId) : null
+    );
+    const reportSignatures = await resolveArchiveSignatures(tenantId, Number(classId));
+
     return res.json({
       students: reportRows,
       subjects: subjectOrder,
@@ -659,6 +667,8 @@ router.get('/term-report', async (req: AuthRequest, res) => {
       isReleased: releaseInfo?.is_released ?? false,
       releasedAt: releaseInfo?.released_at ?? null,
       releasedByName: releaseInfo?.released_by_name ?? null,
+      isMainClassTeacherForUser,
+      reportSignatures,
     });
   } catch (error) {
     console.error('Term report error:', error);
@@ -673,6 +683,7 @@ router.post('/release-report', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const userId = req.user!.id;
+    const role = String(req.user!.role || '').toLowerCase();
     const { classId, release, signatures } = req.body; // release: boolean
     if (!classId) return res.status(400).json({ error: 'classId required' });
 
@@ -682,6 +693,47 @@ router.post('/release-report', async (req: AuthRequest, res) => {
     );
     const currentTerm = settingsRes.rows[0]?.current_term;
     if (!currentTerm) return res.status(400).json({ error: 'No active term set' });
+
+    const releasing = release !== false;
+    const isSchoolAdmin = role === 'administrator' || role === 'super-admin';
+
+    if (releasing) {
+      if (role === 'teacher' || role === 'staff') {
+        try {
+          await assertMainClassTeacher(tenantId, Number(classId), req.user!.teacherId != null ? Number(req.user!.teacherId) : null);
+        } catch (e: unknown) {
+          const err = e as { status?: number; message?: string };
+          return res.status(err.status || 403).json({ error: err.message || 'Forbidden' });
+        }
+      } else if (role !== 'headmaster' && !isSchoolAdmin) {
+        return res.status(403).json({ error: 'You cannot release report cards for this class' });
+      }
+
+      if (!isSchoolAdmin) {
+        const validation = await validateClassReportReadyForRelease(
+          tenantId,
+          Number(classId),
+          signatures || undefined
+        );
+        if (!validation.ok) {
+          return res.status(400).json({
+            error: validation.errors[0] || 'Report card is not complete',
+            validation,
+          });
+        }
+      }
+    } else if (!isSchoolAdmin && role !== 'headmaster') {
+      if (role === 'teacher' || role === 'staff') {
+        try {
+          await assertMainClassTeacher(tenantId, Number(classId), req.user!.teacherId != null ? Number(req.user!.teacherId) : null);
+        } catch (e: unknown) {
+          const err = e as { status?: number; message?: string };
+          return res.status(err.status || 403).json({ error: err.message || 'Forbidden' });
+        }
+      } else {
+        return res.status(403).json({ error: 'You cannot hide report cards for this class' });
+      }
+    }
 
     await query(
       `INSERT INTO term_report_releases (tenant_id, class_id, term, released_by, is_released, released_at)
@@ -782,6 +834,14 @@ router.post('/term-report-remarks', async (req: AuthRequest, res) => {
       }
     } else {
       if (teacherRemark != null) {
+        try {
+          await assertMainClassTeacher(tenantId, Number(classId), req.user!.teacherId != null ? Number(req.user!.teacherId) : null);
+        } catch (e: unknown) {
+          const err = e as { status?: number; message?: string };
+          return res.status(err.status || 403).json({
+            error: err.message || 'Only the main class teacher can save class teacher remarks',
+          });
+        }
         const value = String(teacherRemark);
         await upsertTermReportRemark(
           tenantId, Number(classId), Number(studentId), term, academicYear, 'teacher', value, userId
@@ -814,8 +874,18 @@ router.post('/sync-report-signatures', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const userId = req.user!.id;
+    const role = String(req.user!.role || '').toLowerCase();
     const { classId, signatures } = req.body;
     if (!classId) return res.status(400).json({ error: 'classId required' });
+
+    if (signatures?.classTeacherSig && (role === 'teacher' || role === 'staff')) {
+      try {
+        await assertMainClassTeacher(tenantId, Number(classId), req.user!.teacherId != null ? Number(req.user!.teacherId) : null);
+      } catch (e: unknown) {
+        const err = e as { status?: number; message?: string };
+        return res.status(err.status || 403).json({ error: err.message || 'Forbidden' });
+      }
+    }
 
     const result = await archiveClassReportCardsOnRelease(
       tenantId,

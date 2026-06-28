@@ -10,10 +10,12 @@ import {
   prepareReturnToAdminDashboard,
   applyPostExitTenantContext,
   resolvePostImpersonationPath,
-  ensureMinimumTransition,
+  beginImpersonationTransition,
+  clearImpersonationTransition,
+  runWithTransitionMinimum,
+  IMPERSONATION_TRANSITION_MS,
 } from '../../utils/impersonationHelpers';
 import { useAuth } from '../../contexts/AuthContext';
-import ImpersonationTransitionOverlay from './ImpersonationTransitionOverlay';
 import { toast } from '@/hooks/use-toast';
 
 const BANNER_CLASS =
@@ -24,9 +26,6 @@ const ParentImpersonationBanner: React.FC<{ tenantId: number }> = ({ tenantId })
   const navigate = useNavigate();
   const { applySession } = useAuth();
   const [exiting, setExiting] = useState(false);
-  const [transition, setTransition] = useState<{ message: string; phase: 'enter' | 'exit' } | null>(
-    null
-  );
   const isParentImp = parentImpersonationActive(tenantId);
   const [meta, setMeta] = useState(() => loadParentImpersonationMeta(tenantId));
 
@@ -40,19 +39,19 @@ const ParentImpersonationBanner: React.FC<{ tenantId: number }> = ({ tenantId })
     if (exiting) return;
     const startedAt = Date.now();
     setExiting(true);
-    setTransition({ message: 'Returning to your account…', phase: 'exit' });
+    beginImpersonationTransition('Returning to your account…', 'exit', IMPERSONATION_TRANSITION_MS);
     try {
-      const restored = await exitParentImpersonation(tenantId);
+      const restored = await runWithTransitionMinimum(startedAt, () => exitParentImpersonation(tenantId));
       const merged = restoreAdminSession(restored.token, restored.user, restored.backup);
       applyPostExitTenantContext(merged as Record<string, unknown>, restored.backup);
       applySession(restored.token, merged as Record<string, unknown>);
       prepareReturnToAdminDashboard(restored.backup);
-      await ensureMinimumTransition(startedAt);
       toast({ title: 'Impersonation ended', description: 'Back to your account' });
       navigate(resolvePostImpersonationPath(merged as Record<string, unknown>, restored.backup), {
         replace: true,
       });
     } catch (e: unknown) {
+      clearImpersonationTransition();
       toast({
         title: 'Could not exit impersonation',
         description: e instanceof Error ? e.message : 'Try again',
@@ -60,13 +59,11 @@ const ParentImpersonationBanner: React.FC<{ tenantId: number }> = ({ tenantId })
       });
     } finally {
       setExiting(false);
-      setTransition(null);
     }
   };
 
   return (
-    <>
-      <div className={BANNER_CLASS}>
+    <div className={BANNER_CLASS}>
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           <p className="min-w-0 text-xs font-medium leading-snug sm:text-sm">
@@ -87,11 +84,7 @@ const ParentImpersonationBanner: React.FC<{ tenantId: number }> = ({ tenantId })
           {exiting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogOut className="h-3.5 w-3.5" />}
           Exit
         </Button>
-      </div>
-      {transition ? (
-        <ImpersonationTransitionOverlay message={transition.message} phase={transition.phase} />
-      ) : null}
-    </>
+    </div>
   );
 };
 

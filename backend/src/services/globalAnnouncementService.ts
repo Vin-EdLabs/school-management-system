@@ -59,7 +59,7 @@ async function countEligibleUsers(target: string, targetTenantIds: number[] | nu
     const res = await query(
       `SELECT COUNT(*)::int AS count FROM users u
        WHERE COALESCE(u.is_active, true) = true
-         AND LOWER(u.role) IN ('administrator', 'finance')
+         AND LOWER(u.role) IN ('administrator', 'finance', 'headmaster')
          AND u.tenant_id = ANY($1::int[])`,
       [targetTenantIds]
     );
@@ -68,7 +68,7 @@ async function countEligibleUsers(target: string, targetTenantIds: number[] | nu
   const res = await query(
     `SELECT COUNT(*)::int AS count FROM users u
      WHERE COALESCE(u.is_active, true) = true
-       AND LOWER(u.role) IN ('administrator', 'finance')
+       AND LOWER(u.role) IN ('administrator', 'finance', 'headmaster')
        AND u.tenant_id IS NOT NULL`
   );
   return res.rows[0]?.count ?? 0;

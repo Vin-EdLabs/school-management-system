@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -7,11 +7,16 @@ import { Button } from '@/components/ui/button';
 import { Wallet } from 'lucide-react';
 import { apiService } from '../../services/api';
 import { toast } from '@/hooks/use-toast';
+import { SETTINGS_CARD_CLASS } from './SettingsSection';
+import { cn } from '@/lib/utils';
 
 export interface SchoolPaymentSettings {
   mtnMomoNumber: string;
+  mtnMomoName: string;
   vodafoneCashNumber: string;
+  vodafoneCashName: string;
   airteltigoNumber: string;
+  airteltigoName: string;
   merchantId: string;
   bankName: string;
   bankAccountNumber: string;
@@ -21,8 +26,11 @@ export interface SchoolPaymentSettings {
 
 const emptySettings: SchoolPaymentSettings = {
   mtnMomoNumber: '',
+  mtnMomoName: '',
   vodafoneCashNumber: '',
+  vodafoneCashName: '',
   airteltigoNumber: '',
+  airteltigoName: '',
   merchantId: '',
   bankName: '',
   bankAccountNumber: '',
@@ -79,26 +87,49 @@ const PaymentDetailsSettings = () => {
   );
 
   return (
-    <Card className="shadow-sm">
-      <CardHeader className="px-4 py-3">
-        <CardTitle className="flex items-center space-x-2 text-base">
-          <Wallet className="w-4 h-4" />
-          <span>Payment Details</span>
+    <Card className={cn(SETTINGS_CARD_CLASS, 'h-full')}>
+      <CardHeader className="px-5 py-4 border-b border-border/50 bg-muted/20">
+        <CardTitle className="flex items-center gap-2 text-base font-semibold">
+          <Wallet className="h-4 w-4 text-emerald-600" />
+          Payment Details
         </CardTitle>
-        <p className="text-xs text-muted-foreground">
-          Payment receiving details shown to parents in the portal when they submit payment proof.
+        <p className="text-xs text-muted-foreground mt-1">
+          MoMo, bank, and instructions shown to parents when they submit payment proof.
         </p>
       </CardHeader>
-      <CardContent className="px-4 pb-4">
+      <CardContent className="px-5 py-5">
         <form onSubmit={handleSave} className="space-y-4">
+          <div className="space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">MTN MoMo</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {field('mtnMomoNumber', 'MoMo Number', '024 XXX XXXX')}
+              {field('mtnMomoName', 'MoMo Account Name', 'Name registered on MoMo')}
+            </div>
+          </div>
+          <div className="space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Vodafone Cash</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {field('vodafoneCashNumber', 'Vodafone Cash Number', '050 XXX XXXX')}
+              {field('vodafoneCashName', 'Vodafone Cash Name', 'Name registered on Vodafone Cash')}
+            </div>
+          </div>
+          <div className="space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">AirtelTigo</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {field('airteltigoNumber', 'AirtelTigo Number', '027 XXX XXXX')}
+              {field('airteltigoName', 'AirtelTigo Name', 'Name registered on AirtelTigo')}
+            </div>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {field('mtnMomoNumber', 'MTN MoMo Number', '024 XXX XXXX')}
-            {field('vodafoneCashNumber', 'Vodafone Cash Number', '050 XXX XXXX')}
-            {field('airteltigoNumber', 'AirtelTigo Number', '027 XXX XXXX')}
             {field('merchantId', 'Merchant ID', 'Optional merchant ID')}
-            {field('bankName', 'Bank Name', 'e.g. GCB Bank')}
-            {field('bankAccountNumber', 'Bank Account Number')}
-            {field('bankAccountName', 'Bank Account Name')}
+          </div>
+          <div className="space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Bank Transfer</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {field('bankName', 'Bank Name', 'e.g. GCB Bank')}
+              {field('bankAccountNumber', 'Bank Account Number')}
+              {field('bankAccountName', 'Bank Account Name', 'Name on the bank account')}
+            </div>
           </div>
           <div className="space-y-2">
             <Label>Payment Instructions</Label>

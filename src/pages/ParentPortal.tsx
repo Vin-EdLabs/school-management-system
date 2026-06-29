@@ -1278,7 +1278,8 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   const refreshFinanceAll = useCallback(async () => {
     if (!token || !student) return;
     const sessionId = studentSessionRef.current;
-    setDataLoading(true);
+    const silentMakePayment = activeTab === 'finance' && financeSubTab === 'make-payment';
+    if (!silentMakePayment) setDataLoading(true);
     try {
       const [financeData, meData, invData] = await Promise.all([
         parentFetch('/parent/finance', {}, token),
@@ -1298,17 +1299,18 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     } catch (err: unknown) {
       console.error('Finance refresh error:', err);
     } finally {
-      if (studentSessionRef.current === sessionId) {
+      if (studentSessionRef.current === sessionId && !silentMakePayment) {
         setDataLoading(false);
       }
     }
-  }, [token, student, loadServerNotifications]);
+  }, [token, student, loadServerNotifications, activeTab, financeSubTab]);
 
   useEffect(() => {
     if (!token || !student?.admission_number || isSwitchingStudent) return;
     if (activeTab === 'overview') return;
+    if (activeTab === 'finance' && financeSubTab === 'make-payment') return;
     void fetchTabData(activeTab);
-  }, [token, student?.admission_number, activeTab, fetchTabData, isSwitchingStudent]);
+  }, [token, student?.admission_number, activeTab, financeSubTab, fetchTabData, isSwitchingStudent]);
 
   useEffect(() => {
     if (!token || isSwitchingStudent) return;
@@ -1322,7 +1324,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   }, [token, student?.id, isSwitchingStudent]);
 
   useEffect(() => {
-    if (!token || activeTab !== 'finance' || isSwitchingStudent) return;
+    if (!token || activeTab !== 'finance' || financeSubTab === 'make-payment' || isSwitchingStudent) return;
     const sessionId = studentSessionRef.current;
     const interval = window.setInterval(() => {
       parentFetch('/parent/finance', {}, token)
@@ -1333,7 +1335,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         .catch(() => undefined);
     }, 60000);
     return () => window.clearInterval(interval);
-  }, [token, activeTab, isSwitchingStudent, student?.admission_number]);
+  }, [token, activeTab, financeSubTab, isSwitchingStudent, student?.admission_number]);
 
   useEffect(() => {
     if (!token || typeof window === 'undefined' || isSwitchingStudent) return;
@@ -2872,6 +2874,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
             {financeSubTab === 'make-payment' && token ? (
               <ParentMakePaymentPanel
+                key="make-payment-panel"
                 token={token}
                 linkedStudents={makePaymentStudents}
                 defaultStudentId={student?.id}

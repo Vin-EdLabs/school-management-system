@@ -1064,7 +1064,8 @@ router.get('/payment', paymentSettingsRoles, async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const result = await query(
-      `SELECT mtn_momo_number, vodafone_cash_number, airteltigo_number, merchant_id,
+      `SELECT mtn_momo_number, mtn_momo_name, vodafone_cash_number, vodafone_cash_name,
+              airteltigo_number, airteltigo_name, merchant_id,
               bank_name, bank_account_number, bank_account_name, payment_instructions
        FROM school_payment_settings
        WHERE tenant_id = $1`,
@@ -1073,8 +1074,11 @@ router.get('/payment', paymentSettingsRoles, async (req: AuthRequest, res) => {
     const row = result.rows[0] || {};
     res.json({
       mtnMomoNumber: row.mtn_momo_number || '',
+      mtnMomoName: row.mtn_momo_name || '',
       vodafoneCashNumber: row.vodafone_cash_number || '',
+      vodafoneCashName: row.vodafone_cash_name || '',
       airteltigoNumber: row.airteltigo_number || '',
+      airteltigoName: row.airteltigo_name || '',
       merchantId: row.merchant_id || '',
       bankName: row.bank_name || '',
       bankAccountNumber: row.bank_account_number || '',
@@ -1093,13 +1097,17 @@ router.put('/payment', paymentSettingsRoles, async (req: AuthRequest, res) => {
     const b = req.body || {};
     await query(
       `INSERT INTO school_payment_settings (
-         tenant_id, mtn_momo_number, vodafone_cash_number, airteltigo_number, merchant_id,
+         tenant_id, mtn_momo_number, mtn_momo_name, vodafone_cash_number, vodafone_cash_name,
+         airteltigo_number, airteltigo_name, merchant_id,
          bank_name, bank_account_number, bank_account_name, payment_instructions, updated_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
        ON CONFLICT (tenant_id) DO UPDATE SET
          mtn_momo_number = EXCLUDED.mtn_momo_number,
+         mtn_momo_name = EXCLUDED.mtn_momo_name,
          vodafone_cash_number = EXCLUDED.vodafone_cash_number,
+         vodafone_cash_name = EXCLUDED.vodafone_cash_name,
          airteltigo_number = EXCLUDED.airteltigo_number,
+         airteltigo_name = EXCLUDED.airteltigo_name,
          merchant_id = EXCLUDED.merchant_id,
          bank_name = EXCLUDED.bank_name,
          bank_account_number = EXCLUDED.bank_account_number,
@@ -1109,8 +1117,11 @@ router.put('/payment', paymentSettingsRoles, async (req: AuthRequest, res) => {
       [
         tenantId,
         String(b.mtnMomoNumber || '').trim() || null,
+        String(b.mtnMomoName || '').trim() || null,
         String(b.vodafoneCashNumber || '').trim() || null,
+        String(b.vodafoneCashName || '').trim() || null,
         String(b.airteltigoNumber || '').trim() || null,
+        String(b.airteltigoName || '').trim() || null,
         String(b.merchantId || '').trim() || null,
         String(b.bankName || '').trim() || null,
         String(b.bankAccountNumber || '').trim() || null,

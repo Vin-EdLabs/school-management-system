@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Copy, Upload, CheckCircle2, Clock, XCircle, Loader2, Eye } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import PaymentProofImageDialog from '@/components/payments/PaymentProofImageDialog';
@@ -38,18 +38,37 @@ function CopyRow({ label, value }: { label: string; value: string }) {
     }
   };
   return (
-    <div className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+    <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2">
       <div className="min-w-0">
         <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</p>
-        <p className="text-sm font-semibold text-slate-900 truncate">{value}</p>
+        <p className="text-sm font-semibold text-slate-900 break-words">{value}</p>
       </div>
       <button
         type="button"
         onClick={() => void copy()}
-        className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+        className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-white"
       >
         <Copy className="h-3.5 w-3.5" /> Copy
       </button>
+    </div>
+  );
+}
+
+function PaymentMethodCard({
+  title,
+  number,
+  accountName,
+}: {
+  title: string;
+  number?: string;
+  accountName?: string;
+}) {
+  if (!number?.trim() && !accountName?.trim()) return null;
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
+      <p className="text-xs font-bold uppercase tracking-wide text-emerald-800">{title}</p>
+      <CopyRow label="Number" value={number || ''} />
+      <CopyRow label="Account name" value={accountName || ''} />
     </div>
   );
 }
@@ -84,8 +103,9 @@ const ParentMakePaymentPanel: React.FC<ParentMakePaymentPanelProps> = ({
 }) => {
   const [details, setDetails] = useState<SchoolPaymentDetails | null>(null);
   const [history, setHistory] = useState<PaymentSubmission[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const hasLoadedRef = useRef(false);
   const [studentId, setStudentId] = useState(String(defaultStudentId || linkedStudents[0]?.id || ''));
   const [amount, setAmount] = useState('');
   const [network, setNetwork] = useState<(typeof NETWORKS)[number]>('MTN MoMo');
@@ -94,9 +114,10 @@ const ParentMakePaymentPanel: React.FC<ParentMakePaymentPanelProps> = ({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<{ url: string; title: string; subtitle?: string } | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (options?: { silent?: boolean }) => {
     if (!token) return;
-    setLoading(true);
+    const silent = options?.silent ?? hasLoadedRef.current;
+    if (!silent) setInitialLoading(true);
     try {
       const [d, h] = await Promise.all([
         fetchParentPaymentDetails(token),
@@ -104,11 +125,14 @@ const ParentMakePaymentPanel: React.FC<ParentMakePaymentPanelProps> = ({
       ]);
       setDetails(d);
       setHistory(h);
+      hasLoadedRef.current = true;
     } catch (e: unknown) {
       const err = e as { message?: string };
-      toast({ title: 'Could not load payment info', description: err?.message, variant: 'destructive' });
+      if (!silent) {
+        toast({ title: 'Could not load payment info', description: err?.message, variant: 'destructive' });
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setInitialLoading(false);
     }
   }, [token]);
 
@@ -170,7 +194,7 @@ const ParentMakePaymentPanel: React.FC<ParentMakePaymentPanelProps> = ({
       setAmount('');
       setReference('');
       setScreenshot(null);
-      await load();
+      await load({ silent: true });
     } catch (err: unknown) {
       const e = err as { message?: string };
       toast({ title: 'Submission failed', description: e?.message, variant: 'destructive' });
@@ -179,7 +203,7 @@ const ParentMakePaymentPanel: React.FC<ParentMakePaymentPanelProps> = ({
     }
   };
 
-  if (loading) {
+  if (initialLoading && !hasLoadedRef.current) {
     return (
       <div className="flex items-center justify-center py-16 text-slate-500">
         <Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading payment options…
@@ -189,17 +213,38 @@ const ParentMakePaymentPanel: React.FC<ParentMakePaymentPanelProps> = ({
 
   return (
     <div className="space-y-5">
-      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-2">
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
         <h3 className="text-sm font-bold text-slate-900">School payment details</h3>
         <p className="text-xs text-slate-600">Pay using the details below, then submit your proof of payment.</p>
         <div className="grid gap-2 sm:grid-cols-2">
-          <CopyRow label="MTN MoMo" value={details?.mtnMomoNumber || ''} />
-          <CopyRow label="Vodafone Cash" value={details?.vodafoneCashNumber || ''} />
-          <CopyRow label="AirtelTigo" value={details?.airteltigoNumber || ''} />
-          <CopyRow label="Merchant ID" value={details?.merchantId || ''} />
-          <CopyRow label="Bank Name" value={details?.bankName || ''} />
-          <CopyRow label="Account Number" value={details?.bankAccountNumber || ''} />
-          <CopyRow label="Account Name" value={details?.bankAccountName || ''} />
+          <PaymentMethodCard
+            title="MTN MoMo"
+            number={details?.mtnMomoNumber}
+            accountName={details?.mtnMomoName}
+          />
+          <PaymentMethodCard
+            title="Vodafone Cash"
+            number={details?.vodafoneCashNumber}
+            accountName={details?.vodafoneCashName}
+          />
+          <PaymentMethodCard
+            title="AirtelTigo"
+            number={details?.airteltigoNumber}
+            accountName={details?.airteltigoName}
+          />
+          {details?.merchantId?.trim() ? (
+            <div className="rounded-xl border border-slate-200 bg-white p-3">
+              <CopyRow label="Merchant ID" value={details.merchantId} />
+            </div>
+          ) : null}
+          <div className="sm:col-span-2 rounded-xl border border-slate-200 bg-white p-3 space-y-2">
+            <p className="text-xs font-bold uppercase tracking-wide text-emerald-800">Bank Transfer</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <CopyRow label="Bank name" value={details?.bankName || ''} />
+              <CopyRow label="Account number" value={details?.bankAccountNumber || ''} />
+              <CopyRow label="Account name" value={details?.bankAccountName || ''} />
+            </div>
+          </div>
         </div>
         {details?.paymentInstructions?.trim() ? (
           <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5 text-xs text-blue-900 whitespace-pre-wrap">

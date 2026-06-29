@@ -23,8 +23,11 @@ function authHeaders(token: string): Record<string, string> {
 
 export interface SchoolPaymentDetails {
   mtnMomoNumber: string;
+  mtnMomoName: string;
   vodafoneCashNumber: string;
+  vodafoneCashName: string;
   airteltigoNumber: string;
+  airteltigoName: string;
   merchantId: string;
   bankName: string;
   bankAccountNumber: string;

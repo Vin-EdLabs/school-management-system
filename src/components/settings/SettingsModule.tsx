@@ -10,8 +10,9 @@ import { useData } from '../../contexts/DataContext';
 import { apiService } from '../../services/api';
 import { toast } from '@/hooks/use-toast';
 import {
-  Settings, Key, Building, Download, Receipt,
-  GraduationCap, Copy, ExternalLink, ShieldAlert, RefreshCw, Pen, Stamp,
+  Key, Building, Download, Receipt,
+  GraduationCap, Copy, ExternalLink, ShieldAlert, RefreshCw, Pen,
+  Wallet, Database,
 } from 'lucide-react';
 import AcademicTermManager from './AcademicTermManager';
 import ArrearsSyncModal from './ArrearsSyncModal';
@@ -19,7 +20,9 @@ import SchoolManager from './SchoolManager';
 import SignatureStampManager from './SignatureStampManager';
 import HeadmasterSignatureSettings from './HeadmasterSignatureSettings';
 import PaymentDetailsSettings from './PaymentDetailsSettings';
+import { SettingsPageHeader, SettingsSection, SETTINGS_CARD_CLASS } from './SettingsSection';
 import { getTenantParentPortalUrl } from '../../utils/tenantHost';
+import { cn } from '@/lib/utils';
 
 interface SchoolSettings {
   name: string;
@@ -370,374 +373,391 @@ const SettingsModule = () => {
 
   // Super-admin / Primary admin settings view
   return (
-    <div className="p-4 md:p-5 space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="w-9 h-9 bg-gradient-to-br from-gray-500 to-gray-600 rounded-lg flex items-center justify-center">
-            <Settings className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">System Settings</h1>
-            <p className="text-sm text-muted-foreground">Configure system settings and preferences</p>
-          </div>
-        </div>
-      </div>
+    <div className="mx-auto max-w-6xl p-4 md:p-6 space-y-10 pb-10">
+      <SettingsPageHeader
+        title="System Settings"
+        description="Manage your school profile, payments, parent portal, and account preferences."
+      />
 
-      {/* School Management - Super-Admin only */}
-      {isSuperAdmin && <SchoolManager />}
+      {isSuperAdmin && (
+        <SettingsSection
+          icon={Database}
+          title="Platform Administration"
+          description="Super-admin tools for managing schools on the platform."
+          accent="slate"
+        >
+          <SchoolManager />
+        </SettingsSection>
+      )}
 
       {hasSettingsFull && <AcademicTermManager />}
 
-      {hasSettingsFull && <PaymentDetailsSettings />}
-
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
-        <Card className="shadow-sm">
-          <CardHeader className="px-4 py-3">
-            <CardTitle className="flex items-center space-x-2 text-base">
-              <Key className="w-4 h-4" />
-              <span>Change Password</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-4">
-            <form onSubmit={handlePasswordChange} className="space-y-3">
-              <div className="space-y-2">
-                <Label htmlFor="currentPasswordFull">Current Password</Label>
-                <Input
-                  id="currentPasswordFull"
-                  type="password"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  placeholder="Enter current password"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="newPassword">New Password</Label>
-                <Input
-                  id="newPassword"
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder={`Enter new password (min ${user?.role === 'teacher' || user?.role === 'staff' ? 5 : 6} characters)`}
-                  required
-                  minLength={user?.role === 'teacher' || user?.role === 'staff' ? 5 : 6}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Confirm Password</Label>
-                <Input
-                  id="confirmPassword"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Confirm new password"
-                  required
-                  minLength={user?.role === 'teacher' || user?.role === 'staff' ? 5 : 6}
-                />
-              </div>
-              <Button type="submit" variant="primaryAction" className="w-full" disabled={!currentPassword || !newPassword || !confirmPassword}>
-                Update Password
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-
-        {hasSettingsFull && (
-          <Card className="xl:col-span-2 shadow-sm">
-            <CardHeader className="px-4 py-3">
-              <CardTitle className="flex items-center space-x-2 text-base">
-                <Building className="w-4 h-4" />
-                <span>School Information</span>
-              </CardTitle>
+      {hasSettingsFull && (
+        <SettingsSection
+          icon={Building}
+          title="School Identity"
+          description="Name, contact details, branding colours, and public-facing information."
+          accent="blue"
+        >
+          <Card className={SETTINGS_CARD_CLASS}>
+            <CardHeader className="px-5 py-4 border-b border-border/50 bg-muted/20">
+              <CardTitle className="text-base font-semibold">School Information</CardTitle>
             </CardHeader>
-            <CardContent className="px-4 pb-4">
-              <form onSubmit={handleSchoolInfoUpdate} className="space-y-3">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="schoolName">School Name</Label>
-                  <Input
-                    id="schoolName"
-                    value={schoolInfo.name}
-                    onChange={(e) => setSchoolInfo({ ...schoolInfo, name: e.target.value })}
-                    placeholder="Enter school name"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="schoolAddress">Address</Label>
-                  <Input
-                    id="schoolAddress"
-                    value={schoolInfo.address}
-                    onChange={(e) => setSchoolInfo({ ...schoolInfo, address: e.target.value })}
-                    placeholder="Enter school address"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="schoolContact">Contact Number</Label>
-                  <Input
-                    id="schoolContact"
-                    value={schoolInfo.contact}
-                    onChange={(e) => setSchoolInfo({ ...schoolInfo, contact: e.target.value })}
-                    placeholder="Enter contact number"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="schoolWhatsapp">WhatsApp Number</Label>
-                  <Input
-                    id="schoolWhatsapp"
-                    value={schoolInfo.whatsappNumber}
-                    onChange={(e) => setSchoolInfo({ ...schoolInfo, whatsappNumber: e.target.value })}
-                    placeholder="Enter WhatsApp number"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="schoolEmail">Email Address</Label>
-                  <Input
-                    id="schoolEmail"
-                    type="email"
-                    value={schoolInfo.email}
-                    onChange={(e) => setSchoolInfo({ ...schoolInfo, email: e.target.value })}
-                    placeholder="Enter email address"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="officeHours">Office Hours</Label>
-                  <Input
-                    id="officeHours"
-                    value={schoolInfo.officeHours}
-                    onChange={(e) => setSchoolInfo({ ...schoolInfo, officeHours: e.target.value })}
-                    placeholder="Mon-Fri • 7:00am - 4:00pm"
-                  />
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="physicalAddress">Physical Address (Parent Desk)</Label>
-                  <Input
-                    id="physicalAddress"
-                    value={schoolInfo.physicalAddress}
-                    onChange={(e) => setSchoolInfo({ ...schoolInfo, physicalAddress: e.target.value })}
-                    placeholder="School location for Parent Desk"
-                  />
-                </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <CardContent className="px-5 py-5">
+              <form onSubmit={handleSchoolInfoUpdate} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Primary Color (Login & Branding)</Label>
-                    <div className="flex gap-2">
-                      <Input type="color" value={schoolInfo.primaryColor} onChange={(e) => setSchoolInfo({ ...schoolInfo, primaryColor: e.target.value })} className="w-14 h-10 p-1 cursor-pointer" />
-                      <Input value={schoolInfo.primaryColor} onChange={(e) => setSchoolInfo({ ...schoolInfo, primaryColor: e.target.value })} className="flex-1" />
-                    </div>
+                    <Label htmlFor="schoolName">School Name</Label>
+                    <Input
+                      id="schoolName"
+                      value={schoolInfo.name}
+                      onChange={(e) => setSchoolInfo({ ...schoolInfo, name: e.target.value })}
+                      placeholder="Enter school name"
+                      required
+                    />
                   </div>
                   <div className="space-y-2">
-                    <Label>Secondary Color</Label>
-                    <div className="flex gap-2">
-                      <Input type="color" value={schoolInfo.secondaryColor} onChange={(e) => setSchoolInfo({ ...schoolInfo, secondaryColor: e.target.value })} className="w-14 h-10 p-1 cursor-pointer" />
-                      <Input value={schoolInfo.secondaryColor} onChange={(e) => setSchoolInfo({ ...schoolInfo, secondaryColor: e.target.value })} className="flex-1" />
+                    <Label htmlFor="schoolAddress">Address</Label>
+                    <Input
+                      id="schoolAddress"
+                      value={schoolInfo.address}
+                      onChange={(e) => setSchoolInfo({ ...schoolInfo, address: e.target.value })}
+                      placeholder="Enter school address"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="schoolContact">Contact Number</Label>
+                    <Input
+                      id="schoolContact"
+                      value={schoolInfo.contact}
+                      onChange={(e) => setSchoolInfo({ ...schoolInfo, contact: e.target.value })}
+                      placeholder="Enter contact number"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="schoolWhatsapp">WhatsApp Number</Label>
+                    <Input
+                      id="schoolWhatsapp"
+                      value={schoolInfo.whatsappNumber}
+                      onChange={(e) => setSchoolInfo({ ...schoolInfo, whatsappNumber: e.target.value })}
+                      placeholder="Enter WhatsApp number"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="schoolEmail">Email Address</Label>
+                    <Input
+                      id="schoolEmail"
+                      type="email"
+                      value={schoolInfo.email}
+                      onChange={(e) => setSchoolInfo({ ...schoolInfo, email: e.target.value })}
+                      placeholder="Enter email address"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="officeHours">Office Hours</Label>
+                    <Input
+                      id="officeHours"
+                      value={schoolInfo.officeHours}
+                      onChange={(e) => setSchoolInfo({ ...schoolInfo, officeHours: e.target.value })}
+                      placeholder="Mon-Fri • 7:00am - 4:00pm"
+                    />
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label htmlFor="physicalAddress">Physical Address (Parent Desk)</Label>
+                    <Input
+                      id="physicalAddress"
+                      value={schoolInfo.physicalAddress}
+                      onChange={(e) => setSchoolInfo({ ...schoolInfo, physicalAddress: e.target.value })}
+                      placeholder="School location for Parent Desk"
+                    />
+                  </div>
+                </div>
+                <div className="rounded-xl border border-border/50 bg-muted/10 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Brand Colours</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Primary (Login & Branding)</Label>
+                      <div className="flex gap-2">
+                        <Input type="color" value={schoolInfo.primaryColor} onChange={(e) => setSchoolInfo({ ...schoolInfo, primaryColor: e.target.value })} className="w-14 h-10 p-1 cursor-pointer rounded-lg" />
+                        <Input value={schoolInfo.primaryColor} onChange={(e) => setSchoolInfo({ ...schoolInfo, primaryColor: e.target.value })} className="flex-1 font-mono text-sm" />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Secondary</Label>
+                      <div className="flex gap-2">
+                        <Input type="color" value={schoolInfo.secondaryColor} onChange={(e) => setSchoolInfo({ ...schoolInfo, secondaryColor: e.target.value })} className="w-14 h-10 p-1 cursor-pointer rounded-lg" />
+                        <Input value={schoolInfo.secondaryColor} onChange={(e) => setSchoolInfo({ ...schoolInfo, secondaryColor: e.target.value })} className="flex-1 font-mono text-sm" />
+                      </div>
                     </div>
                   </div>
                 </div>
-                <Button type="submit" variant="primaryAction" className="w-full h-9">
-                  Update School Information
+                <Button type="submit" variant="primaryAction" className="w-full sm:w-auto min-w-[200px] h-10">
+                  Save School Information
                 </Button>
               </form>
             </CardContent>
           </Card>
-        )}
+        </SettingsSection>
+      )}
 
-        {hasSettingsFull && (
-          <Card className="shadow-sm">
-            <CardHeader className="px-4 py-3">
-              <CardTitle className="flex items-center space-x-2 text-base">
-                <Receipt className="w-4 h-4" />
-                <span>Receipt Customization</span>
-              </CardTitle>
-              <p className="text-xs text-muted-foreground">Customize printed receipts</p>
-            </CardHeader>
-            <CardContent className="px-4 pb-4">
-              <form onSubmit={async (e) => {
-                e.preventDefault();
-                try {
-                  await apiService.put('/settings', {
-                    receipt_prefix: receiptSettings.receipt_prefix,
-                    postal_address: receiptSettings.postal_address,
-                    contact_phone: receiptSettings.contact_phone,
-                    receipt_footer: receiptSettings.receipt_footer,
-                    bank_details: receiptSettings.bank_details,
-                  });
-                  toast({ title: 'Receipt settings saved' });
-                } catch (err: any) {
-                  toast({ title: 'Error', description: err?.message, variant: 'destructive' });
-                }
-              }} className="space-y-3">
-                <div className="space-y-2">
-                  <Label>Receipt Number Prefix</Label>
-                  <Input
-                    value={receiptSettings.receipt_prefix}
-                    onChange={(e) => setReceiptSettings({ ...receiptSettings, receipt_prefix: e.target.value })}
-                    placeholder="R (default)"
-                    maxLength={5}
-                  />
-                  <p className="text-xs text-muted-foreground">e.g. R for R00012345</p>
-                </div>
-                <div className="space-y-2">
-                  <Label>Postal Address (for receipt header)</Label>
-                  <Input
-                    value={receiptSettings.postal_address}
-                    onChange={(e) => setReceiptSettings({ ...receiptSettings, postal_address: e.target.value })}
-                    placeholder="P.O. Box 123, Accra"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Contact Number</Label>
-                  <Input
-                    value={receiptSettings.contact_phone}
-                    onChange={(e) => setReceiptSettings({ ...receiptSettings, contact_phone: e.target.value })}
-                    placeholder="+233 XX XXX XXXX"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Footer Message</Label>
-                  <Input
-                    value={receiptSettings.receipt_footer}
-                    onChange={(e) => setReceiptSettings({ ...receiptSettings, receipt_footer: e.target.value })}
-                    placeholder="Thank you for your payment!"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Bank Details (optional)</Label>
-                  <Input
-                    value={receiptSettings.bank_details}
-                    onChange={(e) => setReceiptSettings({ ...receiptSettings, bank_details: e.target.value })}
-                    placeholder="Bank: XYZ, Account: 1234567890"
-                  />
-                </div>
-                <Button type="submit" variant="primaryAction" className="w-full h-9">Save Receipt Settings</Button>
-              </form>
-            </CardContent>
-          </Card>
-        )}
+      {hasSettingsFull && (
+        <SettingsSection
+          icon={Wallet}
+          title="Finance & Payments"
+          description="Parent payment receiving details and printed receipt layout."
+          accent="emerald"
+        >
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
+            <PaymentDetailsSettings />
+            <Card className={SETTINGS_CARD_CLASS}>
+              <CardHeader className="px-5 py-4 border-b border-border/50 bg-muted/20">
+                <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                  <Receipt className="h-4 w-4 text-emerald-600" />
+                  Receipt Customization
+                </CardTitle>
+                <p className="text-xs text-muted-foreground mt-1">Header, footer, and numbering on fee receipts</p>
+              </CardHeader>
+              <CardContent className="px-5 py-5">
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  try {
+                    await apiService.put('/settings', {
+                      receipt_prefix: receiptSettings.receipt_prefix,
+                      postal_address: receiptSettings.postal_address,
+                      contact_phone: receiptSettings.contact_phone,
+                      receipt_footer: receiptSettings.receipt_footer,
+                      bank_details: receiptSettings.bank_details,
+                    });
+                    toast({ title: 'Receipt settings saved' });
+                  } catch (err: any) {
+                    toast({ title: 'Error', description: err?.message, variant: 'destructive' });
+                  }
+                }} className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Receipt Prefix</Label>
+                      <Input
+                        value={receiptSettings.receipt_prefix}
+                        onChange={(e) => setReceiptSettings({ ...receiptSettings, receipt_prefix: e.target.value })}
+                        placeholder="R"
+                        maxLength={5}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Contact on Receipt</Label>
+                      <Input
+                        value={receiptSettings.contact_phone}
+                        onChange={(e) => setReceiptSettings({ ...receiptSettings, contact_phone: e.target.value })}
+                        placeholder="+233 XX XXX XXXX"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Postal Address</Label>
+                    <Input
+                      value={receiptSettings.postal_address}
+                      onChange={(e) => setReceiptSettings({ ...receiptSettings, postal_address: e.target.value })}
+                      placeholder="P.O. Box 123, Accra"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Footer Message</Label>
+                    <Input
+                      value={receiptSettings.receipt_footer}
+                      onChange={(e) => setReceiptSettings({ ...receiptSettings, receipt_footer: e.target.value })}
+                      placeholder="Thank you for your payment!"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Bank Details (optional)</Label>
+                    <Input
+                      value={receiptSettings.bank_details}
+                      onChange={(e) => setReceiptSettings({ ...receiptSettings, bank_details: e.target.value })}
+                      placeholder="Bank: XYZ, Account: 1234567890"
+                    />
+                  </div>
+                  <Button type="submit" variant="primaryAction" className="w-full h-10">Save Receipt Settings</Button>
+                </form>
+              </CardContent>
+            </Card>
+          </div>
+        </SettingsSection>
+      )}
 
-        {hasSettingsFull && (
-          <Card className="shadow-sm border-amber-500/20 bg-amber-500/5 dark:bg-amber-500/10">
-            <CardHeader className="px-4 py-3">
-              <CardTitle className="flex items-center space-x-2 text-base">
-                <RefreshCw className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                <span>Arrears Sync</span>
-              </CardTitle>
-              <p className="text-xs text-muted-foreground">
-                Term changes now calculate previous-term arrears automatically. Use this button for manual refresh if needed.
+      {hasSettingsFull && school?.id && (
+        <SettingsSection
+          icon={GraduationCap}
+          title="Parent Portal"
+          description="Share the branded link so parents can view grades, fees, and attendance."
+          accent="purple"
+        >
+          <Card className={cn(SETTINGS_CARD_CLASS, 'border-purple-500/20 bg-gradient-to-br from-purple-500/[0.03] to-transparent max-w-3xl')}>
+            <CardContent className="px-5 py-5 space-y-4">
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Parents sign in with their child&apos;s <strong className="text-foreground">Student ID</strong> as username and initial password.
               </p>
-            </CardHeader>
-            <CardContent className="px-4 pb-4">
-              <Button
-                type="button"
-                variant="primaryAction"
-                className="w-full h-9"
-                onClick={handleSyncArrears}
-                disabled={isSyncingArrears || arrearsSyncOpen}
-              >
-                <RefreshCw className={`w-4 h-4 mr-2 ${isSyncingArrears ? 'animate-spin' : ''}`} />
-                {isSyncingArrears ? 'Syncing Arrears...' : 'Sync Arrears Now'}
-              </Button>
-              <p className="mt-3 text-[11px] text-muted-foreground">
-                This recalculates old balances and adds them to the active term fee balance.
-              </p>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Parent Portal Link */}
-        {hasSettingsFull && school?.id && (
-          <Card className="border-purple-500/20 bg-purple-500/5 dark:bg-purple-500/10 backdrop-blur-sm overflow-hidden shadow-sm">
-            <CardHeader className="px-4 py-3">
-              <CardTitle className="flex items-center space-x-2 text-purple-600 dark:text-purple-400 font-bold text-base">
-                <div className="w-7 h-7 rounded-lg bg-purple-500/20 flex items-center justify-center">
-                  <GraduationCap className="w-4 h-4" />
-                </div>
-                <span>Parent Portal Gateway</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="px-4 pb-4 space-y-3">
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Share this secure link with parents to provide real-time access to grades, attendance, and financial records. 
-                Parents log in using the <span className="text-foreground font-bold">Student ID</span> as both username and initial password.
-              </p>
-              
-              <div className="flex items-center gap-2 bg-background/50 border border-purple-500/20 rounded-xl p-2.5 shadow-inner group">
-                <code className="text-xs text-purple-600 dark:text-purple-400 flex-1 truncate font-mono select-all">
+              <div className="flex items-center gap-2 rounded-xl border border-purple-500/20 bg-background/80 p-3 shadow-inner">
+                <code className="text-xs text-purple-700 dark:text-purple-300 flex-1 truncate font-mono select-all">
                   {getParentPortalUrl()}
                 </code>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => {
-                      const url = getParentPortalUrl();
-                      navigator.clipboard.writeText(url);
-                      toast({ title: 'Link Copied', description: 'The branded parent portal link is now in your clipboard.' });
-                    }}
-                    className="p-2 text-purple-500 hover:text-purple-700 hover:bg-purple-500/10 rounded-lg transition-all"
-                    title="Copy link"
-                  >
-                    <Copy className="w-4 h-4" />
-                  </button>
-                  <a
-                    href={getParentPortalUrl()}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-2 text-purple-500 hover:text-purple-700 hover:bg-purple-500/10 rounded-lg transition-all"
-                    title="Open portal"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                  </a>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(getParentPortalUrl());
+                    toast({ title: 'Link Copied', description: 'Parent portal link copied to clipboard.' });
+                  }}
+                  className="p-2 text-purple-600 hover:bg-purple-500/10 rounded-lg transition-colors"
+                  title="Copy link"
+                >
+                  <Copy className="w-4 h-4" />
+                </button>
+                <a
+                  href={getParentPortalUrl()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2 text-purple-600 hover:bg-purple-500/10 rounded-lg transition-colors"
+                  title="Open portal"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                </a>
               </div>
-
-              <div className="flex items-start gap-3 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-                <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
-                  <strong>Security Note:</strong> Parents will be prompted to change their password immediately upon their first successful login to ensure data privacy.
+              <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
+                <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
+                  Parents must change their password on first login.
                 </p>
               </div>
             </CardContent>
           </Card>
-        )}
+        </SettingsSection>
+      )}
 
-        {/* Signatures & Stamp Settings */}
-        <Card className="shadow-sm border-purple-500/20">
-          <CardHeader className="px-4 py-3">
-            <CardTitle className="flex items-center space-x-2 text-base">
-              <Pen className="w-4 h-4 text-purple-600" />
-              <span>Signatures &amp; Stamp</span>
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">
-              Manage the school stamp and headmaster/admin signature used on appointment letters and report cards. Teachers can set their own signature from their profile.
-            </p>
-          </CardHeader>
-          <CardContent className="px-4 pb-4 space-y-4">
-            <SignatureStampManager />
-          </CardContent>
-        </Card>
+      {hasSettingsFull && (
+        <SettingsSection
+          icon={Pen}
+          title="Documents & Signatures"
+          description="School stamp and headmaster signature for letters and report cards."
+          accent="purple"
+        >
+          <Card className={cn(SETTINGS_CARD_CLASS, 'border-purple-500/15')}>
+            <CardContent className="px-5 py-5">
+              <SignatureStampManager />
+            </CardContent>
+          </Card>
+        </SettingsSection>
+      )}
 
-        <Card className="shadow-sm">
-          <CardHeader className="px-4 py-3">
-            <CardTitle className="flex items-center space-x-2 text-base">
-              <Download className="w-4 h-4" />
-              <span>School Backup</span>
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">Create a full backup of this school&apos;s data (all tables).</p>
-          </CardHeader>
-          <CardContent className="px-4 pb-4">
-            <Button variant="outline" className="w-full h-9" onClick={handleExportJSON}>
-              <Download className="w-4 h-4 mr-2" />
-              Create Backup
-            </Button>
-            <p className="mt-3 text-[11px] text-muted-foreground">
-              Import, restore, and reset actions are managed by Super Admin only.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+      <SettingsSection
+        icon={Key}
+        title="Account & System"
+        description="Your login password, data backup, and fee balance tools."
+        accent="slate"
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 items-start">
+          <Card className={SETTINGS_CARD_CLASS}>
+            <CardHeader className="px-5 py-4 border-b border-border/50 bg-muted/20">
+              <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                <Key className="h-4 w-4" />
+                Change Password
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-5 py-5">
+              <form onSubmit={handlePasswordChange} className="space-y-3">
+                <div className="space-y-2">
+                  <Label htmlFor="currentPasswordFull">Current Password</Label>
+                  <Input
+                    id="currentPasswordFull"
+                    type="password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    placeholder="Enter current password"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="newPassword">New Password</Label>
+                  <Input
+                    id="newPassword"
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder={`Min ${user?.role === 'teacher' || user?.role === 'staff' ? 5 : 6} characters`}
+                    required
+                    minLength={user?.role === 'teacher' || user?.role === 'staff' ? 5 : 6}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="confirmPassword">Confirm Password</Label>
+                  <Input
+                    id="confirmPassword"
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Confirm new password"
+                    required
+                    minLength={user?.role === 'teacher' || user?.role === 'staff' ? 5 : 6}
+                  />
+                </div>
+                <Button type="submit" variant="primaryAction" className="w-full h-10" disabled={!currentPassword || !newPassword || !confirmPassword}>
+                  Update Password
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+
+          {hasSettingsFull && (
+            <Card className={SETTINGS_CARD_CLASS}>
+              <CardHeader className="px-5 py-4 border-b border-border/50 bg-muted/20">
+                <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                  <Download className="h-4 w-4" />
+                  School Backup
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-5 py-5 space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  Export a full JSON archive of this school&apos;s data.
+                </p>
+                <Button variant="outline" className="w-full h-10" onClick={handleExportJSON}>
+                  <Download className="w-4 h-4 mr-2" />
+                  Create Backup
+                </Button>
+                <p className="text-[11px] text-muted-foreground">
+                  Restore and reset are managed by Super Admin only.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {hasSettingsFull && (
+            <Card className={cn(SETTINGS_CARD_CLASS, 'border-amber-500/20 bg-amber-500/[0.03]')}>
+              <CardHeader className="px-5 py-4 border-b border-amber-500/15 bg-amber-500/5">
+                <CardTitle className="flex items-center gap-2 text-base font-semibold text-amber-900 dark:text-amber-100">
+                  <RefreshCw className="h-4 w-4" />
+                  Arrears Sync
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-5 py-5 space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  Manually recalculate unpaid balances for the active term if needed.
+                </p>
+                <Button
+                  type="button"
+                  variant="primaryAction"
+                  className="w-full h-10"
+                  onClick={handleSyncArrears}
+                  disabled={isSyncingArrears || arrearsSyncOpen}
+                >
+                  <RefreshCw className={`w-4 h-4 mr-2 ${isSyncingArrears ? 'animate-spin' : ''}`} />
+                  {isSyncingArrears ? 'Syncing…' : 'Sync Arrears Now'}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </SettingsSection>
 
       <ArrearsSyncModal
         open={arrearsSyncOpen}
@@ -747,7 +767,7 @@ const SettingsModule = () => {
         }}
         onComplete={() => void handleArrearsSyncComplete()}
       />
-    </div >
+    </div>
   );
 };
 

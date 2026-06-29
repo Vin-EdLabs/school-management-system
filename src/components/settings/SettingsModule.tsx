@@ -18,6 +18,7 @@ import ArrearsSyncModal from './ArrearsSyncModal';
 import SchoolManager from './SchoolManager';
 import SignatureStampManager from './SignatureStampManager';
 import HeadmasterSignatureSettings from './HeadmasterSignatureSettings';
+import PaymentDetailsSettings from './PaymentDetailsSettings';
 import { getTenantParentPortalUrl } from '../../utils/tenantHost';
 
 interface SchoolSettings {
@@ -386,6 +387,8 @@ const SettingsModule = () => {
       {isSuperAdmin && <SchoolManager />}
 
       {hasSettingsFull && <AcademicTermManager />}
+
+      {hasSettingsFull && <PaymentDetailsSettings />}
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
         <Card className="shadow-sm">

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   GraduationCap, LogOut, BookOpen, Trophy, CreditCard,
   CalendarCheck, Eye, EyeOff, Lock, ChevronRight, Medal,
@@ -27,7 +27,7 @@ import {
   invoiceStatusClass,
   type Invoice,
 } from '@/services/invoiceApi';
-import InvoiceDocument from '@/components/invoices/InvoiceDocument';
+import ParentMakePaymentPanel from '@/components/parent/ParentMakePaymentPanel';
 import { buildInvoiceFilename, downloadInvoicePdf } from '@/components/invoices/buildInvoicePdf';
 import { createRoot } from 'react-dom/client';
 import ParentReportCardMobileViewport from '@/components/parent/ParentReportCardMobileViewport';
@@ -304,6 +304,7 @@ interface LinkedAccount {
 }
 
 type Tab = 'overview' | 'grades' | 'position' | 'finance' | 'attendance' | 'desk';
+type FinanceSubTab = 'balance' | 'make-payment';
 type ParentAppNotification = {
   id: string;
   serverId?: number;
@@ -504,6 +505,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   const [hardRefreshing, setHardRefreshing] = useState(false);
   const [selectedNotification, setSelectedNotification] = useState<ParentAppNotification | null>(null);
   const [financeStatementOpen, setFinanceStatementOpen] = useState(false);
+  const [financeSubTab, setFinanceSubTab] = useState<FinanceSubTab>('balance');
   const [admissionLetters, setAdmissionLetters] = useState<Array<{ id: number; version_number: number; reference_number: string | null; created_at: string }>>([]);
   const [selectedAdmissionLetter, setSelectedAdmissionLetter] = useState<AdmissionLetterData | null>(null);
   const [showDeskGuide, setShowDeskGuide] = useState(false);
@@ -1344,6 +1346,11 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       setFinanceStatementOpen(true);
       window.history.replaceState({}, '', window.location.pathname);
     }
+    if (params.get('tab') === 'finance' && params.get('financeSub') === 'make-payment') {
+      setActiveTab('finance');
+      setFinanceSubTab('make-payment');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
 
     // Keep backend subscription in sync on long-lived sessions/devices.
     const syncInterval = window.setInterval(() => {
@@ -1436,6 +1443,29 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
   const showTabLoading = dataLoading && !isSwitchingStudent;
   const showSwitchOverlay = isSwitchingStudent;
+
+  const makePaymentStudents = useMemo(() => {
+    const fromLinked = linkedAccounts
+      .map((acc) => ({
+        id: acc.student.id,
+        firstName: acc.student.first_name,
+        lastName: acc.student.last_name,
+        admissionNumber: acc.student.admission_number,
+      }))
+      .filter((s): s is { id: number; firstName: string; lastName: string; admissionNumber: string } =>
+        typeof s.id === 'number' && s.id > 0
+      );
+    if (fromLinked.length > 0) return fromLinked;
+    if (student?.id) {
+      return [{
+        id: student.id,
+        firstName: student.first_name,
+        lastName: student.last_name,
+        admissionNumber: student.admission_number,
+      }];
+    }
+    return [];
+  }, [linkedAccounts, student]);
 
   const handleTabChange = (tab: Tab) => {
     setActiveTab(tab);
@@ -2789,7 +2819,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             ) : null}
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                <CreditCard className="w-5 h-5 text-green-600" /> Fee Balance
+                <CreditCard className="w-5 h-5 text-green-600" /> Finance
               </h2>
               <div className="flex items-center gap-2">
                 {token ? (
@@ -2815,7 +2845,39 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               </div>
             </div>
 
-            {showTabLoading ? (
+            <div className="flex gap-2 border-b border-slate-200 pb-1">
+              <button
+                type="button"
+                onClick={() => setFinanceSubTab('balance')}
+                className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+                  financeSubTab === 'balance'
+                    ? 'bg-emerald-600 text-white'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                Fee Balance
+              </button>
+              <button
+                type="button"
+                onClick={() => setFinanceSubTab('make-payment')}
+                className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+                  financeSubTab === 'make-payment'
+                    ? 'bg-emerald-600 text-white'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                Make Payment
+              </button>
+            </div>
+
+            {financeSubTab === 'make-payment' && token ? (
+              <ParentMakePaymentPanel
+                token={token}
+                linkedStudents={makePaymentStudents}
+                defaultStudentId={student?.id}
+                resolveMediaUrl={resolveMediaUrl}
+              />
+            ) : financeSubTab === 'make-payment' ? null : showTabLoading ? (
               <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} onRetry={refreshTab} />
             ) : !finance ? (
               <EmptyCard icon={<CreditCard className="w-10 h-10 text-gray-300" />} message="No finance data available." />

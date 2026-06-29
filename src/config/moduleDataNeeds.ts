@@ -21,6 +21,7 @@ export const MODULE_DATA_NEEDS: Record<string, DataDomain[]> = {
   'print-fee-status': ['students', 'fees', 'payments', 'classes'],
   transactions: ['payments', 'income', 'expenses', 'students'],
   'manual-adjustments': ['students', 'payments', 'fees'],
+  'payment-submissions': [],
   users: [],
   settings: [],
   audit: [],

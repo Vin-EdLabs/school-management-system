@@ -29,6 +29,7 @@ import IdCardSettings from './configurations/IdCardSettings';
 import IdCardsModule from './id-cards/IdCardsModule';
 import LostCardsModule from './lost-cards/LostCardsModule';
 import ManualAdjustmentsReport from './finance/ManualAdjustmentsReport';
+import PaymentSubmissionsModule from './finance/PaymentSubmissionsModule';
 import TermBudgetModule from './finance/TermBudgetModule';
 import FinanceStatementModule from './finance/FinanceStatementModule';
 import TeacherDashboard from './teacher/TeacherDashboard';
@@ -266,6 +267,8 @@ const Dashboard = () => {
         return <CashBankModule />;
       case 'manual-adjustments':
         return <ManualAdjustmentsReport />;
+      case 'payment-submissions':
+        return <PaymentSubmissionsModule />;
       case 'users':
         return <UsersModule />;
       case 'settings':

@@ -1058,4 +1058,72 @@ router.put('/admission-letter', requireRole('super-admin', 'administrator'), asy
   }
 });
 
+const paymentSettingsRoles = requireRole('super-admin', 'administrator');
+
+router.get('/payment', paymentSettingsRoles, async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const result = await query(
+      `SELECT mtn_momo_number, vodafone_cash_number, airteltigo_number, merchant_id,
+              bank_name, bank_account_number, bank_account_name, payment_instructions
+       FROM school_payment_settings
+       WHERE tenant_id = $1`,
+      [tenantId]
+    );
+    const row = result.rows[0] || {};
+    res.json({
+      mtnMomoNumber: row.mtn_momo_number || '',
+      vodafoneCashNumber: row.vodafone_cash_number || '',
+      airteltigoNumber: row.airteltigo_number || '',
+      merchantId: row.merchant_id || '',
+      bankName: row.bank_name || '',
+      bankAccountNumber: row.bank_account_number || '',
+      bankAccountName: row.bank_account_name || '',
+      paymentInstructions: row.payment_instructions || '',
+    });
+  } catch (error) {
+    console.error('Get payment settings error:', error);
+    res.status(500).json({ error: 'Failed to load payment settings' });
+  }
+});
+
+router.put('/payment', paymentSettingsRoles, async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const b = req.body || {};
+    await query(
+      `INSERT INTO school_payment_settings (
+         tenant_id, mtn_momo_number, vodafone_cash_number, airteltigo_number, merchant_id,
+         bank_name, bank_account_number, bank_account_name, payment_instructions, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+       ON CONFLICT (tenant_id) DO UPDATE SET
+         mtn_momo_number = EXCLUDED.mtn_momo_number,
+         vodafone_cash_number = EXCLUDED.vodafone_cash_number,
+         airteltigo_number = EXCLUDED.airteltigo_number,
+         merchant_id = EXCLUDED.merchant_id,
+         bank_name = EXCLUDED.bank_name,
+         bank_account_number = EXCLUDED.bank_account_number,
+         bank_account_name = EXCLUDED.bank_account_name,
+         payment_instructions = EXCLUDED.payment_instructions,
+         updated_at = NOW()`,
+      [
+        tenantId,
+        String(b.mtnMomoNumber || '').trim() || null,
+        String(b.vodafoneCashNumber || '').trim() || null,
+        String(b.airteltigoNumber || '').trim() || null,
+        String(b.merchantId || '').trim() || null,
+        String(b.bankName || '').trim() || null,
+        String(b.bankAccountNumber || '').trim() || null,
+        String(b.bankAccountName || '').trim() || null,
+        String(b.paymentInstructions || '').trim() || null,
+      ]
+    );
+    emitTenantDataChanged(tenantId, 'settings', 'updated');
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Save payment settings error:', error);
+    res.status(500).json({ error: 'Failed to save payment settings' });
+  }
+});
+
 export default router;

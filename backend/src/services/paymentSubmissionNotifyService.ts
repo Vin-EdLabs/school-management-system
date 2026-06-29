@@ -22,8 +22,20 @@ export async function notifyFinanceStaffOfPaymentSubmission(
 }
 
 export async function notifyParentOfSubmissionReview(
+  tenantId: number,
   parentAccountId: number,
   payload: PushPayload
 ): Promise<void> {
+  await query(
+    `INSERT INTO parent_notifications (tenant_id, parent_account_id, title, message, url)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [
+      tenantId,
+      parentAccountId,
+      payload.title,
+      payload.body,
+      payload.url || '?tab=finance&financeSub=make-payment',
+    ]
+  ).catch(() => {});
   await sendPushToParentAccount(parentAccountId, payload).catch(() => {});
 }

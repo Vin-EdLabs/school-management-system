@@ -198,6 +198,18 @@ export class ApiService {
     return response.text();
   }
 
+  /** Binary response (e.g. payment proof screenshots). */
+  async getBlob(endpoint: string): Promise<Blob> {
+    const headers = { ...this.getAuthHeaders() } as Record<string, string>;
+    delete headers['Content-Type'];
+    const response = await fetch(this.buildURL(endpoint), { headers });
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      throw new Error(errText || `HTTP error! status: ${response.status}`);
+    }
+    return response.blob();
+  }
+
   async postPublic<T>(endpoint: string, data: any): Promise<T> {
     const key = this.mutationKey('POST_PUBLIC', endpoint, data);
     return this.withMutationGuard(key, async () => {

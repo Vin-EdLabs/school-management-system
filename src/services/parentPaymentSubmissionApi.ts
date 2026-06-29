@@ -66,6 +66,18 @@ export async function fetchMyPaymentSubmissions(token: string): Promise<PaymentS
   return data;
 }
 
+export async function fetchPaymentProofBlobUrl(token: string, submissionId: number): Promise<string> {
+  const res = await fetch(`${API}/payment-submissions/${submissionId}/screenshot`, {
+    headers: authHeaders(token),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Could not load payment proof image');
+  }
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
 export async function submitPaymentProof(token: string, formData: FormData): Promise<PaymentSubmission> {
   const res = await fetch(`${API}/payment-submissions`, {
     method: 'POST',

@@ -3,6 +3,7 @@ import multer from 'multer';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest, requireRole } from '../middleware/auth.js';
@@ -81,7 +82,13 @@ async function parentCanAccessStudent(
   return row.rows.length > 0;
 }
 
+function screenshotApiPath(id: unknown): string {
+  return `/api/payment-submissions/${id}/screenshot`;
+}
+
 function mapSubmissionRow(row: Record<string, unknown>) {
+  const rawScreenshot = String(row.screenshot_url || '');
+  const screenshotUrl = rawScreenshot ? screenshotApiPath(row.id) : '';
   return {
     id: row.id,
     tenantId: row.tenant_id,
@@ -90,7 +97,7 @@ function mapSubmissionRow(row: Record<string, unknown>) {
     amountClaimed: Number(row.amount_claimed),
     networkUsed: row.network_used,
     transactionReference: row.transaction_reference,
-    screenshotUrl: row.screenshot_url,
+    screenshotUrl,
     status: row.status,
     submittedAt: row.submitted_at,
     reviewedAt: row.reviewed_at,
@@ -102,6 +109,93 @@ function mapSubmissionRow(row: Record<string, unknown>) {
     parentName: row.parent_name,
     reviewedByName: row.reviewed_by_name,
   };
+}
+
+async function resolveScreenshotBytes(
+  screenshotUrl: string
+): Promise<{ buffer: Buffer; mime: string } | null> {
+  if (!screenshotUrl) return null;
+  if (screenshotUrl.startsWith('data:')) {
+    const match = screenshotUrl.match(/^data:([^;]+);base64,(.+)$/s);
+    if (!match) return null;
+    return { mime: match[1], buffer: Buffer.from(match[2], 'base64') };
+  }
+  if (screenshotUrl.startsWith('/uploads/payment-proofs/')) {
+    const filename = path.basename(screenshotUrl);
+    try {
+      const buffer = await fs.readFile(path.join(PAYMENT_PROOF_UPLOAD_DIR, filename));
+      const ext = path.extname(filename).toLowerCase();
+      const mime =
+        ext === '.png'
+          ? 'image/png'
+          : ext === '.gif'
+            ? 'image/gif'
+            : ext === '.webp'
+              ? 'image/webp'
+              : ext === '.bmp'
+                ? 'image/bmp'
+                : 'image/jpeg';
+      return { buffer, mime };
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+type ScreenshotAccess = {
+  kind: 'parent';
+  accountId: number;
+  tenantId: number;
+} | {
+  kind: 'staff';
+  userId: number;
+  tenantId: number;
+  role: string;
+};
+
+async function resolveScreenshotAccess(req: express.Request): Promise<ScreenshotAccess | null> {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return null;
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as {
+      role?: string;
+      parentAccountId?: number;
+      userId?: number;
+      tenantId?: number;
+    };
+    if (decoded.role === 'parent' && decoded.parentAccountId) {
+      const row = await query(
+        'SELECT id, tenant_id FROM parent_portal_accounts WHERE id = $1 AND is_active = true',
+        [decoded.parentAccountId]
+      );
+      if (!row.rows.length) return null;
+      return {
+        kind: 'parent',
+        accountId: row.rows[0].id,
+        tenantId: row.rows[0].tenant_id,
+      };
+    }
+    const userId = decoded.userId;
+    if (!userId) return null;
+    const userRow = await query(
+      `SELECT id, tenant_id, role FROM users WHERE id = $1 AND COALESCE(is_active, true) = true`,
+      [userId]
+    );
+    if (!userRow.rows.length) return null;
+    const role = String(userRow.rows[0].role || '').toLowerCase();
+    if (!['super-admin', 'administrator', 'finance', 'superadmin', 'admin'].includes(role)) {
+      return null;
+    }
+    return {
+      kind: 'staff',
+      userId: userRow.rows[0].id,
+      tenantId: userRow.rows[0].tenant_id,
+      role,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** GET /api/payment-submissions/payment-details — parent read-only school payment info */
@@ -157,12 +251,8 @@ router.post('/', authenticateParent, proofUpload.single('screenshot'), async (re
       return res.status(403).json({ error: 'You cannot submit payment for this student' });
     }
 
-    await fs.mkdir(PAYMENT_PROOF_UPLOAD_DIR, { recursive: true });
-    const ext = path.extname(req.file.originalname || '').slice(0, 8).toLowerCase() || '.jpg';
-    const safeExt = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].includes(ext) ? ext : '.jpg';
-    const filename = `${tenantId}-${parsed.studentId}-${Date.now()}${safeExt}`;
-    await fs.writeFile(path.join(PAYMENT_PROOF_UPLOAD_DIR, filename), req.file.buffer);
-    const screenshotUrl = `/uploads/payment-proofs/${filename}`;
+    const mime = req.file.mimetype || 'image/jpeg';
+    const screenshotUrl = `data:${mime};base64,${req.file.buffer.toString('base64')}`;
 
     const insert = await query(
       `INSERT INTO payment_submissions (
@@ -232,9 +322,70 @@ router.get('/my', authenticateParent, async (req: ParentAuthRequest, res: Respon
   }
 });
 
+/** GET /api/payment-submissions/:id/screenshot — authenticated proof image */
+router.get('/:id/screenshot', async (req, res: Response) => {
+  try {
+    const submissionId = parseInt(String(req.params.id), 10);
+    if (!Number.isFinite(submissionId)) {
+      return res.status(400).json({ error: 'Invalid submission id' });
+    }
+
+    const access = await resolveScreenshotAccess(req);
+    if (!access) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const existing = await query(
+      `SELECT id, tenant_id, parent_user_id, screenshot_url
+       FROM payment_submissions
+       WHERE id = $1`,
+      [submissionId]
+    );
+    if (!existing.rows.length) {
+      return res.status(404).json({ error: 'Submission not found' });
+    }
+    const row = existing.rows[0];
+    if (Number(row.tenant_id) !== Number(access.tenantId)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    if (access.kind === 'parent' && Number(row.parent_user_id) !== Number(access.accountId)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const image = await resolveScreenshotBytes(String(row.screenshot_url || ''));
+    if (!image) {
+      return res.status(404).json({ error: 'Screenshot not found' });
+    }
+
+    res.setHeader('Content-Type', image.mime);
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    return res.send(image.buffer);
+  } catch (error) {
+    console.error('Get payment submission screenshot error:', error);
+    return res.status(500).json({ error: 'Failed to load screenshot' });
+  }
+});
+
 router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
+
+/** GET /api/payment-submissions/pending-count — finance sidebar badge */
+router.get('/pending-count', financeRoles, async (req: AuthRequest, res: Response) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const result = await query(
+      `SELECT COUNT(*)::int AS count
+       FROM payment_submissions
+       WHERE tenant_id = $1 AND status = 'pending'`,
+      [tenantId]
+    );
+    res.json({ count: Number(result.rows[0]?.count ?? 0) });
+  } catch (error) {
+    console.error('Payment submissions pending count error:', error);
+    res.status(500).json({ error: 'Failed to load pending count' });
+  }
+});
 
 /** GET /api/payment-submissions — finance queue */
 router.get('/', financeRoles, async (req: AuthRequest, res: Response) => {
@@ -317,13 +468,13 @@ router.put('/:id/status', financeRoles, async (req: AuthRequest, res: Response) 
     const studentName = String(row.student_name || 'Student').trim();
 
     if (status === 'reviewed') {
-      await notifyParentOfSubmissionReview(Number(row.parent_user_id), {
-        title: 'Payment Submission Reviewed',
-        body: `Your GHS ${amount} payment for ${studentName} has been reviewed. Record your payment in fees if not already done.`,
+      await notifyParentOfSubmissionReview(tenantId, Number(row.parent_user_id), {
+        title: 'Payment Submission Confirmed',
+        body: `Your GHS ${amount} payment for ${studentName} has been confirmed by finance.`,
         url: '?tab=finance&financeSub=make-payment',
       });
     } else {
-      await notifyParentOfSubmissionReview(Number(row.parent_user_id), {
+      await notifyParentOfSubmissionReview(tenantId, Number(row.parent_user_id), {
         title: 'Payment Submission Rejected',
         body: notes?.trim()
           ? `Your GHS ${amount} payment for ${studentName} was rejected: ${notes.trim().slice(0, 120)}`

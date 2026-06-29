@@ -34,7 +34,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
   const [adminNotifications, setAdminNotifications] = useState<
     Array<{
       id: string;
-      type: 'parent-desk' | 'support-chat' | 'term-budget' | 'lost-card';
+      type: 'parent-desk' | 'support-chat' | 'term-budget' | 'lost-card' | 'payment-submissions';
       title: string;
       body: string;
       unread: number;
@@ -86,7 +86,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
         count: number;
         title: string;
         body: string;
-        type: 'parent-desk' | 'support-chat' | 'term-budget' | 'lost-card';
+        type: 'parent-desk' | 'support-chat' | 'term-budget' | 'lost-card' | 'payment-submissions';
         priority?: 'HIGH' | 'NORMAL';
         reportId?: string;
         notificationDbId?: number;
@@ -139,6 +139,17 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
           body: `${supportCount} unread support message${supportCount === 1 ? '' : 's'}.`,
         });
       }
+      const paymentRes = await apiService.get<{ count: number }>('/payment-submissions/pending-count').catch(() => ({ count: 0 }));
+      const paymentCount = Number(paymentRes?.count ?? 0);
+      if (paymentCount > 0) {
+        results.push({
+          id: 'payment-submissions',
+          type: 'payment-submissions',
+          count: paymentCount,
+          title: 'Payment Submissions',
+          body: `${paymentCount} pending payment proof${paymentCount === 1 ? '' : 's'} awaiting review.`,
+        });
+      }
       const budgetAlerts = await fetchUnreadBudgetAlerts().catch(() => ({ alerts: [], count: 0 }));
       for (const alert of budgetAlerts.alerts || []) {
         const level = String(alert.alert_level || 'warning');
@@ -179,7 +190,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
   }, [showAdminNotifications]);
 
   const markAdminNotificationRead = useCallback(async (
-    notificationType: 'parent-desk' | 'support-chat' | 'term-budget' | 'lost-card',
+    notificationType: 'parent-desk' | 'support-chat' | 'term-budget' | 'lost-card' | 'payment-submissions',
     alertId?: number,
     notificationDbId?: number
   ) => {
@@ -211,7 +222,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
     if (!socket || !showAdminNotifications) return;
     const onTenant = (evt: { entity?: string }) => {
       const e = String(evt?.entity || '');
-      if (e === 'parent-desk' || e === 'support-chat' || e === 'term-budget' || e === 'lost-card') {
+      if (e === 'parent-desk' || e === 'support-chat' || e === 'term-budget' || e === 'lost-card' || e === 'payment-submission') {
         void loadAdminNotifications();
       }
     };

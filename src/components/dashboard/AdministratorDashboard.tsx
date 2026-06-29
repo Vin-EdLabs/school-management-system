@@ -410,17 +410,17 @@ const AdministratorDashboard = ({ onNavigate }: Props) => {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
                 className="h-9 gap-1.5 rounded-lg"
                 onClick={() => void handleRefresh()}
                 disabled={refreshing}
-              >
-                <RefreshCw className={cn('h-4 w-4', refreshing && 'animate-spin')} />
-                Refresh
-              </Button>
+          >
+            <RefreshCw className={cn('h-4 w-4', refreshing && 'animate-spin')} />
+            Refresh
+          </Button>
               <Button size="sm" className="h-9 gap-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => nav('fees')}>
                 <Plus className="h-4 w-4" /> Record Payment
               </Button>
@@ -451,7 +451,7 @@ const AdministratorDashboard = ({ onNavigate }: Props) => {
                 <Skeleton className="mt-2 h-7 w-24" />
               ) : (
                 <p
-                  className={cn(
+              className={cn(
                     'mt-1.5 font-bold tabular-nums text-foreground',
                     'isCurrency' in k && k.isCurrency
                       ? 'text-base leading-tight sm:text-lg'
@@ -539,62 +539,62 @@ const AdministratorDashboard = ({ onNavigate }: Props) => {
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-semibold">Fee Status · {currentTerm}</CardTitle>
                   <p className="text-xs text-muted-foreground">Term-fee students only</p>
-                </CardHeader>
+            </CardHeader>
                 <CardContent>
                   {overviewLoading ? (
                     <Skeleton className="h-[220px]" />
-                  ) : pieData.length === 0 ? (
+              ) : pieData.length === 0 ? (
                     <EmptyBlock text="No term-fee data yet" />
-                  ) : (
+              ) : (
                     <>
                       <div className="relative h-[180px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
                             <Pie data={pieData} cx="50%" cy="50%" innerRadius={52} outerRadius={72} paddingAngle={3} dataKey="value" stroke="hsl(var(--background))" strokeWidth={2}>
                               {pieData.map((e) => <Cell key={e.name} fill={e.color} />)}
                               <Label value={feeStudentsTotal} position="center" className="fill-foreground text-xl font-bold" />
-                            </Pie>
-                            <Tooltip formatter={(v: number) => `${v} students`} contentStyle={tooltipStyle} />
-                          </PieChart>
-                        </ResponsiveContainer>
+                      </Pie>
+                      <Tooltip formatter={(v: number) => `${v} students`} contentStyle={tooltipStyle} />
+                    </PieChart>
+                  </ResponsiveContainer>
                         <p className="pointer-events-none absolute inset-x-0 top-[58%] text-center text-[10px] text-muted-foreground">students</p>
                       </div>
                       <div className="mt-3 space-y-2 text-xs text-muted-foreground">
                         <div className="flex justify-between"><span className="text-red-500">● Outstanding</span><span>{feeCounts.owing} · {formatGhs(totalOwing)}</span></div>
                         <div className="flex justify-between"><span className="text-amber-500">● No fee / Credit</span><span>{feeCounts.noFee + feeCounts.credit} students</span></div>
                         <div className="flex justify-between"><span className="text-emerald-500">● Paid</span><span>{feeCounts.paid} students</span></div>
-                      </div>
+                </div>
                     </>
-                  )}
-                </CardContent>
-              </Card>
+              )}
+            </CardContent>
+          </Card>
 
               <Card className="rounded-2xl shadow-sm">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-semibold">Enrollment by Class</CardTitle>
                   <p className="text-xs text-muted-foreground">Active students per class</p>
-                </CardHeader>
+            </CardHeader>
                 <CardContent>
                   {overviewLoading ? (
                     <Skeleton className="h-[220px]" />
-                  ) : enrollmentByClass.length === 0 ? (
+              ) : enrollmentByClass.length === 0 ? (
                     <EmptyBlock text="No class assignments yet" />
-                  ) : (
+              ) : (
                     <div className="h-[220px]">
-                      <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={enrollmentByClass.slice(0, 8)} layout="vertical" margin={{ left: 0, right: 8 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
                           <XAxis type="number" tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
                           <YAxis type="category" dataKey="name" width={72} tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
                           <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [`${v} students`, 'Count']} />
                           <Bar dataKey="count" fill={CHART_GREEN} radius={[0, 4, 4, 0]} barSize={12} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
             {/* Activity */}
             <Card className="rounded-2xl shadow-sm">
@@ -666,8 +666,8 @@ const AdministratorDashboard = ({ onNavigate }: Props) => {
                 <Skeleton className="mt-3 h-12" />
               ) : feeCounts.owing === 0 ? (
                 <p className="mt-2 text-sm text-muted-foreground">All term-fee students are paid up.</p>
-              ) : (
-                <>
+            ) : (
+              <>
                   <p className="mt-2 text-xs text-foreground"><strong>{feeCounts.owing}</strong> students with outstanding balances</p>
                   <p className="mt-1 text-lg font-bold tabular-nums leading-tight text-red-600 dark:text-red-400" title={formatGhs(totalOwing)}>
                     {formatGhsCompact(totalOwing)}
@@ -719,7 +719,7 @@ const AdministratorDashboard = ({ onNavigate }: Props) => {
                       );
                     })
                   )}
-                </div>
+                              </div>
                 {!birthdaysLoading && monthBirthdayCount > 0 && (
                   <p className="border-t border-border px-5 py-3 text-xs text-muted-foreground">This month: {monthBirthdayCount} birthdays</p>
                 )}
@@ -769,8 +769,8 @@ const AdministratorDashboard = ({ onNavigate }: Props) => {
                 </div>
               </CardContent>
             </Card>
-          </div>
-        </div>
+                        </div>
+                      </div>
 
         {/* Calendar strip */}
         <Card className={cn(surfaceCard, 'px-5 py-4')}>

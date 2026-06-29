@@ -464,6 +464,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
   const { socket } = useSocket();
   const [parentDeskUnread, setParentDeskUnread] = useState(0);
   const [supportUnread, setSupportUnread] = useState(0);
+  const [paymentSubmissionsPending, setPaymentSubmissionsPending] = useState(0);
   const [becomeUserOpen, setBecomeUserOpen] = useState(false);
   const impersonation = useImpersonationOptional();
   const adminEligible =
@@ -493,9 +494,16 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
       } else {
         setSupportUnread(0);
       }
+      if (hasAccess('payment-submissions')) {
+        const p = await apiService.get<{ count: number }>('/payment-submissions/pending-count');
+        setPaymentSubmissionsPending(Number(p?.count ?? 0));
+      } else {
+        setPaymentSubmissionsPending(0);
+      }
     } catch {
       setParentDeskUnread(0);
       setSupportUnread(0);
+      setPaymentSubmissionsPending(0);
     }
   }, [hasAccess]);
 
@@ -525,7 +533,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
     if (!socket) return;
     const onTenant = (evt: { entity?: string }) => {
       const e = String(evt?.entity || '');
-      if (e === 'parent-desk' || e === 'support-chat') void refreshCommsBadges();
+      if (e === 'parent-desk' || e === 'support-chat' || e === 'payment-submission') void refreshCommsBadges();
     };
     const onCountUpdate = () => void refreshCommsBadges();
     socket.on('tenant-data-changed', onTenant);
@@ -601,7 +609,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
         <MenuSection items={menuItems.dashboard} label="Overview" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} />
         <MenuSection items={menuItems.academic} label="Academic Central" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} />
         <MenuSection items={menuItems.teaching} label="Teaching Room" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} />
-        <MenuSection items={menuItems.financial} label="Financial Ops" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} />
+        <MenuSection items={menuItems.financial} label="Financial Ops" activeModule={activeModule} setActiveModule={setActiveModule} itemCounts={{ 'payment-submissions': paymentSubmissionsPending }} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} />
         <MenuSection items={menuItems.records} label="Data Center" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} />
         <CollapsibleMenuSection items={menuItems.transport} label="Transport Management" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} />
         <MenuSection

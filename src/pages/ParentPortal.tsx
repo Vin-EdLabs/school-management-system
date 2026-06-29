@@ -319,6 +319,11 @@ function isFinanceStatementNotification(n: Pick<ParentAppNotification, 'url' | '
   return isFinanceStatementNotificationUrl(n.url) || /finance statement/i.test(n.title);
 }
 
+function isPaymentSubmissionNotification(n: Pick<ParentAppNotification, 'url' | 'title'>): boolean {
+  if (n.url?.includes('financeSub=make-payment')) return true;
+  return /payment submission/i.test(n.title);
+}
+
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
@@ -941,6 +946,19 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     setFinanceStatementOpen(true);
   }, [token]);
 
+  const openMakePaymentFromNotification = useCallback(async (n?: ParentAppNotification | null) => {
+    if (n?.serverId && token && !n.read) {
+      await parentFetch(`/parent/notifications/${n.serverId}/read`, { method: 'POST', body: JSON.stringify({}) }, token).catch(() => undefined);
+      setAppNotifications((prev) =>
+        prev.map((item) => (item.serverId === n.serverId ? { ...item, read: true } : item))
+      );
+    }
+    setSelectedNotification(null);
+    setShowNotifPanel(false);
+    setActiveTab('finance');
+    setFinanceSubTab('make-payment');
+  }, [token]);
+
   const unreadFinanceStatementCount = appNotifications.filter((n) => !n.read && isFinanceStatementNotification(n)).length;
 
   /** Close notifications panel when clicking outside (not on bell or panel), or on Escape. */
@@ -1435,6 +1453,8 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         if (activeTab === 'desk') {
           await loadDeskMessages();
         }
+      } else if (entity === 'payment-submission') {
+        await loadServerNotifications(token, studentSessionRef.current).catch(() => undefined);
       }
     });
 
@@ -2104,6 +2124,10 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                         setAppNotifications((prev) => prev.map((item) => (item.id === n.id ? { ...item, read: true } : item)));
                         if (isFinanceStatementNotification(n)) {
                           await openFinanceStatementFromNotification({ ...n, read: true });
+                          return;
+                        }
+                        if (isPaymentSubmissionNotification(n)) {
+                          await openMakePaymentFromNotification({ ...n, read: true });
                           return;
                         }
                         setSelectedNotification({ ...n, read: true });
@@ -3694,6 +3718,14 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                     className="rounded-lg px-4 py-2 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700"
                   >
                     View Statement
+                  </button>
+                ) : null}
+                {isPaymentSubmissionNotification(selectedNotification) ? (
+                  <button
+                    onClick={() => void openMakePaymentFromNotification(selectedNotification)}
+                    className="rounded-lg px-4 py-2 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700"
+                  >
+                    View Payment Status
                   </button>
                 ) : null}
                 <button

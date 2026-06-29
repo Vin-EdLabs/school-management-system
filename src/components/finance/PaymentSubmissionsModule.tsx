@@ -37,7 +37,8 @@ import {
   paymentConfirmDialogClass,
   paymentRejectDialogClass,
 } from '@/components/payments/paymentSubmissionUi';
-import { CheckCircle2, ClipboardCheck, Loader2, RefreshCw, XCircle } from 'lucide-react';
+import { resolvePaymentProofImageUrl } from '@/utils/paymentProofImage';
+import { CheckCircle2, ClipboardCheck, Eye, Loader2, RefreshCw, XCircle } from 'lucide-react';
 
 type SubmissionStatus = 'pending' | 'reviewed' | 'rejected';
 
@@ -60,15 +61,6 @@ interface PaymentSubmissionRow {
 
 const ALL = '__all__';
 
-function resolveUploadUrl(path: string): string {
-  if (!path) return '';
-  if (path.startsWith('http') || path.startsWith('data:')) return path;
-  const base = String(import.meta.env.VITE_API_URL || '').replace(/\/api\/?$/, '');
-  if (base) return `${base}${path.startsWith('/') ? path : `/${path}`}`;
-  if (typeof window !== 'undefined') return `${window.location.origin}${path.startsWith('/') ? path : `/${path}`}`;
-  return path;
-}
-
 function statusBadge(status: SubmissionStatus) {
   if (status === 'reviewed') {
     return <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800">Reviewed</Badge>;
@@ -84,6 +76,7 @@ const PaymentSubmissionsModule = () => {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>(ALL);
   const [imagePreview, setImagePreview] = useState<{ url: string; title: string; subtitle?: string } | null>(null);
+  const [imageLoadingId, setImageLoadingId] = useState<number | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<PaymentSubmissionRow | null>(null);
   const [rejectTarget, setRejectTarget] = useState<PaymentSubmissionRow | null>(null);
   const [rejectNotes, setRejectNotes] = useState('');
@@ -137,12 +130,31 @@ const PaymentSubmissionsModule = () => {
     }
   };
 
-  const openImagePreview = (row: PaymentSubmissionRow) => {
-    setImagePreview({
-      url: resolveUploadUrl(row.screenshotUrl),
-      title: 'Payment proof screenshot',
-      subtitle: `${row.studentName} · GHS ${Number(row.amountClaimed).toLocaleString('en-GH', { minimumFractionDigits: 2 })} · ${row.networkUsed}`,
-    });
+  const openImagePreview = async (row: PaymentSubmissionRow) => {
+    if (!row.screenshotUrl) return;
+    setImageLoadingId(row.id);
+    try {
+      const url = await resolvePaymentProofImageUrl(`/payment-submissions/${row.id}/screenshot`);
+      setImagePreview({
+        url,
+        title: 'Payment proof screenshot',
+        subtitle: `${row.studentName} · GHS ${Number(row.amountClaimed).toLocaleString('en-GH', { minimumFractionDigits: 2 })} · ${row.networkUsed}`,
+      });
+    } catch (e: unknown) {
+      const err = e as { message?: string };
+      toast({ title: 'Could not load screenshot', description: err?.message, variant: 'destructive' });
+    } finally {
+      setImageLoadingId(null);
+    }
+  };
+
+  const closeImagePreview = (open: boolean) => {
+    if (!open) {
+      if (imagePreview?.url?.startsWith('blob:')) {
+        URL.revokeObjectURL(imagePreview.url);
+      }
+      setImagePreview(null);
+    }
   };
 
   return (
@@ -255,18 +267,20 @@ const PaymentSubmissionsModule = () => {
                         {row.transactionReference || '—'}
                       </TableCell>
                       <TableCell>
-                        <button
+                        <Button
                           type="button"
-                          onClick={() => openImagePreview(row)}
-                          className="block h-10 w-10 rounded border overflow-hidden hover:ring-2 ring-emerald-400"
+                          size="sm"
+                          variant="outline"
+                          disabled={!row.screenshotUrl || imageLoadingId === row.id}
+                          onClick={() => void openImagePreview(row)}
                           title="View screenshot"
                         >
-                          <img
-                            src={resolveUploadUrl(row.screenshotUrl)}
-                            alt="Proof"
-                            className="h-full w-full object-cover"
-                          />
-                        </button>
+                          {imageLoadingId === row.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Eye className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
                       </TableCell>
                       <TableCell>{statusBadge(row.status)}</TableCell>
                       <TableCell className="text-right space-x-1 whitespace-nowrap">
@@ -309,7 +323,7 @@ const PaymentSubmissionsModule = () => {
 
       <PaymentProofImageDialog
         open={!!imagePreview}
-        onOpenChange={(open) => !open && setImagePreview(null)}
+        onOpenChange={closeImagePreview}
         imageUrl={imagePreview?.url ?? null}
         title={imagePreview?.title}
         subtitle={imagePreview?.subtitle}

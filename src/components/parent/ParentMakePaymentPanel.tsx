@@ -5,6 +5,7 @@ import PaymentProofImageDialog from '@/components/payments/PaymentProofImageDial
 import {
   fetchMyPaymentSubmissions,
   fetchParentPaymentDetails,
+  fetchPaymentProofBlobUrl,
   submitPaymentProof,
   type PaymentSubmission,
   type SchoolPaymentDetails,
@@ -113,6 +114,34 @@ const ParentMakePaymentPanel: React.FC<ParentMakePaymentPanelProps> = ({
   const [screenshot, setScreenshot] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<{ url: string; title: string; subtitle?: string } | null>(null);
+  const [proofLoadingId, setProofLoadingId] = useState<number | null>(null);
+
+  const openProofPreview = async (row: PaymentSubmission) => {
+    if (!row.screenshotUrl || !token) return;
+    setProofLoadingId(row.id);
+    try {
+      const url = await fetchPaymentProofBlobUrl(token, row.id);
+      setImagePreview({
+        url,
+        title: 'Payment proof screenshot',
+        subtitle: `GHS ${Number(row.amountClaimed).toLocaleString('en-GH', { minimumFractionDigits: 2 })} · ${row.networkUsed} · ${formatDisplayDateTime(row.submittedAt)}`,
+      });
+    } catch (e: unknown) {
+      const err = e as { message?: string };
+      toast({ title: 'Could not load screenshot', description: err?.message, variant: 'destructive' });
+    } finally {
+      setProofLoadingId(null);
+    }
+  };
+
+  const closeImagePreview = (open: boolean) => {
+    if (!open) {
+      if (imagePreview?.url?.startsWith('blob:')) {
+        URL.revokeObjectURL(imagePreview.url);
+      }
+      setImagePreview(null);
+    }
+  };
 
   const load = useCallback(async (options?: { silent?: boolean }) => {
     if (!token) return;
@@ -374,14 +403,16 @@ const ParentMakePaymentPanel: React.FC<ParentMakePaymentPanelProps> = ({
                   {row.screenshotUrl ? (
                     <button
                       type="button"
-                      onClick={() => setImagePreview({
-                        url: resolveMediaUrl(row.screenshotUrl) || row.screenshotUrl,
-                        title: 'Payment proof screenshot',
-                        subtitle: `GHS ${Number(row.amountClaimed).toLocaleString('en-GH', { minimumFractionDigits: 2 })} · ${row.networkUsed} · ${formatDisplayDateTime(row.submittedAt)}`,
-                      })}
-                      className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                      disabled={proofLoadingId === row.id}
+                      onClick={() => void openProofPreview(row)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
                     >
-                      <Eye className="h-3.5 w-3.5" /> View
+                      {proofLoadingId === row.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Eye className="h-3.5 w-3.5" />
+                      )}{' '}
+                      View
                     </button>
                   ) : null}
                   <StatusBadge status={row.status} />
@@ -394,7 +425,7 @@ const ParentMakePaymentPanel: React.FC<ParentMakePaymentPanelProps> = ({
 
       <PaymentProofImageDialog
         open={!!imagePreview}
-        onOpenChange={(open) => !open && setImagePreview(null)}
+        onOpenChange={closeImagePreview}
         imageUrl={imagePreview?.url ?? null}
         title={imagePreview?.title}
         subtitle={imagePreview?.subtitle}

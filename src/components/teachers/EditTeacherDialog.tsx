@@ -203,6 +203,8 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
         bankBranch: showBank ? formData.bankBranch : '',
         position: formData.position.trim(),
         department: formData.department.trim(),
+        qualification: formData.qualification.trim(),
+        specialization: formData.specialization.trim(),
         subjectClassAssignments,
       });
 

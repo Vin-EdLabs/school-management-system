@@ -79,6 +79,16 @@ export const mapStudent = (backendStudent: Record<string, unknown>): Student => 
   beneficiaryNotes: (backendStudent.beneficiary_notes as string) || '',
   enrollmentStatus: ((backendStudent.enrollment_status as string) || 'active').toLowerCase(),
   graduatedAt: backendStudent.graduated_at ? formatDateForInput(backendStudent.graduated_at) : undefined,
+  admissionAcademicTermId:
+    backendStudent.admission_academic_term_id != null
+      ? Number(backendStudent.admission_academic_term_id)
+      : null,
+  inactivatedAt: formatDateForInput(backendStudent.inactivated_at),
+  inactivatedAcademicTermId:
+    backendStudent.inactivated_academic_term_id != null
+      ? Number(backendStudent.inactivated_academic_term_id)
+      : null,
+  createdAt: typeof backendStudent.created_at === 'string' ? backendStudent.created_at : undefined,
 });
 
 export const mapStudentToBackend = (student: Partial<Student>): Record<string, unknown> => {

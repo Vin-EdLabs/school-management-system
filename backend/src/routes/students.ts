@@ -21,6 +21,7 @@ import {
   withActor,
 } from '../utils/auditResolve.js';
 import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
+import { getActiveAcademicTermId } from '../services/studentTermTrackingService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -47,6 +48,33 @@ const storage = multer.memoryStorage();
 const upload = multer({ storage, limits: { fileSize: 2 * 1024 * 1024 } }); // 2MB limit for Base64
 
 const router = express.Router();
+
+function isMissingStudentTermTrackingColumn(error: unknown): boolean {
+  const err = error as { code?: string; message?: string };
+  return err?.code === '42703'
+    || /inactivated_(at|academic_term_id)|admission_academic_term_id/i.test(String(err?.message || ''));
+}
+
+async function tryRecordStudentInactivation(
+  tenantId: number,
+  studentId: string,
+  priorStatus: string
+): Promise<void> {
+  if (String(priorStatus).toLowerCase() === 'inactive') return;
+  try {
+    const inactivationTermId = await getActiveAcademicTermId(tenantId);
+    await query(
+      `UPDATE students
+       SET inactivated_at = CURRENT_TIMESTAMP,
+           inactivated_academic_term_id = $1
+       WHERE id = $2 AND tenant_id = $3`,
+      [inactivationTermId, studentId, tenantId]
+    );
+  } catch (error) {
+    if (isMissingStudentTermTrackingColumn(error)) return;
+    console.warn('[students] inactivation term tracking skipped:', (error as Error)?.message || error);
+  }
+}
 
 const emitTenantDataChanged = (tenantId: number, entity: string, action: 'created' | 'updated' | 'deleted') => {
   try {
@@ -91,6 +119,7 @@ const STUDENT_LIST_SELECT_FIELDS = `
   s.home_address, s.number_of_siblings, s.names_of_siblings, s.previous_school, s.date_of_admission,
   s.notes, s.is_beneficiary, s.beneficiary_type, s.discount_type, s.discount_value, s.beneficiary_notes,
   s.enrollment_status, s.created_at, s.updated_at,
+  s.admission_academic_term_id, s.inactivated_at, s.inactivated_academic_term_id,
   (CASE WHEN s.passport_photo_url IS NOT NULL AND length(s.passport_photo_url) > 0 THEN true ELSE false END) AS has_passport_photo,
   COALESCE(c.class_name, gc.class_name) AS class_name,
   COALESCE(c.level, gc.level) AS level,
@@ -377,6 +406,7 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
     const studentData = req.body;
     const requestedStatus = String(studentData.enrollment_status || 'active').toLowerCase().trim();
     const enrollmentStatus = requestedStatus === 'pending' ? 'pending' : 'active';
+    const admissionTermId = await getActiveAcademicTermId(tenantId);
 
     let lastError: any;
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -390,10 +420,10 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
         home_address, number_of_siblings, names_of_siblings,
         previous_school, date_of_admission, notes, passport_photo_url,
         is_beneficiary, beneficiary_type, discount_type, discount_value, beneficiary_notes,
-        enrollment_status
+        enrollment_status, admission_academic_term_id
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21,
-        $22, $23, $24, $25, $26, $27
+        $22, $23, $24, $25, $26, $27, $28
       ) RETURNING *`,
       [
         tenantId,
@@ -423,6 +453,7 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
         studentData.discount_value || 0,
         studentData.beneficiary_notes || null,
         enrollmentStatus,
+        admissionTermId,
       ]
         );
 
@@ -560,6 +591,11 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
       return res.status(404).json({ error: 'Student not found' });
     }
 
+    const priorStatus = String(existing.enrollment_status || 'active').toLowerCase();
+    const nextStatus = updates.enrollment_status !== undefined
+      ? String(updates.enrollment_status).toLowerCase()
+      : priorStatus;
+
     const updateFields: string[] = [];
     const values: any[] = [];
     let paramCount = 1;
@@ -587,13 +623,38 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
       return res.status(400).json({ error: 'No valid fields to update' });
     }
 
+    const baseFields = [...updateFields];
+    const baseValues = [...values];
+    const baseParamCount = paramCount;
+
+    if (nextStatus === 'inactive' && priorStatus !== 'inactive') {
+      const inactivationTermId = await getActiveAcademicTermId(tenantId);
+      updateFields.push(`inactivated_at = CURRENT_TIMESTAMP`);
+      updateFields.push(`inactivated_academic_term_id = $${paramCount}`);
+      values.push(inactivationTermId);
+      paramCount++;
+    }
+
     updateFields.push(`updated_at = CURRENT_TIMESTAMP`);
     values.push(tenantId, id);
 
-    const result = await query(
-      `UPDATE students SET ${updateFields.join(', ')} WHERE tenant_id = $${paramCount} AND id = $${paramCount + 1} RETURNING *`,
-      values
-    );
+    let result;
+    try {
+      result = await query(
+        `UPDATE students SET ${updateFields.join(', ')} WHERE tenant_id = $${paramCount} AND id = $${paramCount + 1} RETURNING *`,
+        values
+      );
+    } catch (error) {
+      if (!isMissingStudentTermTrackingColumn(error) || nextStatus !== 'inactive' || priorStatus === 'inactive') {
+        throw error;
+      }
+      const fallbackFields = [...baseFields, `updated_at = CURRENT_TIMESTAMP`];
+      const fallbackValues = [...baseValues, tenantId, id];
+      result = await query(
+        `UPDATE students SET ${fallbackFields.join(', ')} WHERE tenant_id = $${baseParamCount} AND id = $${baseParamCount + 1} RETURNING *`,
+        fallbackValues
+      );
+    }
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Student not found' });
@@ -687,7 +748,11 @@ router.patch('/:id/status', requireRole('super-admin', 'administrator'), async (
     const priorStatus = String(existing.enrollment_status || 'active').toLowerCase();
 
     const result = await query(
-      'UPDATE students SET enrollment_status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND tenant_id = $3 RETURNING *',
+      `UPDATE students
+       SET enrollment_status = $1,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2 AND tenant_id = $3
+       RETURNING *`,
       [status, id, tenantId]
     );
 
@@ -695,7 +760,11 @@ router.patch('/:id/status', requireRole('super-admin', 'administrator'), async (
       return res.status(404).json({ error: 'Student not found' });
     }
 
-    const row = result.rows[0];
+    if (status === 'inactive' && priorStatus !== 'inactive') {
+      await tryRecordStudentInactivation(tenantId, id, priorStatus);
+    }
+
+    const row = (await queryStudentById(tenantId, id)) || result.rows[0];
     let billing: Awaited<ReturnType<typeof postStudentActivationTermFee>> | null = null;
 
     if (status === 'active' && priorStatus !== 'active') {
@@ -764,27 +833,31 @@ router.patch('/:id/status', requireRole('super-admin', 'administrator'), async (
         });
       }
     } else {
-      const auditAction = status === 'inactive' ? 'DEACTIVATE' : 'REACTIVATE';
-      const studentLabel = await resolveStudentLabel(tenantId, parseInt(id, 10));
-      const actor = await resolveActorFromRequest(req);
-      await writeAuditLog({
-        tenantId,
-        userId: req.user!.id,
-        userRole: req.user!.role,
-        action: auditAction,
-        entityType: 'STUDENT',
-        entityId: parseInt(id, 10),
-        module: 'academics',
-        summary: withActor(
-          status === 'inactive'
-            ? `Student deactivated — ${studentLabel}`
-            : `Student reactivated — ${studentLabel}`,
-          actor
-        ),
-        details: { enrollment_status: status, studentName: studentLabel },
-        ipAddress: getClientIp(req),
-        userAgent: req.get('user-agent') ?? null,
-      });
+      try {
+        const auditAction = status === 'inactive' ? 'DEACTIVATE' : 'REACTIVATE';
+        const studentLabel = await resolveStudentLabel(tenantId, parseInt(id, 10));
+        const actor = await resolveActorFromRequest(req);
+        await writeAuditLog({
+          tenantId,
+          userId: req.user!.id,
+          userRole: req.user!.role,
+          action: auditAction,
+          entityType: 'STUDENT',
+          entityId: parseInt(id, 10),
+          module: 'academics',
+          summary: withActor(
+            status === 'inactive'
+              ? `Student deactivated — ${studentLabel}`
+              : `Student reactivated — ${studentLabel}`,
+            actor
+          ),
+          details: { enrollment_status: status, studentName: studentLabel },
+          ipAddress: getClientIp(req),
+          userAgent: req.get('user-agent') ?? null,
+        });
+      } catch (auditErr) {
+        console.error('[status] audit log failed:', auditErr);
+      }
     }
 
     emitTenantDataChanged(tenantId, 'student', 'updated');
@@ -911,11 +984,17 @@ router.post('/:id/approve-admission', requireRole('super-admin', 'administrator'
       return res.status(400).json({ error: 'Selected class not found' });
     }
 
+    const admissionTermId = await getActiveAcademicTermId(tenantId);
+
     const result = await query(
-      `UPDATE students SET enrollment_status = 'active', class_assigned_id = $1, updated_at = CURRENT_TIMESTAMP
+      `UPDATE students
+       SET enrollment_status = 'active',
+           class_assigned_id = $1,
+           updated_at = CURRENT_TIMESTAMP,
+           admission_academic_term_id = COALESCE(admission_academic_term_id, $4)
        WHERE id = $2 AND tenant_id = $3 AND COALESCE(enrollment_status, 'active') = 'pending'
        RETURNING *`,
-      [classAssignedId, id, tenantId]
+      [classAssignedId, id, tenantId, admissionTermId]
     );
     if (result.rows.length === 0) {
       return res.status(400).json({ error: 'Could not approve student — they may no longer be pending' });

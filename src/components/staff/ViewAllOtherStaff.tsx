@@ -5,25 +5,32 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { apiService } from '@/services/api';
 import { toast } from '@/hooks/use-toast';
-import { Search, Users, Eye, Pencil } from 'lucide-react';
+import { Search, Users, Eye, Pencil, FileDown } from 'lucide-react';
 import type { OtherStaffRecord } from './otherStaffTypes';
 import StaffPhotoLightbox from './StaffPhotoLightbox';
 import OtherStaffProfileDialog from './OtherStaffProfileDialog';
 import OtherStaffFormDialog from './OtherStaffFormDialog';
+import { useSchool } from '@/contexts/SchoolContext';
+import { resolveLogoUrl } from '@/services/tenantService';
+import { downloadOtherStaffRosterPdf } from '@/utils/buildStaffRosterPdf';
 
 type Props = {
   refreshKey?: number;
 };
 
 const ViewAllOtherStaff: React.FC<Props> = ({ refreshKey = 0 }) => {
+  const { school } = useSchool();
   const [staff, setStaff] = useState<OtherStaffRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [positionFilter, setPositionFilter] = useState('all');
   const [departmentFilter, setDepartmentFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('active');
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [exporting, setExporting] = useState(false);
   const [profileId, setProfileId] = useState<number | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [editStaff, setEditStaff] = useState<OtherStaffRecord | null>(null);
@@ -78,6 +85,63 @@ const ViewAllOtherStaff: React.FC<Props> = ({ refreshKey = 0 }) => {
     setProfileOpen(true);
   };
 
+  const allFilteredSelected = filtered.length > 0 && filtered.every((s) => selected.has(s.id));
+
+  const toggleSelectAll = () => {
+    if (allFilteredSelected) {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        filtered.forEach((s) => next.delete(s.id));
+        return next;
+      });
+    } else {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        filtered.forEach((s) => next.add(s.id));
+        return next;
+      });
+    }
+  };
+
+  const toggleSelect = (id: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const exportPdf = async () => {
+    const rows = filtered.filter((s) => selected.has(s.id));
+    if (rows.length === 0) {
+      toast({ title: 'Nothing selected', description: 'Select at least one staff member to export.', variant: 'destructive' });
+      return;
+    }
+    setExporting(true);
+    try {
+      await downloadOtherStaffRosterPdf({
+        schoolName: school?.name || 'School',
+        logoUrl: resolveLogoUrl(school?.logo_url ?? null),
+        staff: rows.map((s) => ({
+          fullName: s.full_name,
+          staffId: s.staff_id,
+          position: s.position || '',
+          department: s.department || '',
+          salary: Number(s.monthly_salary) || 0,
+          phone: s.phone_number || '',
+          email: s.email || '',
+        })),
+      });
+      toast({ title: 'PDF exported', description: `${rows.length} staff member(s) exported.` });
+    } catch (e: unknown) {
+      const err = e as { message?: string };
+      toast({ title: 'Export failed', description: err?.message || 'Could not generate PDF.', variant: 'destructive' });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <>
       <Card className="border-border bg-card shadow-sm">
@@ -124,6 +188,16 @@ const ViewAllOtherStaff: React.FC<Props> = ({ refreshKey = 0 }) => {
                 <SelectItem value="all">All</SelectItem>
               </SelectContent>
             </Select>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={exporting || selected.size === 0}
+              onClick={() => void exportPdf()}
+            >
+              <FileDown className="h-4 w-4 mr-2" />
+              Export PDF ({selected.size || 0})
+            </Button>
           </div>
 
           {loading ? (
@@ -133,6 +207,9 @@ const ViewAllOtherStaff: React.FC<Props> = ({ refreshKey = 0 }) => {
               <Table className="w-full">
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox checked={allFilteredSelected} onCheckedChange={toggleSelectAll} aria-label="Select all staff" />
+                    </TableHead>
                     <TableHead className="w-12 whitespace-nowrap">Photo</TableHead>
                     <TableHead className="min-w-[180px] whitespace-nowrap">Name</TableHead>
                     <TableHead className="whitespace-nowrap">Staff ID</TableHead>
@@ -148,7 +225,7 @@ const ViewAllOtherStaff: React.FC<Props> = ({ refreshKey = 0 }) => {
                 <TableBody>
                   {filtered.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
+                      <TableCell colSpan={11} className="text-center py-12 text-muted-foreground">
                         No staff found matching your criteria
                       </TableCell>
                     </TableRow>
@@ -161,6 +238,13 @@ const ViewAllOtherStaff: React.FC<Props> = ({ refreshKey = 0 }) => {
                           className={`hover:bg-muted/40 cursor-pointer ${!active ? 'opacity-70' : ''}`}
                           onClick={() => openProfile(s)}
                         >
+                          <TableCell className="py-2 w-10" onClick={(e) => e.stopPropagation()}>
+                            <Checkbox
+                              checked={selected.has(s.id)}
+                              onCheckedChange={() => toggleSelect(s.id)}
+                              aria-label={`Select ${s.full_name}`}
+                            />
+                          </TableCell>
                           <TableCell className="py-2 w-12">
                             <StaffPhotoLightbox
                               src={s.passport_photo_url}

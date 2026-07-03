@@ -5,22 +5,29 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useData } from '../../contexts/DataContext';
+import { useSchool } from '../../contexts/SchoolContext';
 import { useAudit } from '../../contexts/AuditContext';
-import { Search, Edit, Users, Eye } from 'lucide-react';
+import { Search, Edit, Users, Eye, FileDown } from 'lucide-react';
 import LazyTeacherAvatar from './LazyTeacherAvatar';
 import { teacherStatusBadge } from './TeacherStatusModals';
 import type { Teacher } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
 import TeacherDetailsDialog from './TeacherDetailsDialog';
 import EditTeacherDialog from './EditTeacherDialog';
+import { resolveLogoUrl } from '@/services/tenantService';
+import { downloadTeacherRosterPdf } from '@/utils/buildStaffRosterPdf';
 
 const ViewAllTeachers = () => {
   const { teachers, classes } = useData();
+  const { school } = useSchool();
   const { addAuditLog } = useAudit();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('active');
   const [filterClass, setFilterClass] = useState('all-classes');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [exporting, setExporting] = useState(false);
   const [selectedTeacher, setSelectedTeacher] = useState<any>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
@@ -65,6 +72,63 @@ const ViewAllTeachers = () => {
     setShowEditDialog(true);
   };
 
+  const allFilteredSelected = filteredTeachers.length > 0 && filteredTeachers.every((t) => selected.has(t.id));
+
+  const toggleSelectAll = () => {
+    if (allFilteredSelected) {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        filteredTeachers.forEach((t) => next.delete(t.id));
+        return next;
+      });
+    } else {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        filteredTeachers.forEach((t) => next.add(t.id));
+        return next;
+      });
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const exportPdf = async () => {
+    const rows = filteredTeachers.filter((t) => selected.has(t.id));
+    if (rows.length === 0) {
+      toast({ title: 'Nothing selected', description: 'Select at least one teacher to export.', variant: 'destructive' });
+      return;
+    }
+    setExporting(true);
+    try {
+      await downloadTeacherRosterPdf({
+        schoolName: school?.name || 'School',
+        logoUrl: resolveLogoUrl(school?.logo_url ?? null),
+        teachers: rows.map((t) => ({
+          fullName: t.fullName,
+          staffId: t.staffId,
+          classes: t.classAssigned || '—',
+          department: t.department || '—',
+          salary: Number(t.monthlySalary) || 0,
+          phone: t.phoneNumber || '',
+          email: t.email || '',
+        })),
+      });
+      toast({ title: 'PDF exported', description: `${rows.length} teacher(s) exported.` });
+    } catch (e: unknown) {
+      const err = e as { message?: string };
+      toast({ title: 'Export failed', description: err?.message || 'Could not generate PDF.', variant: 'destructive' });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <>
       <Card className="border-border bg-card shadow-sm">
@@ -86,7 +150,17 @@ const ViewAllTeachers = () => {
                 className="pl-10"
               />
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={exporting || selected.size === 0}
+                onClick={() => void exportPdf()}
+              >
+                <FileDown className="h-4 w-4 mr-2" />
+                Export PDF ({selected.size || 0})
+              </Button>
               <Select value={filterStatus} onValueChange={setFilterStatus}>
                 <SelectTrigger className="w-40">
                   <SelectValue placeholder="Status" />
@@ -120,6 +194,9 @@ const ViewAllTeachers = () => {
             <Table className="w-full">
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox checked={allFilteredSelected} onCheckedChange={toggleSelectAll} aria-label="Select all teachers" />
+                  </TableHead>
                   <TableHead className="w-14 whitespace-nowrap">Photo</TableHead>
                   <TableHead className="whitespace-nowrap min-w-[150px]">Name</TableHead>
                   <TableHead className="whitespace-nowrap">Staff ID</TableHead>
@@ -134,7 +211,7 @@ const ViewAllTeachers = () => {
               <TableBody>
                 {filteredTeachers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                       No teachers found matching your criteria
                     </TableCell>
                   </TableRow>
@@ -145,6 +222,13 @@ const ViewAllTeachers = () => {
                     const dimmed = status !== 'active';
                     return (
                     <TableRow key={teacher.id} className={`hover:bg-muted/40 ${dimmed ? 'opacity-70' : ''}`}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selected.has(teacher.id)}
+                          onCheckedChange={() => toggleSelect(teacher.id)}
+                          aria-label={`Select ${teacher.fullName}`}
+                        />
+                      </TableCell>
                       <TableCell>
                         <LazyTeacherAvatar
                           teacherId={teacher.id}

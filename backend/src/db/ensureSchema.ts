@@ -89,6 +89,18 @@ export async function ensureSupplementalSchema(): Promise<void> {
     'students.enrollment_status'
   );
   await safe(
+    `ALTER TABLE students ADD COLUMN IF NOT EXISTS admission_academic_term_id INTEGER REFERENCES academic_terms(id)`,
+    'students.admission_academic_term_id'
+  );
+  await safe(
+    `ALTER TABLE students ADD COLUMN IF NOT EXISTS inactivated_at TIMESTAMPTZ`,
+    'students.inactivated_at'
+  );
+  await safe(
+    `ALTER TABLE students ADD COLUMN IF NOT EXISTS inactivated_academic_term_id INTEGER REFERENCES academic_terms(id)`,
+    'students.inactivated_academic_term_id'
+  );
+  await safe(
     `UPDATE students SET enrollment_status = 'active' WHERE enrollment_status IS NULL`,
     'students.enrollment_status backfill'
   );

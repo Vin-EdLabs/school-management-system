@@ -474,7 +474,10 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
     for (const key of allowed) {
       if (updates[key] !== undefined) {
         fields.push(`${key} = $${p++}`);
-        const val = updates[key];
+        let val = updates[key];
+        if (key === 'qualification' || key === 'specialization') {
+          val = val != null && String(val).trim() !== '' ? String(val).trim() : null;
+        }
         values.push(
           (key === 'date_of_birth' || key === 'employment_date') && val === '' ? null : val
         );

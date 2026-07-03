@@ -38,6 +38,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Skeleton } from '@/components/ui/skeleton';
+import { apiService } from '@/services/api';
 import { useData, type Student } from '../../contexts/DataContext';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
 import { useAudit } from '../../contexts/AuditContext';
@@ -76,6 +77,19 @@ import { cn } from '@/lib/utils';
 const PAGE_SIZES = [10, 25, 50] as const;
 type SortKey = 'name' | 'studentId' | 'class' | 'gender' | 'status';
 
+function studentDateAdded(student: Student): string {
+  return student.createdAt || student.dateOfAdmission || '';
+}
+
+type AcademicTermOption = {
+  id: number;
+  termName: string;
+  year: string;
+  startDate: string;
+  endDate: string;
+  label: string;
+};
+
 type ViewAllStudentsProps = {
   onRequestPromoteStudent?: (studentId: string) => void;
   /** active = main registry; inactive = archived students with preserved records */
@@ -109,15 +123,17 @@ function sortStudents(list: Student[], key: SortKey, dir: 'asc' | 'desc'): Stude
 
 const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStudent, variant = 'active', readOnly = false }) => {
   const { students, classes, setStudentStatus, payments, feeStructures, loading, refresh } = useData();
-  const { currentTerm } = useActiveTerm();
+  const { currentTerm, activeAcademicTermId } = useActiveTerm();
   const { addAuditLog } = useAudit();
   const { school } = useSchool();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterClass, setFilterClass] = useState('all-classes');
   const [filterGender, setFilterGender] = useState('all-genders');
-  const [filterStatus, setFilterStatus] = useState('all-status');
   const [filterDiscount, setFilterDiscount] = useState<'all-discounts' | 'discounted' | 'full-discount' | 'partial-discount' | 'no-discount'>('all-discounts');
+  const [academicTerms, setAcademicTerms] = useState<AcademicTermOption[]>([]);
+  const [selectedAcademicTermId, setSelectedAcademicTermId] = useState<string>('all-terms');
+  const [showRecentAdmissions, setShowRecentAdmissions] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [page, setPage] = useState(1);
@@ -135,19 +151,69 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
 
   const isInactiveView = variant === 'inactive';
 
+  useEffect(() => {
+    let cancelled = false;
+    void apiService
+      .get<Array<{ id: number; term_name: string; year: string; start_date?: string | null; end_date?: string | null }>>('/settings/academic-terms')
+      .then((rows) => {
+        if (cancelled) return;
+        const next = (Array.isArray(rows) ? rows : [])
+          .map((row) => ({
+            id: Number(row.id),
+            termName: String(row.term_name || '').trim(),
+            year: String(row.year || '').trim(),
+            startDate: String(row.start_date || ''),
+            endDate: String(row.end_date || ''),
+            label: `${String(row.term_name || '').trim()} ${String(row.year || '').trim()}`.trim(),
+          }))
+          .filter((row) => row.id > 0 && row.label);
+        setAcademicTerms(next);
+        if (activeAcademicTermId && next.some((term) => term.id === activeAcademicTermId)) {
+          setSelectedAcademicTermId(String(activeAcademicTermId));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setAcademicTerms([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeAcademicTermId]);
+
+  const selectedAcademicTerm = useMemo(
+    () => academicTerms.find((term) => String(term.id) === selectedAcademicTermId) || null,
+    [academicTerms, selectedAcademicTermId]
+  );
+
+  const isDateWithinTerm = useCallback((value: string | undefined, term: AcademicTermOption | null) => {
+    if (!value || !term) return false;
+    const dateOnly = value.split('T')[0];
+    const start = term.startDate ? term.startDate.split('T')[0] : '';
+    const end = term.endDate ? term.endDate.split('T')[0] : '';
+    if (start && dateOnly < start) return false;
+    if (end && dateOnly > end) return false;
+    return true;
+  }, []);
+
+  const matchesAdmissionTerm = useCallback((student: Student, term: AcademicTermOption | null) => {
+    if (!term) return true;
+    if (student.admissionAcademicTermId != null) return student.admissionAcademicTermId === term.id;
+    return isDateWithinTerm(student.dateOfAdmission, term);
+  }, [isDateWithinTerm]);
+
+  const matchesLeftTerm = useCallback((student: Student, term: AcademicTermOption | null) => {
+    if (!term) return true;
+    if (student.inactivatedAcademicTermId != null) return student.inactivatedAcademicTermId === term.id;
+    return isDateWithinTerm(student.inactivatedAt, term);
+  }, [isDateWithinTerm]);
+
   const registryStudents = useMemo(() => {
     return students.filter((s) => {
       const st = normalizeEnrollmentStatus(s.enrollmentStatus);
       if (isInactiveView) return st === 'inactive';
-      if (filterStatus === 'pending') return st === 'pending';
-      if (filterStatus === 'inactive') return st === 'inactive';
-      if (filterStatus === 'graduated') return st === 'graduated';
-      if (filterStatus === 'active') return st === 'active';
-      if (filterStatus === 'suspended') return st === 'suspended';
-      // Default main list: active enrolled students only
       return st === 'active';
     });
-  }, [students, isInactiveView, filterStatus]);
+  }, [students, isInactiveView]);
 
   const termPayments = useMemo(() => {
     return (payments || []).filter((p) => {
@@ -215,22 +281,43 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
         (student.admissionNumber || '').toLowerCase().includes(q);
       const matchesClass = filterClass === 'all-classes' || student.classAssigned === filterClass;
       const matchesGender = filterGender === 'all-genders' || student.gender === filterGender;
-      const st = normalizeEnrollmentStatus(student.enrollmentStatus);
-      const matchesStatus = filterStatus === 'all-status' || st === filterStatus;
       const matchesDiscount =
         filterDiscount === 'all-discounts' ||
         (filterDiscount === 'discounted' && hasDiscount(student)) ||
         (filterDiscount === 'full-discount' && isFullDiscount(student)) ||
         (filterDiscount === 'partial-discount' && isPartialDiscount(student)) ||
         (filterDiscount === 'no-discount' && !hasDiscount(student));
-      return matchesSearch && matchesClass && matchesGender && matchesStatus && matchesDiscount;
+      const matchesRecentAdmissions =
+        !showRecentAdmissions || matchesAdmissionTerm(student, selectedAcademicTerm);
+      return matchesSearch && matchesClass && matchesGender && matchesDiscount && matchesRecentAdmissions;
     });
-  }, [registryStudents, searchTerm, filterClass, filterGender, filterStatus, filterDiscount]);
+  }, [
+    registryStudents,
+    searchTerm,
+    filterClass,
+    filterGender,
+    filterDiscount,
+    showRecentAdmissions,
+    selectedAcademicTerm,
+    matchesAdmissionTerm,
+  ]);
 
-  const sortedStudents = useMemo(
-    () => sortStudents(filteredStudents, sortKey, sortDir),
-    [filteredStudents, sortKey, sortDir]
+  const termAdmissionsCount = useMemo(
+    () => students.filter((student) => matchesAdmissionTerm(student, selectedAcademicTerm)).length,
+    [students, matchesAdmissionTerm, selectedAcademicTerm]
   );
+
+  const termLeftCount = useMemo(
+    () => students.filter((student) => normalizeEnrollmentStatus(student.enrollmentStatus) === 'inactive' && matchesLeftTerm(student, selectedAcademicTerm)).length,
+    [students, matchesLeftTerm, selectedAcademicTerm]
+  );
+
+  const sortedStudents = useMemo(() => {
+    if (showRecentAdmissions) {
+      return [...filteredStudents].sort((a, b) => studentDateAdded(b).localeCompare(studentDateAdded(a)));
+    }
+    return sortStudents(filteredStudents, sortKey, sortDir);
+  }, [filteredStudents, sortKey, sortDir, showRecentAdmissions]);
 
   const totalPages = Math.max(1, Math.ceil(sortedStudents.length / pageSize));
   const safePage = Math.min(page, totalPages);
@@ -245,7 +332,7 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
 
   useEffect(() => {
     setPage(1);
-  }, [searchTerm, filterClass, filterGender, filterStatus, filterDiscount, pageSize]);
+  }, [searchTerm, filterClass, filterGender, filterDiscount, showRecentAdmissions, selectedAcademicTermId, pageSize]);
 
   useEffect(() => {
     setPage((p) => Math.min(p, totalPages));
@@ -255,10 +342,21 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
     setSearchTerm('');
     setFilterClass('all-classes');
     setFilterGender('all-genders');
-    setFilterStatus('all-status');
     setFilterDiscount('all-discounts');
+    setShowRecentAdmissions(false);
+    setSelectedAcademicTermId(activeAcademicTermId ? String(activeAcademicTermId) : 'all-terms');
     setSortKey('name');
     setSortDir('asc');
+  };
+
+  const toggleRecentAdmissions = () => {
+    setShowRecentAdmissions((open) => {
+      const next = !open;
+      if (next && selectedAcademicTermId === 'all-terms' && activeAcademicTermId) {
+        setSelectedAcademicTermId(String(activeAcademicTermId));
+      }
+      return next;
+    });
   };
 
   const toggleSort = (key: SortKey) => {
@@ -482,35 +580,74 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
       <div className="space-y-4">
         {/* Toolbar */}
         <div className="rounded-xl border border-border/80 bg-card/80 p-4 shadow-sm backdrop-blur-sm">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-            <div className="space-y-1">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0 flex-1 space-y-1">
               <h2 className="text-lg font-semibold tracking-tight text-foreground">
                 {isInactiveView ? 'Inactive students' : 'Student registry'}
               </h2>
               <p className="text-xs text-muted-foreground">
-                {filteredStudents.length} of {registryStudents.length} {isInactiveView ? 'inactive' : 'active'} students
-                {searchTerm || filterClass !== 'all-classes' || filterGender !== 'all-genders' || filterStatus !== 'all-status' || filterDiscount !== 'all-discounts'
+                {filteredStudents.length} of {registryStudents.length}{' '}
+                {isInactiveView ? 'inactive' : showRecentAdmissions ? 'recent admissions' : 'active'} students
+                {searchTerm || filterClass !== 'all-classes' || filterGender !== 'all-genders' || filterDiscount !== 'all-discounts' || showRecentAdmissions
                   ? ' · filters active'
                   : ''}
               </p>
+              {showRecentAdmissions ? (
+                <p className="text-xs text-muted-foreground">
+                  {selectedAcademicTerm
+                    ? `Admitted in ${selectedAcademicTerm.label} · sorted by date added (newest first)`
+                    : 'All terms · sorted by date added (newest first)'}
+                </p>
+              ) : selectedAcademicTerm ? (
+                <p className="text-xs text-muted-foreground">
+                  {termAdmissionsCount} admitted in {selectedAcademicTerm.label} · {termLeftCount} left in {selectedAcademicTerm.label}
+                </p>
+              ) : null}
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+              {!isInactiveView && (
+                <>
+                  <Button
+                    type="button"
+                    variant={showRecentAdmissions ? 'default' : 'outline'}
+                    size="sm"
+                    className="h-9 gap-1.5"
+                    onClick={toggleRecentAdmissions}
+                  >
+                    <Users className="h-4 w-4 shrink-0" />
+                    Recently added students
+                  </Button>
+                  <Select value={selectedAcademicTermId} onValueChange={setSelectedAcademicTermId}>
+                    <SelectTrigger className="h-9 w-[9.5rem] shrink-0 text-xs sm:w-[11rem] sm:text-sm" aria-label="Academic term">
+                      <SelectValue placeholder="Term" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all-terms">All terms</SelectItem>
+                      {academicTerms.map((term) => (
+                        <SelectItem key={term.id} value={String(term.id)}>
+                          {term.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </>
+              )}
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                className="gap-1.5"
+                className="h-9 gap-1.5"
                 onClick={exportSelectedPdf}
                 disabled={selected.size === 0}
               >
-                <Download className="mr-2 h-4 w-4" />
+                <Download className="h-4 w-4 shrink-0" />
                 Export PDF
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="gap-1.5" disabled={selected.size === 0}>
+                  <Button variant="outline" size="sm" className="h-9 gap-1.5" disabled={selected.size === 0}>
                     Bulk actions
-                    <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+                    <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
@@ -531,7 +668,9 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
                 </DropdownMenuContent>
               </DropdownMenu>
               {selected.size > 0 && (
-                <span className="text-xs text-muted-foreground tabular-nums">{selected.size} selected</span>
+                <span className="w-full text-right text-xs text-muted-foreground tabular-nums sm:w-auto">
+                  {selected.size} selected
+                </span>
               )}
             </div>
           </div>
@@ -570,19 +709,6 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
                 <SelectItem value="all-genders">All genders</SelectItem>
                 <SelectItem value="Male">Male</SelectItem>
                 <SelectItem value="Female">Female</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="h-9 lg:col-span-2" aria-label="Filter by status">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all-status">Active only</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
-                <SelectItem value="graduated">Alumni</SelectItem>
-                <SelectItem value="suspended">Suspended</SelectItem>
               </SelectContent>
             </Select>
             <Select value={filterDiscount} onValueChange={setFilterDiscount}>

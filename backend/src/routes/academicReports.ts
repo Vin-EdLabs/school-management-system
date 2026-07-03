@@ -2,6 +2,7 @@ import express from 'express';
 import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
+import { resolveAcademicTermId } from '../services/studentTermTrackingService.js';
 
 const router = express.Router();
 
@@ -47,25 +48,71 @@ function resolveTermWindow(req: AuthRequest): { tenantId: number; termStart: str
   return { tenantId, termStart, termEnd };
 }
 
+type ReportWindow = { tenantId: number; termStart: string; termEnd: string; termId: number | null };
+
+async function resolveReportWindow(req: AuthRequest): Promise<ReportWindow | null> {
+  const base = resolveTermWindow(req);
+  if (!base) return null;
+  const termIdParam = Number(req.query.termId);
+  let termId: number | null = Number.isFinite(termIdParam) && termIdParam > 0 ? termIdParam : null;
+  if (!termId) {
+    termId = await resolveAcademicTermId(
+      base.tenantId,
+      String(req.query.termName || ''),
+      String(req.query.year || '')
+    );
+  }
+  return { ...base, termId };
+}
+
+const ADMISSIONS_TERM_WHERE = `(
+  ($4::int IS NOT NULL AND admission_academic_term_id = $4::int)
+  OR (
+    admission_academic_term_id IS NULL
+    AND date_of_admission IS NOT NULL
+    AND date_of_admission >= $2::date
+    AND date_of_admission <= $3::date
+  )
+)`;
+
+const LEAVERS_TERM_WHERE = `(
+  ($4::int IS NOT NULL
+    AND inactivated_academic_term_id = $4::int
+    AND LOWER(COALESCE(enrollment_status, 'active')) IN ('inactive', 'withdrawn'))
+  OR (
+    inactivated_academic_term_id IS NULL
+    AND LOWER(COALESCE(enrollment_status, 'active')) IN ('inactive', 'withdrawn')
+    AND COALESCE(inactivated_at, updated_at)::date >= $2::date
+    AND COALESCE(inactivated_at, updated_at)::date <= $3::date
+  )
+)`;
+
+const LEAVERS_TERM_WHERE_S = LEAVERS_TERM_WHERE
+  .replace(/inactivated_academic_term_id/g, 's.inactivated_academic_term_id')
+  .replace(/inactivated_at/g, 's.inactivated_at')
+  .replace(/updated_at/g, 's.updated_at')
+  .replace(/enrollment_status/g, 's.enrollment_status');
+
+const ADMISSIONS_TERM_WHERE_S = ADMISSIONS_TERM_WHERE
+  .replace(/admission_academic_term_id/g, 's.admission_academic_term_id')
+  .replace(/date_of_admission/g, 's.date_of_admission');
+
 /**
  * GET /api/reports/academic/admissions-count
  */
 router.get('/academic/admissions-count', async (req: AuthRequest, res) => {
   try {
-    const window = resolveTermWindow(req);
+    const window = await resolveReportWindow(req);
     if (!window) {
       return res.status(400).json({ error: 'termStart and termEnd (or termName + year) are required' });
     }
-    const { tenantId, termStart, termEnd } = window;
+    const { tenantId, termStart, termEnd, termId } = window;
     const { start, end } = clampMonthToTerm(termStart, termEnd, String(req.query.month || 'all'));
 
     const result = await query(
       `SELECT COUNT(*)::int AS count FROM students
-       WHERE tenant_id = $1
-         AND date_of_admission IS NOT NULL
-         AND date_of_admission >= $2::date
-         AND date_of_admission <= $3::date`,
-      [tenantId, start, end]
+       WHERE tenant_id = $1 AND ${ADMISSIONS_TERM_WHERE}`,
+      [tenantId, start, end, termId]
     );
 
     res.json({ count: Number(result.rows[0]?.count ?? 0) });
@@ -80,22 +127,20 @@ router.get('/academic/admissions-count', async (req: AuthRequest, res) => {
  */
 router.get('/academic/admissions-by-month', async (req: AuthRequest, res) => {
   try {
-    const window = resolveTermWindow(req);
+    const window = await resolveReportWindow(req);
     if (!window) {
       return res.status(400).json({ error: 'termStart and termEnd (or termName + year) are required' });
     }
-    const { tenantId, termStart, termEnd } = window;
+    const { tenantId, termStart, termEnd, termId } = window;
 
     const result = await query(
-      `SELECT TO_CHAR(date_of_admission, 'YYYY-MM') AS month, COUNT(*)::int AS count
+      `SELECT TO_CHAR(COALESCE(date_of_admission, inactivated_at::date, created_at::date), 'YYYY-MM') AS month,
+              COUNT(*)::int AS count
        FROM students
-       WHERE tenant_id = $1
-         AND date_of_admission IS NOT NULL
-         AND date_of_admission >= $2::date
-         AND date_of_admission <= $3::date
+       WHERE tenant_id = $1 AND ${ADMISSIONS_TERM_WHERE}
        GROUP BY 1
        ORDER BY 1 ASC`,
-      [tenantId, termStart, termEnd]
+      [tenantId, termStart, termEnd, termId]
     );
 
     const monthNames: Record<string, string> = {
@@ -151,20 +196,17 @@ router.get('/academic/teachers-appointed', async (req: AuthRequest, res) => {
  */
 router.get('/academic/students-left', async (req: AuthRequest, res) => {
   try {
-    const window = resolveTermWindow(req);
+    const window = await resolveReportWindow(req);
     if (!window) {
       return res.status(400).json({ error: 'termStart and termEnd (or termName + year) are required' });
     }
-    const { tenantId, termStart, termEnd } = window;
+    const { tenantId, termStart, termEnd, termId } = window;
     const { start, end } = clampMonthToTerm(termStart, termEnd, String(req.query.month || 'all'));
 
     const result = await query(
       `SELECT COUNT(*)::int AS count FROM students
-       WHERE tenant_id = $1
-         AND LOWER(COALESCE(enrollment_status, 'active')) IN ('inactive', 'withdrawn')
-         AND updated_at::date >= $2::date
-         AND updated_at::date <= $3::date`,
-      [tenantId, start, end]
+       WHERE tenant_id = $1 AND ${LEAVERS_TERM_WHERE}`,
+      [tenantId, start, end, termId]
     );
 
     res.json({ count: Number(result.rows[0]?.count ?? 0) });
@@ -179,21 +221,19 @@ router.get('/academic/students-left', async (req: AuthRequest, res) => {
  */
 router.get('/academic/male-leavers', async (req: AuthRequest, res) => {
   try {
-    const window = resolveTermWindow(req);
+    const window = await resolveReportWindow(req);
     if (!window) {
       return res.status(400).json({ error: 'termStart and termEnd (or termName + year) are required' });
     }
-    const { tenantId, termStart, termEnd } = window;
+    const { tenantId, termStart, termEnd, termId } = window;
     const { start, end } = clampMonthToTerm(termStart, termEnd, String(req.query.month || 'all'));
 
     const result = await query(
       `SELECT COUNT(*)::int AS count FROM students
        WHERE tenant_id = $1
-         AND LOWER(COALESCE(enrollment_status, 'active')) IN ('inactive', 'withdrawn')
          AND LOWER(TRIM(COALESCE(gender, ''))) = 'male'
-         AND updated_at::date >= $2::date
-         AND updated_at::date <= $3::date`,
-      [tenantId, start, end]
+         AND ${LEAVERS_TERM_WHERE}`,
+      [tenantId, start, end, termId]
     );
 
     res.json({ count: Number(result.rows[0]?.count ?? 0) });
@@ -320,15 +360,30 @@ router.get('/academic/term-comparison', async (req: AuthRequest, res) => {
       `SELECT at.id, at.term_name, at.year, at.start_date, at.end_date,
          (SELECT COUNT(*)::int FROM students s
           WHERE s.tenant_id = $1
-            AND s.date_of_admission IS NOT NULL
-            AND s.date_of_admission >= COALESCE(at.start_date, '1900-01-01'::date)
-            AND s.date_of_admission <= COALESCE(at.end_date, CURRENT_DATE)
+            AND (
+              s.admission_academic_term_id = at.id
+              OR (
+                s.admission_academic_term_id IS NULL
+                AND s.date_of_admission IS NOT NULL
+                AND s.date_of_admission >= COALESCE(at.start_date, '1900-01-01'::date)
+                AND s.date_of_admission <= COALESCE(at.end_date, CURRENT_DATE)
+              )
+            )
          ) AS admissions,
          (SELECT COUNT(*)::int FROM students s
           WHERE s.tenant_id = $1
-            AND LOWER(COALESCE(s.enrollment_status, 'active')) IN ('inactive', 'withdrawn')
-            AND s.updated_at::date >= COALESCE(at.start_date, '1900-01-01'::date)
-            AND s.updated_at::date <= COALESCE(at.end_date, CURRENT_DATE)
+            AND (
+              (
+                s.inactivated_academic_term_id = at.id
+                AND LOWER(COALESCE(s.enrollment_status, 'active')) IN ('inactive', 'withdrawn')
+              )
+              OR (
+                s.inactivated_academic_term_id IS NULL
+                AND LOWER(COALESCE(s.enrollment_status, 'active')) IN ('inactive', 'withdrawn')
+                AND COALESCE(s.inactivated_at, s.updated_at)::date >= COALESCE(at.start_date, '1900-01-01'::date)
+                AND COALESCE(s.inactivated_at, s.updated_at)::date <= COALESCE(at.end_date, CURRENT_DATE)
+              )
+            )
          ) AS leavers
        FROM academic_terms at
        WHERE at.tenant_id = $1
@@ -360,11 +415,11 @@ router.get('/academic/term-comparison', async (req: AuthRequest, res) => {
  */
 router.get('/academic/gender-split-leavers', async (req: AuthRequest, res) => {
   try {
-    const window = resolveTermWindow(req);
+    const window = await resolveReportWindow(req);
     if (!window) {
       return res.status(400).json({ error: 'termStart and termEnd (or termName + year) are required' });
     }
-    const { tenantId, termStart, termEnd } = window;
+    const { tenantId, termStart, termEnd, termId } = window;
 
     const result = await query(
       `SELECT
@@ -375,13 +430,10 @@ router.get('/academic/gender-split-leavers', async (req: AuthRequest, res) => {
          END AS gender,
          COUNT(*)::int AS count
        FROM students
-       WHERE tenant_id = $1
-         AND LOWER(COALESCE(enrollment_status, 'active')) IN ('inactive', 'withdrawn')
-         AND updated_at::date >= $2::date
-         AND updated_at::date <= $3::date
+       WHERE tenant_id = $1 AND ${LEAVERS_TERM_WHERE}
        GROUP BY 1
        ORDER BY 1`,
-      [tenantId, termStart, termEnd]
+      [tenantId, termStart, termEnd, termId]
     );
 
     const data = result.rows.map((row: { gender: string; count: number }) => ({
@@ -476,22 +528,19 @@ router.get('/academic/admins-count', async (req: AuthRequest, res) => {
  */
 router.get('/academic/leavers-by-month', async (req: AuthRequest, res) => {
   try {
-    const window = resolveTermWindow(req);
+    const window = await resolveReportWindow(req);
     if (!window) {
       return res.status(400).json({ error: 'termStart and termEnd (or termName + year) are required' });
     }
-    const { tenantId, termStart, termEnd } = window;
+    const { tenantId, termStart, termEnd, termId } = window;
 
     const result = await query(
-      `SELECT TO_CHAR(updated_at, 'YYYY-MM') AS month, COUNT(*)::int AS count
+      `SELECT TO_CHAR(COALESCE(inactivated_at, updated_at), 'YYYY-MM') AS month, COUNT(*)::int AS count
        FROM students
-       WHERE tenant_id = $1
-         AND LOWER(COALESCE(enrollment_status, 'active')) IN ('inactive', 'withdrawn')
-         AND updated_at::date >= $2::date
-         AND updated_at::date <= $3::date
+       WHERE tenant_id = $1 AND ${LEAVERS_TERM_WHERE}
        GROUP BY 1
        ORDER BY 1 ASC`,
-      [tenantId, termStart, termEnd]
+      [tenantId, termStart, termEnd, termId]
     );
 
     const monthNames: Record<string, string> = {
@@ -516,29 +565,30 @@ router.get('/academic/leavers-by-month', async (req: AuthRequest, res) => {
  */
 router.get('/academic/students-left-list', async (req: AuthRequest, res) => {
   try {
-    const window = resolveTermWindow(req);
+    const window = await resolveReportWindow(req);
     if (!window) {
       return res.status(400).json({ error: 'termStart and termEnd (or termName + year) are required' });
     }
-    const { tenantId, termStart, termEnd } = window;
+    const { tenantId, termStart, termEnd, termId } = window;
     const { start, end } = clampMonthToTerm(termStart, termEnd, String(req.query.month || 'all'));
-    const search = buildSearchClause(String(req.query.search || ''), 4);
+    const search = buildSearchClause(String(req.query.search || ''), 5, 's');
 
     const result = await query(
       `SELECT s.id, s.student_id, s.admission_number,
          s.first_name, s.last_name, s.gender,
          c.class_name, s.enrollment_status,
-         s.date_of_admission, s.updated_at AS left_date
+         s.date_of_admission,
+         COALESCE(s.inactivated_at, s.updated_at) AS left_date,
+         s.inactivated_academic_term_id,
+         NULLIF(TRIM(CONCAT_WS(' ', at.term_name, at.year)), '') AS inactivation_term_label
        FROM students s
        LEFT JOIN classes c ON s.class_assigned_id = c.id
-       WHERE s.tenant_id = $1
-         AND LOWER(COALESCE(s.enrollment_status, 'active')) IN ('inactive', 'withdrawn')
-         AND s.updated_at::date >= $2::date
-         AND s.updated_at::date <= $3::date
+       LEFT JOIN academic_terms at ON at.id = s.inactivated_academic_term_id AND at.tenant_id = s.tenant_id
+       WHERE s.tenant_id = $1 AND ${LEAVERS_TERM_WHERE_S}
          ${search.sql}
-       ORDER BY s.updated_at DESC, s.last_name ASC, s.first_name ASC
+       ORDER BY COALESCE(s.inactivated_at, s.updated_at) DESC, s.last_name ASC, s.first_name ASC
        LIMIT 500`,
-      [tenantId, start, end, ...search.params]
+      [tenantId, start, end, termId, ...search.params]
     );
 
     res.json(result.rows);
@@ -553,28 +603,29 @@ router.get('/academic/students-left-list', async (req: AuthRequest, res) => {
  */
 router.get('/academic/students-admitted-list', async (req: AuthRequest, res) => {
   try {
-    const window = resolveTermWindow(req);
+    const window = await resolveReportWindow(req);
     if (!window) {
       return res.status(400).json({ error: 'termStart and termEnd (or termName + year) are required' });
     }
-    const { tenantId, termStart, termEnd } = window;
+    const { tenantId, termStart, termEnd, termId } = window;
     const { start, end } = clampMonthToTerm(termStart, termEnd, String(req.query.month || 'all'));
-    const search = buildSearchClause(String(req.query.search || ''), 4);
+    const search = buildSearchClause(String(req.query.search || ''), 5, 's');
 
     const result = await query(
       `SELECT s.id, s.student_id, s.admission_number,
          s.first_name, s.last_name, s.gender,
-         c.class_name, s.enrollment_status, s.date_of_admission
+         c.class_name, s.enrollment_status, s.date_of_admission,
+         s.admission_academic_term_id,
+         NULLIF(TRIM(CONCAT_WS(' ', adm_at.term_name, adm_at.year)), '') AS admission_term_label,
+         s.created_at
        FROM students s
        LEFT JOIN classes c ON s.class_assigned_id = c.id
-       WHERE s.tenant_id = $1
-         AND s.date_of_admission IS NOT NULL
-         AND s.date_of_admission >= $2::date
-         AND s.date_of_admission <= $3::date
+       LEFT JOIN academic_terms adm_at ON adm_at.id = s.admission_academic_term_id AND adm_at.tenant_id = s.tenant_id
+       WHERE s.tenant_id = $1 AND ${ADMISSIONS_TERM_WHERE_S}
          ${search.sql}
-       ORDER BY s.date_of_admission DESC, s.last_name ASC
+       ORDER BY COALESCE(s.created_at, s.date_of_admission::timestamptz) DESC NULLS LAST, s.last_name ASC
        LIMIT 500`,
-      [tenantId, start, end, ...search.params]
+      [tenantId, start, end, termId, ...search.params]
     );
 
     res.json(result.rows);

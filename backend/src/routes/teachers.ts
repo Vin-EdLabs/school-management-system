@@ -783,7 +783,10 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
     for (const field of allowedFields) {
       if (updates[field] !== undefined) {
         updateFields.push(`${field} = $${paramCount}`);
-        const val = updates[field];
+        let val = updates[field];
+        if (field === 'qualification' || field === 'specialization') {
+          val = val != null && String(val).trim() !== '' ? String(val).trim() : null;
+        }
         values.push(
           (field === 'date_of_birth' || field === 'employment_date') && val === '' ? null : val
         );

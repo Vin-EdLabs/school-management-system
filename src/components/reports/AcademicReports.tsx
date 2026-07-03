@@ -51,6 +51,8 @@ import { BrandedLoading } from '@/components/common/BrandedLoading';
 import { toast } from '@/hooks/use-toast';
 import { inferTermBounds, normalizeDateOnly } from '@/utils/inferTermBounds';
 import { formatDisplayDate } from '@/utils/dateFormat';
+import { cn } from '@/lib/utils';
+import { useSocket } from '@/contexts/SocketContext';
 
 interface AdmissionsByMonth {
   month: string;
@@ -93,6 +95,7 @@ function monthsInTermRange(termStart: string, termEnd: string): { value: string;
 
 const AcademicReports: React.FC = () => {
   const { setViewingTermLabel } = useTermStatus();
+  const { socket } = useSocket();
 
   const [academicTerms, setAcademicTerms] = useState<any[]>([]);
   const [activeYearKey, setActiveYearKey] = useState('');
@@ -130,6 +133,7 @@ const AcademicReports: React.FC = () => {
     return {
       termStart: normalizeDateOnly(selectedTerm?.start_date) || inferred.start,
       termEnd: normalizeDateOnly(selectedTerm?.end_date) || inferred.end,
+      termId: selectedTerm?.id ?? null,
     };
   }, [academicTerms, activeTerm, activeYearKey]);
 
@@ -200,6 +204,7 @@ const AcademicReports: React.FC = () => {
       year: activeYearKey,
       month: filterMonth,
     });
+    if (termWindow.termId) params.set('termId', String(termWindow.termId));
     if (appliedSearch.trim()) params.set('search', appliedSearch.trim());
     return params.toString();
   }, [termWindow, activeTerm, activeYearKey, filterMonth, appliedSearch]);
@@ -216,7 +221,8 @@ const AcademicReports: React.FC = () => {
       termName: activeTerm,
       year: activeYearKey,
       month: filterMonth,
-    }).toString();
+    });
+    if (termWindow.termId) paramStr.set('termId', String(termWindow.termId));
 
     setLoading(true);
     setLoadError(null);
@@ -297,6 +303,27 @@ const AcademicReports: React.FC = () => {
     void fetchDetail();
   }, [fetchDetail]);
 
+  useEffect(() => {
+    if (!socket) return;
+    const onStudentChange = (evt: { entity?: string }) => {
+      if (evt?.entity === 'student') {
+        void fetchSummary();
+        void fetchDetail();
+      }
+    };
+    socket.on('tenant-data-changed', onStudentChange);
+    return () => {
+      socket.off('tenant-data-changed', onStudentChange);
+    };
+  }, [socket, fetchSummary, fetchDetail]);
+
+  const focusDetailTab = (tab: DetailTab) => {
+    setDetailTab(tab);
+    if (typeof document !== 'undefined') {
+      document.getElementById('academic-report-detail')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
   const applySearch = () => {
     setAppliedSearch(searchInput.trim());
   };
@@ -306,6 +333,36 @@ const AcademicReports: React.FC = () => {
     const netChange = admissionsCount - studentsLeft - studentsCompleted;
     return ((netChange / enrollmentAtStart) * 100).toFixed(1);
   }, [admissionsCount, studentsLeft, studentsCompleted, enrollmentAtStart]);
+
+  const netMovement = useMemo(
+    () => admissionsCount - studentsLeft,
+    [admissionsCount, studentsLeft]
+  );
+
+  const movementByMonth = useMemo(() => {
+    const byMonth = new Map<string, { month: string; admissions: number; leavers: number }>();
+    for (const row of admissionsByMonth) {
+      byMonth.set(row.month, {
+        month: row.month,
+        admissions: row.count,
+        leavers: byMonth.get(row.month)?.leavers ?? 0,
+      });
+    }
+    for (const row of leaversByMonth) {
+      const existing = byMonth.get(row.month);
+      byMonth.set(row.month, {
+        month: row.month,
+        admissions: existing?.admissions ?? 0,
+        leavers: row.count,
+      });
+    }
+    return [...byMonth.values()];
+  }, [admissionsByMonth, leaversByMonth]);
+
+  const selectedTermLabel = useMemo(
+    () => (activeTerm && activeYearKey ? `${activeTerm} ${activeYearKey}` : 'Selected term'),
+    [activeTerm, activeYearKey]
+  );
 
   const yearSet = useMemo(
     () => [...new Set(academicTerms.map((t) => t.year).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
@@ -339,7 +396,7 @@ const AcademicReports: React.FC = () => {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Academic Report</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Admissions, leavers, teachers, graduates, and admins — filter by term and month.
+            Track admissions and students marked inactive per term. Counts update when you change a student&apos;s status in the registry.
           </p>
         </div>
         <Button
@@ -453,19 +510,81 @@ const AcademicReports: React.FC = () => {
         <BrandedLoading />
       ) : (
         <>
+          {/* Term movement summary */}
+          <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-sky-50/60 p-5 shadow-sm">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Term movement</p>
+                <h2 className="text-lg font-semibold text-slate-900">{selectedTermLabel}</h2>
+                <p className="text-xs text-slate-500">
+                  Students admitted vs marked inactive for this term — click a card below to view the list
+                </p>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <Badge variant="outline" className="rounded-lg bg-white/80">
+                  Enrollment at start: {enrollmentAtStart}
+                </Badge>
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    'rounded-lg bg-white/80',
+                    netMovement >= 0 ? 'text-emerald-700 border-emerald-200' : 'text-rose-700 border-rose-200'
+                  )}
+                >
+                  Net movement: {netMovement >= 0 ? '+' : ''}{netMovement}
+                </Badge>
+              </div>
+            </div>
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <button
+                type="button"
+                onClick={() => focusDetailTab('admitted')}
+                className="rounded-lg border border-emerald-100 bg-emerald-50/80 px-4 py-3 text-left transition hover:border-emerald-200 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+              >
+                <div className="flex items-center gap-2 text-emerald-700">
+                  <UserPlus className="h-4 w-4" />
+                  <span className="text-xs font-medium uppercase tracking-wide">Admitted</span>
+                </div>
+                <p className="mt-1 text-2xl font-semibold tabular-nums text-emerald-900">{admissionsCount}</p>
+                <p className="mt-1 text-[11px] text-emerald-700/80">View admitted students</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => focusDetailTab('leavers')}
+                className="rounded-lg border border-rose-100 bg-rose-50/80 px-4 py-3 text-left transition hover:border-rose-200 hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
+              >
+                <div className="flex items-center gap-2 text-rose-700">
+                  <UserMinus className="h-4 w-4" />
+                  <span className="text-xs font-medium uppercase tracking-wide">Left (inactive)</span>
+                </div>
+                <p className="mt-1 text-2xl font-semibold tabular-nums text-rose-900">{studentsLeft}</p>
+                <p className="mt-1 text-[11px] text-rose-700/80">View students who left</p>
+              </button>
+              <div className="rounded-lg border border-sky-100 bg-sky-50/80 px-4 py-3">
+                <div className="flex items-center gap-2 text-sky-700">
+                  {netMovement >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+                  <span className="text-xs font-medium uppercase tracking-wide">Net change</span>
+                </div>
+                <p className={cn('mt-1 text-2xl font-semibold tabular-nums', netMovement >= 0 ? 'text-emerald-900' : 'text-rose-900')}>
+                  {netMovement >= 0 ? '+' : ''}{netMovement}
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* KPIs */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
-            <KpiCard label="Admitted" value={admissionsCount} icon={<UserPlus className="w-4 h-4" />} accent="sky" />
-            <KpiCard label="Teachers" value={teachersAppointed} icon={<BookOpen className="w-4 h-4" />} accent="indigo" />
-            <KpiCard label="Left school" value={studentsLeft} icon={<UserMinus className="w-4 h-4" />} accent="rose" />
-            <KpiCard label="Completed" value={studentsCompleted} icon={<GraduationCap className="w-4 h-4" />} accent="emerald" />
+            <KpiCard label="Admitted" value={admissionsCount} icon={<UserPlus className="w-4 h-4" />} accent="sky" onClick={() => focusDetailTab('admitted')} />
+            <KpiCard label="Teachers" value={teachersAppointed} icon={<BookOpen className="w-4 h-4" />} accent="indigo" onClick={() => focusDetailTab('teachers')} />
+            <KpiCard label="Left school" value={studentsLeft} icon={<UserMinus className="w-4 h-4" />} accent="rose" onClick={() => focusDetailTab('leavers')} />
+            <KpiCard label="Completed" value={studentsCompleted} icon={<GraduationCap className="w-4 h-4" />} accent="emerald" onClick={() => focusDetailTab('completed')} />
             <KpiCard label="Male leavers" value={maleLeavers} icon={<Users className="w-4 h-4" />} accent="amber" />
             <KpiCard label="Admins" value={adminsCount} icon={<Shield className="w-4 h-4" />} accent="violet" />
             <KpiCard label="Net growth" value={`${netGrowthRate}%`} icon={parseFloat(netGrowthRate) >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />} accent={parseFloat(netGrowthRate) >= 0 ? 'emerald' : 'rose'} isText />
           </div>
 
           {/* Detail tables */}
-          <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div id="academic-report-detail" className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
             <div className="flex flex-wrap gap-1 p-2 border-b border-slate-100 bg-slate-50/80">
               {tabMeta.map((tab) => (
                 <Button
@@ -487,8 +606,20 @@ const AcademicReports: React.FC = () => {
               {detailLoading ? (
                 <div className="py-16 text-center text-sm text-slate-500">Loading records…</div>
               ) : detailRows.length === 0 ? (
-                <div className="py-16 text-center text-sm text-slate-500">
-                  No records for this filter. Try another term, month, or search.
+                <div className="py-16 text-center text-sm text-slate-500 px-6">
+                  {detailTab === 'leavers' ? (
+                    <>
+                      <p className="font-medium text-slate-700">No students marked inactive for this period.</p>
+                      <p className="mt-1 text-xs">When you set a student to inactive in the registry, they will appear here for the term they left.</p>
+                    </>
+                  ) : detailTab === 'admitted' ? (
+                    <>
+                      <p className="font-medium text-slate-700">No admissions recorded for this period.</p>
+                      <p className="mt-1 text-xs">New students are linked to the active academic term when added.</p>
+                    </>
+                  ) : (
+                    <p>No records for this filter. Try another term, month, or search.</p>
+                  )}
                 </div>
               ) : (
                 <Table>
@@ -517,7 +648,8 @@ const AcademicReports: React.FC = () => {
                           <TableHead className="text-white font-semibold">Name</TableHead>
                           <TableHead className="text-white font-semibold">Gender</TableHead>
                           <TableHead className="text-white font-semibold">Class</TableHead>
-                          <TableHead className="text-white font-semibold">Left date</TableHead>
+                          <TableHead className="text-white font-semibold">Term left</TableHead>
+                          <TableHead className="text-white font-semibold">Inactive date</TableHead>
                           <TableHead className="text-white font-semibold">Status</TableHead>
                         </>
                       ) : (
@@ -526,6 +658,7 @@ const AcademicReports: React.FC = () => {
                           <TableHead className="text-white font-semibold">Name</TableHead>
                           <TableHead className="text-white font-semibold">Gender</TableHead>
                           <TableHead className="text-white font-semibold">Class</TableHead>
+                          <TableHead className="text-white font-semibold">Admission term</TableHead>
                           <TableHead className="text-white font-semibold">Admitted</TableHead>
                           <TableHead className="text-white font-semibold">Status</TableHead>
                         </>
@@ -558,6 +691,7 @@ const AcademicReports: React.FC = () => {
                             <TableCell className="font-medium text-sm">{row.first_name} {row.last_name}</TableCell>
                             <TableCell className="text-sm">{row.gender || '—'}</TableCell>
                             <TableCell className="text-sm">{row.class_name || '—'}</TableCell>
+                            <TableCell className="text-sm">{row.inactivation_term_label || selectedTermLabel}</TableCell>
                             <TableCell className="text-sm">{formatDisplayDate(row.left_date)}</TableCell>
                             <TableCell><StatusBadge status={row.enrollment_status} /></TableCell>
                           </>
@@ -567,7 +701,8 @@ const AcademicReports: React.FC = () => {
                             <TableCell className="font-medium text-sm">{row.first_name} {row.last_name}</TableCell>
                             <TableCell className="text-sm">{row.gender || '—'}</TableCell>
                             <TableCell className="text-sm">{row.class_name || '—'}</TableCell>
-                            <TableCell className="text-sm">{formatDisplayDate(row.date_of_admission)}</TableCell>
+                            <TableCell className="text-sm">{row.admission_term_label || selectedTermLabel}</TableCell>
+                            <TableCell className="text-sm">{formatDisplayDate(row.date_of_admission || row.created_at)}</TableCell>
                             <TableCell><StatusBadge status={row.enrollment_status} /></TableCell>
                           </>
                         )}
@@ -580,6 +715,20 @@ const AcademicReports: React.FC = () => {
           </div>
 
           {/* Charts */}
+          <ChartCard title={`Admissions vs inactivations by month — ${selectedTermLabel}`} className="col-span-full">
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={movementByMonth}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                <YAxis allowDecimals={false} />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="admissions" fill="#16a34a" name="Admissions" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="leavers" fill="#dc2626" name="Left (inactive)" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <ChartCard title="Monthly admissions">
               <ResponsiveContainer width="100%" height={260}>
@@ -674,15 +823,25 @@ function KpiCard({
   icon,
   accent = 'sky',
   isText = false,
+  onClick,
 }: {
   label: string;
   value: number | string;
   icon: React.ReactNode;
   accent?: keyof typeof accentMap;
   isText?: boolean;
+  onClick?: () => void;
 }) {
+  const Wrapper = onClick ? 'button' : 'div';
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <Wrapper
+      type={onClick ? 'button' : undefined}
+      onClick={onClick}
+      className={cn(
+        'rounded-xl border border-slate-200 bg-white p-4 shadow-sm text-left w-full',
+        onClick && 'transition hover:border-slate-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400'
+      )}
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 truncate">{label}</p>
@@ -690,13 +849,13 @@ function KpiCard({
         </div>
         <div className={`p-2 rounded-lg border shrink-0 ${accentMap[accent]}`}>{icon}</div>
       </div>
-    </div>
+    </Wrapper>
   );
 }
 
-function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
+function ChartCard({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-5">
+    <div className={cn('rounded-xl border border-slate-200 bg-white shadow-sm p-5', className)}>
       <h3 className="text-sm font-semibold text-slate-800 mb-4">{title}</h3>
       {children}
     </div>
@@ -708,12 +867,18 @@ function StatusBadge({ status }: { status?: string }) {
   const cls =
     s === 'active'
       ? 'text-emerald-700 border-emerald-200 bg-emerald-50'
-      : s === 'graduated'
-        ? 'text-violet-700 border-violet-200 bg-violet-50'
-        : 'text-slate-600 border-slate-200 bg-slate-50';
+      : s === 'inactive' || s === 'withdrawn'
+        ? 'text-rose-700 border-rose-200 bg-rose-50'
+        : s === 'graduated'
+          ? 'text-violet-700 border-violet-200 bg-violet-50'
+          : s === 'pending'
+            ? 'text-amber-700 border-amber-200 bg-amber-50'
+            : 'text-slate-600 border-slate-200 bg-slate-50';
+  const label =
+    s === 'inactive' ? 'Inactive' : s === 'withdrawn' ? 'Withdrawn' : status || 'Active';
   return (
     <Badge variant="outline" className={`text-[10px] capitalize ${cls}`}>
-      {status || 'active'}
+      {label}
     </Badge>
   );
 }

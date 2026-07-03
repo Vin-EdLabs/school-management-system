@@ -173,6 +173,8 @@ const OtherStaffFormDialog: React.FC<Props> = ({ open, onClose, staff, onSuccess
         date_of_birth: form.date_of_birth.trim() || null,
         employment_date: form.employment_date.trim() || null,
         monthly_salary: form.monthly_salary ? parseFloat(form.monthly_salary) : 0,
+        qualification: form.qualification.trim() || null,
+        specialization: form.specialization.trim() || null,
         ssnit_enabled: form.ssnit_enabled,
         emergency_contact_name: form.emergency_contact_name || null,
         emergency_contact_phone: form.emergency_contact_phone || null,

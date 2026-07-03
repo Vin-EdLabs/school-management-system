@@ -51,6 +51,10 @@ export interface Student {
   enrollmentStatus?: string;
   /** Set when student is alumni (from graduation_details). */
   graduatedAt?: string;
+  admissionAcademicTermId?: number | null;
+  inactivatedAt?: string;
+  inactivatedAcademicTermId?: number | null;
+  createdAt?: string;
 }
 
 export type TeacherStatus = 'active' | 'suspended' | 'deactivated';
@@ -728,9 +732,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const setStudentStatus = async (id: string, status: 'active' | 'inactive') => {
     await apiService.patch(`/students/${id}/status`, { status });
-    setStudents((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, enrollmentStatus: status } : s))
-    );
+    const fresh = await apiService.get<Record<string, unknown>>(`/students/${id}`);
+    const mapped = mapStudent(fresh);
+    replaceStudentInCache(queryClient, schoolId, id, mapped);
+    queryClient.setQueryData(studentsQueryKeys.detail(schoolId, id), mapped);
   };
 
   const applyPaymentLocally = (

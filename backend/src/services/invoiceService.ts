@@ -8,6 +8,7 @@ import {
 import { resolveActiveLedgerTerm } from './studentUnifiedBalanceService.js';
 import { ensureTenantLedgerSynced } from './ledgerBackfillService.js';
 import { resolveLedgerFeeStructureForStudent } from './effectiveStudentBalanceService.js';
+import { recalculateTermOutstandingBalances } from './ledgerFinanceService.js';
 import { listStudentCharges } from './studentChargesService.js';
 import { loadActiveFeeStructureLinesByClassTerm, loadActiveFeeStructureLinesForStudent } from './feeStructureItemsService.js';
 import {
@@ -733,6 +734,12 @@ export async function generateBulkInvoices(
         reason: reasonMap[result.reason] || result.reason,
       });
     }
+  }
+
+  try {
+    await recalculateTermOutstandingBalances(null, tenantId, ledgerTermId);
+  } catch (recalcErr) {
+    console.error('[generateBulkInvoices] Outstanding balance recalc failed (non-fatal):', recalcErr);
   }
 
   return {

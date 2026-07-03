@@ -15,7 +15,7 @@ import {
 function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
 }
-import { resolveLedgerTermFromSettings } from './ledgerFinanceService.js';
+import { resolveLedgerTermFromSettings, recalculateTermOutstandingBalances } from './ledgerFinanceService.js';
 
 export type RecordLedgerPaymentInput = {
   tenantId: number;
@@ -188,6 +188,7 @@ export async function recordPaymentWithLedger(
       }
     }
 
+    await recalculateTermOutstandingBalances(client, input.tenantId, ctx.ledgerTermId);
     await client.query('COMMIT');
 
     return {

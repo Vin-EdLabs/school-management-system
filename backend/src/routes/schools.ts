@@ -501,7 +501,8 @@ router.post('/', requireRole('super-admin'), async (req: AuthRequest, res) => {
       );
 
       // Seed first academic year on same connection (visible within transaction)
-      const yearLabel = new Date().getFullYear().toString();
+      const yearStart = new Date().getFullYear();
+      const yearLabel = `${yearStart}/${yearStart + 1}`;
       const ay = await client.query(
         `INSERT INTO academic_years (tenant_id, name, is_current)
          VALUES ($1, $2, true) RETURNING id`,

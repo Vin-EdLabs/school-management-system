@@ -65,9 +65,148 @@ const SwitchTermWithArrearsSchema = z.object({
 
 /**
  * Resolves school_settings current_year and current_term to ledger academic_year_id and term_id.
- * If no matching ledger term exists, creates academic_years and terms rows so the ledger stays in sync.
- * Used when term is switched in settings to trigger automatic fee posting.
+ * Prefers the terms row that actually has ledger/fee-structure data (avoids empty is_current duplicates).
  */
+function extractTermOnly(termLabel: string): string {
+  return String(termLabel || '')
+    .replace(/\s+\d{4}(\/\d{4})?$/, '')
+    .trim() || String(termLabel || '').trim();
+}
+
+function academicYearNameCandidates(year: string): string[] {
+  const y = String(year || '').trim();
+  if (!y) return [];
+  const out = new Set<string>([y]);
+  const slash = y.match(/^(\d{4})\s*\/\s*(\d{4})$/);
+  if (slash) {
+    out.add(`${slash[1]}/${slash[2]}`);
+    out.add(slash[1]);
+  } else {
+    const one = y.match(/^(\d{4})$/);
+    if (one) {
+      const n = parseInt(one[1], 10);
+      out.add(`${n}/${n + 1}`);
+    }
+  }
+  return [...out];
+}
+
+async function resolveAcademicYearId(tenantId: number, year: string): Promise<number> {
+  const candidates = academicYearNameCandidates(year);
+  for (const name of candidates) {
+    const row = await query(
+      'SELECT id FROM academic_years WHERE tenant_id = $1 AND name = $2 LIMIT 1',
+      [tenantId, name]
+    );
+    if (row.rows.length > 0) return Number(row.rows[0].id);
+  }
+
+  const normalized =
+    candidates.find((c) => c.includes('/')) || candidates[0] || String(year).trim();
+  const ins = await query(
+    'INSERT INTO academic_years (tenant_id, name, is_current) VALUES ($1, $2, true) RETURNING id',
+    [tenantId, normalized]
+  );
+  await query('UPDATE academic_years SET is_current = false WHERE tenant_id = $1 AND id != $2', [
+    tenantId,
+    ins.rows[0].id,
+  ]);
+  return Number(ins.rows[0].id);
+}
+
+const TERM_HAS_ACTIVITY_SQL = `
+  (
+    EXISTS (SELECT 1 FROM student_ledger sl WHERE sl.term_id = t.id AND sl.tenant_id = t.tenant_id)
+    OR EXISTS (SELECT 1 FROM ledger_fee_structures lfs WHERE lfs.term_id = t.id AND lfs.tenant_id = t.tenant_id)
+    OR EXISTS (SELECT 1 FROM payments p WHERE p.term_id = t.id AND p.tenant_id = t.tenant_id)
+  )
+`;
+
+async function findLedgerTermWithPriority(
+  tenantId: number,
+  academicYearId: number,
+  termLabel: string,
+  termOnly: string
+): Promise<number | null> {
+  const likeTerm = `%${termOnly}%`;
+  const likeFull = `%${termLabel}%`;
+
+  const nameMatch = `(t.name = $3 OR t.name = $4 OR t.name ILIKE $5 OR t.name ILIKE $6)`;
+  const baseParams = [tenantId, academicYearId, termLabel, termOnly, likeTerm, likeFull];
+
+  const p1 = await query(
+    `SELECT t.id FROM terms t
+     WHERE t.tenant_id = $1 AND t.academic_year_id = $2
+       AND t.is_current = true AND ${nameMatch}
+       AND ${TERM_HAS_ACTIVITY_SQL}
+     LIMIT 1`,
+    baseParams
+  );
+  if (p1.rows.length > 0) return Number(p1.rows[0].id);
+
+  const p2 = await query(
+    `SELECT t.id FROM terms t
+     WHERE t.tenant_id = $1 AND t.academic_year_id = $2
+       AND ${nameMatch} AND ${TERM_HAS_ACTIVITY_SQL}
+     ORDER BY t.id DESC
+     LIMIT 1`,
+    baseParams
+  );
+  if (p2.rows.length > 0) return Number(p2.rows[0].id);
+
+  const p2b = await query(
+    `SELECT t.id FROM terms t
+     WHERE t.tenant_id = $1 AND ${nameMatch} AND ${TERM_HAS_ACTIVITY_SQL}
+     ORDER BY t.academic_year_id DESC, t.id DESC
+     LIMIT 1`,
+    [tenantId, academicYearId, termLabel, termOnly, likeTerm, likeFull]
+  );
+  if (p2b.rows.length > 0) return Number(p2b.rows[0].id);
+
+  const p3 = await query(
+    `SELECT t.id FROM terms t
+     WHERE t.tenant_id = $1 AND t.academic_year_id = $2
+       AND t.is_current = true AND ${nameMatch}
+     LIMIT 1`,
+    baseParams
+  );
+  if (p3.rows.length > 0) return Number(p3.rows[0].id);
+
+  const p4 = await query(
+    `SELECT t.id FROM terms t
+     WHERE t.tenant_id = $1 AND t.is_current = true
+     ORDER BY t.id DESC
+     LIMIT 1`,
+    [tenantId]
+  );
+  if (p4.rows.length > 0) return Number(p4.rows[0].id);
+
+  return null;
+}
+
+async function findSimilarLedgerTerm(
+  tenantId: number,
+  academicYearId: number,
+  termLabel: string,
+  termOnly: string
+): Promise<number | null> {
+  const likeTerm = `%${termOnly}%`;
+  const res = await query(
+    `SELECT id FROM terms
+     WHERE tenant_id = $1 AND academic_year_id = $2
+       AND (name = $3 OR name = $4 OR name ILIKE $5 OR name ILIKE $6)
+     ORDER BY id DESC
+     LIMIT 1`,
+    [tenantId, academicYearId, termLabel, termOnly, likeTerm, `%${termLabel}%`]
+  );
+  return res.rows.length > 0 ? Number(res.rows[0].id) : null;
+}
+
+async function setCurrentLedgerTerm(tenantId: number, termId: number): Promise<void> {
+  await query('UPDATE terms SET is_current = false WHERE tenant_id = $1', [tenantId]);
+  await query('UPDATE terms SET is_current = true WHERE id = $1 AND tenant_id = $2', [termId, tenantId]);
+}
+
 export const resolveLedgerTermFromSettings = async (
   tenantId: number,
   currentYear: string,
@@ -77,37 +216,31 @@ export const resolveLedgerTermFromSettings = async (
   const termLabel = String(currentTerm || '').trim();
   if (!year || !termLabel) return null;
 
-  let yearRow = await query(
-    'SELECT id FROM academic_years WHERE tenant_id = $1 AND name = $2 LIMIT 1',
-    [tenantId, year]
-  );
-  let academicYearId: number;
-  if (yearRow.rows.length === 0) {
-    const ins = await query(
-      'INSERT INTO academic_years (tenant_id, name, is_current) VALUES ($1, $2, true) RETURNING id',
-      [tenantId, year]
-    );
-    await query('UPDATE academic_years SET is_current = false WHERE tenant_id = $1 AND id != $2', [tenantId, ins.rows[0].id]);
-    academicYearId = ins.rows[0].id;
-  } else {
-    academicYearId = yearRow.rows[0].id;
-  }
+  const academicYearId = await resolveAcademicYearId(tenantId, year);
+  const termOnly = extractTermOnly(termLabel);
 
-  const termName = termLabel.replace(/\s+\d{4}$/, '').trim() || termLabel;
-  let termRow = await query(
-    'SELECT id FROM terms WHERE tenant_id = $1 AND academic_year_id = $2 AND (name = $3 OR name = $4) LIMIT 1',
-    [tenantId, academicYearId, termLabel, termName]
-  );
-  let termId: number;
-  if (termRow.rows.length === 0) {
-    const ins = await query(
-      'INSERT INTO terms (tenant_id, academic_year_id, name, is_current) VALUES ($1, $2, $3, true) RETURNING id',
-      [tenantId, academicYearId, termName]
-    );
-    await query('UPDATE terms SET is_current = false WHERE tenant_id = $1 AND id != $2', [tenantId, ins.rows[0].id]);
-    termId = ins.rows[0].id;
-  } else {
-    termId = termRow.rows[0].id;
+  let termId = await findLedgerTermWithPriority(tenantId, academicYearId, termLabel, termOnly);
+
+  if (!termId) {
+    const existing = await findSimilarLedgerTerm(tenantId, academicYearId, termLabel, termOnly);
+    if (existing) {
+      termId = existing;
+      await query(
+        `UPDATE terms SET name = CASE
+           WHEN name = $3 OR name = $4 THEN name
+           ELSE $3
+         END
+         WHERE id = $1 AND tenant_id = $2`,
+        [termId, tenantId, termOnly, termLabel]
+      );
+    } else {
+      const ins = await query(
+        'INSERT INTO terms (tenant_id, academic_year_id, name, is_current) VALUES ($1, $2, $3, true) RETURNING id',
+        [tenantId, academicYearId, termOnly]
+      );
+      termId = Number(ins.rows[0].id);
+      await setCurrentLedgerTerm(tenantId, termId);
+    }
   }
 
   return { academicYearId, termId };
@@ -230,6 +363,11 @@ export const postFeesForClass = async (tenantId: number, classId: number, academ
     }
 
     await client.query('COMMIT');
+    try {
+      await recalculateTermOutstandingBalances(null, validatedTenantId, validatedTermId);
+    } catch (recalcErr) {
+      console.error('[postFeesForClass] Outstanding balance recalc failed (non-fatal):', recalcErr);
+    }
     const result = {
       message: `Fees posted successfully for class.`,
       postedCount,
@@ -266,6 +404,7 @@ export const recordPayment = async (paymentData: z.infer<typeof PaymentSchema>) 
       [tenantId, studentId, academicYearId, termId, paymentDescription, amount, paymentMethod, receiptNumber]
     );
 
+    await recalculateTermOutstandingBalances(client, tenantId, termId);
     await client.query('COMMIT');
     return result.rows[0];
   } catch (error) {
@@ -321,6 +460,12 @@ export const postFeesForNewTerm = async (tenantId: number, newTermId: number) =>
     const result = await client.query(sql, [validatedTenantId, validatedNewTermId]);
 
     await client.query('COMMIT');
+
+    try {
+      await recalculateTermOutstandingBalances(null, validatedTenantId, validatedNewTermId);
+    } catch (recalcErr) {
+      console.error('[postFeesForNewTerm] Outstanding balance recalc failed (non-fatal):', recalcErr);
+    }
 
     console.log(`[postFeesForNewTerm] Completed. Inserted ${result.rowCount} new term fee entries.`);
 
@@ -424,6 +569,7 @@ export async function syncMissingLedgerTermFeesForActiveTerm(tenantId: number): 
     `;
 
     const repairResult = await client.query(repairSql, [tenantId, resolved.termId]);
+    await recalculateTermOutstandingBalances(client, tenantId, resolved.termId);
     await client.query('COMMIT');
 
     const insertedCount = result.rowCount ?? 0;
@@ -751,11 +897,12 @@ export const executePostFeesForNewTerm = async (
 
 /** Recalculate term_outstanding_balances from ledger for one term. */
 export const recalculateTermOutstandingBalances = async (
-  client: pg.PoolClient,
+  client: pg.PoolClient | null,
   tenantId: number,
   termId: number
 ) => {
-  const result = await client.query(
+  const run = client ? client.query.bind(client) : query;
+  const result = await run(
     `INSERT INTO term_outstanding_balances (tenant_id, term_id, student_id, outstanding_balance, calculated_at)
      SELECT sl.tenant_id, sl.term_id, sl.student_id,
             GREATEST(0, COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(sl.credit), 0)),

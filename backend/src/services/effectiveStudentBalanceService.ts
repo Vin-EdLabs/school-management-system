@@ -30,7 +30,7 @@ const FEE_STRUCTURE_SELECT = `
     s.discount_value
   FROM students s
   LEFT JOIN classes c_student ON c_student.id = s.class_assigned_id AND c_student.tenant_id = s.tenant_id
-  INNER JOIN terms t ON t.id = $3 AND t.tenant_id = s.tenant_id
+  INNER JOIN terms t ON t.id = $3::integer AND t.tenant_id = s.tenant_id
   ${SQL_JOIN_LEDGER_FEE_STRUCTURES_FOR_TERM}
   WHERE s.tenant_id = $1
     AND s.id = $2
@@ -82,54 +82,89 @@ export async function enrichBalanceShapeWithExpectedFees(
 
   const ledgerTermFee = roundMoney(shape.currentTermFee ?? 0);
   const ledgerOutstanding = roundMoney(shape.outstanding ?? 0);
+  const resolved = await resolveLedgerFeeStructureForStudent(client, tenantId, studentId, termId);
+
   const needsEnrichment =
     ledgerTermFee <= 0 &&
     (shape.status === 'NotSet' || ledgerOutstanding <= 0) &&
     (shape.totalDue ?? 0) <= 0;
 
-  if (!needsEnrichment) return shape;
+  if (needsEnrichment) {
+    if (!resolved) return shape;
 
-  const resolved = await resolveLedgerFeeStructureForStudent(client, tenantId, studentId, termId);
-  if (!resolved) return shape;
+    const individualCharges = roundMoney(shape.individualCharges ?? 0);
+    const arrears = roundMoney(shape.totalArrears ?? 0);
+    const totalPaid = roundMoney(shape.totalPaid ?? 0);
+    const creditBroughtForward = roundMoney(shape.creditBroughtForward ?? 0);
+    const currentTermFee = resolved.netTotal;
+    const totalDue = roundMoney(currentTermFee + individualCharges + arrears);
+    const netBalance = roundMoney(totalDue - totalPaid - creditBroughtForward);
+    const outstanding = roundMoney(Math.max(0, netBalance));
 
-  const individualCharges = roundMoney(shape.individualCharges ?? 0);
-  const arrears = roundMoney(shape.totalArrears ?? 0);
-  const totalPaid = roundMoney(shape.totalPaid ?? 0);
-  const creditBroughtForward = roundMoney(shape.creditBroughtForward ?? 0);
-  const currentTermFee = resolved.netTotal;
-  const totalDue = roundMoney(currentTermFee + individualCharges + arrears);
-  const netBalance = roundMoney(totalDue - totalPaid - creditBroughtForward);
-  const outstanding = roundMoney(Math.max(0, netBalance));
+    let status: StudentBalanceApiShape['status'] = 'NotSet';
+    if (netBalance < -0.001) status = 'Credit';
+    else if (outstanding > 0.001) status = 'Owing';
+    else if (totalDue > 0 || totalPaid > 0) status = 'Cleared';
+    else if (resolved.grossTotal >= 0) status = 'Cleared';
 
-  let status: StudentBalanceApiShape['status'] = 'NotSet';
-  if (netBalance < -0.001) status = 'Credit';
-  else if (outstanding > 0.001) status = 'Owing';
-  else if (totalDue > 0 || totalPaid > 0) status = 'Cleared';
-  else if (resolved.grossTotal >= 0) status = 'Cleared';
+    const label = shape.currentTermName || 'Current term';
 
-  const label = shape.currentTermName || 'Current term';
+    return {
+      ...shape,
+      currentTermFee,
+      totalDue,
+      outstanding,
+      netBalance,
+      status,
+      totalCharged: totalDue,
+      discountAmount: resolved.discountAmount > 0 ? resolved.discountAmount : shape.discountAmount,
+      termRows: [
+        {
+          termId,
+          termName: label,
+          termFee: currentTermFee,
+          amountPaid: totalPaid,
+          outstanding,
+          displayOutstanding: outstanding,
+          isActiveTerm: true,
+        },
+      ],
+    };
+  }
 
-  return {
-    ...shape,
-    currentTermFee,
-    totalDue,
-    outstanding,
-    netBalance,
-    status,
-    totalCharged: totalDue,
-    discountAmount: resolved.discountAmount > 0 ? resolved.discountAmount : shape.discountAmount,
-    termRows: [
-      {
-        termId,
-        termName: label,
-        termFee: currentTermFee,
-        amountPaid: totalPaid,
-        outstanding,
-        displayOutstanding: outstanding,
-        isActiveTerm: true,
-      },
-    ],
-  };
+  if (resolved && resolved.discountAmount > 0 && ledgerTermFee > resolved.netTotal + 0.001) {
+    const individualCharges = roundMoney(shape.individualCharges ?? 0);
+    const arrears = roundMoney(shape.totalArrears ?? 0);
+    const totalPaid = roundMoney(shape.totalPaid ?? 0);
+    const creditBroughtForward = roundMoney(shape.creditBroughtForward ?? 0);
+    const currentTermFee = resolved.netTotal;
+    const totalDue = roundMoney(currentTermFee + individualCharges + arrears);
+    const netBalance = roundMoney(totalDue - totalPaid - creditBroughtForward);
+    const outstanding = roundMoney(Math.max(0, netBalance));
+
+    let status: StudentBalanceApiShape['status'] = shape.status;
+    if (netBalance < -0.001) status = 'Credit';
+    else if (outstanding > 0.001) status = 'Owing';
+    else if (totalDue > 0 || totalPaid > 0) status = 'Cleared';
+
+    return {
+      ...shape,
+      currentTermFee,
+      totalDue,
+      outstanding,
+      netBalance,
+      status,
+      totalCharged: totalDue,
+      discountAmount: resolved.discountAmount,
+      termRows: (shape.termRows ?? []).map((row) =>
+        row.termId === termId || row.isActiveTerm
+          ? { ...row, termFee: currentTermFee, outstanding, displayOutstanding: outstanding }
+          : row
+      ),
+    };
+  }
+
+  return shape;
 }
 
 /** Verify student belongs to tenant before returning balance data. */

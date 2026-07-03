@@ -60,7 +60,7 @@ export const SQL_EFFECTIVE_STUDENT_LEDGER_TOTALS_CTE = `
       COALESCE(SUM(CASE WHEN sl.entry_type = 'arrears' THEN sl.debit ELSE 0 END), 0)::numeric AS arrears_amt,
       COALESCE(SUM(CASE WHEN sl.entry_type = 'payment' THEN sl.credit ELSE 0 END), 0)::numeric AS paid_amt
     FROM student_ledger sl
-    WHERE sl.tenant_id = $1 AND sl.term_id = $2
+    WHERE sl.tenant_id = $1 AND sl.term_id = $2::integer
     GROUP BY sl.student_id
   ),
   structure_term_fees AS (
@@ -70,7 +70,7 @@ export const SQL_EFFECTIVE_STUDENT_LEDGER_TOTALS_CTE = `
       (${SQL_BENEFICIARY_TERM_FEE_DEBIT_EFFECTIVE})::numeric AS structure_term_fee
     FROM students s
     LEFT JOIN classes c_student ON c_student.id = s.class_assigned_id AND c_student.tenant_id = s.tenant_id
-    INNER JOIN terms t ON t.id = $2 AND t.tenant_id = s.tenant_id
+    INNER JOIN terms t ON t.id = $2::integer AND t.tenant_id = s.tenant_id
     ${SQL_JOIN_LEDGER_FEE_STRUCTURES_FOR_TERM}
     WHERE s.tenant_id = $1
       AND (${SQL_FEE_STRUCTURE_CLASS_MATCH})

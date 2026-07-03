@@ -13,6 +13,7 @@ import {
   getArrearsBreakdownFromLedger,
 } from '../services/ledgerBalanceService.js';
 import { enrichBalanceShapeWithExpectedFees, assertStudentInTenant, resolveLedgerFeeStructureForStudent } from '../services/effectiveStudentBalanceService.js';
+import { recalculateTermOutstandingBalances } from '../services/ledgerFinanceService.js';
 
 const router = express.Router();
 
@@ -190,6 +191,12 @@ router.get('/students/outstanding-fees', async (req: AuthRequest, res) => {
         students: [],
         summary: { studentsOwing: 0, totalOutstanding: 0, totalArrears: 0 },
       });
+    }
+
+    try {
+      await recalculateTermOutstandingBalances(null, tenantId, ledgerTermId);
+    } catch (recalcErr) {
+      console.error('[outstanding-fees] Balance recalc failed (continuing):', recalcErr);
     }
 
     const classIdNum =

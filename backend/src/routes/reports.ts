@@ -214,6 +214,11 @@ router.get('/fee-status', async (req: AuthRequest, res) => {
       return res.status(400).json({ error: 'classId is required' });
     }
 
+    const classIdNum = parseInt(String(classId), 10);
+    if (Number.isNaN(classIdNum)) {
+      return res.status(400).json({ error: 'Invalid classId' });
+    }
+
     let term: string;
     let academicYear: string;
 
@@ -256,7 +261,7 @@ router.get('/fee-status', async (req: AuthRequest, res) => {
        LEFT JOIN classes c ON s.class_assigned_id = c.id
        WHERE s.tenant_id = $1 AND s.class_assigned_id = $2 AND ${ACTIVE_STUDENT_WHERE}
        ORDER BY s.first_name, s.last_name`,
-      [tenantId, classId]
+      [tenantId, classIdNum]
     );
 
     let students = await Promise.all(
@@ -323,7 +328,7 @@ router.get('/fee-status', async (req: AuthRequest, res) => {
 
     const classResult = await query(
       'SELECT id, class_name FROM classes WHERE id = $1 AND tenant_id = $2',
-      [classId, tenantId]
+      [classIdNum, tenantId]
     );
     const classRow = classResult.rows[0];
 
@@ -334,7 +339,7 @@ router.get('/fee-status', async (req: AuthRequest, res) => {
         label: `${term} ${academicYear}`.trim(),
       },
       class: {
-        id: parseInt(String(classId), 10),
+        id: classIdNum,
         name: classRow?.class_name || '',
       },
       students,

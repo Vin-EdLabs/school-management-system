@@ -170,6 +170,37 @@ export async function fetchClassStudentBalances(
   return apiService.get(`/fee-calculations/students/balances${qs ? `?${qs}` : ''}`);
 }
 
+export type OutstandingFeeStudent = {
+  id: number;
+  firstName: string;
+  lastName: string;
+  studentId: string;
+  admissionNumber: string;
+  classAssignedId: number | null;
+  className: string;
+  enrollmentStatus: string;
+  termFee: number;
+  individualCharges: number;
+  arrears: number;
+  totalPaid: number;
+  outstanding: number;
+};
+
+export async function fetchOutstandingFees(
+  classId?: number | string | null
+): Promise<{
+  activeTermLabel: string | null;
+  students: OutstandingFeeStudent[];
+  summary: { studentsOwing: number; totalOutstanding: number; totalArrears: number };
+}> {
+  const params = new URLSearchParams();
+  if (classId != null && String(classId).trim() !== '' && classId !== 'All') {
+    params.set('classId', String(classId));
+  }
+  const qs = params.toString();
+  return apiService.get(`/fee-calculations/students/outstanding-fees${qs ? `?${qs}` : ''}`);
+}
+
 /** Format balance lines for display (records page / fee status). */
 export function formatBalanceLines(b: StudentBalance) {
   const lines: Array<{

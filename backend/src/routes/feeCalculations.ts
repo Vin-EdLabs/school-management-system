@@ -7,6 +7,7 @@ import { resolveActiveLedgerTerm } from '../services/studentUnifiedBalanceServic
 import { ensureTenantLedgerSynced } from '../services/ledgerBackfillService.js';
 import {
   getBatchStudentBalancesFromLedger,
+  getOutstandingFeesFromLedger,
   ledgerBalanceToApiShape,
   getStudentBalanceFromLedger,
   getArrearsBreakdownFromLedger,
@@ -164,6 +165,58 @@ router.get('/students/balances', async (req: AuthRequest, res) => {
   } catch (error) {
     console.error('Batch student balances error:', error);
     res.status(500).json({ error: 'Failed to load student balances' });
+  }
+});
+
+/**
+ * GET /fee-calculations/students/outstanding-fees?classId=
+ * Students owing money — calculated from student_ledger only.
+ */
+router.get('/students/outstanding-fees', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const { classId } = req.query;
+
+    try {
+      await ensureTenantLedgerSynced(tenantId);
+    } catch (syncErr) {
+      console.error('[outstanding-fees] Ledger sync failed (continuing):', syncErr);
+    }
+
+    const { ledgerTermId, termLabel } = await resolveActiveLedgerTerm(query, tenantId);
+    if (!ledgerTermId) {
+      return res.json({
+        activeTermLabel: termLabel,
+        students: [],
+        summary: { studentsOwing: 0, totalOutstanding: 0, totalArrears: 0 },
+      });
+    }
+
+    const classIdNum =
+      classId != null && String(classId).trim() !== '' ? parseInt(String(classId), 10) : null;
+
+    const rows = await getOutstandingFeesFromLedger(
+      null,
+      tenantId,
+      ledgerTermId,
+      classIdNum != null && !Number.isNaN(classIdNum) ? classIdNum : null
+    );
+
+    const totalOutstanding = roundMoney(rows.reduce((sum, row) => sum + row.outstanding, 0));
+    const totalArrears = roundMoney(rows.reduce((sum, row) => sum + row.arrears, 0));
+
+    res.json({
+      activeTermLabel: termLabel,
+      students: rows,
+      summary: {
+        studentsOwing: rows.length,
+        totalOutstanding,
+        totalArrears,
+      },
+    });
+  } catch (error) {
+    console.error('Outstanding fees error:', error);
+    res.status(500).json({ error: 'Failed to load outstanding fees' });
   }
 });
 

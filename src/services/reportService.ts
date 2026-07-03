@@ -79,83 +79,74 @@ export class ReportService {
     }
   }
 
-  async exportToExcel(data: any[], filename: string, sheetName: string = 'Report') {
-    if (!data || !Array.isArray(data) || data.length === 0) {
-      console.warn('No data to export');
-      throw new Error('No data available for export');
-    }
-    
-    try {
-      // Create Excel content as CSV format (which Excel can open automatically with UTF-8 BOM)
-      const headers = Object.keys(data[0]);
-      const csvContent = [
-        headers.join(','),
-        ...data.map(row => 
-          headers.map(header => {
-            let value = row[header];
-            
-            // Handle null/undefined values
+  private buildCsvContent(data: Record<string, unknown>[]): string {
+    const headers = Object.keys(data[0]);
+    return [
+      headers.join(','),
+      ...data.map((row) =>
+        headers
+          .map((header) => {
+            let value: unknown = row[header];
             if (value === null || value === undefined) return '';
-            
-            // Standardize output format
             if (value instanceof Date) {
               value = formatDisplayDate(value);
             } else if (typeof value === 'object') {
               try {
                 value = JSON.stringify(value);
-              } catch (e) {
+              } catch {
                 value = '[Complex Object]';
               }
             }
-            
-            // Format as string and escape special characters
             const stringValue = String(value);
-            if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n') || stringValue.includes('\r')) {
+            if (
+              stringValue.includes(',') ||
+              stringValue.includes('"') ||
+              stringValue.includes('\n') ||
+              stringValue.includes('\r')
+            ) {
               return `"${stringValue.replace(/"/g, '""')}"`;
             }
             return stringValue;
-          }).join(',')
-        )
-      ].join('\n');
-      
-      // Create and download file with UTF-8 Byte Order Mark
-      const blob = new Blob(['\ufeff' + csvContent], { 
-        type: 'text/csv;charset=utf-8;' 
+          })
+          .join(',')
+      ),
+    ].join('\n');
+  }
+
+  async exportToCSV(data: any[], filename: string) {
+    if (!data || !Array.isArray(data) || data.length === 0) {
+      throw new Error('No data available for export');
+    }
+    try {
+      const blob = new Blob(['\ufeff' + this.buildCsvContent(data)], {
+        type: 'text/csv;charset=utf-8;',
       });
-      
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      const downloadName = filename.toLowerCase().endsWith('.xlsx') ? filename : `${filename}.xlsx`;
-      
-      link.setAttribute('href', url);
-      link.setAttribute('download', downloadName);
+      const downloadName = filename.toLowerCase().endsWith('.csv')
+        ? filename
+        : `${filename.replace(/\.xlsx?$/i, '')}.csv`;
+      link.href = url;
+      link.download = downloadName;
       link.style.visibility = 'hidden';
-      
       document.body.appendChild(link);
       link.click();
-      
-      // Cleanup
       setTimeout(() => {
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
       }, 100);
-      
-      console.log(`Successfully exported data to ${downloadName} (${data.length} records)`);
-    } catch (error) {
-      console.error('Critical error during Excel export:', error);
-      throw new Error('Failed to generate Excel file. Please try again with a smaller dataset.');
+    } catch {
+      throw new Error('Failed to generate CSV file.');
     }
   }
 
-  // Legacy CSV method for backward compatibility - now exports as Excel
-  async exportToCSV(data: any[], filename: string) {
-    return this.exportToExcel(data, filename.replace('.csv', '.xlsx'));
+  async exportToExcel(data: any[], filename: string, _sheetName: string = 'Report') {
+    return this.exportToCSV(data, filename);
   }
 
-  // Export report data specifically formatted for Excel
   async exportReportToExcel(reportData: any, reportType: string) {
     const timestamp = new Date().toISOString().split('T')[0];
-    const filename = `${reportType}_report_${timestamp}.xlsx`;
+    const filename = `${reportType}_report_${timestamp}.csv`;
     
     let dataToExport: any[] = [];
     

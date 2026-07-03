@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { apiService } from '@/services/api';
 import { toast } from '@/hooks/use-toast';
-import { Search, Users, Eye, Pencil, FileDown } from 'lucide-react';
+import { Search, Users, Eye, Pencil, FileDown, FileSpreadsheet } from 'lucide-react';
 import type { OtherStaffRecord } from './otherStaffTypes';
 import StaffPhotoLightbox from './StaffPhotoLightbox';
 import OtherStaffProfileDialog from './OtherStaffProfileDialog';
@@ -16,6 +16,7 @@ import OtherStaffFormDialog from './OtherStaffFormDialog';
 import { useSchool } from '@/contexts/SchoolContext';
 import { resolveLogoUrl } from '@/services/tenantService';
 import { downloadOtherStaffRosterPdf } from '@/utils/buildStaffRosterPdf';
+import { downloadOtherStaffRosterExcel } from '@/utils/buildStaffRosterExcel';
 
 type Props = {
   refreshKey?: number;
@@ -112,10 +113,24 @@ const ViewAllOtherStaff: React.FC<Props> = ({ refreshKey = 0 }) => {
     });
   };
 
+  const exportRows = () =>
+    selected.size > 0 ? filtered.filter((s) => selected.has(s.id)) : filtered;
+
+  const mapStaffRows = (rows: typeof filtered) =>
+    rows.map((s) => ({
+      fullName: s.full_name,
+      staffId: s.staff_id,
+      position: s.position || '',
+      department: s.department || '',
+      salary: Number(s.monthly_salary) || 0,
+      phone: s.phone_number || '',
+      email: s.email || '',
+    }));
+
   const exportPdf = async () => {
-    const rows = filtered.filter((s) => selected.has(s.id));
+    const rows = exportRows();
     if (rows.length === 0) {
-      toast({ title: 'Nothing selected', description: 'Select at least one staff member to export.', variant: 'destructive' });
+      toast({ title: 'Nothing to export', description: 'No staff match the current filters.', variant: 'destructive' });
       return;
     }
     setExporting(true);
@@ -123,20 +138,30 @@ const ViewAllOtherStaff: React.FC<Props> = ({ refreshKey = 0 }) => {
       await downloadOtherStaffRosterPdf({
         schoolName: school?.name || 'School',
         logoUrl: resolveLogoUrl(school?.logo_url ?? null),
-        staff: rows.map((s) => ({
-          fullName: s.full_name,
-          staffId: s.staff_id,
-          position: s.position || '',
-          department: s.department || '',
-          salary: Number(s.monthly_salary) || 0,
-          phone: s.phone_number || '',
-          email: s.email || '',
-        })),
+        staff: mapStaffRows(rows),
       });
       toast({ title: 'PDF exported', description: `${rows.length} staff member(s) exported.` });
     } catch (e: unknown) {
       const err = e as { message?: string };
       toast({ title: 'Export failed', description: err?.message || 'Could not generate PDF.', variant: 'destructive' });
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const exportExcel = async () => {
+    const rows = exportRows();
+    if (rows.length === 0) {
+      toast({ title: 'Nothing to export', description: 'No staff match the current filters.', variant: 'destructive' });
+      return;
+    }
+    setExporting(true);
+    try {
+      await downloadOtherStaffRosterExcel(mapStaffRows(rows));
+      toast({ title: 'CSV exported', description: `${rows.length} staff member(s) exported.` });
+    } catch (e: unknown) {
+      const err = e as { message?: string };
+      toast({ title: 'Export failed', description: err?.message || 'Could not generate CSV file.', variant: 'destructive' });
     } finally {
       setExporting(false);
     }
@@ -192,11 +217,21 @@ const ViewAllOtherStaff: React.FC<Props> = ({ refreshKey = 0 }) => {
               type="button"
               variant="outline"
               size="sm"
-              disabled={exporting || selected.size === 0}
+              disabled={exporting || filtered.length === 0}
               onClick={() => void exportPdf()}
             >
               <FileDown className="h-4 w-4 mr-2" />
-              Export PDF ({selected.size || 0})
+              Export PDF{selected.size > 0 ? ` (${selected.size})` : ''}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={exporting || filtered.length === 0}
+              onClick={() => void exportExcel()}
+            >
+              <FileSpreadsheet className="h-4 w-4 mr-2" />
+              Export CSV{selected.size > 0 ? ` (${selected.size})` : ''}
             </Button>
           </div>
 

@@ -8,108 +8,83 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useData } from '../../contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
 import { Search, AlertTriangle, Download, DollarSign, Clock, TrendingUp, Wallet } from 'lucide-react';
-import { getActiveAcademicTerm } from '../../utils/feeCalculations';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
-import { shouldTrackStudentFees, isTermFeeClassStudent } from '../students/studentRegistryUtils';
-import { fetchClassStudentBalances, type StudentBalance } from '../../services/studentBalance';
-import { resolveStudentDisplayBalance } from '../../utils/resolveStudentDisplayBalance';
+import { fetchOutstandingFees, type OutstandingFeeStudent } from '../../services/studentBalance';
 
 const OutstandingFees = () => {
-  const { students, classes, ledgerBalances, feeStructures } = useData();
+  const { classes } = useData();
   const { currentTerm } = useActiveTerm();
-  const [liveBalances, setLiveBalances] = useState<Record<string, StudentBalance>>({});
+  const [apiStudents, setApiStudents] = useState<OutstandingFeeStudent[]>([]);
+  const [apiSummary, setApiSummary] = useState({ studentsOwing: 0, totalOutstanding: 0, totalArrears: 0 });
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClass, setSelectedClass] = useState('All');
-  const selectedTerm = currentTerm && currentTerm !== 'Not Set' ? currentTerm : getActiveAcademicTerm();
+  const selectedTerm = currentTerm && currentTerm !== 'Not Set' ? currentTerm : 'Current Term';
+
+  const classIdForApi = useMemo(() => {
+    if (selectedClass === 'All') return null;
+    const match = (classes || []).find((c) => c.className === selectedClass);
+    return match?.id ?? null;
+  }, [selectedClass, classes]);
 
   useEffect(() => {
     let cancelled = false;
-    void fetchClassStudentBalances()
+    setLoading(true);
+    void fetchOutstandingFees(classIdForApi)
       .then((res) => {
-        if (!cancelled) setLiveBalances(res.balances || {});
+        if (cancelled) return;
+        setApiStudents(res.students || []);
+        setApiSummary(res.summary || { studentsOwing: 0, totalOutstanding: 0, totalArrears: 0 });
       })
       .catch(() => {
-        if (!cancelled) setLiveBalances({});
+        if (!cancelled) {
+          setApiStudents([]);
+          setApiSummary({ studentsOwing: 0, totalOutstanding: 0, totalArrears: 0 });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [students.length, selectedTerm]);
+  }, [classIdForApi, selectedTerm]);
 
-  const balanceMap = useMemo(() => {
-    const merged = { ...ledgerBalances, ...liveBalances };
-    return merged;
-  }, [ledgerBalances, liveBalances]);
-
-  const outstandingData = useMemo(() => {
-    const studentsArray = Array.isArray(students) ? students : [];
-    const term = selectedTerm;
-
-    return studentsArray
-      .filter(shouldTrackStudentFees)
-      .filter((student) => isTermFeeClassStudent(student, classes || []))
-      .map((student) => {
-      const ledgerBalance = balanceMap?.[String(student.id)];
-      const display = resolveStudentDisplayBalance(student, ledgerBalance, feeStructures || [], term);
-
-      return {
-        studentId: student.id,
-        admissionNo: student.studentId || student.admissionNumber || String(student.id),
-        studentName: `${student.firstName} ${student.lastName}`,
-        className: student.classAssigned,
-        currentTermFee: display.currentTermFee,
-        arrears: display.arrears,
-        creditBalance: display.credit,
-        totalAmountDue: display.totalDue,
-        totalPaid: display.totalPaid,
-        outstanding: display.outstanding,
-        paymentHistory: [],
-      };
-    });
-  }, [students, balanceMap, feeStructures, selectedTerm, classes]);
-
-  // Filter students with outstanding balances
   const filteredStudents = useMemo(() => {
-    return outstandingData
-      .filter(student => student.outstanding > 0)
-      .filter(student => {
-        const matchesSearch = student.studentName.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesClass = selectedClass === 'All' || student.className === selectedClass;
-        return matchesSearch && matchesClass;
+    const q = searchTerm.trim().toLowerCase();
+    return apiStudents
+      .filter((s) => {
+        if (!q) return true;
+        const name = `${s.firstName} ${s.lastName}`.toLowerCase();
+        return (
+          name.includes(q) ||
+          s.studentId.toLowerCase().includes(q) ||
+          s.admissionNumber.toLowerCase().includes(q)
+        );
       })
       .sort((a, b) => b.outstanding - a.outstanding);
-  }, [outstandingData, searchTerm, selectedClass]);
+  }, [apiStudents, searchTerm]);
 
-  // Calculate summary statistics — all figures from ledger balances
   const summaryStats = useMemo(() => {
-    const studentsArray = Array.isArray(students)
-      ? students.filter(shouldTrackStudentFees).filter((s) => isTermFeeClassStudent(s, classes || []))
-      : [];
-    const totalStudents = studentsArray.length;
-    const owingStudents = outstandingData.filter(student => student.outstanding > 0);
-    const creditStudents = outstandingData.filter(student => student.creditBalance > 0);
-    const arrearsStudents = outstandingData.filter(student => student.arrears > 0);
-    const studentsOwing = owingStudents.length;
-    const studentsCredit = creditStudents.length;
-    const studentsWithArrears = arrearsStudents.length;
-    const totalOutstanding = owingStudents.reduce((sum, student) => sum + student.outstanding, 0);
-    const totalCredit = creditStudents.reduce((sum, student) => sum + student.creditBalance, 0);
-    const totalArrears = arrearsStudents.reduce((sum, student) => sum + student.arrears, 0);
-    const hasPartialPayments = owingStudents.some(student => student.totalPaid > 0);
+    const studentsOwing = apiSummary.studentsOwing;
+    const totalOutstanding = apiSummary.totalOutstanding;
+    const totalArrears = apiSummary.totalArrears;
+    const studentsWithArrears = apiStudents.filter((s) => s.arrears > 0).length;
     const averageOutstanding = studentsOwing > 0 ? totalOutstanding / studentsOwing : 0;
+    const hasPartialPayments = apiStudents.some((s) => s.totalPaid > 0);
 
     return {
-      totalStudents,
+      totalStudents: apiStudents.length,
       studentsOwing,
-      studentsCredit,
+      studentsCredit: 0,
       studentsWithArrears,
       totalOutstanding,
-      totalCredit,
+      totalCredit: 0,
       hasPartialPayments,
       averageOutstanding,
-      totalArrears
+      totalArrears,
     };
-  }, [outstandingData, students]);
+  }, [apiStudents, apiSummary]);
 
   // Get unique classes for filter
   const uniqueClasses = useMemo(() => {
@@ -118,15 +93,15 @@ const OutstandingFees = () => {
   }, [classes]);
 
   const exportOutstandingReport = () => {
-    const reportData = filteredStudents.map(student => ({
-      'Student Name': student.studentName,
-      'Class': student.className,
-      'Total Term Bill': student.currentTermFee,
-      'Arrears': student.arrears,
-      'Total Due': student.totalAmountDue,
+    const reportData = filteredStudents.map((student) => ({
+      'Student Name': `${student.firstName} ${student.lastName}`,
+      Status: student.enrollmentStatus,
+      Class: student.className,
+      'Term Fee': student.termFee,
+      Arrears: student.arrears,
+      'Individual Charges': student.individualCharges,
       'Total Paid': student.totalPaid,
       'Outstanding Balance': student.outstanding,
-      'Payment Count': student.paymentHistory.length
     }));
 
     const csvContent = [
@@ -257,7 +232,9 @@ const OutstandingFees = () => {
         </div>
 
         {/* Outstanding Students Table */}
-        {filteredStudents.length > 0 ? (
+        {loading ? (
+          <div className="text-center py-16 text-muted-foreground">Loading outstanding balances…</div>
+        ) : filteredStudents.length > 0 ? (
           <div className="rounded-2xl border border-border/50 overflow-hidden bg-card/30 backdrop-blur-sm">
             <table className="w-full text-xs">
               <thead>
@@ -268,27 +245,35 @@ const OutstandingFees = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/30">
-                {filteredStudents.map((student) => (
-                  <tr key={student.studentId} className="hover:bg-indigo-500/5 transition-colors group">
+                {filteredStudents.map((student) => {
+                  const studentName = `${student.firstName} ${student.lastName}`;
+                  const totalDue = student.termFee + student.arrears + student.individualCharges;
+                  return (
+                  <tr key={student.id} className="hover:bg-indigo-500/5 transition-colors group">
                     <td className="p-3 align-top">
                       <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-foreground text-sm tracking-tight">{student.studentName}</span>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-foreground text-sm tracking-tight">{studentName}</span>
+                          {student.enrollmentStatus !== 'active' && (
+                            <span className="ml-0 text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium capitalize">
+                              {student.enrollmentStatus}
+                            </span>
+                          )}
                           {student.arrears > 0 && (
                             <Badge variant="destructive" className="h-4 px-1.5 text-[8px] uppercase font-black tracking-tighter bg-red-500/20 text-red-500 border-red-500/20">Arrears</Badge>
                           )}
                         </div>
                         <div className="flex items-center gap-2 text-muted-foreground">
-                          <span className="px-1.5 py-0.5 rounded-md bg-indigo-500/5 text-indigo-500 border border-indigo-500/10 text-[9px] font-bold">{student.className}</span>
-                          <span className="text-[10px] opacity-40 font-mono">#{student.admissionNo}</span>
+                          <span className="px-1.5 py-0.5 rounded-md bg-indigo-500/5 text-indigo-500 border border-indigo-500/10 text-[9px] font-bold">{student.className || '—'}</span>
+                          <span className="text-[10px] opacity-40 font-mono">#{student.studentId || student.admissionNumber}</span>
                         </div>
                       </div>
                     </td>
                     <td className="p-3 text-right align-top">
                       <div className="flex flex-col">
-                        <span className="text-foreground/90 font-medium">Due: GHS {student.totalAmountDue.toLocaleString()}</span>
+                        <span className="text-foreground/90 font-medium">Due: GHS {totalDue.toLocaleString()}</span>
                         <div className="flex justify-end gap-2 text-[9px] text-muted-foreground mt-0.5 opacity-60">
-                          <span>Bill: {student.currentTermFee.toLocaleString()}</span>
+                          <span>Bill: {student.termFee.toLocaleString()}</span>
                           {student.arrears > 0 && <span className="text-orange-500/70 font-semibold">Arr: {student.arrears.toLocaleString()}</span>}
                         </div>
                         <span className="text-emerald-500/80 font-bold text-[9px] mt-1">Paid: GHS {student.totalPaid.toLocaleString()}</span>
@@ -308,7 +293,7 @@ const OutstandingFees = () => {
                       </div>
                     </td>
                   </tr>
-                ))}
+                );})}
               </tbody>
             </table>
           </div>

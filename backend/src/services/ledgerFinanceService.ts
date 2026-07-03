@@ -444,6 +444,56 @@ export async function syncMissingLedgerTermFeesForActiveTerm(tenantId: number): 
   }
 }
 
+/** Recalculate term_fee debit for one student when beneficiary discount changes. */
+export async function recalculateStudentTermFeeForActiveTerm(
+  tenantId: number,
+  studentId: number
+): Promise<{ updated: boolean; termId: number | null }> {
+  const settingsRes = await query(
+    `SELECT current_term, current_year FROM school_settings WHERE tenant_id = $1`,
+    [tenantId]
+  );
+  const currentTerm = settingsRes.rows[0]?.current_term;
+  const currentYear = settingsRes.rows[0]?.current_year;
+  if (!currentTerm || !currentYear) {
+    return { updated: false, termId: null };
+  }
+
+  const resolved = await resolveLedgerTermFromSettings(
+    tenantId,
+    String(currentYear),
+    String(currentTerm)
+  );
+  if (!resolved) {
+    return { updated: false, termId: null };
+  }
+
+  const result = await query(
+    `UPDATE student_ledger sl
+     SET debit = sub.net_fee
+     FROM (
+       SELECT DISTINCT ON (s.id)
+         s.id AS student_id,
+         (${SQL_BENEFICIARY_TERM_FEE_DEBIT_EFFECTIVE.trim()})::numeric AS net_fee
+       FROM students s
+       INNER JOIN terms t ON t.id = $3 AND t.tenant_id = $1
+       INNER JOIN classes c_student ON c_student.id = s.class_assigned_id AND c_student.tenant_id = s.tenant_id
+       ${SQL_JOIN_LEDGER_FEE_STRUCTURES_FOR_TERM}
+       WHERE s.tenant_id = $1
+         AND s.id = $2
+         AND (${SQL_FEE_STRUCTURE_CLASS_MATCH})
+       ORDER BY s.id, (fs.class_id = s.class_assigned_id) DESC, fs.id
+     ) sub
+     WHERE sl.tenant_id = $1
+       AND sl.student_id = sub.student_id
+       AND sl.term_id = $3
+       AND sl.entry_type = 'term_fee'`,
+    [tenantId, studentId, resolved.termId]
+  );
+
+  return { updated: (result.rowCount ?? 0) > 0, termId: resolved.termId };
+}
+
 /**
  * Switches to a new term (term close carry-forward only).
  * For each student on the closing term:

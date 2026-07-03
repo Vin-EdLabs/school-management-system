@@ -340,6 +340,82 @@ export async function getBatchStudentBalancesFromLedger(
   });
 }
 
+export type OutstandingFeeLedgerRow = {
+  id: number;
+  firstName: string;
+  lastName: string;
+  studentId: string;
+  admissionNumber: string;
+  classAssignedId: number | null;
+  className: string;
+  enrollmentStatus: string;
+  termFee: number;
+  individualCharges: number;
+  arrears: number;
+  totalPaid: number;
+  outstanding: number;
+};
+
+/** Students with ledger outstanding > 0 for the active term (all enrollment statuses). */
+export async function getOutstandingFeesFromLedger(
+  client: pg.PoolClient | null,
+  tenantId: number,
+  termId: number,
+  classId?: number | null
+): Promise<OutstandingFeeLedgerRow[]> {
+  const run: QueryFn = client ? client.query.bind(client) : query;
+  const params: unknown[] = [tenantId, termId];
+  let classFilter = '';
+  if (classId != null && !Number.isNaN(Number(classId))) {
+    classFilter = ` AND s.class_assigned_id = $${params.length + 1}`;
+    params.push(classId);
+  }
+
+  const res = await run(
+    `SELECT
+       s.id,
+       s.first_name,
+       s.last_name,
+       s.student_id,
+       s.admission_number,
+       s.class_assigned_id,
+       s.enrollment_status,
+       c.class_name,
+       COALESCE(SUM(CASE WHEN sl.entry_type = 'term_fee' THEN sl.debit ELSE 0 END), 0) AS term_fee,
+       COALESCE(SUM(CASE WHEN sl.entry_type = 'student_charge' THEN sl.debit ELSE 0 END), 0) AS individual_charges,
+       COALESCE(SUM(CASE WHEN sl.entry_type = 'arrears' THEN sl.debit ELSE 0 END), 0) AS arrears,
+       COALESCE(SUM(CASE WHEN sl.entry_type = 'payment' THEN (${LEDGER_TERM_CREDIT_SQL}) ELSE 0 END), 0) AS total_paid,
+       COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(${LEDGER_TERM_CREDIT_SQL}), 0) AS net_balance
+     FROM students s
+     INNER JOIN student_ledger sl ON sl.student_id = s.id AND sl.tenant_id = s.tenant_id AND sl.term_id = $2
+     LEFT JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
+     WHERE s.tenant_id = $1
+       AND ${TERM_FEE_CLASS_FILTER_SQL}
+       ${classFilter}
+     GROUP BY s.id, s.first_name, s.last_name, s.student_id, s.admission_number,
+              s.class_assigned_id, s.enrollment_status, c.class_name
+     HAVING COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(${LEDGER_TERM_CREDIT_SQL}), 0) > 0.001
+     ORDER BY COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(${LEDGER_TERM_CREDIT_SQL}), 0) DESC`,
+    params
+  );
+
+  return res.rows.map((row) => ({
+    id: Number(row.id),
+    firstName: String(row.first_name || ''),
+    lastName: String(row.last_name || ''),
+    studentId: String(row.student_id || ''),
+    admissionNumber: String(row.admission_number || ''),
+    classAssignedId: row.class_assigned_id != null ? Number(row.class_assigned_id) : null,
+    className: String(row.class_name || ''),
+    enrollmentStatus: String(row.enrollment_status || 'active'),
+    termFee: roundMoney(parseFloat(String(row.term_fee)) || 0),
+    individualCharges: roundMoney(parseFloat(String(row.individual_charges)) || 0),
+    arrears: roundMoney(parseFloat(String(row.arrears)) || 0),
+    totalPaid: roundMoney(parseFloat(String(row.total_paid)) || 0),
+    outstanding: roundMoney(Math.max(0, parseFloat(String(row.net_balance)) || 0)),
+  }));
+}
+
 /** Per-term summary for student statement (full history). */
 export async function getTermByTermLedgerSummary(
   client: pg.PoolClient | null,

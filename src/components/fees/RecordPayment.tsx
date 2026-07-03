@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
 import { CreditCard, Search, Loader2 } from 'lucide-react';
 import ReceiptPrinter from '../common/ReceiptPrinter';
-import { parseReceiptSnapshot, resolveReceiptDisplayAmounts } from '../../utils/feeCalculations';
+import { parseReceiptSnapshot, resolveReceiptDisplayAmounts, applyBeneficiaryToBaseFee } from '../../utils/feeCalculations';
 import { useTermReadOnly } from '../../contexts/TermStatusContext';
 import { useActiveTerm } from '../../hooks/useActiveTerm';
 import { useRecordPayment } from '../../hooks/useRecordPayment';
@@ -18,7 +18,6 @@ import { toast } from '@/hooks/use-toast';
 import PaymentAccountSelect from '../common/PaymentAccountSelect';
 import {
   fetchStudentBalance,
-  formatBalanceLines,
   type StudentBalance,
 } from '../../services/studentBalance';
 import { resolveStudentDisplayBalance } from '../../utils/resolveStudentDisplayBalance';
@@ -68,6 +67,7 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
       setStudentBalance(null);
       return;
     }
+    void loadDomains(['students', 'fees'], { silent: true });
     const cached = ledgerBalances[formData.studentId];
     if (cached) {
       setStudentBalance(cached);
@@ -109,19 +109,29 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
       feeStructures || [],
       paymentTerm
     );
-    const termBillTotal = termBillSummary?.total ?? 0;
-    const termFee =
-      display.currentTermFee > 0 ? display.currentTermFee : termBillTotal;
     const individualCharges = source?.individualCharges ?? 0;
-    const totalDue =
-      display.totalDue > 0
+    const grossForDiscount =
+      (termBillSummary?.total ?? 0) > 0
+        ? termBillSummary!.total
+        : display.currentTermFee;
+    const { currentTermFee: netTermFee } = applyBeneficiaryToBaseFee(
+      grossForDiscount,
+      selectedStudent
+    );
+    const termFee = selectedStudent?.isBeneficiary
+      ? netTermFee
+      : display.currentTermFee > 0
+        ? display.currentTermFee
+        : grossForDiscount;
+    const totalDue = selectedStudent?.isBeneficiary
+      ? Math.round((termFee + display.arrears + individualCharges) * 100) / 100
+      : display.totalDue > 0
         ? display.totalDue
         : Math.round((termFee + display.arrears + individualCharges) * 100) / 100;
-    const outstanding =
-      display.outstanding > 0
-        ? display.outstanding
-        : Math.round(Math.max(0, totalDue - display.totalPaid) * 100) / 100;
-    if (!source && termBillTotal <= 0) return null;
+    const outstanding = display.outstanding;
+    const termBillTotal = termBillSummary?.total ?? 0;
+    if (!source && termBillTotal <= 0 && !selectedStudent?.isBeneficiary) return null;
+    if (!source && termBillTotal <= 0 && selectedStudent?.isBeneficiary && grossForDiscount <= 0) return null;
     return {
       ...(source ?? {
         currentTermName: paymentTerm,
@@ -150,6 +160,9 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
     termBillSummary,
     ledgerBalances,
     formData.studentId,
+    selectedStudent?.isBeneficiary,
+    selectedStudent?.discountType,
+    selectedStudent?.discountValue,
   ]);
 
   useEffect(() => {
@@ -198,24 +211,99 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
   const selectedStudentFeeDetails = useMemo(() => {
     if (!formData.studentId || !currentTerm || currentTerm === 'Not Set') return null;
     if (!enrichedStudentBalance) return null;
+
+    const grossFee = termBillSummary?.total ?? enrichedStudentBalance.currentTermFee;
+    const { currentTermFee: netTermFee, discountAmount } = applyBeneficiaryToBaseFee(
+      grossFee,
+      selectedStudent
+    );
+    const currentTermFee = selectedStudent?.isBeneficiary
+      ? netTermFee
+      : enrichedStudentBalance.currentTermFee;
+    const individualCharges = enrichedStudentBalance.individualCharges ?? 0;
+    const creditBroughtForward = enrichedStudentBalance.creditBroughtForward ?? 0;
+    const grossDue = Math.round(
+      (currentTermFee + enrichedStudentBalance.totalArrears + individualCharges) * 100
+    ) / 100;
+    const netAmountDue = Math.round((grossDue - creditBroughtForward) * 100) / 100;
+    const arrearsBreakdown = studentBalance?.arrearsBreakdown ?? [];
+
     return {
-      currentTermFee: enrichedStudentBalance.currentTermFee,
+      currentTermFee,
       arrears: enrichedStudentBalance.totalArrears,
-      creditBroughtForward: enrichedStudentBalance.creditBroughtForward ?? 0,
-      totalAmountDue: enrichedStudentBalance.totalDue,
+      creditBroughtForward,
+      grossDue,
+      netAmountDue,
+      totalAmountDue: selectedStudent?.isBeneficiary
+        ? grossDue
+        : enrichedStudentBalance.totalDue > 0
+          ? enrichedStudentBalance.totalDue
+          : grossDue,
       totalPaid: enrichedStudentBalance.totalPaid,
+      outstanding: enrichedStudentBalance.outstanding,
       creditBalance: enrichedStudentBalance.credit,
+      individualCharges,
       individualChargeLines: enrichedStudentBalance.individualChargeLines ?? [],
-      baseFee: enrichedStudentBalance.currentTermFee,
-      discountAmount: 0,
+      baseFee: grossFee,
+      discountAmount,
       arrearLines: enrichedStudentBalance.arrearLines,
+      arrearsBreakdown,
       paidLines: enrichedStudentBalance.paidLines,
     };
-  }, [formData.studentId, currentTerm, enrichedStudentBalance]);
+  }, [
+    formData.studentId,
+    currentTerm,
+    enrichedStudentBalance,
+    termBillSummary,
+    selectedStudent?.isBeneficiary,
+    selectedStudent?.discountType,
+    studentBalance?.arrearsBreakdown,
+    selectedStudent?.discountValue,
+  ]);
 
-  const breakdownDisplayLines = enrichedStudentBalance ? formatBalanceLines(enrichedStudentBalance) : null;
+  const outstandingBalance = Math.max(
+    0,
+    selectedStudentFeeDetails?.outstanding ??
+      enrichedStudentBalance?.outstanding ??
+      Math.round(
+        ((selectedStudentFeeDetails?.netAmountDue ?? selectedStudentFeeDetails?.totalAmountDue ?? 0) -
+          (enrichedStudentBalance?.totalPaid ?? 0)) *
+          100
+      ) / 100
+  );
 
-  const outstandingBalance = enrichedStudentBalance?.outstanding ?? 0;
+  const arrearsDisplayLines = useMemo(() => {
+    if (!selectedStudentFeeDetails) return [];
+    const breakdown = selectedStudentFeeDetails.arrearsBreakdown ?? [];
+    if (breakdown.length > 0) {
+      return breakdown.map((line, i) => ({
+        key: `arrear-bd-${i}-${line.description}`,
+        label: line.description,
+        amount: line.amount,
+        date: line.date,
+      }));
+    }
+    const lines = selectedStudentFeeDetails.arrearLines ?? [];
+    if (lines.length > 0) {
+      return lines.map((line, i) => ({
+        key: `arrear-line-${i}`,
+        label: line.termName,
+        amount: line.amount,
+        date: null as string | null,
+      }));
+    }
+    if (selectedStudentFeeDetails.arrears > 0) {
+      return [
+        {
+          key: 'arrear-total',
+          label: 'Arrears (previous terms)',
+          amount: selectedStudentFeeDetails.arrears,
+          date: null,
+        },
+      ];
+    }
+    return [];
+  }, [selectedStudentFeeDetails]);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -400,158 +488,119 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
                   </p>
                 </div>
 
-                {(termBillLoading || termBillSummary) && (
-                  <div className="border-b border-emerald-200/80 bg-white/60 px-4 py-3 dark:bg-blue-50/50">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-900/70 mb-2">Term Bill Breakdown</p>
-                    {termBillLoading ? (
-                      <p className="text-sm text-muted-foreground flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Loading bill items…
-                      </p>
-                    ) : termBillSummary ? (
-                      <div className="space-y-1 text-sm">
-                        {termBillSummary.items.map(item => (
-                          <div key={item.item_name} className="flex justify-between py-0.5">
-                            <span className="text-slate-600 dark:text-gray-600">{formatFeeItemLabel(item.item_name)}</span>
-                            <span className="font-mono tabular-nums">GHS {Number(item.amount).toFixed(2)}</span>
-                          </div>
-                        ))}
-                        {(enrichedStudentBalance?.individualChargeLines ?? []).map((charge) => (
-                          <div key={charge.id} className="flex justify-between py-0.5 border-t border-dashed border-emerald-100 first:border-t-0">
-                            <span className="text-slate-600 dark:text-gray-600 text-xs sm:text-sm">
-                              {charge.description}
-                              <span className="block text-[10px] text-amber-700 dark:text-amber-500">
-                                ⚑ Individual Charge ·{' '}
-                                {charge.date
-                                  ? new Date(charge.date).toLocaleDateString('en-GB', {
-                                      day: 'numeric',
-                                      month: 'short',
-                                      year: 'numeric',
-                                    })
-                                  : '—'}
-                              </span>
-                            </span>
-                            <span className="font-mono tabular-nums">GHS {Number(charge.amount).toFixed(2)}</span>
-                          </div>
-                        ))}
-                        <div className="border-t border-emerald-200 pt-2 mt-2 space-y-1">
-                          <div className="flex justify-between font-semibold">
-                            <span>
-                              {(enrichedStudentBalance?.individualChargeLines?.length ?? 0) > 0
-                                ? 'Total Billed'
-                                : 'Total Term Bill'}
-                            </span>
-                            <span className="font-mono tabular-nums">
-                              GHS {(selectedStudentFeeDetails?.totalAmountDue ?? enrichedStudentBalance?.totalDue ?? termBillSummary.total).toFixed(2)}
-                            </span>
-                          </div>
-                          <div className="flex justify-between text-emerald-700 dark:text-green-700">
-                            <span>Amount Paid So Far</span>
-                            <span className="font-mono tabular-nums">
-                              GHS {(selectedStudentFeeDetails?.totalPaid ?? 0).toFixed(2)}
-                            </span>
-                          </div>
-                          <div className="flex justify-between font-semibold text-red-700">
-                            <span>Outstanding Balance</span>
-                            <span className="font-mono tabular-nums">
-                              GHS {outstandingBalance.toFixed(2)}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    ) : null}
+                {balanceLoading || termBillLoading ? (
+                  <div className="p-4 bg-emerald-50/60 text-sm text-slate-500 dark:bg-blue-50 dark:text-gray-500 flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading fee breakdown…
                   </div>
-                )}
-
-                {!selectedStudentFeeDetails && !termBillSummary ? (
+                ) : !selectedStudentFeeDetails ? (
                   <div className="p-4 bg-emerald-50/60 text-sm text-slate-500 dark:bg-blue-50 dark:text-gray-500">
-                    {balanceLoading || termBillLoading
-                      ? 'Loading fee breakdown…'
-                      : 'No fee structure set for this student\'s class and term.'}
-                  </div>
-                ) : breakdownDisplayLines ? (
-                  <div className="bg-emerald-50/70 px-4 py-3 text-sm dark:bg-blue-50">
-                    {breakdownDisplayLines.map((line, i) => (
-                      <div
-                        key={`${line.label}-${i}`}
-                        className={`flex justify-between py-1 ${
-                          line.kind === 'total' || line.kind === 'outstanding' ? 'border-t border-emerald-200 pt-2 mt-1 font-semibold dark:border-blue-200' : ''
-                        } ${line.kind === 'paid' || line.kind === 'credit' ? 'text-emerald-700 dark:text-green-700' : line.kind === 'outstanding' ? 'text-red-700' : ''}`}
-                      >
-                        <span>{line.label}</span>
-                        <span className="font-mono tabular-nums">
-                          {line.kind === 'paid' ? '− ' : line.kind === 'credit' ? '' : ''}GHS {Math.abs(line.amount).toFixed(2)}
-                        </span>
-                      </div>
-                    ))}
-                    {studentBalance && (studentBalance.netBalance ?? 0) < -0.001 ? (
-                      <div className="flex justify-between py-1 text-green-700 border-t border-green-200 mt-1">
-                        <span>Credit Balance</span>
-                        <span className="font-mono">
-                          GHS {(studentBalance.credit > 0 ? studentBalance.credit : Math.abs(studentBalance.netBalance ?? 0)).toFixed(2)}
-                        </span>
-                      </div>
-                    ) : studentBalance && studentBalance.credit > 0 ? (
-                      <div className="flex justify-between py-1 text-green-700 border-t border-green-200 mt-1">
-                        <span>Credit Available</span>
-                        <span className="font-mono">GHS {studentBalance.credit.toFixed(2)}</span>
-                      </div>
-                    ) : null}
+                    No fee structure set for this student&apos;s class and term.
                   </div>
                 ) : (
-                  <>
-                    <div className="grid grid-cols-2 gap-x-6 gap-y-2 bg-emerald-50/70 px-4 py-3 text-sm dark:bg-blue-50">
-                      {selectedStudentFeeDetails.discountAmount && selectedStudentFeeDetails.discountAmount > 0 ? (
-                        <>
-                          <div className="flex justify-between">
-                            <span className="text-slate-600 dark:text-gray-600">Base Fee:</span>
-                            <span className="font-medium line-through decoration-slate-400">GHS {selectedStudentFeeDetails.baseFee?.toFixed(2)}</span>
+                  <div className="border-b border-emerald-200/80 bg-white/60 px-4 py-3 dark:bg-blue-50/50">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-900/70 mb-2">
+                      Term Bill Breakdown
+                    </p>
+                    <div className="space-y-1 text-sm">
+                      {termBillSummary ? (
+                        termBillSummary.items.map((item) => (
+                          <div key={item.item_name} className="flex justify-between py-0.5">
+                            <span className="text-slate-600 dark:text-gray-600">
+                              {formatFeeItemLabel(item.item_name)}
+                            </span>
+                            <span className="font-mono tabular-nums">
+                              GHS {Number(item.amount).toFixed(2)}
+                            </span>
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-emerald-700 font-medium italic dark:text-indigo-600">Beneficiary Discount:</span>
-                            <span className="font-semibold text-emerald-700 dark:text-indigo-600">− GHS {selectedStudentFeeDetails.discountAmount.toFixed(2)}</span>
-                          </div>
-                          <div className="flex justify-between border-t border-emerald-100 pt-1 dark:border-blue-100">
-                            <span className="text-slate-600 font-semibold dark:text-gray-600">Net Total Term Bill:</span>
-                            <span className="font-bold">GHS {selectedStudentFeeDetails.currentTermFee.toFixed(2)}</span>
-                          </div>
-                        </>
+                        ))
                       ) : (
-                        <div className="flex justify-between">
-                          <span className="text-slate-600 dark:text-gray-600">Total Term Bill:</span>
-                          <span className="font-medium">GHS {selectedStudentFeeDetails.currentTermFee.toFixed(2)}</span>
+                        <div className="flex justify-between py-0.5">
+                          <span className="text-slate-600 dark:text-gray-600">Term Fee</span>
+                          <span className="font-mono tabular-nums">
+                            GHS {(selectedStudentFeeDetails.baseFee || selectedStudentFeeDetails.currentTermFee).toFixed(2)}
+                          </span>
                         </div>
                       )}
-                      {selectedStudentFeeDetails.arrears > 0 && (
-                        <div className="flex justify-between">
-                          <span className="text-amber-700">Arrears (prev term):</span>
-                          <span className="font-semibold text-amber-700">+ GHS {selectedStudentFeeDetails.arrears.toFixed(2)}</span>
+
+                      {(selectedStudentFeeDetails.discountAmount ?? 0) > 0 && (
+                        <div className="flex justify-between py-0.5">
+                          <span className="text-orange-600 font-medium">
+                            Beneficiary Discount (
+                            {selectedStudent?.discountType === 'percentage'
+                              ? `${Number(selectedStudent?.discountValue).toFixed(0)}%`
+                              : 'Fixed'}
+                            )
+                          </span>
+                          <span className="font-mono tabular-nums text-orange-600">
+                            −GHS {(selectedStudentFeeDetails.discountAmount ?? 0).toFixed(2)}
+                          </span>
                         </div>
                       )}
-                      <div className="flex justify-between border-t border-emerald-200 pt-1 col-span-2 dark:border-blue-200">
-                        <span className="font-semibold text-emerald-950 dark:text-blue-900">Total Due:</span>
-                        <span className="font-bold text-emerald-950 dark:text-blue-900">GHS {selectedStudentFeeDetails.totalAmountDue.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-emerald-700 dark:text-green-700">Paid this term:</span>
-                        <span className="font-medium text-emerald-700 dark:text-green-700">− GHS {selectedStudentFeeDetails.totalPaid.toFixed(2)}</span>
+
+                      {selectedStudentFeeDetails.individualChargeLines.map((charge) => (
+                        <div key={charge.id} className="flex justify-between py-0.5 border-t border-dashed border-emerald-100">
+                          <span className="text-slate-600 text-xs sm:text-sm">
+                            {charge.description}
+                            <span className="block text-[10px] text-amber-700">Individual Charge</span>
+                          </span>
+                          <span className="font-mono tabular-nums text-amber-800">
+                            GHS {Number(charge.amount).toFixed(2)}
+                          </span>
+                        </div>
+                      ))}
+
+                      {arrearsDisplayLines.map((line) => (
+                        <div key={line.key} className="flex justify-between py-0.5 border-t border-dashed border-amber-100">
+                          <span className="text-amber-800 text-xs sm:text-sm">
+                            {line.label}
+                            <span className="block text-[10px] text-amber-600">Arrears</span>
+                          </span>
+                          <span className="font-mono tabular-nums text-amber-800">
+                            GHS {Number(line.amount).toFixed(2)}
+                          </span>
+                        </div>
+                      ))}
+
+                      {(selectedStudentFeeDetails.creditBroughtForward ?? 0) > 0 && (
+                        <div className="flex justify-between py-0.5 border-t border-dashed border-blue-100">
+                          <span className="text-blue-700 text-xs sm:text-sm">
+                            Credit Brought Forward
+                          </span>
+                          <span className="font-mono tabular-nums text-blue-700">
+                            −GHS {(selectedStudentFeeDetails.creditBroughtForward ?? 0).toFixed(2)}
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="border-t border-emerald-200 pt-2 mt-2 space-y-1">
+                        <div className="flex justify-between font-semibold">
+                          <span>Total Amount Due</span>
+                          <span className="font-mono tabular-nums">
+                            GHS {(selectedStudentFeeDetails.netAmountDue ?? selectedStudentFeeDetails.totalAmountDue).toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-emerald-700">
+                          <span>Amount Paid So Far</span>
+                          <span className="font-mono tabular-nums">
+                            GHS {(selectedStudentFeeDetails.totalPaid ?? 0).toFixed(2)}
+                          </span>
+                        </div>
+                        <div className={`flex justify-between font-semibold ${outstandingBalance > 0 ? 'text-red-700' : 'text-green-700'}`}>
+                          <span>Outstanding Balance</span>
+                          <span className="font-mono tabular-nums">GHS {outstandingBalance.toFixed(2)}</span>
+                        </div>
+                        {(selectedStudentFeeDetails.creditBalance ?? 0) > 0 && (
+                          <div className="flex justify-between text-blue-700">
+                            <span>Credit Balance</span>
+                            <span className="font-mono tabular-nums">
+                              GHS {(selectedStudentFeeDetails.creditBalance ?? 0).toFixed(2)}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
-                    <div className={`px-4 py-3 flex items-center justify-between ${outstandingBalance > 0 ? 'bg-red-50 border-t border-red-200' : 'bg-green-50 border-t border-green-200'}`}>
-                      <span className={`font-bold text-base ${outstandingBalance > 0 ? 'text-red-700' : 'text-green-700'}`}>
-                        Outstanding Balance:
-                      </span>
-                      <span className={`font-bold text-xl ${outstandingBalance > 0 ? 'text-red-700' : 'text-green-700'}`}>
-                        GHS {outstandingBalance.toFixed(2)}
-                      </span>
-                    </div>
-                    {selectedStudentFeeDetails.creditBalance > 0 && (
-                      <div className="px-4 py-2 bg-blue-50 border-t border-blue-200 flex justify-between text-sm">
-                        <span className="text-blue-700">Credit Balance:</span>
-                        <span className="font-semibold text-blue-700">GHS {selectedStudentFeeDetails.creditBalance.toFixed(2)}</span>
-                      </div>
-                    )}
-                  </>
+                  </div>
                 )}
               </div>
             )}

@@ -127,7 +127,7 @@ export function getDashboardCalendarYearForMonthlyChart(academicYearSetting: str
 }
 
 /** Align with backend `beneficiaryAdjustedFee`: missing discount type on a beneficiary = full waiver. */
-function applyBeneficiaryToBaseFee(
+export function applyBeneficiaryToBaseFee(
   baseTermFee: number,
   info?: { isBeneficiary?: boolean; discountType?: string; discountValue?: number }
 ): { currentTermFee: number; discountAmount: number } {

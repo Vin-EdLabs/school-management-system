@@ -9,7 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useData } from '../../contexts/DataContext';
 import { useSchool } from '../../contexts/SchoolContext';
 import { useAudit } from '../../contexts/AuditContext';
-import { Search, Edit, Users, Eye, FileDown } from 'lucide-react';
+import { Search, Edit, Users, Eye, FileDown, FileSpreadsheet } from 'lucide-react';
 import LazyTeacherAvatar from './LazyTeacherAvatar';
 import { teacherStatusBadge } from './TeacherStatusModals';
 import type { Teacher } from '../../contexts/DataContext';
@@ -18,6 +18,7 @@ import TeacherDetailsDialog from './TeacherDetailsDialog';
 import EditTeacherDialog from './EditTeacherDialog';
 import { resolveLogoUrl } from '@/services/tenantService';
 import { downloadTeacherRosterPdf } from '@/utils/buildStaffRosterPdf';
+import { downloadTeacherRosterExcel } from '@/utils/buildStaffRosterExcel';
 
 const ViewAllTeachers = () => {
   const { teachers, classes } = useData();
@@ -99,10 +100,24 @@ const ViewAllTeachers = () => {
     });
   };
 
+  const exportRows = () =>
+    selected.size > 0 ? filteredTeachers.filter((t) => selected.has(t.id)) : filteredTeachers;
+
+  const mapTeacherRows = (rows: typeof filteredTeachers) =>
+    rows.map((t) => ({
+      fullName: t.fullName,
+      staffId: t.staffId,
+      classes: t.classAssigned || '—',
+      department: t.department || '—',
+      salary: Number(t.monthlySalary) || 0,
+      phone: t.phoneNumber || '',
+      email: t.email || '',
+    }));
+
   const exportPdf = async () => {
-    const rows = filteredTeachers.filter((t) => selected.has(t.id));
+    const rows = exportRows();
     if (rows.length === 0) {
-      toast({ title: 'Nothing selected', description: 'Select at least one teacher to export.', variant: 'destructive' });
+      toast({ title: 'Nothing to export', description: 'No teachers match the current filters.', variant: 'destructive' });
       return;
     }
     setExporting(true);
@@ -110,20 +125,30 @@ const ViewAllTeachers = () => {
       await downloadTeacherRosterPdf({
         schoolName: school?.name || 'School',
         logoUrl: resolveLogoUrl(school?.logo_url ?? null),
-        teachers: rows.map((t) => ({
-          fullName: t.fullName,
-          staffId: t.staffId,
-          classes: t.classAssigned || '—',
-          department: t.department || '—',
-          salary: Number(t.monthlySalary) || 0,
-          phone: t.phoneNumber || '',
-          email: t.email || '',
-        })),
+        teachers: mapTeacherRows(rows),
       });
       toast({ title: 'PDF exported', description: `${rows.length} teacher(s) exported.` });
     } catch (e: unknown) {
       const err = e as { message?: string };
       toast({ title: 'Export failed', description: err?.message || 'Could not generate PDF.', variant: 'destructive' });
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const exportExcel = async () => {
+    const rows = exportRows();
+    if (rows.length === 0) {
+      toast({ title: 'Nothing to export', description: 'No teachers match the current filters.', variant: 'destructive' });
+      return;
+    }
+    setExporting(true);
+    try {
+      await downloadTeacherRosterExcel(mapTeacherRows(rows));
+      toast({ title: 'CSV exported', description: `${rows.length} teacher(s) exported.` });
+    } catch (e: unknown) {
+      const err = e as { message?: string };
+      toast({ title: 'Export failed', description: err?.message || 'Could not generate CSV file.', variant: 'destructive' });
     } finally {
       setExporting(false);
     }
@@ -155,11 +180,21 @@ const ViewAllTeachers = () => {
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={exporting || selected.size === 0}
+                disabled={exporting || filteredTeachers.length === 0}
                 onClick={() => void exportPdf()}
               >
                 <FileDown className="h-4 w-4 mr-2" />
-                Export PDF ({selected.size || 0})
+                Export PDF{selected.size > 0 ? ` (${selected.size})` : ''}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={exporting || filteredTeachers.length === 0}
+                onClick={() => void exportExcel()}
+              >
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                Export CSV{selected.size > 0 ? ` (${selected.size})` : ''}
               </Button>
               <Select value={filterStatus} onValueChange={setFilterStatus}>
                 <SelectTrigger className="w-40">

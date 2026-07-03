@@ -22,6 +22,7 @@ import {
 } from '../utils/auditResolve.js';
 import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 import { getActiveAcademicTermId } from '../services/studentTermTrackingService.js';
+import { recalculateStudentTermFeeForActiveTerm } from '../services/ledgerFinanceService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -688,6 +689,29 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
       userAgent: req.get('user-agent') || null,
     });
     emitTenantDataChanged(tenantId, 'student', 'updated');
+
+    const beneficiaryFields = [
+      'is_beneficiary',
+      'beneficiary_type',
+      'discount_type',
+      'discount_value',
+      'beneficiary_notes',
+    ] as const;
+    const beneficiaryChanged = beneficiaryFields.some((field) => updates[field] !== undefined);
+    const isActiveAfter =
+      String(updated.enrollment_status || existing.enrollment_status || 'active').toLowerCase() === 'active';
+
+    if (beneficiaryChanged && isActiveAfter) {
+      try {
+        const feeRecalc = await recalculateStudentTermFeeForActiveTerm(tenantId, parseInt(id, 10));
+        if (feeRecalc.updated) {
+          emitTenantDataChanged(tenantId, 'finance', 'updated');
+          emitTenantDataChanged(tenantId, 'fee', 'updated');
+        }
+      } catch (feeErr) {
+        console.error('[update-student] Beneficiary term fee recalculation failed:', feeErr);
+      }
+    }
 
     let billing: Awaited<ReturnType<typeof tryPostStudentActivationTermFee>> | null = null;
     const priorClassId = existing.class_assigned_id != null ? Number(existing.class_assigned_id) : null;

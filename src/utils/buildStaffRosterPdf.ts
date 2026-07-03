@@ -135,3 +135,64 @@ export async function downloadOtherStaffRosterPdf(input: {
   drawPageFooters(doc, input.schoolName, reportTitle);
   doc.save(`staff-roster-${generatedAt.toISOString().split('T')[0]}.pdf`);
 }
+
+export interface CombinedStaffRosterRow {
+  fullName: string;
+  staffId: string;
+  staffType: string;
+  position: string;
+  department: string;
+  phone: string;
+  email: string;
+  status: string;
+}
+
+export async function downloadCombinedStaffRosterPdf(input: {
+  schoolName: string;
+  logoUrl: string | null;
+  staff: CombinedStaffRosterRow[];
+}): Promise<void> {
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const logoDataUrl = await loadImageDataUrl(input.logoUrl);
+  const generatedAt = new Date();
+  const reportTitle = 'Complete Staff Roster';
+
+  const startY = drawClassicSchoolPdfHeader(doc, {
+    schoolName: input.schoolName,
+    logoDataUrl,
+    reportTitle,
+    metaLines: [
+      `Generated: ${generatedAt.toLocaleString()}`,
+      `Total staff: ${input.staff.length}`,
+    ],
+    margin: MARGIN,
+  });
+
+  autoTable(doc, {
+    startY,
+    head: [['#', 'Name', 'Staff ID', 'Type', 'Position', 'Department', 'Phone', 'Email', 'Status']],
+    body: input.staff.map((row, index) => [
+      String(index + 1),
+      row.fullName,
+      row.staffId,
+      row.staffType,
+      row.position || '—',
+      row.department || '—',
+      row.phone || '—',
+      row.email || '—',
+      row.status || 'active',
+    ]),
+    theme: 'grid',
+    headStyles: { fillColor: [242, 242, 242], textColor: 34, halign: 'center' },
+    bodyStyles: { valign: 'middle', fontSize: 8 },
+    styles: { cellPadding: 2.5, textColor: 55 },
+    margin: { left: MARGIN, right: MARGIN },
+    columnStyles: {
+      0: { cellWidth: 8 },
+      2: { cellWidth: 20 },
+    },
+  });
+
+  drawPageFooters(doc, input.schoolName, reportTitle);
+  doc.save(`all-staff-roster-${generatedAt.toISOString().split('T')[0]}.pdf`);
+}

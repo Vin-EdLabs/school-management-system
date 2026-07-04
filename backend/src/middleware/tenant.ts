@@ -1,7 +1,7 @@
-import { Response, NextFunction } from 'express';
+import type { Response, NextFunction } from 'express';
 import { AuthRequest } from './auth.js';
 import { query } from '../db/connection.js';
-
+import { resolveRequestTenantId } from '../utils/requestTenantContext.js';
 export const setTenantContext = async (
   req: AuthRequest,
   res: Response,
@@ -11,14 +11,22 @@ export const setTenantContext = async (
     if (!req.user) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
-    
-    // Super-admin can access any tenant via query param
-    if (req.user.role === 'super-admin' && req.query.tenantId) {
-      const tenantId = parseInt(req.query.tenantId as string);
-      const tenantCheck = await query('SELECT id FROM tenants WHERE id = $1', [tenantId]);
-      
-      if (tenantCheck.rows.length > 0) {
-        req.user.tenantId = tenantId;
+
+    if (req.user.role === 'super-admin') {
+      const fromQuery = parseInt(String(req.query.tenantId ?? ''), 10);
+      const requestTenantId = await resolveRequestTenantId(req);
+      const tenantId =
+        Number.isFinite(fromQuery) && fromQuery > 0
+          ? fromQuery
+          : requestTenantId != null && requestTenantId > 0
+            ? requestTenantId
+            : null;
+
+      if (tenantId != null) {
+        const tenantCheck = await query('SELECT id FROM tenants WHERE id = $1', [tenantId]);
+        if (tenantCheck.rows.length > 0) {
+          req.user.tenantId = tenantId;
+        }
       }
     }
     

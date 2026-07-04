@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { query } from '../db/connection.js';
 import { buildAuditContextFromAuth, enrichImpersonatorTenant, runWithAuditContext } from './auditContext.js';
+import { resolveRequestTenantId } from '../utils/requestTenantContext.js';
 
 export interface AuthRequest extends Request {
   user?: {
@@ -124,6 +125,28 @@ export const authenticate = async (
       teacherId: row.teacher_id ? String(row.teacher_id) : null,
       otherStaffId: row.other_staff_id || null,
     };
+
+    const requestTenantId = await resolveRequestTenantId(req);
+    if (
+      requestTenantId != null &&
+      normalizeRole(req.user.role) !== 'super-admin' &&
+      req.user.tenantId !== requestTenantId
+    ) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    // Super-admin in a school context: use the requested tenant for downstream handlers
+    if (requestTenantId != null && normalizeRole(req.user.role) === 'super-admin') {
+      req.user.tenantId = requestTenantId;
+    }
+
+    if (
+      decoded.tenantId != null &&
+      normalizeRole(req.user.role) !== 'super-admin' &&
+      Number(decoded.tenantId) !== Number(req.user.tenantId)
+    ) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
 
     const ctx = buildAuditContextFromAuth(req);
     if (ctx.impersonator) {

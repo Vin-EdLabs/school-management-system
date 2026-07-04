@@ -1718,9 +1718,11 @@ const runMigrations = async () => {
       }
       console.log('✅ Default tenant (Rosa Gardens) created - login: admin / admin123');
       // Seed ledger: one academic year and one term for the new tenant
+      const yearStart = new Date().getFullYear();
+      const yearLabel = `${yearStart}/${yearStart + 1}`;
       const ay = await client.query(
         'INSERT INTO academic_years (tenant_id, name, is_current) VALUES ($1, $2, true) RETURNING id',
-        [rosaId, new Date().getFullYear().toString()]
+        [rosaId, yearLabel]
       );
       const ayId = ay.rows[0].id;
       await client.query(
@@ -1735,9 +1737,11 @@ const runMigrations = async () => {
       const tid = t.id;
       const hasYear = await client.query('SELECT 1 FROM academic_years WHERE tenant_id = $1 LIMIT 1', [tid]);
       if (hasYear.rows.length === 0) {
+        const yearStart = new Date().getFullYear();
+        const yearLabel = `${yearStart}/${yearStart + 1}`;
         const ay = await client.query(
           'INSERT INTO academic_years (tenant_id, name, is_current) VALUES ($1, $2, true) RETURNING id',
-          [tid, new Date().getFullYear().toString()]
+          [tid, yearLabel]
         );
         await client.query(
           'INSERT INTO terms (tenant_id, academic_year_id, name, is_current) VALUES ($1, $2, $3, true)',

@@ -99,6 +99,7 @@ import GlobalAnnouncementsModule from '../components/superadmin/GlobalAnnounceme
 import { SchoolProvider } from '../contexts/SchoolContext';
 import { ImpersonationProvider } from '../contexts/ImpersonationContext';
 import ImpersonationShell from '../components/impersonation/ImpersonationShell';
+import { buildSuperAdminHandoffUrl } from '../utils/superAdminSessionHandoff';
 import BecomeUserPanel from '../components/impersonation/BecomeUserPanel';
 
 interface School {
@@ -744,7 +745,9 @@ const SuperAdminDashboard = () => {
     apiService.setTenantContext(school.id);
     localStorage.setItem('currentSchoolId', school.id.toString());
     if (school.slug) {
-      const url = getSubdomainUrl(school.slug);
+      const baseUrl = getSubdomainUrl(school.slug);
+      const token = localStorage.getItem('authToken');
+      const url = token ? buildSuperAdminHandoffUrl(baseUrl, token) : baseUrl;
       window.open(url, '_blank');
     } else {
       const path = `/school/${school.id}`;

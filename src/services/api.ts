@@ -142,7 +142,7 @@ export class ApiService {
     return url;
   }
 
-  private getAuthHeaders(): HeadersInit {
+  private getAuthHeaders(omitTenantHeaders = false): HeadersInit {
     const token = localStorage.getItem('authToken');
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
@@ -150,11 +150,13 @@ export class ApiService {
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
-    if (this.tenantId !== null) {
-      headers['X-Tenant-Id'] = this.tenantId.toString();
-    } else {
-      const slug = detectTenantSlugFromHost();
-      if (slug) headers['X-Tenant-Slug'] = slug;
+    if (!omitTenantHeaders) {
+      if (this.tenantId !== null) {
+        headers['X-Tenant-Id'] = this.tenantId.toString();
+      } else {
+        const slug = detectTenantSlugFromHost();
+        if (slug) headers['X-Tenant-Slug'] = slug;
+      }
     }
     return headers;
   }
@@ -226,11 +228,18 @@ export class ApiService {
     });
   }
 
-  async post<T>(endpoint: string, data: unknown = {}, options?: { skipTenant?: boolean }): Promise<T> {
+  async post<T>(
+    endpoint: string,
+    data: unknown = {},
+    options?: { skipTenant?: boolean; skipTenantHeaders?: boolean }
+  ): Promise<T> {
     const body = data ?? {};
     const key = this.mutationKey('POST', endpoint, body);
     return this.withMutationGuard(key, async () => {
-      const headers = { ...this.getAuthHeaders(), 'X-Idempotency-Key': key };
+      const headers = {
+        ...this.getAuthHeaders(options?.skipTenantHeaders),
+        'X-Idempotency-Key': key,
+      };
       const response = await fetch(this.buildURL(endpoint, !options?.skipTenant), {
         method: 'POST',
         headers,

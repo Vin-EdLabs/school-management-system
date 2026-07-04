@@ -6,7 +6,9 @@ import { initInactivityTracker, isPWAInstalled, stopInactivityTracker } from '..
 import { clearActiveTermWelcomeDismiss } from '../components/onboarding/ActiveTermWelcomeModal';
 import { startSessionPulse, stopSessionPulse, endSessionPulse } from '../utils/sessionPulse';
 import { saveStaffImpersonationToken, tokenHasImpersonator, isStaffImpersonationActive } from '../utils/impersonationHelpers';
-import { isSchoolTenantView } from '../utils/schoolAdminView';
+import { isSchoolTenantView, shouldUseAdministratorDashboard } from '../utils/schoolAdminView';
+import { detectTenantSlugFromHost } from '../utils/tenantHost';
+import { consumeSuperAdminHandoffFromHash } from '../utils/superAdminSessionHandoff';
 import { HEADMASTER_MODULES } from '../utils/headmasterPortal';
 
 const PRIMARY_ADMIN_MODULES = [
@@ -88,21 +90,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     let cancelled = false;
+    const handoffToken = consumeSuperAdminHandoffFromHash();
+    if (handoffToken) {
+      localStorage.setItem('authToken', handoffToken);
+    }
     const bootstrapToken = localStorage.getItem('authToken');
     const savedUser = localStorage.getItem('rosaGardensUser');
 
-    if (bootstrapToken && savedUser) {
-      const cachedUser = userFromStoragePayload(savedUser);
-      if (cachedUser) {
-        setToken(bootstrapToken);
-        setUser(cachedUser);
-        setIsAuthenticated(true);
-        if (tokenHasImpersonator(bootstrapToken)) {
-          saveStaffImpersonationToken(bootstrapToken);
-        }
-        const tid = cachedUser.tenantId;
-        if (tid != null && Number.isFinite(tid)) {
-          apiService.setTenantContext(tid);
+    if (bootstrapToken) {
+      if (savedUser) {
+        const cachedUser = userFromStoragePayload(savedUser);
+        if (cachedUser) {
+          setToken(bootstrapToken);
+          setUser(cachedUser);
+          setIsAuthenticated(true);
+          if (tokenHasImpersonator(bootstrapToken)) {
+            saveStaffImpersonationToken(bootstrapToken);
+          }
+          const tid = cachedUser.tenantId;
+          if (tid != null && Number.isFinite(tid)) {
+            apiService.setTenantContext(tid);
+          } else if (cachedUser.role === 'super-admin') {
+            const storedSchoolId = localStorage.getItem('currentSchoolId');
+            if (storedSchoolId) {
+              const schoolId = parseInt(storedSchoolId, 10);
+              if (!isNaN(schoolId)) {
+                apiService.setTenantContext(schoolId);
+              }
+            }
+          }
         }
       }
 
@@ -116,11 +132,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (response.user) {
             setIsAuthenticated(true);
             setToken(currentToken);
-            setUser({
+            const nextUser = {
               ...response.user,
               isPrimaryAdmin: response.user.isPrimaryAdmin,
               otherStaffId: response.user.otherStaffId ?? null,
-            });
+            };
+            setUser(nextUser);
+            localStorage.setItem('rosaGardensUser', JSON.stringify(nextUser));
+            if (response.user.role === 'super-admin') {
+              const storedSchoolId = localStorage.getItem('currentSchoolId');
+              if (storedSchoolId) {
+                const schoolId = parseInt(storedSchoolId, 10);
+                if (!isNaN(schoolId)) {
+                  apiService.setTenantContext(schoolId);
+                }
+              }
+            }
             if (response.impersonation?.active) {
               sessionStorage.setItem(
                 'impersonation_meta',
@@ -183,16 +210,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (username: string, password: string, role: UserRole, tenantId?: number): Promise<boolean> => {
     try {
-      const payload: { username: string; password: string; role?: UserRole; tenantId?: number; is_pwa?: boolean } = {
+      const isSuperAdminLogin = role === 'super-admin';
+      const onSchoolPortal = isSchoolTenantView(pathname);
+      if (isSuperAdminLogin && !onSchoolPortal) {
+        apiService.clearTenantContext();
+      }
+
+      const payload: {
+        username: string;
+        password: string;
+        role?: UserRole;
+        tenantId?: number;
+        subdomain?: string;
+        is_pwa?: boolean;
+      } = {
         username,
         password,
         role,
         is_pwa: isPWAInstalled(),
       };
-      if (tenantId !== undefined && tenantId !== null && !isNaN(tenantId)) {
+      if (!isSuperAdminLogin && tenantId !== undefined && tenantId !== null && !isNaN(tenantId)) {
         payload.tenantId = Number(tenantId);
       }
-      const response: any = await apiService.post('/auth/login', payload);
+      if (!isSuperAdminLogin || onSchoolPortal) {
+        const subdomain = detectTenantSlugFromHost();
+        if (subdomain) {
+          payload.subdomain = subdomain;
+        }
+      }
+      const skipTenantHeaders = isSuperAdminLogin && !onSchoolPortal;
+      const response: any = await apiService.post('/auth/login', payload, {
+        skipTenant: skipTenantHeaders,
+        skipTenantHeaders,
+      });
 
       if (response.token && response.user) {
         localStorage.setItem('authToken', response.token);
@@ -212,6 +262,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const loginTenantId = Number(response.user.tenantId);
         if (Number.isFinite(loginTenantId)) {
           clearActiveTermWelcomeDismiss(loginTenantId);
+        } else if (response.user.role === 'super-admin' && tenantId != null && !isNaN(tenantId)) {
+          apiService.setTenantContext(Number(tenantId));
+          localStorage.setItem('currentSchoolId', String(tenantId));
         }
 
         try {
@@ -275,6 +328,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (tid && Number.isFinite(tid)) {
       apiService.setTenantContext(tid);
       localStorage.setItem('currentSchoolId', String(tid));
+    } else if (userPayload.role === 'super-admin') {
+      const storedSchoolId = localStorage.getItem('currentSchoolId');
+      if (storedSchoolId) {
+        const schoolId = parseInt(storedSchoolId, 10);
+        if (!isNaN(schoolId)) {
+          apiService.setTenantContext(schoolId);
+        }
+      }
     }
     if (tokenHasImpersonator(newToken)) {
       saveStaffImpersonationToken(newToken);
@@ -326,12 +387,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const hasAccess = (module: string): boolean => {
     if (!user) return false;
 
-    if (user.role === 'super-admin') {
-      const modules = inSchoolView ? PRIMARY_ADMIN_MODULES : PLATFORM_SUPER_ADMIN_MODULES;
-      return (modules as readonly string[]).includes(module);
+    if (user.role === 'super-admin' && !inSchoolView) {
+      return (PLATFORM_SUPER_ADMIN_MODULES as readonly string[]).includes(module);
     }
 
-    if (user.role === 'administrator' && user.isPrimaryAdmin) {
+    if (actsAsPrimaryAdmin) {
       return (PRIMARY_ADMIN_MODULES as readonly string[]).includes(module);
     }
 

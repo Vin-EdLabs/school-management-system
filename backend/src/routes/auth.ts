@@ -9,6 +9,7 @@ import { getClientIp } from '../utils/clientIp.js';
 import { resolveUserDisplayName } from '../utils/auditResolve.js';
 import { pulseHttpSession, clearHttpSession } from '../services/presenceService.js';
 import { getIO } from '../socket.js';
+import { resolveRequestTenantId } from '../utils/requestTenantContext.js';
 
 const router = express.Router();
 
@@ -29,98 +30,88 @@ const nextDayLockSql = `
 // Login - tenant-aware, blocks inactive schools
 router.post('/login', async (req, res) => {
   try {
-    const { username, password, tenantId: rawTenantId, role: requestedRole } = req.body;
-    const tenantId = rawTenantId !== undefined && rawTenantId !== null && rawTenantId !== ''
-      ? parseInt(String(rawTenantId), 10) : null;
-    const hasTenantId = tenantId !== null && !isNaN(tenantId);
-    
+    const { username, password, tenantId: rawTenantId, role: requestedRole, subdomain: bodySubdomain } = req.body;
+    const isSuperAdminLogin = normalizeRole(requestedRole) === 'super-admin';
+    const resolvedTenantId = await resolveRequestTenantId(req);
+    const tenantId =
+      resolvedTenantId ??
+      (rawTenantId !== undefined && rawTenantId !== null && rawTenantId !== ''
+        ? parseInt(String(rawTenantId), 10)
+        : null);
+    const hasTenantId = tenantId !== null && !Number.isNaN(tenantId);
+
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password required' });
     }
-    
-    if (hasTenantId) {
+
+    if (!isSuperAdminLogin && !hasTenantId) {
+      return res.status(400).json({ error: 'School context required for login' });
+    }
+
+    if (!isSuperAdminLogin && hasTenantId) {
       const tenantCheck = await query(
         'SELECT id, is_active FROM tenants WHERE id = $1',
         [tenantId]
       );
       if (tenantCheck.rows.length === 0) {
-        return res.status(404).json({ error: 'School not found' });
+        return res.status(401).json({ error: 'Invalid credentials' });
       }
       if (!tenantCheck.rows[0].is_active) {
         return res.status(403).json({ error: 'School account is suspended' });
       }
     }
-    
-    // Try modern schema first, then progressively simpler legacy-compatible queries.
-    const attempts: Array<{ sql: string; params: any[] }> = [
-      {
-        sql: `
-          SELECT u.id, u.tenant_id, u.username, u.password_hash, u.role, u.teacher_id, u.other_staff_id, u.is_primary_admin,
-                 COALESCE(t.full_name, s.full_name, u.full_name, u.username) as full_name
-          FROM users u
-          LEFT JOIN teachers t ON u.teacher_id::text = t.id::text AND t.tenant_id = u.tenant_id
-          LEFT JOIN other_staff s ON u.other_staff_id = s.id AND s.tenant_id = u.tenant_id
-          WHERE (u.username = $1 OR u.email = $1 OR t.staff_id = $1 OR s.staff_id = $1) AND u.is_active = true
-          ${hasTenantId ? 'AND (u.tenant_id = $2 OR u.tenant_id IS NULL)' : 'AND u.tenant_id IS NULL'}
-        `,
-        params: hasTenantId ? [username, tenantId] : [username]
-      },
-      {
-        sql: `
-          SELECT u.id, u.tenant_id, u.username, u.password_hash, u.role, u.teacher_id, u.other_staff_id, u.is_primary_admin,
-                 u.username as full_name
-          FROM users u
-          WHERE u.username = $1 AND COALESCE(u.is_active, true) = true
-          ${hasTenantId ? 'AND (u.tenant_id = $2 OR u.tenant_id IS NULL)' : ''}
-        `,
-        params: hasTenantId ? [username, tenantId] : [username]
-      },
-      {
-        sql: `
-          SELECT u.id, NULL::integer as tenant_id, u.username, u.password_hash, u.role,
-                 NULL::text as teacher_id, false as is_primary_admin, u.username as full_name
-          FROM users u
-          WHERE u.username = $1 AND COALESCE(u.is_active, true) = true
-        `,
-        params: [username]
-      }
-    ];
 
-    let result: any = { rows: [] };
-    for (const attempt of attempts) {
-      try {
-        result = await query(attempt.sql, attempt.params);
-        if (result.rows.length > 0) break;
-      } catch {
-        continue;
+    const schoolUserSql = `
+      SELECT u.id, u.tenant_id, u.username, u.password_hash, u.role, u.teacher_id, u.other_staff_id, u.is_primary_admin,
+             COALESCE(t.full_name, s.full_name, u.full_name, u.username) as full_name
+      FROM users u
+      LEFT JOIN teachers t ON u.teacher_id::text = t.id::text AND t.tenant_id = u.tenant_id
+      LEFT JOIN other_staff s ON u.other_staff_id = s.id AND s.tenant_id = u.tenant_id
+      WHERE (u.username = $1 OR u.email = $1 OR t.staff_id = $1 OR s.staff_id = $1)
+        AND COALESCE(u.is_active, true) = true
+        AND u.tenant_id = $2
+    `;
+
+    const superAdminSql = `
+      SELECT u.id, u.tenant_id, u.username, u.password_hash, u.role, u.teacher_id, u.other_staff_id, u.is_primary_admin,
+             COALESCE(u.full_name, u.username) as full_name
+      FROM users u
+      WHERE (u.username = $1 OR u.email = $1)
+        AND COALESCE(u.is_active, true) = true
+        AND u.tenant_id IS NULL
+        AND LOWER(TRIM(u.role)) IN ('super-admin', 'superadmin')
+    `;
+
+    let result: { rows: Record<string, unknown>[] };
+    if (isSuperAdminLogin) {
+      // Ignore stale X-Tenant-Id / subdomain from prior school sessions
+      result = await query(superAdminSql, [username]);
+    } else if (hasTenantId) {
+      result = await query(schoolUserSql, [username, tenantId]);
+      // Platform super-admin signing into a school portal (same credentials, school context)
+      if (result.rows.length === 0) {
+        const superAdminResult = await query(superAdminSql, [username]);
+        if (superAdminResult.rows.length > 0) {
+          result = superAdminResult;
+        }
       }
+    } else {
+      return res.status(400).json({ error: 'School context required for login' });
     }
     
     if (result.rows.length === 0) {
-      const inactiveAttempts: Array<{ sql: string; params: any[] }> = [
-        {
-          sql: `
-            SELECT u.id, u.tenant_id, u.username, u.role
-            FROM users u
-            WHERE (u.username = $1 OR u.email = $1 OR EXISTS (
-              SELECT 1 FROM teachers t2 WHERE t2.tenant_id = u.tenant_id AND t2.staff_id = $1 AND u.teacher_id::text = t2.id::text
-            )) AND COALESCE(u.is_active, true) = false
-            ${hasTenantId ? 'AND (u.tenant_id = $2 OR u.tenant_id IS NULL)' : 'AND u.tenant_id IS NULL'}
-            LIMIT 1
-          `,
-          params: hasTenantId ? [username, tenantId] : [username],
-        },
-        {
-          sql: `
-            SELECT u.id, u.tenant_id, u.username, u.role
-            FROM users u
-            WHERE u.username = $1 AND COALESCE(u.is_active, true) = false
-            ${hasTenantId ? 'AND (u.tenant_id = $2 OR u.tenant_id IS NULL)' : ''}
-            LIMIT 1
-          `,
-          params: hasTenantId ? [username, tenantId] : [username],
-        },
-      ];
+      const inactiveSchoolUserSql = `
+        SELECT u.id, u.tenant_id, u.username, u.role
+        FROM users u
+        LEFT JOIN teachers t ON u.teacher_id::text = t.id::text AND t.tenant_id = u.tenant_id
+        WHERE (u.username = $1 OR u.email = $1 OR t.staff_id = $1)
+          AND COALESCE(u.is_active, true) = false
+          AND u.tenant_id = $2
+        LIMIT 1
+      `;
+      const inactiveAttempts: Array<{ sql: string; params: unknown[] }> = hasTenantId
+        ? [{ sql: inactiveSchoolUserSql, params: [username, tenantId] }]
+        : [];
 
       for (const attempt of inactiveAttempts) {
         try {
@@ -149,7 +140,7 @@ router.post('/login', async (req, res) => {
         }
       }
 
-      const superAdminAttempt = normalizeRole(requestedRole) === 'super-admin' && !hasTenantId;
+      const superAdminAttempt = isSuperAdminLogin;
       await writeAuditLog({
         tenantId: hasTenantId ? tenantId : null,
         userId: null,
@@ -161,14 +152,36 @@ router.post('/login', async (req, res) => {
         summary: superAdminAttempt
           ? `Super Admin failed login — username "${String(username)}" not found`
           : `Failed login attempt — username "${String(username)}" not found`,
-        details: { username: String(username).slice(0, 120), reason: 'unknown_username' },
+        details: {
+          username: String(username).slice(0, 120),
+          reason: 'unknown_username',
+          subdomain: bodySubdomain ? String(bodySubdomain).slice(0, 80) : undefined,
+        },
         ipAddress: getClientIp(req),
         userAgent: req.get('user-agent') || null,
       });
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const user = result.rows[0];
+    const user = result.rows[0] as {
+      id: number;
+      tenant_id: number | null;
+      username: string;
+      password_hash: string;
+      role: string;
+      teacher_id: string | null;
+      other_staff_id: number | null;
+      is_primary_admin: boolean;
+      full_name: string;
+    };
+
+    if (
+      hasTenantId &&
+      !isSuperAdminUser(user.role, user.tenant_id) &&
+      Number(user.tenant_id) !== Number(tenantId)
+    ) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
 
     const lockRes = await query(
       `SELECT locked_until, failed_login_attempts FROM users WHERE id = $1`,

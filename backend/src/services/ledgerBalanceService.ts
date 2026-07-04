@@ -1,5 +1,6 @@
 import type pg from 'pg';
 import { query } from '../db/connection.js';
+import { formatTermLedgerLabel } from '../utils/termLabel.js';
 import { resolveActiveLedgerTerm } from './studentUnifiedBalanceService.js';
 import { listStudentCharges } from './studentChargesService.js';
 import { enrichBalanceShapeWithExpectedFees } from './effectiveStudentBalanceService.js';
@@ -426,7 +427,8 @@ export async function getTermByTermLedgerSummary(
   const res = await run(
     `SELECT
        t.id AS term_id,
-       TRIM(t.name || ' ' || ay.name) AS term_label,
+       t.name AS term_part,
+       ay.name AS year_part,
        COALESCE(SUM(CASE WHEN sl.entry_type IN ('term_fee', 'student_charge') THEN sl.debit ELSE 0 END), 0) AS fee_billed,
        COALESCE(SUM(CASE WHEN sl.entry_type = 'payment' THEN (${LEDGER_TERM_CREDIT_SQL}) ELSE 0 END), 0) AS amount_paid,
        COALESCE(SUM(CASE WHEN sl.entry_type IN (${CREDIT_AVAILABLE_SQL}) THEN (${LEDGER_TERM_CREDIT_SQL}) ELSE 0 END), 0) AS credit,
@@ -456,7 +458,7 @@ export async function getTermByTermLedgerSummary(
     }
     return {
       termId: Number(row.term_id),
-      termLabel: String(row.term_label || '').trim(),
+      termLabel: formatTermLedgerLabel(String(row.term_part || ''), String(row.year_part || '')),
       feeBilled,
       amountPaid,
       outstanding,

@@ -130,6 +130,14 @@ function deriveStatus(outstanding: number, credit: number): BalanceStatus {
   return 'Cleared';
 }
 
+function buildTermLabel(term: string, year: string): string {
+  const t = String(term || '').trim();
+  const y = String(year || '').trim();
+  if (!t) return y;
+  if (!y || t.endsWith(y) || t.includes(y)) return t;
+  return `${t} ${y}`.trim();
+}
+
 export async function resolveActiveLedgerTerm(
   run: QueryFn,
   tenantId: number,
@@ -146,7 +154,7 @@ export async function resolveActiveLedgerTerm(
       return {
         ledgerTermId: resolved?.termId ?? null,
         academicYearId: resolved?.academicYearId ?? null,
-        termLabel: `${row.term_name} ${row.year}`.trim(),
+        termLabel: buildTermLabel(String(row.term_name), String(row.year)),
       };
     }
 
@@ -180,7 +188,7 @@ export async function resolveActiveLedgerTerm(
   return {
     ledgerTermId: resolved?.termId ?? null,
     academicYearId: resolved?.academicYearId ?? null,
-    termLabel: `${currentTerm} ${currentYear}`.trim(),
+    termLabel: buildTermLabel(String(currentTerm), String(currentYear)),
   };
 }
 

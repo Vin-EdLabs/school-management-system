@@ -19,7 +19,7 @@ const SETUP_MODULES = new Set(['subjects', 'classes', 'settings']);
  * Soft onboarding checklist — opens once per login session when setup is genuinely incomplete.
  */
 const SetupProgressGate: React.FC<SetupProgressGateProps> = ({ activeModule, setActiveModule }) => {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, actsAsPrimaryAdmin } = useAuth();
   const { schoolId } = useSchool();
   const { steps, isComplete, isLoading, loadFailed, completedCount, totalSteps, refetch } =
     useSetupProgress();
@@ -28,8 +28,7 @@ const SetupProgressGate: React.FC<SetupProgressGateProps> = ({ activeModule, set
   const navigatedFromSetupRef = useRef(false);
   const prevModuleRef = useRef(activeModule);
 
-  const isPrimarySchoolAdmin =
-    user?.role === 'administrator' && user.tenantId != null && user.isPrimaryAdmin === true;
+  const isPrimarySchoolAdmin = actsAsPrimaryAdmin;
 
   const shouldShowChecklist =
     isPrimarySchoolAdmin && !loadFailed && !isLoading && !isComplete && completedCount < totalSteps;

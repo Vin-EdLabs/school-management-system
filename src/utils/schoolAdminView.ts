@@ -24,3 +24,8 @@ export function isSuperAdminInSchoolContext(userRole: string | undefined): boole
 export function isPlatformSuperAdminRole(userRole: string | undefined): boolean {
   return userRole === 'super-admin' && !isSchoolTenantView();
 }
+
+/** School staff dashboard (primary admin layout), including platform super-admin inside a school. */
+export function shouldUseAdministratorDashboard(userRole: string | undefined): boolean {
+  return userRole === 'administrator' || userRole === 'super-admin';
+}

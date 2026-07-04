@@ -1,5 +1,5 @@
 import { getClient, query } from '../db/connection.js';
-import { resolveLedgerTermFromSettings, syncMissingLedgerTermFeesForActiveTerm } from './ledgerFinanceService.js';
+import { resolveLedgerTermFromSettings, syncMissingLedgerTermFeesForActiveTerm, reconcileDuplicateLedgerTerms } from './ledgerFinanceService.js';
 import { beneficiaryAdjustedFee } from '../utils/beneficiaryFee.js';
 
 export type LedgerBackfillResult = {
@@ -11,6 +11,14 @@ export type LedgerBackfillResult = {
 
 /** Idempotent backfill before fee reads (bulk-imported / direct-DB students). */
 export async function ensureTenantLedgerSynced(tenantId: number): Promise<void> {
+  try {
+    const { merged } = await reconcileDuplicateLedgerTerms(tenantId);
+    if (merged > 0) {
+      console.log(`[ensureTenantLedgerSynced] Tenant ${tenantId}: merged ${merged} duplicate ledger term(s)`);
+    }
+  } catch (err) {
+    console.error('[ensureTenantLedgerSynced] term reconcile failed (continuing):', err);
+  }
   try {
     await syncMissingLedgerTermFeesForActiveTerm(tenantId);
   } catch (err) {

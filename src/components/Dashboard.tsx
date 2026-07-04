@@ -74,6 +74,7 @@ import { domainsForModule } from '../config/moduleDataNeeds';
 import { ImpersonationProvider } from '../contexts/ImpersonationContext';
 import ImpersonationShell from './impersonation/ImpersonationShell';
 import { IMPERSONATION_GO_MODULE_KEY } from '../utils/impersonationHelpers';
+import { shouldUseAdministratorDashboard } from '../utils/schoolAdminView';
 
 const Dashboard = () => {
   const { hasAccess, user } = useAuth();
@@ -184,8 +185,7 @@ const Dashboard = () => {
         if (user?.role === 'finance') {
           return <FinancialDashboard />;
         }
-        // Show different dashboard based on role
-        if (user?.role === 'administrator') {
+        if (shouldUseAdministratorDashboard(user?.role)) {
           return <AdministratorDashboard onNavigate={setActiveModule} />;
         }
         return <DashboardHome />;
@@ -335,7 +335,8 @@ const Dashboard = () => {
         }
         if (user?.role === 'teacher') {
           return <TeacherDashboard />;
-        } else if (user?.role === 'administrator') {
+        }
+        if (shouldUseAdministratorDashboard(user?.role)) {
           return <AdministratorDashboard onNavigate={setActiveModule} />;
         }
         return <DashboardHome />;

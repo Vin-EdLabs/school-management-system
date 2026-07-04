@@ -156,12 +156,23 @@ async function findLedgerTermWithPriority(
 
   const p2b = await query(
     `SELECT t.id FROM terms t
-     WHERE t.tenant_id = $1 AND ${nameMatch} AND ${TERM_HAS_ACTIVITY_SQL}
+     WHERE t.tenant_id = $1
+       AND (t.name = $2 OR t.name = $3 OR t.name ILIKE $4 OR t.name ILIKE $5)
+       AND ${TERM_HAS_ACTIVITY_SQL}
      ORDER BY t.academic_year_id DESC, t.id DESC
      LIMIT 1`,
-    [tenantId, academicYearId, termLabel, termOnly, likeTerm, likeFull]
+    [tenantId, termLabel, termOnly, likeTerm, likeFull]
   );
   if (p2b.rows.length > 0) return Number(p2b.rows[0].id);
+
+  const p2c = await query(
+    `SELECT t.id FROM terms t
+     WHERE t.tenant_id = $1 AND ${TERM_HAS_ACTIVITY_SQL}
+     ORDER BY t.is_current DESC, t.id DESC
+     LIMIT 1`,
+    [tenantId]
+  );
+  if (p2c.rows.length > 0) return Number(p2c.rows[0].id);
 
   const p3 = await query(
     `SELECT t.id FROM terms t
@@ -243,7 +254,86 @@ export const resolveLedgerTermFromSettings = async (
     }
   }
 
-  return { academicYearId, termId };
+  const termMeta = await query(
+    'SELECT academic_year_id FROM terms WHERE id = $1 AND tenant_id = $2 LIMIT 1',
+    [termId, tenantId]
+  );
+  const resolvedYearId = Number(termMeta.rows[0]?.academic_year_id) || academicYearId;
+
+  return { academicYearId: resolvedYearId, termId };
+};
+
+/**
+ * Merge ledger/fee data from duplicate terms into the canonical term for the active settings year.
+ * Fixes tenants where billing landed on a mis-linked academic year or duplicate term name.
+ */
+export async function reconcileDuplicateLedgerTerms(tenantId: number): Promise<{ merged: number; canonicalTermId: number | null }> {
+  const settingsRes = await query(
+    'SELECT current_term, current_year FROM school_settings WHERE tenant_id = $1',
+    [tenantId]
+  );
+  const currentYear = String(settingsRes.rows[0]?.current_year || '').trim();
+  const currentTerm = String(settingsRes.rows[0]?.current_term || '').trim();
+  if (!currentYear || !currentTerm) return { merged: 0, canonicalTermId: null };
+
+  const termOnly = extractTermOnly(currentTerm);
+  const ayRes = await query(
+    'SELECT id FROM academic_years WHERE tenant_id = $1 AND name = $2 LIMIT 1',
+    [tenantId, currentYear]
+  );
+  if (ayRes.rows.length === 0) return { merged: 0, canonicalTermId: null };
+  const ayId = Number(ayRes.rows[0].id);
+
+  let canonical = await query(
+    `SELECT id FROM terms WHERE tenant_id = $1 AND academic_year_id = $2 AND name = $3 LIMIT 1`,
+    [tenantId, ayId, termOnly]
+  );
+  let canonicalId = canonical.rows[0]?.id ? Number(canonical.rows[0].id) : null;
+  if (!canonicalId) {
+    const ins = await query(
+      `INSERT INTO terms (tenant_id, academic_year_id, name, is_current) VALUES ($1, $2, $3, false) RETURNING id`,
+      [tenantId, ayId, termOnly]
+    );
+    canonicalId = Number(ins.rows[0].id);
+  }
+
+  const dupes = await query(
+    `SELECT DISTINCT t.id
+     FROM terms t
+     WHERE t.tenant_id = $1 AND t.id != $2
+       AND (
+         EXISTS (SELECT 1 FROM student_ledger sl WHERE sl.term_id = t.id AND sl.tenant_id = t.tenant_id)
+         OR EXISTS (SELECT 1 FROM ledger_fee_structures lfs WHERE lfs.term_id = t.id AND lfs.tenant_id = t.tenant_id)
+       )`,
+    [tenantId, canonicalId]
+  );
+
+  let merged = 0;
+  for (const row of dupes.rows) {
+    const fromId = Number(row.id);
+    await query(
+      `UPDATE student_ledger SET term_id = $1, academic_year_id = $2 WHERE tenant_id = $3 AND term_id = $4`,
+      [canonicalId, ayId, tenantId, fromId]
+    );
+    await query(
+      `UPDATE ledger_fee_structures SET term_id = $1, academic_year_id = $2 WHERE tenant_id = $3 AND term_id = $4`,
+      [canonicalId, ayId, tenantId, fromId]
+    );
+    await query(`UPDATE payments SET term_id = $1 WHERE tenant_id = $2 AND term_id = $3`, [canonicalId, tenantId, fromId]);
+    await query(`UPDATE invoices SET term_id = $1 WHERE tenant_id = $2 AND term_id = $3`, [canonicalId, tenantId, fromId]).catch(() => undefined);
+    await query(`DELETE FROM terms WHERE id = $1 AND tenant_id = $2`, [fromId, tenantId]).catch(() => undefined);
+    merged++;
+  }
+
+  if (merged > 0 || dupes.rows.length === 0) {
+    await setCurrentLedgerTerm(tenantId, canonicalId);
+    await query(
+      `UPDATE school_settings SET current_term = $1, current_year = $2 WHERE tenant_id = $3 AND (current_term != $1 OR current_year != $2)`,
+      [termOnly, currentYear, tenantId]
+    ).catch(() => undefined);
+  }
+
+  return { merged, canonicalTermId: canonicalId };
 };
 
 /**
@@ -591,6 +681,47 @@ export async function syncMissingLedgerTermFeesForActiveTerm(tenantId: number): 
 }
 
 /** Recalculate term_fee debit for one student when beneficiary discount changes. */
+export async function syncBeneficiaryLedgerDebitsForStudent(
+  tenantId: number,
+  studentId: number,
+  termId?: number | null
+): Promise<number> {
+  const params: unknown[] = [tenantId, studentId];
+  let termFilter = '';
+  if (termId != null && !Number.isNaN(Number(termId))) {
+    termFilter = 'AND t.id = $3';
+    params.push(termId);
+  }
+
+  const result = await query(
+    `UPDATE student_ledger sl
+     SET debit = sub.net_fee
+     FROM (
+       SELECT DISTINCT ON (s.id, t.id)
+         s.id AS student_id,
+         t.id AS term_id,
+         (${SQL_BENEFICIARY_TERM_FEE_DEBIT_EFFECTIVE.trim()})::numeric AS net_fee
+       FROM students s
+       INNER JOIN terms t ON t.tenant_id = s.tenant_id ${termFilter}
+       INNER JOIN classes c_student ON c_student.id = s.class_assigned_id AND c_student.tenant_id = s.tenant_id
+       ${SQL_JOIN_LEDGER_FEE_STRUCTURES_FOR_TERM}
+       WHERE s.tenant_id = $1
+         AND s.id = $2
+         AND s.is_beneficiary = true
+         AND (${SQL_FEE_STRUCTURE_CLASS_MATCH})
+       ORDER BY s.id, t.id, (fs.class_id = s.class_assigned_id) DESC, fs.id
+     ) sub
+     WHERE sl.tenant_id = $1
+       AND sl.student_id = sub.student_id
+       AND sl.term_id = sub.term_id
+       AND sl.entry_type = 'term_fee'
+       AND sl.debit IS DISTINCT FROM sub.net_fee`,
+    params
+  );
+
+  return result.rowCount ?? 0;
+}
+
 export async function recalculateStudentTermFeeForActiveTerm(
   tenantId: number,
   studentId: number

@@ -17,6 +17,7 @@ import StaffOptionalSections from '../staff/StaffOptionalSections';
 import StaffFieldSelect from '../common/StaffFieldSelect';
 import PasswordConfirmDialog from '../common/PasswordConfirmDialog';
 import { persistStaffProfileFields } from '@/services/staffFieldApi';
+import ParentTeacherSelect from './ParentTeacherSelect';
 import TeacherSubjectClassAssignment from './TeacherSubjectClassAssignment';
 import { FormFieldError, FormValidationSummary } from '@/components/common/FormFieldError';
 import {
@@ -82,6 +83,7 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
   });
   const [showEmergency, setShowEmergency] = useState(false);
   const [showBank, setShowBank] = useState(false);
+  const [parentTeacherId, setParentTeacherId] = useState('');
 
   useEffect(() => {
     if (!open) {
@@ -120,6 +122,7 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
     });
     setShowEmergency(!!(teacher.emergencyContactName || teacher.emergencyContactPhone));
     setShowBank(!!(teacher.bankName || teacher.bankAccountNumber));
+    setParentTeacherId(teacher.parentTeacherId || '');
     setPhotoFile(null);
     setPhotoPreview(null);
   }, [teacher, open]);
@@ -205,6 +208,7 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
         department: formData.department.trim(),
         qualification: formData.qualification.trim(),
         specialization: formData.specialization.trim(),
+        parentTeacherId: parentTeacherId || null,
         subjectClassAssignments,
       });
 
@@ -483,6 +487,12 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
               rows={3}
             />
           </div>
+
+          <ParentTeacherSelect
+            excludeTeacherId={teacher.id}
+            value={parentTeacherId}
+            onChange={setParentTeacherId}
+          />
 
           <StaffOptionalSections
             showEmergency={showEmergency}

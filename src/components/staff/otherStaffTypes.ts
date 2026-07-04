@@ -27,4 +27,5 @@ export type OtherStaffRecord = {
   notes?: string;
   qualification?: string;
   specialization?: string;
+  counts_as_staff?: boolean;
 };

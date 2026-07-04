@@ -1,6 +1,7 @@
 import { query } from '../db/connection.js';
 import { writeAuditLog } from './auditService.js';
 import { getActiveTeachersSalaryTotal } from './teacherStatusService.js';
+import { TEACHER_COUNTABLE_WHERE_BARE } from '../constants/staffQueries.js';
 import { ACTIVE_STUDENT_WHERE } from '../utils/studentEnrollment.js';
 import { getIO } from '../socket.js';
 import {
@@ -475,7 +476,7 @@ export async function getSalaryAutoFill(tenantId: number, term: string, academic
   const monthlyTotal = await getActiveTeachersSalaryTotal(tenantId);
   const teacherCount = await query(
     `SELECT COUNT(*)::int AS cnt FROM teachers
-     WHERE tenant_id = $1 AND COALESCE(status, 'active') = 'active'`,
+     WHERE tenant_id = $1 AND ${TEACHER_COUNTABLE_WHERE_BARE}`,
     [tenantId]
   );
   const activeTeachers = Number(teacherCount.rows[0]?.cnt || 0);

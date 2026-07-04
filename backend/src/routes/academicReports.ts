@@ -3,6 +3,7 @@ import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { resolveAcademicTermId } from '../services/studentTermTrackingService.js';
+import { TEACHER_VISIBLE_WHERE, TEACHER_COUNTABLE_WHERE_BARE } from '../constants/staffQueries.js';
 
 const router = express.Router();
 
@@ -179,6 +180,7 @@ router.get('/academic/teachers-appointed', async (req: AuthRequest, res) => {
     const result = await query(
       `SELECT COUNT(*)::int AS count FROM teachers
        WHERE tenant_id = $1
+         AND ${TEACHER_COUNTABLE_WHERE_BARE}
          AND COALESCE(employment_date, created_at::date) >= $2::date
          AND COALESCE(employment_date, created_at::date) <= $3::date`,
       [tenantId, start, end]
@@ -655,6 +657,7 @@ router.get('/academic/teachers-appointed-list', async (req: AuthRequest, res) =>
        FROM teachers t
        LEFT JOIN classes c ON t.class_assigned_id = c.id
        WHERE t.tenant_id = $1
+         AND ${TEACHER_VISIBLE_WHERE}
          AND COALESCE(t.employment_date, t.created_at::date) >= $2::date
          AND COALESCE(t.employment_date, t.created_at::date) <= $3::date
          ${search.sql}

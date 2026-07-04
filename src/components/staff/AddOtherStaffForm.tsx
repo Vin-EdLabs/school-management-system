@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import DoNotCountAsStaffToggle from './DoNotCountAsStaffToggle';
 import { apiService } from '@/services/api';
 import { toast } from '@/hooks/use-toast';
 import { Loader2, UserPlus, Camera } from 'lucide-react';
@@ -50,6 +51,7 @@ const emptyForm = () => ({
   notes: '',
   qualification: '',
   specialization: '',
+  counts_as_staff: true,
 });
 
 const AddOtherStaffForm: React.FC<AddOtherStaffFormProps> = ({ onSuccess }) => {
@@ -107,6 +109,7 @@ const AddOtherStaffForm: React.FC<AddOtherStaffFormProps> = ({ onSuccess }) => {
         bank_account_number: form.bank_account_number || null,
         bank_branch: form.bank_branch || null,
         bank_account_name: form.bank_account_name || null,
+        counts_as_staff: form.counts_as_staff !== false,
       };
 
       const created = await apiService.post<OtherStaffRecord>('/other-staff', body);
@@ -343,6 +346,11 @@ const AddOtherStaffForm: React.FC<AddOtherStaffFormProps> = ({ onSuccess }) => {
               <Switch checked={form.ssnit_enabled} onCheckedChange={(v) => set('ssnit_enabled', v)} id="ssnit" />
               <Label htmlFor="ssnit">SSNIT enabled</Label>
             </div>
+            <DoNotCountAsStaffToggle
+              countsAsStaff={form.counts_as_staff}
+              onChange={(countsAsStaff) => set('counts_as_staff', countsAsStaff)}
+              id="counts_as_staff_add"
+            />
           </div>
 
           <StaffOptionalSections

@@ -26,6 +26,12 @@ import {
 import { ensureTeacherUserAccount } from '../services/teacherUserService.js';
 import { canAccessTeacherPortalRoutes, canBroadcastStaffAnnouncements } from '../constants/roles.js';
 import { persistStaffProfileFields } from '../services/staffFieldSuggestionService.js';
+import { TEACHER_VISIBLE_WHERE, TEACHER_MAIN_ACTIVE_WHERE } from '../constants/staffQueries.js';
+import { removeTeacher, type TeacherDeletionType } from '../services/teacherRemovalService.js';
+import {
+  detachAssistantFromParent,
+  validateParentTeacherAssignment,
+} from '../services/teacherAssistantService.js';
 import {
   assignTeacherSubjectClass,
   getTeacherSubjectClassesGrouped,
@@ -208,7 +214,31 @@ const TEACHER_CLASS_NAME_SQL = `
   ) AS class_name
 `;
 
-// Get all teachers
+// Active main teachers for assistant-assignment dropdown
+router.get('/assignable-parents', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const excludeId = req.query.exclude_id ? parseInt(String(req.query.exclude_id), 10) : null;
+    let sql = `
+      SELECT t.id, t.full_name, t.staff_id, t.position
+      FROM teachers t
+      WHERE t.tenant_id = $1 AND ${TEACHER_MAIN_ACTIVE_WHERE}
+    `;
+    const params: unknown[] = [tenantId];
+    if (excludeId && Number.isFinite(excludeId)) {
+      sql += ` AND t.id <> $2`;
+      params.push(excludeId);
+    }
+    sql += ` ORDER BY t.full_name ASC`;
+    const result = await query(sql, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Assignable parents error:', error);
+    res.status(500).json({ error: 'Failed to load teachers' });
+  }
+});
+
+// Get all teachers (school-visible; includes assistants with parent_teacher_id)
 router.get('/', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
@@ -221,7 +251,7 @@ router.get('/', async (req: AuthRequest, res) => {
       FROM teachers t
       LEFT JOIN classes c ON t.class_assigned_id = c.id
       WHERE t.tenant_id = $1
-        AND COALESCE(t.is_deleted, false) = false
+        AND ${TEACHER_VISIBLE_WHERE}
     `;
     const params: any[] = [tenantId];
 
@@ -248,7 +278,7 @@ router.get('/', async (req: AuthRequest, res) => {
           FROM teachers t
           LEFT JOIN classes c ON t.class_assigned_id = c.id
           WHERE t.tenant_id = $1
-            AND COALESCE(t.is_deleted, false) = false
+            AND ${TEACHER_VISIBLE_WHERE}
           ${classId ? ' AND t.class_assigned_id = $2' : ''}
           ORDER BY t.created_at DESC
         `;
@@ -499,7 +529,7 @@ router.get('/:id/subject-classes', async (req: AuthRequest, res) => {
     if (!Number.isFinite(teacherId)) return res.status(400).json({ error: 'Invalid teacher id' });
 
     const teacherCheck = await query(
-      `SELECT id FROM teachers WHERE id = $1 AND tenant_id = $2 AND COALESCE(is_deleted, false) = false`,
+      `SELECT id FROM teachers WHERE id = $1 AND tenant_id = $2 AND ${TEACHER_VISIBLE_WHERE}`,
       [teacherId, tenantId]
     );
     if (teacherCheck.rows.length === 0) return res.status(404).json({ error: 'Teacher not found' });
@@ -623,6 +653,13 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
       staffId = `TCH${(maxId + 1).toString().padStart(3, '0')}`;
     }
 
+    const parentTeacherId = teacherData.parent_teacher_id
+      ? parseInt(String(teacherData.parent_teacher_id), 10)
+      : null;
+    if (parentTeacherId) {
+      await validateParentTeacherAssignment(tenantId, -1, parentTeacherId);
+    }
+
     const result = await query(
       `INSERT INTO teachers (
         tenant_id, full_name, gender, date_of_birth, staff_id, phone_number,
@@ -630,10 +667,10 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
         monthly_salary, employment_status, notes, position, department,
         emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
         bank_name, bank_account_number, bank_branch, bank_account_name,
-        qualification, specialization
+        qualification, specialization, parent_teacher_id, status
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
-        $17, $18, $19, $20, $21, $22, $23, $24, $25
+        $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, 'active'
       ) RETURNING *`,
       [
         tenantId,
@@ -661,6 +698,7 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
         teacherData.bank_account_name || null,
         teacherData.qualification ? String(teacherData.qualification).trim() : null,
         teacherData.specialization ? String(teacherData.specialization).trim() : null,
+        parentTeacherId,
       ]
     );
 
@@ -764,8 +802,19 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
     const updates = { ...req.body };
     const classIds = updates.class_ids;
     const subjectClassAssignments = updates.subject_class_assignments;
+    const parentTeacherId =
+      updates.parent_teacher_id !== undefined
+        ? updates.parent_teacher_id === null || updates.parent_teacher_id === ''
+          ? null
+          : parseInt(String(updates.parent_teacher_id), 10)
+        : undefined;
     delete updates.class_ids;
     delete updates.subject_class_assignments;
+    delete updates.parent_teacher_id;
+
+    if (parentTeacherId !== undefined) {
+      await validateParentTeacherAssignment(tenantId, parseInt(id, 10), parentTeacherId);
+    }
 
     const updateFields: string[] = [];
     const values: any[] = [];
@@ -792,6 +841,12 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
         );
         paramCount++;
       }
+    }
+
+    if (parentTeacherId !== undefined) {
+      updateFields.push(`parent_teacher_id = $${paramCount}`);
+      values.push(parentTeacherId);
+      paramCount++;
     }
     
     if (updateFields.length === 0 && classIds === undefined && subjectClassAssignments === undefined) {
@@ -879,6 +934,32 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
   } catch (error) {
     console.error('Update teacher error:', error);
     res.status(500).json({ error: 'Failed to update teacher' });
+  }
+});
+
+router.post('/:id/detach-assistant', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const teacherId = parseInt(req.params.id, 10);
+    const row = await detachAssistantFromParent(tenantId, teacherId);
+    const actor = await resolveActorFromRequest(req);
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'UPDATE',
+      entityType: 'TEACHER',
+      entityId: teacherId,
+      module: 'teachers',
+      summary: withActor(`Detached assistant ${row.full_name} — now a main teacher`, actor),
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
+    emitTenantDataChanged(tenantId, 'teacher', 'updated');
+    res.json(stripTeacherPhotoForList(row));
+  } catch (error: any) {
+    const status = error?.status || 400;
+    res.status(status).json({ error: error.message || 'Failed to detach assistant' });
   }
 });
 
@@ -1074,7 +1155,7 @@ router.post('/:id/profile-pdf-audit', authenticate, requireRole('super-admin', '
     const tenantId = req.user!.tenantId!;
     const teacherId = parseInt(String(req.params.id), 10);
     const row = await query(
-      'SELECT id, full_name FROM teachers WHERE id = $1 AND tenant_id = $2 AND COALESCE(is_deleted, false) = false',
+      `SELECT id, full_name FROM teachers WHERE id = $1 AND tenant_id = $2 AND ${TEACHER_VISIBLE_WHERE}`,
       [teacherId, tenantId]
     );
     if (row.rows.length === 0) return res.status(404).json({ error: 'Teacher not found' });
@@ -1100,66 +1181,49 @@ router.post('/:id/profile-pdf-audit', authenticate, requireRole('super-admin', '
   }
 });
 
-// Soft delete — hides from active lists; salary/payment history preserved
-router.delete('/:id', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+// Remove teacher — soft (superadmin recoverable) or hard (hidden everywhere if payroll history exists)
+router.post('/:id/remove', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const teacherId = parseInt(req.params.id, 10);
-    const reason = String(req.body?.reason || 'Removed from active staff list').trim();
+    const rawType = String(req.body?.deletionType || req.body?.mode || 'soft').toLowerCase();
+    const deletionType: TeacherDeletionType = rawType === 'hard' ? 'hard' : 'soft';
+    const reason = String(req.body?.reason || '').trim() || undefined;
 
     const existing = await query(
-      'SELECT id, full_name, staff_id, COALESCE(is_deleted, false) AS is_deleted FROM teachers WHERE id = $1 AND tenant_id = $2',
+      `SELECT id, full_name, staff_id FROM teachers WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
       [teacherId, tenantId]
     );
     if (existing.rows.length === 0) {
       return res.status(404).json({ error: 'Teacher not found' });
     }
-    if (existing.rows[0].is_deleted) {
-      return res.status(400).json({ error: 'Teacher is already removed' });
-    }
 
-    await query('DELETE FROM class_teachers WHERE teacher_id = $1 AND tenant_id = $2', [teacherId, tenantId]);
-    await query('DELETE FROM teacher_subject_classes WHERE teacher_id = $1 AND tenant_id = $2', [
-      teacherId,
-      tenantId,
-    ]).catch(() => undefined);
-    await query(
-      'UPDATE classes SET assigned_teacher_id = NULL WHERE assigned_teacher_id = $1 AND tenant_id = $2',
-      [teacherId, tenantId]
-    );
-    await query(
-      `UPDATE teachers
-       SET is_deleted = true,
-           status = 'deactivated',
-           class_assigned_id = NULL,
-           deactivation_date = CURRENT_DATE,
-           deactivation_reason = $3,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $1 AND tenant_id = $2
-       RETURNING id, full_name, staff_id`,
-      [teacherId, tenantId, reason]
-    );
-
-    await query(
-      `UPDATE users SET is_active = false, updated_at = CURRENT_TIMESTAMP
-       WHERE tenant_id = $1 AND teacher_id::text = $2::text`,
-      [tenantId, String(teacherId)]
-    ).catch(() => undefined);
-
+    const result = await removeTeacher(tenantId, teacherId, deletionType, reason);
     const actor = await resolveActorFromRequest(req);
+    const label = existing.rows[0].full_name;
+    const staffId = existing.rows[0].staff_id;
+
     await writeAuditLog({
       tenantId,
       userId: req.user!.id,
       userRole: req.user!.role,
-      action: 'SOFT_DELETE',
+      action: deletionType === 'hard' ? 'HARD_DELETE' : 'SOFT_DELETE',
       entityType: 'TEACHER',
       entityId: teacherId,
       module: 'academics',
       summary: withActor(
-        `Teacher soft-deleted — ${existing.rows[0].full_name} (${existing.rows[0].staff_id}). Salary history preserved.`,
+        result.outcome === 'deleted'
+          ? `Teacher permanently deleted — ${label} (${staffId})`
+          : `Teacher removed (${deletionType}) — ${label} (${staffId}); payroll history preserved`,
         actor
       ),
-      details: { reason, staffId: existing.rows[0].staff_id },
+      details: {
+        reason,
+        staffId,
+        deletionType,
+        outcome: result.outcome,
+        hadPaymentRecords: result.hadPaymentRecords,
+      },
       ipAddress: getClientIp(req),
       userAgent: req.get('user-agent') ?? null,
     });
@@ -1167,10 +1231,39 @@ router.delete('/:id', requireRole('super-admin', 'administrator'), async (req: A
     emitTenantDataChanged(tenantId, 'teacher', 'deleted');
     emitTenantDataChanged(tenantId, 'user', 'updated');
     res.json({
+      message:
+        result.outcome === 'deleted'
+          ? 'Teacher permanently removed from the system.'
+          : 'Teacher removed from active lists. Salary and payment records are preserved.',
+      ...result,
+    });
+  } catch (error: any) {
+    const status = error?.status || 500;
+    if (status !== 500) {
+      return res.status(status).json({ error: error.message || 'Failed to remove teacher' });
+    }
+    console.error('Remove teacher error:', error);
+    res.status(500).json({ error: 'Failed to remove teacher' });
+  }
+});
+
+/** @deprecated Use POST /:id/remove — kept for older clients */
+router.delete('/:id', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+  req.body = { ...(req.body || {}), deletionType: 'soft' };
+  const tenantId = req.user!.tenantId!;
+  const teacherId = parseInt(req.params.id, 10);
+  try {
+    const result = await removeTeacher(tenantId, teacherId, 'soft', String(req.body?.reason || '').trim() || undefined);
+    emitTenantDataChanged(tenantId, 'teacher', 'deleted');
+    emitTenantDataChanged(tenantId, 'user', 'updated');
+    res.json({
       message: 'Teacher removed from active lists. All salary and payment records are preserved.',
       id: teacherId,
+      ...result,
     });
-  } catch (error) {
+  } catch (error: any) {
+    const status = error?.status || 500;
+    if (status !== 500) return res.status(status).json({ error: error.message });
     console.error('Soft delete teacher error:', error);
     res.status(500).json({ error: 'Failed to remove teacher' });
   }

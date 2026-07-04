@@ -8,9 +8,20 @@ import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.j
 import { getIO } from '../socket.js';
 import { sendPushToStaffUser } from '../services/webPushService.js';
 import { writeAuditLog } from '../services/auditService.js';
-import { formatMoneyGhs, resolveActorFromRequest, resolveTeacherLabel, withActor } from '../utils/auditResolve.js';
+import { formatMoneyGhs, resolveActorFromRequest, resolveTeacherLabel, resolveOtherStaffLabel, withActor } from '../utils/auditResolve.js';
 import { getClientIp } from '../utils/clientIp.js';
 import { resolvePaymentAccountForTransaction } from '../services/paymentAccountService.js';
+import { TEACHER_PAYROLL_WHERE } from '../constants/staffQueries.js';
+import {
+  TEACHER_PAYROLL_DISPLAY_NAME_SQL,
+  OTHER_STAFF_PAYROLL_DISPLAY_NAME_SQL,
+  TEACHER_PAYROLL_DISPLAY_NAME_WITH_EXPENSE_SQL,
+  OTHER_STAFF_PAYROLL_DISPLAY_NAME_WITH_EXPENSE_SQL,
+  TEACHER_PAYROLL_DISPLAY_STAFF_ID_SQL,
+  OTHER_STAFF_PAYROLL_DISPLAY_STAFF_ID_SQL,
+  TEACHER_PAYROLL_DISPLAY_NAME_BARE,
+  OTHER_STAFF_PAYROLL_DISPLAY_NAME_BARE,
+} from '../constants/staffQueries.js';
 
 function generatePin(): string {
   return String(Math.floor(10000 + Math.random() * 90000));
@@ -343,13 +354,14 @@ router.get('/history', requireRole('super-admin', 'administrator', 'finance'), a
 
     let sql = `
       SELECT sp.*,
-        CASE WHEN sp.payee_type = 'teacher' THEN t.full_name ELSE s.full_name END AS display_name,
-        CASE WHEN sp.payee_type = 'teacher' THEN t.staff_id ELSE s.staff_id END AS display_staff_id,
+        CASE WHEN sp.payee_type = 'teacher' THEN ${TEACHER_PAYROLL_DISPLAY_NAME_WITH_EXPENSE_SQL} ELSE ${OTHER_STAFF_PAYROLL_DISPLAY_NAME_WITH_EXPENSE_SQL} END AS display_name,
+        CASE WHEN sp.payee_type = 'teacher' THEN ${TEACHER_PAYROLL_DISPLAY_STAFF_ID_SQL} ELSE ${OTHER_STAFF_PAYROLL_DISPLAY_STAFF_ID_SQL} END AS display_staff_id,
         CASE WHEN sp.payee_type = 'teacher' THEN COALESCE(c.class_name, 'Teacher') ELSE COALESCE(s.position, 'Staff') END AS display_role
       FROM salary_payments sp
       LEFT JOIN teachers t ON sp.payee_type = 'teacher' AND sp.payee_id = t.id AND t.tenant_id = sp.tenant_id
       LEFT JOIN classes c ON t.class_assigned_id = c.id
       LEFT JOIN other_staff s ON sp.payee_type = 'staff' AND sp.payee_id = s.id AND s.tenant_id = sp.tenant_id
+      LEFT JOIN expenses e ON e.id = sp.expense_id AND e.tenant_id = sp.tenant_id
       WHERE sp.tenant_id = $1
     `;
     const params: unknown[] = [tenantId];
@@ -383,7 +395,7 @@ router.get('/history', requireRole('super-admin', 'administrator', 'finance'), a
         id: r.id,
         payeeType: r.payee_type,
         payeeId: r.payee_id,
-        name: r.display_name,
+        name: r.display_name || (r.payee_type === 'teacher' ? `Teacher #${r.payee_id}` : `Staff #${r.payee_id}`),
         staffId: r.display_staff_id,
         role: r.display_role,
         month: r.month,
@@ -426,7 +438,10 @@ router.get('/detail', requireRole('super-admin', 'administrator', 'finance'), as
     let staff: any = null;
     if (payeeType === 'teacher') {
       const tr = await query(
-        `SELECT t.*, c.class_name FROM teachers t
+        `SELECT t.*, c.class_name,
+                ${TEACHER_PAYROLL_DISPLAY_NAME_SQL} AS payroll_display_name,
+                ${TEACHER_PAYROLL_DISPLAY_STAFF_ID_SQL} AS payroll_display_staff_id
+         FROM teachers t
          LEFT JOIN classes c ON t.class_assigned_id = c.id
          WHERE t.tenant_id = $1 AND t.id = $2`,
         [tenantId, payeeId]
@@ -436,8 +451,8 @@ router.get('/detail', requireRole('super-admin', 'administrator', 'finance'), as
       staff = {
         payeeType: 'teacher',
         id: t.id,
-        name: t.full_name,
-        staffId: t.staff_id,
+        name: t.payroll_display_name || t.full_name,
+        staffId: t.payroll_display_staff_id || t.staff_id,
         position: t.class_name || 'Teacher',
         monthlySalary: parseFloat(t.monthly_salary || 0),
         ssnitEnabled: t.ssnit_enabled !== false,
@@ -445,7 +460,11 @@ router.get('/detail', requireRole('super-admin', 'administrator', 'finance'), as
       };
     } else {
       const sr = await query(
-        'SELECT * FROM other_staff WHERE tenant_id = $1 AND id = $2',
+        `SELECT s.*,
+                ${OTHER_STAFF_PAYROLL_DISPLAY_NAME_SQL} AS payroll_display_name,
+                ${OTHER_STAFF_PAYROLL_DISPLAY_STAFF_ID_SQL} AS payroll_display_staff_id
+         FROM other_staff s
+         WHERE s.tenant_id = $1 AND s.id = $2`,
         [tenantId, payeeId]
       );
       if (sr.rows.length === 0) return res.status(404).json({ error: 'Staff not found' });
@@ -453,8 +472,8 @@ router.get('/detail', requireRole('super-admin', 'administrator', 'finance'), as
       staff = {
         payeeType: 'staff',
         id: s.id,
-        name: s.full_name,
-        staffId: s.staff_id,
+        name: s.payroll_display_name || s.full_name,
+        staffId: s.payroll_display_staff_id || s.staff_id,
         position: s.position || 'Staff',
         monthlySalary: parseFloat(s.monthly_salary || 0),
         ssnitEnabled: s.ssnit_enabled !== false,
@@ -536,7 +555,7 @@ router.get('/', async (req: AuthRequest, res) => {
               t.bank_name, t.bank_account_number, t.bank_account_name, t.bank_branch
        FROM teachers t
        LEFT JOIN classes c ON t.class_assigned_id = c.id
-       WHERE t.tenant_id = $1 AND COALESCE(t.status, 'active') = 'active'`,
+       WHERE t.tenant_id = $1 AND ${TEACHER_PAYROLL_WHERE}`,
       [tenantId]
     );
 
@@ -869,13 +888,7 @@ router.patch('/line', requireRole('super-admin', 'administrator', 'finance'), as
     if (pt === 'teacher') {
       payeeLabel = await resolveTeacherLabel(tenantId, pid);
     } else {
-      const staffRes = await query(
-        `SELECT full_name FROM other_staff WHERE id = $1 AND tenant_id = $2`,
-        [pid, tenantId]
-      );
-      payeeLabel = staffRes.rows[0]?.full_name
-        ? String(staffRes.rows[0].full_name)
-        : 'Staff member';
+      payeeLabel = await resolveOtherStaffLabel(tenantId, pid);
     }
     const actor = await resolveActorFromRequest(req);
     await writeAuditLog({
@@ -923,7 +936,7 @@ router.post('/prepare-month', requireRole('super-admin', 'administrator', 'finan
 
     const teachersRes = await query(
       `SELECT id, monthly_salary, ssnit_enabled FROM teachers t
-       WHERE t.tenant_id = $1 AND COALESCE(t.status, 'active') = 'active'`,
+       WHERE t.tenant_id = $1 AND ${TEACHER_PAYROLL_WHERE}`,
       [tenantId]
     );
     const staffRes = await query(
@@ -1151,26 +1164,32 @@ router.post('/pay', requireRole('super-admin', 'administrator', 'finance'), asyn
     let ssnitEnabled = true;
     if (pt === 'teacher') {
       const tr = await client.query(
-        `SELECT full_name, monthly_salary, ssnit_enabled, staff_id FROM teachers WHERE tenant_id = $1 AND id = $2`,
+        `SELECT ${TEACHER_PAYROLL_DISPLAY_NAME_BARE} AS display_name,
+                COALESCE(NULLIF(TRIM(removed_original_staff_id), ''), CASE WHEN staff_id::text LIKE '__removed_%' THEN NULL ELSE staff_id END) AS display_staff_id,
+                monthly_salary, ssnit_enabled
+         FROM teachers WHERE tenant_id = $1 AND id = $2`,
         [tenantId, pid]
       );
       if (tr.rows.length === 0) {
         return res.status(404).json({ error: 'Teacher not found' });
       }
-      payeeName = tr.rows[0].full_name;
-      staffRef = tr.rows[0].staff_id != null ? String(tr.rows[0].staff_id) : null;
+      payeeName = tr.rows[0].display_name;
+      staffRef = tr.rows[0].display_staff_id != null ? String(tr.rows[0].display_staff_id) : null;
       grossBase = parseFloat(tr.rows[0].monthly_salary || 0);
       ssnitEnabled = tr.rows[0].ssnit_enabled !== false;
     } else {
       const sr = await client.query(
-        `SELECT full_name, monthly_salary, ssnit_enabled, staff_id FROM other_staff WHERE tenant_id = $1 AND id = $2`,
+        `SELECT ${OTHER_STAFF_PAYROLL_DISPLAY_NAME_BARE} AS display_name,
+                COALESCE(NULLIF(TRIM(removed_original_staff_id), ''), CASE WHEN staff_id::text LIKE '__removed_%' THEN NULL ELSE staff_id END) AS display_staff_id,
+                monthly_salary, ssnit_enabled
+         FROM other_staff WHERE tenant_id = $1 AND id = $2`,
         [tenantId, pid]
       );
       if (sr.rows.length === 0) {
         return res.status(404).json({ error: 'Staff not found' });
       }
-      payeeName = sr.rows[0].full_name;
-      staffRef = sr.rows[0].staff_id != null ? String(sr.rows[0].staff_id) : null;
+      payeeName = sr.rows[0].display_name;
+      staffRef = sr.rows[0].display_staff_id != null ? String(sr.rows[0].display_staff_id) : null;
       grossBase = parseFloat(sr.rows[0].monthly_salary || 0);
       ssnitEnabled = sr.rows[0].ssnit_enabled !== false;
     }

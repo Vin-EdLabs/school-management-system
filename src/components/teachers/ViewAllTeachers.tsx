@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -9,7 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useData } from '../../contexts/DataContext';
 import { useSchool } from '../../contexts/SchoolContext';
 import { useAudit } from '../../contexts/AuditContext';
-import { Search, Edit, Users, Eye, FileDown, FileSpreadsheet } from 'lucide-react';
+import { Search, Edit, Users, Eye, FileDown, FileSpreadsheet, ChevronDown, ChevronRight, Unlink } from 'lucide-react';
 import LazyTeacherAvatar from './LazyTeacherAvatar';
 import { teacherStatusBadge } from './TeacherStatusModals';
 import type { Teacher } from '../../contexts/DataContext';
@@ -19,9 +19,20 @@ import EditTeacherDialog from './EditTeacherDialog';
 import { resolveLogoUrl } from '@/services/tenantService';
 import { downloadTeacherRosterPdf } from '@/utils/buildStaffRosterPdf';
 import { downloadTeacherRosterExcel } from '@/utils/buildStaffRosterExcel';
+import { apiService } from '@/services/api';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 const ViewAllTeachers = () => {
-  const { teachers, classes } = useData();
+  const { teachers, classes, refresh } = useData();
   const { school } = useSchool();
   const { addAuditLog } = useAudit();
   const [searchTerm, setSearchTerm] = useState('');
@@ -32,25 +43,217 @@ const ViewAllTeachers = () => {
   const [selectedTeacher, setSelectedTeacher] = useState<any>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set());
+  const [detachingId, setDetachingId] = useState<string | null>(null);
+  const [detachConfirmTeacher, setDetachConfirmTeacher] = useState<Teacher | null>(null);
 
-  const filteredTeachers = teachers.filter(teacher => {
-    const matchesSearch = searchTerm === '' || 
-      teacher.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      teacher.staffId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      teacher.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (teacher.position || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (teacher.department || '').toLowerCase().includes(searchTerm.toLowerCase());
-    
+  const assistantsByParent = useMemo(() => {
+    const map = new Map<string, Teacher[]>();
+    teachers.forEach((t) => {
+      if (!t.parentTeacherId) return;
+      const list = map.get(t.parentTeacherId) || [];
+      list.push(t);
+      map.set(t.parentTeacherId, list);
+    });
+    return map;
+  }, [teachers]);
+
+  const matchesSearch = (teacher: Teacher) =>
+    searchTerm === '' ||
+    teacher.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    teacher.staffId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    teacher.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (teacher.position || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (teacher.department || '').toLowerCase().includes(searchTerm.toLowerCase());
+
+  const matchesClass = (teacher: Teacher) =>
+    filterClass === 'all-classes' ||
+    (filterClass === 'no-class' ? !teacher.classAssigned : teacher.classAssigned === filterClass);
+
+  const filteredTeachers = useMemo(() => {
+    if (filterStatus === 'deactivated') {
+      return teachers.filter((teacher) => {
+        const status = teacher.status || 'active';
+        return status === 'deactivated' && matchesSearch(teacher) && matchesClass(teacher);
+      });
+    }
+    return teachers.filter((teacher) => {
+      if (teacher.parentTeacherId) return false;
+      const status = teacher.status || 'active';
+      const matchesStatus = filterStatus === 'all' || filterStatus === status;
+      return matchesSearch(teacher) && matchesStatus && matchesClass(teacher);
+    });
+  }, [teachers, filterStatus, searchTerm, filterClass]);
+
+  const handleDetachAssistant = async (teacher: Teacher) => {
+    setDetachingId(teacher.id);
+    try {
+      await apiService.post(`/teachers/${teacher.id}/detach-assistant`, {});
+      toast({
+        title: 'Assistant detached',
+        description: `${teacher.fullName} is now a main teacher.`,
+      });
+      await refresh(['teachers']);
+      setDetachConfirmTeacher(null);
+    } catch (e: unknown) {
+      const err = e as { message?: string };
+      toast({
+        title: 'Detach failed',
+        description: err?.message || 'Could not detach assistant.',
+        variant: 'destructive',
+      });
+    } finally {
+      setDetachingId(null);
+    }
+  };
+
+  const toggleExpanded = (parentId: string) => {
+    setExpandedParents((prev) => {
+      const next = new Set(prev);
+      if (next.has(parentId)) next.delete(parentId);
+      else next.add(parentId);
+      return next;
+    });
+  };
+
+  const renderTeacherRow = (teacher: Teacher, opts?: { isAssistant?: boolean }) => {
+    const isAssistant = !!opts?.isAssistant;
     const status = teacher.status || 'active';
-    const matchesStatus =
-      filterStatus === 'all' ||
-      filterStatus === status;
-    const matchesClass = filterClass === 'all-classes' || filterClass === 'no-class' ? 
-      (filterClass === 'no-class' ? !teacher.classAssigned : true) : 
-      teacher.classAssigned === filterClass;
+    const badge = teacherStatusBadge(status);
+    const dimmed = status !== 'active';
+    const assistants = assistantsByParent.get(teacher.id) || [];
+    const visibleAssistants =
+      filterStatus === 'deactivated'
+        ? []
+        : assistants.filter((a) => {
+            const st = a.status || 'active';
+            return filterStatus === 'all' || filterStatus === st;
+          });
+    const hasAssistants = !isAssistant && visibleAssistants.length > 0;
+    const expanded = expandedParents.has(teacher.id);
 
-    return matchesSearch && matchesStatus && matchesClass;
-  });
+    return (
+      <React.Fragment key={teacher.id}>
+        <TableRow className={`hover:bg-muted/40 ${dimmed ? 'opacity-70' : ''}`}>
+          <TableCell className="w-8 max-w-8 px-1 pl-3 pr-0">
+            <Checkbox
+              checked={selected.has(teacher.id)}
+              onCheckedChange={() => toggleSelect(teacher.id)}
+              aria-label={`Select ${teacher.fullName}`}
+            />
+          </TableCell>
+          <TableCell className="w-7 max-w-7 px-0 pr-0">
+            {!isAssistant && hasAssistants ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-9 w-9 p-0"
+                onClick={() => toggleExpanded(teacher.id)}
+                title={expanded ? 'Collapse assistants' : 'Show assistants'}
+              >
+                {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+              </Button>
+            ) : null}
+          </TableCell>
+          <TableCell>
+            <LazyTeacherAvatar
+              teacherId={teacher.id}
+              fullName={teacher.fullName}
+              hasPassportPhoto={teacher.hasPassportPhoto}
+            />
+          </TableCell>
+          <TableCell>
+            <div className={isAssistant ? 'pl-6 border-l-2 border-emerald-200 dark:border-emerald-800' : ''}>
+              <div className="font-medium flex flex-wrap items-center gap-2">
+                {teacher.fullName}
+                {isAssistant ? (
+                  <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+                    Assistant
+                  </Badge>
+                ) : null}
+              </div>
+              <div className="text-sm text-muted-foreground">{teacher.gender}</div>
+            </div>
+          </TableCell>
+          <TableCell>
+            <span className="font-mono">{teacher.staffId}</span>
+          </TableCell>
+          <TableCell>
+            {teacher.position ? (
+              <Badge variant="secondary" className="text-xs">{teacher.position}</Badge>
+            ) : (
+              <span className="text-muted-foreground text-sm">—</span>
+            )}
+          </TableCell>
+          <TableCell>
+            <div className="text-sm">
+              <div>{teacher.phoneNumber}</div>
+              <div className="text-muted-foreground">{teacher.email}</div>
+            </div>
+          </TableCell>
+          <TableCell>
+            {teacher.classAssigned ? (
+              <Badge variant="outline">{teacher.classAssigned}</Badge>
+            ) : (
+              <span className="text-muted-foreground">No class</span>
+            )}
+          </TableCell>
+          <TableCell>
+            {badge ? (
+              <Badge className={badge.className}>{badge.label}</Badge>
+            ) : (
+              <Badge className={getStatusColor(status)}>ACTIVE</Badge>
+            )}
+          </TableCell>
+          <TableCell className="pr-2">
+            {teacher.monthlySalary > 0 ? (
+              <span className="font-mono">GHS {teacher.monthlySalary.toLocaleString()}</span>
+            ) : (
+              <span className="text-muted-foreground">-</span>
+            )}
+          </TableCell>
+          <TableCell className="sticky right-0 z-10 w-[1%] pl-1 pr-2 bg-card/95 text-right backdrop-blur supports-[backdrop-filter]:bg-card/80">
+            <div className="flex justify-end items-center gap-0.5">
+              {isAssistant ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setDetachConfirmTeacher(teacher)}
+                  disabled={detachingId === teacher.id}
+                  className="h-7 w-7 p-0"
+                  title="Detach — become main teacher"
+                >
+                  <Unlink className="w-3.5 h-3.5" />
+                </Button>
+              ) : null}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleViewTeacher(teacher)}
+                className="h-7 w-7 p-0"
+                title="View teacher"
+              >
+                <Eye className="w-3.5 h-3.5" />
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleEditTeacher(teacher)}
+                className="h-7 w-7 p-0"
+                title="Edit teacher"
+              >
+                <Edit className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+          </TableCell>
+        </TableRow>
+        {!isAssistant && expanded
+          ? visibleAssistants.map((a) => renderTeacherRow(a, { isAssistant: true }))
+          : null}
+      </React.Fragment>
+    );
+  };
 
   const getStatusColor = (status: string) => {
     const badge = teacherStatusBadge(status);
@@ -202,8 +405,7 @@ const ViewAllTeachers = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="suspended">Suspended</SelectItem>
+                  <SelectItem value="all">All main</SelectItem>
                   <SelectItem value="deactivated">Deactivated</SelectItem>
                 </SelectContent>
               </Select>
@@ -229,9 +431,10 @@ const ViewAllTeachers = () => {
             <Table className="w-full">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-10">
+                  <TableHead className="w-8 max-w-8 px-1 pl-3 pr-0">
                     <Checkbox checked={allFilteredSelected} onCheckedChange={toggleSelectAll} aria-label="Select all teachers" />
                   </TableHead>
+                  <TableHead className="w-7 max-w-7 px-0 pr-0" />
                   <TableHead className="w-14 whitespace-nowrap">Photo</TableHead>
                   <TableHead className="whitespace-nowrap min-w-[150px]">Name</TableHead>
                   <TableHead className="whitespace-nowrap">Staff ID</TableHead>
@@ -239,106 +442,19 @@ const ViewAllTeachers = () => {
                   <TableHead className="whitespace-nowrap">Contact</TableHead>
                   <TableHead className="whitespace-nowrap">Class Assigned</TableHead>
                   <TableHead className="whitespace-nowrap">Status</TableHead>
-                  <TableHead className="whitespace-nowrap">Salary</TableHead>
-                  <TableHead className="sticky right-0 z-10 min-w-[8.5rem] whitespace-nowrap bg-card/95 text-right backdrop-blur supports-[backdrop-filter]:bg-card/80">Actions</TableHead>
+                  <TableHead className="whitespace-nowrap pr-2">Salary</TableHead>
+                  <TableHead className="sticky right-0 z-10 w-[1%] pl-1 pr-2 whitespace-nowrap bg-card/95 text-right backdrop-blur supports-[backdrop-filter]:bg-card/80">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredTeachers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
                       No teachers found matching your criteria
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredTeachers.map((teacher) => {
-                    const status = teacher.status || 'active';
-                    const badge = teacherStatusBadge(status);
-                    const dimmed = status !== 'active';
-                    return (
-                    <TableRow key={teacher.id} className={`hover:bg-muted/40 ${dimmed ? 'opacity-70' : ''}`}>
-                      <TableCell>
-                        <Checkbox
-                          checked={selected.has(teacher.id)}
-                          onCheckedChange={() => toggleSelect(teacher.id)}
-                          aria-label={`Select ${teacher.fullName}`}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <LazyTeacherAvatar
-                          teacherId={teacher.id}
-                          fullName={teacher.fullName}
-                          hasPassportPhoto={teacher.hasPassportPhoto}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">{teacher.fullName}</div>
-                          <div className="text-sm text-muted-foreground">{teacher.gender}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-mono">{teacher.staffId}</span>
-                      </TableCell>
-                      <TableCell>
-                        {teacher.position ? (
-                          <Badge variant="secondary" className="text-xs">{teacher.position}</Badge>
-                        ) : (
-                          <span className="text-muted-foreground text-sm">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          <div>{teacher.phoneNumber}</div>
-                          <div className="text-muted-foreground">{teacher.email}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {teacher.classAssigned ? (
-                          <Badge variant="secondary">{teacher.classAssigned}</Badge>
-                        ) : (
-                          <span className="text-muted-foreground">No class</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {badge ? (
-                          <Badge className={badge.className}>{badge.label}</Badge>
-                        ) : (
-                          <Badge className={getStatusColor(status)}>ACTIVE</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {teacher.monthlySalary > 0 ? (
-                          <span className="font-mono">GHS {teacher.monthlySalary.toLocaleString()}</span>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="sticky right-0 z-10 bg-card/95 text-right backdrop-blur supports-[backdrop-filter]:bg-card/80">
-                        <div className="flex justify-end items-center gap-2">
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            onClick={() => handleViewTeacher(teacher)}
-                            className="h-9 w-9 p-0"
-                            title="View teacher"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            onClick={() => handleEditTeacher(teacher)}
-                            className="h-9 w-9 p-0"
-                            title="Edit teacher"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                    );
-                  })
+                  filteredTeachers.map((teacher) => renderTeacherRow(teacher))
                 )}
               </TableBody>
             </Table>
@@ -352,6 +468,39 @@ const ViewAllTeachers = () => {
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog
+        open={!!detachConfirmTeacher}
+        onOpenChange={(open) => {
+          if (!open) setDetachConfirmTeacher(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Detach assistant?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {detachConfirmTeacher ? (
+                <>
+                  <strong>{detachConfirmTeacher.fullName}</strong> will no longer be an assistant and will
+                  appear as a main teacher in the list. Their login and teaching access stay the same.
+                </>
+              ) : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={!!detachingId}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                if (detachConfirmTeacher) void handleDetachAssistant(detachConfirmTeacher);
+              }}
+              disabled={!!detachingId}
+            >
+              {detachingId ? 'Detaching…' : 'Yes, detach'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <TeacherDetailsDialog
         teacher={selectedTeacher}

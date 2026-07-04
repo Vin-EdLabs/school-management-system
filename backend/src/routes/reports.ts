@@ -12,6 +12,7 @@ import {
   getTotalOpeningBalance,
 } from '../services/financeSummaryService.js';
 import { ACTIVE_STUDENT_WHERE } from '../utils/studentEnrollment.js';
+import { TEACHER_COUNTABLE_WHERE, OTHER_STAFF_COUNTABLE_WHERE, TEACHER_VISIBLE_WHERE, TEACHER_PAYROLL_WHERE } from '../constants/staffQueries.js';
 import { getStudentLiveFeeBreakdown } from '../services/studentLiveFeeBreakdownService.js';
 import { resolveLedgerTermFromSettings } from '../services/ledgerFinanceService.js';
 import { ensureTenantLedgerSynced } from '../services/ledgerBackfillService.js';
@@ -663,7 +664,7 @@ router.get('/payroll-summary', async (req: AuthRequest, res) => {
       LEFT JOIN classes c ON t.class_assigned_id = c.id
       CROSS JOIN payroll_settings ps
       WHERE t.tenant_id = $1 AND ps.tenant_id = $1
-        AND COALESCE(t.status, 'active') = 'active'
+        AND ${TEACHER_PAYROLL_WHERE}
       UNION ALL
       SELECT 
         s.full_name as name,
@@ -892,13 +893,13 @@ router.get('/admin-overview', async (req: AuthRequest, res) => {
           COUNT(*) FILTER (WHERE COALESCE(s.enrollment_status, 'active') = 'pending')::int AS student_pending,
           COUNT(*) FILTER (WHERE COALESCE(s.enrollment_status, 'active') = 'inactive')::int AS student_inactive,
           COUNT(*) FILTER (WHERE COALESCE(s.enrollment_status, 'active') IN ('graduated', 'alumni'))::int AS student_alumni,
-          (SELECT COUNT(*)::int FROM teachers t WHERE t.tenant_id = $1) AS teacher_total,
-          (SELECT COUNT(*)::int FROM teachers t WHERE t.tenant_id = $1 AND COALESCE(t.status, 'active') = 'active') AS teacher_active,
-          (SELECT COALESCE(SUM(t.monthly_salary), 0)::numeric FROM teachers t WHERE t.tenant_id = $1 AND COALESCE(t.status, 'active') = 'active') AS teacher_salary_budget,
-          (SELECT COUNT(*)::int FROM teachers t WHERE t.tenant_id = $1 AND LOWER(TRIM(COALESCE(t.gender, ''))) = 'male') AS teacher_male,
-          (SELECT COUNT(*)::int FROM teachers t WHERE t.tenant_id = $1 AND LOWER(TRIM(COALESCE(t.gender, ''))) = 'female') AS teacher_female,
-          (SELECT COUNT(*)::int FROM other_staff o WHERE o.tenant_id = $1 AND COALESCE(o.is_deleted, false) = false) AS other_staff_total,
-          (SELECT COUNT(*)::int FROM other_staff o WHERE o.tenant_id = $1 AND COALESCE(o.is_deleted, false) = false AND COALESCE(o.employment_status, 'active') = 'active') AS other_staff_active,
+          (SELECT COUNT(*)::int FROM teachers t WHERE t.tenant_id = $1 AND ${TEACHER_COUNTABLE_WHERE}) AS teacher_total,
+          (SELECT COUNT(*)::int FROM teachers t WHERE t.tenant_id = $1 AND ${TEACHER_COUNTABLE_WHERE}) AS teacher_active,
+          (SELECT COALESCE(SUM(t.monthly_salary), 0)::numeric FROM teachers t WHERE t.tenant_id = $1 AND ${TEACHER_COUNTABLE_WHERE}) AS teacher_salary_budget,
+          (SELECT COUNT(*)::int FROM teachers t WHERE t.tenant_id = $1 AND ${TEACHER_COUNTABLE_WHERE} AND LOWER(TRIM(COALESCE(t.gender, ''))) = 'male') AS teacher_male,
+          (SELECT COUNT(*)::int FROM teachers t WHERE t.tenant_id = $1 AND ${TEACHER_COUNTABLE_WHERE} AND LOWER(TRIM(COALESCE(t.gender, ''))) = 'female') AS teacher_female,
+          (SELECT COUNT(*)::int FROM other_staff o WHERE o.tenant_id = $1 AND ${OTHER_STAFF_COUNTABLE_WHERE}) AS other_staff_total,
+          (SELECT COUNT(*)::int FROM other_staff o WHERE o.tenant_id = $1 AND ${OTHER_STAFF_COUNTABLE_WHERE}) AS other_staff_active,
           (SELECT COUNT(*)::int FROM classes c WHERE c.tenant_id = $1 AND TRIM(COALESCE(c.class_name, '')) <> '') AS class_total
         FROM students s
         WHERE s.tenant_id = $1`,

@@ -87,6 +87,7 @@ import {
   Activity,
   Megaphone,
   UserRoundSearch,
+  RotateCcw,
 } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import SuperAdminLoginForm from '../components/SuperAdminLoginForm';
@@ -101,6 +102,7 @@ import { ImpersonationProvider } from '../contexts/ImpersonationContext';
 import ImpersonationShell from '../components/impersonation/ImpersonationShell';
 import { buildSuperAdminHandoffUrl } from '../utils/superAdminSessionHandoff';
 import BecomeUserPanel from '../components/impersonation/BecomeUserPanel';
+import StaffActionConfirmDialog from '../components/common/StaffActionConfirmDialog';
 
 interface School {
   id: number;
@@ -178,7 +180,17 @@ interface OnlineSession {
   durationSeconds?: number | null;
 }
 
-type Section = 'schools' | 'visits' | 'tracker' | 'registrations' | 'audit' | 'super-admins' | 'support-chat' | 'school-data' | 'system-health' | 'announcements' | 'online-users';
+type Section = 'schools' | 'visits' | 'tracker' | 'registrations' | 'audit' | 'super-admins' | 'support-chat' | 'school-data' | 'system-health' | 'announcements' | 'online-users' | 'removed-staff';
+
+interface RemovedTeacher {
+  id: number;
+  tenant_id: number;
+  full_name: string;
+  staff_id?: string | null;
+  deleted_at?: string | null;
+  school_name?: string;
+  school_slug?: string;
+}
 
 /** Normalize school name for reset confirmation (trim, collapse spaces, case-insensitive). */
 function normalizeSchoolConfirmName(value: string): string {
@@ -268,6 +280,15 @@ const SuperAdminDashboard = () => {
   const [selectedDataSchoolId, setSelectedDataSchoolId] = useState('');
   const [dataActionLoading, setDataActionLoading] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
+  const [removedTeachers, setRemovedTeachers] = useState<RemovedTeacher[]>([]);
+  const [removedLoading, setRemovedLoading] = useState(false);
+  const [permanentDeletingId, setPermanentDeletingId] = useState<number | null>(null);
+  const [restoringId, setRestoringId] = useState<number | null>(null);
+  const [removedAction, setRemovedAction] = useState<{
+    row: RemovedTeacher;
+    action: 'restore' | 'permanent';
+  } | null>(null);
+  const [removedActionLoading, setRemovedActionLoading] = useState(false);
   const [importValidation, setImportValidation] = useState<{
     valid: boolean;
     errors: string[];
@@ -296,6 +317,11 @@ const SuperAdminDashboard = () => {
   const displayName = user?.fullName?.trim() || user?.username || '';
 
   useEffect(() => {
+    if (user?.role !== 'super-admin') return;
+    apiService.clearTenantContext();
+  }, [user?.role]);
+
+  useEffect(() => {
     if (user?.role === 'super-admin') loadData();
   }, [user]);
 
@@ -313,6 +339,10 @@ const SuperAdminDashboard = () => {
     setImportValidation(null);
     setRestoreUnderstand(false);
   }, [selectedDataSchoolId]);
+
+  useEffect(() => {
+    if (user?.role === 'super-admin' && section === 'removed-staff') void loadRemovedTeachers();
+  }, [section, user?.role]);
 
   useEffect(() => {
     if (user?.role === 'super-admin' && section === 'audit') loadAuditLogs();
@@ -472,6 +502,55 @@ const SuperAdminDashboard = () => {
       setSchools(Array.isArray(list) ? list : []);
     } catch {
       setSchools([]);
+    }
+  };
+
+  const loadRemovedTeachers = async () => {
+    setRemovedLoading(true);
+    try {
+      const list = await apiService.get<RemovedTeacher[]>('/schools/removed-teachers');
+      setRemovedTeachers(Array.isArray(list) ? list : []);
+    } catch {
+      setRemovedTeachers([]);
+      toast({ title: 'Failed to load removed staff', variant: 'destructive' });
+    } finally {
+      setRemovedLoading(false);
+    }
+  };
+
+  const executeRemovedStaffAction = async () => {
+    if (!removedAction) return;
+    const { row, action } = removedAction;
+    setRemovedActionLoading(true);
+    if (action === 'permanent') setPermanentDeletingId(row.id);
+    else setRestoringId(row.id);
+    try {
+      if (action === 'permanent') {
+        await apiService.post(`/schools/removed-teachers/${row.id}/permanent-delete`, {
+          tenantId: row.tenant_id,
+        });
+        toast({ title: 'Permanently deleted', description: 'Record hidden from all admin views.' });
+      } else {
+        await apiService.post(`/schools/removed-teachers/${row.id}/restore`, {
+          tenantId: row.tenant_id,
+        });
+        toast({
+          title: 'Restored to school',
+          description: `${row.full_name || 'Teacher'} is visible in school lists again. Update their profile if needed.`,
+        });
+      }
+      setRemovedAction(null);
+      await loadRemovedTeachers();
+    } catch (e: unknown) {
+      toast({
+        title: action === 'permanent' ? 'Delete failed' : 'Restore failed',
+        description: e instanceof Error ? e.message : 'Action could not be completed',
+        variant: 'destructive',
+      });
+    } finally {
+      setRemovedActionLoading(false);
+      setPermanentDeletingId(null);
+      setRestoringId(null);
     }
   };
 
@@ -1033,6 +1112,7 @@ const SuperAdminDashboard = () => {
     { id: 'support-chat' as Section, label: 'Support Chat', icon: MessageCircle },
   ];
   const systemItems = [
+    { id: 'removed-staff' as Section, label: 'Removed Staff', icon: UserRoundSearch },
     { id: 'system-health' as Section, label: 'System Health', icon: Activity },
     { id: 'super-admins' as Section, label: 'Super Admins', icon: UserPlus },
     { id: 'audit' as Section, label: 'Audit Logs', icon: Shield },
@@ -1167,6 +1247,7 @@ const SuperAdminDashboard = () => {
               {section === 'super-admins' && 'Super Admins'}
               {section === 'audit' && 'Audit Logs'}
               {section === 'system-health' && 'System Health / Errors'}
+              {section === 'removed-staff' && 'Removed Staff'}
               {section === 'announcements' && 'Global Announcements'}
               {section === 'support-chat' && 'Support Chat'}
             </h2>
@@ -2490,6 +2571,87 @@ const SuperAdminDashboard = () => {
               <SystemHealthModule schools={schools} />
             )}
 
+            {section === 'removed-staff' && (
+              <div className="space-y-6 animate-in fade-in duration-700">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
+                  <div>
+                    <h3 className="text-2xl font-black text-slate-900 dark:text-white font-outfit tracking-tight">Removed Staff</h3>
+                    <p className="text-sm text-slate-500 font-medium max-w-2xl">
+                      Teachers soft-deleted by school admins. Restore them to a school or permanently delete — salary records are never modified.
+                    </p>
+                  </div>
+                  <Button type="button" variant="outline" size="sm" onClick={() => void loadRemovedTeachers()} disabled={removedLoading}>
+                    <RefreshCw className={`h-4 w-4 mr-2 ${removedLoading ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </Button>
+                </div>
+                <Card className="border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+                  <CardContent className="p-0">
+                    {removedLoading ? (
+                      <div className="py-16 text-center text-muted-foreground">Loading removed staff…</div>
+                    ) : removedTeachers.length === 0 ? (
+                      <div className="py-16 text-center text-muted-foreground">No soft-removed teachers across schools.</div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>School</TableHead>
+                              <TableHead>Name</TableHead>
+                              <TableHead>Staff ID</TableHead>
+                              <TableHead>Removed</TableHead>
+                              <TableHead className="text-right">Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {removedTeachers.map((row) => (
+                              <TableRow key={`${row.tenant_id}-${row.id}`}>
+                                <TableCell className="font-medium">{row.school_name || `School #${row.tenant_id}`}</TableCell>
+                                <TableCell>{row.full_name || 'Unknown'}</TableCell>
+                                <TableCell className="font-mono text-sm">{row.staff_id || '—'}</TableCell>
+                                <TableCell className="text-sm text-muted-foreground">
+                                  {row.deleted_at ? new Date(row.deleted_at).toLocaleString() : '—'}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <div className="flex justify-end gap-2 flex-wrap">
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      disabled={restoringId === row.id || permanentDeletingId === row.id}
+                                      onClick={() => setRemovedAction({ row, action: 'restore' })}
+                                    >
+                                      {restoringId === row.id ? (
+                                        'Restoring…'
+                                      ) : (
+                                        <>
+                                          <RotateCcw className="h-4 w-4 mr-1" />
+                                          Restore
+                                        </>
+                                      )}
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      variant="destructive"
+                                      size="sm"
+                                      disabled={permanentDeletingId === row.id || restoringId === row.id}
+                                      onClick={() => setRemovedAction({ row, action: 'permanent' })}
+                                    >
+                                      {permanentDeletingId === row.id ? 'Deleting…' : 'Permanent delete'}
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
             {section === 'announcements' && (
               <GlobalAnnouncementsModule schools={schools} />
             )}
@@ -2764,6 +2926,19 @@ const SuperAdminDashboard = () => {
           </div>
         </ImpersonationShell>
         <BecomeUserPanel open={becomeUserOpen} onClose={() => setBecomeUserOpen(false)} />
+        <StaffActionConfirmDialog
+          open={!!removedAction}
+          onOpenChange={(open) => {
+            if (!open && !removedActionLoading) setRemovedAction(null);
+          }}
+          action={removedAction?.action === 'restore' ? 'restore' : removedAction ? 'permanent' : null}
+          staffName={removedAction?.row.full_name || 'Unknown'}
+          staffId={removedAction?.row.staff_id || undefined}
+          schoolName={removedAction?.row.school_name}
+          staffType="teacher"
+          loading={removedActionLoading}
+          onConfirm={() => void executeRemovedStaffAction()}
+        />
       </ImpersonationProvider>
     </SchoolProvider>
   );

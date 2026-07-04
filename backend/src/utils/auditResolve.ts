@@ -66,7 +66,7 @@ export async function resolveStudentLabel(
   return code ? `${name} (ID: ${code})` : name;
 }
 
-/** Teacher full name with optional staff id. */
+/** Teacher full name with optional staff id (includes removed staff for payroll history). */
 export async function resolveTeacherLabel(
   tenantId: number,
   teacherId: number | null | undefined,
@@ -75,13 +75,35 @@ export async function resolveTeacherLabel(
   if (teacherId == null || Number.isNaN(Number(teacherId))) return 'Unknown teacher';
   const run = runQuery(client);
   const res = await run(
-    `SELECT full_name, staff_id FROM teachers WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+    `SELECT COALESCE(NULLIF(TRIM(removed_original_name), ''), NULLIF(NULLIF(TRIM(full_name), ''), '[Removed]')) AS display_name,
+            COALESCE(NULLIF(TRIM(removed_original_staff_id), ''), CASE WHEN staff_id::text LIKE '__removed_%' THEN NULL ELSE staff_id END) AS staff_id
+     FROM teachers WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
     [teacherId, tenantId]
   );
   if (!res.rows.length) return `Teacher ${teacherId}`;
-  const name = String(res.rows[0].full_name || '').trim() || `Teacher ${teacherId}`;
+  const name = String(res.rows[0].display_name || '').trim() || `Teacher ${teacherId}`;
   const staffId = res.rows[0].staff_id ? String(res.rows[0].staff_id).trim() : '';
   return staffId ? `${name} (${staffId})` : name;
+}
+
+/** Other staff full name with optional staff id (includes removed staff for payroll history). */
+export async function resolveOtherStaffLabel(
+  tenantId: number,
+  staffId: number | null | undefined,
+  client: pg.PoolClient | null = null
+): Promise<string> {
+  if (staffId == null || Number.isNaN(Number(staffId))) return 'Unknown staff member';
+  const run = runQuery(client);
+  const res = await run(
+    `SELECT COALESCE(NULLIF(TRIM(removed_original_name), ''), NULLIF(NULLIF(TRIM(full_name), ''), '[Removed]')) AS display_name,
+            COALESCE(NULLIF(TRIM(removed_original_staff_id), ''), CASE WHEN staff_id::text LIKE '__removed_%' THEN NULL ELSE staff_id END) AS staff_id
+     FROM other_staff WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+    [staffId, tenantId]
+  );
+  if (!res.rows.length) return `Staff ${staffId}`;
+  const name = String(res.rows[0].display_name || '').trim() || `Staff ${staffId}`;
+  const sid = res.rows[0].staff_id ? String(res.rows[0].staff_id).trim() : '';
+  return sid ? `${name} (${sid})` : name;
 }
 
 /** Tenant / school name. */

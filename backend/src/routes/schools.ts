@@ -1,5 +1,6 @@
 import express from 'express';
-import bcrypt from 'bcryptjs';
+import { TEACHER_COUNTABLE_WHERE, OTHER_STAFF_COUNTABLE_WHERE } from '../constants/staffQueries.js';
+import { permanentlyRemoveTeacher, restoreTeacher } from '../services/teacherRemovalService.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -352,6 +353,88 @@ router.post('/:id/reset-data', requireRole('super-admin'), async (req: AuthReque
   }
 });
 
+// Soft-removed teachers across all schools (super-admin)
+router.get('/removed-teachers', requireRole('super-admin'), async (_req: AuthRequest, res) => {
+  try {
+    const result = await query(
+      `SELECT t.id, t.tenant_id,
+              COALESCE(NULLIF(TRIM(t.removed_original_name), ''), NULLIF(TRIM(t.full_name), ''), '[Unknown]') AS full_name,
+              COALESCE(NULLIF(TRIM(t.removed_original_staff_id), ''), t.staff_id) AS staff_id,
+              t.deleted_at, t.deletion_type,
+              tn.name AS school_name, tn.slug AS school_slug
+       FROM teachers t
+       JOIN tenants tn ON tn.id = t.tenant_id
+       WHERE t.deleted_at IS NOT NULL AND (t.deletion_type = 'soft' OR COALESCE(t.status, '') = 'soft_deleted')
+       ORDER BY t.deleted_at DESC NULLS LAST, t.id DESC`
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('List removed teachers error:', error);
+    res.status(500).json({ error: 'Failed to list removed teachers' });
+  }
+});
+
+router.post('/removed-teachers/:teacherId/restore', requireRole('super-admin'), async (req: AuthRequest, res) => {
+  try {
+    const teacherId = parseInt(req.params.teacherId, 10);
+    const tenantId = parseInt(String(req.body?.tenantId ?? req.query.tenantId ?? ''), 10);
+    if (!teacherId || !tenantId) {
+      return res.status(400).json({ error: 'tenantId and teacherId required' });
+    }
+    const result = await restoreTeacher(tenantId, teacherId);
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'RESTORE',
+      entityType: 'TEACHER',
+      entityId: teacherId,
+      module: 'superadmin',
+      summary: 'Super admin restored soft-deleted teacher to school lists',
+      details: result,
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
+    emitSystemDataChanged('tenant-data', 'updated', tenantId);
+    res.json({ message: 'Teacher restored to school', ...result });
+  } catch (error: any) {
+    const status = error?.status || 500;
+    if (status !== 500) return res.status(status).json({ error: error.message });
+    console.error('Restore removed teacher error:', error);
+    res.status(500).json({ error: 'Failed to restore teacher' });
+  }
+});
+
+router.post('/removed-teachers/:teacherId/permanent-delete', requireRole('super-admin'), async (req: AuthRequest, res) => {
+  try {
+    const teacherId = parseInt(req.params.teacherId, 10);
+    const tenantId = parseInt(String(req.body?.tenantId ?? req.query.tenantId ?? ''), 10);
+    if (!teacherId || !tenantId) {
+      return res.status(400).json({ error: 'tenantId and teacherId required' });
+    }
+    const result = await permanentlyRemoveTeacher(tenantId, teacherId);
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'HARD_DELETE',
+      entityType: 'TEACHER',
+      entityId: teacherId,
+      module: 'superadmin',
+      summary: 'Super admin permanently removed soft-deleted teacher record',
+      details: result,
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
+    res.json({ message: 'Teacher permanently removed', ...result });
+  } catch (error: any) {
+    const status = error?.status || 500;
+    if (status !== 500) return res.status(status).json({ error: error.message });
+    console.error('Permanent delete removed teacher error:', error);
+    res.status(500).json({ error: 'Failed to permanently remove teacher' });
+  }
+});
+
 // Tenant overview with live counts (super-admin) — must be before /:id
 router.get('/:id/overview', requireRole('super-admin'), async (req: AuthRequest, res) => {
   try {
@@ -369,8 +452,8 @@ router.get('/:id/overview', requireRole('super-admin'), async (req: AuthRequest,
     const counts = await query(
       `SELECT
          (SELECT COUNT(*)::int FROM students WHERE tenant_id = $1) AS students,
-         (SELECT COUNT(*)::int FROM teachers WHERE tenant_id = $1) AS teachers,
-         (SELECT COUNT(*)::int FROM other_staff WHERE tenant_id = $1) AS other_staff,
+         (SELECT COUNT(*)::int FROM teachers t WHERE t.tenant_id = $1 AND ${TEACHER_COUNTABLE_WHERE}) AS teachers,
+         (SELECT COUNT(*)::int FROM other_staff o WHERE o.tenant_id = $1 AND ${OTHER_STAFF_COUNTABLE_WHERE}) AS other_staff,
          (SELECT COUNT(*)::int FROM users WHERE tenant_id = $1) AS users,
          (SELECT COUNT(*)::int FROM classes WHERE tenant_id = $1) AS classes,
          (SELECT COUNT(*)::int FROM payments WHERE tenant_id = $1) AS payments,

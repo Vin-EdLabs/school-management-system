@@ -656,12 +656,68 @@ export async function ensureSupplementalSchema(): Promise<void> {
   await safe(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS qualification TEXT`, 'teachers.qualification');
   await safe(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS specialization TEXT`, 'teachers.specialization');
   await safe(
+    `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`,
+    'teachers.deleted_at'
+  );
+  await safe(
+    `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS deletion_type VARCHAR(10)`,
+    'teachers.deletion_type'
+  );
+  await safe(
+    `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS removed_original_name VARCHAR(255)`,
+    'teachers.removed_original_name'
+  );
+  await safe(
+    `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS removed_original_staff_id VARCHAR(50)`,
+    'teachers.removed_original_staff_id'
+  );
+  await safe(
+    `ALTER TABLE other_staff ADD COLUMN IF NOT EXISTS counts_as_staff BOOLEAN NOT NULL DEFAULT true`,
+    'other_staff.counts_as_staff'
+  );
+  await safe(
     `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT false`,
     'teachers.is_deleted'
   );
   await safe(
     `ALTER TABLE other_staff ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT false`,
     'other_staff.is_deleted'
+  );
+  await safe(
+    `ALTER TABLE other_staff ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`,
+    'other_staff.deleted_at'
+  );
+  await safe(
+    `ALTER TABLE other_staff ADD COLUMN IF NOT EXISTS deletion_type VARCHAR(10)`,
+    'other_staff.deletion_type'
+  );
+  await safe(
+    `ALTER TABLE other_staff ADD COLUMN IF NOT EXISTS removed_original_name VARCHAR(255)`,
+    'other_staff.removed_original_name'
+  );
+  await safe(
+    `ALTER TABLE other_staff ADD COLUMN IF NOT EXISTS removed_original_staff_id VARCHAR(50)`,
+    'other_staff.removed_original_staff_id'
+  );
+  await safe(
+    `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS parent_teacher_id INTEGER REFERENCES teachers(id) ON DELETE SET NULL`,
+    'teachers.parent_teacher_id'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_teachers_parent_teacher_id ON teachers (tenant_id, parent_teacher_id)`,
+    'idx_teachers_parent_teacher_id'
+  );
+  await safe(
+    `UPDATE teachers SET full_name = removed_original_name
+     WHERE TRIM(COALESCE(full_name, '')) = '[Removed]'
+       AND removed_original_name IS NOT NULL AND TRIM(removed_original_name) <> ''`,
+    'teachers.restore_removed_full_name'
+  );
+  await safe(
+    `UPDATE other_staff SET full_name = removed_original_name
+     WHERE TRIM(COALESCE(full_name, '')) = '[Removed]'
+       AND removed_original_name IS NOT NULL AND TRIM(removed_original_name) <> ''`,
+    'other_staff.restore_removed_full_name'
   );
   await safe(`ALTER TABLE other_staff ADD COLUMN IF NOT EXISTS qualification TEXT`, 'other_staff.qualification');
   await safe(`ALTER TABLE other_staff ADD COLUMN IF NOT EXISTS specialization TEXT`, 'other_staff.specialization');

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -46,6 +46,7 @@ import {
   Copy,
   Info,
   Crown,
+  Search,
 } from 'lucide-react';
 
 interface SchoolUser {
@@ -106,6 +107,7 @@ const UsersModule = () => {
     role: 'administrator' as 'administrator' | 'finance' | 'teacher' | 'staff',
   });
   const [resetPassword, setResetPassword] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
 
   type StaffWithoutUser = {
     id: number;
@@ -287,6 +289,25 @@ const UsersModule = () => {
 
   const displayName = (u: SchoolUser) => u.full_name || u.username;
 
+  const filteredUsers = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return users;
+    return users.filter((u) => {
+      const name = displayName(u).toLowerCase();
+      const username = (u.username || '').toLowerCase();
+      const email = (u.email || '').toLowerCase();
+      const staffId = (u.staff_id || '').toLowerCase();
+      const role = (roleLabels[u.role] || u.role || '').toLowerCase();
+      return (
+        name.includes(q) ||
+        username.includes(q) ||
+        email.includes(q) ||
+        staffId.includes(q) ||
+        role.includes(q)
+      );
+    });
+  }, [users, searchTerm]);
+
   return (
     <div className="p-6 md:p-8 space-y-6">
       {/* Header */}
@@ -322,8 +343,19 @@ const UsersModule = () => {
 
       {/* Users table */}
       <Card className="border-border shadow-sm overflow-hidden bg-card">
-        <CardHeader className="bg-muted/50 border-b border-border">
-          <CardTitle className="text-foreground text-lg">All System Users ({users.length})</CardTitle>
+        <CardHeader className="bg-muted/50 border-b border-border space-y-4">
+          <CardTitle className="text-foreground text-lg">
+            All System Users ({searchTerm.trim() ? `${filteredUsers.length} of ${users.length}` : users.length})
+          </CardTitle>
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input
+              placeholder="Search by name, username, email, staff ID, or role..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           {loading ? (
@@ -340,6 +372,15 @@ const UsersModule = () => {
                 Create User
               </Button>
             </div>
+          ) : filteredUsers.length === 0 ? (
+            <div className="py-16 text-center">
+              <Search className="w-12 h-12 text-muted/30 mx-auto mb-3" />
+              <p className="text-muted-foreground font-medium">No users match your search</p>
+              <p className="text-sm text-muted-foreground/60 mt-1">Try a different name, username, or staff ID.</p>
+              <Button variant="outline" className="mt-4" onClick={() => setSearchTerm('')}>
+                Clear search
+              </Button>
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <Table>
@@ -354,7 +395,7 @@ const UsersModule = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {users.map((u) => {
+                  {filteredUsers.map((u) => {
                     const RoleIcon = roleIcons[u.role] || UserCheck;
                     return (
                       <TableRow key={u.id} className={!u.is_active ? 'opacity-65 hover:bg-muted/30 border-border' : 'hover:bg-muted/30 border-border'}>

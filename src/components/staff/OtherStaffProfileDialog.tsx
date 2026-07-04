@@ -18,7 +18,7 @@ import { apiService } from '@/services/api';
 import { toast } from '@/hooks/use-toast';
 import { Pencil, Phone, Mail, MapPin, Briefcase, Banknote, User, Calendar, Hash, Trash2, Download, Loader2 } from 'lucide-react';
 import OtherStaffFormDialog from './OtherStaffFormDialog';
-import StaffDeleteConfirmDialog from '../common/StaffDeleteConfirmDialog';
+import StaffRemovalConfirmDialog from '../common/StaffRemovalConfirmDialog';
 import type { OtherStaffRecord } from './otherStaffTypes';
 import StaffPhotoLightbox from './StaffPhotoLightbox';
 import { useSchool } from '../../contexts/SchoolContext';
@@ -96,22 +96,22 @@ const OtherStaffProfileDialog: React.FC<Props> = ({ staffId, open, onClose, onUp
     }
   };
 
-  const handleSoftDelete = async () => {
+  const handleDelete = async (deletionType: 'soft' | 'hard') => {
     if (!staff) return;
     setDeleting(true);
     try {
-      await apiService.delete(`/other-staff/${staff.id}`);
+      await apiService.post(`/other-staff/${staff.id}/remove`, { deletionType });
       toast({
-        title: 'Staff removed',
-        description: `${staff.full_name} was removed from active lists. Salary history is preserved.`,
+        title: deletionType === 'soft' ? 'Soft deleted' : 'Permanently deleted',
+        description: `${staff.full_name} was deleted from school lists. Salary history is preserved.`,
       });
       setShowDeleteConfirm(false);
       onUpdated?.();
       onClose();
     } catch (e: unknown) {
       toast({
-        title: 'Remove failed',
-        description: e instanceof Error ? e.message : 'Could not remove staff member',
+        title: 'Delete failed',
+        description: e instanceof Error ? e.message : 'Could not delete staff member',
         variant: 'destructive',
       });
     } finally {
@@ -274,7 +274,7 @@ const OtherStaffProfileDialog: React.FC<Props> = ({ staffId, open, onClose, onUp
                   onClick={() => setShowDeleteConfirm(true)}
                 >
                   <Trash2 className="w-4 h-4 mr-2" />
-                  Remove from list
+                  Delete
                 </Button>
               </>
             )}
@@ -297,14 +297,14 @@ const OtherStaffProfileDialog: React.FC<Props> = ({ staffId, open, onClose, onUp
       />
 
       {staff ? (
-        <StaffDeleteConfirmDialog
+        <StaffRemovalConfirmDialog
           open={showDeleteConfirm}
           onOpenChange={setShowDeleteConfirm}
           staffName={staff.full_name}
           staffId={staff.staff_id}
           staffType="other"
           loading={deleting}
-          onConfirm={() => void handleSoftDelete()}
+          onConfirm={(mode) => void handleDelete(mode)}
         />
       ) : null}
     </>

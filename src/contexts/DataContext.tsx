@@ -57,7 +57,7 @@ export interface Student {
   createdAt?: string;
 }
 
-export type TeacherStatus = 'active' | 'suspended' | 'deactivated';
+export type TeacherStatus = 'active' | 'deactivated' | 'suspended';
 
 export interface Teacher {
   id: string;
@@ -75,6 +75,7 @@ export interface Teacher {
   monthlySalary: number;
   employmentStatus: string;
   status: TeacherStatus;
+  parentTeacherId?: string | null;
   hasPassportPhoto?: boolean;
   statusReason?: string;
   suspensionStartDate?: string;
@@ -243,6 +244,8 @@ interface DataContextType {
     loginMessage?: string;
   } | void>;
   updateTeacher: (id: string, updates: Partial<Teacher>) => Promise<void>;
+  removeTeacher: (id: string, deletionType: 'soft' | 'hard', reason?: string) => Promise<void>;
+  /** @deprecated Use removeTeacher */
   deleteTeacher: (id: string) => Promise<void>;
   addClass: (classData: Omit<Class, 'id'>) => Promise<void>;
   updateClass: (id: string, updates: Partial<Class>) => Promise<void>;
@@ -305,6 +308,8 @@ const mapTeacher = (backendTeacher: any): Teacher => ({
   monthlySalary: backendTeacher.monthly_salary || 0,
   employmentStatus: backendTeacher.employment_status || '',
   status: normalizeTeacherStatus(backendTeacher.status || backendTeacher.employment_status),
+  parentTeacherId:
+    backendTeacher.parent_teacher_id != null ? String(backendTeacher.parent_teacher_id) : null,
   hasPassportPhoto: !!backendTeacher.has_passport_photo,
   statusReason: backendTeacher.status_reason || undefined,
   suspensionStartDate: formatDateForInput(backendTeacher.suspension_start_date),
@@ -356,6 +361,12 @@ const mapTeacherToBackend = (teacher: Partial<Teacher>): any => {
   if (teacher.department !== undefined) out.department = String(teacher.department).trim() || null;
   if (teacher.qualification !== undefined) out.qualification = String(teacher.qualification).trim() || null;
   if (teacher.specialization !== undefined) out.specialization = String(teacher.specialization).trim() || null;
+  if (teacher.parentTeacherId !== undefined) {
+    out.parent_teacher_id =
+      teacher.parentTeacherId && String(teacher.parentTeacherId).trim()
+        ? parseInt(String(teacher.parentTeacherId), 10)
+        : null;
+  }
   if (teacher.assignedClassIds !== undefined) {
     out.class_ids = teacher.assignedClassIds
       .map((id) => parseInt(String(id), 10))
@@ -835,9 +846,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await refresh(['teachers']);
   };
 
-  const deleteTeacher = async (id: string) => {
-    await apiService.delete(`/teachers/${id}`);
+  const removeTeacher = async (id: string, deletionType: 'soft' | 'hard', reason?: string) => {
+    await apiService.post(`/teachers/${id}/remove`, {
+      deletionType,
+      ...(reason?.trim() ? { reason: reason.trim() } : {}),
+    });
     await refresh(['teachers']);
+  };
+
+  const deleteTeacher = async (id: string) => {
+    await removeTeacher(id, 'soft');
   };
 
   // Class functions
@@ -1037,6 +1055,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       revertPaymentLocally,
       addTeacher,
       updateTeacher,
+      removeTeacher,
       deleteTeacher,
       addClass,
       updateClass,

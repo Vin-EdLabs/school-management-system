@@ -19,6 +19,7 @@ import {
   type CardTypeKey,
 } from '../services/idCardService.js';
 import { buildIdCardVerifyUrl } from '../utils/idCardVerifyUrl.js';
+import { TEACHER_VISIBLE_WHERE } from '../constants/staffQueries.js';
 
 const router = express.Router();
 
@@ -86,7 +87,7 @@ router.get('/search', async (req: AuthRequest, res) => {
                  'teacher'::text AS staff_type
           FROM teachers t
           WHERE t.tenant_id = $1 AND COALESCE(t.status, 'active') = 'active'
-            AND COALESCE(t.is_deleted, false) = false ${teacherUserFilter}
+            AND ${TEACHER_VISIBLE_WHERE} ${teacherUserFilter}
           UNION ALL
           SELECT o.id, o.full_name, o.staff_id, o.passport_photo_url, o.position, o.department, 'other'::text
           FROM other_staff o

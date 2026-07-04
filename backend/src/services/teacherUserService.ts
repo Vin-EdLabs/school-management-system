@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { query } from '../db/connection.js';
+import { TEACHER_VISIBLE_WHERE } from '../constants/staffQueries.js';
 
 export type TeacherUserRow = {
   id: number;
@@ -109,7 +110,7 @@ export async function ensureAllTeacherUserAccounts(tenantId: number): Promise<nu
     `SELECT t.id, t.staff_id, t.full_name, t.email
      FROM teachers t
      WHERE t.tenant_id = $1
-       AND COALESCE(t.is_deleted, false) = false
+       AND ${TEACHER_VISIBLE_WHERE}
        AND NOT EXISTS (
          SELECT 1 FROM users u
          WHERE u.tenant_id = t.tenant_id AND u.teacher_id::text = t.id::text

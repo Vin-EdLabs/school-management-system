@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFoo
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
-import { User, Mail, Phone, MapPin, FileText, Ban, UserX, UserCheck, Trash2, Download, Loader2 } from 'lucide-react';
+import { User, Mail, Phone, MapPin, FileText, Ban, UserX, UserCheck, Trash2, Download, Loader2, Unlink } from 'lucide-react';
 import { formatDisplayDate } from '../../utils/dateFormat';
 import type { Teacher } from '../../contexts/DataContext';
 import LazyTeacherAvatar from './LazyTeacherAvatar';
@@ -21,10 +21,20 @@ import { useData } from '../../contexts/DataContext';
 import { useSchool } from '../../contexts/SchoolContext';
 import { resolveLogoUrl } from '../../services/tenantService';
 import { downloadTeacherProfilePdf } from '@/utils/staffProfilePdf';
-import StaffDeleteConfirmDialog from '../common/StaffDeleteConfirmDialog';
+import TeacherRemoveConfirmDialog from './TeacherRemoveConfirmDialog';
 import TeacherSubjectClassDisplay from './TeacherSubjectClassDisplay';
 import TeacherStatusHistory from './TeacherStatusHistory';
 import type { TeacherSubjectClassesResponse } from '@/types/teacherSubjectClass';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface TeacherDetailsDialogProps {
   teacher: Teacher | null;
@@ -38,7 +48,7 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
   onClose,
 }) => {
   const { user } = useAuth();
-  const { refresh, deleteTeacher } = useData();
+  const { refresh, removeTeacher } = useData();
   const { school } = useSchool();
   const isAdmin = user?.role === 'super-admin' || user?.role === 'administrator';
   const [downloadingPdf, setDownloadingPdf] = useState(false);
@@ -52,6 +62,8 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
   const [showLetterGenerator, setShowLetterGenerator] = useState(false);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [subjectClasses, setSubjectClasses] = useState<TeacherSubjectClassesResponse | null>(null);
+  const [detaching, setDetaching] = useState(false);
+  const [showDetachConfirm, setShowDetachConfirm] = useState(false);
 
   const status = teacher?.status || 'active';
   const badge = teacher ? teacherStatusBadge(status) : null;
@@ -176,14 +188,14 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
     onClose();
   };
 
-  const handleSoftDelete = async () => {
+  const handleRemoveTeacher = async (deletionType: 'soft' | 'hard') => {
     if (!teacher) return;
     setDeleting(true);
     try {
-      await deleteTeacher(teacher.id);
+      await removeTeacher(teacher.id, deletionType);
       toast({
-        title: 'Teacher removed',
-        description: `${teacher.fullName} was removed from active lists. Salary history is preserved.`,
+        title: deletionType === 'soft' ? 'Soft deleted' : 'Permanently deleted',
+        description: `${teacher.fullName} was deleted from school lists. Salary history is preserved.`,
       });
       setShowDeleteConfirm(false);
       onClose();
@@ -195,6 +207,29 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
       });
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleDetachAssistant = async () => {
+    if (!teacher?.parentTeacherId) return;
+    setDetaching(true);
+    try {
+      await apiService.post(`/teachers/${teacher.id}/detach-assistant`, {});
+      toast({
+        title: 'Assistant detached',
+        description: `${teacher.fullName} is now a main teacher.`,
+      });
+      await refresh(['teachers']);
+      setShowDetachConfirm(false);
+      onClose();
+    } catch (e: unknown) {
+      toast({
+        title: 'Detach failed',
+        description: e instanceof Error ? e.message : 'Could not detach assistant',
+        variant: 'destructive',
+      });
+    } finally {
+      setDetaching(false);
     }
   };
 
@@ -238,6 +273,11 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
               <DetailField label="Staff ID">
                 <span className="font-mono">{teacher.staffId}</span>
               </DetailField>
+              {teacher.parentTeacherId ? (
+                <DetailField label="Role">
+                  <Badge variant="outline">Assistant teacher</Badge>
+                </DetailField>
+              ) : null}
               <DetailField label="Position">{teacher.position || '—'}</DetailField>
               <DetailField label="Department">{teacher.department || '—'}</DetailField>
               <DetailField label="Qualification">{teacher.qualification || '—'}</DetailField>
@@ -310,6 +350,17 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
               <>
                 <Separator />
                 <div className="flex flex-wrap gap-2">
+                  {teacher.parentTeacherId ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowDetachConfirm(true)}
+                      disabled={detaching}
+                    >
+                      <Unlink className="h-4 w-4 mr-1" />
+                      Detach as main teacher
+                    </Button>
+                  ) : null}
                   {status === 'active' && (
                     <>
                       <Button variant="outline" size="sm" onClick={() => setStatusMode('suspend')}>
@@ -326,7 +377,7 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
                     </Button>
                   )}
                   <Button variant="outline" size="sm" className="text-destructive border-destructive/40" onClick={() => setShowDeleteConfirm(true)}>
-                    <Trash2 className="h-4 w-4 mr-1" /> Remove from list
+                    <Trash2 className="h-4 w-4 mr-1" /> Delete
                   </Button>
                 </div>
 
@@ -384,15 +435,39 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
         />
       )}
 
-      <StaffDeleteConfirmDialog
+      <TeacherRemoveConfirmDialog
         open={showDeleteConfirm}
         onOpenChange={setShowDeleteConfirm}
         staffName={teacher.fullName}
         staffId={teacher.staffId}
         staffType="teacher"
         loading={deleting}
-        onConfirm={() => void handleSoftDelete()}
+        onConfirm={(mode) => void handleRemoveTeacher(mode)}
       />
+
+      <AlertDialog open={showDetachConfirm} onOpenChange={setShowDetachConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Detach assistant?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <strong>{teacher.fullName}</strong> will no longer be an assistant and will appear as a
+              main teacher in the list. Their login and teaching access stay the same.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={detaching}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void handleDetachAssistant();
+              }}
+              disabled={detaching}
+            >
+              {detaching ? 'Detaching…' : 'Yes, detach'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 };

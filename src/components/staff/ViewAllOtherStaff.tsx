@@ -32,6 +32,7 @@ const ViewAllOtherStaff: React.FC<Props> = ({ refreshKey = 0 }) => {
   const [statusFilter, setStatusFilter] = useState('active');
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [exporting, setExporting] = useState(false);
+  const [includeNonCounted, setIncludeNonCounted] = useState(false);
   const [profileId, setProfileId] = useState<number | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [editStaff, setEditStaff] = useState<OtherStaffRecord | null>(null);
@@ -67,9 +68,11 @@ const ViewAllOtherStaff: React.FC<Props> = ({ refreshKey = 0 }) => {
     [staff]
   );
 
+  const isCounted = (s: OtherStaffRecord) => s.counts_as_staff !== false;
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return staff.filter((s) => {
+    const rows = staff.filter((s) => {
       const matchSearch =
         !q ||
         s.full_name?.toLowerCase().includes(q) ||
@@ -79,6 +82,12 @@ const ViewAllOtherStaff: React.FC<Props> = ({ refreshKey = 0 }) => {
       const matchDept = departmentFilter === 'all' || s.department === departmentFilter;
       return matchSearch && matchPos && matchDept;
     });
+    return [...rows].sort((a, b) => {
+      const ac = isCounted(a) ? 0 : 1;
+      const bc = isCounted(b) ? 0 : 1;
+      if (ac !== bc) return ac - bc;
+      return (a.full_name || '').localeCompare(b.full_name || '');
+    });
   }, [staff, search, positionFilter, departmentFilter]);
 
   const openProfile = (s: OtherStaffRecord) => {
@@ -86,19 +95,22 @@ const ViewAllOtherStaff: React.FC<Props> = ({ refreshKey = 0 }) => {
     setProfileOpen(true);
   };
 
-  const allFilteredSelected = filtered.length > 0 && filtered.every((s) => selected.has(s.id));
+  const countedFiltered = useMemo(() => filtered.filter(isCounted), [filtered]);
+
+  const allFilteredSelected =
+    countedFiltered.length > 0 && countedFiltered.every((s) => selected.has(s.id));
 
   const toggleSelectAll = () => {
     if (allFilteredSelected) {
       setSelected((prev) => {
         const next = new Set(prev);
-        filtered.forEach((s) => next.delete(s.id));
+        countedFiltered.forEach((s) => next.delete(s.id));
         return next;
       });
     } else {
       setSelected((prev) => {
         const next = new Set(prev);
-        filtered.forEach((s) => next.add(s.id));
+        countedFiltered.forEach((s) => next.add(s.id));
         return next;
       });
     }
@@ -113,8 +125,12 @@ const ViewAllOtherStaff: React.FC<Props> = ({ refreshKey = 0 }) => {
     });
   };
 
-  const exportRows = () =>
-    selected.size > 0 ? filtered.filter((s) => selected.has(s.id)) : filtered;
+  const exportRows = () => {
+    const base =
+      selected.size > 0 ? filtered.filter((s) => selected.has(s.id)) : filtered;
+    if (includeNonCounted) return base;
+    return base.filter(isCounted);
+  };
 
   const mapStaffRows = (rows: typeof filtered) =>
     rows.map((s) => ({
@@ -167,13 +183,21 @@ const ViewAllOtherStaff: React.FC<Props> = ({ refreshKey = 0 }) => {
     }
   };
 
+  const countedInView = useMemo(() => filtered.filter(isCounted).length, [filtered]);
+
   return (
     <>
       <Card className="border-border bg-card shadow-sm">
         <CardHeader className="border-b border-border/70 bg-muted/30">
           <CardTitle className="flex items-center gap-2">
             <Users className="w-5 h-5" />
-            <span>All Other Staff ({filtered.length})</span>
+            <span>
+              All Other Staff ({countedInView}
+              {filtered.length !== countedInView ? (
+                <span className="text-muted-foreground font-normal"> · {filtered.length} listed</span>
+              ) : null}
+              )
+            </span>
           </CardTitle>
         </CardHeader>
         <CardContent className="pt-6">
@@ -213,6 +237,13 @@ const ViewAllOtherStaff: React.FC<Props> = ({ refreshKey = 0 }) => {
                 <SelectItem value="all">All</SelectItem>
               </SelectContent>
             </Select>
+            <label className="flex items-center gap-2 text-sm text-muted-foreground lg:col-span-2">
+              <Checkbox
+                checked={includeNonCounted}
+                onCheckedChange={(v) => setIncludeNonCounted(v === true)}
+              />
+              Include non-counted staff in export
+            </label>
             <Button
               type="button"
               variant="outline"
@@ -267,10 +298,11 @@ const ViewAllOtherStaff: React.FC<Props> = ({ refreshKey = 0 }) => {
                   ) : (
                     filtered.map((s) => {
                       const active = (s.employment_status || 'active').toLowerCase() === 'active';
+                      const counted = isCounted(s);
                       return (
                         <TableRow
                           key={s.id}
-                          className={`hover:bg-muted/40 cursor-pointer ${!active ? 'opacity-70' : ''}`}
+                          className={`hover:bg-muted/40 cursor-pointer ${!active ? 'opacity-70' : ''} ${!counted ? 'opacity-60' : ''}`}
                           onClick={() => openProfile(s)}
                         >
                           <TableCell className="py-2 w-10" onClick={(e) => e.stopPropagation()}>
@@ -288,7 +320,14 @@ const ViewAllOtherStaff: React.FC<Props> = ({ refreshKey = 0 }) => {
                             />
                           </TableCell>
                           <TableCell className="py-2">
-                            <div className="font-medium text-sm">{s.full_name}</div>
+                            <div className="font-medium text-sm flex items-center gap-2 flex-wrap">
+                              {s.full_name}
+                              {!counted ? (
+                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
+                                  Not Counted
+                                </Badge>
+                              ) : null}
+                            </div>
                             <div className="text-xs text-muted-foreground">{s.gender || '—'}</div>
                           </TableCell>
                           <TableCell>

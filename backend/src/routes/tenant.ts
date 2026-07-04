@@ -6,6 +6,7 @@ import express from 'express';
 import { resolveTenantById, resolveTenantBySlugAnyStatus } from '../services/tenantResolver.js';
 import { resolveTenant, TenantRequest } from '../middleware/tenantResolver.js';
 import { query } from '../db/connection.js';
+import { TEACHER_COUNTABLE_WHERE_BARE, OTHER_STAFF_COUNTABLE_WHERE_BARE } from '../constants/staffQueries.js';
 
 const router = express.Router();
 
@@ -23,8 +24,8 @@ router.get('/public-stats', async (_req, res) => {
     ] = await Promise.all([
       query(`SELECT COUNT(*)::int AS count FROM tenants WHERE is_active = true`).catch(() => ({ rows: [{ count: 0 }] })),
       query(`SELECT COUNT(*)::int AS count FROM students`).catch(() => ({ rows: [{ count: 0 }] })),
-      query(`SELECT COUNT(*)::int AS count FROM teachers`).catch(() => ({ rows: [{ count: 0 }] })),
-      query(`SELECT COUNT(*)::int AS count FROM other_staff`).catch(() => ({ rows: [{ count: 0 }] })),
+      query(`SELECT COUNT(*)::int AS count FROM teachers WHERE ${TEACHER_COUNTABLE_WHERE_BARE}`).catch(() => ({ rows: [{ count: 0 }] })),
+      query(`SELECT COUNT(*)::int AS count FROM other_staff WHERE ${OTHER_STAFF_COUNTABLE_WHERE_BARE}`).catch(() => ({ rows: [{ count: 0 }] })),
       query(`SELECT COALESCE(SUM(COALESCE(amount_paid, amount, 0)), 0)::numeric AS total FROM payments WHERE COALESCE(is_voided, false) = false`).catch(() => ({ rows: [{ total: 0 }] })),
     ]);
 

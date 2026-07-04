@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import DoNotCountAsStaffToggle from './DoNotCountAsStaffToggle';
 import { apiService } from '@/services/api';
 import { toast } from '@/hooks/use-toast';
 import { Loader2, UserPlus, Camera, Info } from 'lucide-react';
@@ -58,6 +59,7 @@ const emptyForm = () => ({
   notes: '',
   qualification: '',
   specialization: '',
+  counts_as_staff: true,
 });
 
 type Props = {
@@ -115,6 +117,7 @@ const OtherStaffFormDialog: React.FC<Props> = ({ open, onClose, staff, onSuccess
         notes: staff.notes || '',
         qualification: staff.qualification || '',
         specialization: staff.specialization || '',
+        counts_as_staff: staff.counts_as_staff !== false,
       });
       setShowEmergency(!!(
         staff.emergency_contact_name ||
@@ -183,6 +186,7 @@ const OtherStaffFormDialog: React.FC<Props> = ({ open, onClose, staff, onSuccess
         bank_account_number: form.bank_account_number || null,
         bank_branch: form.bank_branch || null,
         bank_account_name: form.bank_account_name || null,
+        counts_as_staff: form.counts_as_staff !== false,
       };
 
       let id = staff?.id;
@@ -391,6 +395,11 @@ const OtherStaffFormDialog: React.FC<Props> = ({ open, onClose, staff, onSuccess
               <Switch checked={form.ssnit_enabled} onCheckedChange={(v) => set('ssnit_enabled', v)} id="ssnit" />
               <Label htmlFor="ssnit">SSNIT enabled</Label>
             </div>
+            <DoNotCountAsStaffToggle
+              countsAsStaff={form.counts_as_staff}
+              onChange={(countsAsStaff) => set('counts_as_staff', countsAsStaff)}
+              id="counts_as_staff_edit"
+            />
           </div>
 
           <StaffOptionalSections

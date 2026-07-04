@@ -16,9 +16,23 @@ import {
   assertCanImpersonateParent,
   logImpersonationStart,
   logImpersonationEnd,
-  isSuperAdmin,
+  isPlatformSuperAdminActor,
   type ImpersonatorActor,
 } from '../services/impersonationService.js';
+
+function resolveImpersonationTenantId(actor: ImpersonatorActor, bodyTenantId: unknown): number {
+  if (isPlatformSuperAdminActor(actor)) {
+    const tid = parseInt(String(bodyTenantId ?? ''), 10);
+    if (!tid || Number.isNaN(tid)) {
+      throw new Error('School context required');
+    }
+    return tid;
+  }
+  if (!actor.tenantId || Number.isNaN(actor.tenantId)) {
+    throw new Error('School context required');
+  }
+  return actor.tenantId;
+}
 import { query } from '../db/connection.js';
 
 const router = express.Router();
@@ -123,7 +137,7 @@ router.get('/targets', async (req: AuthRequest, res) => {
       return res.status(400).json({ error: 'tenantId required' });
     }
 
-    if (!isSuperAdmin(actor.role, actor.tenantId) && actor.tenantId !== tenantId) {
+    if (!isPlatformSuperAdminActor(actor) && actor.tenantId !== tenantId) {
       return res.status(403).json({ error: 'Cross-tenant search denied' });
     }
 
@@ -145,15 +159,11 @@ router.post('/start', async (req: AuthRequest, res) => {
     }
 
     const { targetUserId, identifier, tenantId: bodyTenantId } = req.body || {};
-    let tenantId = parseInt(String(bodyTenantId ?? actor.tenantId), 10);
-    if (isSuperAdmin(actor.role, actor.tenantId) && bodyTenantId) {
-      tenantId = parseInt(String(bodyTenantId), 10);
-    } else if (!isSuperAdmin(actor.role, actor.tenantId)) {
-      tenantId = actor.tenantId!;
-    }
-
-    if (!tenantId || Number.isNaN(tenantId)) {
-      return res.status(400).json({ error: 'School context required' });
+    let tenantId: number;
+    try {
+      tenantId = resolveImpersonationTenantId(actor, bodyTenantId);
+    } catch (e: any) {
+      return res.status(400).json({ error: e?.message || 'School context required' });
     }
 
     let target = null as Awaited<ReturnType<typeof loadStaffUserById>>;
@@ -230,15 +240,11 @@ router.post('/start-parent', async (req: AuthRequest, res) => {
     }
 
     const { identifier, studentId, tenantId: bodyTenantId } = req.body || {};
-    let tenantId = parseInt(String(bodyTenantId ?? actor.tenantId), 10);
-    if (isSuperAdmin(actor.role, actor.tenantId) && bodyTenantId) {
-      tenantId = parseInt(String(bodyTenantId), 10);
-    } else if (!isSuperAdmin(actor.role, actor.tenantId)) {
-      tenantId = actor.tenantId!;
-    }
-
-    if (!tenantId || Number.isNaN(tenantId)) {
-      return res.status(400).json({ error: 'School context required' });
+    let tenantId: number;
+    try {
+      tenantId = resolveImpersonationTenantId(actor, bodyTenantId);
+    } catch (e: any) {
+      return res.status(400).json({ error: e?.message || 'School context required' });
     }
 
     assertCanImpersonateParent(actor, tenantId);
@@ -329,12 +335,11 @@ router.post('/start-auto', async (req: AuthRequest, res) => {
     const id = String(identifier || '').trim();
     if (!id) return res.status(400).json({ error: 'identifier required' });
 
-    let tenantId = parseInt(String(bodyTenantId ?? actor.tenantId), 10);
-    if (!isSuperAdmin(actor.role, actor.tenantId)) {
-      tenantId = actor.tenantId!;
-    }
-    if (!tenantId || Number.isNaN(tenantId)) {
-      return res.status(400).json({ error: 'School context required' });
+    let tenantId: number;
+    try {
+      tenantId = resolveImpersonationTenantId(actor, bodyTenantId);
+    } catch (e: any) {
+      return res.status(400).json({ error: e?.message || 'School context required' });
     }
 
     const staff = await resolveStaffTargetByIdentifier(tenantId, id);

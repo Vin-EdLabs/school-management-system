@@ -39,8 +39,12 @@ const HeadmasterDashboard: React.FC<HeadmasterDashboardProps> = ({ onNavigate })
       .then((rows) => setUpcomingEvents(Array.isArray(rows) ? rows.length : 0))
       .catch(() => setUpcomingEvents(0));
     void apiService
-      .get<unknown[]>('/other-staff/all-staff?type=all&status=active')
-      .then((rows) => setTotalStaff(Array.isArray(rows) ? rows.length : 0))
+      .get<{ count: number }>('/reports/admin-overview')
+      .then((data) => {
+        const teachers = data?.teachers?.total ?? 0;
+        const other = data?.otherStaff?.total ?? 0;
+        setTotalStaff(teachers + other);
+      })
       .catch(() => setTotalStaff(0));
   }, []);
 

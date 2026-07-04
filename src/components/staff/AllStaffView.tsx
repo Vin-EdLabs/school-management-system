@@ -65,7 +65,7 @@ export type AllStaffRow = {
   department?: string;
 
   passport_photo_url?: string;
-
+  counts_as_staff?: boolean;
 };
 
 
@@ -109,6 +109,7 @@ const AllStaffView = () => {
   const [loading, setLoading] = useState(true);
 
   const [exporting, setExporting] = useState(false);
+  const [includeNonCounted, setIncludeNonCounted] = useState(false);
 
   const [search, setSearch] = useState('');
 
@@ -168,60 +169,45 @@ const AllStaffView = () => {
 
 
 
+  const isCountedRow = (row: AllStaffRow) =>
+    row.staff_type === 'teacher' || row.counts_as_staff !== false;
+
   const filtered = useMemo(() => {
-
     const q = search.trim().toLowerCase();
-
-    if (!q) return rows;
-
-    return rows.filter(
-
-      (r) =>
-
-        r.full_name?.toLowerCase().includes(q) ||
-
-        r.staff_id?.toLowerCase().includes(q)
-
-    );
-
+    const list = !q
+      ? rows
+      : rows.filter(
+          (r) =>
+            r.full_name?.toLowerCase().includes(q) ||
+            r.staff_id?.toLowerCase().includes(q)
+        );
+    return [...list].sort((a, b) => {
+      const ac = isCountedRow(a) ? 0 : 1;
+      const bc = isCountedRow(b) ? 0 : 1;
+      if (ac !== bc) return ac - bc;
+      return (a.full_name || '').localeCompare(b.full_name || '');
+    });
   }, [rows, search]);
 
-
+  const selectableFiltered = useMemo(() => filtered.filter(isCountedRow), [filtered]);
 
   const allFilteredSelected =
-
-    filtered.length > 0 && filtered.every((row) => selected.has(rowKey(row)));
-
-
+    selectableFiltered.length > 0 && selectableFiltered.every((row) => selected.has(rowKey(row)));
 
   const toggleSelectAll = () => {
-
     if (allFilteredSelected) {
-
       setSelected((prev) => {
-
         const next = new Set(prev);
-
-        filtered.forEach((row) => next.delete(rowKey(row)));
-
+        selectableFiltered.forEach((row) => next.delete(rowKey(row)));
         return next;
-
       });
-
     } else {
-
       setSelected((prev) => {
-
         const next = new Set(prev);
-
-        filtered.forEach((row) => next.add(rowKey(row)));
-
+        selectableFiltered.forEach((row) => next.add(rowKey(row)));
         return next;
-
       });
-
     }
-
   };
 
 
@@ -244,9 +230,12 @@ const AllStaffView = () => {
 
 
 
-  const exportRows = () =>
-
-    selected.size > 0 ? filtered.filter((row) => selected.has(rowKey(row))) : filtered;
+  const exportRows = () => {
+    const base =
+      selected.size > 0 ? filtered.filter((row) => selected.has(rowKey(row))) : filtered;
+    if (includeNonCounted) return base;
+    return base.filter(isCountedRow);
+  };
 
 
 
@@ -350,6 +339,8 @@ const AllStaffView = () => {
 
 
 
+  const countedInView = useMemo(() => filtered.filter(isCountedRow).length, [filtered]);
+
   const openRow = (row: AllStaffRow) => {
 
     if (row.staff_type === 'teacher') {
@@ -388,7 +379,13 @@ const AllStaffView = () => {
 
             <Users className="w-5 h-5" />
 
-            <span>All Staff ({filtered.length})</span>
+            <span>
+              All Staff ({countedInView}
+              {filtered.length !== countedInView ? (
+                <span className="text-muted-foreground font-normal"> · {filtered.length} listed</span>
+              ) : null}
+              )
+            </span>
 
             {selected.size > 0 ? (
 
@@ -465,6 +462,14 @@ const AllStaffView = () => {
               </SelectContent>
 
             </Select>
+
+            <label className="flex items-center gap-2 text-sm text-muted-foreground lg:col-span-2">
+              <Checkbox
+                checked={includeNonCounted}
+                onCheckedChange={(v) => setIncludeNonCounted(v === true)}
+              />
+              Include non-counted staff in export
+            </label>
 
             <Button
 
@@ -567,6 +572,7 @@ const AllStaffView = () => {
                   {filtered.map((row) => {
 
                     const key = rowKey(row);
+                    const counted = isCountedRow(row);
 
                     return (
 
@@ -574,7 +580,7 @@ const AllStaffView = () => {
 
                         key={key}
 
-                        className="cursor-pointer hover:bg-muted/40"
+                        className={`cursor-pointer hover:bg-muted/40 ${!counted ? 'opacity-60' : ''}`}
 
                         onClick={() => openRow(row)}
 
@@ -626,7 +632,16 @@ const AllStaffView = () => {
 
                         </TableCell>
 
-                        <TableCell className="font-medium">{row.full_name}</TableCell>
+                        <TableCell className="font-medium">
+                          <span className="inline-flex items-center gap-2 flex-wrap">
+                            {row.full_name}
+                            {!counted ? (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
+                                Not Counted
+                              </Badge>
+                            ) : null}
+                          </span>
+                        </TableCell>
 
                         <TableCell className="font-mono text-sm">{row.staff_id}</TableCell>
 

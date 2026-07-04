@@ -61,7 +61,7 @@ export function isPlatformSuperAdminActor(actor: Pick<ImpersonatorActor, 'role'>
 }
 
 export function canStartImpersonation(actor: ImpersonatorActor): boolean {
-  if (isSuperAdmin(actor.role, actor.tenantId)) return true;
+  if (isPlatformSuperAdminActor(actor)) return true;
   return normalizeRole(actor.role) === 'administrator' && actor.isPrimaryAdmin === true;
 }
 
@@ -69,10 +69,10 @@ export function assertCanImpersonateStaff(actor: ImpersonatorActor, target: Staf
   if (actor.id === target.id) {
     throw new Error('You cannot impersonate yourself');
   }
-  if (isSuperAdmin(target.role, target.tenantId)) {
+  if (normalizeRole(target.role) === 'super-admin') {
     throw new Error('Cannot impersonate a super admin');
   }
-  if (isSuperAdmin(actor.role, actor.tenantId)) {
+  if (isPlatformSuperAdminActor(actor)) {
     return;
   }
   if (normalizeRole(actor.role) !== 'administrator' || !actor.isPrimaryAdmin) {
@@ -84,7 +84,7 @@ export function assertCanImpersonateStaff(actor: ImpersonatorActor, target: Staf
 }
 
 export function assertCanImpersonateParent(actor: ImpersonatorActor, tenantId: number) {
-  if (isSuperAdmin(actor.role, actor.tenantId)) return;
+  if (isPlatformSuperAdminActor(actor)) return;
   if (normalizeRole(actor.role) !== 'administrator' || !actor.isPrimaryAdmin) {
     throw new Error('Only primary school admins or super admins can impersonate users');
   }

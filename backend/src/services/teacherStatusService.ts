@@ -1,12 +1,15 @@
 import { query, getClient } from '../db/connection.js';
 import { writeAuditLog } from './auditService.js';
+import { TEACHER_PAYROLL_WHERE_BARE } from '../constants/staffQueries.js';
+import { detachAllAssistants } from './teacherAssistantService.js';
 
-export type TeacherStatus = 'active' | 'suspended' | 'deactivated';
+export type TeacherStatus = 'active' | 'deactivated' | 'soft_deleted' | 'hard_deleted';
 
 export function normalizeTeacherStatus(raw: string | null | undefined): TeacherStatus {
   const s = String(raw || 'active').trim().toLowerCase();
-  if (s === 'suspended') return 'suspended';
-  if (s === 'deactivated') return 'deactivated';
+  if (s === 'deactivated' || s === 'suspended') return 'deactivated';
+  if (s === 'soft_deleted') return 'soft_deleted';
+  if (s === 'hard_deleted') return 'hard_deleted';
   return 'active';
 }
 
@@ -67,7 +70,7 @@ export async function suspendTeacher(options: {
 
     const updated = await client.query(
       `UPDATE teachers SET
-         status = 'suspended',
+         status = 'deactivated',
          employment_status = 'Suspended',
          status_reason = $1,
          status_changed_at = CURRENT_TIMESTAMP,
@@ -106,7 +109,7 @@ export async function suspendTeacher(options: {
         notes: options.notes || null,
       },
       beforeValues: { status: row.status, class_name: row.class_name },
-      afterValues: { status: 'suspended' },
+      afterValues: { status: 'deactivated' },
       ipAddress: options.ipAddress,
       userAgent: options.userAgent,
     });
@@ -147,6 +150,7 @@ export async function deactivateTeacher(options: {
 
     const statusReason = [options.reason, options.notes?.trim()].filter(Boolean).join(' — ');
 
+    await detachAllAssistants(client, options.tenantId, options.teacherId);
     await unassignTeacherFromClasses(client, options.tenantId, options.teacherId);
 
     const updated = await client.query(
@@ -226,6 +230,9 @@ export async function reactivateTeacher(options: {
     const row = before.rows[0];
     const prevStatus = normalizeTeacherStatus(row.status);
     if (prevStatus === 'active') throw new Error('Teacher is already active');
+    if (prevStatus === 'soft_deleted' || prevStatus === 'hard_deleted') {
+      throw new Error('Removed teachers cannot be reactivated from the school admin panel');
+    }
 
     const updated = await client.query(
       `UPDATE teachers SET
@@ -276,7 +283,8 @@ export async function processExpiredSuspensions(): Promise<number> {
   const today = new Date().toISOString().slice(0, 10);
   const due = await query(
     `SELECT id, tenant_id, full_name, suspension_end_date FROM teachers
-     WHERE status = 'suspended'
+     WHERE status = 'deactivated'
+       AND employment_status = 'Suspended'
        AND suspension_end_date IS NOT NULL
        AND suspension_end_date <= $1`,
     [today]
@@ -302,7 +310,7 @@ export async function getActiveTeachersSalaryTotal(tenantId: number): Promise<nu
   const res = await query(
     `SELECT COALESCE(SUM(monthly_salary), 0)::numeric AS total
      FROM teachers
-     WHERE tenant_id = $1 AND COALESCE(status, 'active') = 'active'`,
+     WHERE tenant_id = $1 AND ${TEACHER_PAYROLL_WHERE_BARE}`,
     [tenantId]
   );
   return parseFloat(res.rows[0]?.total || '0') || 0;

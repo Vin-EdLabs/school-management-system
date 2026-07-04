@@ -20,6 +20,7 @@ import StaffFieldSelect from '../common/StaffFieldSelect';
 import TeacherSubjectClassAssignment from './TeacherSubjectClassAssignment';
 import { FormFieldError, FormValidationSummary } from '@/components/common/FormFieldError';
 import { persistStaffProfileFields } from '@/services/staffFieldApi';
+import ParentTeacherSelect from './ParentTeacherSelect';
 import {
   flattenSubjectClassMap,
   deriveSubjectNamesFromMap,
@@ -73,6 +74,7 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
   const [showBank, setShowBank] = useState(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [parentTeacherId, setParentTeacherId] = useState('');
   const submitLock = useRef(false);
 
   const runValidation = () => {
@@ -135,6 +137,7 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
         bankBranch: formData.bankBranch || undefined,
         position: formData.position.trim() || undefined,
         department: formData.department.trim() || undefined,
+        parentTeacherId: parentTeacherId || null,
       });
 
       await persistStaffProfileFields(formData.position, formData.department);
@@ -405,6 +408,8 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
                 rows={3}
               />
             </div>
+
+            <ParentTeacherSelect value={parentTeacherId} onChange={setParentTeacherId} disabled={isSubmitting} />
 
             <StaffOptionalSections
               showEmergency={showEmergency}

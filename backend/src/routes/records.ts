@@ -1,4 +1,5 @@
 import express from 'express';
+import { TEACHER_VISIBLE_WHERE } from '../constants/staffQueries.js';
 import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { requireRole } from '../middleware/auth.js';
@@ -55,7 +56,7 @@ router.get('/profile-lookup', requireRole('super-admin', 'administrator', 'headm
       `SELECT t.*, c.class_name
        FROM teachers t
        LEFT JOIN classes c ON t.class_assigned_id = c.id
-       WHERE t.tenant_id = $1 AND LOWER(t.staff_id) = LOWER($2)`,
+       WHERE t.tenant_id = $1 AND LOWER(t.staff_id) = LOWER($2) AND ${TEACHER_VISIBLE_WHERE}`,
       [tenantId, searchId]
     );
     if (teacherRes.rows.length > 0) {

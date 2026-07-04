@@ -1,4 +1,5 @@
 import express from 'express';
+import bcrypt from 'bcryptjs';
 import { TEACHER_COUNTABLE_WHERE, OTHER_STAFF_COUNTABLE_WHERE } from '../constants/staffQueries.js';
 import { permanentlyRemoveTeacher, restoreTeacher } from '../services/teacherRemovalService.js';
 import multer from 'multer';

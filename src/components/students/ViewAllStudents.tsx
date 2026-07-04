@@ -72,7 +72,9 @@ import {
   statusBadgeClass,
   totalScheduledFeesForStudent,
 } from './studentRegistryUtils';
+import { mapStudent } from '@/utils/studentMappers';
 import { cn } from '@/lib/utils';
+import { inferTermBounds, normalizeDateOnly } from '@/utils/inferTermBounds';
 
 const PAGE_SIZES = [10, 25, 50] as const;
 type SortKey = 'name' | 'studentId' | 'class' | 'gender' | 'status';
@@ -82,7 +84,7 @@ function studentDateAdded(student: Student): string {
 }
 
 function studentInactivatedDate(student: Student): string {
-  return student.inactivatedAt || student.createdAt || student.dateOfAdmission || '';
+  return student.inactivatedAt || student.updatedAt || student.createdAt || '';
 }
 
 type AcademicTermOption = {
@@ -152,13 +154,52 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
 
   const [inactiveTarget, setInactiveTarget] = useState<Student | null>(null);
   const [reactivateTarget, setReactivateTarget] = useState<Student | null>(null);
+  const [termInactiveStudents, setTermInactiveStudents] = useState<Student[] | null>(null);
+  const [termInactiveLoading, setTermInactiveLoading] = useState(false);
 
   const isInactiveView = variant === 'inactive';
+
+  const loadInactiveStudents = useCallback(async (termId: string, terms: AcademicTermOption[]) => {
+    if (termId === 'all-terms') {
+      const rows = await apiService.get<Record<string, unknown>[]>('/students?status=inactive');
+      return (Array.isArray(rows) ? rows : []).map(mapStudent);
+    }
+
+    const term = terms.find((t) => String(t.id) === termId);
+    if (!term) return [];
+
+    // Same term window + API as Academic Reports → students-left-list (proven working path)
+    const inferred = inferTermBounds(term.termName, term.year);
+    const termStart = normalizeDateOnly(term.startDate) || inferred.start;
+    const termEnd = normalizeDateOnly(term.endDate) || inferred.end;
+    const params = new URLSearchParams({
+      termStart,
+      termEnd,
+      termName: term.termName,
+      year: term.year,
+      month: 'all',
+    });
+    if (term.id) params.set('termId', String(term.id));
+
+    const rows = await apiService.get<Record<string, unknown>[]>(
+      `/reports/academic/students-left-list?${params.toString()}`
+    );
+
+    return (Array.isArray(rows) ? rows : []).map((row) =>
+      mapStudent({
+        ...row,
+        inactivated_at: row.left_date ?? row.inactivated_at,
+        enrollment_status: row.enrollment_status ?? 'inactive',
+      })
+    );
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     void apiService
-      .get<Array<{ id: number; term_name: string; year: string; start_date?: string | null; end_date?: string | null }>>('/settings/academic-terms')
+      .get<Array<{ id: number; term_name: string; year: string; start_date?: string | null; end_date?: string | null }>>(
+        isInactiveView ? '/settings/academic-terms?include_archived=true' : '/settings/academic-terms'
+      )
       .then((rows) => {
         if (cancelled) return;
         const next = (Array.isArray(rows) ? rows : [])
@@ -172,7 +213,7 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
           }))
           .filter((row) => row.id > 0 && row.label);
         setAcademicTerms(next);
-        if (activeAcademicTermId && next.some((term) => term.id === activeAcademicTermId)) {
+        if (!isInactiveView && activeAcademicTermId && next.some((term) => term.id === activeAcademicTermId)) {
           setSelectedAcademicTermId(String(activeAcademicTermId));
         }
       })
@@ -182,7 +223,46 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
     return () => {
       cancelled = true;
     };
-  }, [activeAcademicTermId]);
+  }, [activeAcademicTermId, isInactiveView]);
+
+  useEffect(() => {
+    if (!isInactiveView) {
+      setTermInactiveStudents(null);
+      setTermInactiveLoading(false);
+      return;
+    }
+    if (selectedAcademicTermId !== 'all-terms' && academicTerms.length === 0) {
+      return;
+    }
+    let cancelled = false;
+    setTermInactiveLoading(true);
+    void loadInactiveStudents(selectedAcademicTermId, academicTerms)
+      .then((mapped) => {
+        if (!cancelled) setTermInactiveStudents(mapped);
+      })
+      .catch(() => {
+        if (!cancelled) setTermInactiveStudents([]);
+      })
+      .finally(() => {
+        if (!cancelled) setTermInactiveLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isInactiveView, selectedAcademicTermId, loadInactiveStudents, academicTerms]);
+
+  const refetchInactiveStudents = useCallback(async () => {
+    if (!isInactiveView) return;
+    setTermInactiveLoading(true);
+    try {
+      const mapped = await loadInactiveStudents(selectedAcademicTermId, academicTerms);
+      setTermInactiveStudents(mapped);
+    } catch {
+      setTermInactiveStudents([]);
+    } finally {
+      setTermInactiveLoading(false);
+    }
+  }, [isInactiveView, selectedAcademicTermId, loadInactiveStudents, academicTerms]);
 
   const selectedAcademicTerm = useMemo(
     () => academicTerms.find((term) => String(term.id) === selectedAcademicTermId) || null,
@@ -207,8 +287,12 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
 
   const matchesLeftTerm = useCallback((student: Student, term: AcademicTermOption | null) => {
     if (!term) return true;
-    if (student.inactivatedAcademicTermId != null) return student.inactivatedAcademicTermId === term.id;
-    return isDateWithinTerm(student.inactivatedAt, term);
+    if (student.inactivatedAcademicTermId != null) {
+      return Number(student.inactivatedAcademicTermId) === Number(term.id);
+    }
+    const leftDate = student.inactivatedAt || student.updatedAt;
+    if (leftDate) return isDateWithinTerm(leftDate, term);
+    return false;
   }, [isDateWithinTerm]);
 
   const resolveLeftTermLabel = useCallback(
@@ -217,9 +301,10 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
         const term = academicTerms.find((t) => t.id === student.inactivatedAcademicTermId);
         if (term) return term.label;
       }
-      if (!student.inactivatedAt) return null;
+      if (!student.inactivatedAt && !student.updatedAt) return null;
+      const leftDate = student.inactivatedAt || student.updatedAt;
       for (const term of academicTerms) {
-        if (isDateWithinTerm(student.inactivatedAt, term)) return term.label;
+        if (isDateWithinTerm(leftDate, term)) return term.label;
       }
       return null;
     },
@@ -227,12 +312,11 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
   );
 
   const registryStudents = useMemo(() => {
-    return students.filter((s) => {
-      const st = normalizeEnrollmentStatus(s.enrollmentStatus);
-      if (isInactiveView) return st === 'inactive';
-      return st === 'active';
-    });
-  }, [students, isInactiveView]);
+    if (isInactiveView) {
+      return termInactiveStudents ?? [];
+    }
+    return students.filter((s) => normalizeEnrollmentStatus(s.enrollmentStatus) === 'active');
+  }, [students, isInactiveView, termInactiveStudents]);
 
   const termPayments = useMemo(() => {
     return (payments || []).filter((p) => {
@@ -306,10 +390,13 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
         (filterDiscount === 'full-discount' && isFullDiscount(student)) ||
         (filterDiscount === 'partial-discount' && isPartialDiscount(student)) ||
         (filterDiscount === 'no-discount' && !hasDiscount(student));
-      const matchesRecentTermFilter = isInactiveView
+      const matchesTermFilter = isInactiveView
         ? matchesLeftTerm(student, selectedAcademicTerm)
         : matchesAdmissionTerm(student, selectedAcademicTerm);
-      const matchesRecentTermEvents = !showRecentAdmissions || matchesRecentTermFilter;
+      const applyTermFilter = isInactiveView
+        ? false
+        : showRecentAdmissions && selectedAcademicTerm != null;
+      const matchesRecentTermEvents = !applyTermFilter || matchesTermFilter;
       return matchesSearch && matchesClass && matchesGender && matchesDiscount && matchesRecentTermEvents;
     });
   }, [
@@ -323,6 +410,7 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
     matchesAdmissionTerm,
     matchesLeftTerm,
     isInactiveView,
+    termInactiveStudents,
   ]);
 
   const termAdmissionsCount = useMemo(
@@ -388,6 +476,13 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
     });
   };
 
+  const handleAcademicTermChange = (value: string) => {
+    setSelectedAcademicTermId(value);
+    if (isInactiveView && value !== 'all-terms') {
+      setShowRecentAdmissions(true);
+    }
+  };
+
   const recentToggleLabel = isInactiveView ? 'Recently inactivated' : 'Recently added students';
 
   const toggleSort = (key: SortKey) => {
@@ -449,6 +544,8 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
     });
     try {
       await setStudentStatus(student.id, 'inactive');
+      await refresh(['students']);
+      await refetchInactiveStudents();
       toast({
         title: 'Student set inactive',
         description: `${student.firstName} ${student.lastName} is now inactive. All records are preserved.`,
@@ -474,6 +571,8 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
     });
     try {
       await setStudentStatus(student.id, 'active');
+      await refresh(['students']);
+      await refetchInactiveStudents();
       toast({
         title: 'Student reactivated',
         description: `${student.firstName} ${student.lastName} is active again and will appear in active lists.`,
@@ -596,7 +695,9 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
     }
   };
 
-  const initialLoad = loading && registryStudents.length === 0;
+  const initialLoad =
+    (loading && !isInactiveView && registryStudents.length === 0) ||
+    (isInactiveView && termInactiveLoading && termInactiveStudents == null);
 
   const totalFeesForDialog = useCallback(
     (st: Student | null) => {
@@ -659,7 +760,7 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
                 {isInactiveView ? <UserX className="h-4 w-4 shrink-0" /> : <Users className="h-4 w-4 shrink-0" />}
                 {recentToggleLabel}
               </Button>
-              <Select value={selectedAcademicTermId} onValueChange={setSelectedAcademicTermId}>
+              <Select value={selectedAcademicTermId} onValueChange={handleAcademicTermChange}>
                 <SelectTrigger className="h-9 w-[9.5rem] shrink-0 text-xs sm:w-[11rem] sm:text-sm" aria-label="Academic term">
                   <SelectValue placeholder="Term" />
                 </SelectTrigger>

@@ -7,7 +7,7 @@ import AddStudentForm from './AddStudentForm';
 import ViewAllStudents from './ViewAllStudents';
 import PromoteStudents from './PromoteStudents';
 import { useData } from '../../contexts/DataContext';
-import { normalizeEnrollmentStatus } from './studentRegistryUtils';
+import { normalizeEnrollmentStatus, isInactiveEnrollmentStatus } from './studentRegistryUtils';
 import AlumniStudents from './AlumniStudents';
 import PendingAdmissions from './PendingAdmissions';
 import { Eye, UserPlus, TrendingUp, UserX, GraduationCap, RotateCcw, Clock } from 'lucide-react';
@@ -31,7 +31,7 @@ const StudentsModule = ({ readOnly = false }: { readOnly?: boolean }) => {
   );
 
   const inactiveCount = useMemo(
-    () => students.filter((s) => normalizeEnrollmentStatus(s.enrollmentStatus) === 'inactive').length,
+    () => students.filter((s) => isInactiveEnrollmentStatus(s.enrollmentStatus)).length,
     [students]
   );
 

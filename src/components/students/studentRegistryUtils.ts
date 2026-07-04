@@ -2,10 +2,18 @@ import type { FeeStructure, Student } from '../../contexts/DataContext';
 
 export function normalizeEnrollmentStatus(raw: string | undefined): string {
   const s = (raw || 'active').toLowerCase().trim();
-  if (['active', 'inactive', 'pending', 'graduated', 'suspended', 'alumni'].includes(s)) {
-    return s === 'alumni' ? 'graduated' : s;
+  if (['active', 'inactive', 'pending', 'graduated', 'suspended', 'alumni', 'withdrawn'].includes(s)) {
+    if (s === 'alumni') return 'graduated';
+    if (s === 'withdrawn') return 'inactive';
+    return s;
   }
   return s || 'active';
+}
+
+/** Students no longer on the active registry (matches academic leavers reports). */
+export function isInactiveEnrollmentStatus(raw: string | undefined): boolean {
+  const s = (raw || 'active').toLowerCase().trim();
+  return s === 'inactive' || s === 'withdrawn';
 }
 
 export function shouldTrackStudentFees(student: { enrollmentStatus?: string }): boolean {

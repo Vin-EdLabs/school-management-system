@@ -3,6 +3,7 @@ import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { resolveAcademicTermId } from '../services/studentTermTrackingService.js';
+import { LEAVERS_TERM_WHERE, LEAVERS_TERM_WHERE_S } from '../constants/studentTermQueries.js';
 import { TEACHER_VISIBLE_WHERE, TEACHER_COUNTABLE_WHERE_BARE } from '../constants/staffQueries.js';
 
 const router = express.Router();
@@ -75,24 +76,6 @@ const ADMISSIONS_TERM_WHERE = `(
     AND date_of_admission <= $3::date
   )
 )`;
-
-const LEAVERS_TERM_WHERE = `(
-  ($4::int IS NOT NULL
-    AND inactivated_academic_term_id = $4::int
-    AND LOWER(COALESCE(enrollment_status, 'active')) IN ('inactive', 'withdrawn'))
-  OR (
-    inactivated_academic_term_id IS NULL
-    AND LOWER(COALESCE(enrollment_status, 'active')) IN ('inactive', 'withdrawn')
-    AND COALESCE(inactivated_at, updated_at)::date >= $2::date
-    AND COALESCE(inactivated_at, updated_at)::date <= $3::date
-  )
-)`;
-
-const LEAVERS_TERM_WHERE_S = LEAVERS_TERM_WHERE
-  .replace(/inactivated_academic_term_id/g, 's.inactivated_academic_term_id')
-  .replace(/inactivated_at/g, 's.inactivated_at')
-  .replace(/updated_at/g, 's.updated_at')
-  .replace(/enrollment_status/g, 's.enrollment_status');
 
 const ADMISSIONS_TERM_WHERE_S = ADMISSIONS_TERM_WHERE
   .replace(/admission_academic_term_id/g, 's.admission_academic_term_id')

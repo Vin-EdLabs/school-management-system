@@ -55,6 +55,7 @@ export interface Student {
   inactivatedAt?: string;
   inactivatedAcademicTermId?: number | null;
   createdAt?: string;
+  updatedAt?: string;
 }
 
 export type TeacherStatus = 'active' | 'deactivated' | 'suspended';

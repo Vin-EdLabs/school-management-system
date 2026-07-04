@@ -21,7 +21,13 @@ import {
   withActor,
 } from '../utils/auditResolve.js';
 import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
-import { getActiveAcademicTermId } from '../services/studentTermTrackingService.js';
+import { getActiveAcademicTermId, resolveAcademicTermId } from '../services/studentTermTrackingService.js';
+import {
+  INACTIVE_ENROLLMENT_WHERE_S,
+  LEAVERS_TERM_WHERE_S,
+  inferTermBounds,
+  normalizeDateOnly,
+} from '../constants/studentTermQueries.js';
 import { recalculateStudentTermFeeForActiveTerm } from '../services/ledgerFinanceService.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -74,6 +80,21 @@ async function tryRecordStudentInactivation(
   } catch (error) {
     if (isMissingStudentTermTrackingColumn(error)) return;
     console.warn('[students] inactivation term tracking skipped:', (error as Error)?.message || error);
+  }
+}
+
+async function tryClearStudentInactivation(tenantId: number, studentId: string): Promise<void> {
+  try {
+    await query(
+      `UPDATE students
+       SET inactivated_at = NULL,
+           inactivated_academic_term_id = NULL
+       WHERE id = $1 AND tenant_id = $2`,
+      [studentId, tenantId]
+    );
+  } catch (error) {
+    if (isMissingStudentTermTrackingColumn(error)) return;
+    console.warn('[students] inactivation clear skipped:', (error as Error)?.message || error);
   }
 }
 
@@ -161,11 +182,93 @@ const STUDENT_LIST_SELECT_LEGACY = `
   s.home_address, s.number_of_siblings, s.names_of_siblings, s.previous_school, s.date_of_admission,
   s.notes, s.is_beneficiary, s.beneficiary_type, s.discount_type, s.discount_value, s.beneficiary_notes,
   s.enrollment_status, s.created_at, s.updated_at,
+  s.admission_academic_term_id, s.inactivated_at, s.inactivated_academic_term_id,
   (CASE WHEN s.passport_photo_url IS NOT NULL AND length(s.passport_photo_url) > 0 THEN true ELSE false END) AS has_passport_photo,
   c.class_name,
   c.level,
   c.stream
 `;
+
+const STUDENT_STATUS_WHERE = `(
+  $2::text = 'all'
+  OR ($2::text = 'inactive' AND ${INACTIVE_ENROLLMENT_WHERE_S})
+  OR (COALESCE(s.enrollment_status, 'active') = $2)
+)`;
+
+async function resolveTermBoundsForId(
+  tenantId: number,
+  termId: number,
+  termNameHint?: string,
+  yearHint?: string
+): Promise<{ termId: number; termStart: string; termEnd: string } | null> {
+  let resolvedId = termId;
+  const result = await query(
+    `SELECT id, term_name, year, start_date, end_date
+     FROM academic_terms
+     WHERE id = $1 AND tenant_id = $2
+     LIMIT 1`,
+    [termId, tenantId]
+  );
+  let row = result.rows[0];
+  if (!row && termNameHint && yearHint) {
+    const fallbackId = await resolveAcademicTermId(tenantId, termNameHint, yearHint);
+    if (fallbackId) {
+      resolvedId = fallbackId;
+      const retry = await query(
+        `SELECT id, term_name, year, start_date, end_date
+         FROM academic_terms
+         WHERE id = $1 AND tenant_id = $2
+         LIMIT 1`,
+        [fallbackId, tenantId]
+      );
+      row = retry.rows[0];
+    }
+  }
+  if (!row) return null;
+  let termStart = normalizeDateOnly(row.start_date);
+  let termEnd = normalizeDateOnly(row.end_date);
+  if (!termStart || !termEnd) {
+    const inferred = inferTermBounds(String(row.term_name || termNameHint || ''), String(row.year || yearHint || ''));
+    termStart = termStart || inferred.start;
+    termEnd = termEnd || inferred.end;
+  }
+  return { termId: Number(row.id ?? resolvedId), termStart, termEnd };
+}
+
+async function queryStudentsLeftInTerm(
+  tenantId: number,
+  termStart: string,
+  termEnd: string,
+  termId: number,
+  classId?: string
+): Promise<any[]> {
+  const params: any[] = [tenantId, termStart, termEnd, termId];
+  let classFilter = '';
+  if (classId) {
+    classFilter = ` AND s.class_assigned_id = $${params.length + 1}`;
+    params.push(classId);
+  }
+
+  const baseWhere = `s.tenant_id = $1 AND ${LEAVERS_TERM_WHERE_S}${classFilter}`;
+
+  const result = await query(
+    `SELECT s.id, s.tenant_id, s.first_name, s.last_name, s.gender, s.date_of_birth, s.nationality,
+            s.student_id, s.admission_number, s.class_assigned_id, s.guardian_name, s.guardian_contact,
+            s.guardian_2_name, s.guardian_2_contact, s.guardian_2_relationship,
+            s.home_address, s.number_of_siblings, s.names_of_siblings, s.previous_school, s.date_of_admission,
+            s.notes, s.is_beneficiary, s.beneficiary_type, s.discount_type, s.discount_value, s.beneficiary_notes,
+            s.enrollment_status, s.created_at, s.updated_at,
+            s.admission_academic_term_id, s.inactivated_at, s.inactivated_academic_term_id,
+            (CASE WHEN s.passport_photo_url IS NOT NULL AND length(s.passport_photo_url) > 0 THEN true ELSE false END) AS has_passport_photo,
+            c.class_name, c.level, c.stream
+     FROM students s
+     LEFT JOIN classes c ON s.class_assigned_id = c.id
+     WHERE ${baseWhere}
+     ORDER BY COALESCE(s.inactivated_at, s.updated_at) DESC NULLS LAST, s.last_name ASC, s.first_name ASC`,
+    params
+  );
+  return result.rows;
+}
 
 async function queryStudentsList(
   tenantId: number,
@@ -184,7 +287,7 @@ async function queryStudentsList(
       `SELECT ${STUDENT_LIST_SELECT_FIELDS}
        ${STUDENT_FROM_JOINS}
        WHERE s.tenant_id = $1
-         AND ($2::text = 'all' OR COALESCE(s.enrollment_status, 'active') = $2)
+         AND ${STUDENT_STATUS_WHERE}
        ${classFilter}
        ORDER BY s.created_at DESC`,
       params
@@ -197,7 +300,7 @@ async function queryStudentsList(
         `SELECT ${STUDENT_LIST_SELECT_LEGACY}
          ${STUDENT_FROM_JOINS_LEGACY}
          WHERE s.tenant_id = $1
-           AND ($2::text = 'all' OR COALESCE(s.enrollment_status, 'active') = $2)
+           AND ${STUDENT_STATUS_WHERE}
          ${classFilter}
          ORDER BY s.created_at DESC`,
         params
@@ -248,6 +351,30 @@ router.get('/', async (req: AuthRequest, res) => {
     const { classId } = req.query;
     const statusParam = String(req.query.status || 'active').toLowerCase();
     const status = ['active', 'inactive', 'pending', 'all', 'graduated'].includes(statusParam) ? statusParam : 'active';
+    const leftInTermId = parseInt(String(req.query.leftInTermId || ''), 10);
+    const termNameHint = String(req.query.termName || '').trim();
+    const yearHint = String(req.query.year || '').trim();
+
+    if (!Number.isNaN(leftInTermId) && leftInTermId > 0) {
+      let bounds = await resolveTermBoundsForId(tenantId, leftInTermId, termNameHint, yearHint);
+      if (!bounds && termNameHint && yearHint) {
+        const resolvedId = await resolveAcademicTermId(tenantId, termNameHint, yearHint);
+        if (resolvedId) {
+          bounds = await resolveTermBoundsForId(tenantId, resolvedId, termNameHint, yearHint);
+        }
+      }
+      if (!bounds) {
+        return res.status(400).json({ error: 'Academic term not found' });
+      }
+      const rows = await queryStudentsLeftInTerm(
+        tenantId,
+        bounds.termStart,
+        bounds.termEnd,
+        bounds.termId,
+        classId ? String(classId) : undefined
+      );
+      return res.json(rows);
+    }
 
     const rows = await queryStudentsList(tenantId, status, classId ? String(classId) : undefined);
     res.json(rows);
@@ -661,6 +788,12 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
       return res.status(404).json({ error: 'Student not found' });
     }
 
+    if (nextStatus === 'inactive' && priorStatus !== 'inactive' && priorStatus !== 'withdrawn') {
+      await tryRecordStudentInactivation(tenantId, id, priorStatus);
+    } else if (nextStatus === 'active' && (priorStatus === 'inactive' || priorStatus === 'withdrawn')) {
+      await tryClearStudentInactivation(tenantId, id);
+    }
+
     const updated = result.rows[0];
     let className = '';
     if (updated.class_assigned_id) {
@@ -784,8 +917,10 @@ router.patch('/:id/status', requireRole('super-admin', 'administrator'), async (
       return res.status(404).json({ error: 'Student not found' });
     }
 
-    if (status === 'inactive' && priorStatus !== 'inactive') {
+    if (status === 'inactive' && priorStatus !== 'inactive' && priorStatus !== 'withdrawn') {
       await tryRecordStudentInactivation(tenantId, id, priorStatus);
+    } else if (status === 'active' && (priorStatus === 'inactive' || priorStatus === 'withdrawn')) {
+      await tryClearStudentInactivation(tenantId, id);
     }
 
     const row = (await queryStudentById(tenantId, id)) || result.rows[0];

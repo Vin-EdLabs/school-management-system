@@ -89,6 +89,7 @@ export const mapStudent = (backendStudent: Record<string, unknown>): Student => 
       ? Number(backendStudent.inactivated_academic_term_id)
       : null,
   createdAt: typeof backendStudent.created_at === 'string' ? backendStudent.created_at : undefined,
+  updatedAt: typeof backendStudent.updated_at === 'string' ? backendStudent.updated_at : undefined,
 });
 
 export const mapStudentToBackend = (student: Partial<Student>): Record<string, unknown> => {

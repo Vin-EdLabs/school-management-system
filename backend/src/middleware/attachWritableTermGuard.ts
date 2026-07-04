@@ -17,7 +17,9 @@ export function attachWritableTermGuard(router: Router, options?: WritableTermGu
     if (!MUTATION_METHODS.has(req.method)) {
       return next();
     }
-    const skipActiveTerm = skipActiveTermPaths.has(req.path);
+    const skipActiveTerm =
+      skipActiveTermPaths.has(req.path) ||
+      (req.method === 'PATCH' && /\/status$/.test(req.path));
     requireWritableTerm(req as AuthRequest, res, () => {
       if (skipActiveTerm) {
         next();

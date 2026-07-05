@@ -113,6 +113,9 @@ const getHeadmasterMenuItems = (hasAccess: (permission: string) => boolean, user
       ? [{ id: 'settings', label: 'Settings', icon: Settings }]
       : []),
   ],
+  configurations: [
+    ...(hasAccess('grade-configuration') ? [{ id: 'grade-configuration', label: 'Grade Configuration', icon: GraduationCap }] : []),
+  ],
 });
 
 const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: string) => ({
@@ -189,6 +192,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
   /** Configurations — payment accounts and future setup items. */
   configurations: [
     ...(hasAccess('payment-accounts') ? [{ id: 'payment-accounts', label: 'Payment Accounts', icon: SlidersHorizontal }] : []),
+    ...(hasAccess('grade-configuration') ? [{ id: 'grade-configuration', label: 'Grade Configuration', icon: GraduationCap }] : []),
     ...(hasAccess('settings-full') ? [{ id: 'appointment-letter-settings', label: 'Appointment Letters', icon: FileText }] : []),
     ...(hasAccess('settings-full') ? [{ id: 'admission-letter-settings', label: 'Admission Letter', icon: FileText }] : []),
     ...(hasAccess('id-card-settings') ? [{ id: 'id-card-settings', label: 'ID Card Colors', icon: IdCard }] : []),
@@ -603,6 +607,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
             <MenuSection items={headmasterMenu.schoolOverview} label="School Overview" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} headmasterAccent />
             <MenuSection items={headmasterMenu.communication} label="Communication" activeModule={activeModule} setActiveModule={setActiveModule} itemCounts={{ 'parent-desk': parentDeskUnread }} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} headmasterAccent />
             <MenuSection items={headmasterMenu.management} label="Management" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} headmasterAccent />
+            <MenuSection items={headmasterMenu.configurations} label="Configurations" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} headmasterAccent />
           </>
         ) : (
           <>

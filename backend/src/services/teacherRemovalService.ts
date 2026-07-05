@@ -73,6 +73,8 @@ async function scrubTeacherRowSoft(
          phone_number = NULL,
          passport_photo_url = NULL,
          address = NULL,
+         national_id = NULL,
+         employment_type = NULL,
          signature = NULL,
          gender = NULL,
          date_of_birth = NULL,

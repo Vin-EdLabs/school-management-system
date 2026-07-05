@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
@@ -153,6 +154,7 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
   const [quickSheetOpen, setQuickSheetOpen] = useState(false);
 
   const [inactiveTarget, setInactiveTarget] = useState<Student | null>(null);
+  const [inactiveTermId, setInactiveTermId] = useState('');
   const [reactivateTarget, setReactivateTarget] = useState<Student | null>(null);
   const [termInactiveStudents, setTermInactiveStudents] = useState<Student[] | null>(null);
   const [termInactiveLoading, setTermInactiveLoading] = useState(false);
@@ -198,7 +200,7 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
     let cancelled = false;
     void apiService
       .get<Array<{ id: number; term_name: string; year: string; start_date?: string | null; end_date?: string | null }>>(
-        isInactiveView ? '/settings/academic-terms?include_archived=true' : '/settings/academic-terms'
+        '/settings/academic-terms?include_archived=true'
       )
       .then((rows) => {
         if (cancelled) return;
@@ -535,20 +537,21 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
     setQuickSheetOpen(true);
   };
 
-  const runSetInactive = async (student: Student): Promise<boolean> => {
+  const runSetInactive = async (student: Student, termId: number): Promise<boolean> => {
     addAuditLog({
       actionType: 'Edit',
       module: 'Students',
       itemId: student.id,
       itemName: `${student.firstName} ${student.lastName} (set inactive)`,
     });
+    const termLabel = academicTerms.find((t) => t.id === termId)?.label || 'selected term';
     try {
-      await setStudentStatus(student.id, 'inactive');
+      await setStudentStatus(student.id, 'inactive', { inactivationTermId: termId });
       await refresh(['students']);
       await refetchInactiveStudents();
       toast({
         title: 'Student set inactive',
-        description: `${student.firstName} ${student.lastName} is now inactive. All records are preserved.`,
+        description: `${student.firstName} ${student.lastName} is inactive for ${termLabel}. All records are preserved.`,
       });
       setSelected((prev) => {
         const next = new Set(prev);
@@ -584,7 +587,10 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
     }
   };
 
-  const confirmSetInactive = (student: Student) => setInactiveTarget(student);
+  const confirmSetInactive = (student: Student) => {
+    setInactiveTarget(student);
+    setInactiveTermId('');
+  };
 
   const exportSelectedCsv = () => {
     const rows = registryStudents.filter((s) => selected.has(s.id));
@@ -1243,7 +1249,15 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
         }}
       />
 
-      <AlertDialog open={!!inactiveTarget} onOpenChange={(o) => !o && setInactiveTarget(null)}>
+      <AlertDialog
+        open={!!inactiveTarget}
+        onOpenChange={(o) => {
+          if (!o) {
+            setInactiveTarget(null);
+            setInactiveTermId('');
+          }
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Set student inactive?</AlertDialogTitle>
@@ -1255,13 +1269,35 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
               as inactive? Their records will be preserved but they will not appear in active lists or be billed next term.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="space-y-2 py-1">
+            <Label htmlFor="inactive-term-select">Inactive for academic term *</Label>
+            <Select value={inactiveTermId || undefined} onValueChange={setInactiveTermId}>
+              <SelectTrigger id="inactive-term-select">
+                <SelectValue placeholder="Select the term they left" />
+              </SelectTrigger>
+              <SelectContent>
+                {academicTerms.map((term) => (
+                  <SelectItem key={term.id} value={String(term.id)}>
+                    {term.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Choose the term this student should appear under on the Inactive list and academic reports — not necessarily today&apos;s date.
+            </p>
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-amber-600 text-white hover:bg-amber-600/90"
+              className="bg-amber-600 text-white hover:bg-amber-600/90 disabled:opacity-50"
+              disabled={!inactiveTermId}
               onClick={async () => {
-                if (inactiveTarget) await runSetInactive(inactiveTarget);
+                if (inactiveTarget && inactiveTermId) {
+                  await runSetInactive(inactiveTarget, Number(inactiveTermId));
+                }
                 setInactiveTarget(null);
+                setInactiveTermId('');
               }}
             >
               Set inactive

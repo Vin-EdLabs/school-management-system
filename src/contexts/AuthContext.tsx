@@ -15,6 +15,7 @@ const PRIMARY_ADMIN_MODULES = [
   'students', 'teachers', 'other-staff', 'classes', 'calendar', 'fees', 'income', 'expenses',
   'transactions', 'cash-bank', 'payroll', 'reports', 'dashboard', 'financial-dashboard', 'term-budget',
   'settings', 'settings-full', 'payment-accounts', 'appointment-letter-settings', 'admission-letter-settings',
+  'grade-configuration',
   'id-cards', 'id-cards-bulk-print', 'id-card-settings', 'lost-cards', 'users', 'audit', 'print-fee-status',
   'finance-statement', 'teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'ai-assistant',
   'records', 'subjects', 'support-chat', 'push-notifications', 'parent-desk', 'parent-accounts',

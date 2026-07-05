@@ -69,7 +69,9 @@ export type AdminOverviewData = {
     other: number;
   };
   teachers: { total: number; active?: number; monthlySalaryBudget?: number; male: number; female: number };
-  otherStaff?: { total: number; active: number };
+  otherStaff?: { total: number; active: number; male?: number; female?: number };
+  maleStaff?: number;
+  femaleStaff?: number;
   classes: { total: number };
   feeStatus: { paid: number; owing: number; noFee: number; credit: number; totalOwing: number };
   enrollmentByClass: { fullName: string; name: string; count: number }[];

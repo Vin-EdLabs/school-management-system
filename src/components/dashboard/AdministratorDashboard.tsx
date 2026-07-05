@@ -261,6 +261,12 @@ const AdministratorDashboard = ({ onNavigate }: Props) => {
   const totalTeachers = overview?.teachers.total ?? (useLocalFallback ? teachers.length : 0);
   const totalOtherStaff = overview?.otherStaff?.total ?? 0;
   const totalStaff = totalTeachers + totalOtherStaff;
+  const maleStaff =
+    overview?.maleStaff ??
+    (overview?.teachers.male ?? 0) + (overview?.otherStaff?.male ?? 0);
+  const femaleStaff =
+    overview?.femaleStaff ??
+    (overview?.teachers.female ?? 0) + (overview?.otherStaff?.female ?? 0);
   const activeClasses = overview?.classes.total ?? (useLocalFallback ? classes.filter((c) => c.className?.trim()).length : 0);
   const feeCounts = overview?.feeStatus ?? { paid: 0, owing: 0, noFee: 0, credit: 0, totalOwing: 0 };
   const totalOwing = feeCounts.totalOwing ?? 0;
@@ -379,7 +385,7 @@ const AdministratorDashboard = ({ onNavigate }: Props) => {
 
   const kpiItems = [
     { label: 'Active Students', value: totalStudents, sub: `${maleStudents}M · ${femaleStudents}F`, icon: Users, border: 'border-l-emerald-600 dark:border-l-emerald-500', iconBg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400', loading: overviewLoading },
-    { label: 'Total Staff', value: totalStaff, sub: `${totalTeachers} teachers · ${totalOtherStaff} other`, icon: Briefcase, border: 'border-l-indigo-600 dark:border-l-indigo-400', iconBg: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400', loading: overviewLoading },
+    { label: 'Total Staff', value: totalStaff, sub: `${totalTeachers} teachers · ${totalOtherStaff} other`, sub2: `${maleStaff}M · ${femaleStaff}F`, icon: Briefcase, border: 'border-l-indigo-600 dark:border-l-indigo-400', iconBg: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400', loading: overviewLoading },
     { label: 'Classes', value: activeClasses, sub: 'Academic setup', icon: GraduationCap, border: 'border-l-amber-500', iconBg: 'bg-amber-500/10 text-amber-600 dark:text-amber-400', loading: overviewLoading },
     { label: 'Term Fee Health', value: formatGhsCompact(totalOwing), valueTitle: formatGhs(totalOwing), sub: `${feeCounts.owing} owing`, icon: DollarSign, border: 'border-l-emerald-600 dark:border-l-emerald-500', iconBg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400', loading: overviewLoading, progress: collectionPct, isCurrency: true },
     hasDailyFees
@@ -463,6 +469,9 @@ const AdministratorDashboard = ({ onNavigate }: Props) => {
                 </p>
               )}
               <p className="mt-1 truncate text-[11px] text-muted-foreground">{k.loading ? '…' : k.sub}</p>
+              {'sub2' in k && k.sub2 ? (
+                <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{k.loading ? '…' : k.sub2}</p>
+              ) : null}
               {'progress' in k && k.progress != null && !k.loading && (
                 <div className="mt-2.5 h-1 overflow-hidden rounded-full bg-muted">
                   <div className="h-full rounded-full bg-emerald-600 transition-all duration-700 dark:bg-emerald-500" style={{ width: `${k.progress}%` }} />

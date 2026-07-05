@@ -2,12 +2,60 @@ import jwt from 'jsonwebtoken';
 import type { Request, Response, NextFunction } from 'express';
 import { query } from '../db/connection.js';
 
+export type ParentAuthPayload = {
+  accountId: number;
+  studentId: number;
+  tenantId: number;
+  impersonatorId?: number | null;
+};
+
+export type ParentJwtDecoded = {
+  role?: string;
+  parentAccountId?: number;
+  studentId?: number;
+  tenantId?: number;
+  impersonatorId?: number | string;
+  impersonatorRole?: string | null;
+};
+
 export interface ParentAuthRequest extends Request {
-  parent?: {
-    accountId: number;
-    studentId: number;
-    tenantId: number;
-    impersonatorId?: number | null;
+  parent?: ParentAuthPayload;
+}
+
+/** Validates parent JWT and loads account scoped to tenant_id from the token. */
+export async function resolveParentFromToken(
+  token: string
+): Promise<{ parent: ParentAuthPayload; decoded: ParentJwtDecoded } | null> {
+  const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as ParentJwtDecoded;
+  if (decoded.role !== 'parent') return null;
+
+  const accountId = parseInt(String(decoded.parentAccountId), 10);
+  const jwtTenantId = parseInt(String(decoded.tenantId), 10);
+  if (!Number.isInteger(accountId) || accountId <= 0) return null;
+  if (!Number.isInteger(jwtTenantId) || jwtTenantId <= 0) return null;
+
+  const row = await query(
+    'SELECT id, student_id, tenant_id FROM parent_portal_accounts WHERE id = $1 AND tenant_id = $2 AND is_active = true',
+    [accountId, jwtTenantId]
+  );
+  if (row.rows.length === 0) return null;
+
+  const accountStudentId = Number(row.rows[0].student_id);
+  const accountTenantId = Number(row.rows[0].tenant_id);
+  if (decoded.studentId != null && Number(decoded.studentId) !== accountStudentId) {
+    return null;
+  }
+
+  return {
+    parent: {
+      accountId: Number(row.rows[0].id),
+      studentId: accountStudentId,
+      tenantId: accountTenantId,
+      impersonatorId: decoded.impersonatorId
+        ? parseInt(String(decoded.impersonatorId), 10)
+        : null,
+    },
+    decoded,
   };
 }
 
@@ -23,33 +71,13 @@ export async function authenticateParent(
       return;
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as {
-      role?: string;
-      parentAccountId?: number;
-      impersonatorId?: number | string;
-    };
-    if (decoded.role !== 'parent') {
-      res.status(403).json({ error: 'Forbidden' });
-      return;
-    }
-
-    const row = await query(
-      'SELECT id, student_id, tenant_id FROM parent_portal_accounts WHERE id = $1 AND is_active = true',
-      [decoded.parentAccountId]
-    );
-    if (row.rows.length === 0) {
+    const resolved = await resolveParentFromToken(token);
+    if (!resolved) {
       res.status(401).json({ error: 'Invalid token' });
       return;
     }
 
-    req.parent = {
-      accountId: row.rows[0].id,
-      studentId: row.rows[0].student_id,
-      tenantId: row.rows[0].tenant_id,
-      impersonatorId: decoded.impersonatorId
-        ? parseInt(String(decoded.impersonatorId), 10)
-        : null,
-    };
+    req.parent = resolved.parent;
     next();
   } catch {
     res.status(401).json({ error: 'Invalid token' });

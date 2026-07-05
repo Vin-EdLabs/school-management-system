@@ -69,10 +69,12 @@ export interface Teacher {
   phoneNumber: string;
   email: string;
   address: string;
+  nationalId?: string;
   subjectsTaught: string[];
   classAssigned: string;
   classAssignedId?: number;
   employmentDate: string;
+  employmentType?: string;
   monthlySalary: number;
   employmentStatus: string;
   status: TeacherStatus;
@@ -230,7 +232,11 @@ interface DataContextType {
   refresh: (domains?: DataDomain[]) => Promise<void>;
   addStudent: (student: Omit<Student, 'id' | 'studentId' | 'admissionNumber'>) => Promise<{ id: string; studentId: string; admissionNumber: string } | void>;
   updateStudent: (id: string, updates: Partial<Student>) => Promise<void>;
-  setStudentStatus: (id: string, status: 'active' | 'inactive') => Promise<void>;
+  setStudentStatus: (
+    id: string,
+    status: 'active' | 'inactive',
+    options?: { inactivationTermId?: number }
+  ) => Promise<void>;
   applyPaymentLocally: (
     payment: Payment,
     amount: number,
@@ -302,10 +308,12 @@ const mapTeacher = (backendTeacher: any): Teacher => ({
   phoneNumber: backendTeacher.phone_number || '',
   email: backendTeacher.email || '',
   address: backendTeacher.address || '',
+  nationalId: backendTeacher.national_id || undefined,
   subjectsTaught: backendTeacher.subjects_taught || [],
   classAssigned: backendTeacher.class_name || '',
   classAssignedId: backendTeacher.class_assigned_id,
   employmentDate: formatDateForInput(backendTeacher.employment_date),
+  employmentType: backendTeacher.employment_type || undefined,
   monthlySalary: backendTeacher.monthly_salary || 0,
   employmentStatus: backendTeacher.employment_status || '',
   status: normalizeTeacherStatus(backendTeacher.status || backendTeacher.employment_status),
@@ -345,9 +353,15 @@ const mapTeacherToBackend = (teacher: Partial<Teacher>): any => {
   if (teacher.phoneNumber !== undefined) out.phone_number = teacher.phoneNumber;
   if (teacher.email !== undefined) out.email = teacher.email;
   if (teacher.address !== undefined) out.address = teacher.address;
+  if (teacher.nationalId !== undefined) {
+    out.national_id = String(teacher.nationalId).trim() || null;
+  }
   if (teacher.subjectsTaught !== undefined) out.subjects_taught = teacher.subjectsTaught;
   if (teacher.classAssignedId !== undefined) out.class_assigned_id = teacher.classAssignedId;
   if (teacher.employmentDate !== undefined) out.employment_date = teacher.employmentDate.trim() || null;
+  if (teacher.employmentType !== undefined) {
+    out.employment_type = String(teacher.employmentType).trim() || null;
+  }
   if (teacher.monthlySalary !== undefined) out.monthly_salary = teacher.monthlySalary;
   if (teacher.employmentStatus !== undefined) out.employment_status = teacher.employmentStatus;
   if (teacher.notes !== undefined) out.notes = teacher.notes;
@@ -742,8 +756,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const setStudentStatus = async (id: string, status: 'active' | 'inactive') => {
-    await apiService.patch(`/students/${id}/status`, { status });
+  const setStudentStatus = async (
+    id: string,
+    status: 'active' | 'inactive',
+    options?: { inactivationTermId?: number }
+  ) => {
+    const body: Record<string, unknown> = { status };
+    if (status === 'inactive') {
+      if (options?.inactivationTermId == null) {
+        throw new Error('Select the academic term for inactivation');
+      }
+      body.inactivation_term_id = options.inactivationTermId;
+    }
+    await apiService.patch(`/students/${id}/status`, body);
     const fresh = await apiService.get<Record<string, unknown>>(`/students/${id}`);
     const mapped = mapStudent(fresh);
     replaceStudentInCache(queryClient, schoolId, id, mapped);

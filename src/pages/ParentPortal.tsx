@@ -299,7 +299,6 @@ interface StudentInfo {
 }
 
 interface LinkedAccount {
-  token: string;
   student: StudentInfo;
 }
 
@@ -599,9 +598,9 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       let updated;
       if (existingIdx >= 0) {
         updated = [...prev];
-        updated[existingIdx] = { token: t, student: s };
+        updated[existingIdx] = { student: s };
       } else {
-        updated = [...prev, { token: t, student: s }];
+        updated = [...prev, { student: s }];
       }
       localStorage.setItem(`parent_accounts_${tenantId}`, JSON.stringify(updated));
       return updated;
@@ -611,11 +610,11 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   const switchingAccountRef = useRef(false);
 
   const handleSwitchAccount = async (acc: LinkedAccount) => {
-    if (acc.token === token && acc.student.admission_number === student?.admission_number) {
+    if (acc.student.admission_number === student?.admission_number) {
       setShowSwitcher(false);
       return;
     }
-    if (switchingAccountRef.current) return;
+    if (switchingAccountRef.current || !token) return;
 
     switchingAccountRef.current = true;
     const targetName = `${acc.student.first_name} ${acc.student.last_name}`.trim();
@@ -623,7 +622,11 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     setShowSwitcher(false);
 
     try {
-      await finalizeStudentSessionTransition(sessionId, acc.token, acc.student);
+      const data = await parentFetch('/parent/switch-account', {
+        method: 'POST',
+        body: JSON.stringify({ studentId: acc.student.admission_number }),
+      }, token) as { token: string; student: StudentInfo };
+      await finalizeStudentSessionTransition(sessionId, data.token, data.student);
     } finally {
       switchingAccountRef.current = false;
     }
@@ -650,7 +653,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
       const linked = data.linkedAccounts?.length
         ? data.linkedAccounts
-        : [{ token: data.token, student: studentInfo }];
+        : [{ student: studentInfo }];
       syncLinkedAccounts(linked);
 
       setLoginAdmission('');
@@ -735,26 +738,20 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       removeFcmToken().catch(() => undefined);
     }
 
-    // Remove only the current account from linked accounts
-    const updatedAccounts = linkedAccounts.filter(acc => acc.student.admission_number !== student?.admission_number);
-    setLinkedAccounts(updatedAccounts);
-    localStorage.setItem(`parent_accounts_${tenantId}`, JSON.stringify(updatedAccounts));
-
-    if (updatedAccounts.length > 0) {
-      void handleSwitchAccount(updatedAccounts[0]);
-    } else {
-      studentSessionRef.current += 1;
-      clearAllStudentData();
-      localStorage.removeItem(`parent_token_${tenantId}`);
-      localStorage.removeItem(`parent_student_${tenantId}`);
-      setToken(null);
-      setStudent(null);
-      setIsSwitchingStudent(false);
-      setDataLoading(false);
-      setActiveTab('overview');
-      setAppNotifications([]);
-      localStorage.removeItem(`parent_fcm_token_${tenantId}`);
-    }
+    // Full logout — clear all parent session keys for this tenant
+    studentSessionRef.current += 1;
+    clearAllStudentData();
+    localStorage.removeItem(`parent_token_${tenantId}`);
+    localStorage.removeItem(`parent_student_${tenantId}`);
+    localStorage.removeItem(`parent_accounts_${tenantId}`);
+    localStorage.removeItem(`parent_fcm_token_${tenantId}`);
+    setToken(null);
+    setStudent(null);
+    setLinkedAccounts([]);
+    setIsSwitchingStudent(false);
+    setDataLoading(false);
+    setActiveTab('overview');
+    setAppNotifications([]);
   };
 
   const pushNotification = useCallback((title: string, message: string) => {
@@ -852,7 +849,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       setLinkedAccounts((prev) => {
         const updated = prev.map((acc) =>
           acc.student.admission_number === studentInfo.admission_number
-            ? { token: authToken, student: studentInfo }
+            ? { student: studentInfo }
             : acc
         );
         localStorage.setItem(`parent_accounts_${tenantId}`, JSON.stringify(updated));
@@ -1104,13 +1101,6 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         const data = await parentFetch('/parent/linked-accounts', {}, token) as { linkedAccounts?: LinkedAccount[] };
         if (cancelled || !data.linkedAccounts?.length) return;
         syncLinkedAccounts(data.linkedAccounts);
-        const current = data.linkedAccounts.find(
-          (acc) => acc.student.admission_number === student.admission_number
-        );
-        if (current && current.token !== token) {
-          setToken(current.token);
-          localStorage.setItem(`parent_token_${tenantId}`, current.token);
-        }
       } catch {
         /* keep cached linked accounts */
       }
@@ -1130,13 +1120,6 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         setToken(data.token);
         localStorage.setItem(`parent_token_${tenantId}`, data.token);
         localStorage.setItem(`parent_student_${tenantId}`, JSON.stringify(student));
-        setLinkedAccounts((prev) => {
-          const updated = prev.map((acc) =>
-            acc.student.admission_number === student.admission_number ? { ...acc, token: data.token } : acc
-          );
-          localStorage.setItem(`parent_accounts_${tenantId}`, JSON.stringify(updated));
-          return updated;
-        });
       } catch {
         /* keep existing token until explicit logout or failed protected call */
       }

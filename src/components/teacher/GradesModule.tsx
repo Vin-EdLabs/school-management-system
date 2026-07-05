@@ -43,6 +43,7 @@ import SignaturePad from '@/components/common/SignaturePad';
 import StaffReportCardViewport from '@/components/reports/StaffReportCardViewport';
 import PasswordConfirmDialog from '@/components/common/PasswordConfirmDialog';
 import type { SubjectClassGroupedByClass, TeacherSubjectClassesResponse } from '@/types/teacherSubjectClass';
+import { calculateGrade, type AssessmentScore, type GradeConfig } from '@/utils/gradeCalculator';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -52,9 +53,14 @@ interface Assignment {
   id: number;
   class_id: number;
   subject: string;
+  subject_id?: number | null;
   name: string;
   assignment_type: string;
   max_score: number;
+  max_marks?: number;
+  is_exam?: boolean;
+  component_id?: number | null;
+  component_name?: string | null;
 }
 
 interface GradeRecord {
@@ -96,7 +102,8 @@ interface GradeHistoryItem {
 
 // TermReport types imported from ../reports/termReportTypes
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+const EXAM_TYPE_VALUE = 'exam';
+const EXAM_DUPLICATE_MESSAGE = 'An End of Term Exam already exists for this subject this term';
 
 const ASSESSMENT_TYPES = ['Test', 'Exam', 'Quiz', 'Dictation', 'Exercise', 'Assignment', 'Project', 'Homework'];
 
@@ -178,6 +185,36 @@ const relativeTime = (isoString: string | null): string => {
   return formatDisplayDate(isoString);
 };
 
+function groupAssignmentsByComponent(
+  items: Assignment[],
+  components: Array<{ id: number; name: string }>
+): Array<{ header: string; items: Assignment[] }> {
+  const groups: Array<{ header: string; order: number; items: Assignment[] }> = [];
+  const byKey = new Map<string, Assignment[]>();
+
+  for (const a of items) {
+    const key = a.is_exam ? '__exam__' : String(a.component_id ?? '__other__');
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key)!.push(a);
+  }
+
+  components.forEach((c, idx) => {
+    const list = byKey.get(String(c.id));
+    if (list?.length) groups.push({ header: c.name, order: idx, items: list });
+  });
+
+  const other = byKey.get('__other__');
+  if (other?.length) groups.push({ header: 'Other', order: 998, items: other });
+
+  const exam = byKey.get('__exam__');
+  if (exam?.length) groups.push({ header: 'End of Term Exam', order: 999, items: exam });
+
+  return groups.sort((a, b) => a.order - b.order).map(({ header, items: groupItems }) => ({
+    header,
+    items: groupItems,
+  }));
+}
+
 const resolvePhotoUrl = (photoUrl?: string | null) => {
   if (!photoUrl) return '';
   if (/^https?:\/\//i.test(photoUrl) || photoUrl.startsWith('data:')) return photoUrl;
@@ -221,9 +258,15 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
   const [bulkSaving, setBulkSaving] = useState(false);
 
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [addAssessmentTypeError, setAddAssessmentTypeError] = useState('');
   const [newAssignment, setNewAssignment] = useState({
-    subject: '', subjectCustom: '', name: '', assignmentType: 'Test', maxScore: '100',
+    subject: '', subjectCustom: '', name: '', assessmentType: '', maxScore: '100',
   });
+  const [gradeConfig, setGradeConfig] = useState<{
+    components: Array<{ id: number; name: string; weightInClassScore: number }>;
+    gradeConfig: { classScoreWeight: number; examWeight: number };
+    boundaries: Array<{ gradeLabel: string; minPercent: number; maxPercent: number; remark: string }>;
+  } | null>(null);
 
   const [activeTab, setActiveTab] = useState<'grades' | 'report'>('grades');
   const [termReport, setTermReport] = useState<TermReport | null>(null);
@@ -338,6 +381,34 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
     if (!allowed.size) return [];
     return globalSubjects.filter((s) => allowed.has(s.name.toLowerCase()));
   }, [seesAllClasses, globalSubjects, subjectClassesByClass, selectedClassId]);
+
+  const subjectsForAddAssessment = useMemo(() => {
+    if (isSchoolAdmin || isHeadmasterUser) return globalSubjects;
+    return subjectsForSelectedClass;
+  }, [isSchoolAdmin, isHeadmasterUser, globalSubjects, subjectsForSelectedClass]);
+
+  const openAddAssessment = useCallback(() => {
+    setAddAssessmentTypeError('');
+    setNewAssignment({
+      subject: '',
+      subjectCustom: '',
+      name: '',
+      assessmentType: '',
+      maxScore: '100',
+    });
+    setIsAddOpen(true);
+  }, []);
+
+  useEffect(() => {
+    void apiService
+      .get<{
+        components: Array<{ id: number; name: string; weightInClassScore: number }>;
+        gradeConfig: { classScoreWeight: number; examWeight: number };
+        boundaries: Array<{ gradeLabel: string; minPercent: number; maxPercent: number; remark: string }>;
+      }>('/grade-config')
+      .then((data) => setGradeConfig(data))
+      .catch(() => setGradeConfig(null));
+  }, [schoolId]);
 
   useEffect(() => {
     if (seesAllClasses) return;
@@ -505,6 +576,61 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
   const gradedCount = gradeRows.filter(r => r.score !== null).length;
   const movedCount = gradeRows.filter(r => r.hasMoved).length;
 
+  const calcConfig = useMemo((): GradeConfig | null => {
+    if (!gradeConfig) return null;
+    return {
+      classScoreWeight: gradeConfig.gradeConfig.classScoreWeight,
+      examWeight: gradeConfig.gradeConfig.examWeight,
+      components: gradeConfig.components.map((c) => ({
+        id: c.id,
+        name: c.name,
+        weightInClassScore: c.weightInClassScore,
+      })),
+      boundaries: (gradeConfig.boundaries || []).map((b) => ({
+        gradeLabel: b.gradeLabel,
+        minPercent: b.minPercent,
+        maxPercent: b.maxPercent,
+        remark: b.remark,
+      })),
+    };
+  }, [gradeConfig]);
+
+  const studentPreviewPercent = useMemo(() => {
+    const map = new Map<number, number>();
+    if (!calcConfig || !selectedAssignment) return map;
+
+    const subject = selectedAssignment.subject;
+    const subjectAssignments = assignments.filter((a) => a.subject === subject);
+
+    for (const row of gradeRows) {
+      const assessmentScores: AssessmentScore[] = [];
+      for (const a of subjectAssignments) {
+        let rawScore: number | null = null;
+        if (String(a.id) === selectedAssignmentId && isBulkEditing) {
+          const val = bulkScores[row.studentDbId];
+          if (val !== '' && val !== undefined) rawScore = parseFloat(val);
+        } else if (String(a.id) === selectedAssignmentId) {
+          rawScore = row.score;
+        } else {
+          const g = grades.find((gr) => gr.student_id === row.studentDbId && gr.assignment_id === a.id);
+          rawScore = g?.score ?? null;
+        }
+        if (rawScore === null || Number.isNaN(rawScore)) continue;
+        assessmentScores.push({
+          assessmentId: a.id,
+          componentId: a.is_exam ? null : a.component_id ?? null,
+          isExam: !!a.is_exam,
+          maxMarks: Number(a.max_marks ?? a.max_score) || 100,
+          rawScore,
+        });
+      }
+      if (assessmentScores.length > 0) {
+        map.set(row.studentDbId, calculateGrade(assessmentScores, calcConfig).totalPercent);
+      }
+    }
+    return map;
+  }, [calcConfig, selectedAssignment, assignments, gradeRows, grades, selectedAssignmentId, isBulkEditing, bulkScores]);
+
   // ── Bulk edit ────────────────────────────────────────────────────────────────
 
   const enterBulkEdit = () => {
@@ -521,7 +647,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
 
   const handleBulkSave = async () => {
     if (!selectedAssignmentId) return;
-    const maxScore = selectedAssignment?.max_score ?? 100;
+    const maxScore = Number(selectedAssignment?.max_marks ?? selectedAssignment?.max_score) || 100;
 
     // Validate
     for (const [sid, val] of Object.entries(bulkScores)) {
@@ -559,31 +685,60 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
   // ── Assignment management ────────────────────────────────────────────────────
 
   const handleAddAssignment = async () => {
-    const subject = newAssignment.subject === '__custom__'
+    const subjectName = newAssignment.subject === '__custom__'
       ? newAssignment.subjectCustom.trim()
       : newAssignment.subject.trim();
-    if (!subject || !newAssignment.name.trim()) {
+    if (!subjectName || !newAssignment.name.trim()) {
       toast({ title: 'Subject and name are required', variant: 'destructive' });
       return;
     }
+    if (!newAssignment.assessmentType) {
+      toast({ title: 'Select a type', variant: 'destructive' });
+      return;
+    }
+    const isExam = newAssignment.assessmentType === EXAM_TYPE_VALUE;
     const maxScore = parseFloat(newAssignment.maxScore);
     if (isNaN(maxScore) || maxScore <= 0) {
       toast({ title: 'Max marks must be a positive number', variant: 'destructive' });
       return;
     }
-    try {
-      await apiService.post('/grades/assignments', {
-        classId: parseInt(selectedClassId, 10),
-        subject, name: newAssignment.name.trim(),
-        assignmentType: newAssignment.assignmentType, maxScore,
+    const subjectRow = globalSubjects.find((s) => s.name === subjectName);
+    const subjectId = subjectRow?.id;
+    if (!subjectId) {
+      toast({
+        title: 'Use a configured subject',
+        description: 'Pick a subject from the list (not custom) so it links to the grade system.',
+        variant: 'destructive',
       });
-      toast({ title: `Assessment added under ${subject}` });
-      setNewAssignment({ subject: '', subjectCustom: '', name: '', assignmentType: 'Test', maxScore: '100' });
+      return;
+    }
+    setAddAssessmentTypeError('');
+    try {
+      await apiService.post('/assessments', {
+        classId: parseInt(selectedClassId, 10),
+        subjectId,
+        name: newAssignment.name.trim(),
+        isExam,
+        componentId: isExam ? null : parseInt(newAssignment.assessmentType, 10),
+        maxMarks: maxScore,
+      });
+      toast({ title: `Assessment added under ${subjectName}` });
+      setNewAssignment({ subject: '', subjectCustom: '', name: '', assessmentType: '', maxScore: '100' });
+      setAddAssessmentTypeError('');
       setIsAddOpen(false);
       await loadAssignments();
       await loadGrades();
     } catch (e: any) {
-      toast({ title: 'Error', description: e?.message, variant: 'destructive' });
+      const message = String(e?.message || '');
+      const isExamConflict =
+        e?.status === 409 ||
+        message.toLowerCase().includes('end of term exam') ||
+        message.toLowerCase().includes('end-of-term exam');
+      if (isExamConflict) {
+        setAddAssessmentTypeError(EXAM_DUPLICATE_MESSAGE);
+      } else {
+        toast({ title: 'Error', description: message || 'Failed to add assessment', variant: 'destructive' });
+      }
     }
   };
 
@@ -1356,16 +1511,16 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
     if (!student) return;
 
     // Build performance rows from subject scores
-    const performanceRows = (termReport.subjects || []).map((subject: any) => {
-      const score = (student.subjectScores?.[subject.id] || {}) as any;
+    const performanceRows = (termReport.subjects || []).map((subj: string) => {
+      const score = student.subjectScores?.[subj] || {};
       return {
-        subject: subject.name,
+        subject: subj,
         classScore: score.classScore ?? null,
         examScore: score.examScore ?? null,
-        total: score.total ?? 0,
-        max: subject.maxScore ?? 100,
-        percentage: score.percentage ?? 0,
-        grade: score.grade || '',
+        total: score.score ?? 0,
+        max: score.maxScore ?? 100,
+        percentage: score.score ?? 0,
+        grade: score.gradeLabel || String(score.grade || ''),
         remark: score.remark || '',
       };
     });
@@ -1383,13 +1538,14 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
       grandMax: student.grandMax,
       percentage: student.percentage,
       performanceRows,
-      gradeScale: termReport.gradeScale || [
-        { letter: 'A', minPct: 80, maxPct: 100, description: 'Excellent' },
-        { letter: 'B', minPct: 70, maxPct: 79, description: 'Good' },
-        { letter: 'C', minPct: 60, maxPct: 69, description: 'Fair' },
-        { letter: 'D', minPct: 50, maxPct: 59, description: 'Pass' },
-        { letter: 'F', minPct: 0, maxPct: 49, description: 'Fail' },
-      ],
+      classScoreWeight: csWeight,
+      examWeight: exWeight,
+      gradeScale: termReport.gradeBoundaries?.map((b) => ({
+        letter: b.gradeLabel,
+        minPct: b.minPercent,
+        maxPct: b.maxPercent,
+        description: b.remark,
+      })) || termReport.gradeScale || [],
       teacherRemark: termReport.teacherRemarks?.[selectedReportStudentId] || teacherRemarkDraft,
       headmasterRemark: termReport.headmasterRemarks?.[selectedReportStudentId] || headmasterRemarkDraft,
       headmasterName: termReport.headmasterName || undefined,
@@ -1580,6 +1736,8 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
       totalStudents: termReport.students.length,
       subjects: termReport.subjects,
       termReportStudents: termReport.students,
+      classScoreWeight: csWeight,
+      examWeight: exWeight,
       conduct: conductDraft,
       attitude: attitudeDraft,
       interest: interestDraft,
@@ -1599,7 +1757,14 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
-  const subjectsToDisplay = activeSubjects;
+  const subjectsToDisplay = useMemo(() => {
+    if (seesAllClasses) return activeSubjects;
+    const allowed = new Set(subjectsForSelectedClass.map((s) => s.name.toLowerCase()));
+    return activeSubjects.filter((subj) => allowed.has(subj.toLowerCase()));
+  }, [seesAllClasses, activeSubjects, subjectsForSelectedClass]);
+
+  const csWeight = termReport?.classScoreWeight ?? gradeConfig?.gradeConfig.classScoreWeight ?? 50;
+  const exWeight = termReport?.examWeight ?? gradeConfig?.gradeConfig.examWeight ?? 50;
 
   return (
     <div className="px-4 py-5 sm:p-6 space-y-5 sm:space-y-6 max-w-7xl mx-auto w-full">
@@ -1633,7 +1798,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
             <Button
               className="min-h-[48px] w-full sm:w-auto touch-manipulation hidden sm:inline-flex"
               variant="primaryAction"
-              onClick={() => setIsAddOpen(true)}
+              onClick={openAddAssessment}
               disabled={!selectedClassId}
             >
               <Plus className="w-4 h-4 mr-2" /> Add Assessment
@@ -1698,7 +1863,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                     type="button"
                     variant="outline"
                     className="h-12 text-sm font-semibold touch-manipulation border-2 border-purple-700 text-purple-900 bg-white hover:bg-purple-50 dark:border-purple-400 dark:text-purple-100 dark:bg-slate-900 dark:hover:bg-slate-800"
-                    onClick={() => setIsAddOpen(true)}
+                    onClick={openAddAssessment}
                     disabled={!selectedClassId}
                   >
                     <Plus className="w-4 h-4 mr-1.5 shrink-0" />
@@ -1773,34 +1938,46 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                       </button>
                       {expandedSubjects.has(subj) && (
                         <div className="divide-y">
-                          {(assignmentsBySubject[subj] || []).map(a => (
-                            <div
-                              key={a.id}
-                              className={`flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-purple-50 transition-colors ${selectedAssignmentId === String(a.id) ? 'bg-purple-100 border-l-2 border-purple-500' : ''
-                                }`}
-                              onClick={() => setSelectedAssignmentId(String(a.id))}
-                            >
-                              <div className="min-w-0">
-                                <p className="text-sm font-medium text-gray-800 truncate">{a.name}</p>
-                                <p className="text-xs text-gray-500">{a.assignment_type} · {a.max_score} marks</p>
+                          {groupAssignmentsByComponent(
+                            assignmentsBySubject[subj] || [],
+                            gradeConfig?.components || []
+                          ).map((group) => (
+                            <div key={group.header}>
+                              <div className="px-3 py-1.5 bg-slate-100 text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                                {group.header}
                               </div>
-                              {canDeleteAssessment(a.id) && (
-                                <button
-                                  onClick={e => { e.stopPropagation(); setDeleteAssignmentTarget(a); }}
-                                  className={`ml-2 shrink-0 transition-colors ${
-                                    gradedAssignmentIds.has(a.id)
-                                      ? 'text-red-300 hover:text-red-600'
-                                      : 'text-gray-300 hover:text-red-500'
-                                  }`}
-                                  title={
-                                    gradedAssignmentIds.has(a.id)
-                                      ? 'Delete graded assessment (admin)'
-                                      : 'Delete assessment'
-                                  }
+                              {group.items.map((a) => (
+                                <div
+                                  key={a.id}
+                                  className={`flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-purple-50 transition-colors ${selectedAssignmentId === String(a.id) ? 'bg-purple-100 border-l-2 border-purple-500' : ''
+                                    }`}
+                                  onClick={() => setSelectedAssignmentId(String(a.id))}
                                 >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-medium text-gray-800 truncate">{a.name}</p>
+                                    <p className="text-xs text-gray-500">
+                                      {a.max_marks ?? a.max_score} marks max
+                                    </p>
+                                  </div>
+                                  {canDeleteAssessment(a.id) && (
+                                    <button
+                                      onClick={e => { e.stopPropagation(); setDeleteAssignmentTarget(a); }}
+                                      className={`ml-2 shrink-0 transition-colors ${
+                                        gradedAssignmentIds.has(a.id)
+                                          ? 'text-red-300 hover:text-red-600'
+                                          : 'text-gray-300 hover:text-red-500'
+                                      }`}
+                                      title={
+                                        gradedAssignmentIds.has(a.id)
+                                          ? 'Delete graded assessment (admin)'
+                                          : 'Delete assessment'
+                                      }
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
                             </div>
                           ))}
                         </div>
@@ -1826,8 +2003,12 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                         <div>
                           <p className="text-base font-semibold">{selectedAssignment?.name}</p>
                           <p className="text-sm font-normal text-gray-500">
-                            {selectedAssignment?.subject} · {selectedAssignment?.assignment_type} · Max:{' '}
-                            <strong>{selectedAssignment?.max_score} marks</strong>
+                            {selectedAssignment?.subject} ·{' '}
+                            {selectedAssignment?.is_exam
+                              ? 'End of Term Exam'
+                              : selectedAssignment?.component_name || selectedAssignment?.assignment_type}{' '}
+                            · Max:{' '}
+                            <strong>{selectedAssignment?.max_marks ?? selectedAssignment?.max_score} marks</strong>
                           </p>
                         </div>
                         <div className="flex items-center gap-2 flex-wrap">
@@ -1871,8 +2052,15 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                         <div className="text-center py-8 text-gray-500">No students found for this class</div>
                       ) : (
                         <div className="space-y-2">
+                          {gradeRows.length > 0 && (
+                            <div className="hidden sm:grid grid-cols-[1fr_auto_auto] gap-3 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                              <span>Student</span>
+                              <span className="text-center w-28">Score</span>
+                              <span className="text-center w-20">Current %</span>
+                            </div>
+                          )}
                           {gradeRows.map((row, idx) => {
-                            const maxScore = selectedAssignment?.max_score ?? 100;
+                            const maxScore = Number(selectedAssignment?.max_marks ?? selectedAssignment?.max_score) || 100;
                             const score = isBulkEditing
                               ? (bulkScores[row.studentDbId] !== '' && bulkScores[row.studentDbId] !== undefined
                                 ? parseFloat(bulkScores[row.studentDbId])
@@ -1884,6 +2072,13 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                             const isHistOpen = expandedHistory.has(histKey);
                             const histItems = historyCache[histKey];
                             const histFetching = historyLoading.has(histKey);
+                            const previewPct = studentPreviewPercent.get(row.studentDbId);
+                            const bulkVal = bulkScores[row.studentDbId] ?? '';
+                            const bulkNum = bulkVal !== '' ? parseFloat(bulkVal) : null;
+                            const bulkInvalid =
+                              isBulkEditing &&
+                              bulkVal !== '' &&
+                              (bulkNum === null || Number.isNaN(bulkNum) || bulkNum < 0 || bulkNum > maxScore);
 
                             return (
                               <div key={row.studentDbId} className="border rounded-lg overflow-hidden">
@@ -1930,9 +2125,10 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                       <div className="flex items-center gap-1">
                                         <Input
                                           type="number"
-                                          className="w-20 h-8 text-sm text-center bulk-score-input"
-                                          placeholder="—"
-                                          value={bulkScores[row.studentDbId] ?? ''}
+                                          className={`w-20 h-8 text-sm text-center bulk-score-input ${bulkInvalid ? 'border-red-500 ring-1 ring-red-300' : ''}`}
+                                          placeholder="0"
+                                          value={bulkVal}
+                                          title={bulkInvalid ? `Score must be between 0 and ${maxScore}` : undefined}
                                           onChange={e => setBulkScores(prev => ({ ...prev, [row.studentDbId]: e.target.value }))}
                                           min={0}
                                           max={maxScore}
@@ -1944,14 +2140,14 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                             }
                                           }}
                                         />
-                                        <span className="text-xs text-gray-400">/{maxScore}</span>
+                                        <span className="text-xs text-gray-400">/ {maxScore}</span>
                                       </div>
                                     ) : (
                                       <>
                                         <span className="font-mono text-sm text-gray-700">
                                           {row.score !== null
-                                            ? <><strong>{row.score}</strong><span className="text-gray-400">/{maxScore}</span></>
-                                            : <span className="text-gray-300">—/{maxScore}</span>}
+                                            ? <><strong>{row.score}</strong><span className="text-gray-400"> / {maxScore}</span></>
+                                            : <span className="text-gray-300">— / {maxScore}</span>}
                                         </span>
                                         {grade && (
                                           <span className={`text-xs font-bold px-2 py-0.5 rounded ${grade.color}`}>
@@ -1964,6 +2160,17 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                       </>
                                     )}
                                   </div>
+
+                                  {/* Live preview — subject total so far */}
+                                  {previewPct != null && (
+                                    <div
+                                      className="shrink-0 text-center w-20 hidden sm:block"
+                                      title="Preview based on scores entered so far for this subject — not final until all assessments are graded"
+                                    >
+                                      <span className="text-[10px] text-gray-400 block leading-none">Current %</span>
+                                      <span className="text-sm font-bold text-purple-700">{previewPct.toFixed(1)}</span>
+                                    </div>
+                                  )}
 
                                   {/* History toggle button */}
                                   {!isBulkEditing && (
@@ -2400,8 +2607,8 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                 <thead>
                                   <tr>
                                     <th className="col-subjects border-2 border-black bg-slate-50 font-bold uppercase">SUBJECTS</th>
-                                    <th className="col-class-score border-2 border-black bg-slate-50 font-bold uppercase">Class Score<br/>40%</th>
-                                    <th className="col-exam-score border-2 border-black bg-slate-50 font-bold uppercase">Exams Score<br/>60%</th>
+                                    <th className="col-class-score border-2 border-black bg-slate-50 font-bold uppercase">Class Score<br/>{csWeight}%</th>
+                                    <th className="col-exam-score border-2 border-black bg-slate-50 font-bold uppercase">Exams Score<br/>{exWeight}%</th>
                                     <th className="col-total-score border-2 border-black bg-slate-50 font-bold uppercase">Total Score<br/>100%</th>
                                     <th className="col-grade border-2 border-black bg-slate-50 font-bold uppercase">Grade</th>
                                     {showSubjectPositionColumn ? (
@@ -2413,7 +2620,8 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                 <tbody>
                                   {termReport.subjects.map(subj => {
                                     const sScore = student.subjectScores[subj];
-                                    const gr = sScore ? getGhanaianGradeInfo(sScore.score) : { grade: '', remark: '—' };
+                                    const gradeLabel = sScore?.gradeLabel || (sScore ? getGhanaianGradeInfo(sScore.score).grade : '');
+                                    const remark = sScore?.remark || (sScore ? getGhanaianGradeInfo(sScore.score).remark : '—');
                                     const sortedList = [...termReport.students].sort((a,b) => (b.subjectScores[subj]?.score || 0) - (a.subjectScores[subj]?.score || 0));
                                     let subPos = 1;
                                     for (let i = 0; i < sortedList.length; i++) {
@@ -2431,11 +2639,11 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                         <td className="col-class-score border-2 border-black font-bold">{sScore ? sScore.classScore?.toFixed(1) : '—'}</td>
                                         <td className="col-exam-score border-2 border-black font-bold">{sScore ? sScore.examScore?.toFixed(1) : '—'}</td>
                                         <td className="col-total-score border-2 border-black font-extrabold">{sScore ? sScore.score?.toFixed(1) : '—'}</td>
-                                        <td className="col-grade border-2 border-black font-bold">{gr.grade || '—'}</td>
+                                        <td className="col-grade border-2 border-black font-bold">{gradeLabel || '—'}</td>
                                         {showSubjectPositionColumn ? (
                                           <td className="col-position border-2 border-black font-bold">{sScore ? positionSuffix(subPos) : '—'}</td>
                                         ) : null}
-                                        <td className="border-2 border-black font-bold uppercase text-left">{gr.remark}</td>
+                                        <td className="border-2 border-black font-bold uppercase text-left">{remark}</td>
                                       </tr>
                                     );
                                   })}
@@ -2680,16 +2888,14 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                               <th className="border border-slate-600 px-3 py-2 text-left sticky left-0 bg-slate-800 z-10 min-w-[180px]">
                                 Student
                               </th>
-                              {termReport.subjects.map(subj => {
-                                const sAssignments = termReport.assignmentsBySubject[subj] || [];
-                                const sMax = sAssignments.reduce((s, a) => s + parseFloat(String(a.max_score)), 0);
-                                return (
-                                  <th key={subj} className="border border-slate-600 px-3 py-2 text-center min-w-[110px]">
-                                    <div className="font-semibold text-xs leading-tight">{subj}</div>
-                                    <div className="text-xs font-normal text-slate-300">/{sMax} marks</div>
-                                  </th>
-                                );
-                              })}
+                              {termReport.subjects.map(subj => (
+                                <th key={subj} className="border border-slate-600 px-3 py-2 text-center min-w-[120px]">
+                                  <div className="font-semibold text-xs leading-tight">{subj}</div>
+                                  <div className="text-[10px] font-normal text-slate-300 mt-0.5">
+                                    CS: {csWeight}% | EX: {exWeight}%
+                                  </div>
+                                </th>
+                              ))}
                               <th className="border border-slate-600 px-3 py-2 text-center bg-slate-900 min-w-[90px]">
                                 Total<div className="text-xs font-normal text-slate-300">/{termReport.students[0]?.grandMax}</div>
                               </th>
@@ -2732,23 +2938,30 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                   </td>
                                   {termReport.subjects.map(subj => {
                                     const ss = s.subjectScores[subj];
-                                    const sPct = ss?.maxScore > 0 ? Math.round((ss.score / ss.maxScore) * 100) : 0;
-                                    const sGrade = ss ? getLetterGrade(sPct) : null;
+                                    const gradeLabel = ss?.gradeLabel || ss?.grade;
+                                    const totalPercent = ss?.score;
+                                    const classScorePercent = ss?.classScore;
+                                    const examPercent = ss?.examScore;
                                     return (
-                                      <td key={subj} className="border border-gray-200 px-3 py-2 text-center">
+                                      <td key={subj} className="border border-gray-200 px-2 py-2 text-center align-middle">
                                         {ss ? (
-                                          <>
-                                            <div>
-                                              <span className="font-mono font-bold">{ss.score}</span>
-                                              <span className="text-gray-400 text-xs">/{ss.maxScore}</span>
+                                          <div className="flex flex-col items-center gap-0.5">
+                                            <div className="text-base font-medium font-mono leading-tight">
+                                              {totalPercent != null ? Number(totalPercent).toFixed(1) : '—'}
                                             </div>
-                                            {sGrade && (
-                                              <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${sGrade.color}`}>
-                                                {sGrade.letter} {sPct}%
+                                            <div className="text-[10px] text-muted-foreground leading-tight whitespace-nowrap">
+                                              CS: {classScorePercent != null ? Number(classScorePercent).toFixed(1) : '—'}
+                                              {' '}| EX: {examPercent != null ? Number(examPercent).toFixed(1) : '—'}
+                                            </div>
+                                            {gradeLabel ? (
+                                              <span className="inline-flex text-xs font-bold px-1.5 py-0.5 rounded bg-purple-50 text-purple-800 border border-purple-200 mt-0.5">
+                                                {gradeLabel}
                                               </span>
-                                            )}
-                                          </>
-                                        ) : <span className="text-gray-300">—</span>}
+                                            ) : null}
+                                          </div>
+                                        ) : (
+                                          <span className="text-gray-300">—</span>
+                                        )}
                                       </td>
                                     );
                                   })}
@@ -2797,7 +3010,13 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
       )}
 
       {/* ── Add Assessment Dialog ── */}
-      <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+      <Dialog
+        open={isAddOpen}
+        onOpenChange={(open) => {
+          setIsAddOpen(open);
+          if (!open) setAddAssessmentTypeError('');
+        }}
+      >
         <DialogContent className={`${detailDialogContentClass} sm:max-w-md`}>
           <DialogHeader className={detailDialogHeaderClass}>
             <DialogTitle>Add Assessment</DialogTitle>
@@ -2805,27 +3024,41 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
           <DialogBody className={`${detailDialogBodyClass} space-y-4`}>
             <div className="space-y-1.5">
               <Label>Subject</Label>
-              <Select value={newAssignment.subject} onValueChange={v => setNewAssignment(p => ({ ...p, subject: v }))}>
+              <Select
+                value={newAssignment.subject}
+                onValueChange={(v) => {
+                  setAddAssessmentTypeError('');
+                  setNewAssignment((p) => ({ ...p, subject: v }));
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Choose subject…" />
                 </SelectTrigger>
                 <SelectContent>
-                  {subjectsForSelectedClass.length > 0 ? (
-                    subjectsForSelectedClass.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)
+                  {subjectsForAddAssessment.length > 0 ? (
+                    subjectsForAddAssessment.map((s) => (
+                      <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                    ))
                   ) : (
                     <div className="px-2 py-3 text-sm text-gray-500 text-center italic">
-                      {isAdminViewer ? 'No subjects defined in system' : 'No subjects assigned for this class'}
+                      {isSchoolAdmin || isHeadmasterUser
+                        ? 'No subjects defined in system'
+                        : 'No subjects assigned for this class'}
                     </div>
                   )}
-                  <div className="border-t my-1" />
-                  <SelectItem value="__custom__">+ Other (type below)</SelectItem>
+                  {(isSchoolAdmin || isHeadmasterUser) && (
+                    <>
+                      <div className="border-t my-1" />
+                      <SelectItem value="__custom__">+ Other (type below)</SelectItem>
+                    </>
+                  )}
                 </SelectContent>
               </Select>
               {newAssignment.subject === '__custom__' && (
                 <Input
                   placeholder="Enter subject name…"
                   value={newAssignment.subjectCustom}
-                  onChange={e => setNewAssignment(p => ({ ...p, subjectCustom: e.target.value }))}
+                  onChange={(e) => setNewAssignment((p) => ({ ...p, subjectCustom: e.target.value }))}
                   autoFocus
                 />
               )}
@@ -2841,16 +3074,30 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 col-span-2">
                 <Label>Type</Label>
-                <Select value={newAssignment.assignmentType} onValueChange={v => setNewAssignment(p => ({ ...p, assignmentType: v }))}>
+                <Select
+                  value={newAssignment.assessmentType || undefined}
+                  onValueChange={(v) => {
+                    setAddAssessmentTypeError('');
+                    setNewAssignment((p) => ({ ...p, assessmentType: v }));
+                  }}
+                >
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder="Select type…" />
                   </SelectTrigger>
                   <SelectContent>
-                    {ASSESSMENT_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                    {(gradeConfig?.components || []).map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value={EXAM_TYPE_VALUE}>End of Term Exam</SelectItem>
                   </SelectContent>
                 </Select>
+                {addAssessmentTypeError ? (
+                  <p className="text-sm text-red-600 font-medium">{addAssessmentTypeError}</p>
+                ) : null}
               </div>
               <div className="space-y-1.5">
                 <Label>Max Marks</Label>
@@ -2867,7 +3114,11 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
             <Button type="button" variant="outline" onClick={() => setIsAddOpen(false)}>
               Cancel
             </Button>
-            <Button type="button" variant="primaryAction" onClick={handleAddAssignment}>
+            <Button
+              type="button"
+              variant="primaryAction"
+              onClick={handleAddAssignment}
+            >
               Add Assessment
             </Button>
           </DialogFooter>

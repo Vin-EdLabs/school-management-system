@@ -118,5 +118,12 @@ export const mapStudentToBackend = (student: Partial<Student>): Record<string, u
   if (student.discountValue !== undefined) out.discount_value = student.isBeneficiary ? student.discountValue ?? null : null;
   if (student.beneficiaryNotes !== undefined) out.beneficiary_notes = student.beneficiaryNotes;
   if (student.enrollmentStatus !== undefined) out.enrollment_status = student.enrollmentStatus;
+  if (
+    student.enrollmentStatus === 'inactive'
+    && student.inactivatedAcademicTermId != null
+    && student.inactivatedAcademicTermId > 0
+  ) {
+    out.inactivation_term_id = student.inactivatedAcademicTermId;
+  }
   return out;
 };

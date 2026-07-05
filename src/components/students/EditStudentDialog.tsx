@@ -23,6 +23,8 @@ import {
 } from '@/utils/formValidation';
 import { Camera, Trash2, GraduationCap as ScholarshipIcon, UserPlus, X } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
+import { apiService } from '@/services/api';
+import { normalizeEnrollmentStatus } from './studentRegistryUtils';
 
 interface Student {
   id: string;
@@ -53,6 +55,7 @@ interface Student {
   discountValue?: number;
   beneficiaryNotes?: string;
   enrollmentStatus?: string;
+  inactivatedAcademicTermId?: number | null;
 }
 
 interface EditStudentDialogProps {
@@ -142,6 +145,44 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [academicTerms, setAcademicTerms] = useState<Array<{ id: number; label: string }>>([]);
+  const [inactivationTermId, setInactivationTermId] = useState('');
+
+  const initialWasInactive = useMemo(
+    () => (student ? normalizeEnrollmentStatus(student.enrollmentStatus) === 'inactive' : false),
+    [student?.id, student?.enrollmentStatus]
+  );
+
+  const goingInactive = formData
+    ? normalizeEnrollmentStatus(formData.enrollmentStatus) === 'inactive' && !initialWasInactive
+    : false;
+
+  useEffect(() => {
+    if (!open) {
+      setInactivationTermId('');
+      return;
+    }
+    let cancelled = false;
+    void apiService
+      .get<Array<{ id: number; term_name: string; year: string }>>('/settings/academic-terms?include_archived=true')
+      .then((rows) => {
+        if (cancelled) return;
+        setAcademicTerms(
+          (Array.isArray(rows) ? rows : [])
+            .map((row) => ({
+              id: Number(row.id),
+              label: `${String(row.term_name || '').trim()} ${String(row.year || '').trim()}`.trim(),
+            }))
+            .filter((row) => row.id > 0 && row.label)
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setAcademicTerms([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   useEffect(() => {
     if (student) {
@@ -209,9 +250,21 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
 
   const performUpdate = async () => {
     if (!formData) return;
+    if (goingInactive && !inactivationTermId) {
+      toast({
+        title: 'Term required',
+        description: 'Select the academic term this student should be recorded as inactive for.',
+        variant: 'destructive',
+      });
+      scrollToFormField('inactivation-term-select');
+      return;
+    }
     const photoToUpload = photoFile;
     const photoPreviewUrl = photoPreview;
-    const snapshot = { ...formData };
+    const snapshot = {
+      ...formData,
+      ...(goingInactive ? { inactivatedAcademicTermId: Number(inactivationTermId) } : {}),
+    };
 
     try {
       await updateStudent(snapshot.id, snapshot);
@@ -423,6 +476,23 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
                   </SelectContent>
                 </Select>
               </div>
+              {goingInactive ? (
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="inactivation-term-select">Inactive for academic term *</Label>
+                  <Select value={inactivationTermId || undefined} onValueChange={setInactivationTermId}>
+                    <SelectTrigger id="inactivation-term-select">
+                      <SelectValue placeholder="Select the term they left" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {academicTerms.map((term) => (
+                        <SelectItem key={term.id} value={String(term.id)}>
+                          {term.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
               <div className="space-y-2">
                 <Label>Student ID</Label>
                 <Input value={formData.studentId} readOnly disabled className="bg-slate-50 cursor-not-allowed" />

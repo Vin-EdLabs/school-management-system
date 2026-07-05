@@ -2,6 +2,8 @@ import { query } from '../db/connection.js';
 import { resolveSchoolDisplayName } from './schoolBrandingService.js';
 import { getSchoolActiveTermYear } from './gradesTermContext.js';
 import { loadClassTermRemarks } from './termReportRemarksService.js';
+import { buildConfigurableTermReport } from './termReportCalculatorService.js';
+import { loadGradeConfigForTenant, serializeGradeConfigSnapshot } from './gradeConfigService.js';
 
 export type ArchiveSignatures = {
   classTeacherSig?: string | null;
@@ -41,6 +43,9 @@ export type BuiltTermReport = {
   schoolName: string;
   schoolLogoUrl: string | null;
   gradeScale: Array<{ letter: string; minPct: number; maxPct: number; description?: string }>;
+  classScoreWeight: number;
+  examWeight: number;
+  gradeBoundaries: Array<{ gradeLabel: string; minPercent: number; maxPercent: number; remark: string }>;
   teacherRemarks: Record<number, string>;
   headmasterRemarks: Record<number, string>;
   headmasterName: string | null;
@@ -96,149 +101,40 @@ export async function buildTermReportData(
   tenantId: number,
   classId: number,
   termOverride?: string,
-  yearOverride?: string
+  yearOverride?: string,
+  options?: { subjectIdFilter?: Set<number> }
 ): Promise<BuiltTermReport | null> {
   const active = termOverride && yearOverride
     ? { term: termOverride, academicYear: yearOverride }
     : await getSchoolActiveTermYear(tenantId);
 
-  const assignmentsRes = await query(
-    `SELECT id, subject, name, assignment_type, max_score
-     FROM grade_assignments
-     WHERE tenant_id = $1 AND class_id = $2 AND term = $3 AND academic_year = $4
-     ORDER BY subject, assignment_type, name`,
-    [tenantId, classId, active.term, active.academicYear]
+  const computed = await buildConfigurableTermReport(
+    tenantId,
+    classId,
+    termOverride,
+    yearOverride,
+    options?.subjectIdFilter ? { subjectIdFilter: options.subjectIdFilter } : undefined
   );
-  const assignments: any[] = assignmentsRes.rows;
-  if (assignments.length === 0) return null;
+  if (!computed) return null;
 
-  const classRes = await query(
-    'SELECT class_name FROM classes WHERE id = $1 AND tenant_id = $2',
-    [classId, tenantId]
-  );
-  const className = classRes.rows[0]?.class_name || '';
+  const reportRows: TermReportStudentRow[] = computed.students.map((s) => ({
+    studentId: s.studentId,
+    firstName: s.firstName,
+    lastName: s.lastName,
+    admissionNumber: s.admissionNumber,
+    passportPhotoUrl: s.passportPhotoUrl,
+    hasMoved: s.hasMoved,
+    subjectScores: s.subjectScores,
+    grandTotal: s.grandTotal,
+    grandMax: s.grandMax,
+    percentage: s.percentage,
+    position: s.position,
+  }));
 
-  const studentsRes = await query(
-    `SELECT id, first_name, last_name, student_id AS admission_number, passport_photo_url
-     FROM students
-     WHERE tenant_id = $1 AND class_assigned_id = $2
-     ORDER BY first_name, last_name`,
-    [tenantId, classId]
-  );
-
-  const assignmentIds = assignments.map((a: any) => a.id);
-  const gradedStudentsRes = await query(
-    `SELECT DISTINCT s.id, s.first_name, s.last_name, s.student_id AS admission_number,
-            s.passport_photo_url
-     FROM student_grades sg
-     JOIN students s ON sg.student_id = s.id AND s.tenant_id = sg.tenant_id
-     WHERE sg.tenant_id = $1 AND sg.assignment_id = ANY($2)`,
-    [tenantId, assignmentIds]
-  );
-
-  const studentMap = new Map<number, any>();
-  for (const s of studentsRes.rows) studentMap.set(s.id, { ...s, hasMoved: false });
-  for (const s of gradedStudentsRes.rows) {
-    if (!studentMap.has(s.id)) studentMap.set(s.id, { ...s, hasMoved: true });
-  }
-  const allStudents = Array.from(studentMap.values());
-
-  const gradesRes = await query(
-    `SELECT student_id, assignment_id, score::float AS score
-     FROM student_grades
-     WHERE tenant_id = $1 AND assignment_id = ANY($2)`,
-    [tenantId, assignmentIds]
-  );
-
-  const gradeMap: Record<number, Record<number, number>> = {};
-  for (const g of gradesRes.rows) {
-    if (!gradeMap[g.student_id]) gradeMap[g.student_id] = {};
-    gradeMap[g.student_id][g.assignment_id] = g.score;
-  }
-
-  const subjectOrder: string[] = [];
-  for (const a of assignments) {
-    if (!subjectOrder.includes(a.subject)) subjectOrder.push(a.subject);
-  }
-
-  const assignmentsBySubject: Record<string, any[]> = {};
-  for (const subj of subjectOrder) {
-    assignmentsBySubject[subj] = assignments.filter((a: any) => a.subject === subj);
-  }
-
-  const reportRows: TermReportStudentRow[] = allStudents.map((s: any) => {
-    const subjectScores: TermReportStudentRow['subjectScores'] = {};
-    let grandTotal = 0;
-    let grandMax = 0;
-
-    for (const subj of subjectOrder) {
-      const subjectAssignments = assignmentsBySubject[subj];
-      let classScoreSum = 0;
-      let classMaxSum = 0;
-      let examScoreSum = 0;
-      let examMaxSum = 0;
-
-      for (const a of subjectAssignments) {
-        const scored = gradeMap[s.id]?.[a.id] ?? 0;
-        const typeLabel = String(a.assignment_type || a.name || '').toLowerCase();
-        const isExam = typeLabel === 'exam' || typeLabel.includes('exam');
-        if (isExam) {
-          examScoreSum += scored;
-          examMaxSum += parseFloat(a.max_score);
-        } else {
-          classScoreSum += scored;
-          classMaxSum += parseFloat(a.max_score);
-        }
-      }
-
-      let classScoreVal = 0;
-      let examScoreVal = 0;
-
-      if (classMaxSum > 0 && examMaxSum > 0) {
-        classScoreVal = (classScoreSum / classMaxSum) * 40;
-        examScoreVal = (examScoreSum / examMaxSum) * 60;
-      } else if (classMaxSum > 0) {
-        const pct = classScoreSum / classMaxSum;
-        classScoreVal = pct * 40;
-        examScoreVal = pct * 60;
-      } else if (examMaxSum > 0) {
-        const pct = examScoreSum / examMaxSum;
-        classScoreVal = pct * 40;
-        examScoreVal = pct * 60;
-      }
-
-      const totalScore = classScoreVal + examScoreVal;
-      subjectScores[subj] = {
-        score: Math.round(totalScore * 10) / 10,
-        maxScore: 100,
-        classScore: Math.round(classScoreVal * 10) / 10,
-        examScore: Math.round(examScoreVal * 10) / 10,
-      };
-      grandTotal += totalScore;
-      grandMax += 100;
-    }
-
-    return {
-      studentId: s.id,
-      firstName: s.first_name,
-      lastName: s.last_name,
-      admissionNumber: s.admission_number,
-      passportPhotoUrl: s.passport_photo_url || null,
-      hasMoved: s.hasMoved,
-      subjectScores,
-      grandTotal: Math.round(grandTotal * 10) / 10,
-      grandMax: Math.round(grandMax * 10) / 10,
-      percentage: grandMax > 0 ? Math.round((grandTotal / grandMax) * 100) : 0,
-      position: 0,
-    };
-  });
-
-  reportRows.sort((a, b) => b.grandTotal - a.grandTotal);
-  let pos = 1;
-  for (let i = 0; i < reportRows.length; i++) {
-    if (i > 0 && reportRows[i].grandTotal < reportRows[i - 1].grandTotal) pos = i + 1;
-    reportRows[i].position = pos;
-  }
+  const subjectOrder = computed.subjects.map((s) => s.subjectName);
+  const assignments = computed.assignments;
+  const assignmentsBySubject = computed.assignmentsBySubject;
+  const className = computed.className;
 
   const settingsRes = await query(
     `SELECT current_term, current_year, grade_scale, logo_url
@@ -320,6 +216,9 @@ export async function buildTermReportData(
     schoolName,
     schoolLogoUrl,
     gradeScale,
+    classScoreWeight: computed.classScoreWeight,
+    examWeight: computed.examWeight,
+    gradeBoundaries: computed.boundaries ?? [],
     teacherRemarks,
     headmasterRemarks,
     headmasterName,

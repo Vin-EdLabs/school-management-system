@@ -38,6 +38,7 @@ const ViewAllTeachers = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('active');
   const [filterClass, setFilterClass] = useState('all-classes');
+  const [genderFilter, setGenderFilter] = useState('all');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [exporting, setExporting] = useState(false);
   const [selectedTeacher, setSelectedTeacher] = useState<any>(null);
@@ -70,20 +71,25 @@ const ViewAllTeachers = () => {
     filterClass === 'all-classes' ||
     (filterClass === 'no-class' ? !teacher.classAssigned : teacher.classAssigned === filterClass);
 
+  const matchesGender = (teacher: Teacher) => {
+    if (genderFilter === 'all') return true;
+    return (teacher.gender || '').trim().toLowerCase() === genderFilter;
+  };
+
   const filteredTeachers = useMemo(() => {
     if (filterStatus === 'deactivated') {
       return teachers.filter((teacher) => {
         const status = teacher.status || 'active';
-        return status === 'deactivated' && matchesSearch(teacher) && matchesClass(teacher);
+        return status === 'deactivated' && matchesSearch(teacher) && matchesClass(teacher) && matchesGender(teacher);
       });
     }
     return teachers.filter((teacher) => {
       if (teacher.parentTeacherId) return false;
       const status = teacher.status || 'active';
       const matchesStatus = filterStatus === 'all' || filterStatus === status;
-      return matchesSearch(teacher) && matchesStatus && matchesClass(teacher);
+      return matchesSearch(teacher) && matchesStatus && matchesClass(teacher) && matchesGender(teacher);
     });
-  }, [teachers, filterStatus, searchTerm, filterClass]);
+  }, [teachers, filterStatus, searchTerm, filterClass, genderFilter]);
 
   const handleDetachAssistant = async (teacher: Teacher) => {
     setDetachingId(teacher.id);
@@ -127,7 +133,7 @@ const ViewAllTeachers = () => {
         ? []
         : assistants.filter((a) => {
             const st = a.status || 'active';
-            return filterStatus === 'all' || filterStatus === st;
+            return (filterStatus === 'all' || filterStatus === st) && matchesGender(a);
           });
     const hasAssistants = !isAssistant && visibleAssistants.length > 0;
     const expanded = expandedParents.has(teacher.id);
@@ -421,6 +427,16 @@ const ViewAllTeachers = () => {
                       {cls.className}
                     </SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+              <Select value={genderFilter} onValueChange={setGenderFilter}>
+                <SelectTrigger className="w-32">
+                  <SelectValue placeholder="Gender" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="male">Male</SelectItem>
+                  <SelectItem value="female">Female</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -282,6 +282,7 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
               <DetailField label="Department">{teacher.department || '—'}</DetailField>
               <DetailField label="Qualification">{teacher.qualification || '—'}</DetailField>
               <DetailField label="Specialization">{teacher.specialization || '—'}</DetailField>
+              <DetailField label="National ID">{teacher.nationalId || '—'}</DetailField>
             </div>
 
             <Separator />
@@ -314,6 +315,7 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <DetailField label="Employment date">{formatDisplayDate(teacher.employmentDate)}</DetailField>
+              <DetailField label="Employment type">{teacher.employmentType || '—'}</DetailField>
               <DetailField label="Monthly salary">
                 {teacher.monthlySalary > 0 ? `GHS ${teacher.monthlySalary.toLocaleString()}` : 'Not set'}
               </DetailField>

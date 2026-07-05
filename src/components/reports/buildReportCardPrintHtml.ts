@@ -11,6 +11,8 @@ export type ReportCardPrintInput = {
   totalStudents: number;
   subjects: string[];
   termReportStudents: TermReportStudent[];
+  classScoreWeight?: number;
+  examWeight?: number;
   conduct: string;
   attitude: string;
   interest: string;
@@ -85,11 +87,14 @@ const fieldRow = (label: string, value: string) => `
 
 export function buildReportCardPrintHtml(input: ReportCardPrintInput): string {
   const { student, subjects, termReportStudents } = input;
+  const csWeight = input.classScoreWeight ?? 50;
+  const exWeight = input.examWeight ?? 50;
   const bece = calculateBECE(student.subjectScores);
 
   const subjectRows = subjects.map((subj) => {
     const sScore = student.subjectScores[subj];
-    const gr = sScore ? getGhanaianGradeInfo(sScore.score) : { grade: '', remark: '—' };
+    const gradeLabel = sScore?.gradeLabel || (sScore ? getGhanaianGradeInfo(sScore.score).grade : '');
+    const remark = sScore?.remark || (sScore ? getGhanaianGradeInfo(sScore.score).remark : '—');
     const sortedList = [...termReportStudents].sort(
       (a, b) => (b.subjectScores[subj]?.score || 0) - (a.subjectScores[subj]?.score || 0)
     );
@@ -104,9 +109,9 @@ export function buildReportCardPrintHtml(input: ReportCardPrintInput): string {
         <td style="border:2px solid #000;padding:6px;font-weight:bold;text-align:center;">${sScore ? sScore.classScore?.toFixed(1) : '—'}</td>
         <td style="border:2px solid #000;padding:6px;font-weight:bold;text-align:center;">${sScore ? sScore.examScore?.toFixed(1) : '—'}</td>
         <td style="border:2px solid #000;padding:6px;font-weight:800;text-align:center;">${sScore ? sScore.score?.toFixed(1) : '—'}</td>
-        <td style="border:2px solid #000;padding:6px;font-weight:bold;text-align:center;">${gr.grade}</td>
+        <td style="border:2px solid #000;padding:6px;font-weight:bold;text-align:center;">${gradeLabel || '—'}</td>
         <td style="border:2px solid #000;padding:6px;font-weight:bold;text-align:center;">${sScore ? positionSuffix(subPos) : '—'}</td>
-        <td style="border:2px solid #000;padding:6px;font-weight:bold;text-align:left;font-size:9px;text-transform:uppercase;">${esc(gr.remark)}</td>
+        <td style="border:2px solid #000;padding:6px;font-weight:bold;text-align:left;font-size:9px;text-transform:uppercase;">${esc(remark)}</td>
       </tr>`;
   }).join('');
 
@@ -195,8 +200,8 @@ export function buildReportCardPrintHtml(input: ReportCardPrintInput): string {
       <thead>
         <tr>
           <th style="text-align:left;width:28%;">Subjects</th>
-          <th>Class Score<br/>40%</th>
-          <th>Exams Score<br/>60%</th>
+          <th>Class Score<br/>${csWeight}%</th>
+          <th>Exams Score<br/>${exWeight}%</th>
           <th>Total Score<br/>100%</th>
           <th>Grade</th>
           <th>Position</th>

@@ -44,3 +44,7 @@ export const OTHER_STAFF_PAYROLL_DISPLAY_STAFF_ID_SQL = `COALESCE(NULLIF(TRIM(s.
 /** Bare column expressions (no table alias) for single-table SELECTs. */
 export const TEACHER_PAYROLL_DISPLAY_NAME_BARE = `COALESCE(NULLIF(TRIM(removed_original_name), ''), NULLIF(NULLIF(TRIM(full_name), ''), '[Removed]'))`;
 export const OTHER_STAFF_PAYROLL_DISPLAY_NAME_BARE = `COALESCE(NULLIF(TRIM(removed_original_name), ''), NULLIF(NULLIF(TRIM(full_name), ''), '[Removed]'))`;
+
+/** Role/position from staff profile (not class assignment or employment type). */
+export const TEACHER_PAYROLL_ROLE_SQL = `COALESCE(NULLIF(TRIM(t.position), ''), NULLIF(ARRAY_TO_STRING(t.subjects_taught, ', '), ''), 'Teacher')`;
+export const OTHER_STAFF_PAYROLL_ROLE_SQL = `COALESCE(NULLIF(TRIM(s.position), ''), 'Staff')`;

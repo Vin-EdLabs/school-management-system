@@ -900,6 +900,8 @@ router.get('/admin-overview', async (req: AuthRequest, res) => {
           (SELECT COUNT(*)::int FROM teachers t WHERE t.tenant_id = $1 AND ${TEACHER_COUNTABLE_WHERE} AND LOWER(TRIM(COALESCE(t.gender, ''))) = 'female') AS teacher_female,
           (SELECT COUNT(*)::int FROM other_staff o WHERE o.tenant_id = $1 AND ${OTHER_STAFF_COUNTABLE_WHERE}) AS other_staff_total,
           (SELECT COUNT(*)::int FROM other_staff o WHERE o.tenant_id = $1 AND ${OTHER_STAFF_COUNTABLE_WHERE}) AS other_staff_active,
+          (SELECT COUNT(*)::int FROM other_staff o WHERE o.tenant_id = $1 AND ${OTHER_STAFF_COUNTABLE_WHERE} AND LOWER(TRIM(COALESCE(o.gender, ''))) = 'male') AS other_staff_male,
+          (SELECT COUNT(*)::int FROM other_staff o WHERE o.tenant_id = $1 AND ${OTHER_STAFF_COUNTABLE_WHERE} AND LOWER(TRIM(COALESCE(o.gender, ''))) = 'female') AS other_staff_female,
           (SELECT COUNT(*)::int FROM classes c WHERE c.tenant_id = $1 AND TRIM(COALESCE(c.class_name, '')) <> '') AS class_total
         FROM students s
         WHERE s.tenant_id = $1`,
@@ -1008,7 +1010,13 @@ router.get('/admin-overview', async (req: AuthRequest, res) => {
       otherStaff: {
         total: Number(counts.other_staff_total) || 0,
         active: Number(counts.other_staff_active) || 0,
+        male: Number(counts.other_staff_male) || 0,
+        female: Number(counts.other_staff_female) || 0,
       },
+      maleStaff:
+        (Number(counts.teacher_male) || 0) + (Number(counts.other_staff_male) || 0),
+      femaleStaff:
+        (Number(counts.teacher_female) || 0) + (Number(counts.other_staff_female) || 0),
       classes: { total: Number(counts.class_total) || 0 },
       feeStatus: {
         paid: Number(feeMix.paid) || 0,

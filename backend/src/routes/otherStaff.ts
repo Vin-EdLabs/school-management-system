@@ -257,6 +257,7 @@ router.get('/all-staff', async (req: AuthRequest, res) => {
     const tenantId = req.user!.tenantId!;
     const statusFilter = String(req.query.status || 'active').toLowerCase();
     const typeFilter = String(req.query.type || 'all').toLowerCase();
+    const genderFilter = String(req.query.gender || 'all').toLowerCase();
     const countableOnly = String(req.query.countableOnly || req.query.countable || '') === '1'
       || String(req.query.countableOnly || '').toLowerCase() === 'true';
 
@@ -311,6 +312,12 @@ router.get('/all-staff', async (req: AuthRequest, res) => {
       sql += ` AND employment_status NOT IN ('active', 'suspended')`;
     }
 
+    if (genderFilter === 'male') {
+      sql += ` AND LOWER(TRIM(COALESCE(gender, ''))) = 'male'`;
+    } else if (genderFilter === 'female') {
+      sql += ` AND LOWER(TRIM(COALESCE(gender, ''))) = 'female'`;
+    }
+
     sql += ' ORDER BY counts_as_staff DESC, full_name ASC';
     const result = await query(sql, params);
     res.json(result.rows);
@@ -347,11 +354,17 @@ router.get('/', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const { status } = req.query;
+    const genderFilter = String(req.query.gender || 'all').toLowerCase();
     let sql = `SELECT * FROM other_staff WHERE tenant_id = $1 AND ${OTHER_STAFF_VISIBLE_WHERE_BARE}`;
     const params: unknown[] = [tenantId];
     if (status && String(status) !== 'all') {
       sql += ` AND COALESCE(NULLIF(LOWER(TRIM(employment_status)), ''), 'active') = $2`;
       params.push(String(status).toLowerCase());
+    }
+    if (genderFilter === 'male') {
+      sql += ` AND LOWER(TRIM(COALESCE(gender, ''))) = 'male'`;
+    } else if (genderFilter === 'female') {
+      sql += ` AND LOWER(TRIM(COALESCE(gender, ''))) = 'female'`;
     }
     sql += ' ORDER BY COALESCE(counts_as_staff, true) DESC, full_name ASC';
     const result = await query(sql, params);

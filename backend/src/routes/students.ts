@@ -62,14 +62,39 @@ function isMissingStudentTermTrackingColumn(error: unknown): boolean {
     || /inactivated_(at|academic_term_id)|admission_academic_term_id/i.test(String(err?.message || ''));
 }
 
+async function resolveInactivationTermId(
+  tenantId: number,
+  termIdRaw: unknown,
+  required: boolean
+): Promise<number> {
+  if (termIdRaw == null || String(termIdRaw).trim() === '') {
+    if (required) {
+      throw Object.assign(new Error('Select the academic term for inactivation'), { status: 400 });
+    }
+    throw Object.assign(new Error('Academic term is required'), { status: 400 });
+  }
+  const termId = parseInt(String(termIdRaw), 10);
+  if (Number.isNaN(termId) || termId <= 0) {
+    throw Object.assign(new Error('Invalid academic term'), { status: 400 });
+  }
+  const check = await query(
+    'SELECT id FROM academic_terms WHERE id = $1 AND tenant_id = $2',
+    [termId, tenantId]
+  );
+  if (check.rows.length === 0) {
+    throw Object.assign(new Error('Academic term not found'), { status: 404 });
+  }
+  return termId;
+}
+
 async function tryRecordStudentInactivation(
   tenantId: number,
   studentId: string,
-  priorStatus: string
+  priorStatus: string,
+  inactivationTermId: number
 ): Promise<void> {
   if (String(priorStatus).toLowerCase() === 'inactive') return;
   try {
-    const inactivationTermId = await getActiveAcademicTermId(tenantId);
     await query(
       `UPDATE students
        SET inactivated_at = CURRENT_TIMESTAMP,
@@ -751,17 +776,21 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
       return res.status(400).json({ error: 'No valid fields to update' });
     }
 
+    const inactivationTermFromBody =
+      updates.inactivation_term_id ?? updates.inactivated_academic_term_id;
+
+    let pendingInactivationTermId: number | null = null;
+    if (nextStatus === 'inactive' && priorStatus !== 'inactive' && priorStatus !== 'withdrawn') {
+      pendingInactivationTermId = await resolveInactivationTermId(
+        tenantId,
+        inactivationTermFromBody,
+        true
+      );
+    }
+
     const baseFields = [...updateFields];
     const baseValues = [...values];
     const baseParamCount = paramCount;
-
-    if (nextStatus === 'inactive' && priorStatus !== 'inactive') {
-      const inactivationTermId = await getActiveAcademicTermId(tenantId);
-      updateFields.push(`inactivated_at = CURRENT_TIMESTAMP`);
-      updateFields.push(`inactivated_academic_term_id = $${paramCount}`);
-      values.push(inactivationTermId);
-      paramCount++;
-    }
 
     updateFields.push(`updated_at = CURRENT_TIMESTAMP`);
     values.push(tenantId, id);
@@ -788,8 +817,8 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
       return res.status(404).json({ error: 'Student not found' });
     }
 
-    if (nextStatus === 'inactive' && priorStatus !== 'inactive' && priorStatus !== 'withdrawn') {
-      await tryRecordStudentInactivation(tenantId, id, priorStatus);
+    if (pendingInactivationTermId != null) {
+      await tryRecordStudentInactivation(tenantId, id, priorStatus, pendingInactivationTermId);
     } else if (nextStatus === 'active' && (priorStatus === 'inactive' || priorStatus === 'withdrawn')) {
       await tryClearStudentInactivation(tenantId, id);
     }
@@ -880,9 +909,10 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
           }
         : null,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Update student error:', error);
-    res.status(500).json({ error: 'Failed to update student' });
+    const status = error?.status || 500;
+    res.status(status).json({ error: error?.message || 'Failed to update student' });
   }
 });
 
@@ -891,7 +921,7 @@ router.patch('/:id/status', requireRole('super-admin', 'administrator'), async (
   try {
     const tenantId = req.user!.tenantId!;
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, inactivation_term_id, inactivated_academic_term_id } = req.body;
 
     if (!['active', 'inactive'].includes(status)) {
       return res.status(400).json({ error: 'Status must be active or inactive' });
@@ -903,6 +933,25 @@ router.patch('/:id/status', requireRole('super-admin', 'administrator'), async (
     }
 
     const priorStatus = String(existing.enrollment_status || 'active').toLowerCase();
+
+    if (
+      status === 'inactive'
+      && priorStatus !== 'inactive'
+      && priorStatus !== 'withdrawn'
+      && inactivation_term_id == null
+      && inactivated_academic_term_id == null
+    ) {
+      return res.status(400).json({ error: 'Select the academic term for inactivation (inactivation_term_id)' });
+    }
+
+    let pendingInactivationTermId: number | null = null;
+    if (status === 'inactive' && priorStatus !== 'inactive' && priorStatus !== 'withdrawn') {
+      pendingInactivationTermId = await resolveInactivationTermId(
+        tenantId,
+        inactivation_term_id ?? inactivated_academic_term_id,
+        true
+      );
+    }
 
     const result = await query(
       `UPDATE students
@@ -917,8 +966,8 @@ router.patch('/:id/status', requireRole('super-admin', 'administrator'), async (
       return res.status(404).json({ error: 'Student not found' });
     }
 
-    if (status === 'inactive' && priorStatus !== 'inactive' && priorStatus !== 'withdrawn') {
-      await tryRecordStudentInactivation(tenantId, id, priorStatus);
+    if (pendingInactivationTermId != null) {
+      await tryRecordStudentInactivation(tenantId, id, priorStatus, pendingInactivationTermId);
     } else if (status === 'active' && (priorStatus === 'inactive' || priorStatus === 'withdrawn')) {
       await tryClearStudentInactivation(tenantId, id);
     }
@@ -1032,9 +1081,10 @@ router.patch('/:id/status', requireRole('super-admin', 'administrator'), async (
           }
         : null,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Update student status error:', error);
-    res.status(500).json({ error: 'Failed to update student status' });
+    const status = error?.status || 500;
+    res.status(status).json({ error: error?.message || 'Failed to update student status' });
   }
 });
 

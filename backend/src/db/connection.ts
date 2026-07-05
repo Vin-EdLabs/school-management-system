@@ -1346,6 +1346,7 @@ const runMigrations = async () => {
     await client.query(`ALTER TABLE salary_payments ADD COLUMN IF NOT EXISTS gross_salary NUMERIC(12, 2)`).catch(() => { });
     await client.query(`ALTER TABLE salary_payments ADD COLUMN IF NOT EXISTS ssnit_percent NUMERIC(8, 4)`).catch(() => { });
     await client.query(`ALTER TABLE salary_payments ADD COLUMN IF NOT EXISTS ssnit_amount NUMERIC(12, 2)`).catch(() => { });
+    await client.query(`ALTER TABLE salary_payments ADD COLUMN IF NOT EXISTS ssnit_manual_amount NUMERIC(10, 2)`).catch(() => { });
     await client.query(`ALTER TABLE salary_payments ADD COLUMN IF NOT EXISTS other_deductions NUMERIC(12, 2) NOT NULL DEFAULT 0`).catch(() => { });
     await client.query(`ALTER TABLE salary_payments ADD COLUMN IF NOT EXISTS allowances NUMERIC(12, 2) NOT NULL DEFAULT 0`).catch(() => { });
     await client.query(`ALTER TABLE salary_payments ADD COLUMN IF NOT EXISTS net_salary NUMERIC(12, 2)`).catch(() => { });

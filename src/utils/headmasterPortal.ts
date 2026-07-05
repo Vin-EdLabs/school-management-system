@@ -25,6 +25,7 @@ export const HEADMASTER_MODULES = [
   'records',
   'settings',
   'settings-password-only',
+  'grade-configuration',
 ] as const;
 
 export function isHeadmasterRole(role?: UserRole | string | null): boolean {

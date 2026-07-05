@@ -4,12 +4,11 @@ import { query } from '../db/connection.js';
 import { authenticate, AuthRequest, requireRole, requireTenant } from '../middleware/auth.js';
 import { getIO } from '../socket.js';
 import { sendPushToClassParents } from '../services/webPushService.js';
+import { authenticateParent, type ParentAuthRequest } from '../middleware/authenticateParent.js';
 
 const router = express.Router();
 
-interface ParentRequest extends express.Request {
-  parent?: { accountId: number; studentId: number; tenantId: number };
-}
+type ParentRequest = ParentAuthRequest;
 
 const SUBJECT_MAP: Record<string, string> = {
   mathematics: 'maths',
@@ -251,26 +250,13 @@ function startOfWeekMonday(d = new Date()): Date {
   return date;
 }
 
-const authenticateParent = async (req: ParentRequest, res: express.Response, next: express.NextFunction) => {
-  try {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) return res.status(401).json({ error: 'No token provided' });
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as any;
-    if (decoded.role !== 'parent') return res.status(403).json({ error: 'Forbidden' });
-    const row = await query('SELECT id, student_id, tenant_id FROM parent_portal_accounts WHERE id = $1', [decoded.parentAccountId]);
-    if (row.rows.length === 0) return res.status(401).json({ error: 'Invalid token' });
-    req.parent = { accountId: row.rows[0].id, studentId: row.rows[0].student_id, tenantId: row.rows[0].tenant_id };
-    next();
-  } catch {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
-};
+// authenticateParent imported from middleware/authenticateParent.js
 
 async function getStudentContext(studentId: number, tenantId: number) {
   const studentRes = await query(
     `SELECT s.id, s.class_assigned_id, c.class_name, c.level
      FROM students s
-     LEFT JOIN classes c ON c.id = s.class_assigned_id
+     LEFT JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
      WHERE s.id = $1 AND s.tenant_id = $2`,
     [studentId, tenantId]
   );

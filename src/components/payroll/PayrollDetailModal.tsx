@@ -59,6 +59,7 @@ type DetailResponse = {
     grossSalary: number;
     ssnitPercent: number;
     ssnitAmount: number;
+    ssnitManualAmount: number | null;
     otherDeductions: number;
     allowances: number;
     netSalary: number;
@@ -113,6 +114,7 @@ const PayrollDetailModal: React.FC<Props> = ({
   const [allowances, setAllowances] = useState('');
   const [notes, setNotes] = useState('');
   const [ssnitOn, setSsnitOn] = useState(true);
+  const [ssnitManualStr, setSsnitManualStr] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -139,6 +141,11 @@ const PayrollDetailModal: React.FC<Props> = ({
         setAllowances(String(res.line.allowances ?? 0));
         setNotes(res.line.payrollNotes || '');
         setSsnitOn(res.staff.ssnitEnabled !== false);
+        setSsnitManualStr(
+          res.line.ssnitManualAmount != null && res.staff.ssnitEnabled === false
+            ? String(res.line.ssnitManualAmount)
+            : ''
+        );
       } catch (e: any) {
         if (!cancelled) toast({ title: 'Error', description: e?.message || 'Failed to load', variant: 'destructive' });
       } finally {
@@ -166,6 +173,11 @@ const PayrollDetailModal: React.FC<Props> = ({
     setSaving(true);
     try {
       const g = parseFloat(grossStr);
+      const manualTrim = ssnitManualStr.trim();
+      const manualPayload =
+        !ssnitOn && manualTrim !== ''
+          ? parseFloat(manualTrim)
+          : null;
       await apiService.patch('/payroll/line', {
         payee_type: row.payeeType,
         payee_id: row.id,
@@ -175,6 +187,7 @@ const PayrollDetailModal: React.FC<Props> = ({
         other_deductions: parseFloat(otherDed || '0'),
         allowances: parseFloat(allowances || '0'),
         payroll_notes: notes,
+        ssnit_manual_amount: manualPayload,
       });
       toast({ title: 'Saved', description: 'Payroll line updated.' });
       onSaved();
@@ -191,6 +204,16 @@ const PayrollDetailModal: React.FC<Props> = ({
     try {
       await apiService.patch(`/payroll/staff/${row.payeeType}/${row.id}`, { ssnit_enabled: enabled });
       setSsnitOn(enabled);
+      if (enabled) {
+        setSsnitManualStr('');
+        await apiService.patch('/payroll/line', {
+          payee_type: row.payeeType,
+          payee_id: row.id,
+          month,
+          year,
+          ssnit_manual_amount: null,
+        });
+      }
       toast({ title: 'Updated', description: enabled ? 'SSNIT applies to this staff member.' : 'SSNIT disabled for this staff member.' });
       onSaved();
       const q = new URLSearchParams({
@@ -201,6 +224,11 @@ const PayrollDetailModal: React.FC<Props> = ({
       });
       const res = await apiService.get<DetailResponse>(`/payroll/detail?${q}`);
       setDetail(res);
+      setSsnitManualStr(
+        res.line.ssnitManualAmount != null && res.staff.ssnitEnabled === false
+          ? String(res.line.ssnitManualAmount)
+          : ''
+      );
     } catch (e: any) {
       toast({ title: 'Error', description: e?.message || 'Update failed', variant: 'destructive' });
     }
@@ -208,6 +236,10 @@ const PayrollDetailModal: React.FC<Props> = ({
 
   const payslipData = (): PayslipInput | null => {
     if (!detail || !row || !preview) return null;
+    const manualAmt =
+      !ssnitOn && ssnitManualStr.trim() !== ''
+        ? Math.max(0, parseFloat(ssnitManualStr) || 0)
+        : detail.line.ssnitManualAmount;
     return {
       schoolName,
       logoDataUrl: schoolLogo || undefined,
@@ -218,7 +250,9 @@ const PayrollDetailModal: React.FC<Props> = ({
       year,
       currency: detail.settings.currency || currency,
       grossSalary: preview.gross,
+      ssnitEnabled: ssnitOn,
       ssnitAmount: preview.ssnit,
+      ssnitManualAmount: manualAmt != null && manualAmt > 0 ? manualAmt : null,
       otherDeductions: parseFloat(otherDed || '0') || 0,
       allowances: parseFloat(allowances || '0') || 0,
       netSalary: preview.net,
@@ -294,6 +328,25 @@ const PayrollDetailModal: React.FC<Props> = ({
                     className="data-[state=checked]:!bg-emerald-500 data-[state=unchecked]:!bg-red-500"
                   />
                 </div>
+
+                {!ssnitOn && (
+                  <div>
+                    <Label>SSNIT amount (record only) ({cur})</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min={0}
+                      className="mt-1"
+                      value={ssnitManualStr}
+                      onChange={(e) => setSsnitManualStr(e.target.value)}
+                      disabled={!!fullyPaid}
+                      placeholder="Enter SSNIT amount for records"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      This will not be deducted from salary. For records only.
+                    </p>
+                  </div>
+                )}
 
                 <Separator />
 

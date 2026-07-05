@@ -21,6 +21,8 @@ import {
   OTHER_STAFF_PAYROLL_DISPLAY_STAFF_ID_SQL,
   TEACHER_PAYROLL_DISPLAY_NAME_BARE,
   OTHER_STAFF_PAYROLL_DISPLAY_NAME_BARE,
+  TEACHER_PAYROLL_ROLE_SQL,
+  OTHER_STAFF_PAYROLL_ROLE_SQL,
 } from '../constants/staffQueries.js';
 
 function generatePin(): string {
@@ -42,6 +44,19 @@ export function computePayrollLine(
   const ssnitAmount = ssnitEnabled ? roundMoney(g * (ssnitPercent / 100)) : 0;
   const net = roundMoney(g - ssnitAmount - roundMoney(otherDeductions) + roundMoney(allowances));
   return { gross: g, ssnitAmount, net, ssnitPercent: roundMoney(ssnitPercent) };
+}
+
+function payrollRoleFromTeacher(row: { position?: string | null; subjects_taught?: string[] | null }) {
+  const pos = String(row.position || '').trim();
+  if (pos) return pos;
+  const subjects = Array.isArray(row.subjects_taught)
+    ? row.subjects_taught.map((s) => String(s).trim()).filter(Boolean).join(', ')
+    : '';
+  return subjects || 'Teacher';
+}
+
+function payrollRoleFromStaff(row: { position?: string | null }) {
+  return String(row.position || '').trim() || 'Staff';
 }
 
 const router = express.Router();
@@ -107,9 +122,11 @@ async function refreshOpenPayrollRowsForSsnitFlag(
     const calc = computePayrollLine(gross || monthlySalary, ssnitEnabled, ssnitPct, otherD, allow);
     await query(
       `UPDATE salary_payments
-       SET ssnit_percent = $1, ssnit_amount = $2, net_salary = $3, updated_at = CURRENT_TIMESTAMP
+       SET ssnit_percent = $1, ssnit_amount = $2, net_salary = $3,
+           ssnit_manual_amount = CASE WHEN $6 THEN NULL ELSE ssnit_manual_amount END,
+           updated_at = CURRENT_TIMESTAMP
        WHERE tenant_id = $4 AND id = $5`,
-      [ssnitPct, calc.ssnitAmount, calc.net, tenantId, row.id]
+      [ssnitPct, calc.ssnitAmount, calc.net, tenantId, row.id, ssnitEnabled]
     );
   }
 }
@@ -356,7 +373,7 @@ router.get('/history', requireRole('super-admin', 'administrator', 'finance'), a
       SELECT sp.*,
         CASE WHEN sp.payee_type = 'teacher' THEN ${TEACHER_PAYROLL_DISPLAY_NAME_WITH_EXPENSE_SQL} ELSE ${OTHER_STAFF_PAYROLL_DISPLAY_NAME_WITH_EXPENSE_SQL} END AS display_name,
         CASE WHEN sp.payee_type = 'teacher' THEN ${TEACHER_PAYROLL_DISPLAY_STAFF_ID_SQL} ELSE ${OTHER_STAFF_PAYROLL_DISPLAY_STAFF_ID_SQL} END AS display_staff_id,
-        CASE WHEN sp.payee_type = 'teacher' THEN COALESCE(c.class_name, 'Teacher') ELSE COALESCE(s.position, 'Staff') END AS display_role
+        CASE WHEN sp.payee_type = 'teacher' THEN ${TEACHER_PAYROLL_ROLE_SQL} ELSE ${OTHER_STAFF_PAYROLL_ROLE_SQL} END AS display_role
       FROM salary_payments sp
       LEFT JOIN teachers t ON sp.payee_type = 'teacher' AND sp.payee_id = t.id AND t.tenant_id = sp.tenant_id
       LEFT JOIN classes c ON t.class_assigned_id = c.id
@@ -442,7 +459,7 @@ router.get('/detail', requireRole('super-admin', 'administrator', 'finance'), as
                 ${TEACHER_PAYROLL_DISPLAY_NAME_SQL} AS payroll_display_name,
                 ${TEACHER_PAYROLL_DISPLAY_STAFF_ID_SQL} AS payroll_display_staff_id
          FROM teachers t
-         LEFT JOIN classes c ON t.class_assigned_id = c.id
+         LEFT JOIN classes c ON t.class_assigned_id = c.id AND c.tenant_id = t.tenant_id
          WHERE t.tenant_id = $1 AND t.id = $2`,
         [tenantId, payeeId]
       );
@@ -453,7 +470,7 @@ router.get('/detail', requireRole('super-admin', 'administrator', 'finance'), as
         id: t.id,
         name: t.payroll_display_name || t.full_name,
         staffId: t.payroll_display_staff_id || t.staff_id,
-        position: t.class_name || 'Teacher',
+        position: payrollRoleFromTeacher(t),
         monthlySalary: parseFloat(t.monthly_salary || 0),
         ssnitEnabled: t.ssnit_enabled !== false,
         employmentStatus: t.employment_status,
@@ -474,7 +491,7 @@ router.get('/detail', requireRole('super-admin', 'administrator', 'finance'), as
         id: s.id,
         name: s.payroll_display_name || s.full_name,
         staffId: s.payroll_display_staff_id || s.staff_id,
-        position: s.position || 'Staff',
+        position: payrollRoleFromStaff(s),
         monthlySalary: parseFloat(s.monthly_salary || 0),
         ssnitEnabled: s.ssnit_enabled !== false,
         employmentStatus: s.employment_status,
@@ -509,6 +526,8 @@ router.get('/detail', requireRole('super-admin', 'administrator', 'finance'), as
         grossSalary: effGross,
         ssnitPercent: ssnitPct,
         ssnitAmount: calc.ssnitAmount,
+        ssnitManualAmount:
+          row?.ssnit_manual_amount != null ? parseFloat(String(row.ssnit_manual_amount)) : null,
         otherDeductions: otherD,
         allowances: allow,
         netSalary: calc.net,
@@ -551,10 +570,9 @@ router.get('/', async (req: AuthRequest, res) => {
     const currency = String(settings.currency || 'GHS');
 
     const teachersRes = await query(
-      `SELECT t.id, t.full_name, t.staff_id, t.monthly_salary, t.employment_status, t.ssnit_enabled, c.class_name,
+      `SELECT t.id, t.full_name, t.staff_id, t.monthly_salary, t.employment_status, t.position, t.subjects_taught, t.ssnit_enabled,
               t.bank_name, t.bank_account_number, t.bank_account_name, t.bank_branch
        FROM teachers t
-       LEFT JOIN classes c ON t.class_assigned_id = c.id
        WHERE t.tenant_id = $1 AND ${TEACHER_PAYROLL_WHERE}`,
       [tenantId]
     );
@@ -569,7 +587,7 @@ router.get('/', async (req: AuthRequest, res) => {
 
     const paymentsRes = await query(
       `SELECT payee_type, payee_id, amount, paid_date, payment_method, notes,
-              gross_salary, ssnit_percent, ssnit_amount, other_deductions, allowances, net_salary, payroll_notes, expense_id
+              gross_salary, ssnit_percent, ssnit_amount, ssnit_manual_amount, other_deductions, allowances, net_salary, payroll_notes, expense_id
        FROM salary_payments
        WHERE tenant_id = $1 AND month = $2 AND year = $3`,
       [tenantId, m, y]
@@ -617,6 +635,8 @@ router.get('/', async (req: AuthRequest, res) => {
         grossSalary: gross,
         ssnitPercent: pct,
         ssnitAmount,
+        ssnitManualAmount:
+          paidRow?.ssnit_manual_amount != null ? parseFloat(paidRow.ssnit_manual_amount) : null,
         otherDeductions: otherD,
         allowances: allow,
         netSalary: net,
@@ -641,7 +661,7 @@ router.get('/', async (req: AuthRequest, res) => {
           payeeType: 'teacher',
           name: t.full_name,
           staffId: t.staff_id,
-          role: t.class_name || 'Teacher',
+          role: payrollRoleFromTeacher(t),
           monthlySalary: parseFloat(t.monthly_salary || 0),
           ssnitEnabled: t.ssnit_enabled !== false,
           bankName: t.bank_name,
@@ -656,7 +676,7 @@ router.get('/', async (req: AuthRequest, res) => {
           payeeType: 'staff',
           name: s.full_name,
           staffId: s.staff_id || null,
-          role: s.position || 'Staff',
+          role: payrollRoleFromStaff(s),
           monthlySalary: parseFloat(s.monthly_salary || 0),
           ssnitEnabled: s.ssnit_enabled !== false,
           bankName: s.bank_name,
@@ -787,7 +807,7 @@ router.patch('/staff/:payeeType/:id', requireRole('super-admin', 'administrator'
 router.patch('/line', requireRole('super-admin', 'administrator', 'finance'), async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
-    const { payee_type, payee_id, month, year, other_deductions, allowances, payroll_notes, gross_salary } = req.body;
+    const { payee_type, payee_id, month, year, other_deductions, allowances, payroll_notes, gross_salary, ssnit_manual_amount } = req.body;
     if (!payee_type || !payee_id || !month || !year) {
       return res.status(400).json({ error: 'payee_type, payee_id, month, year are required' });
     }
@@ -843,6 +863,25 @@ router.patch('/line', requireRole('super-admin', 'administrator', 'finance'), as
     const calc = computePayrollLine(effGross, ssnitEnabled, ssnitPct, otherD, allow);
     const notesVal = payroll_notes !== undefined ? (payroll_notes == null ? null : String(payroll_notes)) : existing.rows[0]?.payroll_notes ?? null;
 
+    let ssnitManualVal: number | null =
+      existing.rows[0]?.ssnit_manual_amount != null
+        ? parseFloat(String(existing.rows[0].ssnit_manual_amount))
+        : null;
+    if (ssnit_manual_amount !== undefined) {
+      if (ssnit_manual_amount == null || ssnit_manual_amount === '') {
+        ssnitManualVal = null;
+      } else {
+        const parsed = roundMoney(parseFloat(String(ssnit_manual_amount)));
+        if (!Number.isFinite(parsed) || parsed < 0) {
+          return res.status(400).json({ error: 'SSNIT manual amount must be zero or positive' });
+        }
+        ssnitManualVal = parsed;
+      }
+    }
+    if (ssnitEnabled) {
+      ssnitManualVal = null;
+    }
+
     const amt = existing.rows[0] ? parseFloat(existing.rows[0].amount || 0) : 0;
     const pd = existing.rows[0]?.paid_date || null;
     const pm = existing.rows[0]?.payment_method || null;
@@ -857,16 +896,17 @@ router.patch('/line', requireRole('super-admin', 'administrator', 'finance'), as
         ssnit_percent = $5,
         ssnit_amount = $6,
         net_salary = $7,
+        ssnit_manual_amount = $8,
         gross_manual = true,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = (
         SELECT sp.id FROM salary_payments sp
-        WHERE sp.tenant_id = $8 AND sp.payee_type = $9 AND sp.payee_id = $10 AND sp.month = $11 AND sp.year = $12
+        WHERE sp.tenant_id = $9 AND sp.payee_type = $10 AND sp.payee_id = $11 AND sp.month = $12 AND sp.year = $13
         ORDER BY sp.id DESC
         LIMIT 1
       )
       RETURNING *`,
-      [otherD, allow, notesVal, effGross, ssnitPct, calc.ssnitAmount, calc.net, tenantId, pt, pid, m, y]
+      [otherD, allow, notesVal, effGross, ssnitPct, calc.ssnitAmount, calc.net, ssnitManualVal, tenantId, pt, pid, m, y]
     );
 
     const result =
@@ -875,10 +915,10 @@ router.patch('/line', requireRole('super-admin', 'administrator', 'finance'), as
         : await query(
             `INSERT INTO salary_payments (
               tenant_id, payee_type, payee_id, month, year, amount, paid_date, payment_method, notes,
-              gross_salary, ssnit_percent, ssnit_amount, other_deductions, allowances, net_salary, payroll_notes, gross_manual, updated_at
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,true,CURRENT_TIMESTAMP)
+              gross_salary, ssnit_percent, ssnit_amount, ssnit_manual_amount, other_deductions, allowances, net_salary, payroll_notes, gross_manual, updated_at
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,true,CURRENT_TIMESTAMP)
             RETURNING *`,
-            [tenantId, pt, pid, m, y, amt, pd, pm, nts, effGross, ssnitPct, calc.ssnitAmount, otherD, allow, calc.net, notesVal]
+            [tenantId, pt, pid, m, y, amt, pd, pm, nts, effGross, ssnitPct, calc.ssnitAmount, ssnitManualVal, otherD, allow, calc.net, notesVal]
           );
 
     const prevLine = existing.rows[0] ? (existing.rows[0] as Record<string, unknown>) : null;

@@ -30,6 +30,7 @@ const ViewAllOtherStaff: React.FC<Props> = ({ refreshKey = 0 }) => {
   const [positionFilter, setPositionFilter] = useState('all');
   const [departmentFilter, setDepartmentFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('active');
+  const [genderFilter, setGenderFilter] = useState('all');
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [exporting, setExporting] = useState(false);
   const [includeNonCounted, setIncludeNonCounted] = useState(false);
@@ -41,7 +42,9 @@ const ViewAllOtherStaff: React.FC<Props> = ({ refreshKey = 0 }) => {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiService.get<OtherStaffRecord[]>(`/other-staff?status=${statusFilter}`);
+      const data = await apiService.get<OtherStaffRecord[]>(
+        `/other-staff?status=${statusFilter}&gender=${genderFilter}`
+      );
       setStaff(Array.isArray(data) ? data : []);
     } catch (e: unknown) {
       toast({
@@ -53,7 +56,7 @@ const ViewAllOtherStaff: React.FC<Props> = ({ refreshKey = 0 }) => {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [statusFilter, genderFilter]);
 
   useEffect(() => {
     load();
@@ -202,7 +205,7 @@ const ViewAllOtherStaff: React.FC<Props> = ({ refreshKey = 0 }) => {
         </CardHeader>
         <CardContent className="pt-6">
           <div className="flex flex-col lg:flex-row gap-4 mb-6">
-            <div className="relative flex-1">
+            <div className="relative flex-1 min-w-0">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search by name, staff ID, or position..."
@@ -211,6 +214,7 @@ const ViewAllOtherStaff: React.FC<Props> = ({ refreshKey = 0 }) => {
                 className="pl-10"
               />
             </div>
+            <div className="flex flex-wrap items-center gap-2">
             <Select value={positionFilter} onValueChange={setPositionFilter}>
               <SelectTrigger className="w-44"><SelectValue placeholder="Position" /></SelectTrigger>
               <SelectContent>
@@ -237,12 +241,26 @@ const ViewAllOtherStaff: React.FC<Props> = ({ refreshKey = 0 }) => {
                 <SelectItem value="all">All</SelectItem>
               </SelectContent>
             </Select>
-            <label className="flex items-center gap-2 text-sm text-muted-foreground lg:col-span-2">
+            <Select value={genderFilter} onValueChange={setGenderFilter}>
+              <SelectTrigger className="w-32">
+                <SelectValue placeholder="Gender" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="male">Male</SelectItem>
+                <SelectItem value="female">Female</SelectItem>
+              </SelectContent>
+            </Select>
+            <label
+              className="flex items-center gap-1.5 shrink-0 text-xs text-muted-foreground whitespace-nowrap cursor-pointer"
+              title="Include non-counted staff in export"
+            >
               <Checkbox
+                className="h-3.5 w-3.5 [&_svg]:h-3 [&_svg]:w-3"
                 checked={includeNonCounted}
                 onCheckedChange={(v) => setIncludeNonCounted(v === true)}
               />
-              Include non-counted staff in export
+              Non-counted
             </label>
             <Button
               type="button"
@@ -264,6 +282,7 @@ const ViewAllOtherStaff: React.FC<Props> = ({ refreshKey = 0 }) => {
               <FileSpreadsheet className="h-4 w-4 mr-2" />
               Export CSV{selected.size > 0 ? ` (${selected.size})` : ''}
             </Button>
+            </div>
           </div>
 
           {loading ? (

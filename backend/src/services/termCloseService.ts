@@ -293,12 +293,19 @@ export async function closeTermAndActivateNext(
       preview.nextLedgerTermId
     );
 
+    const { loadGradeConfigForTenant, serializeGradeConfigSnapshot } = await import(
+      './gradeConfigService.js'
+    );
+    const gradeConfigSnap = JSON.stringify(
+      serializeGradeConfigSnapshot(await loadGradeConfigForTenant(tenantId))
+    );
+
     const snapshotInsert = await client.query(
       `INSERT INTO term_snapshots (
-         tenant_id, term_id, academic_year_id, snapshot_data,
+         tenant_id, term_id, academic_year_id, snapshot_data, grade_config_snapshot,
          total_students, total_fees_billed, total_collected,
          total_outstanding, total_credits, created_by_user_id
-       ) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10)
+       ) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8, $9, $10, $11)
        RETURNING id`,
       [
         tenantId,
@@ -312,6 +319,7 @@ export async function closeTermAndActivateNext(
           nextTermLabel: preview.nextTermLabel,
           carryForward: carryResult,
         }),
+        gradeConfigSnap,
         stats.totalStudents,
         stats.totalFeesBilled,
         stats.totalCollected,

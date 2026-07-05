@@ -1,36 +1,15 @@
 import express from 'express';
-import jwt from 'jsonwebtoken';
 import multer from 'multer';
 import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { sendPushToParentAccount } from '../services/webPushService.js';
 import { setTenantContext } from '../middleware/tenant.js';
+import { authenticateParent, type ParentAuthRequest } from '../middleware/authenticateParent.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
 
-interface ParentRequest extends express.Request {
-  parent?: { accountId: number; studentId: number; tenantId: number };
-}
-
-const authenticateParent = async (
-  req: ParentRequest,
-  res: express.Response,
-  next: express.NextFunction
-) => {
-  try {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) return res.status(401).json({ error: 'No token provided' });
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as any;
-    if (decoded.role !== 'parent') return res.status(403).json({ error: 'Forbidden' });
-    const row = await query('SELECT id, student_id, tenant_id FROM parent_portal_accounts WHERE id = $1', [decoded.parentAccountId]);
-    if (row.rows.length === 0) return res.status(401).json({ error: 'Invalid token' });
-    req.parent = { accountId: row.rows[0].id, studentId: row.rows[0].student_id, tenantId: row.rows[0].tenant_id };
-    next();
-  } catch {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
-};
+type ParentRequest = ParentAuthRequest;
 
 async function emitParentDeskToTenant(tenantId: number) {
   try {
@@ -97,8 +76,8 @@ router.post('/', authenticateParent, upload.single('attachment'), async (req: Pa
 
     const selectedStudentId = Number(studentId || req.parent!.studentId);
     const studentInfo = await query(
-      `SELECT first_name, last_name FROM students WHERE id = $1 LIMIT 1`,
-      [selectedStudentId]
+      `SELECT first_name, last_name FROM students WHERE id = $1 AND tenant_id = $2`,
+      [selectedStudentId, req.parent!.tenantId]
     ).catch(() => ({ rows: [] as any[] }));
     const studentName = studentInfo.rows[0]
       ? `${studentInfo.rows[0].first_name || ''} ${studentInfo.rows[0].last_name || ''}`.trim()
@@ -146,12 +125,12 @@ router.get('/', authenticateParent, async (req: ParentRequest, res) => {
       `SELECT m.*, s.first_name, s.last_name, c.class_name,
               (SELECT COUNT(*)::int FROM message_replies r WHERE r.message_id = m.id AND r.sender_type = 'school' AND r.is_read = false) AS unread_replies
        FROM parent_messages m
-       JOIN students s ON s.id = m.student_id
-       LEFT JOIN classes c ON c.id = s.class_assigned_id
-       WHERE m.parent_account_id = $1
+       JOIN students s ON s.id = m.student_id AND s.tenant_id = m.tenant_id
+       LEFT JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
+       WHERE m.parent_account_id = $1 AND m.tenant_id = $2
        ORDER BY m.created_at DESC
-       LIMIT $2 OFFSET $3`,
-      [req.parent!.accountId, limit, offset]
+       LIMIT $3 OFFSET $4`,
+      [req.parent!.accountId, req.parent!.tenantId, limit, offset]
     );
     const contact = await query(
       `SELECT phone_number, whatsapp_number, email, office_hours, physical_address
@@ -172,10 +151,10 @@ router.get('/:id', authenticateParent, async (req: ParentRequest, res) => {
     const msg = await query(
       `SELECT m.*, s.first_name, s.last_name, c.class_name
        FROM parent_messages m
-       JOIN students s ON s.id = m.student_id
-       LEFT JOIN classes c ON c.id = s.class_assigned_id
-       WHERE m.id = $1 AND m.parent_account_id = $2`,
-      [id, req.parent!.accountId]
+       JOIN students s ON s.id = m.student_id AND s.tenant_id = m.tenant_id
+       LEFT JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
+       WHERE m.id = $1 AND m.parent_account_id = $2 AND m.tenant_id = $3`,
+      [id, req.parent!.accountId, req.parent!.tenantId]
     );
     if (!msg.rows.length) return res.status(404).json({ error: 'Message not found' });
     const replies = await query(
@@ -197,8 +176,8 @@ router.post('/:id/reply', authenticateParent, upload.single('attachment'), async
     const replyText = String(req.body?.reply_text || '').trim();
     if (!replyText) return res.status(400).json({ error: 'reply_text is required' });
     const msg = await query(
-      'SELECT id FROM parent_messages WHERE id = $1 AND parent_account_id = $2',
-      [id, req.parent!.accountId]
+      'SELECT id FROM parent_messages WHERE id = $1 AND parent_account_id = $2 AND tenant_id = $3',
+      [id, req.parent!.accountId, req.parent!.tenantId]
     );
     if (!msg.rows.length) return res.status(404).json({ error: 'Message not found' });
     const attachmentUrl = req.file
@@ -227,8 +206,8 @@ router.put('/:id/read', authenticateParent, async (req: ParentRequest, res) => {
       `UPDATE message_replies r
        SET is_read = true
        FROM parent_messages m
-       WHERE r.message_id = m.id AND m.id = $1 AND m.parent_account_id = $2 AND r.sender_type = 'school'`,
-      [id, req.parent!.accountId]
+       WHERE r.message_id = m.id AND m.id = $1 AND m.parent_account_id = $2 AND m.tenant_id = $3 AND r.sender_type = 'school'`,
+      [id, req.parent!.accountId, req.parent!.tenantId]
     );
     return res.json({ success: true });
   } catch (error) {

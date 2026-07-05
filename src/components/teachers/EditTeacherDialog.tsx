@@ -65,8 +65,10 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
     phoneNumber: '',
     email: '',
     address: '',
+    nationalId: '',
     subjectsTaught: [] as string[],
     employmentDate: '',
+    employmentType: '',
     monthlySalary: '',
     notes: '',
     emergencyContactName: '',
@@ -104,8 +106,10 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
       phoneNumber: teacher.phoneNumber,
       email: teacher.email,
       address: teacher.address,
+      nationalId: teacher.nationalId || '',
       subjectsTaught: teacher.subjectsTaught,
       employmentDate: teacher.employmentDate,
+      employmentType: teacher.employmentType || '',
       monthlySalary: teacher.monthlySalary.toString(),
       notes: teacher.notes,
       emergencyContactName: teacher.emergencyContactName || '',
@@ -193,8 +197,10 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
         phoneNumber: formData.phoneNumber,
         email: formData.email,
         address: formData.address,
+        nationalId: formData.nationalId.trim(),
         subjectsTaught: deriveSubjectNamesFromMap(subjectClassMap, subjects),
         employmentDate: formData.employmentDate.trim(),
+        employmentType: formData.employmentType.trim(),
         monthlySalary: salaryValue,
         notes: formData.notes,
         emergencyContactName: showEmergency ? formData.emergencyContactName : '',
@@ -407,6 +413,15 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
             />
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="teacher-nationalId">National ID</Label>
+            <Input
+              id="teacher-nationalId"
+              value={formData.nationalId}
+              onChange={(e) => setFormData((prev) => ({ ...prev, nationalId: e.target.value }))}
+            />
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="teacher-qualification">Qualification</Label>
@@ -466,6 +481,25 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
                 onChange={(e) => setFormData(prev => ({ ...prev, employmentDate: e.target.value }))}
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="teacher-employmentType">Employment Type</Label>
+              <Select
+                value={formData.employmentType || undefined}
+                onValueChange={(value) => setFormData((prev) => ({ ...prev, employmentType: value }))}
+              >
+                <SelectTrigger id="teacher-employmentType">
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Full-time">Full-time</SelectItem>
+                  <SelectItem value="Part-time">Part-time</SelectItem>
+                  <SelectItem value="Contract">Contract</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="monthlySalary">Monthly Salary (GHS)</Label>
               <Input

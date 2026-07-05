@@ -7,7 +7,7 @@ import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.j
 import { getIO } from '../socket.js';
 import { sendPushToStudentParents } from '../services/webPushService.js';
 import { resolveSchoolDisplayName } from '../services/schoolBrandingService.js';
-import { archiveClassReportCardsOnRelease, archiveStudentReportCard, validateClassReportReadyForRelease, resolveArchiveSignatures } from '../services/reportCardArchiveService.js';
+import { archiveClassReportCardsOnRelease, archiveStudentReportCard, validateClassReportReadyForRelease, resolveArchiveSignatures, buildTermReportData } from '../services/reportCardArchiveService.js';
 import { assertMainClassTeacher, isMainClassTeacher } from '../services/classTeacherAccess.js';
 import { getSchoolActiveTermYear } from '../services/gradesTermContext.js';
 import {
@@ -47,9 +47,12 @@ router.get('/assignments', async (req: AuthRequest, res) => {
       return res.status(400).json({ error: 'No active academic term is set for this school' });
     }
 
-    let sql = `SELECT id, class_id, subject, name, assignment_type, max_score, due_date, created_at, term, academic_year
-               FROM grade_assignments
-               WHERE tenant_id = $1 AND class_id = $2 AND term = $3 AND academic_year = $4`;
+    let sql = `SELECT ga.id, ga.class_id, ga.subject, ga.subject_id, ga.name, ga.assignment_type,
+                      ga.max_score, ga.max_marks, ga.is_exam, ga.component_id, ga.due_date,
+                      ga.created_at, ga.term, ga.academic_year, gcc.name AS component_name
+               FROM grade_assignments ga
+               LEFT JOIN grade_config_components gcc ON gcc.id = ga.component_id
+               WHERE ga.tenant_id = $1 AND ga.class_id = $2 AND ga.term = $3 AND ga.academic_year = $4`;
     const params: any[] = [tenantId, classId, term, academicYear];
 
     if (subject) {
@@ -402,272 +405,86 @@ router.get('/term-report', async (req: AuthRequest, res) => {
     const { classId } = req.query;
     if (!classId) return res.status(400).json({ error: 'classId required' });
 
-    const { term: activeTerm, academicYear: activeYear } = await getSchoolActiveTermYear(tenantId);
-
-    // 1. All assignments for this class grouped by subject (current term only)
-    const assignmentsRes = await query(
-      `SELECT id, subject, name, assignment_type, max_score
-       FROM grade_assignments
-       WHERE tenant_id = $1 AND class_id = $2 AND term = $3 AND academic_year = $4
-       ORDER BY subject, assignment_type, name`,
-      [tenantId, classId, activeTerm, activeYear]
-    );
-    const assignments: any[] = assignmentsRes.rows;
-
-    if (assignments.length === 0) {
-      return res.json({ students: [], subjects: [], assignments: [], className: '' });
-    }
-
-    // 2. Class name
-    const classRes = await query(
-      'SELECT class_name FROM classes WHERE id = $1 AND tenant_id = $2',
-      [classId, tenantId]
-    );
-    const className = classRes.rows[0]?.class_name || '';
-
-    // 3. All students currently in the class (include passport photo)
-    const studentsRes = await query(
-      `SELECT id, first_name, last_name, student_id AS admission_number, passport_photo_url
-       FROM students
-       WHERE tenant_id = $1 AND class_assigned_id = $2
-       ORDER BY first_name, last_name`,
-      [tenantId, classId]
-    );
-
-    // 4. Also include students who have grades but may have moved
-    const assignmentIds = assignments.map((a: any) => a.id);
-    const gradedStudentsRes = await query(
-      `SELECT DISTINCT s.id, s.first_name, s.last_name, s.student_id AS admission_number,
-              s.passport_photo_url
-       FROM student_grades sg
-       JOIN students s ON sg.student_id = s.id AND s.tenant_id = sg.tenant_id
-       WHERE sg.tenant_id = $1 AND sg.assignment_id = ANY($2)`,
-      [tenantId, assignmentIds]
-    );
-
-    // Merge: union of current class students + any graded students (dedup by id)
-    const studentMap = new Map<number, any>();
-    for (const s of studentsRes.rows) studentMap.set(s.id, { ...s, hasMoved: false });
-    for (const s of gradedStudentsRes.rows) {
-      if (!studentMap.has(s.id)) studentMap.set(s.id, { ...s, hasMoved: true });
-    }
-    const allStudents = Array.from(studentMap.values());
-
-    // 5. All grades for these assignments
-    const gradesRes = await query(
-      `SELECT student_id, assignment_id, score::float AS score
-       FROM student_grades
-       WHERE tenant_id = $1 AND assignment_id = ANY($2)`,
-      [tenantId, assignmentIds]
-    );
-
-    // Grade lookup: student_id → assignment_id → score
-    const gradeMap: Record<number, Record<number, number>> = {};
-    for (const g of gradesRes.rows) {
-      if (!gradeMap[g.student_id]) gradeMap[g.student_id] = {};
-      gradeMap[g.student_id][g.assignment_id] = g.score;
-    }
-
-    // 6. Unique ordered subjects
-    const subjectOrder: string[] = [];
-    for (const a of assignments) {
-      if (!subjectOrder.includes(a.subject)) subjectOrder.push(a.subject);
-    }
-
-    // 7. Group assignments by subject
-    const assignmentsBySubject: Record<string, any[]> = {};
-    for (const subj of subjectOrder) {
-      assignmentsBySubject[subj] = assignments.filter((a: any) => a.subject === subj);
-    }
-
-    // 8. Build per-student report rows
-    const reportRows = allStudents.map((s: any) => {
-      const subjectScores: Record<string, { score: number; maxScore: number; classScore: number; examScore: number }> = {};
-      let grandTotal = 0;
-      let grandMax = 0;
-
-      for (const subj of subjectOrder) {
-        const subjectAssignments = assignmentsBySubject[subj];
-        let classScoreSum = 0;
-        let classMaxSum = 0;
-        let examScoreSum = 0;
-        let examMaxSum = 0;
-
-        for (const a of subjectAssignments) {
-          const scored = gradeMap[s.id]?.[a.id] ?? 0;
-          const typeLabel = String(a.assignment_type || a.name || '').toLowerCase();
-          const isExam = typeLabel === 'exam' || typeLabel.includes('exam');
-          if (isExam) {
-            examScoreSum += scored;
-            examMaxSum += parseFloat(a.max_score);
-          } else {
-            classScoreSum += scored;
-            classMaxSum += parseFloat(a.max_score);
-          }
-        }
-
-        let classScoreVal = 0;
-        let examScoreVal = 0;
-
-        if (classMaxSum > 0 && examMaxSum > 0) {
-          classScoreVal = (classScoreSum / classMaxSum) * 40;
-          examScoreVal = (examScoreSum / examMaxSum) * 60;
-        } else if (classMaxSum > 0) {
-          const pct = classScoreSum / classMaxSum;
-          classScoreVal = pct * 40;
-          examScoreVal = pct * 60;
-        } else if (examMaxSum > 0) {
-          const pct = examScoreSum / examMaxSum;
-          classScoreVal = pct * 40;
-          examScoreVal = pct * 60;
-        }
-
-        const totalScore = classScoreVal + examScoreVal;
-
-        subjectScores[subj] = {
-          score: Math.round(totalScore * 10) / 10,
-          maxScore: 100,
-          classScore: Math.round(classScoreVal * 10) / 10,
-          examScore: Math.round(examScoreVal * 10) / 10,
-        };
-        grandTotal += totalScore;
-        grandMax += 100;
-      }
-
-      return {
-        studentId: s.id,
-        firstName: s.first_name,
-        lastName: s.last_name,
-        admissionNumber: s.admission_number,
-        passportPhotoUrl: s.passport_photo_url || null,
-        hasMoved: s.hasMoved,
-        subjectScores,
-        grandTotal: Math.round(grandTotal * 10) / 10,
-        grandMax: Math.round(grandMax * 10) / 10,
-        percentage: grandMax > 0 ? Math.round((grandTotal / grandMax) * 100) : 0,
-        position: 0,
-      };
-    });
-
-    // 9. Sort by grand total desc, assign position (ties share a rank)
-    reportRows.sort((a, b) => b.grandTotal - a.grandTotal);
-    let pos = 1;
-    for (let i = 0; i < reportRows.length; i++) {
-      if (i > 0 && reportRows[i].grandTotal < reportRows[i - 1].grandTotal) pos = i + 1;
-      reportRows[i].position = pos;
-    }
-
-    // 10. Get school settings for term info
-    const settingsRes = await query(
-      'SELECT current_term, current_year, grade_scale FROM school_settings WHERE tenant_id = $1',
-      [tenantId]
-    );
-    const currentTerm = settingsRes.rows[0]?.current_term || '';
-    const currentYear = settingsRes.rows[0]?.current_year || '';
-    const schoolName = await resolveSchoolDisplayName(tenantId);
-    const gradeScale = settingsRes.rows[0]?.grade_scale || [
-      { letter: 'A', minPct: 80, maxPct: 100, description: 'Excellent' },
-      { letter: 'B', minPct: 70, maxPct: 79, description: 'Good' },
-      { letter: 'C', minPct: 60, maxPct: 69, description: 'Fair' },
-      { letter: 'D', minPct: 50, maxPct: 59, description: 'Pass' },
-      { letter: 'F', minPct: 0, maxPct: 49, description: 'Fail' },
-    ];
-
-    // 11. Load saved remarks for this class/term (latest row per student)
-    const { teacherRemarks, headmasterRemarks } = await loadClassTermRemarks(
+    const role = String(req.user!.role || '').toLowerCase();
+    const isSchoolAdmin = role === 'administrator' || role === 'super-admin' || role === 'headmaster';
+    const isMainTeacher = await isMainClassTeacher(
       tenantId,
       Number(classId),
-      currentTerm,
-      currentYear
+      req.user!.teacherId != null ? Number(req.user!.teacherId) : null
     );
 
-    // 12. Check release status
+    let subjectIdFilter: Set<number> | undefined;
+    if (!isSchoolAdmin && (role === 'teacher' || role === 'staff') && !isMainTeacher) {
+      const { attachGradeAccessContext } = await import('../middleware/requireGradeAccess.js');
+      await attachGradeAccessContext(req);
+      if (req.gradeAccessRole === 'denied') {
+        return res.status(403).json({ error: 'You do not have access to term reports' });
+      }
+      const allowed = (req.allowedSubjectClassPairs || [])
+        .filter((p) => p.classId === Number(classId))
+        .map((p) => p.subjectId);
+      if (allowed.length === 0) {
+        return res.json({
+          students: [],
+          subjects: [],
+          assignments: [],
+          assignmentsBySubject: {},
+          className: '',
+          classScoreWeight: 50,
+          examWeight: 50,
+        });
+      }
+      subjectIdFilter = new Set(allowed);
+    } else if (role === 'finance') {
+      return res.status(403).json({ error: 'You do not have access to term reports' });
+    }
+
+    const built = await buildTermReportData(
+      tenantId,
+      Number(classId),
+      undefined,
+      undefined,
+      subjectIdFilter ? { subjectIdFilter } : undefined
+    );
+
+    if (!built) {
+      return res.json({ students: [], subjects: [], assignments: [], className: '', assignmentsBySubject: {} });
+    }
+
     const releaseRes = await query(
       `SELECT is_released, released_at, u.username AS released_by_name
        FROM term_report_releases r
        LEFT JOIN users u ON r.released_by = u.id
        WHERE r.tenant_id = $1 AND r.class_id = $2 AND r.term = $3`,
-      [tenantId, classId, currentTerm]
+      [tenantId, classId, built.currentTerm]
     );
     const releaseInfo = releaseRes.rows[0] || null;
 
-    const headmasterRes = await query(
-      `SELECT COALESCE(t.full_name, u.full_name) AS full_name,
-              COALESCE(NULLIF(TRIM(t.headmaster_title), ''), 'Headmaster') AS headmaster_title
-       FROM users u
-       LEFT JOIN teachers t ON t.id::text = u.teacher_id::text AND t.tenant_id = u.tenant_id
-       WHERE u.tenant_id = $1 AND u.role = 'headmaster' AND u.is_active = true
-       ORDER BY u.id ASC
-       LIMIT 1`,
-      [tenantId]
-    ).catch(async () => {
-      return query(
-        `SELECT COALESCE(t.full_name, u.full_name) AS full_name
-         FROM users u
-         LEFT JOIN teachers t ON t.id::text = u.teacher_id::text AND t.tenant_id = u.tenant_id
-         WHERE u.tenant_id = $1 AND u.role = 'headmaster' AND u.is_active = true
-         ORDER BY u.id ASC
-         LIMIT 1`,
-        [tenantId]
-      );
-    });
-    const headmasterName = headmasterRes.rows[0]?.full_name || null;
-    const headmasterTitle = headmasterRes.rows[0]?.headmaster_title || 'Headmaster';
-
-    // 13. Attendance summary for this class (from attendance module)
-    const classDaysRes = await query(
-      `SELECT COUNT(DISTINCT attendance_date)::int AS total_days
-       FROM attendance
-       WHERE tenant_id = $1 AND class_id = $2`,
-      [tenantId, classId]
-    );
-    const classAttendanceTotalDays = classDaysRes.rows[0]?.total_days ?? 0;
-
-    const attendanceRes = await query(
-      `SELECT
-         student_id,
-         COUNT(*)::int AS total_days,
-         SUM(CASE WHEN present THEN 1 ELSE 0 END)::int AS present_count
-       FROM attendance
-       WHERE tenant_id = $1 AND class_id = $2
-       GROUP BY student_id`,
-      [tenantId, classId]
-    );
-    const attendanceSummary: Record<number, { present: number; totalDays: number }> = {};
-    for (const row of attendanceRes.rows) {
-      attendanceSummary[row.student_id] = {
-        present: row.present_count ?? 0,
-        totalDays: row.total_days ?? classAttendanceTotalDays,
-      };
-    }
-
-    const isMainClassTeacherForUser = await isMainClassTeacher(
-      tenantId,
-      Number(classId),
-      req.user!.teacherId != null ? Number(req.user!.teacherId) : null
-    );
     const reportSignatures = await resolveArchiveSignatures(tenantId, Number(classId));
 
     return res.json({
-      students: reportRows,
-      subjects: subjectOrder,
-      assignments,
-      assignmentsBySubject,
-      className,
-      currentTerm,
-      currentYear,
-      schoolName,
-      gradeScale,
-      teacherRemarks,
-      headmasterRemarks,
-      headmasterName,
-      headmasterTitle,
-      attendanceSummary,
-      classAttendanceTotalDays,
+      students: built.students,
+      subjects: built.subjects,
+      assignments: built.assignments,
+      assignmentsBySubject: built.assignmentsBySubject,
+      className: built.className,
+      currentTerm: built.currentTerm,
+      currentYear: built.currentYear,
+      schoolName: built.schoolName,
+      gradeScale: built.gradeScale,
+      classScoreWeight: built.classScoreWeight,
+      examWeight: built.examWeight,
+      gradeBoundaries: built.gradeBoundaries,
+      teacherRemarks: built.teacherRemarks,
+      headmasterRemarks: built.headmasterRemarks,
+      headmasterName: built.headmasterName,
+      headmasterTitle: built.headmasterTitle,
+      attendanceSummary: built.attendanceSummary,
+      classAttendanceTotalDays: built.classAttendanceTotalDays,
       isReleased: releaseInfo?.is_released ?? false,
-      releasedAt: releaseInfo?.released_at ?? null,
+      releasedAt: releaseInfo?.released_at ?? built.releasedAt ?? null,
       releasedByName: releaseInfo?.released_by_name ?? null,
-      isMainClassTeacherForUser,
+      isMainClassTeacherForUser: isMainTeacher,
       reportSignatures,
     });
   } catch (error) {

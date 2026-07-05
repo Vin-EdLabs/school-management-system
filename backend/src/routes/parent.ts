@@ -26,6 +26,7 @@ import {
 } from '../services/reportCardArchiveService.js';
 import { getSchoolActiveTermYear } from '../services/gradesTermContext.js';
 import { loadStudentTermRemarks } from '../services/termReportRemarksService.js';
+import { resolveParentFromToken } from '../middleware/authenticateParent.js';
 
 const router = express.Router();
 
@@ -97,21 +98,11 @@ const authenticateParent = async (
     const token = req.headers.authorization?.split(' ')[1];
     if (!token) return res.status(401).json({ error: 'No token provided' });
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as any;
-    if (decoded.role !== 'parent') return res.status(403).json({ error: 'Forbidden' });
+    const resolved = await resolveParentFromToken(token);
+    if (!resolved) return res.status(401).json({ error: 'Invalid token' });
 
-    const row = await query(
-      'SELECT id, student_id, tenant_id FROM parent_portal_accounts WHERE id = $1 AND is_active = true',
-      [decoded.parentAccountId]
-    );
-    if (row.rows.length === 0) return res.status(401).json({ error: 'Invalid token' });
-
-    req.parent = {
-      accountId: row.rows[0].id,
-      studentId: row.rows[0].student_id,
-      tenantId: row.rows[0].tenant_id,
-      impersonatorId: decoded.impersonatorId ? parseInt(String(decoded.impersonatorId), 10) : null,
-    };
+    req.parent = resolved.parent;
+    const { decoded } = resolved;
 
     let ctx = buildAuditContextFromParent({
       impersonatorId: req.parent.impersonatorId,
@@ -303,8 +294,8 @@ router.post('/change-password', authenticateParent, async (req: ParentRequest, r
 
     const hash = await bcrypt.hash(newPassword, 10);
     await query(
-      'UPDATE parent_portal_accounts SET password_hash = $1, must_change_password = false WHERE id = $2',
-      [hash, req.parent!.accountId]
+      'UPDATE parent_portal_accounts SET password_hash = $1, must_change_password = false WHERE id = $2 AND tenant_id = $3',
+      [hash, req.parent!.accountId, req.parent!.tenantId]
     );
     res.json({ message: 'Password changed successfully' });
   } catch (error) {
@@ -475,6 +466,82 @@ router.get('/linked-accounts', authenticateParent, async (req: ParentRequest, re
   }
 });
 
+// ── POST /api/parent/switch-account ───────────────────────────────────────────
+// Issue a JWT for a sibling in the same family group (explicit switch only).
+
+router.post('/switch-account', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    const { accountId, studentId: currentStudentPk, tenantId } = req.parent!;
+    const studentLoginId = String(req.body?.studentId || req.body?.admissionNumber || '').trim();
+    if (!studentLoginId) {
+      return res.status(400).json({ error: 'studentId is required' });
+    }
+
+    const targetPk = await resolveStudentInternalId(tenantId, studentLoginId);
+    if (!targetPk) {
+      return res.status(403).json({ error: 'Student not found' });
+    }
+
+    const isSelf = targetPk === currentStudentPk;
+    if (!isSelf && !(await isStudentInAccountFamily(tenantId, accountId, targetPk))) {
+      return res.status(403).json({ error: 'Student not found' });
+    }
+
+    const targetAccount = await query(
+      `SELECT pa.id
+       FROM parent_portal_accounts pa
+       JOIN students s ON s.id = pa.student_id AND s.tenant_id = pa.tenant_id
+       WHERE pa.tenant_id = $1 AND pa.student_id = $2 AND pa.is_active = true`,
+      [tenantId, targetPk]
+    );
+    if (targetAccount.rows.length === 0) {
+      return res.status(403).json({ error: 'Student not found' });
+    }
+
+    const profile = await fetchParentStudentProfile(tenantId, targetPk);
+    if (!profile) {
+      return res.status(403).json({ error: 'Student not found' });
+    }
+
+    const token = await issueParentToken(Number(targetAccount.rows[0].id), targetPk, tenantId);
+    return res.json({ token, student: profile });
+  } catch (error) {
+    console.error('Parent switch account error:', error);
+    return res.status(500).json({ error: 'Failed to switch account' });
+  }
+});
+
+// ── POST /api/parent/link-student ────────────────────────────────────────────
+// Link another student in the same school to this parent's family group.
+
+router.post('/link-student', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    const { accountId, studentId: anchorStudentPk, tenantId } = req.parent!;
+    const studentLoginIds = parseStudentLoginIds(req.body);
+    if (studentLoginIds.length === 0) {
+      return res.status(400).json({ error: 'studentId is required' });
+    }
+
+    const results: LinkSiblingResult[] = [];
+    for (const studentLoginId of studentLoginIds) {
+      results.push(
+        await linkSiblingStudentToAccount(tenantId, accountId, anchorStudentPk, studentLoginId)
+      );
+    }
+
+    const notFound = results.filter((result) => result.status === 'not_found');
+    if (notFound.length > 0 && results.every((result) => result.status === 'not_found')) {
+      return res.status(403).json({ error: 'Student not found' });
+    }
+
+    const linkedAccounts = await buildLinkedAccountsPayload(tenantId, accountId, anchorStudentPk);
+    return res.json({ linkedAccounts, results });
+  } catch (error) {
+    console.error('Parent link student error:', error);
+    return res.status(500).json({ error: 'Failed to link student' });
+  }
+});
+
 // ── GET /api/parent/birthdays ──────────────────────────────────────────────────
 
 router.get('/birthdays', authenticateParent, async (req: ParentRequest, res) => {
@@ -500,19 +567,24 @@ router.post('/link-siblings', authenticateParent, async (req: ParentRequest, res
       return res.status(400).json({ error: 'targetStudentId is required' });
     }
 
+    const targetPk = await resolveStudentInternalId(tenantId, targetStudentId);
+    if (!targetPk || targetPk === currentStudentId) {
+      return res.status(403).json({ error: 'Student not found' });
+    }
+
     const students = await query(
       `SELECT id, first_name, last_name, names_of_siblings, number_of_siblings
        FROM students
        WHERE id IN ($1, $2) AND tenant_id = $3`,
-      [currentStudentId, targetStudentId, tenantId]
+      [currentStudentId, targetPk, tenantId]
     );
 
     if (students.rows.length < 2) {
-      return res.status(404).json({ error: 'One or both students not found' });
+      return res.status(403).json({ error: 'Student not found' });
     }
 
-    const studentA = students.rows.find(s => s.id === currentStudentId);
-    const studentB = students.rows.find(s => s.id === targetStudentId);
+    const studentA = students.rows.find((s) => s.id === currentStudentId);
+    const studentB = students.rows.find((s) => s.id === targetPk);
 
     const updateStudent = async (student: any, sibling: any) => {
       const existingSiblings = (student.names_of_siblings || '').split(',').map((s: string) => s.trim()).filter(Boolean);
@@ -523,8 +595,8 @@ router.post('/link-siblings', authenticateParent, async (req: ParentRequest, res
         await query(
           `UPDATE students 
            SET names_of_siblings = $1, number_of_siblings = $2, updated_at = NOW()
-           WHERE id = $3`,
-          [existingSiblings.join(', '), existingSiblings.length, student.id]
+           WHERE id = $3 AND tenant_id = $4`,
+          [existingSiblings.join(', '), existingSiblings.length, student.id, tenantId]
         );
       }
     };
@@ -610,7 +682,7 @@ const PARENT_STUDENT_PROFILE_SQL = `
     s.guardian_contact,
     s.names_of_siblings
   FROM students s
-  LEFT JOIN classes c ON s.class_assigned_id = c.id
+  LEFT JOIN classes c ON s.class_assigned_id = c.id AND c.tenant_id = s.tenant_id
   LEFT JOIN tenants t ON s.tenant_id = t.id
   LEFT JOIN school_settings ss ON ss.tenant_id = s.tenant_id
   LEFT JOIN LATERAL (
@@ -826,12 +898,11 @@ async function buildLinkedAccountsPayload(tenantId: number, accountId: number, s
     [tenantId, groupId]
   );
 
-  const linkedAccounts: Array<{ token: string; student: Record<string, unknown> }> = [];
+  const linkedAccounts: Array<{ student: Record<string, unknown> }> = [];
   for (const member of members.rows) {
     const profile = await fetchParentStudentProfile(tenantId, Number(member.student_pk));
     if (!profile) continue;
-    const token = await issueParentToken(Number(member.account_id), Number(member.student_pk), tenantId);
-    linkedAccounts.push({ token, student: profile });
+    linkedAccounts.push({ student: profile });
   }
   return linkedAccounts;
 }
@@ -1360,8 +1431,8 @@ router.get('/grades', authenticateParent, async (req: ParentRequest, res) => {
          c.class_name,
          u.username AS graded_by
        FROM student_grades g
-       JOIN grade_assignments a ON g.assignment_id = a.id
-       JOIN classes c ON a.class_id = c.id
+       JOIN grade_assignments a ON g.assignment_id = a.id AND a.tenant_id = g.tenant_id
+       JOIN classes c ON a.class_id = c.id AND c.tenant_id = g.tenant_id
        LEFT JOIN users u ON g.graded_by = u.id
        WHERE g.tenant_id = $1 AND g.student_id = $2
        ORDER BY a.subject, a.assignment_type, a.name`,
@@ -1386,7 +1457,7 @@ router.get('/term-report', authenticateParent, async (req: ParentRequest, res) =
     const studentRow = await query(
       `SELECT s.class_assigned_id, s.first_name, s.last_name, c.class_name
        FROM students s
-       LEFT JOIN classes c ON s.class_assigned_id = c.id
+       LEFT JOIN classes c ON s.class_assigned_id = c.id AND c.tenant_id = s.tenant_id
        WHERE s.id = $1 AND s.tenant_id = $2`,
       [studentId, tenantId]
     );
@@ -1597,7 +1668,7 @@ router.get('/finance', authenticateParent, async (req: ParentRequest, res) => {
               s.is_beneficiary, s.beneficiary_type, s.discount_type, s.discount_value,
               c.class_name, c.id AS class_id
        FROM students s
-       LEFT JOIN classes c ON s.class_assigned_id = c.id
+       LEFT JOIN classes c ON s.class_assigned_id = c.id AND c.tenant_id = s.tenant_id
        WHERE s.id = $1 AND s.tenant_id = $2`,
       [studentId, tenantId]
     );
@@ -1841,7 +1912,7 @@ router.get('/attendance', authenticateParent, async (req: ParentRequest, res) =>
          a.present,
          c.class_name
        FROM attendance a
-       JOIN classes c ON a.class_id = c.id
+       JOIN classes c ON a.class_id = c.id AND c.tenant_id = a.tenant_id
        WHERE a.tenant_id = $1 AND a.student_id = $2
        ORDER BY a.attendance_date DESC`,
       [tenantId, studentId]

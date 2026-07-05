@@ -5,6 +5,7 @@ import { setTenantContext } from '../middleware/tenant.js';
 import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 import { getIO } from '../socket.js';
 import { notifySetupProgressChanged } from '../services/setupProgressService.js';
+import { resolveTeacherIdFromUser } from '../middleware/requireGradeAccess.js';
 
 const router = express.Router();
 
@@ -29,6 +30,25 @@ attachWritableTermGuard(router);
 router.get('/', async (req: AuthRequest, res) => {
     try {
         const tenantId = req.user!.tenantId!;
+        const role = String(req.user!.role || '').toLowerCase();
+
+        if (role === 'teacher' || role === 'staff') {
+            const teacherId = await resolveTeacherIdFromUser(tenantId, req.user!);
+            if (!teacherId) {
+                return res.json([]);
+            }
+            const result = await query(
+                `SELECT DISTINCT s.*
+                 FROM subjects s
+                 JOIN teacher_subject_classes tsc
+                   ON tsc.subject_id = s.id AND tsc.tenant_id = s.tenant_id
+                 WHERE s.tenant_id = $1 AND tsc.teacher_id = $2
+                 ORDER BY s.name ASC`,
+                [tenantId, teacherId]
+            );
+            return res.json(result.rows);
+        }
+
         const result = await query(
             'SELECT * FROM subjects WHERE tenant_id = $1 ORDER BY name ASC',
             [tenantId]

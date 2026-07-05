@@ -12,7 +12,9 @@ export interface TermReportStudent {
     total?: number;
     percentage?: number;
     grade?: string | number;
+    gradeLabel?: string;
     remark?: string;
+    subjectPosition?: number;
   }>;
   grandTotal: number;
   grandMax: number;
@@ -31,6 +33,9 @@ export interface TermReport {
   schoolName?: string;
   headmasterName?: string | null;
   headmasterTitle?: string | null;
+  classScoreWeight?: number;
+  examWeight?: number;
+  gradeBoundaries?: Array<{ gradeLabel: string; minPercent: number; maxPercent: number; remark: string }>;
   isReleased?: boolean;
   releasedAt?: string | null;
   releasedByName?: string | null;

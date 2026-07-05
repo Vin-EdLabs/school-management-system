@@ -178,6 +178,7 @@ export async function downloadTeacherProfilePdf(
         { label: 'Phone Number', value: display(teacher.phoneNumber) },
         { label: 'Email Address', value: display(teacher.email) },
         { label: 'Address', value: display(teacher.address) },
+        { label: 'National ID', value: display(teacher.nationalId) },
         { label: 'Qualification', value: display(teacher.qualification) },
         { label: 'Specialization', value: display(teacher.specialization) },
       ],
@@ -197,6 +198,7 @@ export async function downloadTeacherProfilePdf(
       title: 'Employment',
       fields: [
         { label: 'Employment Date', value: teacher.employmentDate ? formatDisplayDate(teacher.employmentDate) : EMPTY },
+        { label: 'Employment Type', value: display(teacher.employmentType) },
         { label: 'Passport Photo', value: teacher.hasPassportPhoto ? 'Uploaded' : EMPTY },
         { label: 'Monthly Salary', value: moneyGhs(teacher.monthlySalary) },
         { label: 'Notes', value: display(teacher.notes) },

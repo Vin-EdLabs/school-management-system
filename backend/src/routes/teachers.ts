@@ -667,10 +667,10 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
         monthly_salary, employment_status, notes, position, department,
         emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
         bank_name, bank_account_number, bank_branch, bank_account_name,
-        qualification, specialization, parent_teacher_id, status
+        qualification, specialization, parent_teacher_id, national_id, employment_type, status
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
-        $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, 'active'
+        $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, 'active'
       ) RETURNING *`,
       [
         tenantId,
@@ -699,6 +699,8 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
         teacherData.qualification ? String(teacherData.qualification).trim() : null,
         teacherData.specialization ? String(teacherData.specialization).trim() : null,
         parentTeacherId,
+        teacherData.national_id ? String(teacherData.national_id).trim() : null,
+        teacherData.employment_type ? String(teacherData.employment_type).trim() : null,
       ]
     );
 
@@ -826,7 +828,7 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
       'monthly_salary', 'employment_status', 'notes', 'position', 'department',
       'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
       'bank_name', 'bank_account_number', 'bank_branch', 'bank_account_name',
-      'qualification', 'specialization',
+      'qualification', 'specialization', 'national_id', 'employment_type',
     ];
     
     for (const field of allowedFields) {
@@ -834,6 +836,12 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
         updateFields.push(`${field} = $${paramCount}`);
         let val = updates[field];
         if (field === 'qualification' || field === 'specialization') {
+          val = val != null && String(val).trim() !== '' ? String(val).trim() : null;
+        }
+        if (field === 'national_id') {
+          val = val != null && String(val).trim() !== '' ? String(val).trim() : null;
+        }
+        if (field === 'employment_type') {
           val = val != null && String(val).trim() !== '' ? String(val).trim() : null;
         }
         values.push(

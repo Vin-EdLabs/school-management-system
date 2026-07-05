@@ -117,6 +117,8 @@ const AllStaffView = () => {
 
   const [statusFilter, setStatusFilter] = useState('active');
 
+  const [genderFilter, setGenderFilter] = useState('all');
+
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const [selectedTeacher, setSelectedTeacher] = useState<Teacher | null>(null);
@@ -137,7 +139,7 @@ const AllStaffView = () => {
 
       const data = await apiService.get<AllStaffRow[]>(
 
-        `/other-staff/all-staff?type=${typeFilter}&status=${statusFilter}`
+        `/other-staff/all-staff?type=${typeFilter}&status=${statusFilter}&gender=${genderFilter}`
 
       );
 
@@ -157,7 +159,7 @@ const AllStaffView = () => {
 
     }
 
-  }, [typeFilter, statusFilter]);
+  }, [typeFilter, statusFilter, genderFilter]);
 
 
 
@@ -405,7 +407,7 @@ const AllStaffView = () => {
 
           <div className="flex flex-col lg:flex-row gap-4 mb-6">
 
-            <div className="relative flex-1">
+            <div className="relative flex-1 min-w-0">
 
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
 
@@ -422,6 +424,8 @@ const AllStaffView = () => {
               />
 
             </div>
+
+            <div className="flex flex-wrap items-center gap-2">
 
             <Select value={typeFilter} onValueChange={setTypeFilter}>
 
@@ -463,12 +467,27 @@ const AllStaffView = () => {
 
             </Select>
 
-            <label className="flex items-center gap-2 text-sm text-muted-foreground lg:col-span-2">
+            <Select value={genderFilter} onValueChange={setGenderFilter}>
+              <SelectTrigger className="w-32">
+                <SelectValue placeholder="Gender" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="male">Male</SelectItem>
+                <SelectItem value="female">Female</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <label
+              className="flex items-center gap-1.5 shrink-0 text-xs text-muted-foreground whitespace-nowrap cursor-pointer"
+              title="Include non-counted staff in export"
+            >
               <Checkbox
+                className="h-3.5 w-3.5 [&_svg]:h-3 [&_svg]:w-3"
                 checked={includeNonCounted}
                 onCheckedChange={(v) => setIncludeNonCounted(v === true)}
               />
-              Include non-counted staff in export
+              Non-counted
             </label>
 
             <Button
@@ -510,6 +529,8 @@ const AllStaffView = () => {
               Export CSV{selected.size > 0 ? ` (${selected.size})` : ''}
 
             </Button>
+
+            </div>
 
           </div>
 

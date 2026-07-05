@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -53,6 +53,7 @@ import {
   Banknote,
   TrendingDown,
   CalendarClock,
+  Search,
 } from 'lucide-react';
 import { formatMoney, MONTH_NAMES } from './payrollUtils';
 import PayrollDetailModal, { type PayrollRowSummary } from './PayrollDetailModal';
@@ -63,6 +64,7 @@ type PayrollRow = PayrollRowSummary & {
   grossSalary: number;
   ssnitPercent: number;
   ssnitAmount: number;
+  ssnitManualAmount?: number | null;
   otherDeductions: number;
   allowances: number;
   netSalary: number;
@@ -153,6 +155,8 @@ const PayrollModule = () => {
   const [histYear, setHistYear] = useState<string>('all');
   const [histStaff, setHistStaff] = useState<string>('all');
   const [histStatus, setHistStatus] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [histSearchQuery, setHistSearchQuery] = useState('');
   const autoPreparedRef = useRef<string>('');
 
   const loadSettings = useCallback(async () => {
@@ -390,11 +394,59 @@ const PayrollModule = () => {
 
   const years = Array.from({ length: 7 }, (_, i) => new Date().getFullYear() - 3 + i);
   const cur = data?.currency || settings?.currency || 'GHS';
+  const renderSsnitAmount = (p: PayrollRow) => {
+    if (p.ssnitEnabled) {
+      return (
+        <span className="font-mono text-sm text-orange-600 dark:text-orange-400">
+          {formatMoney(cur, p.ssnitAmount)}
+        </span>
+      );
+    }
+    if (p.ssnitManualAmount != null && Number(p.ssnitManualAmount) > 0) {
+      return (
+        <span className="inline-flex items-center justify-end gap-1.5 font-mono text-sm text-blue-600 dark:text-blue-400">
+          {formatMoney(cur, p.ssnitManualAmount)}
+          <Badge variant="outline" className="text-[10px] px-1 py-0 border-blue-500/40 bg-blue-500/5 text-blue-700 dark:text-blue-400 font-normal">
+            Record
+          </Badge>
+        </span>
+      );
+    }
+    return <span className="font-mono text-sm">{formatMoney(cur, 0)}</span>;
+  };
+
   const staffOptions =
     data?.payroll?.map((p) => ({
       value: `${p.payeeType}:${p.id}`,
       label: `${p.name} (${p.payeeType === 'teacher' ? 'Teacher' : 'Staff'})`,
     })) || [];
+
+  const matchesPayrollSearch = (p: { name: string; staffId?: string | null; role?: string; status?: string; payeeType?: string }, q: string) => {
+    const haystack = [
+      p.name,
+      p.staffId,
+      p.role,
+      p.status,
+      p.payeeType === 'teacher' ? 'teacher' : 'staff',
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    return haystack.includes(q);
+  };
+
+  const filteredPayroll = useMemo(() => {
+    const rows = data?.payroll ?? [];
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((p) => matchesPayrollSearch(p, q));
+  }, [data?.payroll, searchQuery]);
+
+  const filteredHistoryRows = useMemo(() => {
+    const q = histSearchQuery.trim().toLowerCase();
+    if (!q) return historyRows;
+    return historyRows.filter((h) => matchesPayrollSearch(h, q));
+  }, [historyRows, histSearchQuery]);
 
   return (
     <div className="p-4 md:p-8 space-y-6 max-w-[1600px] mx-auto animate-in fade-in duration-300">
@@ -530,15 +582,33 @@ const PayrollModule = () => {
       )}
 
           <Card className="border-border shadow-sm overflow-hidden">
-            <CardHeader className="pb-2 border-b border-border bg-muted/20">
-              <CardTitle className="text-lg">
-                Register — {MONTH_NAMES[month - 1]} {year}
-              </CardTitle>
-              {data?.settings && (
-                <p className="text-xs text-muted-foreground font-normal">
-                  Default SSNIT {data.settings.defaultSsnitPercent}% · {cur}
+            <CardHeader className="pb-3 border-b border-border bg-muted/20 space-y-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <CardTitle className="text-lg">
+                    Register — {MONTH_NAMES[month - 1]} {year}
+                  </CardTitle>
+                  {data?.settings && (
+                    <p className="text-xs text-muted-foreground font-normal mt-0.5">
+                      Default SSNIT {data.settings.defaultSsnitPercent}% · {cur}
+                    </p>
+                  )}
+                </div>
+                <div className="relative w-full sm:w-72 shrink-0">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                  <Input
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search name, staff ID, role…"
+                    className="pl-9 h-9 bg-background border-border"
+                  />
+                </div>
+              </div>
+              {searchQuery.trim() && data?.payroll?.length ? (
+                <p className="text-xs text-muted-foreground">
+                  Showing {filteredPayroll.length} of {data.payroll.length} staff
                 </p>
-              )}
+              ) : null}
         </CardHeader>
             <CardContent className="p-0">
           {loading ? (
@@ -548,6 +618,14 @@ const PayrollModule = () => {
                   <Wallet className="w-12 h-12 text-muted-foreground/25 mx-auto mb-3" />
               <p className="text-muted-foreground">No staff on payroll for this month.</p>
             </div>
+          ) : filteredPayroll.length === 0 ? (
+                <div className="py-16 text-center px-4">
+                  <Search className="w-12 h-12 text-muted-foreground/25 mx-auto mb-3" />
+                  <p className="text-muted-foreground">No staff match &quot;{searchQuery.trim()}&quot;</p>
+                  <Button variant="link" className="mt-2 text-sm" onClick={() => setSearchQuery('')}>
+                    Clear search
+                  </Button>
+                </div>
           ) : (
                 <div className="overflow-x-auto">
               <Table>
@@ -565,7 +643,7 @@ const PayrollModule = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                      {data.payroll.map((p) => (
+                      {filteredPayroll.map((p) => (
                         <TableRow
                           key={`${p.payeeType}-${p.id}`}
                           className="cursor-pointer border-border hover:bg-muted/40 transition-colors"
@@ -589,9 +667,7 @@ const PayrollModule = () => {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right font-mono text-sm">{formatMoney(cur, p.grossSalary)}</TableCell>
-                          <TableCell className="text-right font-mono text-sm text-orange-600 dark:text-orange-400">
-                            {formatMoney(cur, p.ssnitAmount)}
-                          </TableCell>
+                          <TableCell className="text-right">{renderSsnitAmount(p)}</TableCell>
                           <TableCell className="text-right font-mono text-sm">{formatMoney(cur, p.otherDeductions)}</TableCell>
                           <TableCell className="text-right font-mono text-sm font-semibold text-emerald-700 dark:text-emerald-400">
                             {formatMoney(cur, p.netSalary)}
@@ -699,6 +775,15 @@ const PayrollModule = () => {
             <Button variant="outline" size="sm" className="mb-0.5" onClick={() => loadHistory()}>
               Apply filters
             </Button>
+            <div className="relative w-full sm:w-64 mb-0.5">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <Input
+                value={histSearchQuery}
+                onChange={(e) => setHistSearchQuery(e.target.value)}
+                placeholder="Search name, ID, role…"
+                className="pl-9 h-9 bg-background"
+              />
+            </div>
           </div>
           <Card className="border-border">
             <CardContent className="p-0">
@@ -719,14 +804,16 @@ const PayrollModule = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {historyRows.length === 0 ? (
+                      {filteredHistoryRows.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={7} className="text-center text-muted-foreground py-10">
-                            No salary records for these filters.
+                            {histSearchQuery.trim()
+                              ? `No records match "${histSearchQuery.trim()}"`
+                              : 'No salary records for these filters.'}
                           </TableCell>
                         </TableRow>
                       ) : (
-                        historyRows.map((h) => (
+                        filteredHistoryRows.map((h) => (
                           <TableRow key={h.id} className="border-border">
                             <TableCell className="whitespace-nowrap text-sm">
                               {MONTH_NAMES[h.month - 1]} {h.year}

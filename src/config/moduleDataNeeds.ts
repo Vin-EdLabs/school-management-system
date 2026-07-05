@@ -24,6 +24,7 @@ export const MODULE_DATA_NEEDS: Record<string, DataDomain[]> = {
   'payment-submissions': [],
   users: [],
   settings: [],
+  'grade-configuration': [],
   audit: [],
   records: [],
   calendar: [],

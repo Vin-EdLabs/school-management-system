@@ -26,6 +26,7 @@ import PaymentAccountsModule from './configurations/PaymentAccountsModule';
 import AppointmentLetterSettings from './configurations/AppointmentLetterSettings';
 import AdmissionLetterSettings from './configurations/AdmissionLetterSettings';
 import IdCardSettings from './configurations/IdCardSettings';
+import GradeConfigurationSettings from './settings/GradeConfigurationSettings';
 import IdCardsModule from './id-cards/IdCardsModule';
 import LostCardsModule from './lost-cards/LostCardsModule';
 import ManualAdjustmentsReport from './finance/ManualAdjustmentsReport';
@@ -164,6 +165,7 @@ const Dashboard = () => {
       (activeModule === 'other-staff' && (hasAccess('teachers') || hasAccess('teachers-view-only'))) ||
       (activeModule === 'appointment-letter-settings' && hasAccess('settings-full')) ||
       (activeModule === 'admission-letter-settings' && hasAccess('settings-full')) ||
+      (activeModule === 'grade-configuration' && hasAccess('grade-configuration')) ||
       (activeModule === 'teacher-quizzes' && (hasAccess('grades') || user?.role === 'teacher')) ||
       (activeModule === 'headmaster-dashboard' && hasAccess('headmaster-dashboard')) ||
       (activeModule === 'headmaster-all-classes' && hasAccess('headmaster-all-classes')) ||
@@ -275,6 +277,12 @@ const Dashboard = () => {
         return <SettingsModule />;
       case 'payment-accounts':
         return <PaymentAccountsModule />;
+      case 'grade-configuration':
+        return (
+          <div className="mx-auto max-w-6xl p-4 md:p-6 space-y-10 pb-10">
+            <GradeConfigurationSettings />
+          </div>
+        );
       case 'appointment-letter-settings':
         return <AppointmentLetterSettings />;
       case 'admission-letter-settings':

@@ -30,6 +30,8 @@ export type TermReportPdfInput = {
   grandTotal: number;
   grandMax: number;
   percentage: number;
+  classScoreWeight?: number;
+  examWeight?: number;
   performanceRows: PerformanceRow[];
   attendance?: { present: number; absent: number; totalDays: number } | null;
   gradeScale: Array<{ letter: string; minPct: number; maxPct: number; description?: string }>;
@@ -179,8 +181,10 @@ export function downloadTermReportCardPdf(input: TermReportPdfInput) {
   y += infoCardHeight + 8;
 
   // Performance table
+  const csWeight = input.classScoreWeight ?? 50;
+  const exWeight = input.examWeight ?? 50;
   const tableStartY = y;
-  const tableHead = [['Subject', 'Class Score', 'Exam Score', 'Total', 'Max', '%', 'Grade', 'Remark']];
+  const tableHead = [['Subject', `Class Score (${csWeight}%)`, `Exam Score (${exWeight}%)`, 'Total', 'Max', '%', 'Grade', 'Remark']];
   const tableBody = input.performanceRows.map(r => [
     String(r.subject || ''),
     r.classScore == null ? '' : String(r.classScore),

@@ -54,8 +54,10 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
     phoneNumber: '',
     email: '',
     address: '',
+    nationalId: '',
     subjectsTaught: [] as string[],
     employmentDate: '',
+    employmentType: '',
     monthlySalary: '',
     notes: '',
     emergencyContactName: '',
@@ -137,6 +139,8 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
         bankBranch: formData.bankBranch || undefined,
         position: formData.position.trim() || undefined,
         department: formData.department.trim() || undefined,
+        nationalId: formData.nationalId.trim() || undefined,
+        employmentType: formData.employmentType.trim() || undefined,
         parentTeacherId: parentTeacherId || null,
       });
 
@@ -171,8 +175,10 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
         phoneNumber: '',
         email: '',
         address: '',
+        nationalId: '',
         subjectsTaught: [],
         employmentDate: '',
+        employmentType: '',
         monthlySalary: '',
         notes: '',
         emergencyContactName: '',
@@ -305,6 +311,15 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
               />
             </div>
 
+            <div className="space-y-2">
+              <Label htmlFor="teacher-nationalId">National ID</Label>
+              <Input
+                id="teacher-nationalId"
+                value={formData.nationalId}
+                onChange={(e) => setFormData((prev) => ({ ...prev, nationalId: e.target.value }))}
+              />
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="teacher-qualification">Qualification</Label>
@@ -364,6 +379,25 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
                   onChange={(e) => setFormData(prev => ({ ...prev, employmentDate: e.target.value }))}
                 />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="teacher-employmentType">Employment Type</Label>
+                <Select
+                  value={formData.employmentType || undefined}
+                  onValueChange={(value) => setFormData((prev) => ({ ...prev, employmentType: value }))}
+                >
+                  <SelectTrigger id="teacher-employmentType">
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Full-time">Full-time</SelectItem>
+                    <SelectItem value="Part-time">Part-time</SelectItem>
+                    <SelectItem value="Contract">Contract</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Passport photo</Label>
                 <div className="flex items-center gap-4">

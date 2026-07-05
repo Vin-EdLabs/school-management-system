@@ -12,7 +12,9 @@ export type PayslipInput = {
   year: number;
   currency: string;
   grossSalary: number;
+  ssnitEnabled?: boolean;
   ssnitAmount: number;
+  ssnitManualAmount?: number | null;
   otherDeductions: number;
   allowances: number;
   netSalary: number;
@@ -21,6 +23,16 @@ export type PayslipInput = {
   footerText: string;
   signatureText: string;
 };
+
+function payslipSsnitRows(data: PayslipInput): [string, string][] {
+  if (data.ssnitEnabled !== false) {
+    return [['SSNIT deduction', formatMoney(data.currency, data.ssnitAmount)]];
+  }
+  if (data.ssnitManualAmount != null && data.ssnitManualAmount > 0) {
+    return [[`SSNIT (record)`, `${formatMoney(data.currency, data.ssnitManualAmount)} — not deducted`]];
+  }
+  return [];
+}
 
 export function downloadPayrollPayslipPdf(data: PayslipInput, filename: string) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
@@ -57,7 +69,7 @@ export function downloadPayrollPayslipPdf(data: PayslipInput, filename: string) 
     ['Staff ID', data.staffId || '—'],
     ['Position', data.position],
     ['Gross salary', formatMoney(data.currency, data.grossSalary)],
-    ['SSNIT deduction', formatMoney(data.currency, data.ssnitAmount)],
+    ...payslipSsnitRows(data),
     ['Other deductions', formatMoney(data.currency, data.otherDeductions)],
     ['Allowances', formatMoney(data.currency, data.allowances)],
     ['Net salary', formatMoney(data.currency, data.netSalary)],
@@ -99,6 +111,12 @@ export function printPayslipHtml(data: PayslipInput): void {
     data.logoDataUrl && data.logoDataUrl.startsWith('data:image')
       ? `<img src="${data.logoDataUrl}" alt="" style="max-height:56px;margin-bottom:8px" />`
       : '';
+  const ssnitRows = payslipSsnitRows(data)
+    .map(
+      ([k, v]) =>
+        `<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(v)}</td></tr>`
+    )
+    .join('');
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Payslip</title>
   <style>
     * { box-sizing: border-box; }
@@ -120,7 +138,7 @@ export function printPayslipHtml(data: PayslipInput): void {
       <tr><th>Staff ID</th><td>${escapeHtml(data.staffId || '—')}</td></tr>
       <tr><th>Position</th><td>${escapeHtml(data.position)}</td></tr>
       <tr><th>Gross salary</th><td>${escapeHtml(formatMoney(data.currency, data.grossSalary))}</td></tr>
-      <tr><th>SSNIT deduction</th><td>${escapeHtml(formatMoney(data.currency, data.ssnitAmount))}</td></tr>
+      ${ssnitRows}
       <tr><th>Other deductions</th><td>${escapeHtml(formatMoney(data.currency, data.otherDeductions))}</td></tr>
       <tr><th>Allowances</th><td>${escapeHtml(formatMoney(data.currency, data.allowances))}</td></tr>
       <tr><th>Net salary</th><td><strong>${escapeHtml(formatMoney(data.currency, data.netSalary))}</strong></td></tr>

@@ -6,6 +6,7 @@ import { initializeDatabase } from './db/connection.js';
 import { startReceiptLockJob } from './jobs/receiptLockJob.js';
 import { startTeacherSuspensionJob } from './jobs/teacherSuspensionJob.js';
 import { startTodoReminderJob } from './jobs/todoReminderJob.js';
+import { startScheduledAnnouncementJob } from './jobs/announcementScheduleJob.js';
 import authRoutes from './routes/auth.js';
 import impersonationRoutes from './routes/impersonation.js';
 import schoolRoutes from './routes/schools.js';
@@ -226,6 +227,7 @@ initializeDatabase()
     startInvoiceStatusJob();
     startTeacherSuspensionJob();
     startTodoReminderJob();
+    startScheduledAnnouncementJob();
     httpServer.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📊 Database connected`);

@@ -30,7 +30,7 @@ const GlobalAnnouncementPopup: React.FC = () => {
   const [queue, setQueue] = useState<UnreadAnnouncement[]>([]);
   const [schoolName, setSchoolName] = useState('');
   const [index, setIndex] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(false);
   const [marking, setMarking] = useState(false);
   const [checked, setChecked] = useState(false);
 
@@ -42,40 +42,60 @@ const GlobalAnnouncementPopup: React.FC = () => {
       user.role === 'finance' ||
       isHeadmasterRole(user.role));
 
-  const loadUnread = useCallback(async () => {
+  const loadUnread = useCallback(async (background = false) => {
     if (!shouldCheck) return;
-    setLoading(true);
+    if (!background) setInitialLoading(true);
     try {
       const res = await fetchUnreadAnnouncements();
-      setQueue(res.items || []);
+      const items = res.items || [];
+      setQueue((prev) => {
+        if (!background || prev.length === 0) return items;
+        const seen = new Set(prev.map((p) => p.id));
+        const merged = [...prev];
+        for (const item of items) {
+          if (!seen.has(item.id)) merged.push(item);
+        }
+        return merged;
+      });
       setSchoolName(res.schoolName || '');
-      setIndex(0);
+      if (!background) setIndex(0);
     } catch {
-      setQueue([]);
+      if (!background) setQueue([]);
     } finally {
-      setLoading(false);
+      if (!background) setInitialLoading(false);
       setChecked(true);
     }
   }, [shouldCheck]);
 
-  const { socket } = useSocket();
+  const { socket, connected } = useSocket();
 
   useEffect(() => {
-    if (shouldCheck && !checked) void loadUnread();
+    if (shouldCheck && !checked) void loadUnread(false);
   }, [shouldCheck, checked, loadUnread]);
 
   useEffect(() => {
     if (!socket || !shouldCheck) return;
 
-    const handleNewAnnouncement = () => {
-      void loadUnread();
+    const refresh = () => {
+      void loadUnread(true);
     };
 
-    socket.on('global-announcement-created', handleNewAnnouncement);
+    socket.on('global-announcement-created', refresh);
+    socket.on('connect', refresh);
     return () => {
-      socket.off('global-announcement-created', handleNewAnnouncement);
+      socket.off('global-announcement-created', refresh);
+      socket.off('connect', refresh);
     };
   }, [socket, shouldCheck, loadUnread]);
+
+  useEffect(() => {
+    if (!shouldCheck) return;
+    const pollMs = connected ? 120_000 : 45_000;
+    const id = window.setInterval(() => {
+      void loadUnread(true);
+    }, pollMs);
+    return () => window.clearInterval(id);
+  }, [shouldCheck, connected, loadUnread]);
 
   useEffect(() => {
     const blockEscape = (e: KeyboardEvent) => {
@@ -122,7 +142,9 @@ const GlobalAnnouncementPopup: React.FC = () => {
     }
   };
 
-  if (!shouldCheck || loading || !current) return null;
+  if (!shouldCheck) return null;
+  if (initialLoading && !current) return null;
+  if (!current) return null;
 
   const buttonLabel = marking
     ? 'Please wait…'

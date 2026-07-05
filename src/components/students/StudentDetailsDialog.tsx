@@ -19,7 +19,7 @@ import {
   Bus,
   Compass,
   Loader2,
-  Printer,
+  FileDown,
   Plus,
 } from 'lucide-react';
 import { enrollmentStatusLabel, isAlumniStudent, statusBadgeClass, normalizeEnrollmentStatus, guardianContactLinks } from './studentRegistryUtils';
@@ -27,7 +27,10 @@ import { cn } from '@/lib/utils';
 import { resolveLogoUrl } from '../../services/tenantService';
 import { formatDisplayDate } from '../../utils/dateFormat';
 import { isActivePayment, paymentAmountValue } from '../../utils/feeCalculations';
-import AdmissionLetterDocument, { printAdmissionLetter, type AdmissionLetterData } from './AdmissionLetterDocument';
+import AdmissionLetterDocument, { type AdmissionLetterData } from './AdmissionLetterDocument';
+import { downloadAdmissionLetterPdfFromData } from './admissionLetterPdf';
+import { toast } from '@/hooks/use-toast';
+import { useSchool } from '@/contexts/SchoolContext';
 
 interface Student {
   id: string;
@@ -81,6 +84,7 @@ interface StudentDetailsDialogProps {
 }
 
 const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, open, onClose, payments = [], totalFeesForStudent = 0 }) => {
+  const { school } = useSchool();
   if (!student) return null;
 
   const alumni = isAlumniStudent(student);
@@ -134,6 +138,7 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
   const [admissionLetters, setAdmissionLetters] = React.useState<Array<{ id: number; version_number: number; reference_number: string | null; created_at: string }>>([]);
   const [loadingLetters, setLoadingLetters] = React.useState(false);
   const [generatingLetter, setGeneratingLetter] = React.useState(false);
+  const [exportingLetterId, setExportingLetterId] = React.useState<number | null>(null);
   const [selectedLetter, setSelectedLetter] = React.useState<AdmissionLetterData | null>(null);
 
   React.useEffect(() => {
@@ -620,18 +625,38 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
                             <Button
                               size="sm"
                               variant="outline"
+                              disabled={exportingLetterId === letter.id}
                               onClick={async () => {
+                                setExportingLetterId(letter.id);
                                 try {
-                                  const data = await apiService.get<AdmissionLetterData>(`/students/${student.id}/admission-letters/${letter.id}/download`);
-                                  setSelectedLetter(data);
-                                  setTimeout(() => printAdmissionLetter(), 300);
+                                  const data = await apiService.get<AdmissionLetterData>(
+                                    `/students/${student.id}/admission-letters/${letter.id}/download`
+                                  );
+                                  await downloadAdmissionLetterPdfFromData(data, {
+                                    logoUrl: school?.logo_url,
+                                  });
+                                  toast({
+                                    title: 'PDF downloaded',
+                                    description: 'Admission letter saved to your device.',
+                                  });
                                 } catch (err) {
-                                  console.error('Failed to download admission letter:', err);
+                                  console.error('Failed to export admission letter:', err);
+                                  toast({
+                                    title: 'Export failed',
+                                    description: 'Could not create the admission letter PDF.',
+                                    variant: 'destructive',
+                                  });
+                                } finally {
+                                  setExportingLetterId(null);
                                 }
                               }}
                             >
-                              <Printer className="h-3 w-3 mr-1" />
-                              Print
+                              {exportingLetterId === letter.id ? (
+                                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                              ) : (
+                                <FileDown className="h-3 w-3 mr-1" />
+                              )}
+                              Export PDF
                             </Button>
                           </div>
                         </div>

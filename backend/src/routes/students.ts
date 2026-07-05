@@ -1415,10 +1415,15 @@ router.get('/:id/admission-letters/:letterId/download', requireRole('super-admin
   try {
     const tenantId = req.user!.tenantId!;
     const { id, letterId } = req.params;
-    const { getAdmissionLetterPdf } = await import('../services/admissionLetterService.js');
+    const { getAdmissionLetterPdf, enrichAdmissionLetterContent } = await import('../services/admissionLetterService.js');
     const letter = await getAdmissionLetterPdf(tenantId, parseInt(id, 10), parseInt(letterId, 10));
     if (!letter) return res.status(404).json({ error: 'Admission letter not found' });
-    res.json(letter.letter_content);
+    const content = await enrichAdmissionLetterContent(
+      tenantId,
+      parseInt(id, 10),
+      letter.letter_content as import('../services/admissionLetterService.js').AdmissionLetterContent
+    );
+    res.json(content);
   } catch (error) {
     console.error('Download admission letter error:', error);
     res.status(500).json({ error: 'Failed to download admission letter' });

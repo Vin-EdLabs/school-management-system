@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { resolveLogoUrl } from '@/services/tenantService';
-import { openPrintPreview } from '../../contexts/PrintPreviewContext';
 
 export type AdmissionLetterData = {
   referenceNumber: string | null;
@@ -43,74 +42,47 @@ function schoolInitialsFromName(name: string): string {
   return 'SC';
 }
 
-export function printAdmissionLetter(elementId: string = 'admission-letter-print-area') {
-  const el = document.getElementById(elementId);
-  if (!el) return;
-
-  const clone = el.cloneNode(true) as HTMLElement;
-  clone.removeAttribute('id');
-  clone.querySelectorAll('.no-print, button, [type="button"], input, [contenteditable]').forEach(el => el.remove());
-  clone.querySelectorAll('.hidden').forEach(el => {
-    (el as HTMLElement).style.display = 'inline';
-    el.classList.remove('hidden');
-  });
-  clone.querySelectorAll('[style*="display: none"]').forEach(el => {
-    (el as HTMLElement).style.display = '';
-  });
-
-  const headStylesheets = Array.from(document.head.querySelectorAll('link[rel="stylesheet"], style'))
-    .map(el => el.outerHTML)
-    .join('\n');
-
-  openPrintPreview({
-    title: 'Admission Letter',
-    html: `
-    <html>
-      <head>
-        <title>Admission Letter</title>
-        ${headStylesheets}
-        <style>
-          @page { margin: 5mm; size: A4 portrait; }
-          @media print {
-            body, body * { visibility: visible !important; }
-            .no-print, .no-print *, button, button * { display: none !important; }
-            body {
-              margin: 0 !important; padding: 0 !important;
-              -webkit-print-color-adjust: exact; print-color-adjust: exact;
-            }
-          }
-          body {
-            font-family: 'Times New Roman', Times, serif;
-            color: #000; background: #fff; margin: 0; font-size: 13px;
-          }
-          table { width: 100%; border-collapse: collapse; }
-          td, th { padding: 6px; vertical-align: middle; }
-        </style>
-      </head>
-      <body>
-        ${clone.outerHTML}
-      </body>
-    </html>
-  `,
-  });
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex gap-2">
+      <span className="font-bold uppercase min-w-[130px] shrink-0">{label}</span>
+      <div className="flex-grow min-w-0">
+        <div className="font-extrabold uppercase pl-1" style={{ lineHeight: 1.5, paddingBottom: 3 }}>
+          {value}
+        </div>
+        <div className="w-full" style={{ height: 1, backgroundColor: '#000' }} />
+      </div>
+    </div>
+  );
 }
 
 type Props = {
   data: AdmissionLetterData;
   id?: string;
   className?: string;
+  /** Off-screen PDF render — skip error fallbacks so embedded data URLs always display. */
+  pdfMode?: boolean;
 };
 
-const AdmissionLetterDocument: React.FC<Props> = ({ data, id = 'admission-letter-print-area', className = '' }) => {
-  const logoSrc = resolveLetterMediaUrl(data.school.logoUrl);
+const AdmissionLetterDocument: React.FC<Props> = ({
+  data,
+  id = 'admission-letter-print-area',
+  className = '',
+  pdfMode = false,
+}) => {
+  const logoSrc = data.school.logoUrl?.startsWith('data:')
+    ? data.school.logoUrl
+    : resolveLetterMediaUrl(data.school.logoUrl);
   const [logoFailed, setLogoFailed] = useState(false);
   const initials = schoolInitialsFromName(data.school.name);
   const contactLine = [data.school.phone, data.school.email].filter(Boolean).join(' · ');
-  const showLogo = logoSrc && !logoFailed;
+  const showLogo = Boolean(logoSrc) && (pdfMode || !logoFailed);
 
-  const photoSrc = resolveLetterMediaUrl(data.student.photoUrl);
+  const photoSrc = data.student.photoUrl?.startsWith('data:')
+    ? data.student.photoUrl
+    : resolveLetterMediaUrl(data.student.photoUrl);
   const [photoFailed, setPhotoFailed] = useState(false);
-  const showPhoto = photoSrc && !photoFailed;
+  const showPhoto = Boolean(photoSrc) && (pdfMode || !photoFailed);
   return (
     <div
       id={id}
@@ -122,16 +94,20 @@ const AdmissionLetterDocument: React.FC<Props> = ({ data, id = 'admission-letter
         <tbody>
           <tr className="border-none">
             <td className="w-20 align-middle border-none p-0">
-              <div className="w-20 h-20 border-2 border-black inline-flex items-center justify-center overflow-hidden bg-slate-100">
+              <div className="w-20 h-20 border-2 border-black overflow-hidden bg-slate-50">
                 {showLogo ? (
                   <img
-                    src={logoSrc}
+                    data-admission-letter-logo=""
+                    src={logoSrc!}
                     alt=""
+                    crossOrigin={logoSrc?.startsWith('data:') ? undefined : 'anonymous'}
                     onError={() => setLogoFailed(true)}
-                    className="w-full h-full object-contain p-1"
+                    className="w-full h-full object-cover"
                   />
                 ) : (
-                  <span className="text-[10px] font-bold text-slate-400">{initials}</span>
+                  <div className="w-full h-full flex items-center justify-center">
+                    <span className="text-[10px] font-bold text-slate-300">{initials}</span>
+                  </div>
                 )}
               </div>
             </td>
@@ -150,8 +126,10 @@ const AdmissionLetterDocument: React.FC<Props> = ({ data, id = 'admission-letter
               <div className="w-20 h-20 border-2 border-black overflow-hidden bg-slate-50 ml-auto">
                 {showPhoto ? (
                   <img
-                    src={photoSrc}
+                    data-admission-letter-photo=""
+                    src={photoSrc!}
                     alt=""
+                    crossOrigin={photoSrc?.startsWith('data:') ? undefined : 'anonymous'}
                     onError={() => setPhotoFailed(true)}
                     className="w-full h-full object-cover"
                   />
@@ -182,26 +160,11 @@ const AdmissionLetterDocument: React.FC<Props> = ({ data, id = 'admission-letter
 
       {/* Student Details */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2.5 gap-x-6 text-xs">
-        <div className="flex items-center">
-          <span className="font-bold uppercase min-w-[130px]">NAME:</span>
-          <span className="flex-grow border-b border-black font-extrabold pl-2 uppercase">{data.student.fullName}</span>
-        </div>
-        <div className="flex items-center">
-          <span className="font-bold uppercase min-w-[130px]">STUDENT ID:</span>
-          <span className="flex-grow border-b border-black font-extrabold pl-2 uppercase">{data.student.studentId}</span>
-        </div>
-        <div className="flex items-center">
-          <span className="font-bold uppercase min-w-[130px]">ADMISSION NO:</span>
-          <span className="flex-grow border-b border-black font-extrabold pl-2 uppercase">{data.student.admissionNumber}</span>
-        </div>
-        <div className="flex items-center">
-          <span className="font-bold uppercase min-w-[130px]">CLASS:</span>
-          <span className="flex-grow border-b border-black font-extrabold pl-2 uppercase">{data.student.className}</span>
-        </div>
-        <div className="flex items-center">
-          <span className="font-bold uppercase min-w-[130px]">DATE OF ADMISSION:</span>
-          <span className="flex-grow border-b border-black font-extrabold pl-2 uppercase">{data.student.admissionDate}</span>
-        </div>
+        <DetailRow label="NAME:" value={data.student.fullName} />
+        <DetailRow label="STUDENT ID:" value={data.student.studentId} />
+        <DetailRow label="ADMISSION NO:" value={data.student.admissionNumber} />
+        <DetailRow label="CLASS:" value={data.student.className} />
+        <DetailRow label="DATE OF ADMISSION:" value={data.student.admissionDate} />
       </div>
 
       {/* Terms & Conditions */}

@@ -18,7 +18,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
 import {
-  BookOpen, Plus, Eye, ArrowRight, Trophy, Printer,
+  BookOpen, Plus, Eye, ArrowRight, Trophy, Printer, FileDown,
   ChevronDown, ChevronRight, Trash2, PencilLine, Save,
   X, Clock, UserCheck, History, Send, EyeOff, CheckCircle2, AlertTriangle,
 } from 'lucide-react';
@@ -28,10 +28,10 @@ import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDisplayDate, formatDisplayDateTime } from '../../utils/dateFormat';
 import { downloadTermReportCardPdf } from '../reports/buildTermReportCardPdf';
+import { downloadClassTablePdf } from '../reports/buildClassTablePdf';
 import { buildReportCardPrintHtml } from '../reports/buildReportCardPrintHtml';
 import { useUnsavedChangesGuard } from '../../hooks/useUnsavedChangesGuard';
 import { usePrintPreview } from '../../contexts/PrintPreviewContext';
-import { buildPrintDocumentFromHtml } from '../../utils/collectDocumentStyles';
 import {
   type TermReport,
   type TermReportStudent,
@@ -231,18 +231,6 @@ const resolvePhotoUrl = (photoUrl?: string | null) => {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-const CLASS_TABLE_PRINT_STYLES = `
-  body{font-family:Arial,sans-serif;font-size:11px;margin:16px;color:#111}
-  table{width:100%;border-collapse:collapse}
-  th,td{border:1px solid #ccc;padding:4px 8px;text-align:center}
-  th{background:#1e293b;color:#fff}
-  tr:nth-child(even){background:#f8f9fa}
-  .name-col{text-align:left}
-  .pos-1{background:#fef9c3}.pos-2{background:#f1f5f9}.pos-3{background:#fff7ed}
-  h2,p{text-align:center;margin:4px 0}
-  .student-photo-print{display:none!important}
-`;
-
 const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boolean }) => {
   const { schoolId, school } = useSchool();
   const { students, classes, subjects: globalSubjects } = useData();
@@ -258,6 +246,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
   const seesAllClasses = isAdminViewer || isHeadmasterGradesMode;
   const printRef = useRef<HTMLDivElement>(null);
   const reportCardRef = useRef<HTMLDivElement>(null);
+  const [classTablePdfLoading, setClassTablePdfLoading] = useState(false);
 
   const [teacherClasses, setTeacherClasses] = useState<TeacherClass[]>([]);
   const [subjectClassesByClass, setSubjectClassesByClass] = useState<SubjectClassGroupedByClass[]>([]);
@@ -1725,17 +1714,35 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
     }
   };
 
-  const handlePrint = () => {
-    if (!printRef.current) return;
-    const title = `Term Report — ${termReport?.className || 'Class'}`;
-    const bodyHtml = printRef.current.innerHTML;
-    const printDocumentHtml = buildPrintDocumentFromHtml(bodyHtml, title, CLASS_TABLE_PRINT_STYLES);
-    openPrintPreview({
-      title,
-      contentRef: printRef,
-      printDocumentHtml,
-      printStyles: CLASS_TABLE_PRINT_STYLES,
-    });
+  const handleExportClassTablePdf = async () => {
+    if (!termReport?.students?.length) {
+      toast({
+        title: 'Nothing to export',
+        description: 'The class table has no content yet.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setClassTablePdfLoading(true);
+    try {
+      await downloadClassTablePdf({
+        schoolName: school?.name || termReport.schoolName || 'School',
+        logoUrl: school?.logo_url ? resolvePhotoUrl(school.logo_url) : null,
+        termReport,
+      });
+      toast({
+        title: 'PDF downloaded',
+        description: 'Class table saved to your device.',
+      });
+    } catch {
+      toast({
+        title: 'Export failed',
+        description: 'Could not create the class table PDF.',
+        variant: 'destructive',
+      });
+    } finally {
+      setClassTablePdfLoading(false);
+    }
   };
 
   const buildSelectedReportCardHtml = () => {
@@ -2380,11 +2387,14 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                 : <><AlertTriangle className="w-3.5 h-3.5 mr-1.5" /> Complete Reports First</>}
                           </Button>
                         )}
-                        <Button variant="outline" size="sm" onClick={handlePrint} className="hidden sm:inline-flex">
-                          <Printer className="w-4 h-4 mr-2" /> Print Class Table
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={handlePrint} className="sm:hidden">
-                          <Eye className="w-4 h-4 mr-1.5" /> Preview Table
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void handleExportClassTablePdf()}
+                          disabled={classTablePdfLoading}
+                        >
+                          <FileDown className="w-4 h-4 mr-2" />
+                          {classTablePdfLoading ? 'Exporting…' : 'Export Class Table PDF'}
                         </Button>
                       </div>
                     </CardTitle>

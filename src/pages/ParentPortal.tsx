@@ -19,8 +19,8 @@ import { resolveSocketBaseUrl, SOCKET_IO_OPTIONS } from '@/utils/socketUrl';
 import FinanceStatementModal from '@/components/finance/FinanceStatementModal';
 import TermBillBreakdown from '@/components/fees/TermBillBreakdown';
 import { isFinanceStatementNotificationUrl } from '@/services/studentFinanceStatementApi';
-import AdmissionLetterDocument, { printAdmissionLetter } from '@/components/students/AdmissionLetterDocument';
-import type { AdmissionLetterData } from '@/components/students/AdmissionLetterDocument';
+import AdmissionLetterDocument, { type AdmissionLetterData } from '@/components/students/AdmissionLetterDocument';
+import { downloadAdmissionLetterPdfFromData } from '@/components/students/admissionLetterPdf';
 import {
   fetchInvoicePdfData,
   invoiceStatusLabel,
@@ -528,6 +528,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   const [financeSubTab, setFinanceSubTab] = useState<FinanceSubTab>('balance');
   const [admissionLetters, setAdmissionLetters] = useState<Array<{ id: number; version_number: number; reference_number: string | null; created_at: string }>>([]);
   const [selectedAdmissionLetter, setSelectedAdmissionLetter] = useState<AdmissionLetterData | null>(null);
+  const [exportingAdmissionLetterId, setExportingAdmissionLetterId] = useState<number | null>(null);
   const [showDeskGuide, setShowDeskGuide] = useState(false);
 
   // Photo lightbox
@@ -2478,15 +2479,26 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                           </button>
                           <button
                             onClick={async () => {
+                              setExportingAdmissionLetterId(letter.id);
                               try {
-                                const data = await parentFetch(`/parent/admission-letters/${letter.id}/download`, {}, token) as AdmissionLetterData;
-                                setSelectedAdmissionLetter(data);
-                                setTimeout(() => printAdmissionLetter(), 300);
-                              } catch { }
+                                const data = await parentFetch(
+                                  `/parent/admission-letters/${letter.id}/download`,
+                                  {},
+                                  token
+                                ) as AdmissionLetterData;
+                                await downloadAdmissionLetterPdfFromData(data, {
+                                  logoUrl: student?.school_logo_url || schoolLogoUrl,
+                                });
+                              } catch {
+                                /* ignore */
+                              } finally {
+                                setExportingAdmissionLetterId(null);
+                              }
                             }}
-                            className="rounded-xl border border-white/70 bg-white/60 px-3 py-1.5 text-[10px] font-bold text-slate-700 hover:bg-white transition-all"
+                            disabled={exportingAdmissionLetterId === letter.id}
+                            className="rounded-xl border border-white/70 bg-white/60 px-3 py-1.5 text-[10px] font-bold text-slate-700 hover:bg-white transition-all disabled:opacity-60"
                           >
-                            Print
+                            {exportingAdmissionLetterId === letter.id ? 'Exporting…' : 'Export PDF'}
                           </button>
                         </div>
                       </div>

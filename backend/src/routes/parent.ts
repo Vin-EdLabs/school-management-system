@@ -18,7 +18,12 @@ import { ensureTenantLedgerSynced } from '../services/ledgerBackfillService.js';
 import { resolveActiveLedgerTerm } from '../services/studentUnifiedBalanceService.js';
 import { getStudentBirthdaysForParent } from '../services/birthdayService.js';
 import { loadActiveFeeStructureLinesByClassTerm } from '../services/feeStructureItemsService.js';
-import { listAdmissionLetters, getAdmissionLetterPdf } from '../services/admissionLetterService.js';
+import {
+  listAdmissionLetters,
+  getAdmissionLetterPdf,
+  enrichAdmissionLetterContent,
+  type AdmissionLetterContent,
+} from '../services/admissionLetterService.js';
 import { getInvoiceById, getInvoicePdfPayload, listInvoices } from '../services/invoiceService.js';
 import {
   buildParentReportFromArchive,
@@ -1897,7 +1902,12 @@ router.get('/admission-letters/:letterId/download', authenticateParent, async (r
     const { letterId } = req.params;
     const letter = await getAdmissionLetterPdf(tenantId, studentId, parseInt(letterId, 10));
     if (!letter) return res.status(404).json({ error: 'Admission letter not found' });
-    res.json(letter.letter_content);
+    const content = await enrichAdmissionLetterContent(
+      tenantId,
+      studentId,
+      letter.letter_content as AdmissionLetterContent
+    );
+    res.json(content);
   } catch (error) {
     console.error('Parent admission letter download error:', error);
     res.status(500).json({ error: 'Failed to download admission letter' });

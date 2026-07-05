@@ -7,6 +7,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { apiService } from '@/services/api';
 import { useSocket } from '@/contexts/SocketContext';
+import type { Socket } from 'socket.io-client';
 import { toast } from 'sonner';
 import {
   Bell,
@@ -122,6 +123,34 @@ export function countTodayPendingTodos(todos: PersonalTodo[]): number {
 }
 
 const ACTIVE_REMINDERS_KEY = 'personal-todo-active-reminders';
+const TODO_REMINDER_EVENT = 'personal-todo-reminder';
+
+function isMobileTodosViewport(): boolean {
+  return window.matchMedia('(max-width: 767px)').matches;
+}
+
+function isActiveTodosViewport(hideTrigger: boolean): boolean {
+  return hideTrigger === isMobileTodosViewport();
+}
+
+let sharedReminderSocket: Socket | null = null;
+
+function publishTodoReminder(payload: ReminderPopup) {
+  window.dispatchEvent(new CustomEvent(TODO_REMINDER_EVENT, { detail: payload }));
+}
+
+function handleSocketTodoReminder(payload: ReminderPopup) {
+  publishTodoReminder(payload);
+}
+
+function ensureSharedTodoReminderSocket(socket: Socket) {
+  if (sharedReminderSocket === socket) return;
+  if (sharedReminderSocket) {
+    sharedReminderSocket.off('todo-reminder', handleSocketTodoReminder);
+  }
+  sharedReminderSocket = socket;
+  socket.on('todo-reminder', handleSocketTodoReminder);
+}
 
 function loadStoredReminders(): ReminderPopup[] {
   try {
@@ -426,15 +455,55 @@ const PersonalTodosWidget: React.FC<{
 
   useEffect(() => {
     if (!socket) return;
-    const onReminder = (payload: ReminderPopup) => {
+    ensureSharedTodoReminderSocket(socket);
+
+    const onReminder = (event: Event) => {
+      if (!isActiveTodosViewport(hideTrigger)) return;
+      const payload = (event as CustomEvent<ReminderPopup>).detail;
       addActiveReminder(payload);
       void loadTodos();
     };
-    socket.on('todo-reminder', onReminder);
-    return () => {
-      socket.off('todo-reminder', onReminder);
+
+    const onConnect = () => {
+      if (isActiveTodosViewport(hideTrigger)) void loadTodos();
     };
-  }, [socket, loadTodos, addActiveReminder]);
+
+    window.addEventListener(TODO_REMINDER_EVENT, onReminder);
+    socket.on('connect', onConnect);
+    return () => {
+      window.removeEventListener(TODO_REMINDER_EVENT, onReminder);
+      socket.off('connect', onConnect);
+    };
+  }, [socket, hideTrigger, loadTodos, addActiveReminder]);
+
+  useEffect(() => {
+    if (!isActiveTodosViewport(hideTrigger)) return;
+
+    const timers: number[] = [];
+    const now = Date.now();
+
+    for (const todo of todos) {
+      if (todo.is_completed || !todo.reminder_at || todo.reminder_sent) continue;
+      const at = new Date(todo.reminder_at).getTime();
+      const delay = at - now;
+      if (delay <= 0 || delay > 24 * 60 * 60 * 1000) continue;
+      timers.push(
+        window.setTimeout(() => {
+          addActiveReminder({
+            id: todo.id,
+            content: todo.content,
+            reminder_at: todo.reminder_at,
+          });
+          void loadTodos();
+          toast.message('Task reminder', { description: todo.content });
+        }, delay)
+      );
+    }
+
+    return () => {
+      timers.forEach((id) => window.clearTimeout(id));
+    };
+  }, [todos, hideTrigger, addActiveReminder, loadTodos]);
 
   useEffect(() => {
     if (todos.length === 0) return;

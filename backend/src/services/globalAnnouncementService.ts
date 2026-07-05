@@ -1,4 +1,5 @@
 import { query } from '../db/connection.js';
+import { getIO } from '../socket.js';
 
 export type AnnouncementType = 'info' | 'warning' | 'maintenance' | 'update' | 'urgent';
 export type AnnouncementTarget = 'all' | 'selected';
@@ -299,6 +300,53 @@ export async function getAnnouncementReaders(
     tenant_id: r.tenant_id != null ? Number(r.tenant_id) : null,
     read_at: r.read_at instanceof Date ? r.read_at.toISOString() : String(r.read_at),
   }));
+}
+
+export function isAnnouncementLiveNow(row: {
+  is_active: boolean;
+  scheduled_at: string | null;
+  expires_at: string | null;
+}): boolean {
+  if (!row.is_active) return false;
+  const now = Date.now();
+  if (row.scheduled_at && new Date(row.scheduled_at).getTime() > now) return false;
+  if (row.expires_at && new Date(row.expires_at).getTime() <= now) return false;
+  return true;
+}
+
+/** Push live announcements to school tenant rooms over Socket.IO. */
+export async function emitGlobalAnnouncementLiveEvent(announcement: {
+  id: number;
+  created_at: string;
+  target: string;
+  target_tenant_ids: number[] | null;
+  is_active: boolean;
+  scheduled_at: string | null;
+  expires_at: string | null;
+}): Promise<void> {
+  if (!isAnnouncementLiveNow(announcement)) return;
+
+  const io = getIO();
+  const payload = {
+    announcementId: announcement.id,
+    createdAt: announcement.created_at,
+  };
+
+  if (announcement.target === 'all') {
+    const tenantResult = await query(
+      `SELECT id FROM tenants WHERE COALESCE(is_active, true) = true`
+    );
+    for (const row of tenantResult.rows) {
+      io.to(`tenant:${row.id}`).emit('global-announcement-created', payload);
+    }
+    return;
+  }
+
+  if (Array.isArray(announcement.target_tenant_ids)) {
+    for (const tenantId of announcement.target_tenant_ids) {
+      io.to(`tenant:${tenantId}`).emit('global-announcement-created', payload);
+    }
+  }
 }
 
 export { TYPE_PRIORITY };

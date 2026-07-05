@@ -38,5 +38,5 @@ export function startTodoReminderJob(): void {
   void checkDueTodoReminders();
   setInterval(() => {
     void checkDueTodoReminders();
-  }, 60 * 1000);
+  }, 15 * 1000);
 }

@@ -218,6 +218,32 @@ export async function getAdmissionLetterPdf(
   return res.rows[0] || null;
 }
 
+/** Refresh live media (logo, photo, class) on a saved letter snapshot for download/preview. */
+export async function enrichAdmissionLetterContent(
+  tenantId: number,
+  studentId: number,
+  content: AdmissionLetterContent
+): Promise<AdmissionLetterContent> {
+  const fresh = await buildAdmissionLetterContent(tenantId, studentId);
+  if (!fresh) return content;
+  return {
+    ...content,
+    school: {
+      ...content.school,
+      logoUrl: fresh.school.logoUrl || content.school.logoUrl,
+      name: content.school.name || fresh.school.name,
+      address: content.school.address || fresh.school.address,
+      phone: content.school.phone || fresh.school.phone,
+      email: content.school.email || fresh.school.email,
+    },
+    student: {
+      ...content.student,
+      photoUrl: fresh.student.photoUrl || content.student.photoUrl,
+      className: fresh.student.className || content.student.className,
+    },
+  };
+}
+
 export async function listAdmissionLetters(
   tenantId: number,
   studentId: number

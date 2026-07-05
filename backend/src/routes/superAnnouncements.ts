@@ -1,10 +1,8 @@
 import express, { Response } from 'express';
 import { z } from 'zod';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth.js';
-import { query } from '../db/connection.js';
 import { writeAuditLog } from '../services/auditService.js';
 import { getClientIp } from '../utils/clientIp.js';
-import { getIO } from '../socket.js';
 import {
   createGlobalAnnouncement,
   deleteGlobalAnnouncement,
@@ -12,6 +10,7 @@ import {
   toggleGlobalAnnouncement,
   updateGlobalAnnouncement,
   getAnnouncementReaders,
+  emitGlobalAnnouncementLiveEvent,
   type AnnouncementType,
 } from '../services/globalAnnouncementService.js';
 
@@ -62,32 +61,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
       req.user!.id
     );
 
-    const io = getIO();
-    const shouldEmit =
-      created.is_active &&
-      (!created.scheduled_at || new Date(created.scheduled_at).getTime() <= Date.now()) &&
-      (!created.expires_at || new Date(created.expires_at).getTime() > Date.now());
-
-    if (shouldEmit) {
-      if (created.target === 'all') {
-        const tenantResult = await query(
-          `SELECT id FROM tenants WHERE COALESCE(is_active, true) = true`
-        );
-        for (const row of tenantResult.rows) {
-          io.to(`tenant:${row.id}`).emit('global-announcement-created', {
-            announcementId: created.id,
-            createdAt: created.created_at,
-          });
-        }
-      } else if (Array.isArray(created.target_tenant_ids)) {
-        for (const tenantId of created.target_tenant_ids) {
-          io.to(`tenant:${tenantId}`).emit('global-announcement-created', {
-            announcementId: created.id,
-            createdAt: created.created_at,
-          });
-        }
-      }
-    }
+    await emitGlobalAnnouncementLiveEvent(created);
 
     await writeAuditLog({
       tenantId: null,
@@ -139,6 +113,9 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
       isActive: body.isActive,
     });
     if (!updated) return res.status(404).json({ error: 'Announcement not found' });
+
+    await emitGlobalAnnouncementLiveEvent(updated);
+
     res.json(updated);
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -188,6 +165,8 @@ router.patch('/:id/toggle', async (req: AuthRequest, res: Response) => {
 
     const updated = await toggleGlobalAnnouncement(id);
     if (!updated) return res.status(404).json({ error: 'Announcement not found' });
+
+    await emitGlobalAnnouncementLiveEvent(updated);
 
     await writeAuditLog({
       tenantId: null,

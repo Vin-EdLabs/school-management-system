@@ -41,6 +41,13 @@ import ImpersonationTransitionOverlay from '@/components/impersonation/Impersona
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiService } from '@/services/api';
+import { toast } from '@/hooks/use-toast';
+import {
+  clearParentTenantSession,
+  isParentTokenForTenant,
+  readParentToken,
+  studentBelongsToTenant,
+} from '@/utils/parentSession';
 
 function resolveApiBase(): string {
   if (import.meta.env.VITE_API_BASE_URL) return import.meta.env.VITE_API_BASE_URL;
@@ -79,16 +86,17 @@ async function parseParentResponse(res: Response): Promise<Record<string, unknow
 
 const parentInFlight = new Map<string, Promise<Record<string, unknown>>>();
 
-function parentRequestKey(method: string, path: string, body: unknown): string {
+function parentRequestKey(method: string, path: string, body: unknown, token?: string): string {
   const raw = typeof body === 'string' ? body : body instanceof FormData ? 'form-data' : JSON.stringify(body ?? '');
+  const tokenPart = token ? token.slice(-16) : '';
   let hash = 0;
   for (let i = 0; i < raw.length; i += 1) hash = (hash * 31 + raw.charCodeAt(i)) | 0;
-  return `${method}:${path}:${Math.abs(hash).toString(36)}`;
+  return `${method}:${path}:${tokenPart}:${Math.abs(hash).toString(36)}`;
 }
 
 async function parentFetch(path: string, opts: RequestInit = {}, token?: string) {
   const method = String(opts.method || 'GET').toUpperCase();
-  const key = parentRequestKey(method, path, opts.body);
+  const key = parentRequestKey(method, path, opts.body, token);
   if (method !== 'GET' && parentInFlight.has(key)) {
     return parentInFlight.get(key)!;
   }
@@ -283,6 +291,7 @@ interface StudentInfo {
   class_assigned_id?: number | null;
   gender: string;
   school_name: string;
+  tenant_id?: number;
   current_term: string;
   current_year: string;
   must_change_password: boolean;
@@ -356,13 +365,20 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   const { applySession } = useAuth();
   const brandPrimary = primaryColor || '#7c3aed';
   const brandSecondary = secondaryColor || '#db2777';
-  const [token, setToken] = useState<string | null>(() =>
-    localStorage.getItem(`parent_token_${tenantId}`)
-  );
+  const [token, setToken] = useState<string | null>(() => readParentToken(tenantId));
   const [student, setStudent] = useState<StudentInfo | null>(() => {
-    const s = localStorage.getItem(`parent_student_${tenantId}`);
-    return s ? JSON.parse(s) : null;
+    const t = readParentToken(tenantId);
+    if (!t) return null;
+    try {
+      const s = localStorage.getItem(`parent_student_${tenantId}`);
+      if (!s) return null;
+      const parsed = JSON.parse(s) as StudentInfo;
+      return studentBelongsToTenant(parsed, tenantId) ? parsed : null;
+    } catch {
+      return null;
+    }
   });
+  const [sessionRestoring, setSessionRestoring] = useState(() => !!readParentToken(tenantId));
   const [mustChangePassword, setMustChangePassword] = useState(() => {
     if (parentImpersonationActive(tenantId)) return false;
     try {
@@ -519,14 +535,23 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
   // Multi-account switcher
   const [linkedAccounts, setLinkedAccounts] = useState<LinkedAccount[]>(() => {
-    const saved = localStorage.getItem(`parent_accounts_${tenantId}`);
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem(`parent_accounts_${tenantId}`);
+      if (!saved) return [];
+      const parsed = JSON.parse(saved) as LinkedAccount[];
+      return Array.isArray(parsed)
+        ? parsed.filter((acc) => studentBelongsToTenant(acc.student, tenantId))
+        : [];
+    } catch {
+      return [];
+    }
   });
   const [showSwitcher, setShowSwitcher] = useState(false);
 
   const syncLinkedAccounts = (accounts: LinkedAccount[]) => {
-    setLinkedAccounts(accounts);
-    localStorage.setItem(`parent_accounts_${tenantId}`, JSON.stringify(accounts));
+    const scoped = accounts.filter((acc) => studentBelongsToTenant(acc.student, tenantId));
+    setLinkedAccounts(scoped);
+    localStorage.setItem(`parent_accounts_${tenantId}`, JSON.stringify(scoped));
   };
 
   const clearAllStudentData = useCallback(() => {
@@ -614,7 +639,15 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       setShowSwitcher(false);
       return;
     }
-    if (switchingAccountRef.current || !token) return;
+    if (switchingAccountRef.current || !token || isSwitchingStudent) return;
+    if (!studentBelongsToTenant(acc.student, tenantId)) {
+      toast({
+        title: 'Cannot switch student',
+        description: 'This child is not linked to this school portal.',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     switchingAccountRef.current = true;
     const targetName = `${acc.student.first_name} ${acc.student.last_name}`.trim();
@@ -626,7 +659,25 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         method: 'POST',
         body: JSON.stringify({ studentId: acc.student.admission_number }),
       }, token) as { token: string; student: StudentInfo };
+
+      if (!isParentTokenForTenant(data.token, tenantId)) {
+        throw new Error('This student belongs to a different school.');
+      }
+      if (!studentBelongsToTenant(data.student, tenantId)) {
+        throw new Error('This student belongs to a different school.');
+      }
+
       await finalizeStudentSessionTransition(sessionId, data.token, data.student);
+    } catch (err: unknown) {
+      if (studentSessionRef.current === sessionId) {
+        setIsSwitchingStudent(false);
+        setSwitchTargetName(null);
+      }
+      toast({
+        title: 'Could not switch student',
+        description: err instanceof Error ? err.message : 'Please try again.',
+        variant: 'destructive',
+      });
     } finally {
       switchingAccountRef.current = false;
     }
@@ -642,7 +693,14 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         body: JSON.stringify({ tenantId, studentId: loginAdmission.trim(), password: loginPassword }),
       }) as { token: string; mustChangePassword: boolean; linkedAccounts?: LinkedAccount[] };
 
+      if (!isParentTokenForTenant(data.token, tenantId)) {
+        throw new Error('This account belongs to a different school.');
+      }
+
       const me = await parentFetch('/parent/me', {}, data.token) as unknown as StudentInfo;
+      if (!studentBelongsToTenant(me, tenantId)) {
+        throw new Error('This student belongs to a different school.');
+      }
       const studentInfo = { ...me, must_change_password: data.mustChangePassword };
 
       setToken(data.token);
@@ -658,6 +716,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
       setLoginAdmission('');
       setLoginPassword('');
+      setSessionRestoring(false);
     } catch (err: unknown) {
       setLoginError(getFriendlyLoginMessage(err));
     } finally {
@@ -741,10 +800,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     // Full logout — clear all parent session keys for this tenant
     studentSessionRef.current += 1;
     clearAllStudentData();
-    localStorage.removeItem(`parent_token_${tenantId}`);
-    localStorage.removeItem(`parent_student_${tenantId}`);
-    localStorage.removeItem(`parent_accounts_${tenantId}`);
-    localStorage.removeItem(`parent_fcm_token_${tenantId}`);
+    clearParentTenantSession(tenantId);
     setToken(null);
     setStudent(null);
     setLinkedAccounts([]);
@@ -828,6 +884,13 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       if (studentSessionRef.current !== sessionId) return;
 
       const me = results[0] as StudentInfo;
+      if (!studentBelongsToTenant(me, tenantId)) {
+        throw new Error('This student belongs to a different school.');
+      }
+      if (!isParentTokenForTenant(authToken, tenantId)) {
+        throw new Error('Session belongs to a different school.');
+      }
+
       const financeData = results[1];
       const birthdays = results[2] as { birthdays?: Array<{ id: number; fullName: string; age: number }> } | null;
       const admissionData = results[3] as Array<{ id: number; version_number: number; reference_number: string | null; created_at: string }>;
@@ -1065,16 +1128,85 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     };
   }, [tenantId, student, token]);
 
+  /** Validate cached session belongs to this school before showing the portal. */
   useEffect(() => {
-    if (!token) return;
+    const storedToken = readParentToken(tenantId);
+    if (!storedToken) {
+      if (token && !isParentTokenForTenant(token, tenantId)) {
+        clearParentTenantSession(tenantId);
+        setToken(null);
+        setStudent(null);
+        setLinkedAccounts([]);
+      }
+      setSessionRestoring(false);
+      return;
+    }
+
+    if (token !== storedToken) {
+      setToken(storedToken);
+    }
+
+    let cancelled = false;
+    setSessionRestoring(true);
+
+    void (async () => {
+      try {
+        const me = (await parentFetch('/parent/me', {}, storedToken)) as StudentInfo;
+        if (cancelled) return;
+        if (!studentBelongsToTenant(me, tenantId)) {
+          throw new Error('Session belongs to a different school');
+        }
+        const forcePwChange = parentImpersonationActive(tenantId) ? false : !!me.must_change_password;
+        const info = { ...me, must_change_password: forcePwChange } as StudentInfo;
+        setToken(storedToken);
+        setStudent(info);
+        setMustChangePassword(forcePwChange);
+        localStorage.setItem(`parent_student_${tenantId}`, JSON.stringify(info));
+      } catch {
+        if (cancelled) return;
+        clearParentTenantSession(tenantId);
+        studentSessionRef.current += 1;
+        clearAllStudentData();
+        setToken(null);
+        setStudent(null);
+        setLinkedAccounts([]);
+        if (!parentImpersonationActive(tenantId)) {
+          toast({
+            title: 'Session expired',
+            description: 'Please sign in again for this school.',
+            variant: 'destructive',
+          });
+        }
+      } finally {
+        if (!cancelled) setSessionRestoring(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId, clearAllStudentData]);
+
+  useEffect(() => {
+    if (!token || sessionRestoring || isSwitchingStudent) return;
     if (parentImpersonationActive(tenantId)) {
       setMustChangePassword(false);
+    }
+    if (!isParentTokenForTenant(token, tenantId)) {
+      clearParentTenantSession(tenantId);
+      setToken(null);
+      setStudent(null);
+      setLinkedAccounts([]);
+      return;
     }
     let cancelled = false;
     void (async () => {
       try {
         const me = await parentFetch('/parent/me', {}, token) as StudentInfo;
         if (cancelled) return;
+        if (!studentBelongsToTenant(me, tenantId)) {
+          throw new Error('Session belongs to a different school');
+        }
         const forcePwChange = parentImpersonationActive(tenantId) ? false : !!me.must_change_password;
         setStudent((prev) => {
           const next = { ...(prev || {}), ...me, must_change_password: forcePwChange } as StudentInfo;
@@ -1084,17 +1216,21 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         if (forcePwChange) setMustChangePassword(true);
         else setMustChangePassword(false);
       } catch {
-        // token expired or network issue — login screen handles invalid sessions
+        if (cancelled) return;
+        clearParentTenantSession(tenantId);
+        setToken(null);
+        setStudent(null);
+        setLinkedAccounts([]);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [token, tenantId]);
+  }, [token, tenantId, sessionRestoring, isSwitchingStudent]);
 
   /** Load admin-linked sibling accounts so parents can switch without logging in again. */
   useEffect(() => {
-    if (!token || !student || isSwitchingStudent) return;
+    if (!token || !student || isSwitchingStudent || sessionRestoring) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -1108,7 +1244,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     return () => {
       cancelled = true;
     };
-  }, [token, student?.admission_number, tenantId, isSwitchingStudent]);
+  }, [token, student?.admission_number, tenantId, isSwitchingStudent, sessionRestoring]);
 
   /** Sliding session: refresh JWT periodically so parents stay signed in across PWA restarts. */
   useEffect(() => {
@@ -1689,6 +1825,17 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     );
   }
 
+  if (sessionRestoring && token) {
+    return (
+      <BrandedLoadingScreen
+        logoUrl={schoolLogoUrl}
+        label="Loading your portal…"
+        tone="dark"
+        active
+      />
+    );
+  }
+
   if (!token || !student) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4" style={{ background: premiumLoginGradient }}>
@@ -1960,6 +2107,20 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   return (
     <div className={`overflow-x-hidden bg-[#F8F7FF] bg-[radial-gradient(circle_at_top_left,rgba(192,132,252,0.34),transparent_32%),radial-gradient(circle_at_top_right,rgba(236,72,153,0.20),transparent_28%),linear-gradient(180deg,#FFFFFF_0%,#F8F7FF_45%,#F4EEFF_100%)] text-slate-950 ${parentImpersonationBannerOffsetClass(tenantId)}`}>
       <ParentImpersonationBanner tenantId={tenantId} />
+      {showSwitchOverlay ? (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-white/80 backdrop-blur-sm"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <div className="flex flex-col items-center gap-3 rounded-2xl border border-violet-100 bg-white px-6 py-5 shadow-lg">
+            <RefreshCw className="h-6 w-6 animate-spin text-violet-600" />
+            <p className="text-sm font-semibold text-slate-800">
+              {switchTargetName ? `Loading ${switchTargetName}…` : 'Switching student…'}
+            </p>
+          </div>
+        </div>
+      ) : null}
       {newQuizPopup && (
         <div className="fixed inset-0 z-[90] bg-slate-900/45 backdrop-blur-[1px] flex items-center justify-center p-4">
           <div className="w-full max-w-md rounded-2xl bg-white border shadow-2xl p-5">
@@ -2140,21 +2301,6 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         }${showSwitchOverlay ? ' overflow-hidden' : ''}`}
         aria-hidden={showSwitchOverlay ? true : undefined}
       >
-        {showSwitchOverlay ? (
-          <div
-            className="fixed inset-0 z-[130] flex items-center justify-center bg-white/75 backdrop-blur-[2px]"
-            aria-live="polite"
-            aria-busy="true"
-          >
-            <div className="flex flex-col items-center gap-3 rounded-2xl border border-violet-100 bg-white px-6 py-5 shadow-lg">
-              <RefreshCw className="h-6 w-6 animate-spin text-violet-600" />
-              <p className="text-sm font-semibold text-slate-800">
-                {switchTargetName ? `Loading ${switchTargetName}…` : 'Switching student…'}
-              </p>
-            </div>
-          </div>
-        ) : null}
-
         {/* Change password banner */}
         {!mustChangePassword && student.must_change_password && (
           <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between gap-3">
@@ -3801,8 +3947,10 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                   return (
                     <button
                       key={acc.student.admission_number}
-                      onClick={() => handleSwitchAccount(acc)}
-                      className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all duration-200 ${isActive
+                      type="button"
+                      disabled={isSwitchingStudent}
+                      onClick={() => void handleSwitchAccount(acc)}
+                      className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all duration-200 disabled:opacity-50 disabled:pointer-events-none ${isActive
                           ? 'bg-purple-50/50 border border-purple-100'
                           : 'hover:bg-slate-50'
                         }`}

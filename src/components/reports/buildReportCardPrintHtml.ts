@@ -1,4 +1,5 @@
 import type { TermReportStudent } from './termReportTypes';
+import { openPrintDocument } from '../../contexts/PrintPreviewContext';
 
 export type ReportCardPrintInput = {
   schoolName: string;
@@ -280,10 +281,6 @@ export function buildReportCardPrintHtml(input: ReportCardPrintInput): string {
 </html>`;
 }
 
-export function openReportCardPrintWindow(html: string) {
-  const win = window.open('', '_blank');
-  if (!win) return;
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
+export function openReportCardPrintWindow(html: string, title = 'Report Card') {
+  openPrintDocument(html, title);
 }

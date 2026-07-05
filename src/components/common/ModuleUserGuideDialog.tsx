@@ -15,10 +15,21 @@ import { BookOpen, MessageCircle, Sparkles, X } from 'lucide-react';
 type ModuleUserGuideDialogProps = {
   activeModule: string;
   setActiveModule: (id: string) => void;
+  externalOpen?: boolean;
+  onExternalOpenChange?: (open: boolean) => void;
+  hideTriggers?: boolean;
 };
 
-export function ModuleUserGuideDialog({ activeModule, setActiveModule }: ModuleUserGuideDialogProps) {
-  const [open, setOpen] = useState(false);
+export function ModuleUserGuideDialog({
+  activeModule,
+  setActiveModule,
+  externalOpen,
+  onExternalOpenChange,
+  hideTriggers = false,
+}: ModuleUserGuideDialogProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = externalOpen ?? internalOpen;
+  const setOpen = onExternalOpenChange ?? setInternalOpen;
   const { hasAccess } = useAuth();
   const guide = useMemo(() => getModuleUserGuide(activeModule), [activeModule]);
   const canSupport = hasAccess('support-chat');
@@ -29,6 +40,8 @@ export function ModuleUserGuideDialog({ activeModule, setActiveModule }: ModuleU
 
   return (
     <>
+      {!hideTriggers && (
+      <>
       <Button
         type="button"
         variant="outline"
@@ -50,6 +63,8 @@ export function ModuleUserGuideDialog({ activeModule, setActiveModule }: ModuleU
       >
         <BookOpen className="h-5 w-5" aria-hidden />
       </Button>
+      </>
+      )}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[min(90dvh,720px)] w-[calc(100vw-1.5rem)] max-w-lg gap-0 overflow-hidden p-0 sm:max-w-lg [&>button]:hidden">

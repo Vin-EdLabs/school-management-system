@@ -28,7 +28,10 @@ import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDisplayDate, formatDisplayDateTime } from '../../utils/dateFormat';
 import { downloadTermReportCardPdf } from '../reports/buildTermReportCardPdf';
-import { buildReportCardPrintHtml, openReportCardPrintWindow } from '../reports/buildReportCardPrintHtml';
+import { buildReportCardPrintHtml } from '../reports/buildReportCardPrintHtml';
+import { useUnsavedChangesGuard } from '../../hooks/useUnsavedChangesGuard';
+import { usePrintPreview } from '../../contexts/PrintPreviewContext';
+import { buildPrintDocumentFromHtml } from '../../utils/collectDocumentStyles';
 import {
   type TermReport,
   type TermReportStudent,
@@ -44,6 +47,7 @@ import StaffReportCardViewport from '@/components/reports/StaffReportCardViewpor
 import PasswordConfirmDialog from '@/components/common/PasswordConfirmDialog';
 import type { SubjectClassGroupedByClass, TeacherSubjectClassesResponse } from '@/types/teacherSubjectClass';
 import { calculateGrade, type AssessmentScore, type GradeConfig } from '@/utils/gradeCalculator';
+import { isActiveEnrolledStudent } from '../students/studentRegistryUtils';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -61,6 +65,7 @@ interface Assignment {
   is_exam?: boolean;
   component_id?: number | null;
   component_name?: string | null;
+  created_by?: number | null;
 }
 
 interface GradeRecord {
@@ -226,6 +231,18 @@ const resolvePhotoUrl = (photoUrl?: string | null) => {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
+const CLASS_TABLE_PRINT_STYLES = `
+  body{font-family:Arial,sans-serif;font-size:11px;margin:16px;color:#111}
+  table{width:100%;border-collapse:collapse}
+  th,td{border:1px solid #ccc;padding:4px 8px;text-align:center}
+  th{background:#1e293b;color:#fff}
+  tr:nth-child(even){background:#f8f9fa}
+  .name-col{text-align:left}
+  .pos-1{background:#fef9c3}.pos-2{background:#f1f5f9}.pos-3{background:#fff7ed}
+  h2,p{text-align:center;margin:4px 0}
+  .student-photo-print{display:none!important}
+`;
+
 const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boolean }) => {
   const { schoolId, school } = useSchool();
   const { students, classes, subjects: globalSubjects } = useData();
@@ -280,10 +297,9 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
   const [remarksHydratedStudentId, setRemarksHydratedStudentId] = useState<number | null>(null);
   const [remarksDirty, setRemarksDirty] = useState(false);
   const markRemarksDirty = useCallback(() => setRemarksDirty(true), []);
-  const [unsavedDialogOpen, setUnsavedDialogOpen] = useState(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const pendingNavActionRef = useRef<(() => void | Promise<void>) | null>(null);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { openPrintPreview } = usePrintPreview();
   const [deleteAssignmentTarget, setDeleteAssignmentTarget] = useState<Assignment | null>(null);
   const [deleteAssignmentLoading, setDeleteAssignmentLoading] = useState(false);
 
@@ -498,9 +514,19 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
     if (!selectedClassId) return [];
     const cls = teacherClasses.find(c => String(c.id) === selectedClassId);
     return students.filter(s =>
+      isActiveEnrolledStudent(s) &&
       cls && (s.classAssigned === cls.class_name || (s.classAssignedId && String(s.classAssignedId) === selectedClassId))
     );
   }, [selectedClassId, students, teacherClasses]);
+
+  const canEditSelectedGrades = useMemo(() => {
+    if (isHeadmasterGradesMode) return false;
+    if (isSchoolAdmin) return !!selectedAssignmentId;
+    if (schoolWideReadOnly) return false;
+    if (!selectedAssignmentId) return false;
+    const assignment = assignments.find((a) => String(a.id) === selectedAssignmentId);
+    return assignment != null && Number(assignment.created_by) === Number(user?.id);
+  }, [isHeadmasterGradesMode, schoolWideReadOnly, isSchoolAdmin, selectedAssignmentId, assignments, user?.id]);
 
   const assignmentsBySubject = useMemo(() => {
     const map: Record<string, Assignment[]> = {};
@@ -524,10 +550,13 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
   const canDeleteAssessment = useCallback(
     (assignmentId: number) => {
       if (isHeadmasterGradesMode) return false;
+      const assignment = assignments.find((a) => a.id === assignmentId);
+      if (!assignment) return false;
       if (gradedAssignmentIds.has(assignmentId)) return isSchoolAdmin;
-      return !isAdminViewer || isSchoolAdmin;
+      if (isSchoolAdmin) return true;
+      return Number(assignment.created_by) === Number(user?.id);
     },
-    [gradedAssignmentIds, isHeadmasterGradesMode, isSchoolAdmin, isAdminViewer]
+    [gradedAssignmentIds, isHeadmasterGradesMode, isSchoolAdmin, assignments, user?.id]
   );
 
   // Build grade rows including moved students
@@ -634,6 +663,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
   // ── Bulk edit ────────────────────────────────────────────────────────────────
 
   const enterBulkEdit = () => {
+    if (!canEditSelectedGrades) return;
     const initial: Record<number, string> = {};
     gradeRows.forEach(r => { initial[r.studentDbId] = r.score !== null ? String(r.score) : ''; });
     setBulkScores(initial);
@@ -646,6 +676,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
   };
 
   const handleBulkSave = async () => {
+    if (!canEditSelectedGrades) return;
     if (!selectedAssignmentId) return;
     const maxScore = Number(selectedAssignment?.max_marks ?? selectedAssignment?.max_score) || 100;
 
@@ -1334,34 +1365,43 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
     return false;
   }, [selectedReportStudentId, termReport, isAdminViewer, remarksDirty, saveReportRemarksForStudent]);
 
-  const runWithUnsavedGuard = useCallback((action: () => void | Promise<void>) => {
-    if (activeTab !== 'report' || isAdminViewer || !remarksDirty || !selectedReportStudentId) {
-      void action();
-      return;
-    }
-    pendingNavActionRef.current = action;
-    setUnsavedDialogOpen(true);
-  }, [activeTab, isAdminViewer, remarksDirty, selectedReportStudentId]);
+  const bulkEditDirty = useMemo(() => {
+    if (!isBulkEditing) return false;
+    return gradeRows.some((r) => {
+      const val = bulkScores[r.studentDbId] ?? '';
+      const initial = r.score !== null && r.score !== undefined ? String(r.score) : '';
+      return val !== initial;
+    });
+  }, [isBulkEditing, bulkScores, gradeRows]);
 
-  const handleUnsavedSaveAndContinue = async () => {
-    const action = pendingNavActionRef.current;
-    pendingNavActionRef.current = null;
-    setUnsavedDialogOpen(false);
-    const ok = await flushPendingRemarksSave();
-    if (!ok) {
-      toast({ title: 'Save failed', description: 'Your report card changes could not be saved.', variant: 'destructive' });
-      return;
-    }
-    if (action) await action();
-  };
+  const pageIsDirty = useMemo(() => {
+    if (isAdminViewer) return false;
+    if (activeTab === 'report' && remarksDirty && selectedReportStudentId) return true;
+    if (activeTab === 'grades' && bulkEditDirty) return true;
+    return false;
+  }, [isAdminViewer, activeTab, remarksDirty, selectedReportStudentId, bulkEditDirty]);
 
-  const handleUnsavedDiscard = async () => {
-    const action = pendingNavActionRef.current;
-    pendingNavActionRef.current = null;
-    setUnsavedDialogOpen(false);
-    setRemarksDirty(false);
-    if (action) await action();
-  };
+  const { runWithGuard, UnsavedChangesDialog } = useUnsavedChangesGuard({
+    isDirty: pageIsDirty,
+    onSave: async () => {
+      if (activeTab === 'report') return flushPendingRemarksSave();
+      if (activeTab === 'grades' && isBulkEditing) {
+        await handleBulkSave();
+        return !isBulkEditing;
+      }
+      return true;
+    },
+    onDiscard: () => {
+      if (activeTab === 'report') setRemarksDirty(false);
+      if (activeTab === 'grades') cancelBulkEdit();
+    },
+    message:
+      activeTab === 'grades'
+        ? 'You have unsaved grade entries. Save before leaving, or discard your changes.'
+        : 'You have unsaved report card changes. Save before leaving, or discard your changes.',
+  });
+
+  const runWithUnsavedGuard = runWithGuard;
 
   useEffect(() => {
     if (
@@ -1392,16 +1432,6 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
     attendanceDraft, attendanceOutOfDraft, promotedToDraft, reopeningDateDraft,
     saveReportRemarksForStudent,
   ]);
-
-  useEffect(() => {
-    const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (activeTab !== 'report' || isAdminViewer || !remarksDirty || !selectedReportStudentId) return;
-      e.preventDefault();
-      e.returnValue = '';
-    };
-    window.addEventListener('beforeunload', onBeforeUnload);
-    return () => window.removeEventListener('beforeunload', onBeforeUnload);
-  }, [activeTab, isAdminViewer, remarksDirty, selectedReportStudentId]);
 
   const handleClassChange = (classId: string) => {
     if (classId === selectedClassId) return;
@@ -1696,36 +1726,25 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
   };
 
   const handlePrint = () => {
-    const content = printRef.current;
-    if (!content) return;
-    const win = window.open('', '_blank');
-    if (!win) return;
-    win.document.write(`
-      <html><head><title>Term Report</title>
-      <style>
-        body{font-family:Arial,sans-serif;font-size:11px;margin:16px}
-        table{width:100%;border-collapse:collapse}
-        th,td{border:1px solid #ccc;padding:4px 8px;text-align:center}
-        th{background:#1e293b;color:#fff}
-        tr:nth-child(even){background:#f8f9fa}
-        .name-col{text-align:left}
-        .pos-1{background:#fef9c3}.pos-2{background:#f1f5f9}.pos-3{background:#fff7ed}
-        h2,p{text-align:center;margin:4px 0}
-        .student-photo-print{display:none!important}
-      </style></head><body>${content.innerHTML}</body></html>
-    `);
-    win.document.close();
-    win.print();
+    if (!printRef.current) return;
+    const title = `Term Report — ${termReport?.className || 'Class'}`;
+    const bodyHtml = printRef.current.innerHTML;
+    const printDocumentHtml = buildPrintDocumentFromHtml(bodyHtml, title, CLASS_TABLE_PRINT_STYLES);
+    openPrintPreview({
+      title,
+      contentRef: printRef,
+      printDocumentHtml,
+      printStyles: CLASS_TABLE_PRINT_STYLES,
+    });
   };
 
-  const handlePrintReportCard = () => {
-    if (!termReport || !selectedReportStudentId) return;
+  const buildSelectedReportCardHtml = () => {
+    if (!termReport || !selectedReportStudentId) return null;
     const student = termReport.students.find((s) => s.studentId === selectedReportStudentId);
-    if (!student) return;
+    if (!student) return null;
     const sourceStudent = students.find((st) => Number(st.id) === Number(student.studentId));
     const photoUrl = sourceStudent?.passportPhotoUrl || (student as any).passportPhotoUrl || '';
-
-    const html = buildReportCardPrintHtml({
+    return buildReportCardPrintHtml({
       schoolName: school?.name || termReport.schoolName || '',
       schoolLogoUrl: school?.logo_url ? resolvePhotoUrl(school.logo_url) : undefined,
       className: termReport.className,
@@ -1751,9 +1770,28 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
       classTeacherSig: classTeacherSig || undefined,
       headTeacherSig: headTeacherSig || undefined,
     });
-    openReportCardPrintWindow(html);
   };
 
+  const handlePreviewReportCard = () => {
+    if (!reportCardRef.current) return;
+    const printDoc = buildSelectedReportCardHtml();
+    openPrintPreview({
+      title: 'Report Card Preview',
+      contentRef: reportCardRef,
+      printDocumentHtml: printDoc || undefined,
+    });
+  };
+
+  const handlePrintReportCard = () => {
+    const html = buildSelectedReportCardHtml();
+    if (!html) return;
+    openPrintPreview({
+      title: 'Report Card',
+      html,
+      printDocumentHtml: html,
+      isFullDocument: true,
+    });
+  };
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
@@ -1779,14 +1817,14 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
             <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-1">
               {isHeadmasterGradesMode
                 ? 'Review term reports, add headmaster remarks, and sign report cards'
-                : isAdminViewer
+                : isAdminViewer && !isSchoolAdmin
                   ? 'View grades (read-only)'
                   : 'Assessments and student grades'}
             </p>
           </div>
         </div>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full lg:w-auto shrink-0">
-          {isAdminViewer && !isHeadmasterGradesMode ? (
+          {isAdminViewer && !isHeadmasterGradesMode && !isSchoolAdmin ? (
             <Badge variant="secondary" className="justify-center py-2 flex items-center gap-1 text-blue-700 bg-blue-50 border border-blue-200">
               <Eye className="w-3 h-3" /> Read Only
             </Badge>
@@ -1794,7 +1832,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
             <Badge variant="secondary" className="justify-center py-2 flex items-center gap-1 text-amber-800 bg-amber-50 border border-amber-200">
               <Trophy className="w-3 h-3" /> Headmaster review
             </Badge>
-          ) : (
+          ) : (!isAdminViewer || isSchoolAdmin) ? (
             <Button
               className="min-h-[48px] w-full sm:w-auto touch-manipulation hidden sm:inline-flex"
               variant="primaryAction"
@@ -1803,7 +1841,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
             >
               <Plus className="w-4 h-4 mr-2" /> Add Assessment
             </Button>
-          )}
+          ) : null}
           {selectedClassId && (
             <Button variant="outline" className="min-h-[48px] w-full sm:w-auto touch-manipulation" onClick={handleLoadReport}>
               <Trophy className="w-4 h-4 mr-2" /> Term Report
@@ -1855,7 +1893,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
             ))}
           </div>
 
-          {!isAdminViewer && activeTab === 'grades' && (
+          {canEditSelectedGrades && activeTab === 'grades' && (
             <div className="sm:hidden sticky top-0 z-20 -mx-4 px-4 py-2 border-b border-slate-200 bg-white/95 dark:bg-slate-950/95 backdrop-blur-md shadow-sm grid grid-cols-2 gap-2">
               {!isBulkEditing ? (
                 <>
@@ -2019,12 +2057,12 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                             </Badge>
                           )}
                           {/* Desktop / tablet: bulk controls (mobile uses sticky bar to avoid duplicate Save) */}
-                          {!isAdminViewer && !isBulkEditing && (
+                          {canEditSelectedGrades && !isBulkEditing && (
                             <Button size="sm" variant="outline" onClick={enterBulkEdit} className="gap-1.5 hidden sm:inline-flex border-purple-300 text-purple-900 dark:text-purple-100">
                               <PencilLine className="w-3.5 h-3.5" /> Edit All
                             </Button>
                           )}
-                          {!isAdminViewer && isBulkEditing && (
+                          {canEditSelectedGrades && isBulkEditing && (
                             <div className="hidden sm:flex gap-2">
                               <Button size="sm" variant="outline" onClick={cancelBulkEdit} className="gap-1.5 border-slate-400 text-slate-900 dark:text-slate-100">
                                 <X className="w-3.5 h-3.5" /> Cancel
@@ -2084,20 +2122,21 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                               <div key={row.studentDbId} className="border rounded-lg overflow-hidden">
                                 {/* ── Main row ── */}
                                 <div
-                                  className={`flex items-center gap-3 p-3 transition-colors ${row.hasMoved
+                                  className={`flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3 p-3 transition-colors ${row.hasMoved
                                       ? 'bg-amber-50'
                                       : isBulkEditing
                                         ? 'bg-slate-50'
                                         : 'bg-white'
                                     }`}
                                 >
+                                  <div className="flex items-start gap-2 min-w-0 flex-1">
                                   {/* Rank */}
-                                  <span className="text-xs font-bold text-gray-400 w-5 shrink-0 text-right">{idx + 1}</span>
+                                  <span className="text-xs font-bold text-gray-400 w-5 shrink-0 text-right pt-0.5">{idx + 1}</span>
 
                                   {/* Student info */}
                                   <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <p className="font-medium text-gray-900 text-sm">
+                                    <div className="flex items-start gap-2 flex-wrap">
+                                      <p className="font-medium text-gray-900 text-sm break-words leading-snug">
                                         {row.firstName} {row.lastName}
                                       </p>
                                       {row.hasMoved && row.currentClassName && (
@@ -2118,9 +2157,11 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                       </p>
                                     )}
                                   </div>
+                                  </div>
 
+                                  <div className="flex items-center justify-between sm:justify-end gap-2 pl-7 sm:pl-0 shrink-0 w-full sm:w-auto">
                                   {/* Score display / bulk input */}
-                                  <div className="flex items-center gap-2 shrink-0">
+                                  <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
                                     {isBulkEditing ? (
                                       <div className="flex items-center gap-1">
                                         <Input
@@ -2188,6 +2229,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                         : <ChevronRight className="w-3 h-3" />}
                                     </button>
                                   )}
+                                  </div>
                                 </div>
 
                                 {/* ── History panel ── */}
@@ -2338,8 +2380,11 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                 : <><AlertTriangle className="w-3.5 h-3.5 mr-1.5" /> Complete Reports First</>}
                           </Button>
                         )}
-                        <Button variant="outline" size="sm" onClick={handlePrint}>
+                        <Button variant="outline" size="sm" onClick={handlePrint} className="hidden sm:inline-flex">
                           <Printer className="w-4 h-4 mr-2" /> Print Class Table
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={handlePrint} className="sm:hidden">
+                          <Eye className="w-4 h-4 mr-1.5" /> Preview Table
                         </Button>
                       </div>
                     </CardTitle>
@@ -2454,7 +2499,10 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                           </Select>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          <Button size="sm" variant="outline" onClick={handlePrintReportCard} disabled={!selectedReportStudentId}>
+                          <Button size="sm" variant="outline" onClick={handlePreviewReportCard} disabled={!selectedReportStudentId} className="sm:hidden">
+                            <Eye className="w-4 h-4 mr-1.5" /> Preview
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={handlePrintReportCard} disabled={!selectedReportStudentId} className="hidden sm:inline-flex">
                             <Printer className="w-4 h-4 mr-1.5" /> Print Report Card
                           </Button>
                           <Button size="sm" onClick={saveReportRemarks} disabled={!selectedReportStudentId || remarkSaving || (!canEditClassTeacherReport && !canEditHeadmasterRemarks)}>
@@ -2875,7 +2923,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                         );
                       })()}
                     </div>
-                    <div ref={printRef}>
+                    <div ref={printRef} className="max-md:hidden">
                       <h2 style={{ textAlign: 'center' }}>Term Report — {termReport.className}</h2>
                       <p style={{ textAlign: 'center', color: '#666', fontSize: 12 }}>
                         {termReport.subjects.length} subjects · {termReport.students.length} students
@@ -2978,8 +3026,45 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                           </tbody>
                         </table>
                       </div>
+                    </div>
 
-                      {/* Subject breakdown */}
+                      {/* Mobile: stacked student cards (screen only — not included in class table print) */}
+                      <div className="md:hidden mt-4 space-y-3">
+                        {termReport.students.map((s) => {
+                          const pct = s.percentage;
+                          const grade = getLetterGrade(pct);
+                          return (
+                            <div key={s.studentId} className="rounded-xl border border-border bg-card p-3 shadow-sm">
+                              <div className="flex items-start justify-between gap-2 mb-2">
+                                <div className="min-w-0">
+                                  <p className="font-semibold text-sm break-words">{s.firstName} {s.lastName}</p>
+                                  <p className="text-xs text-muted-foreground">{s.admissionNumber}</p>
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <p className="text-lg font-bold text-purple-700">{positionSuffix(s.position)}</p>
+                                  <p className="text-xs text-muted-foreground">{pct}% · {grade.letter}</p>
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                {termReport.subjects.map((subj) => {
+                                  const ss = s.subjectScores[subj];
+                                  return (
+                                    <div key={subj} className="rounded-lg bg-muted/50 px-2 py-1.5">
+                                      <p className="text-[10px] font-medium text-muted-foreground truncate">{subj}</p>
+                                      <p className="text-sm font-mono font-semibold">
+                                        {ss?.score != null ? Number(ss.score).toFixed(1) : '—'}
+                                      </p>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <p className="text-xs text-right mt-2 font-semibold">Total: {s.grandTotal}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Subject breakdown (screen only — not included in class table print) */}
                       <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                         {termReport.subjects.map(subj => {
                           const sAssignments = termReport.assignmentsBySubject[subj] || [];
@@ -3000,7 +3085,6 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                           );
                         })}
                       </div>
-                    </div>
                   </CardContent>
                 </Card>
               )}
@@ -3125,25 +3209,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={unsavedDialogOpen} onOpenChange={(open) => { if (!open) { pendingNavActionRef.current = null; setUnsavedDialogOpen(false); } }}>
-        <AlertDialogContent className="rounded-[1rem] border-t-4 border-amber-500 shadow-[0_20px_60px_rgba(0,0,0,0.15)]">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Save report card changes?</AlertDialogTitle>
-            <AlertDialogDescription>
-              You have unsaved changes for this student&apos;s report card. Save before leaving?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="flex-col sm:flex-row gap-2">
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <Button type="button" variant="outline" onClick={() => void handleUnsavedDiscard()}>
-              Discard
-            </Button>
-            <AlertDialogAction onClick={(e) => { e.preventDefault(); void handleUnsavedSaveAndContinue(); }}>
-              Save &amp; continue
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {UnsavedChangesDialog}
 
       <AlertDialog open={showReleaseConfirm} onOpenChange={setShowReleaseConfirm}>
         <AlertDialogContent className={`rounded-[1rem] border-t-4 shadow-[0_20px_60px_rgba(0,0,0,0.15)] ${

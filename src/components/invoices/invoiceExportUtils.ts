@@ -45,10 +45,12 @@ export async function downloadInvoicePayload(data: InvoicePdfPayload): Promise<v
   }
 }
 
+import { openPrintPreview } from '../../contexts/PrintPreviewContext';
+
 export function printInvoiceElement(element: HTMLElement, title: string): void {
-  const win = window.open('', '_blank');
-  if (!win) return;
-  win.document.write(`
+  openPrintPreview({
+    title,
+    html: `
     <html>
       <head>
         <title>${title}</title>
@@ -61,10 +63,9 @@ export function printInvoiceElement(element: HTMLElement, title: string): void {
         </style>
       </head>
       <body>${element.outerHTML}</body>
-      <script>setTimeout(function(){ window.print(); }, 400);</script>
     </html>
-  `);
-  win.document.close();
+  `,
+  });
 }
 
 export async function printInvoicePayload(data: InvoicePdfPayload): Promise<void> {

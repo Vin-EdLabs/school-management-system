@@ -5,6 +5,7 @@ import { setTenantContext } from '../middleware/tenant.js';
 import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 import {
   attachGradeAccessContext,
+  assertTeacherOwnsAssessment,
   isAdminGradeRole,
   teacherCanAccessSubjectClass,
 } from '../middleware/requireGradeAccess.js';
@@ -120,6 +121,8 @@ router.get('/', async (req: AuthRequest, res) => {
       }
       params.push(allowedSubjectIds);
       sql += ` AND ga.subject_id = ANY($${params.length})`;
+      params.push(req.user!.id);
+      sql += ` AND ga.created_by = $${params.length}`;
     }
 
     sql += ' ORDER BY ga.is_exam, gcc.display_order NULLS LAST, ga.subject, ga.name';
@@ -364,21 +367,17 @@ router.get('/:assessmentId/scores', async (req: AuthRequest, res) => {
     }
     const assessment = aRes.rows[0];
 
-    if (req.gradeAccessRole === 'teacher') {
-      const pairs = req.allowedSubjectClassPairs || [];
-      if (
-        assessment.subject_id &&
-        !teacherCanAccessSubjectClass(pairs, Number(assessment.subject_id), Number(assessment.class_id))
-      ) {
-        return res.status(403).json({ error: 'You are not assigned to this subject and class' });
-      }
+    const accessError = assertTeacherOwnsAssessment(req, assessment);
+    if (accessError) {
+      return res.status(403).json({ error: accessError });
     }
 
     const scores = await query(
       `SELECT sg.student_id, sg.raw_score, sg.score, s.first_name, s.last_name, s.student_id AS admission_number
        FROM student_grades sg
        JOIN students s ON s.id = sg.student_id AND s.tenant_id = sg.tenant_id
-       WHERE sg.tenant_id = $1 AND sg.assignment_id = $2`,
+       WHERE sg.tenant_id = $1 AND sg.assignment_id = $2
+         AND COALESCE(s.enrollment_status, 'active') = 'active'`,
       [tenantId, assessmentId]
     );
 
@@ -422,14 +421,9 @@ router.put('/:assessmentId/scores', async (req: AuthRequest, res) => {
     const assessment = aRes.rows[0];
     const maxMarks = Number(assessment.max_marks ?? assessment.max_score) || 100;
 
-    if (req.gradeAccessRole === 'teacher') {
-      const pairs = req.allowedSubjectClassPairs || [];
-      if (
-        assessment.subject_id &&
-        !teacherCanAccessSubjectClass(pairs, Number(assessment.subject_id), Number(assessment.class_id))
-      ) {
-        return res.status(403).json({ error: 'You are not assigned to this subject and class' });
-      }
+    const accessError = assertTeacherOwnsAssessment(req, assessment);
+    if (accessError) {
+      return res.status(403).json({ error: accessError });
     }
 
     for (const entry of scores) {

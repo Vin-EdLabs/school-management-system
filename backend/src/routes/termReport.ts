@@ -3,6 +3,7 @@ import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js'
 import { setTenantContext } from '../middleware/tenant.js';
 import { attachGradeAccessContext, isAdminGradeRole } from '../middleware/requireGradeAccess.js';
 import { buildConfigurableTermReport } from '../services/termReportCalculatorService.js';
+import { isMainClassTeacher } from '../services/classTeacherAccess.js';
 
 const router = express.Router();
 
@@ -39,27 +40,28 @@ router.get('/', async (req: AuthRequest, res) => {
       yearOverride = String(t.rows[0].year);
     }
 
-    let subjectIdFilter: Set<number> | undefined;
     if (req.gradeAccessRole === 'teacher') {
       const pairs = req.allowedSubjectClassPairs || [];
-      const allowed = pairs.filter((p) => p.classId === classId).map((p) => p.subjectId);
-      if (allowed.length === 0) {
-        return res.json({
-          classScoreWeight: 50,
-          examWeight: 50,
-          subjects: [],
-          students: [],
-        });
+      const teacherId = req.user!.teacherId != null ? Number(req.user!.teacherId) : null;
+      const isMain = await isMainClassTeacher(tenantId, classId, teacherId);
+      if (!isMain) {
+        const teachesClass = pairs.some((p) => p.classId === classId);
+        if (!teachesClass) {
+          return res.json({
+            classScoreWeight: 50,
+            examWeight: 50,
+            subjects: [],
+            students: [],
+          });
+        }
       }
-      subjectIdFilter = new Set(allowed);
     }
 
     const report = await buildConfigurableTermReport(
       tenantId,
       classId,
       termOverride,
-      yearOverride,
-      { subjectIdFilter }
+      yearOverride
     );
 
     if (!report) {

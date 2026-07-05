@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -13,8 +13,10 @@ import {
 import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiService } from '../../services/api';
+import { isActiveEnrolledStudent } from '../students/studentRegistryUtils';
 import { useSchool } from '../../contexts/SchoolContext';
 import { formatDisplayDate } from '../../utils/dateFormat';
+import { useUnsavedChangesGuard } from '../../hooks/useUnsavedChangesGuard';
 
 interface AttendanceHistoryEntry {
   date: string;
@@ -67,6 +69,8 @@ const AttendanceModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?:
   const [selectedClassId, setSelectedClassId] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [attendance, setAttendance] = useState<AttendanceStatus>({});
+  const [savedAttendance, setSavedAttendance] = useState<AttendanceStatus>({});
+  const savedAttendanceRef = useRef<AttendanceStatus>({});
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [history, setHistory] = useState<AttendanceHistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -84,10 +88,15 @@ const AttendanceModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?:
     if (schoolId != null) apiService.setTenantContext(schoolId);
   }, [schoolId]);
 
+  const studentInClass = (s: { classAssigned?: string; classAssignedId?: number | string | null; enrollmentStatus?: string }, cls: TeacherClass) =>
+    isActiveEnrolledStudent(s) &&
+    (s.classAssigned === cls.class_name || (s.classAssignedId && String(s.classAssignedId) === String(cls.id)));
+
   const allClassesAsTeacherClass = useMemo<TeacherClass[]>(() => {
     return classes.map(c => {
       const count = students.filter(s =>
-        s.classAssigned === c.className || (s.classAssignedId && String(s.classAssignedId) === String(c.id))
+        isActiveEnrolledStudent(s) &&
+        (s.classAssigned === c.className || (s.classAssignedId && String(s.classAssignedId) === String(c.id)))
       ).length;
       return { id: Number(c.id), class_name: c.className, student_count: String(count) };
     });
@@ -120,7 +129,7 @@ const AttendanceModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?:
   const classStudents = selectedClassId
     ? students.filter(s => {
         const cls = teacherClasses.find(c => String(c.id) === selectedClassId);
-        return cls && (s.classAssigned === cls.class_name || (s.classAssignedId && String(s.classAssignedId) === selectedClassId));
+        return cls ? studentInClass(s, cls) : false;
       })
     : [];
 
@@ -136,8 +145,12 @@ const AttendanceModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?:
           map[String(a.student_db_id)] = Boolean(a.present);
         });
         setAttendance(map);
+        setSavedAttendance(map);
+        savedAttendanceRef.current = map;
       } catch {
         setAttendance({});
+        setSavedAttendance({});
+        savedAttendanceRef.current = {};
       } finally {
         setAttendanceLoading(false);
       }
@@ -166,14 +179,14 @@ const AttendanceModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?:
     setAttendance(prev => ({ ...prev, [studentId]: present }));
   };
 
-  const handleSaveAttendance = async () => {
+  const handleSaveAttendance = async (): Promise<boolean> => {
     if (!selectedClassId) {
       toast({ title: 'Please select a class', variant: 'destructive' });
-      return;
+      return false;
     }
     if (classStudents.length === 0) {
       toast({ title: 'No students in class', variant: 'destructive' });
-      return;
+      return false;
     }
     // Only send explicitly marked students (undefined = not marked, skip those)
     const records = classStudents
@@ -185,7 +198,7 @@ const AttendanceModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?:
 
     if (records.length === 0) {
       toast({ title: 'No attendance marked', description: 'Please mark at least one student as present or absent.', variant: 'destructive' });
-      return;
+      return false;
     }
 
     setSaving(true);
@@ -200,14 +213,50 @@ const AttendanceModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?:
         title: 'Attendance Saved',
         description: `${presentCnt} present, ${records.length - presentCnt} absent — ${selectedDate}`,
       });
+      setSavedAttendance({ ...attendance });
+      savedAttendanceRef.current = { ...attendance };
       // Refresh history
       const data = await apiService.get<AttendanceHistoryEntry[]>(`/attendance/history?classId=${selectedClassId}`);
       setHistory(Array.isArray(data) ? data : []);
+      return true;
     } catch (e: any) {
       toast({ title: 'Error', description: e?.message || 'Failed to save attendance', variant: 'destructive' });
+      return false;
     } finally {
       setSaving(false);
     }
+  };
+
+  const attendanceDirty = useMemo(() => {
+    return JSON.stringify(attendance) !== JSON.stringify(savedAttendance);
+  }, [attendance, savedAttendance]);
+
+  const { runWithGuard, UnsavedChangesDialog } = useUnsavedChangesGuard({
+    isDirty: !isAdminViewer && !schoolWideReadOnly && activeTab === 'take' && attendanceDirty,
+    onSave: handleSaveAttendance,
+    onDiscard: () => {
+      setAttendance({ ...savedAttendanceRef.current });
+    },
+    message: 'You have unsaved attendance marks. Save before leaving, or discard your changes.',
+  });
+
+  const handleClassChange = (classId: string) => {
+    runWithGuard(() => {
+      setSelectedClassId(classId);
+      setTrackerStudentId('');
+      setTrackerRecords([]);
+      setAttendance({});
+      setSavedAttendance({});
+      savedAttendanceRef.current = {};
+    });
+  };
+
+  const handleDateChange = (date: string) => {
+    runWithGuard(() => setSelectedDate(date));
+  };
+
+  const handleTabChange = (tab: 'take' | 'history' | 'tracker') => {
+    runWithGuard(() => setActiveTab(tab));
   };
 
   // Student tracker: search ALL students in the school (not just current class)
@@ -297,7 +346,7 @@ const AttendanceModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?:
             </div>
             <div className="flex-1 space-y-2 w-full text-center md:text-left">
               <Label className="text-xs sm:text-sm font-bold text-muted-foreground uppercase tracking-widest">Select class</Label>
-              <Select value={selectedClassId} onValueChange={v => { setSelectedClassId(v); setTrackerStudentId(''); setTrackerRecords([]); }}>
+              <Select value={selectedClassId} onValueChange={handleClassChange}>
                 <SelectTrigger className="h-12 sm:h-14 min-h-[48px] rounded-2xl border-2 border-border bg-background hover:border-emerald-200 dark:hover:border-emerald-800 focus:ring-4 focus:ring-emerald-50 dark:focus:ring-emerald-900/20 transition-all text-base sm:text-lg font-semibold">
                   <SelectValue placeholder="Which class are you marking?" />
                 </SelectTrigger>
@@ -326,7 +375,7 @@ const AttendanceModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?:
               <button
                 key={tab.key}
                 type="button"
-                onClick={() => setActiveTab(tab.key as any)}
+                onClick={() => handleTabChange(tab.key as 'take' | 'history' | 'tracker')}
                 className={`flex items-center gap-1.5 px-3 sm:px-4 min-h-[48px] shrink-0 text-sm font-medium border-b-2 transition-colors whitespace-nowrap touch-manipulation ${
                   activeTab === tab.key
                     ? 'border-green-600 text-green-700'
@@ -367,7 +416,7 @@ const AttendanceModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?:
                     <input
                       type="date"
                       value={selectedDate}
-                      onChange={(e) => setSelectedDate(e.target.value)}
+                      onChange={(e) => handleDateChange(e.target.value)}
                       className="flex h-12 min-h-[48px] w-full rounded-xl border border-input bg-background px-3 py-2 text-base sm:text-sm touch-manipulation"
                     />
                   </div>
@@ -538,7 +587,7 @@ const AttendanceModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?:
                         <div
                           key={entry.date}
                           className="flex items-center justify-between p-3 rounded-lg border bg-muted/30 hover:bg-muted/50 cursor-pointer transition-colors"
-                          onClick={() => { setSelectedDate(entry.date); setActiveTab('take'); }}
+                          onClick={() => runWithGuard(() => { setSelectedDate(entry.date); setActiveTab('take'); })}
                         >
                           <div className="flex items-center gap-3">
                             <div className="w-9 h-9 bg-muted rounded-lg flex items-center justify-center shrink-0">
@@ -716,6 +765,7 @@ const AttendanceModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?:
           )}
         </>
       )}
+      {UnsavedChangesDialog}
     </div>
   );
 };

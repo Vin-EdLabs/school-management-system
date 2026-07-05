@@ -126,3 +126,28 @@ export function requireGradeAccess(action: GradeAccessAction = 'view') {
 export function isAdminGradeRole(req: AuthRequest): boolean {
   return req.gradeAccessRole === 'admin' || req.gradeAccessRole === 'headmaster';
 }
+
+/** Teachers may only view/edit grade entry for assessments they created; admins/headmasters bypass. */
+export function assertTeacherOwnsAssessment(
+  req: AuthRequest,
+  assessment: { created_by?: number | null; subject_id?: number | null; class_id: number }
+): string | null {
+  if (isAdminGradeRole(req)) return null;
+  if (req.gradeAccessRole === 'denied') {
+    return 'You do not have access to grades';
+  }
+  if (req.gradeAccessRole !== 'teacher') {
+    return 'You do not have access to grades';
+  }
+  if (Number(assessment.created_by) !== Number(req.user!.id)) {
+    return 'You can only access assessments you created';
+  }
+  const pairs = req.allowedSubjectClassPairs || [];
+  if (
+    assessment.subject_id &&
+    !teacherCanAccessSubjectClass(pairs, Number(assessment.subject_id), Number(assessment.class_id))
+  ) {
+    return 'You are not assigned to this subject and class';
+  }
+  return null;
+}

@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import type { Request, Response, NextFunction } from 'express';
 import { query } from '../db/connection.js';
+import { resolveTenantBySlug } from '../services/tenantResolver.js';
 
 export type ParentAuthPayload = {
   accountId: number;
@@ -59,6 +60,25 @@ export async function resolveParentFromToken(
   };
 }
 
+/** When the portal sends X-Tenant-Slug, JWT tenant must match that school. */
+export async function validateParentPortalHost(
+  req: Request,
+  jwtTenantId: number
+): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  const raw = req.headers['x-tenant-slug'];
+  if (!raw || typeof raw !== 'string' || !raw.trim()) {
+    return { ok: true };
+  }
+  const tenant = await resolveTenantBySlug(raw.trim());
+  if (!tenant) {
+    return { ok: false, status: 403, error: 'School portal mismatch' };
+  }
+  if (Number(tenant.id) !== jwtTenantId) {
+    return { ok: false, status: 403, error: 'Session belongs to a different school' };
+  }
+  return { ok: true };
+}
+
 export async function authenticateParent(
   req: ParentAuthRequest,
   res: Response,
@@ -74,6 +94,12 @@ export async function authenticateParent(
     const resolved = await resolveParentFromToken(token);
     if (!resolved) {
       res.status(401).json({ error: 'Invalid token' });
+      return;
+    }
+
+    const hostCheck = await validateParentPortalHost(req, resolved.parent.tenantId);
+    if (!hostCheck.ok) {
+      res.status(hostCheck.status).json({ error: hostCheck.error });
       return;
     }
 

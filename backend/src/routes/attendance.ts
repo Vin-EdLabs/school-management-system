@@ -125,7 +125,22 @@ router.post('/', async (req: AuthRequest, res) => {
     }
     // Only save records that were explicitly marked (present = true or false)
     const markedRecords = records.filter(r => typeof r.present === 'boolean');
-    for (const r of markedRecords) {
+    if (markedRecords.length === 0) {
+      return res.json({ message: 'Attendance saved', count: 0 });
+    }
+
+    const studentIds = markedRecords.map((r: { studentId: number }) => r.studentId);
+    const activeStudentsRes = await query(
+      `SELECT id FROM students
+       WHERE tenant_id = $1 AND id = ANY($2) AND COALESCE(enrollment_status, 'active') = 'active'`,
+      [tenantId, studentIds]
+    );
+    const activeStudentIds = new Set(activeStudentsRes.rows.map((row) => Number(row.id)));
+    const activeRecords = markedRecords.filter((r: { studentId: number }) =>
+      activeStudentIds.has(Number(r.studentId))
+    );
+
+    for (const r of activeRecords) {
       await query(
         `INSERT INTO attendance (tenant_id, class_id, student_id, attendance_date, present, recorded_by)
          VALUES ($1, $2, $3, $4, $5, $6)
@@ -135,7 +150,7 @@ router.post('/', async (req: AuthRequest, res) => {
       );
     }
     emitTenantDataChanged(tenantId, 'attendance', 'updated');
-    res.json({ message: 'Attendance saved', count: markedRecords.length });
+    res.json({ message: 'Attendance saved', count: activeRecords.length });
   } catch (error) {
     console.error('Save attendance error:', error);
     res.status(500).json({ error: 'Failed to save attendance' });

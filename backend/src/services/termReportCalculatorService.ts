@@ -11,6 +11,7 @@ import {
   loadGradeConfigForTenant,
 } from './gradeConfigService.js';
 import { getSchoolActiveTermYear } from './gradesTermContext.js';
+import { ACTIVE_STUDENT_WHERE } from '../utils/studentEnrollment.js';
 
 export type SubjectResult = {
   subjectId: number | null;
@@ -118,8 +119,8 @@ export async function buildConfigurableTermReport(
 
   const studentsRes = await query(
     `SELECT id, first_name, last_name, student_id AS admission_number, passport_photo_url
-     FROM students
-     WHERE tenant_id = $1 AND class_assigned_id = $2
+     FROM students s
+     WHERE s.tenant_id = $1 AND s.class_assigned_id = $2 AND ${ACTIVE_STUDENT_WHERE}
      ORDER BY first_name, last_name`,
     [tenantId, classId]
   );
@@ -129,7 +130,7 @@ export async function buildConfigurableTermReport(
     `SELECT DISTINCT s.id, s.first_name, s.last_name, s.student_id AS admission_number, s.passport_photo_url
      FROM student_grades sg
      JOIN students s ON sg.student_id = s.id AND s.tenant_id = sg.tenant_id
-     WHERE sg.tenant_id = $1 AND sg.assignment_id = ANY($2)`,
+     WHERE sg.tenant_id = $1 AND sg.assignment_id = ANY($2) AND ${ACTIVE_STUDENT_WHERE}`,
     [tenantId, assignmentIds]
   );
 

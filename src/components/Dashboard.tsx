@@ -76,12 +76,14 @@ import { ImpersonationProvider } from '../contexts/ImpersonationContext';
 import ImpersonationShell from './impersonation/ImpersonationShell';
 import { IMPERSONATION_GO_MODULE_KEY } from '../utils/impersonationHelpers';
 import { shouldUseAdministratorDashboard } from '../utils/schoolAdminView';
+import { PrintPreviewProvider } from '../contexts/PrintPreviewContext';
+import { NavigationGuardProvider, useNavigationGuard } from '../contexts/NavigationGuardContext';
 
-const Dashboard = () => {
+const DashboardContent = () => {
   const { hasAccess, user } = useAuth();
   useStaffPushSync();
   useFinanceRealtime();
-  const [activeModule, setActiveModule] = useState(() => {
+  const [activeModule, setActiveModuleState] = useState(() => {
     const path = window.location.pathname;
     if (path.includes('/finance/transactions')) return 'transactions';
     if (path.includes('/finance/daily-fees')) return 'daily-fees';
@@ -142,10 +144,10 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (user?.role === 'finance' && activeModule === 'dashboard') {
-      setActiveModule('financial-dashboard');
+      setActiveModuleState('financial-dashboard');
     }
     if (user?.role === 'headmaster' && activeModule === 'dashboard') {
-      setActiveModule('headmaster-dashboard');
+      setActiveModuleState('headmaster-dashboard');
     }
   }, [user?.role, activeModule]);
 
@@ -154,8 +156,14 @@ const Dashboard = () => {
     const goMod = sessionStorage.getItem(IMPERSONATION_GO_MODULE_KEY);
     if (!goMod || !user) return;
     sessionStorage.removeItem(IMPERSONATION_GO_MODULE_KEY);
-    setActiveModule(goMod);
+    setActiveModuleState(goMod);
   }, [user?.id, user?.role]);
+
+  const { requestNavigation } = useNavigationGuard();
+
+  const setActiveModule = (module: string) => {
+    requestNavigation(() => setActiveModuleState(module));
+  };
 
   const renderActiveModule = () => {
     // Check access before rendering
@@ -363,7 +371,7 @@ const Dashboard = () => {
           <SetupProgressGate activeModule={activeModule} setActiveModule={setActiveModule} />
           <ActiveTermRequiredShell
             activeModule={activeModule}
-            onOpenSettings={() => setActiveModule('settings')}
+            onOpenSettings={() => setActiveModuleState('settings')}
           >
             <TermReadOnlyShell activeModule={activeModule}>{renderActiveModule()}</TermReadOnlyShell>
           </ActiveTermRequiredShell>
@@ -372,5 +380,13 @@ const Dashboard = () => {
     </ImpersonationProvider>
   );
 };
+
+const Dashboard = () => (
+  <NavigationGuardProvider>
+    <PrintPreviewProvider>
+      <DashboardContent />
+    </PrintPreviewProvider>
+  </NavigationGuardProvider>
+);
 
 export default Dashboard;

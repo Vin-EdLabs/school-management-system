@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { formatDisplayDate } from '@/utils/dateFormat';
 import { resolveLogoUrl } from '@/services/tenantService';
 import { getTenantSchoolUrl } from '@/utils/tenantHost';
+import { openPrintPreview } from '../../contexts/PrintPreviewContext';
 
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
@@ -103,10 +104,9 @@ export function printAppointmentLetter(elementId: string = 'appointment-letter-p
     .map(el => el.outerHTML)
     .join('\n');
 
-  const win = window.open('', '_blank');
-  if (!win) return;
-
-  win.document.write(`
+  openPrintPreview({
+    title: 'Appointment Letter',
+    html: `
     <html>
       <head>
         <title>Appointment Letter</title>
@@ -131,11 +131,10 @@ export function printAppointmentLetter(elementId: string = 'appointment-letter-p
       </head>
       <body>
         ${clone.outerHTML}
-        <script>setTimeout(function(){window.print()},500)</script>
       </body>
     </html>
-  `);
-  win.document.close();
+  `,
+  });
 }
 
 function PortalAccessBlock({ data }: { data: AppointmentLetterData }) {

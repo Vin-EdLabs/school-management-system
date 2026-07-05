@@ -313,11 +313,18 @@ function TodoSection({
   );
 }
 
-const PersonalTodosWidget: React.FC = () => {
+const PersonalTodosWidget: React.FC<{
+  externalOpen?: boolean;
+  onExternalOpenChange?: (open: boolean) => void;
+  hideTrigger?: boolean;
+}> = ({ externalOpen, onExternalOpenChange, hideTrigger = false }) => {
   const { socket } = useSocket();
   const anchorRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = onExternalOpenChange != null;
+  const open = isControlled ? !!externalOpen : internalOpen;
+  const setOpen = isControlled ? onExternalOpenChange! : setInternalOpen;
   const [todos, setTodos] = useState<PersonalTodo[]>([]);
   const [loading, setLoading] = useState(false);
   const [draft, setDraft] = useState('');
@@ -533,6 +540,171 @@ const PersonalTodosWidget: React.FC = () => {
 
   const hasAny = todos.length > 0;
 
+  useEffect(() => {
+    if (!hideTrigger || !open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [hideTrigger, open]);
+
+  const panelBody = (
+    <>
+      <div className="border-b border-border/70 px-4 py-2.5 bg-gradient-to-b from-emerald-50/80 to-white dark:from-emerald-950/30 dark:to-slate-950">
+        <div className="flex items-start gap-2.5">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300">
+            <ClipboardList className="h-4 w-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-foreground leading-tight">My to-dos</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+              Personal tasks only you can see — set a reminder and we&apos;ll nudge you when it&apos;s due.
+            </p>
+          </div>
+          {hideTrigger ? (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 shrink-0 rounded-full"
+              onClick={() => setOpen(false)}
+              aria-label="Close to-dos"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="border-b border-border/70 px-4 py-4 space-y-3 bg-slate-50/60 dark:bg-slate-900/40">
+        <div className="flex gap-2 items-end">
+          <Textarea
+            ref={textareaRef}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                void addTodo();
+              }
+            }}
+            placeholder="Add a new task… (Enter to save, Shift+Enter for new line)"
+            rows={2}
+            className="min-h-[56px] max-h-[180px] resize-none text-base leading-relaxed rounded-xl border-slate-200 dark:border-slate-700 py-3"
+          />
+          <Button
+            type="button"
+            size="icon"
+            variant="primaryAction"
+            className="h-12 w-12 shrink-0 rounded-xl"
+            onClick={() => void addTodo()}
+            disabled={!draft.trim() || saving}
+          >
+            <Plus className="h-5 w-5" />
+          </Button>
+        </div>
+
+        <div className="rounded-xl border border-emerald-200/60 bg-white p-3 dark:border-emerald-900/40 dark:bg-slate-900/50">
+          <button
+            type="button"
+            onClick={() => setShowReminder((v) => !v)}
+            className={cn(
+              'inline-flex w-full items-center justify-between gap-2 text-sm font-semibold rounded-lg px-1 py-0.5 transition-colors',
+              showReminder ? 'text-emerald-800 dark:text-emerald-300' : 'text-slate-600 dark:text-slate-300'
+            )}
+          >
+            <span className="inline-flex items-center gap-2">
+              <CalendarClock className="h-4 w-4 text-emerald-600" />
+              Set reminder (optional)
+            </span>
+            <span className="text-xs font-medium text-muted-foreground">{showReminder ? 'Hide' : 'Show'}</span>
+          </button>
+
+          {showReminder && (
+            <div className="mt-3 space-y-2">
+              <input
+                type="datetime-local"
+                value={reminderDraft}
+                onChange={(e) => setReminderDraft(e.target.value)}
+                className="flex h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base text-slate-900 shadow-sm focus-visible:border-emerald-300 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-emerald-500/15 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              />
+              {reminderPreview ? (
+                <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
+                  <Bell className="h-4 w-4 shrink-0" />
+                  <span>Remind me on {reminderPreview}</span>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground px-1">Pick a date and time — we&apos;ll remind you at the top of the screen.</p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <ScrollArea className="max-h-[min(62vh,480px)]">
+        <div className="p-4 space-y-5">
+          {loading && !hasAny ? (
+            <p className="text-sm text-muted-foreground text-center py-8">Loading tasks…</p>
+          ) : !hasAny ? (
+            <p className="text-center text-xs text-muted-foreground py-4">No tasks yet — add one above.</p>
+          ) : (
+            <>
+              <TodoSection title="Today" items={groups.today} onToggle={toggleTodo} onDelete={deleteTodo} deletingIds={deletingIds} />
+              <TodoSection title="Upcoming" items={groups.upcoming} onToggle={toggleTodo} onDelete={deleteTodo} deletingIds={deletingIds} />
+              <TodoSection title="No reminder" items={groups.noReminder} onToggle={toggleTodo} onDelete={deleteTodo} deletingIds={deletingIds} />
+              <TodoSection title="Completed" items={groups.completed} onToggle={toggleTodo} onDelete={deleteTodo} deletingIds={deletingIds} />
+            </>
+          )}
+        </div>
+      </ScrollArea>
+    </>
+  );
+
+  if (hideTrigger) {
+    return (
+      <>
+        {open
+          ? createPortal(
+              <div className="fixed inset-0 z-[120] md:hidden">
+                <button
+                  type="button"
+                  className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+                  aria-label="Close to-dos"
+                  onClick={() => setOpen(false)}
+                />
+                <div
+                  ref={anchorRef}
+                  className={cn(
+                    'absolute left-1/2 top-[max(calc(env(safe-area-inset-top)+3.25rem),3.5rem)] z-[121] -translate-x-1/2',
+                    'w-[min(calc(100vw-1rem),36rem)] max-h-[min(82dvh,680px)] flex flex-col overflow-hidden',
+                    'rounded-[1.125rem] border border-emerald-200/70 bg-white shadow-[0_24px_64px_rgba(0,0,0,0.22)]',
+                    'border-t-[5px] border-t-emerald-500 dark:border-emerald-900/60 dark:bg-slate-950',
+                    'animate-in fade-in-0 zoom-in-95 slide-in-from-top-3 duration-300'
+                  )}
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="My to-dos"
+                >
+                  <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{panelBody}</div>
+                </div>
+              </div>,
+              document.body
+            )
+          : null}
+        {activeReminders.length > 0 && (
+          <TodoReminderStack
+            anchorRef={anchorRef}
+            reminders={activeReminders}
+            onDismiss={dismissActiveReminder}
+            onView={() => setOpen(true)}
+            onMarkDone={(id) => void markReminderDone(id)}
+          />
+        )}
+      </>
+    );
+  }
+
   return (
     <div ref={anchorRef} className="relative flex flex-col items-center">
       <Popover open={open} onOpenChange={setOpen}>
@@ -569,120 +741,17 @@ const PersonalTodosWidget: React.FC = () => {
           align="center"
           side="bottom"
           sideOffset={14}
+          collisionPadding={12}
           className={cn(
             'w-[min(100vw-1rem,36rem)] p-0 overflow-hidden rounded-[1.125rem] border border-emerald-200/70',
             'shadow-[0_24px_64px_rgba(0,0,0,0.18)] border-t-[5px] border-t-emerald-500 bg-white dark:bg-slate-950',
             'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
             'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-3',
-            'duration-300'
+            'duration-300 z-[100]'
           )}
           onOpenAutoFocus={(e) => e.preventDefault()}
         >
-          <div className="border-b border-border/70 px-4 py-2.5 bg-gradient-to-b from-emerald-50/80 to-white dark:from-emerald-950/30 dark:to-slate-950">
-            <div className="flex items-start gap-2.5">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300">
-                <ClipboardList className="h-4 w-4" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-foreground leading-tight">My to-dos</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
-                  Personal tasks only you can see — set a reminder and we&apos;ll nudge you when it&apos;s due.
-                </p>
-                <div className="mt-1.5">
-                  <p className="text-[10px] font-medium text-muted-foreground mb-0.5">Examples:</p>
-                  <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground/75 leading-snug">
-                    {TODO_EXAMPLES.map((example) => (
-                      <span key={example} className="truncate" title={example}>
-                        • {example}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="border-b border-border/70 px-4 py-4 space-y-3 bg-slate-50/60 dark:bg-slate-900/40">
-            <div className="flex gap-2 items-end">
-              <Textarea
-                ref={textareaRef}
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    void addTodo();
-                  }
-                }}
-                placeholder="Add a new task… (Enter to save, Shift+Enter for new line)"
-                rows={2}
-                className="min-h-[56px] max-h-[180px] resize-none text-base leading-relaxed rounded-xl border-slate-200 dark:border-slate-700 py-3"
-              />
-              <Button
-                type="button"
-                size="icon"
-                variant="primaryAction"
-                className="h-12 w-12 shrink-0 rounded-xl"
-                onClick={() => void addTodo()}
-                disabled={!draft.trim() || saving}
-              >
-                <Plus className="h-5 w-5" />
-              </Button>
-            </div>
-
-            <div className="rounded-xl border border-emerald-200/60 bg-white p-3 dark:border-emerald-900/40 dark:bg-slate-900/50">
-              <button
-                type="button"
-                onClick={() => setShowReminder((v) => !v)}
-                className={cn(
-                  'inline-flex w-full items-center justify-between gap-2 text-sm font-semibold rounded-lg px-1 py-0.5 transition-colors',
-                  showReminder ? 'text-emerald-800 dark:text-emerald-300' : 'text-slate-600 dark:text-slate-300'
-                )}
-              >
-                <span className="inline-flex items-center gap-2">
-                  <CalendarClock className="h-4 w-4 text-emerald-600" />
-                  Set reminder (optional)
-                </span>
-                <span className="text-xs font-medium text-muted-foreground">{showReminder ? 'Hide' : 'Show'}</span>
-              </button>
-
-              {showReminder && (
-                <div className="mt-3 space-y-2">
-                  <input
-                    type="datetime-local"
-                    value={reminderDraft}
-                    onChange={(e) => setReminderDraft(e.target.value)}
-                    className="flex h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base text-slate-900 shadow-sm focus-visible:border-emerald-300 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-emerald-500/15 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-                  />
-                  {reminderPreview ? (
-                    <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
-                      <Bell className="h-4 w-4 shrink-0" />
-                      <span>Remind me on {reminderPreview}</span>
-                    </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground px-1">Pick a date and time — we&apos;ll remind you at the top of the screen.</p>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <ScrollArea className="max-h-[min(62vh,480px)]">
-            <div className="p-4 space-y-5">
-              {loading && !hasAny ? (
-                <p className="text-sm text-muted-foreground text-center py-8">Loading tasks…</p>
-              ) : !hasAny ? (
-                <p className="text-center text-xs text-muted-foreground py-4">No tasks yet — add one above.</p>
-              ) : (
-                <>
-                  <TodoSection title="Today" items={groups.today} onToggle={toggleTodo} onDelete={deleteTodo} deletingIds={deletingIds} />
-                  <TodoSection title="Upcoming" items={groups.upcoming} onToggle={toggleTodo} onDelete={deleteTodo} deletingIds={deletingIds} />
-                  <TodoSection title="No reminder" items={groups.noReminder} onToggle={toggleTodo} onDelete={deleteTodo} deletingIds={deletingIds} />
-                  <TodoSection title="Completed" items={groups.completed} onToggle={toggleTodo} onDelete={deleteTodo} deletingIds={deletingIds} />
-                </>
-              )}
-            </div>
-          </ScrollArea>
+          {panelBody}
         </PopoverContent>
       </Popover>
 

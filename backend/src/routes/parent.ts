@@ -26,7 +26,7 @@ import {
 } from '../services/reportCardArchiveService.js';
 import { getSchoolActiveTermYear } from '../services/gradesTermContext.js';
 import { loadStudentTermRemarks } from '../services/termReportRemarksService.js';
-import { resolveParentFromToken } from '../middleware/authenticateParent.js';
+import { resolveParentFromToken, validateParentPortalHost } from '../middleware/authenticateParent.js';
 
 const router = express.Router();
 
@@ -100,6 +100,9 @@ const authenticateParent = async (
 
     const resolved = await resolveParentFromToken(token);
     if (!resolved) return res.status(401).json({ error: 'Invalid token' });
+
+    const hostCheck = await validateParentPortalHost(req, resolved.parent.tenantId);
+    if (!hostCheck.ok) return res.status(hostCheck.status).json({ error: hostCheck.error });
 
     req.parent = resolved.parent;
     const { decoded } = resolved;
@@ -650,6 +653,7 @@ function defaultParentPortalPassword(studentRow: { student_id?: string; admissio
 const PARENT_STUDENT_PROFILE_SQL = `
   SELECT
     s.id,
+    s.tenant_id,
     s.first_name,
     s.last_name,
     s.student_id AS admission_number,

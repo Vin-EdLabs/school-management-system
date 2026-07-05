@@ -11,6 +11,11 @@ import { archiveClassReportCardsOnRelease, archiveStudentReportCard, validateCla
 import { assertMainClassTeacher, isMainClassTeacher } from '../services/classTeacherAccess.js';
 import { getSchoolActiveTermYear } from '../services/gradesTermContext.js';
 import {
+  attachGradeAccessContext,
+  assertTeacherOwnsAssessment,
+  isAdminGradeRole,
+} from '../middleware/requireGradeAccess.js';
+import {
   getSchoolTermYear,
   loadClassTermRemarks,
   loadStudentTermRemarks,
@@ -42,6 +47,8 @@ router.get('/assignments', async (req: AuthRequest, res) => {
     const { classId, subject } = req.query;
     if (!classId) return res.status(400).json({ error: 'classId required' });
 
+    await attachGradeAccessContext(req);
+
     const { term, academicYear } = await getSchoolActiveTermYear(tenantId);
     if (!term || !academicYear) {
       return res.status(400).json({ error: 'No active academic term is set for this school' });
@@ -49,7 +56,7 @@ router.get('/assignments', async (req: AuthRequest, res) => {
 
     let sql = `SELECT ga.id, ga.class_id, ga.subject, ga.subject_id, ga.name, ga.assignment_type,
                       ga.max_score, ga.max_marks, ga.is_exam, ga.component_id, ga.due_date,
-                      ga.created_at, ga.term, ga.academic_year, gcc.name AS component_name
+                      ga.created_at, ga.term, ga.academic_year, ga.created_by, gcc.name AS component_name
                FROM grade_assignments ga
                LEFT JOIN grade_config_components gcc ON gcc.id = ga.component_id
                WHERE ga.tenant_id = $1 AND ga.class_id = $2 AND ga.term = $3 AND ga.academic_year = $4`;
@@ -59,6 +66,12 @@ router.get('/assignments', async (req: AuthRequest, res) => {
       params.push(subject);
       sql += ` AND subject = $${params.length}`;
     }
+
+    if (req.gradeAccessRole === 'teacher') {
+      params.push(req.user!.id);
+      sql += ` AND ga.created_by = $${params.length}`;
+    }
+
     sql += ' ORDER BY subject, assignment_type, name';
 
     const result = await query(sql, params);
@@ -76,17 +89,25 @@ router.get('/subjects', async (req: AuthRequest, res) => {
     const { classId } = req.query;
     if (!classId) return res.status(400).json({ error: 'classId required' });
 
+    await attachGradeAccessContext(req);
+
     const { term, academicYear } = await getSchoolActiveTermYear(tenantId);
     if (!term || !academicYear) {
       return res.json([]);
     }
 
-    const result = await query(
-      `SELECT DISTINCT subject FROM grade_assignments
-       WHERE tenant_id = $1 AND class_id = $2 AND term = $3 AND academic_year = $4
-       ORDER BY subject`,
-      [tenantId, classId, term, academicYear]
-    );
+    let sql = `SELECT DISTINCT subject FROM grade_assignments
+       WHERE tenant_id = $1 AND class_id = $2 AND term = $3 AND academic_year = $4`;
+    const params: any[] = [tenantId, classId, term, academicYear];
+
+    if (req.gradeAccessRole === 'teacher') {
+      params.push(req.user!.id);
+      sql += ` AND created_by = $${params.length}`;
+    }
+
+    sql += ' ORDER BY subject';
+
+    const result = await query(sql, params);
     res.json(result.rows.map((r: any) => r.subject));
   } catch (error) {
     console.error('Get subjects error:', error);
@@ -109,9 +130,9 @@ router.post('/assignments', async (req: AuthRequest, res) => {
     }
 
     const result = await query(
-      `INSERT INTO grade_assignments (tenant_id, class_id, subject, name, assignment_type, max_score, due_date, term, academic_year)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-      [tenantId, classId, subject.trim(), name.trim(), assignmentType || 'Test', parseFloat(maxScore) || 100, dueDate || null, term, academicYear]
+      `INSERT INTO grade_assignments (tenant_id, class_id, subject, name, assignment_type, max_score, due_date, term, academic_year, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      [tenantId, classId, subject.trim(), name.trim(), assignmentType || 'Test', parseFloat(maxScore) || 100, dueDate || null, term, academicYear, req.user!.id]
     );
     emitTenantDataChanged(tenantId, 'grade-assignment', 'created');
     res.status(201).json(result.rows[0]);
@@ -129,6 +150,20 @@ router.delete('/assignments/:id', async (req: AuthRequest, res) => {
     const role = req.user!.role;
     const assignmentId = req.params.id;
     const password = typeof req.body?.password === 'string' ? req.body.password : '';
+
+    await attachGradeAccessContext(req);
+
+    const assignmentRes = await query(
+      `SELECT id, created_by, subject_id, class_id FROM grade_assignments WHERE id = $1 AND tenant_id = $2`,
+      [assignmentId, tenantId]
+    );
+    if (assignmentRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Assessment not found' });
+    }
+    const accessError = assertTeacherOwnsAssessment(req, assignmentRes.rows[0]);
+    if (accessError) {
+      return res.status(403).json({ error: accessError });
+    }
 
     const graded = await query(
       `SELECT COUNT(*)::int AS count
@@ -202,16 +237,31 @@ router.get('/', async (req: AuthRequest, res) => {
     const tenantId = req.user!.tenantId!;
     const { classId, assignmentId, studentId } = req.query;
 
+    await attachGradeAccessContext(req);
+
     const gradeSelect = `
       g.id, g.student_id, g.assignment_id, g.score,
       g.created_at, g.updated_at,
       s.first_name, s.last_name, s.student_id AS admission_number,
       a.name AS assignment_name, a.max_score, a.subject, a.assignment_type,
+      a.created_by AS assignment_created_by,
       u.username AS graded_by_name
     `;
 
     let result;
     if (assignmentId) {
+      const aRes = await query(
+        `SELECT id, created_by, subject_id, class_id FROM grade_assignments WHERE id = $1 AND tenant_id = $2`,
+        [assignmentId, tenantId]
+      );
+      if (aRes.rows.length === 0) {
+        return res.status(404).json({ error: 'Assessment not found' });
+      }
+      const accessError = assertTeacherOwnsAssessment(req, aRes.rows[0]);
+      if (accessError) {
+        return res.status(403).json({ error: accessError });
+      }
+
       result = await query(
         `SELECT ${gradeSelect}
          FROM student_grades g
@@ -219,6 +269,7 @@ router.get('/', async (req: AuthRequest, res) => {
          JOIN grade_assignments a ON g.assignment_id = a.id
          LEFT JOIN users u ON g.graded_by = u.id
          WHERE g.tenant_id = $1 AND g.assignment_id = $2
+           AND COALESCE(s.enrollment_status, 'active') = 'active'
          ORDER BY s.first_name, s.last_name`,
         [tenantId, assignmentId]
       );
@@ -227,27 +278,40 @@ router.get('/', async (req: AuthRequest, res) => {
       if (!term || !academicYear) {
         return res.json([]);
       }
-      result = await query(
-        `SELECT ${gradeSelect}
+
+      let sql = `SELECT ${gradeSelect}
          FROM student_grades g
          JOIN students s ON g.student_id = s.id AND s.tenant_id = g.tenant_id
          JOIN grade_assignments a ON g.assignment_id = a.id
          LEFT JOIN users u ON g.graded_by = u.id
          WHERE g.tenant_id = $1 AND a.class_id = $2 AND a.term = $3 AND a.academic_year = $4
-         ORDER BY a.subject, a.name, s.first_name, s.last_name`,
-        [tenantId, classId, term, academicYear]
-      );
+           AND COALESCE(s.enrollment_status, 'active') = 'active'`;
+      const params: any[] = [tenantId, classId, term, academicYear];
+
+      if (req.gradeAccessRole === 'teacher') {
+        params.push(req.user!.id);
+        sql += ` AND a.created_by = $${params.length}`;
+      }
+
+      sql += ' ORDER BY a.subject, a.name, s.first_name, s.last_name';
+      result = await query(sql, params);
     } else if (studentId) {
-      result = await query(
-        `SELECT ${gradeSelect}
+      let sql = `SELECT ${gradeSelect}
          FROM student_grades g
          JOIN students s ON g.student_id = s.id AND s.tenant_id = g.tenant_id
          JOIN grade_assignments a ON g.assignment_id = a.id
          LEFT JOIN users u ON g.graded_by = u.id
          WHERE g.tenant_id = $1 AND g.student_id = $2
-         ORDER BY a.subject, a.name`,
-        [tenantId, studentId]
-      );
+           AND COALESCE(s.enrollment_status, 'active') = 'active'`;
+      const params: any[] = [tenantId, studentId];
+
+      if (req.gradeAccessRole === 'teacher') {
+        params.push(req.user!.id);
+        sql += ` AND a.created_by = $${params.length}`;
+      }
+
+      sql += ' ORDER BY a.subject, a.name';
+      result = await query(sql, params);
     } else {
       return res.status(400).json({ error: 'classId, studentId, or assignmentId required' });
     }
@@ -266,6 +330,21 @@ router.get('/history', async (req: AuthRequest, res) => {
     if (!studentId || !assignmentId) {
       return res.status(400).json({ error: 'studentId and assignmentId required' });
     }
+
+    await attachGradeAccessContext(req);
+
+    const aRes = await query(
+      `SELECT id, created_by, subject_id, class_id FROM grade_assignments WHERE id = $1 AND tenant_id = $2`,
+      [assignmentId, tenantId]
+    );
+    if (aRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Assessment not found' });
+    }
+    const accessError = assertTeacherOwnsAssessment(req, aRes.rows[0]);
+    if (accessError) {
+      return res.status(403).json({ error: accessError });
+    }
+
     const result = await query(
       `SELECT
          l.id,
@@ -295,6 +374,29 @@ router.post('/', async (req: AuthRequest, res) => {
     if (!studentId || !assignmentId || score == null) {
       return res.status(400).json({ error: 'studentId, assignmentId, and score required' });
     }
+
+    await attachGradeAccessContext(req);
+
+    const assignmentRes = await query(
+      `SELECT id, created_by, subject_id, class_id FROM grade_assignments WHERE id = $1 AND tenant_id = $2`,
+      [assignmentId, tenantId]
+    );
+    if (assignmentRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Assessment not found' });
+    }
+    const accessError = assertTeacherOwnsAssessment(req, assignmentRes.rows[0]);
+    if (accessError) {
+      return res.status(403).json({ error: accessError });
+    }
+
+    const studentRes = await query(
+      `SELECT id FROM students WHERE id = $1 AND tenant_id = $2 AND COALESCE(enrollment_status, 'active') = 'active'`,
+      [studentId, tenantId]
+    );
+    if (studentRes.rows.length === 0) {
+      return res.status(400).json({ error: 'Student not found or inactive' });
+    }
+
     const newScore = parseFloat(score);
 
     // Capture existing score for the audit log
@@ -350,8 +452,28 @@ router.post('/batch', async (req: AuthRequest, res) => {
       return res.json({ message: '0 grade(s) saved', saved: 0, skipped: records.length });
     }
 
+    await attachGradeAccessContext(req);
+
     const assignmentId = validRecords[0].assignmentId;
+    const assignmentRes = await query(
+      `SELECT id, created_by, subject_id, class_id FROM grade_assignments WHERE id = $1 AND tenant_id = $2`,
+      [assignmentId, tenantId]
+    );
+    if (assignmentRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Assessment not found' });
+    }
+    const accessError = assertTeacherOwnsAssessment(req, assignmentRes.rows[0]);
+    if (accessError) {
+      return res.status(403).json({ error: accessError });
+    }
+
     const studentIds = validRecords.map((r: any) => r.studentId);
+    const activeStudentsRes = await query(
+      `SELECT id FROM students
+       WHERE tenant_id = $1 AND id = ANY($2) AND COALESCE(enrollment_status, 'active') = 'active'`,
+      [tenantId, studentIds]
+    );
+    const activeStudentIds = new Set(activeStudentsRes.rows.map((row) => Number(row.id)));
 
     const existingRes = await query(
       `SELECT student_id, score FROM student_grades
@@ -365,6 +487,7 @@ router.post('/batch', async (req: AuthRequest, res) => {
     const skipped = records.length - validRecords.length;
 
     for (const r of validRecords) {
+      if (!activeStudentIds.has(Number(r.studentId))) continue;
       const newScore = parseFloat(r.score);
       const oldScore = existingMap[r.studentId] ?? null;
 
@@ -413,39 +536,24 @@ router.get('/term-report', async (req: AuthRequest, res) => {
       req.user!.teacherId != null ? Number(req.user!.teacherId) : null
     );
 
-    let subjectIdFilter: Set<number> | undefined;
-    if (!isSchoolAdmin && (role === 'teacher' || role === 'staff') && !isMainTeacher) {
-      const { attachGradeAccessContext } = await import('../middleware/requireGradeAccess.js');
+    if (!isSchoolAdmin && (role === 'teacher' || role === 'staff')) {
       await attachGradeAccessContext(req);
       if (req.gradeAccessRole === 'denied') {
         return res.status(403).json({ error: 'You do not have access to term reports' });
       }
-      const allowed = (req.allowedSubjectClassPairs || [])
-        .filter((p) => p.classId === Number(classId))
-        .map((p) => p.subjectId);
-      if (allowed.length === 0) {
-        return res.json({
-          students: [],
-          subjects: [],
-          assignments: [],
-          assignmentsBySubject: {},
-          className: '',
-          classScoreWeight: 50,
-          examWeight: 50,
-        });
+      if (!isMainTeacher) {
+        const teachesClass = (req.allowedSubjectClassPairs || []).some(
+          (p) => p.classId === Number(classId)
+        );
+        if (!teachesClass) {
+          return res.status(403).json({ error: 'You are not assigned to this class' });
+        }
       }
-      subjectIdFilter = new Set(allowed);
     } else if (role === 'finance') {
       return res.status(403).json({ error: 'You do not have access to term reports' });
     }
 
-    const built = await buildTermReportData(
-      tenantId,
-      Number(classId),
-      undefined,
-      undefined,
-      subjectIdFilter ? { subjectIdFilter } : undefined
-    );
+    const built = await buildTermReportData(tenantId, Number(classId));
 
     if (!built) {
       return res.json({ students: [], subjects: [], assignments: [], className: '', assignmentsBySubject: {} });

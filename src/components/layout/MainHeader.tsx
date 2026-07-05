@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -9,13 +9,22 @@ import { useSocket } from '../../contexts/SocketContext';
 import { apiService } from '../../services/api';
 import { resolveLogoUrl } from '../../services/tenantService';
 import { cn } from '@/lib/utils';
-import { Bell, Bot, User, Clock, Moon, Sun, Crown } from 'lucide-react';
+import { Bell, Bot, User, Clock, Moon, Sun, Crown, MoreVertical, ClipboardList, BookOpen } from 'lucide-react';
 import { isHeadmasterRole } from '../../utils/headmasterPortal';
 import { useTheme } from '../../contexts/ThemeContext';
 import PwaInstallButton from '../common/PwaInstallButton';
 import PersonalTodosWidget, { canUsePersonalTodos } from '../todos/PersonalTodosPanel';
 import { ModuleUserGuideDialog } from '../common/ModuleUserGuideDialog';
 import { fetchUnreadBudgetAlerts, markBudgetAlertRead } from '../../services/termBudgetApi';
+import { getShortGreetingName } from '../../utils/displayName';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface MainHeaderProps {
   onAiAssistantClick?: () => void;
@@ -31,6 +40,9 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
   const { theme, toggleTheme } = useTheme();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [notifOpen, setNotifOpen] = useState(false);
+  const [mobileGuideOpen, setMobileGuideOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileTodosOpen, setMobileTodosOpen] = useState(false);
   const [adminNotifications, setAdminNotifications] = useState<
     Array<{
       id: string;
@@ -55,6 +67,15 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
   const headmasterCombinedUnread = isHeadmaster ? unreadCount + adminUnreadCount : adminUnreadCount;
   const showPersonalTodos = canUsePersonalTodos(user?.role);
   const displayName = user?.fullName?.trim() || user?.username || '';
+  const mobileGreetingName = useMemo(
+    () => getShortGreetingName(displayName),
+    [displayName]
+  );
+
+  const openMobilePanel = useCallback((open: () => void) => {
+    setMobileMenuOpen(false);
+    window.setTimeout(open, 120);
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -246,7 +267,8 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
   }, [socket, showAdminNotifications, loadAdminNotifications]);
 
   return (
-    <div className="relative flex items-center justify-between w-full h-full gap-2 sm:gap-4 md:gap-6 min-w-0">
+    <>
+    <div className="hidden md:flex relative items-center justify-between w-full h-full gap-2 sm:gap-4 md:gap-6 min-w-0">
       {/* Welcome Section */}
       <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1 basis-0">
         <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-[#146C43] to-[#22C55E] flex items-center justify-center shrink-0 shadow-sm shadow-emerald-500/20 dark:from-blue-500 dark:to-indigo-600 dark:shadow-sm">
@@ -273,7 +295,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
 
       {/* Center: Personal To-dos */}
       {showPersonalTodos && (
-        <div className="absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2">
+        <div className="hidden md:block absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2">
           <PersonalTodosWidget />
         </div>
       )}
@@ -499,6 +521,175 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
         </div>
       </div>
     </div>
+
+    {/* Mobile: greeting + notifications + more menu */}
+    <div className="flex md:hidden items-center justify-between w-full min-w-0 gap-2">
+      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate min-w-0 flex-1 leading-snug">
+        <span className="text-slate-600 dark:text-slate-400">{getGreeting()},</span>{' '}
+        <span className="text-emerald-700 dark:text-indigo-400">{mobileGreetingName}</span>
+      </p>
+      <div className="flex items-center shrink-0 gap-0.5">
+        {showTeacherBell && (
+          <Popover open={notifOpen} onOpenChange={setNotifOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="relative h-10 w-10 shrink-0 rounded-xl text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-indigo-950/50 touch-manipulation"
+                title="Notifications"
+              >
+                <Bell className="h-5 w-5" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[min(100vw-1.5rem,22rem)] p-0" align="end" sideOffset={8}>
+              <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+                <p className="text-xs font-semibold text-foreground">Notifications</p>
+                {items.length > 0 && (
+                  <button type="button" className="text-[11px] font-semibold text-indigo-600" onClick={() => markAllRead()}>
+                    Mark all read
+                  </button>
+                )}
+              </div>
+              <ScrollArea className="max-h-[min(50vh,260px)]">
+                {items.length === 0 ? (
+                  <p className="p-4 text-xs text-muted-foreground">No notifications yet.</p>
+                ) : (
+                  <div className="space-y-1 p-2">
+                    {items.map((n) => (
+                      <button key={n.id} type="button" onClick={() => markRead(n.id)} className="w-full rounded-lg border p-2.5 text-left text-sm">
+                        <p className="font-semibold">{n.title}</p>
+                        <p className="text-xs text-muted-foreground line-clamp-2">{n.body}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
+            </PopoverContent>
+          </Popover>
+        )}
+        {showAdminBell && (
+          <Popover open={notifOpen} onOpenChange={setNotifOpen}>
+            <PopoverTrigger asChild>
+              <Button type="button" variant="ghost" size="icon" className="relative h-10 w-10 shrink-0 rounded-xl touch-manipulation" title="Notifications">
+                <Bell className="h-5 w-5" />
+                {headmasterCombinedUnread > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                    {headmasterCombinedUnread > 9 ? '9+' : headmasterCombinedUnread}
+                  </span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[min(100vw-1.5rem,22rem)] p-0" align="end" sideOffset={8}>
+              <ScrollArea className="max-h-[min(50vh,320px)]">
+                {adminNotifications.length === 0 && !(isHeadmaster && items.length > 0) ? (
+                  <p className="p-4 text-xs text-muted-foreground">No notifications.</p>
+                ) : (
+                  <div className="space-y-1 p-2">
+                    {adminNotifications.map((notification) => (
+                      <button
+                        key={notification.id}
+                        type="button"
+                        onClick={async () => {
+                          await markAdminNotificationRead(notification.type, notification.alertId, notification.notificationDbId);
+                          setNotifOpen(false);
+                          setActiveModule(notification.type === 'term-budget' ? 'term-budget' : notification.type);
+                        }}
+                        className="w-full rounded-lg border p-2.5 text-left text-sm"
+                      >
+                        <p className="font-semibold">{notification.title}</p>
+                        <p className="text-xs text-muted-foreground line-clamp-2">{notification.body}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
+            </PopoverContent>
+          </Popover>
+        )}
+        <DropdownMenu open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" variant="ghost" size="icon" className="h-10 w-10 rounded-xl touch-manipulation" aria-label="More options">
+              <MoreVertical className="h-5 w-5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56 z-[100]">
+            <DropdownMenuLabel className="text-xs font-normal text-muted-foreground capitalize">
+              {isHeadmaster ? 'Headmaster' : user?.role?.replace('-', ' ')}
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem disabled className="text-xs text-muted-foreground">
+              <Clock className="h-4 w-4 mr-2 shrink-0" />
+              {formatTime(currentTime)}
+            </DropdownMenuItem>
+            {showPersonalTodos && (
+              <DropdownMenuItem
+                onSelect={() => {
+                  setMobileMenuOpen(false);
+                  window.setTimeout(() => setMobileTodosOpen(true), 0);
+                }}
+              >
+                <ClipboardList className="h-4 w-4 mr-2 shrink-0" />
+                My to-dos
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem
+              onSelect={(e) => {
+                e.preventDefault();
+                openMobilePanel(() => setMobileGuideOpen(true));
+              }}
+            >
+              <BookOpen className="h-4 w-4 mr-2 shrink-0" />
+              Page guide
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={(e) => {
+                e.preventDefault();
+                toggleTheme();
+                setMobileMenuOpen(false);
+              }}
+            >
+              {theme === 'dark' ? <Sun className="h-4 w-4 mr-2 shrink-0" /> : <Moon className="h-4 w-4 mr-2 shrink-0" />}
+              {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+            </DropdownMenuItem>
+            {(user?.role === 'finance' || user?.role === 'super-admin') && onAiAssistantClick && (
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault();
+                  openMobilePanel(() => onAiAssistantClick());
+                }}
+              >
+                <Bot className="h-4 w-4 mr-2 shrink-0" />
+                AI Assistant
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
+
+    {showPersonalTodos && (
+      <div className="md:hidden">
+        <PersonalTodosWidget
+          hideTrigger
+          externalOpen={mobileTodosOpen}
+          onExternalOpenChange={setMobileTodosOpen}
+        />
+      </div>
+    )}
+    <ModuleUserGuideDialog
+      activeModule={activeModule}
+      setActiveModule={setActiveModule}
+      hideTriggers
+      externalOpen={mobileGuideOpen}
+      onExternalOpenChange={setMobileGuideOpen}
+    />
+    </>
   );
 };
 

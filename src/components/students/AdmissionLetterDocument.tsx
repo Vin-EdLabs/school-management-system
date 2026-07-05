@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { resolveLogoUrl } from '@/services/tenantService';
+import { openPrintPreview } from '../../contexts/PrintPreviewContext';
 
 export type AdmissionLetterData = {
   referenceNumber: string | null;
@@ -61,10 +62,9 @@ export function printAdmissionLetter(elementId: string = 'admission-letter-print
     .map(el => el.outerHTML)
     .join('\n');
 
-  const win = window.open('', '_blank');
-  if (!win) return;
-
-  win.document.write(`
+  openPrintPreview({
+    title: 'Admission Letter',
+    html: `
     <html>
       <head>
         <title>Admission Letter</title>
@@ -89,11 +89,10 @@ export function printAdmissionLetter(elementId: string = 'admission-letter-print
       </head>
       <body>
         ${clone.outerHTML}
-        <script>setTimeout(function(){window.print()},500)</script>
       </body>
     </html>
-  `);
-  win.document.close();
+  `,
+  });
 }
 
 type Props = {

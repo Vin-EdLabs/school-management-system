@@ -38,7 +38,7 @@ type ReminderPopup = {
   reminder_at?: string | null;
 };
 
-const TODO_ROLES = new Set(['administrator', 'finance', 'teacher', 'staff', 'super-admin']);
+const TODO_ROLES = new Set(['administrator', 'finance', 'teacher', 'staff', 'super-admin', 'headmaster']);
 
 export function canUsePersonalTodos(role: string | null | undefined): boolean {
   return TODO_ROLES.has(String(role || '').toLowerCase());

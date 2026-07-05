@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSchool } from '../../contexts/SchoolContext';
@@ -40,6 +39,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
   const { theme, toggleTheme } = useTheme();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [notifOpen, setNotifOpen] = useState(false);
+  const notifPanelRef = useRef<HTMLDivElement>(null);
   const [mobileGuideOpen, setMobileGuideOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileTodosOpen, setMobileTodosOpen] = useState(false);
@@ -76,6 +76,224 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
     setMobileMenuOpen(false);
     window.setTimeout(open, 120);
   }, []);
+
+  useEffect(() => {
+    if (!notifOpen) return;
+    let removeListeners: (() => void) | undefined;
+    const timer = window.setTimeout(() => {
+      const close = (e: MouseEvent | TouchEvent) => {
+        const target = e.target as Node;
+        if (notifPanelRef.current?.contains(target)) return;
+        if (target instanceof Element && target.closest('[data-notif-bell]')) return;
+        setNotifOpen(false);
+      };
+      const onKey = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') setNotifOpen(false);
+      };
+      document.addEventListener('mousedown', close);
+      document.addEventListener('touchstart', close, { passive: true });
+      document.addEventListener('keydown', onKey);
+      removeListeners = () => {
+        document.removeEventListener('mousedown', close);
+        document.removeEventListener('touchstart', close);
+        document.removeEventListener('keydown', onKey);
+      };
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+      removeListeners?.();
+    };
+  }, [notifOpen]);
+
+  const bellUnreadCount = showTeacherBell ? unreadCount : headmasterCombinedUnread;
+
+  const renderNotificationPanel = () => {
+    if (!notifOpen) return null;
+
+    if (showTeacherBell) {
+      return (
+        <div
+          ref={notifPanelRef}
+          className="fixed z-[110] left-3 right-3 top-[4.75rem] sm:left-auto sm:right-6 sm:top-[5.5rem] sm:w-[min(100vw-2rem,22rem)] max-w-[22rem] sm:ml-auto sm:mr-0 max-h-[min(70dvh,28rem)] flex flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl ring-1 ring-black/5 dark:border-slate-800 dark:bg-slate-900 animate-in fade-in slide-in-from-top-2 zoom-in-95 duration-200 origin-top"
+        >
+          <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2 shrink-0">
+            <p className="text-xs font-semibold text-foreground">Notifications</p>
+            {items.length > 0 && (
+              <button
+                type="button"
+                className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+                onClick={() => markAllRead()}
+              >
+                Mark all read
+              </button>
+            )}
+          </div>
+          <ScrollArea className="max-h-[min(50vh,260px)]">
+            {items.length === 0 ? (
+              <p className="p-4 text-xs text-muted-foreground">No notifications yet.</p>
+            ) : (
+              <div className="space-y-1 p-2">
+                {items.map((n) => (
+                  <button
+                    key={n.id}
+                    type="button"
+                    onClick={() => markRead(n.id)}
+                    className={`w-full rounded-lg border p-2.5 text-left transition-colors touch-manipulation ${
+                      n.read
+                        ? 'border-border bg-card hover:bg-muted/50'
+                        : 'border-indigo-200/80 bg-indigo-50/60 hover:bg-indigo-100/70 dark:border-indigo-900 dark:bg-indigo-950/40 dark:hover:bg-indigo-950/60'
+                    }`}
+                  >
+                    <p className="text-sm font-semibold text-foreground">{n.title}</p>
+                    <p className="mt-0.5 line-clamp-3 text-xs text-muted-foreground">{n.body}</p>
+                    <p className="mt-1 text-[10px] text-muted-foreground">{new Date(n.at).toLocaleString()}</p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+        </div>
+      );
+    }
+
+    if (showAdminBell) {
+      return (
+        <div
+          ref={notifPanelRef}
+          className="fixed z-[110] left-3 right-3 top-[4.75rem] sm:left-auto sm:right-6 sm:top-[5.5rem] sm:w-[min(100vw-2rem,22rem)] max-w-[22rem] sm:ml-auto sm:mr-0 max-h-[min(70dvh,32rem)] flex flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl ring-1 ring-black/5 dark:border-slate-800 dark:bg-slate-900 animate-in fade-in slide-in-from-top-2 zoom-in-95 duration-200 origin-top"
+        >
+          <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2 shrink-0">
+            <p className="text-xs font-semibold text-foreground">
+              {isHeadmaster ? 'Notifications' : 'School Messages'}
+            </p>
+            {isHeadmaster && items.length > 0 && (
+              <button
+                type="button"
+                className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+                onClick={() => markAllRead()}
+              >
+                Mark all read
+              </button>
+            )}
+          </div>
+          <ScrollArea className="max-h-[min(50vh,320px)]">
+            {isHeadmaster && items.length > 0 && (
+              <div className="space-y-1 border-b border-border p-2 pb-3">
+                <p className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  Staff alerts
+                </p>
+                {items.map((n) => (
+                  <button
+                    key={n.id}
+                    type="button"
+                    onClick={() => markRead(n.id)}
+                    className={`w-full rounded-lg border p-2.5 text-left transition-colors touch-manipulation ${
+                      n.read
+                        ? 'border-border bg-card hover:bg-muted/50'
+                        : 'border-indigo-200/80 bg-indigo-50/60 hover:bg-indigo-100/70 dark:border-indigo-900 dark:bg-indigo-950/40 dark:hover:bg-indigo-950/60'
+                    }`}
+                  >
+                    <p className="text-sm font-semibold text-foreground">{n.title}</p>
+                    <p className="mt-0.5 line-clamp-3 text-xs text-muted-foreground">{n.body}</p>
+                    <p className="mt-1 text-[10px] text-muted-foreground">{new Date(n.at).toLocaleString()}</p>
+                  </button>
+                ))}
+              </div>
+            )}
+            {adminNotifications.length === 0 ? (
+              !(isHeadmaster && items.length > 0) ? (
+                <p className="p-4 text-xs text-muted-foreground">
+                  {isHeadmaster ? 'No notifications yet.' : 'No unread school messages.'}
+                </p>
+              ) : null
+            ) : (
+              <div className="space-y-1 p-2">
+                {isHeadmaster && (
+                  <p className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    School messages
+                  </p>
+                )}
+                {adminNotifications.map((notification) => (
+                  <button
+                    key={notification.id}
+                    type="button"
+                    onClick={async () => {
+                      await markAdminNotificationRead(
+                        notification.type,
+                        notification.alertId,
+                        notification.notificationDbId
+                      );
+                      setNotifOpen(false);
+                      if (notification.type === 'lost-card') {
+                        if (notification.reportId) {
+                          try {
+                            sessionStorage.setItem('lost-card-report-id', notification.reportId);
+                          } catch {
+                            /* ignore */
+                          }
+                        }
+                        setActiveModule('lost-cards');
+                        return;
+                      }
+                      setActiveModule(notification.type === 'term-budget' ? 'term-budget' : notification.type);
+                    }}
+                    className={cn(
+                      'w-full rounded-lg border p-2.5 text-left transition-colors touch-manipulation',
+                      notification.priority === 'HIGH'
+                        ? 'border-amber-300 bg-amber-50 hover:border-amber-400 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/40 dark:hover:bg-amber-950/60'
+                        : 'border-border bg-card hover:border-emerald-300 hover:bg-emerald-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-500 dark:hover:bg-indigo-950/70'
+                    )}
+                  >
+                    <div className="flex items-start gap-2">
+                      {notification.priority === 'HIGH' && (
+                        <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-foreground">{notification.title}</p>
+                        <p className="mt-0.5 line-clamp-3 text-xs text-muted-foreground">{notification.body}</p>
+                        <p className="mt-1 text-[10px] text-muted-foreground">
+                          {new Date(notification.timestamp).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  const renderNotificationBell = (className?: string) => {
+    if (!showTeacherBell && !showAdminBell) return null;
+
+    return (
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        data-notif-bell
+        className={cn(
+          'relative h-10 w-10 shrink-0 rounded-xl text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-indigo-950/50 touch-manipulation',
+          className
+        )}
+        title={showAdminBell ? (isHeadmaster ? 'Notifications' : 'School messages') : 'Notifications'}
+        aria-expanded={notifOpen}
+        onClick={() => setNotifOpen((open) => !open)}
+      >
+        <Bell className="h-5 w-5" />
+        {bellUnreadCount > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+            {bellUnreadCount > 9 ? '9+' : bellUnreadCount}
+          </span>
+        )}
+      </Button>
+    );
+  };
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -319,185 +537,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
             logoUrl={pwaLogo}
             className="h-10 w-10 rounded-xl text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-indigo-950/50"
           />
-          {showTeacherBell && (
-            <Popover open={notifOpen} onOpenChange={setNotifOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="relative h-10 w-10 shrink-0 rounded-xl text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-indigo-950/50 touch-manipulation"
-                  title="Notifications"
-                >
-                  <Bell className="h-5 w-5" />
-                  {unreadCount > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
-                      {unreadCount > 9 ? '9+' : unreadCount}
-                    </span>
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[min(100vw-1.5rem,22rem)] p-0" align="end" sideOffset={8}>
-                <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-                  <p className="text-xs font-semibold text-foreground">Notifications</p>
-                  {items.length > 0 && (
-                    <button
-                      type="button"
-                      className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
-                      onClick={() => markAllRead()}
-                    >
-                      Mark all read
-                    </button>
-                  )}
-                </div>
-                <ScrollArea className="max-h-[min(50vh,260px)]">
-                  {items.length === 0 ? (
-                    <p className="p-4 text-xs text-muted-foreground">No notifications yet.</p>
-                  ) : (
-                    <div className="space-y-1 p-2">
-                      {items.map((n) => (
-                        <button
-                          key={n.id}
-                          type="button"
-                          onClick={() => {
-                            markRead(n.id);
-                          }}
-                          className={`w-full rounded-lg border p-2.5 text-left transition-colors touch-manipulation ${
-                            n.read
-                              ? 'border-border bg-card hover:bg-muted/50'
-                              : 'border-indigo-200/80 bg-indigo-50/60 hover:bg-indigo-100/70 dark:border-indigo-900 dark:bg-indigo-950/40 dark:hover:bg-indigo-950/60'
-                          }`}
-                        >
-                          <p className="text-sm font-semibold text-foreground">{n.title}</p>
-                          <p className="mt-0.5 line-clamp-3 text-xs text-muted-foreground">{n.body}</p>
-                          <p className="mt-1 text-[10px] text-muted-foreground">{new Date(n.at).toLocaleString()}</p>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </ScrollArea>
-              </PopoverContent>
-            </Popover>
-          )}
-          {showAdminBell && (
-            <Popover open={notifOpen} onOpenChange={setNotifOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="relative h-10 w-10 shrink-0 rounded-xl text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-indigo-950/50 touch-manipulation"
-                  title={isHeadmaster ? 'Notifications' : 'School messages'}
-                >
-                  <Bell className="h-5 w-5" />
-                  {headmasterCombinedUnread > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
-                      {headmasterCombinedUnread > 9 ? '9+' : headmasterCombinedUnread}
-                    </span>
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[min(100vw-1.5rem,22rem)] p-0" align="end" sideOffset={8}>
-                <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-                  <p className="text-xs font-semibold text-foreground">
-                    {isHeadmaster ? 'Notifications' : 'School Messages'}
-                  </p>
-                  {isHeadmaster && items.length > 0 && (
-                    <button
-                      type="button"
-                      className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
-                      onClick={() => markAllRead()}
-                    >
-                      Mark all read
-                    </button>
-                  )}
-                </div>
-                <ScrollArea className="max-h-[min(50vh,320px)]">
-                  {isHeadmaster && items.length > 0 && (
-                    <div className="space-y-1 border-b border-border p-2 pb-3">
-                      <p className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                        Staff alerts
-                      </p>
-                      {items.map((n) => (
-                        <button
-                          key={n.id}
-                          type="button"
-                          onClick={() => markRead(n.id)}
-                          className={`w-full rounded-lg border p-2.5 text-left transition-colors touch-manipulation ${
-                            n.read
-                              ? 'border-border bg-card hover:bg-muted/50'
-                              : 'border-indigo-200/80 bg-indigo-50/60 hover:bg-indigo-100/70 dark:border-indigo-900 dark:bg-indigo-950/40 dark:hover:bg-indigo-950/60'
-                          }`}
-                        >
-                          <p className="text-sm font-semibold text-foreground">{n.title}</p>
-                          <p className="mt-0.5 line-clamp-3 text-xs text-muted-foreground">{n.body}</p>
-                          <p className="mt-1 text-[10px] text-muted-foreground">{new Date(n.at).toLocaleString()}</p>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {adminNotifications.length === 0 ? (
-                    !(isHeadmaster && items.length > 0) ? (
-                      <p className="p-4 text-xs text-muted-foreground">
-                        {isHeadmaster ? 'No notifications yet.' : 'No unread school messages.'}
-                      </p>
-                    ) : null
-                  ) : (
-                    <div className="space-y-1 p-2">
-                      {isHeadmaster && (
-                        <p className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                          School messages
-                        </p>
-                      )}
-                      {adminNotifications.map((notification) => (
-                        <button
-                          key={notification.id}
-                          type="button"
-                          onClick={async () => {
-                            await markAdminNotificationRead(
-                              notification.type,
-                              notification.alertId,
-                              notification.notificationDbId
-                            );
-                            setNotifOpen(false);
-                            if (notification.type === 'lost-card') {
-                              if (notification.reportId) {
-                                try {
-                                  sessionStorage.setItem('lost-card-report-id', notification.reportId);
-                                } catch {
-                                  /* ignore */
-                                }
-                              }
-                              setActiveModule('lost-cards');
-                              return;
-                            }
-                            setActiveModule(notification.type === 'term-budget' ? 'term-budget' : notification.type);
-                          }}
-                          className={cn(
-                            'w-full rounded-lg border p-2.5 text-left transition-colors',
-                            notification.priority === 'HIGH'
-                              ? 'border-amber-300 bg-amber-50 hover:border-amber-400 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/40 dark:hover:bg-amber-950/60'
-                              : 'border-border bg-card hover:border-emerald-300 hover:bg-emerald-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-500 dark:hover:bg-indigo-950/70'
-                          )}
-                        >
-                          <div className="flex items-start gap-2">
-                            {notification.priority === 'HIGH' && (
-                              <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden />
-                            )}
-                            <div className="min-w-0 flex-1">
-                              <p className="text-sm font-semibold text-foreground">{notification.title}</p>
-                              <p className="mt-0.5 line-clamp-3 text-xs text-muted-foreground">{notification.body}</p>
-                              <p className="mt-1 text-[10px] text-muted-foreground">{new Date(notification.timestamp).toLocaleString()}</p>
-                            </div>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </ScrollArea>
-              </PopoverContent>
-            </Popover>
-          )}
+          {renderNotificationBell()}
           <Button
             variant="ghost"
             size="icon"
@@ -529,89 +569,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
         <span className="text-emerald-700 dark:text-indigo-400">{mobileGreetingName}</span>
       </p>
       <div className="flex items-center shrink-0 gap-0.5">
-        {showTeacherBell && (
-          <Popover open={notifOpen} onOpenChange={setNotifOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="relative h-10 w-10 shrink-0 rounded-xl text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-indigo-950/50 touch-manipulation"
-                title="Notifications"
-              >
-                <Bell className="h-5 w-5" />
-                {unreadCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </span>
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-[min(100vw-1.5rem,22rem)] p-0" align="end" sideOffset={8}>
-              <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-                <p className="text-xs font-semibold text-foreground">Notifications</p>
-                {items.length > 0 && (
-                  <button type="button" className="text-[11px] font-semibold text-indigo-600" onClick={() => markAllRead()}>
-                    Mark all read
-                  </button>
-                )}
-              </div>
-              <ScrollArea className="max-h-[min(50vh,260px)]">
-                {items.length === 0 ? (
-                  <p className="p-4 text-xs text-muted-foreground">No notifications yet.</p>
-                ) : (
-                  <div className="space-y-1 p-2">
-                    {items.map((n) => (
-                      <button key={n.id} type="button" onClick={() => markRead(n.id)} className="w-full rounded-lg border p-2.5 text-left text-sm">
-                        <p className="font-semibold">{n.title}</p>
-                        <p className="text-xs text-muted-foreground line-clamp-2">{n.body}</p>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </ScrollArea>
-            </PopoverContent>
-          </Popover>
-        )}
-        {showAdminBell && (
-          <Popover open={notifOpen} onOpenChange={setNotifOpen}>
-            <PopoverTrigger asChild>
-              <Button type="button" variant="ghost" size="icon" className="relative h-10 w-10 shrink-0 rounded-xl touch-manipulation" title="Notifications">
-                <Bell className="h-5 w-5" />
-                {headmasterCombinedUnread > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                    {headmasterCombinedUnread > 9 ? '9+' : headmasterCombinedUnread}
-                  </span>
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-[min(100vw-1.5rem,22rem)] p-0" align="end" sideOffset={8}>
-              <ScrollArea className="max-h-[min(50vh,320px)]">
-                {adminNotifications.length === 0 && !(isHeadmaster && items.length > 0) ? (
-                  <p className="p-4 text-xs text-muted-foreground">No notifications.</p>
-                ) : (
-                  <div className="space-y-1 p-2">
-                    {adminNotifications.map((notification) => (
-                      <button
-                        key={notification.id}
-                        type="button"
-                        onClick={async () => {
-                          await markAdminNotificationRead(notification.type, notification.alertId, notification.notificationDbId);
-                          setNotifOpen(false);
-                          setActiveModule(notification.type === 'term-budget' ? 'term-budget' : notification.type);
-                        }}
-                        className="w-full rounded-lg border p-2.5 text-left text-sm"
-                      >
-                        <p className="font-semibold">{notification.title}</p>
-                        <p className="text-xs text-muted-foreground line-clamp-2">{notification.body}</p>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </ScrollArea>
-            </PopoverContent>
-          </Popover>
-        )}
+        {renderNotificationBell()}
         <DropdownMenu open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
           <DropdownMenuTrigger asChild>
             <Button type="button" variant="ghost" size="icon" className="h-10 w-10 rounded-xl touch-manipulation" aria-label="More options">
@@ -673,6 +631,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
       </div>
     </div>
 
+    {renderNotificationPanel()}
     {showPersonalTodos && (
       <div className="md:hidden">
         <PersonalTodosWidget

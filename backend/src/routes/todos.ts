@@ -4,7 +4,7 @@ import { authenticate, AuthRequest } from '../middleware/auth.js';
 
 const router = express.Router();
 
-const ALLOWED_ROLES = new Set(['administrator', 'finance', 'teacher', 'staff', 'super-admin']);
+const ALLOWED_ROLES = new Set(['administrator', 'finance', 'teacher', 'staff', 'super-admin', 'headmaster']);
 
 function normalizeRole(role: string | null | undefined): string {
   const value = String(role || '').toLowerCase().trim();

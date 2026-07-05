@@ -1841,7 +1841,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
             </Badge>
           ) : (!isAdminViewer || isSchoolAdmin) ? (
             <Button
-              className="min-h-[48px] w-full sm:w-auto touch-manipulation hidden sm:inline-flex"
+              className="min-h-[48px] w-full sm:w-auto touch-manipulation inline-flex"
               variant="primaryAction"
               onClick={openAddAssessment}
               disabled={!selectedClassId}

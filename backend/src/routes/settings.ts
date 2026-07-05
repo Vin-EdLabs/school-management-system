@@ -814,7 +814,7 @@ router.get('/push/stats', requireRole('super-admin', 'administrator', 'headmaste
 
     const staffUsersRes = await query(
       `SELECT COUNT(*)::int AS total FROM users
-       WHERE tenant_id = $1 AND role IN ('teacher', 'staff') AND is_active = true`,
+       WHERE tenant_id = $1 AND role IN ('teacher', 'staff', 'headmaster') AND is_active = true`,
       [tenantId]
     ).catch(() => ({ rows: [{ total: 0 }] as any[] }));
     const staffSubsUsersRes = await query(

@@ -163,7 +163,7 @@ export async function sendPushToTenantStaff(
 
   const usersRes = await query(
     `SELECT COUNT(*)::int AS c FROM users
-     WHERE tenant_id = $1 AND role IN ('teacher', 'staff') AND is_active = true`,
+     WHERE tenant_id = $1 AND role IN ('teacher', 'staff', 'headmaster') AND is_active = true`,
     [tenantId]
   );
   const staffUserAccounts = Number(usersRes.rows[0]?.c || 0);
@@ -172,7 +172,7 @@ export async function sendPushToTenantStaff(
     `SELECT s.user_id, s.endpoint, s.p256dh, s.auth
      FROM staff_user_push_subscriptions s
      INNER JOIN users u ON u.id = s.user_id AND u.tenant_id = s.tenant_id
-     WHERE s.tenant_id = $1 AND u.role IN ('teacher', 'staff') AND u.is_active = true`,
+     WHERE s.tenant_id = $1 AND u.role IN ('teacher', 'staff', 'headmaster') AND u.is_active = true`,
     [tenantId]
   );
 

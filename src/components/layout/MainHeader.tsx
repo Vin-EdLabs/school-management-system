@@ -486,9 +486,9 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
 
   return (
     <>
-    <div className="hidden md:flex relative items-center justify-between w-full h-full gap-2 sm:gap-4 md:gap-6 min-w-0">
+    <div className="hidden md:flex relative items-center w-full h-full gap-2 sm:gap-4 md:gap-6 min-w-0">
       {/* Welcome Section */}
-      <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1 basis-0">
+      <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
         <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-[#146C43] to-[#22C55E] flex items-center justify-center shrink-0 shadow-sm shadow-emerald-500/20 dark:from-blue-500 dark:to-indigo-600 dark:shadow-sm">
           <User className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
         </div>
@@ -511,15 +511,13 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
         </div>
       </div>
 
-      {/* Center: Personal To-dos */}
-      {showPersonalTodos && (
-        <div className="hidden md:block absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2">
-          <PersonalTodosWidget />
-        </div>
-      )}
-
       {/* Right Section: Time and Actions */}
-      <div className="flex items-center gap-1 sm:gap-2 md:gap-4 shrink-0 flex-1 basis-0 justify-end ml-auto">
+      <div className="flex items-center gap-1 sm:gap-1.5 md:gap-2 shrink-0 justify-end">
+        {showPersonalTodos && (
+          <div className="hidden md:flex items-center justify-center shrink-0 z-20">
+            <PersonalTodosWidget />
+          </div>
+        )}
         <div className="hidden sm:flex items-center">
           <div className="px-2 py-1 bg-white/85 dark:bg-slate-900/50 rounded-lg border border-slate-200/70 dark:border-slate-800 flex items-center gap-1.5 shadow-sm">
             <Clock className="w-3.5 h-3.5 text-emerald-600 dark:text-indigo-400 shrink-0" />
@@ -552,10 +550,11 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
               variant="outline"
               size="sm"
               onClick={onAiAssistantClick}
-              className="shrink-0 bg-gradient-to-r from-blue-50 to-indigo-100 hover:from-blue-100 hover:to-indigo-100 dark:from-blue-900/20 dark:to-indigo-900/20 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 h-10 px-4 font-semibold shadow-sm transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+              className="shrink-0 bg-gradient-to-r from-blue-50 to-indigo-100 hover:from-blue-100 hover:to-indigo-100 dark:from-blue-900/20 dark:to-indigo-900/20 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 h-10 w-10 xl:w-auto xl:px-4 rounded-xl font-semibold shadow-sm transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center"
+              title="AI Assistant"
             >
-              <Bot className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-400" />
-              AI Assistant
+              <Bot className="w-5 h-5 xl:w-4 xl:h-4 xl:mr-2 text-indigo-600 dark:text-indigo-400 shrink-0" />
+              <span className="hidden xl:inline">AI Assistant</span>
             </Button>
           )}
         </div>

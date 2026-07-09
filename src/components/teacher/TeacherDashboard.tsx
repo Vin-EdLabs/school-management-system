@@ -87,7 +87,7 @@ const TeacherDashboard = () => {
   if (loading) {
     return (
       <div className="px-4 py-5 sm:p-6">
-        <div className="animate-pulse text-slate-500">Loading your dashboard...</div>
+        <div className="animate-pulse text-slate-500 dark:text-slate-400">Loading your dashboard...</div>
       </div>
     );
   }
@@ -97,9 +97,9 @@ const TeacherDashboard = () => {
       <div className="px-4 py-5 sm:p-6">
         <Card>
           <CardContent className="p-6 sm:p-8 text-center">
-            <BookOpen className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Teacher Profile Not Found</h3>
-            <p className="text-gray-500">Your teacher profile is not set up. Please contact the administrator.</p>
+            <BookOpen className="w-12 h-12 text-gray-400 dark:text-gray-500 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Teacher Profile Not Found</h3>
+            <p className="text-gray-500 dark:text-gray-300">Your teacher profile is not set up. Please contact the administrator.</p>
           </CardContent>
         </Card>
       </div>
@@ -118,10 +118,10 @@ const TeacherDashboard = () => {
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-800 dark:text-gray-100 leading-tight break-words">
               Welcome back, {profile.full_name}!
             </h1>
-            <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-1">Your teaching overview for today</p>
+            <p className="text-sm sm:text-base text-gray-600 dark:text-gray-300 mt-1">Your teaching overview for today</p>
           </div>
         </div>
-        <div className="text-left sm:text-right text-xs sm:text-sm text-gray-500 shrink-0 pl-14 sm:pl-0">
+        <div className="text-left sm:text-right text-xs sm:text-sm text-gray-500 dark:text-gray-300 shrink-0 pl-14 sm:pl-0">
           <p>{formatDisplayDate(new Date())}</p>
         </div>
       </div>
@@ -132,8 +132,8 @@ const TeacherDashboard = () => {
           <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">My Classes</p>
-                <p className="text-2xl sm:text-3xl font-bold text-gray-900">{teacherClasses.length}</p>
+                <p className="text-sm font-medium text-gray-600 dark:text-gray-300">My Classes</p>
+                <p className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">{teacherClasses.length}</p>
               </div>
               <School className="w-8 h-8 text-blue-500" />
             </div>
@@ -144,8 +144,8 @@ const TeacherDashboard = () => {
           <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Total Students</p>
-                <p className="text-2xl sm:text-3xl font-bold text-gray-900">{totalStudents}</p>
+                <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Total Students</p>
+                <p className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">{totalStudents}</p>
               </div>
               <Users className="w-8 h-8 text-green-500" />
             </div>
@@ -156,8 +156,8 @@ const TeacherDashboard = () => {
           <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Subjects</p>
-                <p className="text-2xl sm:text-3xl font-bold text-gray-900">{subjectClasses?.by_subject?.length || profile.subjects_taught?.length || 0}</p>
+                <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Subjects</p>
+                <p className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">{subjectClasses?.by_subject?.length || profile.subjects_taught?.length || 0}</p>
               </div>
               <ClipboardCheck className="w-8 h-8 text-purple-500" />
             </div>
@@ -168,8 +168,8 @@ const TeacherDashboard = () => {
           <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
-                <p className="text-sm font-medium text-gray-600">Staff ID</p>
-                <p className="text-lg sm:text-xl font-bold text-gray-900 truncate">{profile.staff_id}</p>
+                <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Staff ID</p>
+                <p className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white truncate">{profile.staff_id}</p>
               </div>
               <BookOpen className="w-8 h-8 text-orange-500" />
             </div>
@@ -194,11 +194,11 @@ const TeacherDashboard = () => {
                     <Gift className="w-5 h-5" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-sm text-gray-900">
+                    <p className="font-semibold text-sm text-gray-900 dark:text-white">
                       {person.fullName}
-                      <span className="font-normal text-gray-500 ml-1">turns {person.age}!</span>
+                      <span className="font-normal text-gray-500 dark:text-gray-300 ml-1">turns {person.age}!</span>
                     </p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-gray-500 dark:text-gray-300">
                       {person.className && `${person.className}`}
                     </p>
                   </div>
@@ -222,17 +222,17 @@ const TeacherDashboard = () => {
           <CardContent>
             {teacherClasses.length === 0 ? (
               <div className="text-center py-8">
-                <School className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No Classes Assigned</h3>
-                <p className="text-gray-500">You don't have any classes assigned yet.</p>
+                <School className="w-12 h-12 text-gray-400 dark:text-gray-500 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No Classes Assigned</h3>
+                <p className="text-gray-500 dark:text-gray-300">You don't have any classes assigned yet.</p>
               </div>
             ) : (
               <div className="space-y-2 sm:space-y-3">
                 {teacherClasses.map((cls) => (
                   <div key={cls.id} className="flex items-center justify-between min-h-[52px] p-3 sm:p-4 bg-gray-50 dark:bg-gray-900/40 rounded-xl touch-manipulation">
                     <div>
-                      <h4 className="font-medium text-gray-900">{cls.class_name}</h4>
-                      <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
+                      <h4 className="font-medium text-gray-900 dark:text-white">{cls.class_name}</h4>
+                      <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-300 mt-1">
                         <span>{cls.student_count} students</span>
                         {cls.is_main && <Badge variant="secondary">Main</Badge>}
                       </div>
@@ -254,13 +254,13 @@ const TeacherDashboard = () => {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-3">
-              <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between sm:gap-4"><span className="text-sm text-gray-600 shrink-0">Name</span><span className="font-medium text-right sm:text-left break-words">{profile.full_name}</span></div>
-              <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between sm:gap-4"><span className="text-sm text-gray-600 shrink-0">Staff ID</span><span className="font-mono text-right sm:text-left break-all">{profile.staff_id}</span></div>
-              <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between sm:gap-4"><span className="text-sm text-gray-600 shrink-0">Email</span><span className="text-right sm:text-left break-all">{profile.email || '—'}</span></div>
-              <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between sm:gap-4"><span className="text-sm text-gray-600 shrink-0">Phone</span><span className="text-right sm:text-left">{profile.phone_number || '—'}</span></div>
-              <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between sm:gap-4"><span className="text-sm text-gray-600 shrink-0">Classes</span><span className="text-right sm:text-left break-words">{teacherClasses.map(c => c.class_name).join(', ') || 'None'}</span></div>
+              <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between sm:gap-4"><span className="text-sm text-gray-600 dark:text-gray-300 shrink-0">Name</span><span className="font-medium text-gray-900 dark:text-white text-right sm:text-left break-words">{profile.full_name}</span></div>
+              <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between sm:gap-4"><span className="text-sm text-gray-600 dark:text-gray-300 shrink-0">Staff ID</span><span className="font-mono text-gray-900 dark:text-white text-right sm:text-left break-all">{profile.staff_id}</span></div>
+              <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between sm:gap-4"><span className="text-sm text-gray-600 dark:text-gray-300 shrink-0">Email</span><span className="text-gray-900 dark:text-white text-right sm:text-left break-all">{profile.email || '—'}</span></div>
+              <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between sm:gap-4"><span className="text-sm text-gray-600 dark:text-gray-300 shrink-0">Phone</span><span className="text-gray-900 dark:text-white text-right sm:text-left">{profile.phone_number || '—'}</span></div>
+              <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between sm:gap-4"><span className="text-sm text-gray-600 dark:text-gray-300 shrink-0">Classes</span><span className="text-gray-900 dark:text-white text-right sm:text-left break-words">{teacherClasses.map(c => c.class_name).join(', ') || 'None'}</span></div>
               <div>
-                <span className="text-sm text-gray-600">Teaching assignments:</span>
+                <span className="text-sm text-gray-600 dark:text-gray-300">Teaching assignments:</span>
                 <div className="mt-2">
                   <TeacherSubjectClassDisplay
                     bySubject={subjectClasses?.by_subject}
@@ -287,7 +287,7 @@ const TeacherDashboard = () => {
                         <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800/90 dark:text-emerald-200/90">Contract (typical month)</p>
                         <div className="flex justify-between gap-2 text-sm">
                           <span className="text-gray-600 dark:text-gray-400">Gross</span>
-                          <span className="font-mono tabular-nums font-medium">{formatTeacherMoney(c, salaryInfo.monthlySalary)}</span>
+                          <span className="font-mono tabular-nums font-medium text-gray-900 dark:text-white">{formatTeacherMoney(c, salaryInfo.monthlySalary)}</span>
                         </div>
                         {salaryInfo.ssnitEnabled !== false && (
                           <div className="flex justify-between gap-2 text-sm">
@@ -305,11 +305,11 @@ const TeacherDashboard = () => {
                           <p className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">This month</p>
                           <div className="flex justify-between gap-2 text-sm">
                             <span className="text-gray-600 dark:text-gray-400">Net due</span>
-                            <span className="font-mono tabular-nums font-medium">{formatTeacherMoney(c, snap.netSalary)}</span>
+                            <span className="font-mono tabular-nums font-medium text-gray-900 dark:text-white">{formatTeacherMoney(c, snap.netSalary)}</span>
                           </div>
                           <div className="flex justify-between gap-2 text-sm">
                             <span className="text-gray-600 dark:text-gray-400">Paid</span>
-                            <span className="font-mono tabular-nums">{formatTeacherMoney(c, snap.amountPaid)}</span>
+                            <span className="font-mono tabular-nums text-gray-900 dark:text-white">{formatTeacherMoney(c, snap.amountPaid)}</span>
                           </div>
                           <div className="flex justify-between items-center gap-2 pt-1">
                             <span className="text-sm text-gray-600 dark:text-gray-400">Status</span>
@@ -344,8 +344,8 @@ const TeacherDashboard = () => {
               {teacherClasses.map((cls) => (
                 <div key={cls.id} className="flex items-center justify-between min-h-[52px] p-3 bg-gray-50 dark:bg-gray-900/40 rounded-xl">
                   <div>
-                    <p className="font-medium text-gray-900">{cls.class_name}</p>
-                    <p className="text-sm text-gray-500">{cls.level || 'Class'} · {cls.stream || 'Main'}</p>
+                    <p className="font-medium text-gray-900 dark:text-white">{cls.class_name}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-300">{cls.level || 'Class'} · {cls.stream || 'Main'}</p>
                   </div>
                   <Badge variant="secondary">{parseInt(cls.student_count || '0', 10)} students</Badge>
                 </div>

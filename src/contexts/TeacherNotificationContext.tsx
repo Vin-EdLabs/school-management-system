@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from './AuthContext';
 import { useSocket } from './SocketContext';
@@ -27,6 +27,13 @@ const TeacherNotificationContext = createContext<TeacherNotificationContextValue
 const STORAGE_PREFIX = 'rosaTeacherNotif:';
 
 const SCHOOL_STAFF_ROLES = new Set(['teacher', 'staff', 'headmaster', 'administrator', 'finance']);
+const TEACHER_STAFF_ROLES = new Set(['teacher', 'staff']);
+
+/** Parent desk + support alerts are for school leadership only, not classroom staff. */
+function filterItemsForRole(role: string | undefined, list: TeacherNotifItem[]): TeacherNotifItem[] {
+  if (!role || !TEACHER_STAFF_ROLES.has(role)) return list;
+  return list.filter((item) => item.kind === 'admin' || item.kind === 'salary');
+}
 
 function storageKeyForUser(user: { role?: string; tenantId?: number | null } | null): string | null {
   if (!user?.role) return null;
@@ -91,19 +98,43 @@ export const TeacherNotificationProvider: React.FC<{ children: React.ReactNode }
   const isSchoolStaff = !!user?.role && SCHOOL_STAFF_ROLES.has(user.role);
   const isSuperAdmin = user?.role === 'super-admin';
   const isRecipient = isSchoolStaff || isSuperAdmin;
+  const hydratedKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!isRecipient) {
       setItems([]);
+      hydratedKeyRef.current = null;
       return;
     }
-    setItems(loadStored(storeKey));
-  }, [isRecipient, storeKey]);
+    // Keep in-memory alerts while tenant context is still loading.
+    if (!storeKey) return;
+
+    if (hydratedKeyRef.current === storeKey) return;
+
+    const previousKey = hydratedKeyRef.current;
+    hydratedKeyRef.current = storeKey;
+    const stored = filterItemsForRole(user?.role, loadStored(storeKey));
+
+    setItems((prev) => {
+      if (previousKey != null && previousKey !== storeKey) {
+        return stored;
+      }
+      const scopedPrev = filterItemsForRole(user?.role, prev);
+      if (scopedPrev.length === 0) return stored;
+      const ids = new Set(scopedPrev.map((p) => p.id));
+      const merged = [...scopedPrev];
+      for (const item of stored) {
+        if (!ids.has(item.id)) merged.push(item);
+      }
+      merged.sort((a, b) => b.at - a.at);
+      return merged.slice(0, 50);
+    });
+  }, [isRecipient, storeKey, user?.role]);
 
   useEffect(() => {
     if (!isRecipient || !storeKey) return;
-    saveStored(storeKey, items);
-  }, [items, isRecipient, storeKey]);
+    saveStored(storeKey, filterItemsForRole(user?.role, items));
+  }, [items, isRecipient, storeKey, user?.role]);
 
   const pushItem = useCallback((item: TeacherNotifItem) => {
     setItems((prev) => {
@@ -184,67 +215,34 @@ export const TeacherNotificationProvider: React.FC<{ children: React.ReactNode }
       }
     };
 
-    const onNewParentMessage = (evt: { type?: string; preview?: string; timestamp?: number }) => {
-      if (!isSchoolStaff) return;
-      const type = String(evt?.type || '');
-      const preview = String(evt?.preview || '').trim();
-      if (!preview) return;
-      const at = Number(evt?.timestamp) || Date.now();
-
-      if (type === 'parent-desk') {
-        const title = 'New parent desk message';
-        const id = `parent-desk-${at}-${preview.slice(0, 32)}`;
-        pushItem({ id, kind: 'parent-desk', title, body: preview, at, read: false });
-        showOnScreenNotification(title, preview, 'sky');
-        return;
-      }
-
-      if (type === 'support-chat') {
-        const title = 'ScholarNerve Support replied';
-        const id = `support-chat-${at}-${preview.slice(0, 32)}`;
-        pushItem({ id, kind: 'support-chat', title, body: preview, at, read: false });
-        showOnScreenNotification(title, preview, 'sky');
-      }
-    };
-
     const onNewSupportMessage = (msg: Record<string, unknown>) => {
+      if (!isSuperAdmin) return;
+
       const preview = String(msg.message || 'New support message').trim();
       if (!preview) return;
       const at = Date.now();
       const fromSuper = Boolean(msg.is_from_superadmin);
-      const tenantId = msg.tenant_id != null ? Number(msg.tenant_id) : null;
       const tenantName = String(msg.tenant_name || 'School');
 
-      if (isSuperAdmin) {
-        if (fromSuper) return;
-        const title = `${tenantName} — Support message`;
-        const id = `sa-support-${msg.id ?? at}`;
-        pushItem({ id, kind: 'support-chat', title, body: preview, at, read: false });
-        showOnScreenNotification(title, preview, 'sky');
-        return;
-      }
+      if (fromSuper) return;
 
-      if (!isSchoolStaff || tenantId == null || tenantId !== user.tenantId) return;
-      if (!fromSuper) return;
-
-      const title = 'ScholarNerve Support';
-      const id = `support-in-${msg.id ?? at}`;
+      const title = `${tenantName} — Support message`;
+      const id = `sa-support-${msg.id ?? at}`;
       pushItem({ id, kind: 'support-chat', title, body: preview, at, read: false });
       showOnScreenNotification(title, preview, 'sky');
     };
 
     socket.on('tenant-data-changed', onTenant);
-    socket.on('new-parent-message', onNewParentMessage);
     socket.on('new-support-message', onNewSupportMessage);
 
     return () => {
       socket.off('tenant-data-changed', onTenant);
-      socket.off('new-parent-message', onNewParentMessage);
       socket.off('new-support-message', onNewSupportMessage);
     };
   }, [socket, isRecipient, isSchoolStaff, isSuperAdmin, user, pushItem]);
 
-  const unreadCount = useMemo(() => items.filter((i) => !i.read).length, [items]);
+  const visibleItems = useMemo(() => filterItemsForRole(user?.role, items), [items, user?.role]);
+  const unreadCount = useMemo(() => visibleItems.filter((i) => !i.read).length, [visibleItems]);
 
   const markRead = useCallback((id: string) => {
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, read: true } : i)));
@@ -259,8 +257,8 @@ export const TeacherNotificationProvider: React.FC<{ children: React.ReactNode }
   }, []);
 
   const value = useMemo(
-    () => ({ items, unreadCount, markRead, markAllRead, dismiss }),
-    [items, unreadCount, markRead, markAllRead, dismiss]
+    () => ({ items: visibleItems, unreadCount, markRead, markAllRead, dismiss }),
+    [visibleItems, unreadCount, markRead, markAllRead, dismiss]
   );
 
   return <TeacherNotificationContext.Provider value={value}>{children}</TeacherNotificationContext.Provider>;

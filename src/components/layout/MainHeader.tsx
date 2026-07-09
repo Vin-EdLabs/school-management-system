@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSchool } from '../../contexts/SchoolContext';
 import { useTeacherNotifications } from '../../contexts/TeacherNotificationContext';
@@ -30,6 +30,15 @@ interface MainHeaderProps {
   activeModule: string;
   setActiveModule: (id: string) => void;
 }
+
+const NOTIF_PANEL_CLASS =
+  'fixed z-[110] left-3 right-3 top-[4.75rem] sm:left-auto sm:right-6 sm:top-[5.5rem] sm:w-[min(100vw-2rem,26rem)] max-w-[26rem] sm:ml-auto sm:mr-0 max-h-[min(75dvh,34rem)] flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl ring-1 ring-black/5 dark:border-slate-800 dark:bg-slate-900 animate-in fade-in slide-in-from-top-2 zoom-in-95 duration-200 origin-top';
+
+const NOTIF_LIST_SCROLL_CLASS =
+  'flex-1 min-h-0 overflow-y-auto overscroll-y-contain touch-pan-y [-webkit-overflow-scrolling:touch]';
+
+const NOTIF_BODY_CLASS =
+  'mt-1 text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap break-words [overflow-wrap:anywhere]';
 
 const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModule, setActiveModule }) => {
   const { user } = useAuth();
@@ -114,10 +123,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
 
     if (showTeacherBell) {
       return (
-        <div
-          ref={notifPanelRef}
-          className="fixed z-[110] left-3 right-3 top-[4.75rem] sm:left-auto sm:right-6 sm:top-[5.5rem] sm:w-[min(100vw-2rem,22rem)] max-w-[22rem] sm:ml-auto sm:mr-0 max-h-[min(70dvh,28rem)] flex flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl ring-1 ring-black/5 dark:border-slate-800 dark:bg-slate-900 animate-in fade-in slide-in-from-top-2 zoom-in-95 duration-200 origin-top"
-        >
+        <div ref={notifPanelRef} className={NOTIF_PANEL_CLASS}>
           <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2 shrink-0">
             <p className="text-xs font-semibold text-foreground">Notifications</p>
             {items.length > 0 && (
@@ -130,40 +136,37 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
               </button>
             )}
           </div>
-          <ScrollArea className="max-h-[min(50vh,260px)]">
+          <div className={NOTIF_LIST_SCROLL_CLASS}>
             {items.length === 0 ? (
               <p className="p-4 text-xs text-muted-foreground">No notifications yet.</p>
             ) : (
-              <div className="space-y-1 p-2">
+              <div className="space-y-2 p-2 pb-4">
                 {items.map((n) => (
                   <button
                     key={n.id}
                     type="button"
                     onClick={() => markRead(n.id)}
-                    className={`w-full rounded-lg border p-2.5 text-left transition-colors touch-manipulation ${
+                    className={`w-full rounded-lg border p-3 text-left transition-colors touch-manipulation select-text ${
                       n.read
                         ? 'border-border bg-card hover:bg-muted/50'
                         : 'border-indigo-200/80 bg-indigo-50/60 hover:bg-indigo-100/70 dark:border-indigo-900 dark:bg-indigo-950/40 dark:hover:bg-indigo-950/60'
                     }`}
                   >
                     <p className="text-sm font-semibold text-foreground">{n.title}</p>
-                    <p className="mt-0.5 line-clamp-3 text-xs text-muted-foreground">{n.body}</p>
-                    <p className="mt-1 text-[10px] text-muted-foreground">{new Date(n.at).toLocaleString()}</p>
+                    <p className={NOTIF_BODY_CLASS}>{n.body}</p>
+                    <p className="mt-2 text-[10px] text-muted-foreground">{new Date(n.at).toLocaleString()}</p>
                   </button>
                 ))}
               </div>
             )}
-          </ScrollArea>
+          </div>
         </div>
       );
     }
 
     if (showAdminBell) {
       return (
-        <div
-          ref={notifPanelRef}
-          className="fixed z-[110] left-3 right-3 top-[4.75rem] sm:left-auto sm:right-6 sm:top-[5.5rem] sm:w-[min(100vw-2rem,22rem)] max-w-[22rem] sm:ml-auto sm:mr-0 max-h-[min(70dvh,32rem)] flex flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl ring-1 ring-black/5 dark:border-slate-800 dark:bg-slate-900 animate-in fade-in slide-in-from-top-2 zoom-in-95 duration-200 origin-top"
-        >
+        <div ref={notifPanelRef} className={NOTIF_PANEL_CLASS}>
           <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2 shrink-0">
             <p className="text-xs font-semibold text-foreground">
               {isHeadmaster ? 'Notifications' : 'School Messages'}
@@ -178,9 +181,9 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
               </button>
             )}
           </div>
-          <ScrollArea className="max-h-[min(50vh,320px)]">
+          <div className={NOTIF_LIST_SCROLL_CLASS}>
             {isHeadmaster && items.length > 0 && (
-              <div className="space-y-1 border-b border-border p-2 pb-3">
+              <div className="space-y-2 border-b border-border p-2 pb-3">
                 <p className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                   Staff alerts
                 </p>
@@ -189,15 +192,15 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
                     key={n.id}
                     type="button"
                     onClick={() => markRead(n.id)}
-                    className={`w-full rounded-lg border p-2.5 text-left transition-colors touch-manipulation ${
+                    className={`w-full rounded-lg border p-3 text-left transition-colors touch-manipulation select-text ${
                       n.read
                         ? 'border-border bg-card hover:bg-muted/50'
                         : 'border-indigo-200/80 bg-indigo-50/60 hover:bg-indigo-100/70 dark:border-indigo-900 dark:bg-indigo-950/40 dark:hover:bg-indigo-950/60'
                     }`}
                   >
                     <p className="text-sm font-semibold text-foreground">{n.title}</p>
-                    <p className="mt-0.5 line-clamp-3 text-xs text-muted-foreground">{n.body}</p>
-                    <p className="mt-1 text-[10px] text-muted-foreground">{new Date(n.at).toLocaleString()}</p>
+                    <p className={NOTIF_BODY_CLASS}>{n.body}</p>
+                    <p className="mt-2 text-[10px] text-muted-foreground">{new Date(n.at).toLocaleString()}</p>
                   </button>
                 ))}
               </div>
@@ -209,7 +212,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
                 </p>
               ) : null
             ) : (
-              <div className="space-y-1 p-2">
+              <div className="space-y-2 p-2 pb-4">
                 {isHeadmaster && (
                   <p className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                     School messages
@@ -240,7 +243,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
                       setActiveModule(notification.type === 'term-budget' ? 'term-budget' : notification.type);
                     }}
                     className={cn(
-                      'w-full rounded-lg border p-2.5 text-left transition-colors touch-manipulation',
+                      'w-full rounded-lg border p-3 text-left transition-colors touch-manipulation select-text',
                       notification.priority === 'HIGH'
                         ? 'border-amber-300 bg-amber-50 hover:border-amber-400 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/40 dark:hover:bg-amber-950/60'
                         : 'border-border bg-card hover:border-emerald-300 hover:bg-emerald-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-500 dark:hover:bg-indigo-950/70'
@@ -252,8 +255,8 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
                       )}
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-semibold text-foreground">{notification.title}</p>
-                        <p className="mt-0.5 line-clamp-3 text-xs text-muted-foreground">{notification.body}</p>
-                        <p className="mt-1 text-[10px] text-muted-foreground">
+                        <p className={NOTIF_BODY_CLASS}>{notification.body}</p>
+                        <p className="mt-2 text-[10px] text-muted-foreground">
                           {new Date(notification.timestamp).toLocaleString()}
                         </p>
                       </div>
@@ -262,7 +265,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
                 ))}
               </div>
             )}
-          </ScrollArea>
+          </div>
         </div>
       );
     }
@@ -430,6 +433,23 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
     }
   }, [showAdminNotifications]);
 
+  const showAdminCommsToast = useCallback((type: 'parent-desk' | 'support-chat', preview?: string) => {
+    const body = String(preview || '').trim();
+    if (type === 'parent-desk') {
+      toast('New parent desk message', {
+        description: body || 'A parent sent a new message.',
+        duration: 12_000,
+        className: 'border-l-4 border-l-sky-500',
+      });
+      return;
+    }
+    toast('ScholarNerve Support replied', {
+      description: body || 'You have a new support message.',
+      duration: 12_000,
+      className: 'border-l-4 border-l-sky-500',
+    });
+  }, []);
+
   const markAdminNotificationRead = useCallback(async (
     notificationType: 'parent-desk' | 'support-chat' | 'term-budget' | 'lost-card' | 'payment-submissions',
     alertId?: number,
@@ -456,6 +476,11 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
   }, [showAdminNotifications, loadAdminNotifications]);
 
   useEffect(() => {
+    if (!notifOpen || !showAdminNotifications) return;
+    void loadAdminNotifications();
+  }, [notifOpen, showAdminNotifications, loadAdminNotifications]);
+
+  useEffect(() => {
     if (!socket || !showAdminNotifications) return;
     const onTenant = (evt: { entity?: string; tenantId?: number | null }) => {
       const tid = evt.tenantId;
@@ -465,11 +490,20 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
         void loadAdminNotifications();
       }
     };
-    const onNew = (event: { type?: string }) => {
+    const onNew = (event: { type?: string; preview?: string }) => {
       const type = String(event?.type || '');
       if (type === 'parent-desk' || type === 'support-chat' || type === 'lost-card') {
+        if (type === 'parent-desk' || type === 'support-chat') {
+          showAdminCommsToast(type, event.preview);
+        }
         void loadAdminNotifications();
       }
+    };
+    const onSupportMessage = (msg: Record<string, unknown>) => {
+      if (!Boolean(msg.is_from_superadmin)) return;
+      const preview = String(msg.message || '').trim();
+      showAdminCommsToast('support-chat', preview);
+      void loadAdminNotifications();
     };
     const onLostCard = () => {
       void loadAdminNotifications();
@@ -479,17 +513,17 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
     };
     socket.on('tenant-data-changed', onTenant);
     socket.on('new-parent-message', onNew);
-    socket.on('new-support-message', onNew);
+    socket.on('new-support-message', onSupportMessage);
     socket.on('support-chat-read', onSupportRead);
     socket.on('lost-card-report', onLostCard);
     return () => {
       socket.off('tenant-data-changed', onTenant);
       socket.off('new-parent-message', onNew);
-      socket.off('new-support-message', onNew);
+      socket.off('new-support-message', onSupportMessage);
       socket.off('support-chat-read', onSupportRead);
       socket.off('lost-card-report', onLostCard);
     };
-  }, [socket, showAdminNotifications, loadAdminNotifications]);
+  }, [socket, showAdminNotifications, loadAdminNotifications, showAdminCommsToast]);
 
   return (
     <>

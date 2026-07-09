@@ -11,6 +11,7 @@ import {
   type SchoolPaymentDetails,
 } from '@/services/parentPaymentSubmissionApi';
 import { formatDisplayDateTime } from '@/utils/dateFormat';
+import { BrandedLoading } from '@/components/common/BrandedLoading';
 
 interface LinkedStudent {
   id: number;
@@ -24,6 +25,7 @@ interface ParentMakePaymentPanelProps {
   linkedStudents: LinkedStudent[];
   defaultStudentId?: number;
   resolveMediaUrl: (url: string | null | undefined) => string | null;
+  logoUrl?: string | null;
 }
 
 const NETWORKS = ['MTN MoMo', 'Vodafone Cash', 'AirtelTigo', 'Bank Transfer'] as const;
@@ -101,6 +103,7 @@ const ParentMakePaymentPanel: React.FC<ParentMakePaymentPanelProps> = ({
   linkedStudents,
   defaultStudentId,
   resolveMediaUrl,
+  logoUrl,
 }) => {
   const [details, setDetails] = useState<SchoolPaymentDetails | null>(null);
   const [history, setHistory] = useState<PaymentSubmission[]>([]);
@@ -234,8 +237,8 @@ const ParentMakePaymentPanel: React.FC<ParentMakePaymentPanelProps> = ({
 
   if (initialLoading && !hasLoadedRef.current) {
     return (
-      <div className="flex items-center justify-center py-16 text-slate-500">
-        <Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading payment options…
+      <div className="bg-white border border-gray-200 rounded-xl p-6 text-center shadow-sm">
+        <BrandedLoading logoUrl={logoUrl} label="Loading payment options…" className="py-2" />
       </div>
     );
   }

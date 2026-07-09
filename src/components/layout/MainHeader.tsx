@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '../../contexts/AuthContext';
@@ -32,13 +33,13 @@ interface MainHeaderProps {
 }
 
 const NOTIF_PANEL_CLASS =
-  'fixed z-[110] left-3 right-3 top-[4.75rem] sm:left-auto sm:right-6 sm:top-[5.5rem] sm:w-[min(100vw-2rem,26rem)] max-w-[26rem] sm:ml-auto sm:mr-0 max-h-[min(75dvh,34rem)] flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl ring-1 ring-black/5 dark:border-slate-800 dark:bg-slate-900 animate-in fade-in slide-in-from-top-2 zoom-in-95 duration-200 origin-top';
+  'fixed z-[200] left-3 right-3 sm:left-auto sm:right-6 sm:w-[min(100vw-2rem,26rem)] max-w-[26rem] sm:ml-auto sm:mr-0 rounded-2xl border border-slate-200 bg-white shadow-2xl ring-1 ring-black/5 dark:border-slate-800 dark:bg-slate-900 animate-in fade-in slide-in-from-top-2 zoom-in-95 duration-200 origin-top';
 
 const NOTIF_LIST_SCROLL_CLASS =
-  'flex-1 min-h-0 overflow-y-auto overscroll-y-contain touch-pan-y [-webkit-overflow-scrolling:touch]';
+  'max-h-[min(calc(100dvh-8rem),30rem)] overflow-y-auto overscroll-y-contain touch-pan-y [-webkit-overflow-scrolling:touch]';
 
 const NOTIF_BODY_CLASS =
-  'mt-1 text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap break-words [overflow-wrap:anywhere]';
+  'mt-1 text-xs leading-relaxed text-slate-600 dark:text-slate-200 whitespace-pre-wrap break-words [overflow-wrap:anywhere]';
 
 const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModule, setActiveModule }) => {
   const { user } = useAuth();
@@ -49,6 +50,8 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
   const [currentTime, setCurrentTime] = useState(new Date());
   const [notifOpen, setNotifOpen] = useState(false);
   const notifPanelRef = useRef<HTMLDivElement>(null);
+  const notifBellRef = useRef<HTMLButtonElement>(null);
+  const [notifPanelTop, setNotifPanelTop] = useState(76);
   const [mobileGuideOpen, setMobileGuideOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileTodosOpen, setMobileTodosOpen] = useState(false);
@@ -90,6 +93,23 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
 
   useEffect(() => {
     if (!notifOpen) return;
+    const updatePosition = () => {
+      const bell = notifBellRef.current;
+      if (!bell) return;
+      const rect = bell.getBoundingClientRect();
+      setNotifPanelTop(Math.max(12, Math.round(rect.bottom + 8)));
+    };
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [notifOpen]);
+
+  useEffect(() => {
+    if (!notifOpen) return;
     let removeListeners: (() => void) | undefined;
     const timer = window.setTimeout(() => {
       const close = (e: MouseEvent | TouchEvent) => {
@@ -121,10 +141,14 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
   const renderNotificationPanel = () => {
     if (!notifOpen) return null;
 
+    const panelStyle = { top: `${notifPanelTop}px` } as const;
+
+    let panel: React.ReactNode = null;
+
     if (showTeacherBell) {
-      return (
-        <div ref={notifPanelRef} className={NOTIF_PANEL_CLASS}>
-          <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2 shrink-0">
+      panel = (
+        <div ref={notifPanelRef} className={NOTIF_PANEL_CLASS} style={panelStyle}>
+          <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2 shrink-0 bg-white dark:bg-slate-900 rounded-t-2xl">
             <p className="text-xs font-semibold text-foreground">Notifications</p>
             {items.length > 0 && (
               <button
@@ -162,12 +186,10 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
           </div>
         </div>
       );
-    }
-
-    if (showAdminBell) {
-      return (
-        <div ref={notifPanelRef} className={NOTIF_PANEL_CLASS}>
-          <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2 shrink-0">
+    } else if (showAdminBell) {
+      panel = (
+        <div ref={notifPanelRef} className={NOTIF_PANEL_CLASS} style={panelStyle}>
+          <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2 shrink-0 bg-white dark:bg-slate-900 rounded-t-2xl">
             <p className="text-xs font-semibold text-foreground">
               {isHeadmaster ? 'Notifications' : 'School Messages'}
             </p>
@@ -270,7 +292,8 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
       );
     }
 
-    return null;
+    if (!panel) return null;
+    return typeof document !== 'undefined' ? createPortal(panel, document.body) : panel;
   };
 
   const renderNotificationBell = (className?: string) => {
@@ -278,6 +301,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
 
     return (
       <Button
+        ref={notifBellRef}
         type="button"
         variant="ghost"
         size="icon"

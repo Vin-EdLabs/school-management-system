@@ -9,8 +9,15 @@ type StudentInfo = {
   last_name: string;
   class_name?: string | null;
   class_assigned_id?: number | null;
+  classId?: number | null;
   current_term?: string | null;
 };
+
+function resolveStudentClassId(student: StudentInfo): number | null {
+  const raw = student.class_assigned_id ?? student.classId;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
 
 type SubjectKey = 'maths' | 'science' | 'english' | 'social' | 'rme' | 'french' | 'ict';
 type QuizQuestion = {
@@ -129,13 +136,15 @@ export default function StudentLearningMode({
   const [loading, setLoading] = useState(false);
   const [availableSubjects, setAvailableSubjects] = useState<SubjectKey[]>([]);
 
+  const classId = useMemo(() => resolveStudentClassId(student), [student]);
   const classLevel = useMemo(() => getClassLevelFromName(student.class_name), [student.class_name]);
 
   const loadHome = async () => {
-    if (!student.class_assigned_id) return;
     const [statsRes, lbRes, tqRes, subjectRes, sessionsRes] = await Promise.all([
       apiFetch('/student/stats', token).catch(() => ({ currentStreak: 0, weeklyPoints: 0, totalPoints: 0, quizzesDoneWeek: 0, accuracyWeek: 0 })),
-      apiFetch(`/student/leaderboard?class_id=${student.class_assigned_id}`, token).catch(() => ({ leaderboard: [], me: null })),
+      classId
+        ? apiFetch(`/student/leaderboard?class_id=${classId}`, token).catch(() => ({ leaderboard: [], me: null }))
+        : Promise.resolve({ leaderboard: [], me: null }),
       apiFetch('/student/teacher-quizzes', token).catch(() => ({ quizzes: [] })),
       apiFetch('/student/subjects', token).catch(() => ({ subjects: [] })),
       apiFetch('/student/recent-sessions', token).catch(() => ({ sessions: [] })),
@@ -163,7 +172,7 @@ export default function StudentLearningMode({
 
   useEffect(() => {
     loadHome().catch(() => undefined);
-  }, [token, student.class_assigned_id, liveSignal]);
+  }, [token, classId, liveSignal]);
 
   const startDailyQuiz = async (subject: SubjectKey) => {
     setLoading(true);
@@ -603,7 +612,12 @@ export default function StudentLearningMode({
         {screen === 'leaderboard' && (
           <div className="rounded-3xl bg-white border border-slate-200 p-4 animate-in slide-in-from-right-2 duration-300 text-slate-900 shadow-sm">
             <div className="flex items-center justify-between gap-2">
-              <p className="font-bold text-slate-900">🏆 {student.class_name || classLevel.toUpperCase()} — This Week</p>
+              <p className="font-bold text-slate-900">
+                🏆 {student.class_name || classLevel.toUpperCase()} — This Week
+                {leaderboard.length > 0 ? (
+                  <span className="ml-1 text-sm font-semibold text-slate-500">({leaderboard.length} students)</span>
+                ) : null}
+              </p>
               <button type="button" onClick={() => setScreen('home')} className="text-sm text-indigo-700 font-semibold shrink-0">
                 Close
               </button>
@@ -614,20 +628,24 @@ export default function StudentLearningMode({
                 <span>Student</span>
                 <span className="text-right">Points</span>
               </div>
-              <div className="max-h-[52vh] overflow-y-auto bg-white">
-                {leaderboard.slice(0, 30).map((row) => (
-                  <div
-                    key={row.studentId}
-                    className={`grid grid-cols-[64px_1fr_120px] px-3 py-2.5 border-t border-slate-100 text-sm ${row.isMe ? 'bg-indigo-50' : 'bg-white'}`}
-                  >
-                    <span className="font-semibold text-slate-800">{row.rank}</span>
-                    <span className="truncate font-medium text-slate-900">
-                      {row.name}
-                      {row.isMe ? <span className="text-indigo-700 font-semibold"> ← You</span> : ''}
-                    </span>
-                    <span className="text-right font-semibold text-indigo-700">{row.points}</span>
-                  </div>
-                ))}
+              <div className="max-h-[min(60dvh,28rem)] overflow-y-auto overscroll-y-contain touch-pan-y bg-white [-webkit-overflow-scrolling:touch]">
+                {leaderboard.length === 0 ? (
+                  <p className="px-3 py-6 text-center text-sm text-slate-500">No students in this class yet.</p>
+                ) : (
+                  leaderboard.map((row) => (
+                    <div
+                      key={row.studentId}
+                      className={`grid grid-cols-[64px_1fr_120px] px-3 py-2.5 border-t border-slate-100 text-sm ${row.isMe ? 'bg-indigo-50' : 'bg-white'}`}
+                    >
+                      <span className="font-semibold text-slate-800">{row.rank}</span>
+                      <span className="truncate font-medium text-slate-900">
+                        {row.name}
+                        {row.isMe ? <span className="text-indigo-700 font-semibold"> ← You</span> : ''}
+                      </span>
+                      <span className="text-right font-semibold text-indigo-700">{row.points}</span>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
             <div className="mt-4 rounded-2xl bg-indigo-50 border border-indigo-100 p-3">

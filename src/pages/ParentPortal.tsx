@@ -28,6 +28,7 @@ import {
   type Invoice,
 } from '@/services/invoiceApi';
 import ParentMakePaymentPanel from '@/components/parent/ParentMakePaymentPanel';
+import StudentLearningMode from '@/components/parent/StudentLearningMode';
 import { buildInvoiceFilename, downloadInvoicePdf } from '@/components/invoices/buildInvoicePdf';
 import { createRoot } from 'react-dom/client';
 import ParentReportCardMobileViewport from '@/components/parent/ParentReportCardMobileViewport';
@@ -1682,6 +1683,19 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     return [];
   }, [linkedAccounts, student]);
 
+  const learningStudent = useMemo(() => {
+    if (!student) return null;
+    const classId =
+      student.class_assigned_id != null && Number.isFinite(Number(student.class_assigned_id))
+        ? Number(student.class_assigned_id)
+        : null;
+    return {
+      ...student,
+      id: student.id,
+      class_assigned_id: classId,
+    };
+  }, [student]);
+
   const handleTabChange = (tab: Tab) => {
     setActiveTab(tab);
   };
@@ -2147,11 +2161,12 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     ];
 
   const openStudentMode = () => {
+    if (!token || !student) return;
     setStudentModeEntering(true);
     window.setTimeout(() => {
       setStudentModeEntering(false);
       setIsStudentMode(true);
-    }, 750);
+    }, 400);
   };
 
   if (studentModeEntering) {
@@ -2166,12 +2181,12 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     );
   }
 
-  if (isStudentMode && token && student) {
+  if (isStudentMode && token && learningStudent) {
     return (
       <StudentLearningMode
-        key={student.admission_number}
+        key={learningStudent.admission_number}
         token={token}
-        student={student as any}
+        student={learningStudent}
         onExit={() => setIsStudentMode(false)}
         liveSignal={studentModeSignal}
       />
@@ -2453,10 +2468,21 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             </section>
 
             {/* Continue Learning */}
-            <section className="relative overflow-hidden rounded-[2rem] border border-white/75 bg-white/62 p-4 shadow-[0_14px_38px_rgba(139,92,246,0.14)] backdrop-blur-2xl">
-              <div className="absolute -right-8 top-1/2 h-20 w-20 -translate-y-1/2 rounded-full border border-white/60" />
+            <section
+              role="button"
+              tabIndex={0}
+              onClick={openStudentMode}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  openStudentMode();
+                }
+              }}
+              className="relative overflow-hidden rounded-[2rem] border border-white/75 bg-white/62 p-4 shadow-[0_14px_38px_rgba(139,92,246,0.14)] backdrop-blur-2xl cursor-pointer transition-transform active:scale-[0.99] hover:-translate-y-0.5"
+            >
+              <div className="absolute -right-8 top-1/2 h-20 w-20 -translate-y-1/2 rounded-full border border-white/60 pointer-events-none" />
               <div className="relative flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
                   <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[1.25rem] bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-[0_12px_28px_rgba(139,92,246,0.28)]">
                     <GraduationCap className="h-6 w-6" />
                   </div>
@@ -2466,12 +2492,9 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                     <p className="mt-1 text-[11px] font-bold text-orange-500">🔥 Daily practice available</p>
                   </div>
                 </div>
-                <button
-                  onClick={openStudentMode}
-                  className="w-full sm:w-auto text-center shrink-0 rounded-2xl bg-gradient-to-r from-violet-600 via-purple-500 to-fuchsia-500 px-4 py-2.5 sm:py-2 text-xs font-black text-white shadow-[0_12px_28px_rgba(139,92,246,0.30)] transition-all hover:-translate-y-0.5 active:scale-95"
-                >
+                <span className="w-full sm:w-auto text-center shrink-0 rounded-2xl bg-gradient-to-r from-violet-600 via-purple-500 to-fuchsia-500 px-4 py-2.5 sm:py-2 text-xs font-black text-white shadow-[0_12px_28px_rgba(139,92,246,0.30)]">
                   Enter →
-                </button>
+                </span>
               </div>
             </section>
 
@@ -3117,6 +3140,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                 linkedStudents={makePaymentStudents}
                 defaultStudentId={student?.id}
                 resolveMediaUrl={resolveMediaUrl}
+                logoUrl={schoolLogoUrl ?? student?.school_logo_url}
               />
             ) : financeSubTab === 'make-payment' ? null : showTabLoading ? (
               <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} onRetry={refreshTab} />

@@ -6,6 +6,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { apiService } from '../../services/api';
 import { useSchool } from '../../contexts/SchoolContext';
 import { BookOpen, Users, ChevronRight, Eye } from 'lucide-react';
+import { isActiveEnrolledStudent } from '../students/studentRegistryUtils';
+import type { Student } from '../../contexts/DataContext';
 
 interface TeacherClass {
   id: number;
@@ -25,6 +27,13 @@ const resolvePhotoUrl = (photoUrl?: string | null) => {
   return `${origin}${normalized}`;
 };
 
+function studentBelongsToClass(student: Student, classId: number, className: string) {
+  return (
+    student.classAssigned === className ||
+    (student.classAssignedId != null && String(student.classAssignedId) === String(classId))
+  );
+}
+
 const TeacherClassesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boolean }) => {
   const { schoolId } = useSchool();
   const { students, classes } = useData();
@@ -36,6 +45,11 @@ const TeacherClassesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOn
   const [loading, setLoading] = useState(true);
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
 
+  const activeStudents = useMemo(
+    () => students.filter(isActiveEnrolledStudent),
+    [students]
+  );
+
   useEffect(() => {
     if (schoolId != null) apiService.setTenantContext(schoolId);
   }, [schoolId]);
@@ -43,8 +57,8 @@ const TeacherClassesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOn
   // Build class list: all classes for admin, teacher-assigned only for teachers
   const allClassesAsTeacherClass = useMemo<TeacherClass[]>(() => {
     return classes.map(c => {
-      const studentCount = students.filter(s =>
-        s.classAssigned === c.className || (s.classAssignedId && String(s.classAssignedId) === String(c.id))
+      const studentCount = activeStudents.filter(s =>
+        studentBelongsToClass(s, Number(c.id), c.className)
       ).length;
       return {
         id: Number(c.id),
@@ -55,7 +69,7 @@ const TeacherClassesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOn
         student_count: String(studentCount),
       };
     });
-  }, [classes, students]);
+  }, [classes, activeStudents]);
 
   useEffect(() => {
     if (isAdminViewer) {
@@ -83,7 +97,7 @@ const TeacherClassesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOn
 
   const selectedClass = teacherClasses.find(c => String(c.id) === selectedClassId);
   const classStudents = selectedClass
-    ? students.filter(s => s.classAssigned === selectedClass.class_name || (s.classAssignedId && String(s.classAssignedId) === String(selectedClass.id)))
+    ? activeStudents.filter(s => studentBelongsToClass(s, selectedClass.id, selectedClass.class_name))
     : [];
 
   return (

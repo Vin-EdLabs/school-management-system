@@ -38,7 +38,7 @@ export function parseTenantLookup(
     };
   }
 
-  if (status === 404 || code === 'SCHOOL_NOT_FOUND') {
+  if (status === 404 || code === 'SCHOOL_NOT_FOUND' || code === 'SCHOOL_ARCHIVED') {
     return {
       resolvedId: null,
       error: {
@@ -63,6 +63,10 @@ export function parseTenantLookup(
       schoolName,
     },
   };
+}
+
+export function schoolPortalErrorHidesLandingLink(_error: SchoolPortalErrorState): boolean {
+  return true;
 }
 
 export function schoolPortalErrorPresentation(error: SchoolPortalErrorState): {

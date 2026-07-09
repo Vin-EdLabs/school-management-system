@@ -9,8 +9,22 @@ import {
 } from '../services/systemErrorService.js';
 import { writeAuditLog } from '../services/auditService.js';
 import { getClientIp } from '../utils/clientIp.js';
+import { getPlatformUiSettings } from '../services/platformSettingsService.js';
 
 const router = express.Router();
+
+/** Public UI flags — no auth; used by all staff browsers for zoom nudge, etc. */
+router.get('/public-ui-config', async (_req, res) => {
+  try {
+    const ui = await getPlatformUiSettings();
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ ui });
+  } catch (error) {
+    console.error('Public UI config error:', error);
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ ui: { zoomNudgeEnabled: false } });
+  }
+});
 
 router.post('/errors/report', async (req, res) => {
   try {
@@ -36,6 +50,17 @@ router.post('/errors/report', async (req, res) => {
   } catch (error) {
     console.error('Report system error failed:', error);
     res.status(500).json({ error: 'Failed to report error' });
+  }
+});
+
+/** UI flags for authenticated staff apps (zoom nudge, etc.). */
+router.get('/ui-config', authenticate, async (_req: AuthRequest, res) => {
+  try {
+    const ui = await getPlatformUiSettings();
+    res.json({ ui });
+  } catch (error) {
+    console.error('UI config error:', error);
+    res.status(500).json({ error: 'Failed to load UI config' });
   }
 });
 

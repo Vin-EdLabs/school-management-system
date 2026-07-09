@@ -250,7 +250,7 @@ const MenuSection: React.FC<{
                       });
                       return;
                     }
-                    if (item.id !== 'parent-desk') {
+                    if (item.id !== 'parent-desk' && item.id !== 'support-chat') {
                       await markCommsRead(item.id);
                     }
                     setActiveModule(item.id);
@@ -513,16 +513,11 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
 
   const markCommsRead = useCallback(async (moduleId: string) => {
     try {
-      if (moduleId === 'parent-desk') {
-        await apiService.post('/messages/admin/mark-read-by-school', {});
-        setParentDeskUnread(0);
-      }
-      if (moduleId === 'support-chat') {
-        await apiService.post('/support-chat/mark-read-by-school', {});
-        setSupportUnread(0);
+      if (moduleId === 'payment-submissions') {
+        // payment submissions marked read when reviewed
       }
     } catch {
-      // ignore read marking failures; counts will refresh from socket/poll
+      // ignore
     }
   }, []);
 
@@ -540,13 +535,18 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
       if (e === 'parent-desk' || e === 'support-chat' || e === 'payment-submission') void refreshCommsBadges();
     };
     const onCountUpdate = () => void refreshCommsBadges();
+    const onLocalRefresh = () => void refreshCommsBadges();
     socket.on('tenant-data-changed', onTenant);
     socket.on('new-support-message', onCountUpdate);
     socket.on('new-parent-message', onCountUpdate);
+    socket.on('support-chat-read', onCountUpdate);
+    window.addEventListener('comms-badges-refresh', onLocalRefresh);
     return () => {
       socket.off('tenant-data-changed', onTenant);
       socket.off('new-support-message', onCountUpdate);
       socket.off('new-parent-message', onCountUpdate);
+      socket.off('support-chat-read', onCountUpdate);
+      window.removeEventListener('comms-badges-refresh', onLocalRefresh);
     };
   }, [socket, refreshCommsBadges]);
 

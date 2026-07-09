@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import { useAuth } from './AuthContext';
 import { useSocket } from './SocketContext';
 
-export type TeacherNotifKind = 'salary' | 'admin';
+export type TeacherNotifKind = 'salary' | 'admin' | 'parent-desk' | 'support-chat';
 
 export interface TeacherNotifItem {
   id: string;
@@ -26,10 +26,20 @@ const TeacherNotificationContext = createContext<TeacherNotificationContextValue
 
 const STORAGE_PREFIX = 'rosaTeacherNotif:';
 
-function loadStored(tenantId: number | null | undefined): TeacherNotifItem[] {
-  if (tenantId == null) return [];
+const SCHOOL_STAFF_ROLES = new Set(['teacher', 'staff', 'headmaster', 'administrator', 'finance']);
+
+function storageKeyForUser(user: { role?: string; tenantId?: number | null } | null): string | null {
+  if (!user?.role) return null;
+  if (user.role === 'super-admin') return `${STORAGE_PREFIX}platform`;
+  if (user.tenantId == null) return null;
+  if (!SCHOOL_STAFF_ROLES.has(user.role)) return null;
+  return `${STORAGE_PREFIX}${user.tenantId}`;
+}
+
+function loadStored(key: string | null): TeacherNotifItem[] {
+  if (!key) return [];
   try {
-    const raw = sessionStorage.getItem(`${STORAGE_PREFIX}${tenantId}`);
+    const raw = sessionStorage.getItem(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as TeacherNotifItem[];
     return Array.isArray(parsed) ? parsed.slice(0, 50) : [];
@@ -38,12 +48,37 @@ function loadStored(tenantId: number | null | undefined): TeacherNotifItem[] {
   }
 }
 
-function saveStored(tenantId: number | null | undefined, items: TeacherNotifItem[]) {
-  if (tenantId == null) return;
+function saveStored(key: string | null, items: TeacherNotifItem[]) {
+  if (!key) return;
   try {
-    sessionStorage.setItem(`${STORAGE_PREFIX}${tenantId}`, JSON.stringify(items.slice(0, 50)));
+    sessionStorage.setItem(key, JSON.stringify(items.slice(0, 50)));
   } catch {
     /* ignore quota */
+  }
+}
+
+function showOnScreenNotification(title: string, body: string, accent: 'indigo' | 'sky' | 'violet' | 'emerald') {
+  const border =
+    accent === 'sky'
+      ? 'border-l-sky-500'
+      : accent === 'violet'
+        ? 'border-l-violet-500'
+        : accent === 'emerald'
+          ? 'border-l-emerald-500'
+          : 'border-l-indigo-500';
+
+  toast(title, {
+    description: body.length > 160 ? `${body.slice(0, 160)}…` : body,
+    duration: 12_000,
+    className: `border-l-4 ${border}`,
+  });
+
+  if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+    try {
+      new Notification(title, { body: body.length > 200 ? `${body.slice(0, 200)}…` : body });
+    } catch {
+      /* ignore */
+    }
   }
 }
 
@@ -52,72 +87,66 @@ export const TeacherNotificationProvider: React.FC<{ children: React.ReactNode }
   const { socket } = useSocket();
   const [items, setItems] = useState<TeacherNotifItem[]>([]);
 
-  const isRecipient = user?.role === 'teacher' || user?.role === 'staff' || user?.role === 'headmaster';
+  const storeKey = storageKeyForUser(user);
+  const isSchoolStaff = !!user?.role && SCHOOL_STAFF_ROLES.has(user.role);
+  const isSuperAdmin = user?.role === 'super-admin';
+  const isRecipient = isSchoolStaff || isSuperAdmin;
 
   useEffect(() => {
-    if (!isRecipient || !user?.tenantId) {
+    if (!isRecipient) {
       setItems([]);
       return;
     }
-    setItems(loadStored(user.tenantId));
-  }, [isRecipient, user?.tenantId]);
+    setItems(loadStored(storeKey));
+  }, [isRecipient, storeKey]);
 
   useEffect(() => {
-    if (!isRecipient || user?.tenantId == null) return;
-    saveStored(user.tenantId, items);
-  }, [items, isRecipient, user?.tenantId]);
+    if (!isRecipient || !storeKey) return;
+    saveStored(storeKey, items);
+  }, [items, isRecipient, storeKey]);
 
   const pushItem = useCallback((item: TeacherNotifItem) => {
-    setItems((prev) => [item, ...prev].slice(0, 50));
+    setItems((prev) => {
+      if (prev.some((p) => p.id === item.id)) return prev;
+      return [item, ...prev].slice(0, 50);
+    });
   }, []);
 
   useEffect(() => {
-    if (!socket || !isRecipient || !user?.tenantId) return;
+    if (!socket || !isRecipient || !user) return;
 
     const onTenant = (evt: Record<string, unknown>) => {
       const tid = evt.tenantId as number | undefined;
-      if (tid !== user.tenantId) return;
+      if (isSchoolStaff && tid !== user.tenantId) return;
 
       const entity = String(evt.entity || '');
 
       if (entity === 'admin-staff-test-push') {
+        if (!isSchoolStaff) return;
         const title = String(evt.title || 'School message');
         const body = String(evt.body || '').trim();
         if (!body) return;
         const at = Number(evt.at) || Date.now();
         const id = `push-test-${at}-${title.slice(0, 24)}`;
-        setItems((prev) => {
-          if (prev.some((p) => p.id === id)) return prev;
-          return [{ id, kind: 'admin' as const, title, body, at, read: false }, ...prev].slice(0, 50);
-        });
-        toast(title, {
-          description: body.length > 160 ? `${body.slice(0, 160)}…` : body,
-          duration: 10_000,
-          className: 'border-l-4 border-l-violet-500',
-        });
+        pushItem({ id, kind: 'admin', title, body, at, read: false });
+        showOnScreenNotification(title, body, 'violet');
         return;
       }
 
       if (entity === 'school-staff-notice' || entity === 'teacher-admin-notice') {
+        if (!isSchoolStaff) return;
         const title = String(evt.title || 'School message');
         const body = String(evt.body || '').trim();
         if (!body) return;
         const at = Number(evt.at) || Date.now();
         const id = `admin-${at}-${title.slice(0, 24)}-${body.slice(0, 40)}`;
-        setItems((prev) => {
-          if (prev.some((p) => p.id === id || (p.kind === 'admin' && p.title === title && p.body === body && Math.abs(p.at - at) < 2000)))
-            return prev;
-          return [{ id, kind: 'admin' as const, title, body, at, read: false }, ...prev].slice(0, 50);
-        });
-        toast(title, {
-          description: body.length > 160 ? `${body.slice(0, 160)}…` : body,
-          duration: 12_000,
-          className: 'border-l-4 border-l-indigo-500',
-        });
+        pushItem({ id, kind: 'admin', title, body, at, read: false });
+        showOnScreenNotification(title, body, 'indigo');
         return;
       }
 
       if (entity === 'salary-payment') {
+        if (!isSchoolStaff) return;
         const payeeType = String(evt.payee_type || '');
         const payeeId = Number(evt.payee_id);
         if (!payeeId || Number.isNaN(payeeId)) return;
@@ -141,30 +170,79 @@ export const TeacherNotificationProvider: React.FC<{ children: React.ReactNode }
           !Number.isNaN(month) && !Number.isNaN(year)
             ? new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
             : 'your account';
-        const amtStr = !Number.isNaN(amount) ? `GHS ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '';
+        const amtStr = !Number.isNaN(amount)
+          ? `GHS ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          : '';
         const title = String(evt.title || 'Salary paid');
         const body = String(
           evt.body || (amtStr ? `Payment for ${period}: ${amtStr}.` : `A salary payment was recorded for ${period}.`)
         );
         const at = Number(evt.at) || Date.now();
         const id = `salary-${payeeId}-${month}-${year}-${at}`;
-        setItems((prev) => {
-          if (prev.some((p) => p.id === id)) return prev;
-          return [{ id, kind: 'salary' as const, title, body, at, read: false }, ...prev].slice(0, 50);
-        });
-        toast(title, {
-          description: body,
-          duration: 14_000,
-          className: 'border-l-4 border-l-emerald-500',
-        });
+        pushItem({ id, kind: 'salary', title, body, at, read: false });
+        showOnScreenNotification(title, body, 'emerald');
       }
     };
 
+    const onNewParentMessage = (evt: { type?: string; preview?: string; timestamp?: number }) => {
+      if (!isSchoolStaff) return;
+      const type = String(evt?.type || '');
+      const preview = String(evt?.preview || '').trim();
+      if (!preview) return;
+      const at = Number(evt?.timestamp) || Date.now();
+
+      if (type === 'parent-desk') {
+        const title = 'New parent desk message';
+        const id = `parent-desk-${at}-${preview.slice(0, 32)}`;
+        pushItem({ id, kind: 'parent-desk', title, body: preview, at, read: false });
+        showOnScreenNotification(title, preview, 'sky');
+        return;
+      }
+
+      if (type === 'support-chat') {
+        const title = 'ScholarNerve Support replied';
+        const id = `support-chat-${at}-${preview.slice(0, 32)}`;
+        pushItem({ id, kind: 'support-chat', title, body: preview, at, read: false });
+        showOnScreenNotification(title, preview, 'sky');
+      }
+    };
+
+    const onNewSupportMessage = (msg: Record<string, unknown>) => {
+      const preview = String(msg.message || 'New support message').trim();
+      if (!preview) return;
+      const at = Date.now();
+      const fromSuper = Boolean(msg.is_from_superadmin);
+      const tenantId = msg.tenant_id != null ? Number(msg.tenant_id) : null;
+      const tenantName = String(msg.tenant_name || 'School');
+
+      if (isSuperAdmin) {
+        if (fromSuper) return;
+        const title = `${tenantName} — Support message`;
+        const id = `sa-support-${msg.id ?? at}`;
+        pushItem({ id, kind: 'support-chat', title, body: preview, at, read: false });
+        showOnScreenNotification(title, preview, 'sky');
+        return;
+      }
+
+      if (!isSchoolStaff || tenantId == null || tenantId !== user.tenantId) return;
+      if (!fromSuper) return;
+
+      const title = 'ScholarNerve Support';
+      const id = `support-in-${msg.id ?? at}`;
+      pushItem({ id, kind: 'support-chat', title, body: preview, at, read: false });
+      showOnScreenNotification(title, preview, 'sky');
+    };
+
     socket.on('tenant-data-changed', onTenant);
+    socket.on('new-parent-message', onNewParentMessage);
+    socket.on('new-support-message', onNewSupportMessage);
+
     return () => {
       socket.off('tenant-data-changed', onTenant);
+      socket.off('new-parent-message', onNewParentMessage);
+      socket.off('new-support-message', onNewSupportMessage);
     };
-  }, [socket, isRecipient, user, pushItem]);
+  }, [socket, isRecipient, isSchoolStaff, isSuperAdmin, user, pushItem]);
 
   const unreadCount = useMemo(() => items.filter((i) => !i.read).length, [items]);
 
@@ -182,7 +260,7 @@ export const TeacherNotificationProvider: React.FC<{ children: React.ReactNode }
 
   const value = useMemo(
     () => ({ items, unreadCount, markRead, markAllRead, dismiss }),
-    [items, unreadCount, markRead, markAllRead, dismiss],
+    [items, unreadCount, markRead, markAllRead, dismiss]
   );
 
   return <TeacherNotificationContext.Provider value={value}>{children}</TeacherNotificationContext.Provider>;

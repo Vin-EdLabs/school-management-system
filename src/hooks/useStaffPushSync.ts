@@ -1,24 +1,28 @@
 import { useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useSchool } from '../contexts/SchoolContext';
+import { useOptionalSchool } from '../contexts/SchoolContext';
 import { apiService } from '../services/api';
 import { urlBase64ToUint8Array } from '../utils/pushSubscription';
 
+const PUSH_ROLES = new Set(['teacher', 'staff', 'headmaster', 'administrator', 'finance', 'super-admin']);
+
 /**
- * Registers web push for teacher/staff school app sessions (same VAPID as parents).
- * Runs once per user+school after login when notifications are allowed.
+ * Registers web push for school staff and super-admin sessions.
  */
 export function useStaffPushSync() {
   const { user, isAuthenticated } = useAuth();
-  const { schoolId } = useSchool();
+  const schoolContext = useOptionalSchool();
+  const schoolId = schoolContext?.schoolId ?? null;
   const syncedKey = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!isAuthenticated || !user || !schoolId) return;
-    if (user.role !== 'teacher' && user.role !== 'staff' && user.role !== 'headmaster') return;
+    if (!isAuthenticated || !user) return;
+    const role = String(user.role || '').toLowerCase();
+    if (!PUSH_ROLES.has(role)) return;
+    if (role !== 'super-admin' && !schoolId) return;
     if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
 
-    const key = `${user.id}-${schoolId}`;
+    const key = `${user.id}-${schoolId ?? 'platform'}`;
     if (syncedKey.current === key) return;
 
     const run = async () => {

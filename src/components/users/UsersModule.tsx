@@ -113,6 +113,7 @@ const UsersModule = () => {
     id: number;
     staff_id: string;
     full_name: string;
+    email?: string | null;
     position?: string;
     department?: string;
     passport_photo_url?: string;
@@ -463,7 +464,9 @@ const UsersModule = () => {
                             </Badge>
                           )}
                         </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">{u.email || '—'}</TableCell>
+                        <TableCell className="text-muted-foreground text-sm">
+                          {u.email?.trim() ? u.email.trim() : '—'}
+                        </TableCell>
                         <TableCell>
                           <Badge variant="outline" className={u.is_active ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'border-border bg-muted text-muted-foreground'}>
                             {u.is_active ? 'Active' : 'Inactive'}
@@ -554,11 +557,22 @@ const UsersModule = () => {
                         <SelectItem key={s.id} value={String(s.id)}>
                           {s.full_name} — {s.staff_id}
                           {s.position ? ` (${s.position})` : ''}
+                          {s.email ? ` · ${s.email}` : ''}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 )}
+                {staffUserForm.staffId ? (() => {
+                  const picked = staffCandidates.find((x) => String(x.id) === staffUserForm.staffId);
+                  if (!picked?.email?.trim()) return null;
+                  return (
+                    <p className="text-xs text-muted-foreground">
+                      Email on file: <span className="font-medium text-foreground">{picked.email.trim()}</span>
+                      {' '}— will appear in User Management after the account is created.
+                    </p>
+                  );
+                })() : null}
               </div>
               <div className="space-y-2">
                 <Label>Username *</Label>

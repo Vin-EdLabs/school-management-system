@@ -3,7 +3,7 @@
  * Resolves tenant for branding, login page, etc.
  */
 import express from 'express';
-import { resolveTenantById, resolveTenantBySlugAnyStatus } from '../services/tenantResolver.js';
+import { resolveTenantById, resolveTenantBySlugAnyStatus, isTenantArchived } from '../services/tenantResolver.js';
 import { resolveTenant, TenantRequest } from '../middleware/tenantResolver.js';
 import { query } from '../db/connection.js';
 import { TEACHER_COUNTABLE_WHERE_BARE, OTHER_STAFF_COUNTABLE_WHERE_BARE } from '../constants/staffQueries.js';
@@ -22,7 +22,7 @@ router.get('/public-stats', async (_req, res) => {
       staff,
       payments,
     ] = await Promise.all([
-      query(`SELECT COUNT(*)::int AS count FROM tenants WHERE is_active = true`).catch(() => ({ rows: [{ count: 0 }] })),
+      query(`SELECT COUNT(*)::int AS count FROM tenants WHERE is_active = true AND archived_at IS NULL`).catch(() => ({ rows: [{ count: 0 }] })),
       query(`SELECT COUNT(*)::int AS count FROM students`).catch(() => ({ rows: [{ count: 0 }] })),
       query(`SELECT COUNT(*)::int AS count FROM teachers WHERE ${TEACHER_COUNTABLE_WHERE_BARE}`).catch(() => ({ rows: [{ count: 0 }] })),
       query(`SELECT COUNT(*)::int AS count FROM other_staff WHERE ${OTHER_STAFF_COUNTABLE_WHERE_BARE}`).catch(() => ({ rows: [{ count: 0 }] })),
@@ -72,6 +72,13 @@ router.get('/by-id/:id', async (req, res) => {
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid tenant ID' });
     const tenant = await resolveTenantById(id);
     if (!tenant) return res.status(404).json({ error: 'School not found', code: 'SCHOOL_NOT_FOUND' });
+    if (isTenantArchived(tenant)) {
+      return res.status(404).json({
+        error: 'School not found',
+        code: 'SCHOOL_ARCHIVED',
+        message: 'This school is no longer available.',
+      });
+    }
     if (!tenant.is_active) {
       return res.status(403).json({
         error: 'School account deactivated',
@@ -104,6 +111,13 @@ router.get('/by-slug/:slug', async (req, res) => {
     if (!slug) return res.status(400).json({ error: 'Slug required' });
     const tenant = await resolveTenantBySlugAnyStatus(slug);
     if (!tenant) return res.status(404).json({ error: 'School not found', code: 'SCHOOL_NOT_FOUND' });
+    if (isTenantArchived(tenant)) {
+      return res.status(404).json({
+        error: 'School not found',
+        code: 'SCHOOL_ARCHIVED',
+        message: 'This school is no longer available.',
+      });
+    }
     if (!tenant.is_active) {
       return res.status(403).json({
         error: 'School account deactivated',

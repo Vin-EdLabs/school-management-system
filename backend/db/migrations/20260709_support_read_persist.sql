@@ -1,0 +1,2 @@
+-- Support message read_at is persisted when schools/super-admins open threads.
+-- Never bulk-reset read_at on server boot (removed from connection.ts migrations).

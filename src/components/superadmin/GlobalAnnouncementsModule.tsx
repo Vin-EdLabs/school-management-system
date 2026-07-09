@@ -24,19 +24,41 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  alertDialogContentClass,
+  alertDialogContentWideClass,
+  alertDialogHeaderClass,
+  alertDialogBodyClass,
+  alertDialogFooterClass,
 } from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogBody,
+  DialogFooter,
+  formDialogContentWideClass,
+  detailDialogHeaderClass,
+  detailDialogBodyClass,
+  detailDialogFooterClass,
+  dialogTitleClass,
+} from '@/components/ui/dialog';
 import { toast } from '@/hooks/use-toast';
-import { Megaphone, Plus, RefreshCw, Trash2, Power } from 'lucide-react';
-import { Eye } from 'lucide-react';
+import { Megaphone, Plus, RefreshCw, Trash2, Power, Eye, FileSearch } from 'lucide-react';
 import {
   ANNOUNCEMENT_TYPE_OPTIONS,
   createSuperAnnouncement,
   deleteSuperAnnouncement,
   fetchSuperAnnouncements,
   toggleSuperAnnouncement,
+  TYPE_BORDER_COLORS,
+  TYPE_ICONS,
+  TYPE_LABELS,
   type AnnouncementFormInput,
+  type AnnouncementType,
   type GlobalAnnouncement,
 } from '../../services/globalAnnouncementsApi';
+import '../announcements/GlobalAnnouncementPopup.css';
 
 interface SchoolOption {
   id: number;
@@ -61,6 +83,21 @@ function statusBadgeVariant(status?: string) {
   return 'destructive';
 }
 
+function formatPreviewBody(body: string, sampleSchoolName: string): string {
+  return body.replace(/\{\{school_name\}\}/gi, sampleSchoolName);
+}
+
+function highlightSchoolName(text: string, schoolName: string): React.ReactNode {
+  if (!schoolName || !text.includes(schoolName)) return text;
+  const parts = text.split(schoolName);
+  return parts.map((part, i) => (
+    <React.Fragment key={i}>
+      {part}
+      {i < parts.length - 1 ? <span className="school-name-highlight">{schoolName}</span> : null}
+    </React.Fragment>
+  ));
+}
+
 const GlobalAnnouncementsModule: React.FC<{ schools: SchoolOption[] }> = ({ schools }) => {
   const [items, setItems] = useState<GlobalAnnouncement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,6 +106,7 @@ const GlobalAnnouncementsModule: React.FC<{ schools: SchoolOption[] }> = ({ scho
   const [form, setForm] = useState<AnnouncementFormInput>(emptyForm());
   const [usePlaceholder, setUsePlaceholder] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [previewItem, setPreviewItem] = useState<GlobalAnnouncement | null>(null);
   const [readersModalId, setReadersModalId] = useState<number | null>(null);
   const [readers, setReaders] = useState<Array<Record<string, unknown>>>([]);
   const [loadingReaders, setLoadingReaders] = useState(false);
@@ -181,6 +219,44 @@ const GlobalAnnouncementsModule: React.FC<{ schools: SchoolOption[] }> = ({ scho
   };
 
   const sortedSchools = [...schools].sort((a, b) => a.name.localeCompare(b.name));
+  const previewSampleSchool = sortedSchools[0]?.name || 'Your School';
+
+  const renderAnnouncementPreview = (row: GlobalAnnouncement) => {
+    const announcementType = (row.type as AnnouncementType) || 'info';
+    const borderColor = TYPE_BORDER_COLORS[announcementType] || TYPE_BORDER_COLORS.info;
+    const typeLabel = TYPE_LABELS[announcementType] || TYPE_LABELS.info;
+    const typeIcon = TYPE_ICONS[announcementType] || TYPE_ICONS.info;
+    const displayBody = formatPreviewBody(row.body, previewSampleSchool);
+    const sentLabel = new Date(row.created_at).toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+
+    return (
+      <div className="global-announcement-card mx-auto max-w-lg shadow-lg" style={{ borderTopColor: borderColor }}>
+        <div className="global-announcement-card__top">
+          <img src="/android-chrome-192x192.png" alt="ScholarNerve" className="global-announcement-card__logo" />
+          <div className="global-announcement-card__logo-divider" />
+        </div>
+        <div className="global-announcement-card__type-row">
+          <span className="global-announcement-card__type-icon" aria-hidden>
+            {typeIcon}
+          </span>
+          <span className="global-announcement-card__type-label" style={{ color: borderColor }}>
+            {typeLabel}
+          </span>
+        </div>
+        <h2 className="global-announcement-card__title">{row.title}</h2>
+        <div className="global-announcement-card__body">
+          {highlightSchoolName(displayBody, previewSampleSchool)}
+        </div>
+        <div className="global-announcement-card__footer-divider" />
+        <div className="global-announcement-card__meta">📅 Sent {sentLabel}</div>
+        <div className="global-announcement-card__watermark">Powered by ScholarNerve</div>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-700">
@@ -352,8 +428,19 @@ const GlobalAnnouncementsModule: React.FC<{ schools: SchoolOption[] }> = ({ scho
             </TableHeader>
             <TableBody>
               {items.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell className="font-semibold max-w-[200px] truncate">{row.title}</TableCell>
+                <TableRow key={row.id} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-900/40">
+                  <TableCell
+                    className="max-w-[220px] font-semibold"
+                    onClick={() => setPreviewItem(row)}
+                  >
+                    <button
+                      type="button"
+                      className="truncate text-left text-emerald-800 hover:underline dark:text-emerald-300"
+                      title="Click to preview"
+                    >
+                      {row.title}
+                    </button>
+                  </TableCell>
                   <TableCell>
                     <Badge variant="outline" className="text-[10px] uppercase">
                       {row.type}
@@ -374,19 +461,43 @@ const GlobalAnnouncementsModule: React.FC<{ schools: SchoolOption[] }> = ({ scho
                       size="sm"
                       variant="outline"
                       className="h-8"
-                      onClick={() => void handleToggle(row.id)}
+                      onClick={() => setPreviewItem(row)}
+                      title="Preview announcement"
+                    >
+                      <FileSearch className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleToggle(row.id);
+                      }}
                       title={row.is_active ? 'Deactivate' : 'Activate'}
                     >
                       <Power className="w-3.5 h-3.5" />
                     </Button>
-                    <Button size="sm" variant="outline" className="h-8" onClick={() => void openReaders(row.id)} title="View Readers">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void openReaders(row.id);
+                      }}
+                      title="View Readers"
+                    >
                       <Eye className="w-3.5 h-3.5" />
                     </Button>
                     <Button
                       size="sm"
                       variant="destructive"
                       className="h-8"
-                      onClick={() => setDeleteId(row.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteId(row.id);
+                      }}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </Button>
@@ -398,14 +509,51 @@ const GlobalAnnouncementsModule: React.FC<{ schools: SchoolOption[] }> = ({ scho
         </Card>
       )}
 
+      <Dialog open={previewItem != null} onOpenChange={(open) => !open && setPreviewItem(null)}>
+        <DialogContent className={formDialogContentWideClass}>
+          <DialogHeader className={detailDialogHeaderClass}>
+            <DialogTitle className={dialogTitleClass}>Announcement Preview</DialogTitle>
+          </DialogHeader>
+          {previewItem && (
+            <>
+              <DialogBody className={`${detailDialogBodyClass} space-y-4`}>
+                <p className="text-xs text-slate-500">
+                  This is how schools see the announcement.{' '}
+                  {previewItem.body.includes('{{school_name}}')
+                    ? `Sample school name: ${previewSampleSchool}`
+                    : null}
+                </p>
+                {renderAnnouncementPreview(previewItem)}
+                <div className="grid grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs dark:border-slate-800 dark:bg-slate-950/40 sm:grid-cols-2">
+                  <p><span className="font-semibold text-slate-500">Target:</span> {previewItem.target_label}</p>
+                  <p><span className="font-semibold text-slate-500">Status:</span> {previewItem.display_status}</p>
+                  <p><span className="font-semibold text-slate-500">Read:</span> {previewItem.read_count ?? 0} of {previewItem.eligible_user_count ?? 0}</p>
+                  {previewItem.scheduled_at ? (
+                    <p><span className="font-semibold text-slate-500">Scheduled:</span> {new Date(previewItem.scheduled_at).toLocaleString()}</p>
+                  ) : null}
+                  {previewItem.expires_at ? (
+                    <p><span className="font-semibold text-slate-500">Expires:</span> {new Date(previewItem.expires_at).toLocaleString()}</p>
+                  ) : null}
+                </div>
+              </DialogBody>
+              <DialogFooter className={detailDialogFooterClass}>
+                <Button type="button" variant="outline" className="rounded-xl" onClick={() => setPreviewItem(null)}>
+                  Close
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Readers Modal */}
       <AlertDialog open={readersModalId != null} onOpenChange={(o) => !o && setReadersModalId(null)}>
-        <AlertDialogContent className="max-w-2xl">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Readers</AlertDialogTitle>
+        <AlertDialogContent className={alertDialogContentWideClass}>
+          <AlertDialogHeader className={alertDialogHeaderClass}>
+            <AlertDialogTitle className={dialogTitleClass}>Readers</AlertDialogTitle>
             <AlertDialogDescription>Users who have marked this announcement as read.</AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="p-4">
+          <div className={alertDialogBodyClass}>
             {loadingReaders ? (
               <BrandedLoading label="Loading readers…" />
             ) : readers.length === 0 ? (
@@ -433,21 +581,21 @@ const GlobalAnnouncementsModule: React.FC<{ schools: SchoolOption[] }> = ({ scho
               </Table>
             )}
           </div>
-          <AlertDialogFooter>
+          <AlertDialogFooter className={alertDialogFooterClass}>
             <AlertDialogAction onClick={() => setReadersModalId(null)}>Close</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
       <AlertDialog open={deleteId != null} onOpenChange={(o) => !o && setDeleteId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete announcement?</AlertDialogTitle>
+        <AlertDialogContent className={alertDialogContentClass}>
+          <AlertDialogHeader className={alertDialogHeaderClass}>
+            <AlertDialogTitle className={dialogTitleClass}>Delete announcement?</AlertDialogTitle>
             <AlertDialogDescription>
               This permanently deletes the announcement and all read records. Users who have not read it will no longer see it.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
+          <AlertDialogFooter className={alertDialogFooterClass}>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={() => void handleDelete()}>Delete</AlertDialogAction>
           </AlertDialogFooter>

@@ -30,8 +30,8 @@ const SchoolSelector = () => {
         return;
       }
       try {
-        const list = await apiService.get<School[]>('/schools');
-        setSchools(Array.isArray(list) ? list : []);
+        const list = await apiService.get<School[]>('/schools', { skipTenant: true });
+        setSchools(Array.isArray(list) ? list.filter((s) => !s.archived_at) : []);
       } catch {
         setSchools([]);
       } finally {

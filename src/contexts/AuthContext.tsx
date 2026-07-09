@@ -270,6 +270,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         try {
           sessionStorage.setItem('personal-todos-login-blink', '1');
+          sessionStorage.setItem('scholarnerve-zoom-nudge-login', '1');
+          sessionStorage.removeItem('scholarnerve-zoom-nudge-comfortable');
         } catch {
           /* ignore */
         }
@@ -361,6 +363,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     sessionStorage.removeItem('impersonation_meta');
     sessionStorage.removeItem('impersonation_admin_backup');
     sessionStorage.removeItem('impersonation_admin_eligible');
+    sessionStorage.removeItem('scholarnerve-zoom-nudge-login');
+    sessionStorage.removeItem('scholarnerve-zoom-nudge-comfortable');
     localStorage.removeItem('impersonation_admin_backup');
   };
 

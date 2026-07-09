@@ -163,6 +163,25 @@ export const detailDialogBodyClass =
 export const detailDialogFooterClass =
   "form-action-bar shrink-0 gap-2 border-t border-border/70 px-6 py-4"
 
+/** Shared emerald-accent shell for form / action modals */
+export const formDialogContentClass =
+  "flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg rounded-[1rem] border-t-4 border-emerald-500 shadow-[0_20px_60px_rgba(15,118,110,0.18)]"
+
+export const formDialogContentWideClass =
+  "flex max-h-[min(92dvh,900px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl rounded-[1rem] border-t-4 border-emerald-500 shadow-[0_20px_60px_rgba(15,118,110,0.18)]"
+
+export const formDialogContentXWideClass =
+  "flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl rounded-[1rem] border-t-4 border-emerald-500 shadow-[0_20px_60px_rgba(15,118,110,0.18)]"
+
+export const dialogTitleClass =
+  "font-outfit text-xl font-black text-emerald-900 dark:text-emerald-100 sm:text-2xl"
+
+export const dialogLabelClass =
+  "text-[10px] font-bold uppercase tracking-widest text-emerald-800/75 dark:text-emerald-300/80"
+
+export const dialogSectionClass =
+  "rounded-2xl border border-emerald-100/80 bg-emerald-50/40 p-5 space-y-4 dark:border-emerald-900/40 dark:bg-emerald-950/20"
+
 export function DetailField({
   label,
   children,

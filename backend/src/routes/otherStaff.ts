@@ -123,7 +123,7 @@ async function handleCreateStaffUser(req: AuthRequest, res: express.Response) {
         passwordHash,
         role,
         staff.full_name,
-        staff.email || null,
+        staff.email?.trim() || null,
         id,
       ]
     );
@@ -331,7 +331,7 @@ router.get('/without-users', requireRole('super-admin', 'administrator'), async 
   try {
     const tenantId = req.user!.tenantId!;
     const result = await query(
-      `SELECT o.id, o.staff_id, o.full_name, o.position, o.department, o.passport_photo_url
+      `SELECT o.id, o.staff_id, o.full_name, o.email, o.position, o.department, o.passport_photo_url
        FROM other_staff o
        WHERE o.tenant_id = $1
          AND ${OTHER_STAFF_VISIBLE_WHERE}

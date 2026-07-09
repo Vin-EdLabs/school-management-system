@@ -22,6 +22,7 @@ type PublicErrorPageProps = {
   icon: React.ReactNode;
   onRetry?: () => void;
   retryLabel?: string;
+  showLandingLink?: boolean;
 };
 
 export function PublicErrorPage({
@@ -34,6 +35,7 @@ export function PublicErrorPage({
   icon,
   onRetry,
   retryLabel = 'Try again',
+  showLandingLink = true,
 }: PublicErrorPageProps) {
   const homeHref = getScholarNerveLandingUrl();
   const onApex = homeHref === '/';
@@ -95,33 +97,39 @@ export function PublicErrorPage({
           ) : null}
 
           <div className="mt-3 flex flex-wrap gap-1.5">
-            {onApex ? (
-              <Button asChild variant="primaryAction" size="sm" className="h-7 rounded-md px-2.5 text-[11px]">
-                <Link to="/">
-                  <Home className="mr-1.5 h-3.5 w-3.5" />
-                  Landing page
-                </Link>
-              </Button>
-            ) : (
-              <Button asChild variant="primaryAction" size="sm" className="h-7 rounded-md px-2.5 text-[11px]">
-                <a href={homeHref}>
-                  <Home className="mr-1.5 h-3.5 w-3.5" />
-                  Landing page
-                </a>
-              </Button>
-            )}
+            {showLandingLink ? (
+              onApex ? (
+                <Button asChild variant="primaryAction" size="sm" className="h-7 rounded-md px-2.5 text-[11px]">
+                  <Link to="/">
+                    <Home className="mr-1.5 h-3.5 w-3.5" />
+                    Landing page
+                  </Link>
+                </Button>
+              ) : (
+                <Button asChild variant="primaryAction" size="sm" className="h-7 rounded-md px-2.5 text-[11px]">
+                  <a href={homeHref}>
+                    <Home className="mr-1.5 h-3.5 w-3.5" />
+                    Landing page
+                  </a>
+                </Button>
+              )
+            ) : null}
             {onRetry ? (
               <Button
                 type="button"
-                variant="outline"
+                variant={showLandingLink ? 'outline' : 'primaryAction'}
                 size="sm"
-                className="h-7 rounded-md border-slate-300 bg-white px-2.5 text-[11px] text-slate-800"
+                className={
+                  showLandingLink
+                    ? 'h-7 rounded-md border-slate-300 bg-white px-2.5 text-[11px] text-slate-800'
+                    : 'h-7 rounded-md px-2.5 text-[11px]'
+                }
                 onClick={onRetry}
               >
                 <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
                 {retryLabel}
               </Button>
-            ) : (
+            ) : showLandingLink ? (
               <Button
                 type="button"
                 variant="outline"
@@ -132,7 +140,7 @@ export function PublicErrorPage({
                 <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
                 Go back
               </Button>
-            )}
+            ) : null}
           </div>
 
           <div className="mt-3 border-t border-slate-100 pt-2.5">

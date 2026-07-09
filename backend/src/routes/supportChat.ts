@@ -5,6 +5,10 @@ import { fileURLToPath } from 'url';
 import multer from 'multer';
 import { query } from '../db/connection.js';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
+import {
+  notifySchoolStaffOfSupportReply,
+  notifySuperAdminsOfSupportMessage,
+} from '../services/commsNotifyService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,7 +18,8 @@ const router = express.Router();
 async function emitSupportNotification(tenantId: number, preview: string) {
   try {
     const unreadRow = await query(
-      `SELECT COUNT(*)::int AS c FROM support_messages WHERE tenant_id = $1 AND is_from_superadmin = true AND read_at IS NULL`,
+      `SELECT COUNT(*)::int AS c FROM support_messages
+       WHERE tenant_id = $1 AND is_from_superadmin = true AND read_at IS NULL AND is_deleted = false`,
       [tenantId]
     );
     const unreadCount = Number(unreadRow.rows[0]?.c ?? 0);
@@ -28,6 +33,37 @@ async function emitSupportNotification(tenantId: number, preview: string) {
     });
   } catch (socketErr) {
     console.error('Support notification emit error:', socketErr);
+  }
+}
+
+async function emitSupportReadUpdate(
+  tenantId: number | null,
+  readBy: 'super-admin' | 'school',
+  messageIds: number[] = []
+) {
+  try {
+    const { getIO } = await import('../socket.js');
+    const io = getIO();
+    const payload = {
+      tenantId,
+      readBy,
+      messageIds,
+      at: Date.now(),
+    };
+    const tenantEvt = {
+      tenantId,
+      entity: 'support-chat',
+      action: 'read',
+      at: Date.now(),
+    };
+    if (tenantId) {
+      io.to(`tenant:${tenantId}`).emit('support-chat-read', payload);
+      io.to(`tenant:${tenantId}`).emit('tenant-data-changed', tenantEvt);
+    }
+    io.to('global:super-admin').emit('support-chat-read', payload);
+    io.to('global:super-admin').emit('tenant-data-changed', tenantEvt);
+  } catch {
+    // ignore
   }
 }
 
@@ -47,13 +83,13 @@ router.get('/conversations', authenticate, async (req: AuthRequest, res) => {
         SELECT DISTINCT ON (tenant_id) tenant_id,
           message, image_url, sender_username, sender_role, is_from_superadmin, created_at
         FROM support_messages
-        WHERE tenant_id IS NOT NULL
+        WHERE tenant_id IS NOT NULL AND is_deleted = false
         ORDER BY tenant_id, created_at DESC
       ),
       unread AS (
         SELECT tenant_id, COUNT(*) as cnt
         FROM support_messages
-        WHERE is_from_superadmin = false AND read_at IS NULL
+        WHERE is_from_superadmin = false AND read_at IS NULL AND is_deleted = false
         GROUP BY tenant_id
       )
       SELECT t.id as tenant_id, t.name as tenant_name, t.logo_url,
@@ -79,7 +115,8 @@ router.get('/unread-count', authenticate, async (req: AuthRequest, res) => {
     const user = req.user!;
     if (user.role === 'super-admin') {
       const r = await query(
-        `SELECT COUNT(*)::int AS c FROM support_messages WHERE is_from_superadmin = false AND read_at IS NULL`
+        `SELECT COUNT(*)::int AS c FROM support_messages
+         WHERE is_from_superadmin = false AND read_at IS NULL AND is_deleted = false`
       );
       return res.json({ count: Number(r.rows[0]?.c ?? 0) });
     }
@@ -87,7 +124,8 @@ router.get('/unread-count', authenticate, async (req: AuthRequest, res) => {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const r = await query(
-      `SELECT COUNT(*)::int AS c FROM support_messages WHERE tenant_id = $1 AND is_from_superadmin = true AND read_at IS NULL`,
+      `SELECT COUNT(*)::int AS c FROM support_messages
+       WHERE tenant_id = $1 AND is_from_superadmin = true AND read_at IS NULL AND is_deleted = false`,
       [user.tenantId]
     );
     return res.json({ count: Number(r.rows[0]?.c ?? 0) });
@@ -104,11 +142,15 @@ router.post('/mark-read-by-school', authenticate, async (req: AuthRequest, res) 
     if (!user.tenantId || (user.role !== 'administrator' && user.role !== 'finance')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
-    await query(
-      `UPDATE support_messages SET read_at = CURRENT_TIMESTAMP WHERE tenant_id = $1 AND is_from_superadmin = true AND read_at IS NULL`,
+    const updated = await query(
+      `UPDATE support_messages SET read_at = CURRENT_TIMESTAMP
+       WHERE tenant_id = $1 AND is_from_superadmin = true AND read_at IS NULL AND is_deleted = false
+       RETURNING id`,
       [user.tenantId]
     );
-    res.json({ success: true });
+    const messageIds = (updated.rows as { id: number }[]).map((r) => r.id);
+    await emitSupportReadUpdate(user.tenantId, 'school', messageIds);
+    res.json({ success: true, messageIds });
   } catch (error) {
     console.error('mark-read-by-school error:', error);
     res.status(500).json({ error: 'Failed to mark as read' });
@@ -131,7 +173,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
         `SELECT m.*, COALESCE(t.name, m.tenant_name) as tenant_name
          FROM support_messages m
          LEFT JOIN tenants t ON m.tenant_id = t.id
-         WHERE 1=1${tenantFilter}
+         WHERE m.is_deleted = false${tenantFilter}
          ORDER BY m.created_at ASC
          LIMIT $1`,
         params
@@ -148,7 +190,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
       `SELECT m.*, COALESCE(t.name, m.tenant_name) as tenant_name
        FROM support_messages m
        LEFT JOIN tenants t ON m.tenant_id = t.id
-       WHERE m.tenant_id = $1
+       WHERE m.tenant_id = $1 AND m.is_deleted = false
        ORDER BY m.created_at ASC
        LIMIT $2`,
       [user.tenantId, limit]
@@ -210,8 +252,29 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
           at: Date.now(),
         });
       }
+      io.to('global:super-admin').emit('tenant-data-changed', {
+        tenantId,
+        entity: 'support-chat',
+        action: 'created',
+        at: Date.now(),
+      });
     } catch (socketErr) {
       console.error('Socket emit error:', socketErr);
+    }
+
+    if (isSuperAdmin && tenantId) {
+      await notifySchoolStaffOfSupportReply(tenantId, {
+        title: 'ScholarNerve Support replied',
+        body: String(message || 'New support message').slice(0, 160),
+        url: '/?module=support-chat',
+      }).catch(() => {});
+    } else if (!isSuperAdmin && tenantId) {
+      const schoolName = tenantName || 'A school';
+      await notifySuperAdminsOfSupportMessage({
+        title: `${schoolName} — Support message`,
+        body: String(message || 'New support message').slice(0, 160),
+        url: '/?module=support-chat',
+      }).catch(() => {});
     }
 
     res.json(newMessage);
@@ -301,7 +364,7 @@ router.post('/upload-image', authenticate, handleImageUpload, async (req: AuthRe
       const io = getIO();
       if (tenantId) {
         io.to(`tenant:${tenantId}`).emit('new-support-message', newMessage);
-        await emitSupportNotification(tenantId, String(newMessage.message || 'New support message'));
+        await emitSupportNotification(tenantId, String(newMessage.message || caption || 'New support message'));
       }
       io.emit('new-support-message', newMessage);
       if (tenantId) {
@@ -312,8 +375,29 @@ router.post('/upload-image', authenticate, handleImageUpload, async (req: AuthRe
           at: Date.now(),
         });
       }
+      io.to('global:super-admin').emit('tenant-data-changed', {
+        tenantId,
+        entity: 'support-chat',
+        action: 'created',
+        at: Date.now(),
+      });
     } catch (socketErr) {
       console.error('Socket emit error:', socketErr);
+    }
+
+    if (isSuperAdmin && tenantId) {
+      await notifySchoolStaffOfSupportReply(tenantId, {
+        title: 'ScholarNerve Support sent a photo',
+        body: caption || 'New support image',
+        url: '/?module=support-chat',
+      }).catch(() => {});
+    } else if (!isSuperAdmin && tenantId) {
+      const schoolName = tenantName || 'A school';
+      await notifySuperAdminsOfSupportMessage({
+        title: `${schoolName} — Support image`,
+        body: caption || 'New support image',
+        url: '/?module=support-chat',
+      }).catch(() => {});
     }
 
     res.json(newMessage);
@@ -328,20 +412,88 @@ router.post('/mark-read', authenticate, async (req: AuthRequest, res) => {
   try {
     if (req.user!.role !== 'super-admin') return res.status(403).json({ error: 'Super-admin only' });
     const { ids, tenantId } = req.body;
+    let messageIds: number[] = [];
     if (tenantId != null) {
-      await query(
-        `UPDATE support_messages SET read_at = CURRENT_TIMESTAMP WHERE tenant_id = $1 AND is_from_superadmin = false AND read_at IS NULL`,
+      const updated = await query(
+        `UPDATE support_messages SET read_at = CURRENT_TIMESTAMP
+         WHERE tenant_id = $1 AND is_from_superadmin = false AND read_at IS NULL AND is_deleted = false
+         RETURNING id`,
         [tenantId]
       );
+      messageIds = (updated.rows as { id: number }[]).map((r) => r.id);
+      await emitSupportReadUpdate(Number(tenantId), 'super-admin', messageIds);
     } else if (Array.isArray(ids) && ids.length > 0) {
-      await query(
-        `UPDATE support_messages SET read_at = CURRENT_TIMESTAMP WHERE id = ANY($1::int[]) AND is_from_superadmin = false`,
+      const updated = await query(
+        `UPDATE support_messages SET read_at = CURRENT_TIMESTAMP
+         WHERE id = ANY($1::int[]) AND is_from_superadmin = false AND is_deleted = false
+         RETURNING id, tenant_id`,
         [ids]
       );
+      messageIds = (updated.rows as { id: number }[]).map((r) => r.id);
+      const tid = updated.rows[0]?.tenant_id != null ? Number(updated.rows[0].tenant_id) : null;
+      await emitSupportReadUpdate(tid, 'super-admin', messageIds);
     }
-    res.json({ success: true });
+    res.json({ success: true, messageIds });
   } catch {
     res.status(500).json({ error: 'Failed to mark as read' });
+  }
+});
+
+// Soft-delete a message (both parties see it removed)
+router.delete('/:id', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const user = req.user!;
+    const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid message ID' });
+
+    const row = await query(
+      `SELECT id, tenant_id, is_from_superadmin FROM support_messages WHERE id = $1 AND is_deleted = false`,
+      [id]
+    );
+    if (!row.rows.length) return res.status(404).json({ error: 'Message not found' });
+
+    const msg = row.rows[0];
+    const isSuperAdmin = user.role === 'super-admin';
+    if (isSuperAdmin) {
+      // super-admin can delete any school thread message
+    } else if (user.tenantId && user.tenantId === msg.tenant_id &&
+      (user.role === 'administrator' || user.role === 'finance')) {
+      // school staff can delete messages in their thread
+    } else {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    await query(`UPDATE support_messages SET is_deleted = true WHERE id = $1`, [id]);
+
+    try {
+      const { getIO } = await import('../socket.js');
+      const io = getIO();
+      const tenantId = msg.tenant_id as number | null;
+      const payload = { id, tenantId, at: Date.now() };
+      io.emit('support-message-deleted', payload);
+      if (tenantId) {
+        io.to(`tenant:${tenantId}`).emit('support-message-deleted', payload);
+        io.to(`tenant:${tenantId}`).emit('tenant-data-changed', {
+          tenantId,
+          entity: 'support-chat',
+          action: 'deleted',
+          at: Date.now(),
+        });
+      }
+      io.to('global:super-admin').emit('tenant-data-changed', {
+        tenantId,
+        entity: 'support-chat',
+        action: 'deleted',
+        at: Date.now(),
+      });
+    } catch {
+      // ignore
+    }
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Support delete message error:', error);
+    return res.status(500).json({ error: 'Failed to delete message' });
   }
 });
 

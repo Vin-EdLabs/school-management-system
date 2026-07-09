@@ -10,6 +10,7 @@ import {
   teacherCanAccessSubjectClass,
 } from '../middleware/requireGradeAccess.js';
 import { getSchoolActiveTermYear } from '../services/gradesTermContext.js';
+import { writeAuditLog } from '../services/auditService.js';
 
 const router = express.Router();
 
@@ -221,6 +222,17 @@ router.post('/', async (req: AuthRequest, res) => {
        WHERE ga.id = $1`,
       [row.id]
     );
+    void writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'ASSESSMENT_CREATE',
+      entityType: 'assessment',
+      entityId: Number(row.id),
+      module: 'grades',
+      summary: `Assessment created: ${String(name).trim()}`,
+      details: { classId: Number(classId), subjectId: Number(subjectId), isExam: examFlag },
+    });
     res.status(201).json(mapAssessmentRow(withComp.rows[0]));
   } catch (error: any) {
     if (error?.code === '23505') {

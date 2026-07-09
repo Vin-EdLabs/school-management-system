@@ -1,12 +1,20 @@
-import React, { useEffect, useMemo, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { apiService } from '@/services/api';
-import { MessageSquare, RefreshCw, Send, CheckCheck, Paperclip, X } from 'lucide-react';
+import { useSocket } from '@/contexts/SocketContext';
+import { MessageSquare, RefreshCw, Send, CheckCheck, Paperclip, X, Trash2 } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDisplayDate } from '@/utils/dateFormat';
+import MessageDeleteConfirmDialog, { type MessageDeleteKind } from '@/components/common/MessageDeleteConfirmDialog';
+
+type PendingDelete =
+  | { kind: 'message'; replyId?: number }
+  | { kind: 'conversation' }
+  | null;
 
 const ParentDeskAdminModule: React.FC = () => {
+  const { socket } = useSocket();
   const [messages, setMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<any | null>(null);
@@ -16,6 +24,7 @@ const ParentDeskAdminModule: React.FC = () => {
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -28,34 +37,123 @@ const ParentDeskAdminModule: React.FC = () => {
     }
   }, [selected, conversation]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
-    console.log('[ParentDesk] Loading conversations...');
     try {
       const data = await apiService.get<any[]>('/messages/admin/list');
-      console.log('[ParentDesk] Received data:', data);
       setMessages(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('[ParentDesk] Failed to load messages:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const open = async (id: number) => {
+  const open = useCallback(async (id: number) => {
     const data = await apiService.get<any>(`/messages/admin/${id}`);
     setSelected(data?.message || null);
     setConversation(Array.isArray(data?.replies) ? data.replies : []);
+    void load();
+  }, [load]);
+
+  const executeDelete = async () => {
+    if (!pendingDelete || !selected?.id) return;
+    try {
+      if (pendingDelete.kind === 'conversation') {
+        await apiService.delete(`/messages/admin/${selected.id}`);
+        setSelected(null);
+        setConversation([]);
+      } else if (pendingDelete.replyId != null) {
+        await apiService.delete(`/messages/admin/replies/${pendingDelete.replyId}`);
+        setConversation((prev) => prev.filter((r) => r.id !== pendingDelete.replyId));
+      } else {
+        await apiService.delete(`/messages/admin/${selected.id}/initial`);
+        setSelected((prev: any) =>
+          prev ? { ...prev, is_initial_deleted: true, message: '', attachment_url: null } : prev
+        );
+      }
+      await load();
+    } catch (err) {
+      console.error('[ParentDesk] Delete failed:', err);
+    } finally {
+      setPendingDelete(null);
+    }
+  };
+
+  const sendReply = async () => {
+    if (!selected?.id || (!reply.trim() && !attachment)) return;
+    const form = new FormData();
+    form.append('reply_text', reply.trim());
+    if (attachment) form.append('attachment', attachment);
+    const sent = await apiService.postForm<any>(`/messages/admin/${selected.id}/reply`, form);
+    setReply('');
+    setAttachment(null);
+    if (sent?.id) {
+      setConversation((prev) => (prev.find((r) => r.id === sent.id) ? prev : [...prev, sent]));
+    }
+    await load();
   };
 
   const filtered = useMemo(() => {
     return messages.filter((m) => (typeFilter === 'all' || m.type === typeFilter) && (statusFilter === 'all' || m.status === statusFilter));
   }, [messages, typeFilter, statusFilter]);
 
-  useEffect(() => { load().catch(() => undefined); }, []);
+  useEffect(() => { load().catch(() => undefined); }, [load]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const onTenant = (evt: { entity?: string }) => {
+      if (String(evt?.entity || '') === 'parent-desk') void load();
+    };
+    const onUpdate = (evt: { messageId?: number; action?: string; reply?: any }) => {
+      const messageId = Number(evt?.messageId);
+      if (!messageId) return;
+      if (evt.action === 'initial-deleted' && selected?.id === messageId) {
+        setSelected((prev: any) =>
+          prev ? { ...prev, is_initial_deleted: true, message: '', attachment_url: null } : prev
+        );
+        void load();
+        return;
+      }
+      if (evt.action === 'thread-deleted') {
+        if (selected?.id === messageId) {
+          setSelected(null);
+          setConversation([]);
+        }
+        void load();
+        return;
+      }
+      if (evt.action === 'reply-deleted' && evt.reply?.id) {
+        if (selected?.id === messageId) {
+          setConversation((prev) => prev.filter((r) => r.id !== evt.reply.id));
+        }
+        void load();
+        return;
+      }
+      if (evt.action === 'reply' && evt.reply && selected?.id === messageId) {
+        setConversation((prev) => (prev.find((r) => r.id === evt.reply.id) ? prev : [...prev, evt.reply]));
+        void load();
+      }
+      if (evt.action === 'created') void load();
+    };
+    socket.on('tenant-data-changed', onTenant);
+    socket.on('parent-desk-update', onUpdate);
+    socket.on('new-parent-message', onTenant);
+    return () => {
+      socket.off('tenant-data-changed', onTenant);
+      socket.off('parent-desk-update', onUpdate);
+      socket.off('new-parent-message', onTenant);
+    };
+  }, [socket, load, selected?.id]);
 
   return (
     <div className="h-[calc(100dvh-120px)] grid grid-cols-1 lg:grid-cols-[320px,1fr] gap-0 bg-background overflow-hidden border border-border/50 rounded-2xl shadow-sm mx-4">
+      <MessageDeleteConfirmDialog
+        open={pendingDelete != null}
+        onOpenChange={(open) => { if (!open) setPendingDelete(null); }}
+        onConfirm={() => { void executeDelete(); }}
+        kind={(pendingDelete?.kind ?? 'message') as MessageDeleteKind}
+      />
       {/* Lightbox */}
       {lightbox && (
         <div 
@@ -214,6 +312,14 @@ const ParentDeskAdminModule: React.FC = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <Button
+                  onClick={() => setPendingDelete({ kind: 'conversation' })}
+                  variant="outline"
+                  className="h-7 text-[9px] font-black uppercase tracking-widest border-slate-500/30 text-slate-500 bg-slate-500/5 hover:bg-slate-500/10 rounded-lg px-2"
+                >
+                  <Trash2 className="w-3 h-3 mr-1" />
+                  Delete chat
+                </Button>
                 <Button 
                   onClick={() => apiService.put(`/messages/admin/${selected.id}/status`, { status: 'urgent' }).then(load)} 
                   variant="outline"
@@ -234,10 +340,19 @@ const ParentDeskAdminModule: React.FC = () => {
             {/* Chat Area */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-muted/10 pattern-dots">
               {/* Parent Original Message */}
+              {!selected.is_initial_deleted && (
               <div className="flex justify-start">
                 <div className="max-w-[85%] space-y-1">
                    <p className="text-[9px] font-black text-muted-foreground ml-3 mb-1 uppercase tracking-tighter">Initial Inquiry</p>
                    <div className="rounded-2xl rounded-tl-sm bg-card border border-border p-4 text-sm text-foreground shadow-sm relative group">
+                    <button
+                      type="button"
+                      onClick={() => setPendingDelete({ kind: 'message' })}
+                      className="absolute top-2 right-2 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-all"
+                      title="Delete message"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                     <p className="leading-relaxed text-xs">{selected.message}</p>
                     {selected.attachment_url && (
                       <div className="mt-3 overflow-hidden rounded-xl border border-border bg-muted/50">
@@ -255,6 +370,7 @@ const ParentDeskAdminModule: React.FC = () => {
                   </div>
                 </div>
               </div>
+              )}
 
               {/* Replies */}
               {conversation.map((r) => (
@@ -267,11 +383,24 @@ const ParentDeskAdminModule: React.FC = () => {
                       {r.sender_type === 'school' ? "School Official" : "Parent"}
                     </p>
                     <div className={cn(
-                      "rounded-2xl p-4 text-xs shadow-md transition-all hover:shadow-xl",
+                      "rounded-2xl p-4 text-xs shadow-md transition-all hover:shadow-xl relative group",
                       r.sender_type === 'school' 
                         ? "bg-gradient-to-br from-purple-600 to-indigo-700 text-white rounded-tr-sm border-0" 
                         : "bg-card border border-border text-foreground rounded-tl-sm"
                     )}>
+                      <button
+                        type="button"
+                        onClick={() => setPendingDelete({ kind: 'message', replyId: Number(r.id) })}
+                        className={cn(
+                          "absolute top-2 right-2 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all",
+                          r.sender_type === 'school'
+                            ? "text-white/70 hover:text-white hover:bg-white/10"
+                            : "text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
+                        )}
+                        title="Delete message"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                       <p className="leading-relaxed">{r.reply_text}</p>
                       {r.attachment_url && (
                         <div className={cn(
@@ -325,19 +454,7 @@ const ParentDeskAdminModule: React.FC = () => {
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault();
-                          const handleSend = async () => {
-                            if (!reply.trim() && !attachment) return;
-                            const form = new FormData();
-                            form.append('reply_text', reply.trim());
-                            if (attachment) form.append('attachment', attachment);
-                            
-                            await apiService.postForm(`/messages/admin/${selected.id}/reply`, form);
-                            setReply('');
-                            setAttachment(null);
-                            await open(Number(selected.id));
-                            await load();
-                          };
-                          handleSend().catch(() => undefined);
+                          sendReply().catch(() => undefined);
                         }
                       }}
                       onInput={(e) => {
@@ -355,18 +472,7 @@ const ParentDeskAdminModule: React.FC = () => {
                     </label>
                   </div>
                   <Button
-                    onClick={async () => {
-                      if (!reply.trim() && !attachment) return;
-                      const form = new FormData();
-                      form.append('reply_text', reply.trim());
-                      if (attachment) form.append('attachment', attachment);
-                      
-                      await apiService.postForm(`/messages/admin/${selected.id}/reply`, form);
-                      setReply('');
-                      setAttachment(null);
-                      await open(Number(selected.id));
-                      await load();
-                    }}
+                    onClick={() => sendReply().catch(() => undefined)}
                     disabled={!reply.trim() && !attachment}
                     className="rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold px-4 h-10 shadow-lg shadow-purple-600/20 group shrink-0"
                   >
@@ -374,7 +480,7 @@ const ParentDeskAdminModule: React.FC = () => {
                   </Button>
                 </div>
                 <p className="text-[9px] text-muted-foreground/60 font-medium italic text-center">
-                  Parents receive an instant push notification.
+                  Live updates · Parents receive instant push notifications.
                 </p>
               </div>
             </div>

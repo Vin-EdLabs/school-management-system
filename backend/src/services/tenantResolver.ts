@@ -14,13 +14,17 @@ export interface TenantInfo {
   secondary_color: string | null;
   subscription_status: string;
   is_active: boolean;
+  archived_at?: string | null;
 }
+
+const ACTIVE_TENANT_FILTER = `COALESCE(is_active, true) = true AND archived_at IS NULL`;
 
 export async function resolveTenantById(id: number): Promise<TenantInfo | null> {
   const result = await query(
     `SELECT id, name, slug, subdomain, logo_url, primary_color, secondary_color, 
             COALESCE(subscription_status, 'active') as subscription_status,
-            COALESCE(is_active, true) as is_active
+            COALESCE(is_active, true) as is_active,
+            archived_at
      FROM tenants WHERE id = $1`,
     [id]
   );
@@ -32,10 +36,11 @@ export async function resolveTenantBySlug(slug: string): Promise<TenantInfo | nu
   const result = await query(
     `SELECT id, name, slug, subdomain, logo_url, primary_color, secondary_color,
             COALESCE(subscription_status, 'active') as subscription_status,
-            COALESCE(is_active, true) as is_active
+            COALESCE(is_active, true) as is_active,
+            archived_at
      FROM tenants 
      WHERE (LOWER(slug) = LOWER($1) OR LOWER(subdomain) = LOWER($1)) 
-     AND COALESCE(is_active, true) = true`,
+     AND ${ACTIVE_TENANT_FILTER}`,
     [slug]
   );
   if (result.rows.length === 0) return null;
@@ -47,7 +52,8 @@ export async function resolveTenantBySlugAnyStatus(slug: string): Promise<Tenant
   const result = await query(
     `SELECT id, name, slug, subdomain, logo_url, primary_color, secondary_color,
             COALESCE(subscription_status, 'active') as subscription_status,
-            COALESCE(is_active, true) as is_active
+            COALESCE(is_active, true) as is_active,
+            archived_at
      FROM tenants 
      WHERE LOWER(slug) = LOWER($1) OR LOWER(subdomain) = LOWER($1)`,
     [slug]
@@ -71,5 +77,10 @@ function mapRow(row: any): TenantInfo {
     secondary_color: row.secondary_color,
     subscription_status: row.subscription_status || 'active',
     is_active: row.is_active !== false,
+    archived_at: row.archived_at ?? null,
   };
+}
+
+export function isTenantArchived(tenant: TenantInfo | null | undefined): boolean {
+  return !!tenant?.archived_at;
 }

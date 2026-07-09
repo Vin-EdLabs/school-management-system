@@ -21,6 +21,7 @@ import {
   loadStudentTermRemarks,
   upsertTermReportRemark,
 } from '../services/termReportRemarksService.js';
+import { writeAuditLog } from '../services/auditService.js';
 
 const router = express.Router();
 
@@ -134,6 +135,16 @@ router.post('/assignments', async (req: AuthRequest, res) => {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
       [tenantId, classId, subject.trim(), name.trim(), assignmentType || 'Test', parseFloat(maxScore) || 100, dueDate || null, term, academicYear, req.user!.id]
     );
+    void writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'ASSESSMENT_CREATE',
+      entityType: 'grade_assignment',
+      entityId: Number(result.rows[0].id),
+      module: 'grades',
+      summary: `Assessment created: ${name.trim()}`,
+    });
     emitTenantDataChanged(tenantId, 'grade-assignment', 'created');
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -422,6 +433,18 @@ router.post('/', async (req: AuthRequest, res) => {
       [tenantId, studentId, assignmentId, oldScore, newScore, userId]
     );
 
+    void writeAuditLog({
+      tenantId,
+      userId,
+      userRole: req.user!.role,
+      action: 'GRADE_ENTRY',
+      entityType: 'student_grade',
+      entityId: Number(studentId),
+      module: 'grades',
+      summary: `Grade entered for student #${studentId} on assessment #${assignmentId}`,
+      details: { assignmentId: Number(assignmentId), oldScore, newScore },
+    });
+
     emitTenantDataChanged(tenantId, 'grade', 'updated');
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -504,6 +527,17 @@ router.post('/batch', async (req: AuthRequest, res) => {
          VALUES ($1, $2, $3, $4, $5, $6)`,
         [tenantId, r.studentId, r.assignmentId, oldScore, newScore, userId]
       );
+      void writeAuditLog({
+        tenantId,
+        userId,
+        userRole: req.user!.role,
+        action: 'GRADE_ENTRY',
+        entityType: 'student_grade',
+        entityId: Number(r.studentId),
+        module: 'grades',
+        summary: `Grade entered for student #${r.studentId} on assessment #${r.assignmentId}`,
+        details: { assignmentId: Number(r.assignmentId), oldScore, newScore },
+      });
       saved++;
     }
 
@@ -696,6 +730,21 @@ router.post('/release-report', async (req: AuthRequest, res) => {
         }).catch(() => {});
       }
     }
+
+    void writeAuditLog({
+      tenantId,
+      userId,
+      userRole: role,
+      action: release !== false ? 'REPORT_CARD_RELEASE' : 'REPORT_CARD_HIDE',
+      entityType: 'report_card',
+      entityId: Number(classId),
+      module: 'grades',
+      summary: release !== false
+        ? `Report cards released for class #${classId}`
+        : `Report cards hidden for class #${classId}`,
+      details: { classId: Number(classId), term: currentTerm, archive: archiveResult },
+    });
+
     res.json({
       message: release !== false ? 'Report released to parents' : 'Report hidden from parents',
       archive: archiveResult,

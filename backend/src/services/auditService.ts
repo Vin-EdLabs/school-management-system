@@ -4,6 +4,7 @@ import {
   getAuditRequestContext,
   isPlatformSuperAdmin,
 } from '../middleware/auditContext.js';
+import { recordPlatformEventFromAudit } from './platformEventService.js';
 
 export type AuditStatus = 'success' | 'failed';
 
@@ -141,6 +142,7 @@ export async function writeAuditLog(row: AuditLogInput): Promise<void> {
         /* socket optional */
       }
     }
+    recordPlatformEventFromAudit(scoped);
   } catch (e) {
     console.error('[auditService] writeAuditLog failed:', (e as Error).message);
   }

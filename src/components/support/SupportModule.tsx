@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '../../contexts/AuthContext';
+import { useSocket } from '../../contexts/SocketContext';
 import { apiService } from '../../services/api';
 import SupportChatWindow from './SupportChatWindow';
 import { Search, MessageSquare, Building2, Loader2 } from 'lucide-react';
@@ -26,6 +27,7 @@ interface Conversation {
 
 const SupportModule = () => {
   const { isPlatformSuperAdmin } = useAuth();
+  const { socket } = useSocket();
   const isSuperAdmin = isPlatformSuperAdmin;
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedTenant, setSelectedTenant] = useState<{ id: number; name: string } | null>(null);
@@ -33,25 +35,42 @@ const SupportModule = () => {
   const [loading, setLoading] = useState(isSuperAdmin);
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list');
 
-  const fetchConversations = async () => {
+  const fetchConversations = useCallback(async () => {
     if (!isSuperAdmin) return;
     try {
-      const data = await apiService.get<Conversation[]>('/support-chat/conversations');
+      const data = await apiService.get<Conversation[]>('/support-chat/conversations', {
+        skipTenant: true,
+        skipTenantHeaders: true,
+      });
       setConversations(data);
       setLoading(false);
     } catch (error) {
       console.error('Failed to fetch conversations:', error);
       setLoading(false);
     }
-  };
+  }, [isSuperAdmin]);
 
   useEffect(() => {
-    fetchConversations();
-    if (isSuperAdmin) {
-       const interval = setInterval(fetchConversations, 60000);
-       return () => clearInterval(interval);
-    }
-  }, [isSuperAdmin]);
+    void fetchConversations();
+  }, [fetchConversations]);
+
+  useEffect(() => {
+    if (!socket || !isSuperAdmin) return;
+    const refresh = () => void fetchConversations();
+    const onTenant = (evt: { entity?: string }) => {
+      if (String(evt?.entity || '') === 'support-chat') refresh();
+    };
+    socket.on('new-support-message', refresh);
+    socket.on('tenant-data-changed', onTenant);
+    socket.on('support-message-deleted', refresh);
+    socket.on('support-chat-read', refresh);
+    return () => {
+      socket.off('new-support-message', refresh);
+      socket.off('tenant-data-changed', onTenant);
+      socket.off('support-message-deleted', refresh);
+      socket.off('support-chat-read', refresh);
+    };
+  }, [socket, isSuperAdmin, fetchConversations]);
 
   const handleSelectTenant = (tenant: { id: number; name: string }) => {
     setSelectedTenant(tenant);
@@ -66,7 +85,14 @@ const SupportModule = () => {
     return (
       <div className="h-[calc(100dvh-120px)] min-h-[420px] overflow-hidden px-4 pb-4 pt-2 md:px-6">
         <div className="mx-auto flex h-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm">
-          <SupportChatWindow isSuperAdmin={false} />
+          <SupportChatWindow
+            isSuperAdmin={false}
+            onReadStateChange={() => {
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new Event('comms-badges-refresh'));
+              }
+            }}
+          />
         </div>
       </div>
     );
@@ -93,7 +119,9 @@ const SupportModule = () => {
               </div>
             </div>
             <Badge variant="secondary" className="text-[10px] font-semibold">
-              {conversations.reduce((sum, c) => sum + c.unread_count, 0)} new
+              {conversations.reduce((sum, c) => sum + c.unread_count, 0) > 0
+                ? `${conversations.reduce((sum, c) => sum + c.unread_count, 0)} new`
+                : 'All read'}
             </Badge>
           </div>
           <div className="relative">
@@ -174,7 +202,7 @@ const SupportModule = () => {
         )}
       >
         {selectedTenant ? (
-          <SupportChatWindow tenantId={selectedTenant.id} tenantName={selectedTenant.name} isSuperAdmin onBack={() => setMobileView('list')} />
+          <SupportChatWindow tenantId={selectedTenant.id} tenantName={selectedTenant.name} isSuperAdmin onBack={() => setMobileView('list')} onReadStateChange={fetchConversations} />
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-4 p-10 text-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-border bg-muted/50 text-muted-foreground">

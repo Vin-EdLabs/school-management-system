@@ -3,6 +3,7 @@ import multer from 'multer';
 import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { sendPushToParentAccount } from '../services/webPushService.js';
+import { notifySchoolStaffOfParentDesk } from '../services/commsNotifyService.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { authenticateParent, type ParentAuthRequest } from '../middleware/authenticateParent.js';
 
@@ -26,21 +27,30 @@ async function emitParentDeskToTenant(tenantId: number) {
   }
 }
 
-async function emitParentDeskNotification(tenantId: number, preview: string) {
-  try {
-    const unreadRow = await query(
-      `SELECT COUNT(*)::int AS c
-       FROM parent_messages m
-       WHERE m.tenant_id = $1
-         AND EXISTS (
+async function countSchoolParentDeskUnread(tenantId: number): Promise<number> {
+  const unreadRow = await query(
+    `SELECT COUNT(*)::int AS c
+     FROM parent_messages m
+     WHERE m.tenant_id = $1
+       AND m.is_deleted = false
+       AND (
+         m.is_read_by_school = false
+         OR EXISTS (
            SELECT 1 FROM message_replies r
            WHERE r.message_id = m.id
              AND r.sender_type = 'parent'
              AND r.is_read = false
-         )`,
-      [tenantId]
-    );
-    const unreadCount = Number(unreadRow.rows[0]?.c ?? 0);
+             AND r.is_deleted = false
+         )
+       )`,
+    [tenantId]
+  );
+  return Number(unreadRow.rows[0]?.c ?? 0);
+}
+
+async function emitParentDeskNotification(tenantId: number, preview: string) {
+  try {
+    const unreadCount = await countSchoolParentDeskUnread(tenantId);
     const { getIO } = await import('../socket.js');
     getIO().to(`tenant:${tenantId}`).emit('new-parent-message', {
       type: 'parent-desk',
@@ -50,6 +60,22 @@ async function emitParentDeskNotification(tenantId: number, preview: string) {
     });
   } catch (socketErr) {
     console.error('Parent desk notification emit error:', socketErr);
+  }
+}
+
+async function emitParentDeskUpdate(
+  tenantId: number,
+  payload: { messageId: number; action: string; reply?: Record<string, unknown>; parentAccountId?: number }
+) {
+  try {
+    const { getIO } = await import('../socket.js');
+    const io = getIO();
+    io.to(`tenant:${tenantId}`).emit('parent-desk-update', { tenantId, ...payload, at: Date.now() });
+    if (payload.parentAccountId) {
+      io.to(`user:${payload.parentAccountId}`).emit('parent-desk-update', { tenantId, ...payload, at: Date.now() });
+    }
+  } catch {
+    // ignore
   }
 }
 
@@ -93,6 +119,16 @@ router.post('/', authenticateParent, upload.single('attachment'), async (req: Pa
 
     await emitParentDeskToTenant(req.parent!.tenantId);
     await emitParentDeskNotification(req.parent!.tenantId, String(result.rows[0].message || 'New parent desk message'));
+    await emitParentDeskUpdate(req.parent!.tenantId, {
+      messageId: Number(result.rows[0].id),
+      action: 'created',
+      parentAccountId: req.parent!.accountId,
+    });
+    await notifySchoolStaffOfParentDesk(req.parent!.tenantId, {
+      title: 'New Parent Desk message',
+      body: String(result.rows[0].message || finalSubject).slice(0, 160),
+      url: '/?module=parent-desk',
+    }).catch(() => {});
     return res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error('Create parent message error:', error);
@@ -106,7 +142,9 @@ router.get('/unread-count', authenticateParent, async (req: ParentRequest, res) 
       `SELECT COUNT(*)::int AS c
        FROM message_replies r
        INNER JOIN parent_messages m ON m.id = r.message_id
-       WHERE m.parent_account_id = $1 AND r.sender_type = 'school' AND r.is_read = false`,
+       WHERE m.parent_account_id = $1 AND m.is_deleted = false
+         AND r.is_deleted = false
+         AND r.sender_type = 'school' AND r.is_read = false`,
       [req.parent!.accountId]
     );
     return res.json({ count: Number(r.rows[0]?.c ?? 0) });
@@ -127,7 +165,7 @@ router.get('/', authenticateParent, async (req: ParentRequest, res) => {
        FROM parent_messages m
        JOIN students s ON s.id = m.student_id AND s.tenant_id = m.tenant_id
        LEFT JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
-       WHERE m.parent_account_id = $1 AND m.tenant_id = $2
+       WHERE m.parent_account_id = $1 AND m.tenant_id = $2 AND m.is_deleted = false
        ORDER BY m.created_at DESC
        LIMIT $3 OFFSET $4`,
       [req.parent!.accountId, req.parent!.tenantId, limit, offset]
@@ -153,13 +191,13 @@ router.get('/:id', authenticateParent, async (req: ParentRequest, res) => {
        FROM parent_messages m
        JOIN students s ON s.id = m.student_id AND s.tenant_id = m.tenant_id
        LEFT JOIN classes c ON c.id = s.class_assigned_id AND c.tenant_id = s.tenant_id
-       WHERE m.id = $1 AND m.parent_account_id = $2 AND m.tenant_id = $3`,
+       WHERE m.id = $1 AND m.parent_account_id = $2 AND m.tenant_id = $3 AND m.is_deleted = false`,
       [id, req.parent!.accountId, req.parent!.tenantId]
     );
     if (!msg.rows.length) return res.status(404).json({ error: 'Message not found' });
     const replies = await query(
       `SELECT id, sender_type, reply_text, attachment_url, is_read, created_at
-       FROM message_replies WHERE message_id = $1 ORDER BY created_at ASC`,
+       FROM message_replies WHERE message_id = $1 AND is_deleted = false ORDER BY created_at ASC`,
       [id]
     );
     return res.json({ message: msg.rows[0], replies: replies.rows });
@@ -176,7 +214,7 @@ router.post('/:id/reply', authenticateParent, upload.single('attachment'), async
     const replyText = String(req.body?.reply_text || '').trim();
     if (!replyText) return res.status(400).json({ error: 'reply_text is required' });
     const msg = await query(
-      'SELECT id FROM parent_messages WHERE id = $1 AND parent_account_id = $2 AND tenant_id = $3',
+      'SELECT id, parent_account_id FROM parent_messages WHERE id = $1 AND parent_account_id = $2 AND tenant_id = $3 AND is_deleted = false',
       [id, req.parent!.accountId, req.parent!.tenantId]
     );
     if (!msg.rows.length) return res.status(404).json({ error: 'Message not found' });
@@ -191,6 +229,18 @@ router.post('/:id/reply', authenticateParent, upload.single('attachment'), async
     );
     await query(`UPDATE parent_messages SET is_read_by_school = false, status = 'pending' WHERE id = $1`, [id]);
     await emitParentDeskToTenant(req.parent!.tenantId);
+    await emitParentDeskNotification(req.parent!.tenantId, replyText.slice(0, 120));
+    await emitParentDeskUpdate(req.parent!.tenantId, {
+      messageId: id,
+      action: 'reply',
+      reply: inserted.rows[0],
+      parentAccountId: Number(msg.rows[0].parent_account_id),
+    });
+    await notifySchoolStaffOfParentDesk(req.parent!.tenantId, {
+      title: 'Parent replied on Parent Desk',
+      body: replyText.slice(0, 160),
+      url: '/?module=parent-desk',
+    }).catch(() => {});
     return res.status(201).json(inserted.rows[0]);
   } catch (error) {
     console.error('Parent reply error:', error);
@@ -223,12 +273,13 @@ router.get('/admin/list', authenticate, requireTenant, setTenantContext, async (
     const rows = await query(
       `SELECT m.*, p.id as parent_account_id, p.last_login,
               s.first_name, s.last_name, s.student_id as admission_number, c.class_name,
-              (SELECT COUNT(*)::int FROM message_replies r WHERE r.message_id = m.id AND r.sender_type = 'parent' AND r.is_read = false) AS unread_parent_replies
+              (CASE WHEN m.is_read_by_school = false THEN 1 ELSE 0 END)::int +
+              (SELECT COUNT(*)::int FROM message_replies r WHERE r.message_id = m.id AND r.sender_type = 'parent' AND r.is_read = false AND r.is_deleted = false) AS unread_parent_replies
        FROM parent_messages m
        JOIN parent_portal_accounts p ON p.id = m.parent_account_id
        JOIN students s ON s.id = m.student_id
        LEFT JOIN classes c ON c.id = s.class_assigned_id
-       WHERE m.tenant_id = $1
+       WHERE m.tenant_id = $1 AND m.is_deleted = false
        ORDER BY m.created_at DESC
        LIMIT 200`,
       [tenantId]
@@ -243,19 +294,8 @@ router.get('/admin/list', authenticate, requireTenant, setTenantContext, async (
 router.get('/admin/unread-count', authenticate, requireTenant, setTenantContext, async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
-    const result = await query(
-      `SELECT COUNT(*)::int AS count
-       FROM parent_messages m
-       WHERE m.tenant_id = $1
-         AND EXISTS (
-           SELECT 1 FROM message_replies r
-           WHERE r.message_id = m.id
-             AND r.sender_type = 'parent'
-             AND r.is_read = false
-         )`,
-      [tenantId]
-    );
-    return res.json({ count: Number(result.rows[0]?.count ?? 0) });
+    const count = await countSchoolParentDeskUnread(tenantId);
+    return res.json({ count });
   } catch (error) {
     console.error('Admin parent desk unread-count error:', error);
     return res.status(500).json({ error: 'Failed to fetch unread count' });
@@ -298,13 +338,13 @@ router.get('/admin/:id', authenticate, requireTenant, setTenantContext, async (r
        FROM parent_messages m
        JOIN students s ON s.id = m.student_id
        LEFT JOIN classes c ON c.id = s.class_assigned_id
-       WHERE m.id = $1 AND m.tenant_id = $2`,
+       WHERE m.id = $1 AND m.tenant_id = $2 AND m.is_deleted = false`,
       [id, tenantId]
     );
     if (!msg.rows.length) return res.status(404).json({ error: 'Message not found' });
     const replies = await query(
       `SELECT id, sender_type, reply_text, attachment_url, is_read, created_at
-       FROM message_replies WHERE message_id = $1 ORDER BY created_at ASC`,
+       FROM message_replies WHERE message_id = $1 AND is_deleted = false ORDER BY created_at ASC`,
       [id]
     );
     await query(`UPDATE parent_messages SET is_read_by_school = true, status = CASE WHEN status='pending' THEN 'in_review' ELSE status END WHERE id = $1`, [id]);
@@ -327,7 +367,7 @@ router.post('/admin/:id/reply', authenticate, requireTenant, setTenantContext, u
     const msg = await query(
       `SELECT id, parent_account_id, subject
        FROM parent_messages
-       WHERE id = $1 AND tenant_id = $2`,
+       WHERE id = $1 AND tenant_id = $2 AND is_deleted = false`,
       [id, tenantId]
     );
     if (!msg.rows.length) return res.status(404).json({ error: 'Message not found' });
@@ -352,6 +392,12 @@ router.post('/admin/:id/reply', authenticate, requireTenant, setTenantContext, u
       url: `/portal/${tenantId}`,
     }).catch(() => {});
     await emitParentDeskToTenant(tenantId);
+    await emitParentDeskUpdate(tenantId, {
+      messageId: id,
+      action: 'reply',
+      reply: inserted.rows[0],
+      parentAccountId: Number(msg.rows[0].parent_account_id),
+    });
     return res.status(201).json(inserted.rows[0]);
   } catch (error) {
     console.error('Admin parent desk reply error:', error);
@@ -376,6 +422,186 @@ router.put('/admin/:id/status', authenticate, requireTenant, setTenantContext, a
   } catch (error) {
     console.error('Admin parent desk status error:', error);
     return res.status(500).json({ error: 'Failed to update status' });
+  }
+});
+
+// -------- Delete routes (admin paths MUST be registered before /:messageId wildcards) --------
+
+// Delete a reply — school admin side
+router.delete('/admin/replies/:replyId', authenticate, requireTenant, setTenantContext, async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const replyId = Number(req.params.replyId);
+    if (isNaN(replyId)) return res.status(400).json({ error: 'Invalid reply ID' });
+    const row = await query(
+      `SELECT r.id, r.message_id, m.parent_account_id
+       FROM message_replies r
+       INNER JOIN parent_messages m ON m.id = r.message_id
+       WHERE r.id = $1 AND m.tenant_id = $2 AND m.is_deleted = false AND r.is_deleted = false`,
+      [replyId, tenantId]
+    );
+    if (!row.rows.length) return res.status(404).json({ error: 'Reply not found' });
+    await query(`UPDATE message_replies SET is_deleted = true WHERE id = $1`, [replyId]);
+    const messageId = Number(row.rows[0].message_id);
+    const parentAccountId = Number(row.rows[0].parent_account_id);
+    await emitParentDeskToTenant(tenantId);
+    await emitParentDeskUpdate(tenantId, {
+      messageId,
+      action: 'reply-deleted',
+      reply: { id: replyId },
+      parentAccountId,
+    });
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Admin delete reply error:', error);
+    return res.status(500).json({ error: 'Failed to delete reply' });
+  }
+});
+
+// Delete initial parent message only — school admin
+router.delete('/admin/:id/initial', authenticate, requireTenant, setTenantContext, async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid message ID' });
+    const row = await query(
+      `SELECT id, parent_account_id FROM parent_messages
+       WHERE id = $1 AND tenant_id = $2 AND is_deleted = false`,
+      [id, tenantId]
+    );
+    if (!row.rows.length) return res.status(404).json({ error: 'Message not found' });
+    await query(
+      `UPDATE parent_messages
+       SET is_initial_deleted = true, message = '', attachment_url = NULL
+       WHERE id = $1`,
+      [id]
+    );
+    const parentAccountId = Number(row.rows[0].parent_account_id);
+    await emitParentDeskToTenant(tenantId);
+    await emitParentDeskUpdate(tenantId, {
+      messageId: id,
+      action: 'initial-deleted',
+      parentAccountId,
+    });
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Admin delete initial message error:', error);
+    return res.status(500).json({ error: 'Failed to delete message' });
+  }
+});
+
+// Delete entire thread — school admin side
+router.delete('/admin/:id', authenticate, requireTenant, setTenantContext, async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid message ID' });
+    const row = await query(
+      `SELECT id, parent_account_id FROM parent_messages
+       WHERE id = $1 AND tenant_id = $2 AND is_deleted = false`,
+      [id, tenantId]
+    );
+    if (!row.rows.length) return res.status(404).json({ error: 'Message not found' });
+    await query(`UPDATE parent_messages SET is_deleted = true WHERE id = $1`, [id]);
+    await query(`UPDATE message_replies SET is_deleted = true WHERE message_id = $1`, [id]);
+    const parentAccountId = Number(row.rows[0].parent_account_id);
+    await emitParentDeskToTenant(tenantId);
+    await emitParentDeskNotification(tenantId, 'Conversation removed');
+    await emitParentDeskUpdate(tenantId, {
+      messageId: id,
+      action: 'thread-deleted',
+      parentAccountId,
+    });
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Admin delete thread error:', error);
+    return res.status(500).json({ error: 'Failed to delete conversation' });
+  }
+});
+
+// Delete a reply — parent side
+router.delete('/:messageId/replies/:replyId', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    const messageId = Number(req.params.messageId);
+    const replyId = Number(req.params.replyId);
+    if (isNaN(messageId) || isNaN(replyId)) return res.status(400).json({ error: 'Invalid ID' });
+    const thread = await query(
+      `SELECT id, parent_account_id FROM parent_messages
+       WHERE id = $1 AND parent_account_id = $2 AND tenant_id = $3 AND is_deleted = false`,
+      [messageId, req.parent!.accountId, req.parent!.tenantId]
+    );
+    if (!thread.rows.length) return res.status(404).json({ error: 'Message not found' });
+    const updated = await query(
+      `UPDATE message_replies SET is_deleted = true
+       WHERE id = $1 AND message_id = $2 AND is_deleted = false
+       RETURNING id`,
+      [replyId, messageId]
+    );
+    if (!updated.rows.length) return res.status(404).json({ error: 'Reply not found' });
+    await emitParentDeskToTenant(req.parent!.tenantId);
+    await emitParentDeskUpdate(req.parent!.tenantId, {
+      messageId,
+      action: 'reply-deleted',
+      reply: { id: replyId },
+      parentAccountId: req.parent!.accountId,
+    });
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Parent delete reply error:', error);
+    return res.status(500).json({ error: 'Failed to delete reply' });
+  }
+});
+
+// Delete initial parent message only — parent side
+router.delete('/:id/initial', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid message ID' });
+    const updated = await query(
+      `UPDATE parent_messages
+       SET is_initial_deleted = true, message = '', attachment_url = NULL
+       WHERE id = $1 AND parent_account_id = $2 AND tenant_id = $3 AND is_deleted = false
+       RETURNING id`,
+      [id, req.parent!.accountId, req.parent!.tenantId]
+    );
+    if (!updated.rows.length) return res.status(404).json({ error: 'Message not found' });
+    await emitParentDeskToTenant(req.parent!.tenantId);
+    await emitParentDeskUpdate(req.parent!.tenantId, {
+      messageId: id,
+      action: 'initial-deleted',
+      parentAccountId: req.parent!.accountId,
+    });
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Parent delete initial message error:', error);
+    return res.status(500).json({ error: 'Failed to delete message' });
+  }
+});
+
+// Delete entire thread — parent side
+router.delete('/:id', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid message ID' });
+    const updated = await query(
+      `UPDATE parent_messages SET is_deleted = true
+       WHERE id = $1 AND parent_account_id = $2 AND tenant_id = $3 AND is_deleted = false
+       RETURNING id`,
+      [id, req.parent!.accountId, req.parent!.tenantId]
+    );
+    if (!updated.rows.length) return res.status(404).json({ error: 'Message not found' });
+    await query(`UPDATE message_replies SET is_deleted = true WHERE message_id = $1`, [id]);
+    await emitParentDeskToTenant(req.parent!.tenantId);
+    await emitParentDeskNotification(req.parent!.tenantId, 'Conversation removed');
+    await emitParentDeskUpdate(req.parent!.tenantId, {
+      messageId: id,
+      action: 'thread-deleted',
+      parentAccountId: req.parent!.accountId,
+    });
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Parent delete thread error:', error);
+    return res.status(500).json({ error: 'Failed to delete conversation' });
   }
 });
 

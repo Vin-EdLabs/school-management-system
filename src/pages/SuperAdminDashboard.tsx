@@ -18,6 +18,12 @@ import {
   detailDialogHeaderClass,
   detailDialogBodyClass,
   detailDialogFooterClass,
+  formDialogContentClass,
+  formDialogContentWideClass,
+  formDialogContentXWideClass,
+  dialogTitleClass,
+  dialogLabelClass,
+  dialogSectionClass,
 } from '@/components/ui/dialog';
 import {
   Table,
@@ -47,6 +53,7 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useAuth } from '../contexts/AuthContext';
 import { useSocket } from '../contexts/SocketContext';
+import { useStaffPushSync } from '../hooks/useStaffPushSync';
 import { apiService } from '../services/api';
 import { toast } from '@/hooks/use-toast';
 import {
@@ -85,9 +92,13 @@ import {
   EyeOff,
   DollarSign,
   Activity,
+  BarChart3,
   Megaphone,
   UserRoundSearch,
   RotateCcw,
+  Archive,
+  ArchiveRestore,
+  Settings,
 } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import SuperAdminLoginForm from '../components/SuperAdminLoginForm';
@@ -96,7 +107,9 @@ import { resolveLogoUrl } from '../services/tenantService';
 import { useTheme } from '../contexts/ThemeContext';
 import PwaInstallButton from '../components/common/PwaInstallButton';
 import SystemHealthModule from '../components/superadmin/SystemHealthModule';
+import PlatformSettingsModule from '../components/superadmin/PlatformSettingsModule';
 import GlobalAnnouncementsModule from '../components/superadmin/GlobalAnnouncementsModule';
+import PlatformUsageModule from '../components/superadmin/PlatformUsageModule';
 import { SchoolProvider } from '../contexts/SchoolContext';
 import { ImpersonationProvider } from '../contexts/ImpersonationContext';
 import ImpersonationShell from '../components/impersonation/ImpersonationShell';
@@ -115,8 +128,24 @@ interface School {
   secondary_color?: string | null;
   subscription_status?: string;
   is_active?: boolean;
+  archived_at?: string | null;
   created_at?: string;
+  updated_at?: string;
 }
+
+type SchoolEditForm = {
+  id: number;
+  name: string;
+  slug: string;
+  primary_color: string;
+  secondary_color: string;
+  adminUsername: string;
+  adminEmail: string;
+  adminFullName: string;
+  adminPhone: string;
+  adminNewPassword: string;
+  logo_url?: string | null;
+};
 
 interface Registration {
   id: number;
@@ -180,7 +209,7 @@ interface OnlineSession {
   durationSeconds?: number | null;
 }
 
-type Section = 'schools' | 'visits' | 'tracker' | 'registrations' | 'audit' | 'super-admins' | 'support-chat' | 'school-data' | 'system-health' | 'announcements' | 'online-users' | 'removed-staff';
+type Section = 'schools' | 'usage' | 'visits' | 'tracker' | 'registrations' | 'audit' | 'super-admins' | 'support-chat' | 'school-data' | 'system-health' | 'platform-settings' | 'announcements' | 'online-users' | 'removed-staff';
 
 interface RemovedTeacher {
   id: number;
@@ -224,6 +253,7 @@ const SuperAdminDashboard = () => {
   const navigate = useNavigate();
   const { user, logout, loading: authLoading, isPlatformSuperAdmin } = useAuth();
   const { socket } = useSocket();
+  useStaffPushSync();
   const { theme, toggleTheme } = useTheme();
   const darkMode = theme === 'dark';
   const [section, setSection] = useState<Section>('schools');
@@ -235,7 +265,12 @@ const SuperAdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [createdSchool, setCreatedSchool] = useState<{ id: number; name: string; slug: string; username: string; password: string } | null>(null);
-  const [editSchool, setEditSchool] = useState<School | null>(null);
+  const [editForm, setEditForm] = useState<SchoolEditForm | null>(null);
+  const [editFormLoading, setEditFormLoading] = useState(false);
+  const [showEditAdminPassword, setShowEditAdminPassword] = useState(false);
+  const [archiveTarget, setArchiveTarget] = useState<School | null>(null);
+  const [archiveLoading, setArchiveLoading] = useState(false);
+  const [showArchivedSchools, setShowArchivedSchools] = useState(false);
   const [resetSchool, setResetSchool] = useState<School | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [auditFilters, setAuditFilters] = useState({ tenantId: '', action: '', status: '', module: '', search: '', startDate: '', endDate: '', limit: '500' });
@@ -398,7 +433,10 @@ const SuperAdminDashboard = () => {
   const refreshSupportInboxUnread = useCallback(async () => {
     if (user?.role !== 'super-admin') return;
     try {
-      const r = await apiService.get<{ count: number }>('/support-chat/unread-count');
+      const r = await apiService.get<{ count: number }>('/support-chat/unread-count', {
+        skipTenant: true,
+        skipTenantHeaders: true,
+      });
       setSupportInboxUnread(Number(r?.count ?? 0));
     } catch {
       setSupportInboxUnread(0);
@@ -422,15 +460,24 @@ const SuperAdminDashboard = () => {
     };
     socket.on('new-support-message', onNew);
     socket.on('tenant-data-changed', onTenant);
+    socket.on('support-chat-read', onTenant);
     return () => {
       socket.off('new-support-message', onNew);
       socket.off('tenant-data-changed', onTenant);
+      socket.off('support-chat-read', onTenant);
     };
   }, [socket, user?.role, refreshSupportInboxUnread]);
 
   useEffect(() => {
     if (user?.role === 'super-admin' && section === 'support-chat') void refreshSupportInboxUnread();
   }, [section, user?.role, refreshSupportInboxUnread]);
+
+  useEffect(() => {
+    if (user?.role !== 'super-admin') return;
+    const onRefresh = () => void refreshSupportInboxUnread();
+    window.addEventListener('comms-badges-refresh', onRefresh);
+    return () => window.removeEventListener('comms-badges-refresh', onRefresh);
+  }, [user?.role, refreshSupportInboxUnread]);
 
   useEffect(() => {
     if (user?.role !== 'super-admin') return;
@@ -475,10 +522,10 @@ const SuperAdminDashboard = () => {
     setLoading(true);
     try {
       const [schoolsList, regs, admins, visitStats] = await Promise.all([
-        apiService.get<School[]>('/schools'),
-        apiService.get<Registration[]>('/school-registrations').catch(() => []),
-        apiService.get<Array<{ id: number; username: string; email?: string; full_name?: string; phone?: string }>>('/schools/super-admins').catch(() => []),
-        apiService.get<{ landingVisitors: number }>('/stats/visits').catch(() => ({ landingVisitors: 0 })),
+        apiService.get<School[]>('/schools', { skipTenant: true }),
+        apiService.get<Registration[]>('/school-registrations', { skipTenant: true }).catch(() => []),
+        apiService.get<Array<{ id: number; username: string; email?: string; full_name?: string; phone?: string }>>('/schools/super-admins', { skipTenant: true }).catch(() => []),
+        apiService.get<{ landingVisitors: number }>('/stats/visits', { skipTenant: true }).catch(() => ({ landingVisitors: 0 })),
       ]);
       setSchools(Array.isArray(schoolsList) ? schoolsList : []);
       setRegistrations(Array.isArray(regs) ? regs : []);
@@ -498,7 +545,7 @@ const SuperAdminDashboard = () => {
 
   const loadSchools = async () => {
     try {
-      const list = await apiService.get<School[]>('/schools');
+      const list = await apiService.get<School[]>('/schools', { skipTenant: true });
       setSchools(Array.isArray(list) ? list : []);
     } catch {
       setSchools([]);
@@ -660,32 +707,103 @@ const SuperAdminDashboard = () => {
 
   const handleUpdateSchool = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editSchool) return;
+    if (!editForm) return;
     try {
-      await apiService.put(`/schools/${editSchool.id}`, {
-        name: editSchool.name,
-        slug: editSchool.slug,
-        subdomain: editSchool.subdomain,
-        primary_color: editSchool.primary_color,
-        secondary_color: editSchool.secondary_color,
-      });
+      await apiService.put(
+        `/schools/${editForm.id}`,
+        {
+          name: editForm.name,
+          slug: editForm.slug,
+          subdomain: editForm.slug,
+          primary_color: editForm.primary_color,
+          secondary_color: editForm.secondary_color,
+          adminUsername: editForm.adminUsername,
+          adminEmail: editForm.adminEmail || null,
+          adminFullName: editForm.adminFullName || null,
+          adminPhone: editForm.adminPhone || null,
+          adminNewPassword: editForm.adminNewPassword || undefined,
+        },
+        { skipTenant: true, skipTenantHeaders: true }
+      );
       if (editLogoFile) {
         const formData = new FormData();
         formData.append('logo', editLogoFile);
         const token = localStorage.getItem('authToken');
         const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
-        await fetch(`${base}/schools/${editSchool.id}/logo`, {
+        await fetch(`${base}/schools/${editForm.id}/logo`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}` },
           body: formData,
         });
       }
       toast({ title: 'School updated successfully!' });
-      setEditSchool(null);
+      setEditForm(null);
       setEditLogoFile(null);
+      setShowEditAdminPassword(false);
       loadSchools();
     } catch (err: any) {
       toast({ title: 'Error', description: err.message || 'Failed to update school', variant: 'destructive' });
+    }
+  };
+
+  const openEditSchool = async (school: School) => {
+    setEditFormLoading(true);
+    setEditLogoFile(null);
+    setShowEditAdminPassword(false);
+    try {
+      const overview = await apiService.get<{
+        primary_admin?: { username?: string; email?: string; full_name?: string; phone?: string };
+      }>(`/schools/${school.id}/overview`, { skipTenant: true });
+      setEditForm({
+        id: school.id,
+        name: school.name,
+        slug: school.slug || school.subdomain || '',
+        primary_color: school.primary_color || '#2563eb',
+        secondary_color: school.secondary_color || '#7c3aed',
+        logo_url: school.logo_url ?? null,
+        adminUsername: overview.primary_admin?.username || '',
+        adminEmail: overview.primary_admin?.email || '',
+        adminFullName: overview.primary_admin?.full_name || '',
+        adminPhone: overview.primary_admin?.phone || '',
+        adminNewPassword: '',
+      });
+    } catch (err: unknown) {
+      toast({
+        title: 'Could not load school details',
+        description: err instanceof Error ? err.message : 'Try again',
+        variant: 'destructive',
+      });
+    } finally {
+      setEditFormLoading(false);
+    }
+  };
+
+  const handleArchiveSchool = async () => {
+    if (!archiveTarget) return;
+    setArchiveLoading(true);
+    try {
+      await apiService.post(`/schools/${archiveTarget.id}/archive`, {}, { skipTenant: true, skipTenantHeaders: true });
+      toast({
+        title: `${archiveTarget.name} archived`,
+        description: 'Removed from login and hidden from this list. Turn on Show archived to view it again.',
+      });
+      setArchiveTarget(null);
+      setShowArchivedSchools(false);
+      loadSchools();
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message || 'Failed to archive school', variant: 'destructive' });
+    } finally {
+      setArchiveLoading(false);
+    }
+  };
+
+  const handleRestoreSchool = async (school: School) => {
+    try {
+      await apiService.post(`/schools/${school.id}/restore`, {}, { skipTenant: true, skipTenantHeaders: true });
+      toast({ title: `${school.name} restored`, description: 'School is active and visible on login again.' });
+      loadSchools();
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message || 'Failed to restore school', variant: 'destructive' });
     }
   };
 
@@ -696,7 +814,7 @@ const SuperAdminDashboard = () => {
       return;
     }
     try {
-      await apiService.post(`/schools/${resetSchool.id}/reset-password`, { newPassword });
+      await apiService.post(`/schools/${resetSchool.id}/reset-password`, { newPassword }, { skipTenant: true, skipTenantHeaders: true });
       toast({ title: 'Password reset successfully!' });
       setResetSchool(null);
       setNewPassword('');
@@ -743,10 +861,10 @@ const SuperAdminDashboard = () => {
   const toggleActive = async (school: School) => {
     try {
       if (school.is_active) {
-        await apiService.post(`/schools/${school.id}/deactivate`, {});
-        toast({ title: 'School deactivated' });
+        await apiService.post(`/schools/${school.id}/deactivate`, {}, { skipTenant: true, skipTenantHeaders: true });
+        toast({ title: 'School suspended' });
       } else {
-        await apiService.post(`/schools/${school.id}/activate`, {});
+        await apiService.post(`/schools/${school.id}/activate`, {}, { skipTenant: true, skipTenantHeaders: true });
         toast({ title: 'School activated' });
       }
       loadSchools();
@@ -821,16 +939,14 @@ const SuperAdminDashboard = () => {
   };
 
   const openSchool = (school: School | { id: number; slug?: string }) => {
-    apiService.setTenantContext(school.id);
-    localStorage.setItem('currentSchoolId', school.id.toString());
     if (school.slug) {
       const baseUrl = getSubdomainUrl(school.slug);
       const token = localStorage.getItem('authToken');
       const url = token ? buildSuperAdminHandoffUrl(baseUrl, token) : baseUrl;
-      window.open(url, '_blank');
+      window.open(url, '_blank', 'noopener,noreferrer');
     } else {
       const path = `/school/${school.id}`;
-      navigate(path);
+      window.open(`${window.location.origin}${path}`, '_blank', 'noopener,noreferrer');
     }
   };
 
@@ -865,6 +981,49 @@ const SuperAdminDashboard = () => {
     return pct >= 0 ? `+${pct}%` : `${pct}%`;
   }, [schools]);
 
+  const visibleSchools = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return schools.filter((school) => {
+      if (!showArchivedSchools && school.archived_at) return false;
+      if (!q) return true;
+      return (
+        school.name.toLowerCase().includes(q) ||
+        String(school.id).includes(q) ||
+        String(school.slug || '').toLowerCase().includes(q)
+      );
+    });
+  }, [schools, searchQuery, showArchivedSchools]);
+
+  const archivedSchoolCount = useMemo(
+    () => schools.filter((school) => school.archived_at).length,
+    [schools]
+  );
+
+  const createLogoPreview = useMemo(
+    () => (logoFile ? URL.createObjectURL(logoFile) : null),
+    [logoFile]
+  );
+
+  const editLogoFilePreview = useMemo(
+    () => (editLogoFile ? URL.createObjectURL(editLogoFile) : null),
+    [editLogoFile]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (createLogoPreview) URL.revokeObjectURL(createLogoPreview);
+    };
+  }, [createLogoPreview]);
+
+  useEffect(() => {
+    return () => {
+      if (editLogoFilePreview) URL.revokeObjectURL(editLogoFilePreview);
+    };
+  }, [editLogoFilePreview]);
+
+  const editLogoPreview =
+    editLogoFilePreview ?? (editForm?.logo_url ? resolveLogoUrl(editForm.logo_url) : null);
+
   const openSchoolDetail = async (school: School) => {
     setSelectedSchoolDetail(school);
     setSchoolOverview(null);
@@ -874,7 +1033,7 @@ const SuperAdminDashboard = () => {
         stats?: Record<string, number>;
         primary_admin?: { username?: string; email?: string; full_name?: string; phone?: string };
         school_settings?: Record<string, unknown>;
-      }>(`/schools/${school.id}/overview`);
+      }>(`/schools/${school.id}/overview`, { skipTenant: true });
       setSchoolOverview(overview);
     } catch (err: unknown) {
       toast({
@@ -1103,6 +1262,7 @@ const SuperAdminDashboard = () => {
 
   const mainItems = [
     { id: 'schools' as Section, label: 'Schools', icon: Building2 },
+    { id: 'usage' as Section, label: 'Usage', icon: BarChart3 },
     { id: 'announcements' as Section, label: 'Announcements', icon: Megaphone },
     { id: 'visits' as Section, label: 'Visitor Analytics', icon: Globe },
     { id: 'online-users' as Section, label: 'Online Users', icon: UserCheck },
@@ -1112,6 +1272,7 @@ const SuperAdminDashboard = () => {
     { id: 'support-chat' as Section, label: 'Support Chat', icon: MessageCircle },
   ];
   const systemItems = [
+    { id: 'platform-settings' as Section, label: 'Platform Settings', icon: Settings },
     { id: 'removed-staff' as Section, label: 'Removed Staff', icon: UserRoundSearch },
     { id: 'system-health' as Section, label: 'System Health', icon: Activity },
     { id: 'super-admins' as Section, label: 'Super Admins', icon: UserPlus },
@@ -1238,6 +1399,7 @@ const SuperAdminDashboard = () => {
             <Separator orientation="vertical" className="h-6 bg-slate-200 dark:bg-slate-700" />
             <h2 className="font-bold text-slate-900 dark:text-white text-lg">
               {section === 'schools' && 'Schools'}
+              {section === 'usage' && 'Platform Usage'}
               {section === 'announcements' && 'Global Announcements'}
               {section === 'visits' && 'Visitor Analytics'}
               {section === 'online-users' && 'Online Users / Active Sessions'}
@@ -1247,9 +1409,19 @@ const SuperAdminDashboard = () => {
               {section === 'super-admins' && 'Super Admins'}
               {section === 'audit' && 'Audit Logs'}
               {section === 'system-health' && 'System Health / Errors'}
+              {section === 'platform-settings' && 'Platform Settings'}
               {section === 'removed-staff' && 'Removed Staff'}
               {section === 'announcements' && 'Global Announcements'}
-              {section === 'support-chat' && 'Support Chat'}
+              {section === 'support-chat' && (
+                <>
+                  Support Chat
+                  {supportInboxUnread > 0 && (
+                    <span className="ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
+                      {supportInboxUnread > 99 ? '99+' : supportInboxUnread}
+                    </span>
+                  )}
+                </>
+              )}
             </h2>
             <div className="flex-1" />
             <PwaInstallButton
@@ -1346,6 +1518,10 @@ const SuperAdminDashboard = () => {
                           className="pl-10 h-11 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl text-sm font-medium"
                         />
                       </div>
+                      <label className="flex items-center gap-2 text-xs font-semibold text-slate-500 whitespace-nowrap">
+                        <Switch checked={showArchivedSchools} onCheckedChange={setShowArchivedSchools} />
+                        Show archived
+                      </label>
                       <Button onClick={() => setShowCreate(!showCreate)} className="bg-slate-900 dark:bg-indigo-600 hover:bg-slate-800 dark:hover:bg-indigo-700 h-11 px-6 rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-indigo-500/20">
                         <Plus className="w-4 h-4 mr-2" />
                         Add School
@@ -1403,13 +1579,32 @@ const SuperAdminDashboard = () => {
                               <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Admin Email</Label>
                               <Input type="email" value={newSchool.adminEmail} onChange={(e) => setNewSchool({ ...newSchool, adminEmail: e.target.value })} className="h-12 rounded-xl" placeholder="admin@school.com" />
                             </div>
-                            <div className="space-y-2">
+                            <div className="space-y-2 md:col-span-2 lg:col-span-3">
                               <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">School Logo</Label>
-                              <Input type="file" accept="image/*" onChange={(e) => setLogoFile(e.target.files?.[0] || null)} className="h-12 rounded-xl bg-slate-50 dark:bg-slate-800/50 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-[10px] file:font-bold file:bg-indigo-500 file:text-white" />
+                              <div className="flex items-start gap-4">
+                                <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-emerald-200/80 bg-emerald-50/40 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+                                  {createLogoPreview ? (
+                                    <img src={createLogoPreview} alt="Logo preview" className="h-full w-full object-contain p-2" />
+                                  ) : (
+                                    <Building2 className="h-8 w-8 text-slate-300 dark:text-slate-600" />
+                                  )}
+                                </div>
+                                <div className="min-w-0 flex-1 space-y-2">
+                                  <Input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={(e) => setLogoFile(e.target.files?.[0] || null)}
+                                    className="h-12 rounded-xl bg-slate-50 dark:bg-slate-800/50 file:mr-4 file:rounded-full file:border-0 file:bg-emerald-600 file:px-4 file:py-2 file:text-[10px] file:font-bold file:text-white"
+                                  />
+                                  {logoFile && (
+                                    <p className="truncate text-xs font-medium text-slate-500">{logoFile.name}</p>
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           </div>
                           <div className="flex gap-3 justify-end pt-4">
-                            <Button type="button" variant="ghost" onClick={() => setShowCreate(false)} className="h-12 px-8 rounded-xl font-bold text-xs uppercase tracking-widest">Cancel</Button>
+                            <Button type="button" variant="ghost" onClick={() => { setShowCreate(false); setLogoFile(null); }} className="h-12 px-8 rounded-xl font-bold text-xs uppercase tracking-widest">Cancel</Button>
                             <Button type="submit" className="h-12 px-8 bg-indigo-600 hover:bg-indigo-700 rounded-xl font-bold text-xs uppercase tracking-widest text-white shadow-lg shadow-indigo-500/20">Create School</Button>
                           </div>
                         </form>
@@ -1421,12 +1616,13 @@ const SuperAdminDashboard = () => {
                     <BrandedLoading label="Synchronizing core…" className="py-20" />
                   ) : (
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                      {schools
-                        .filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.id.toString().includes(searchQuery))
-                        .map((school) => (
+                      {visibleSchools.map((school) => (
                         <Card
                           key={school.id}
-                          className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 hover:border-indigo-500/50 transition-all group overflow-hidden shadow-sm hover:shadow-xl cursor-pointer"
+                          className={cn(
+                            'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 hover:border-indigo-500/50 transition-all group overflow-hidden shadow-sm hover:shadow-xl cursor-pointer',
+                            school.archived_at && 'opacity-80 border-dashed'
+                          )}
                           onClick={() => void openSchoolDetail(school)}
                         >
                           <CardContent className="p-0">
@@ -1456,10 +1652,14 @@ const SuperAdminDashboard = () => {
                                   <Badge 
                                     className={cn(
                                       "w-fit mx-auto sm:mx-0 font-black text-[10px] uppercase tracking-wider px-2 py-0.5",
-                                      school.is_active ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 shadow-none' : 'bg-red-500/10 text-red-600 border border-red-500/20 shadow-none'
+                                      school.archived_at
+                                        ? 'bg-slate-500/10 text-slate-600 border border-slate-500/20 shadow-none'
+                                        : school.is_active
+                                          ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 shadow-none'
+                                          : 'bg-red-500/10 text-red-600 border border-red-500/20 shadow-none'
                                     )}
                                   >
-                                    {school.is_active ? 'Active' : 'Offline'}
+                                    {school.archived_at ? 'Archived' : school.is_active ? 'Active' : 'Suspended'}
                                   </Badge>
                                 </div>
                                 <div className="flex flex-wrap justify-center sm:justify-start items-center gap-3 text-slate-500">
@@ -1482,82 +1682,59 @@ const SuperAdminDashboard = () => {
 
                               {/* Action Group */}
                               <div className="grid grid-cols-2 gap-2 w-full sm:w-auto" onClick={(e) => e.stopPropagation()}>
-                                <Dialog open={!!editSchool && editSchool.id === school.id} onOpenChange={(o) => !o && setEditSchool(null)}>
-                                  <Button variant="outline" size="sm" onClick={() => setEditSchool({ ...school })} className="h-10 rounded-xl border-slate-200 dark:border-slate-800 font-bold text-[10px] uppercase tracking-widest hover:bg-slate-50 dark:hover:bg-slate-800">
-                                    <Pencil className="w-3.5 h-3.5 mr-2" />
-                                    Settings
-                                  </Button>
-                                  <DialogContent className="max-w-lg bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden">
-                                    <DialogHeader>
-                                      <DialogTitle className="text-2xl font-black font-outfit">Institutional Parameters</DialogTitle>
-                                      <DialogDescription className="text-xs font-medium">Modify core identity and aesthetic configurations for {school.name}.</DialogDescription>
-                                    </DialogHeader>
-                                    <form onSubmit={handleUpdateSchool} className="space-y-6 pt-4">
-                                      {editSchool && (
-                                        <>
-                                          <div className="grid gap-6">
-                                            <div className="space-y-2">
-                                              <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Formal Identity</Label>
-                                              <Input value={editSchool.name} onChange={(e) => setEditSchool({ ...editSchool, name: e.target.value })} className="h-12 rounded-xl" />
-                                            </div>
-                                            <div className="space-y-2">
-                                              <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Portal Address</Label>
-                                              <Input value={editSchool.slug || ''} onChange={(e) => setEditSchool({ ...editSchool, slug: e.target.value, subdomain: e.target.value })} className="h-12 rounded-xl font-mono text-sm" placeholder="e.g. st-marys" />
-                                            </div>
-                                            <div className="space-y-2">
-                                              <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Brand Mark (Logo)</Label>
-                                              <Input type="file" accept="image/*" onChange={(e) => setEditLogoFile(e.target.files?.[0] || null)} className="h-12 rounded-xl bg-slate-50 dark:bg-slate-800/50 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-[10px] file:font-bold file:bg-indigo-500 file:text-white" />
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-4">
-                                              <div className="space-y-2">
-                                                <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Primary Color</Label>
-                                                <Input type="color" value={editSchool.primary_color || '#2563eb'} onChange={(e) => setEditSchool({ ...editSchool, primary_color: e.target.value })} className="h-12 rounded-xl p-1 cursor-pointer" />
-                                              </div>
-                                              <div className="space-y-2">
-                                                <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Secondary Color</Label>
-                                                <Input type="color" value={editSchool.secondary_color || '#7c3aed'} onChange={(e) => setEditSchool({ ...editSchool, secondary_color: e.target.value })} className="h-12 rounded-xl p-1 cursor-pointer" />
-                                              </div>
-                                            </div>
-                                          </div>
-                                          <DialogFooter className="gap-2">
-                                            <Button type="button" variant="ghost" onClick={() => setEditSchool(null)} className="rounded-xl font-bold text-[10px] uppercase tracking-widest">Cancel</Button>
-                                            <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700 rounded-xl font-bold text-[10px] uppercase tracking-widest text-white h-12 px-8">Save Configuration</Button>
-                                          </DialogFooter>
-                                        </>
-                                      )}
-                                    </form>
-                                  </DialogContent>
-                                </Dialog>
-
-                                <Dialog open={!!resetSchool && resetSchool.id === school.id} onOpenChange={(o) => { if (!o) { setResetSchool(null); setNewPassword(''); } }}>
-                                  <Button variant="outline" size="sm" onClick={() => setResetSchool(school)} className="h-10 rounded-xl border-slate-200 dark:border-slate-800 font-bold text-[10px] uppercase tracking-widest hover:bg-slate-50 dark:hover:bg-slate-800">
-                                    <KeyRound className="w-3.5 h-3.5 mr-2" />
-                                    Access
-                                  </Button>
-                                  <DialogContent className="rounded-3xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                                    <DialogHeader>
-                                      <DialogTitle className="text-2xl font-black font-outfit">Credential Override</DialogTitle>
-                                      <DialogDescription className="text-xs font-medium">Initialize a master password reset for {school.name}'s administrative console.</DialogDescription>
-                                    </DialogHeader>
-                                    <form onSubmit={handleResetPassword} className="space-y-6 pt-4">
-                                      <div className="space-y-2">
-                                        <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Emergency Password (6+ Chars)</Label>
-                                        <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="h-12 rounded-xl" placeholder="••••••••" required minLength={6} />
-                                      </div>
-                                      <DialogFooter>
-                                        <Button type="button" variant="ghost" onClick={() => setResetSchool(null)} className="rounded-xl font-bold text-[10px] uppercase tracking-widest">Cancel</Button>
-                                        <Button type="submit" className="bg-red-600 hover:bg-red-700 rounded-xl font-bold text-[10px] uppercase tracking-widest text-white h-12 px-8">Confirm Override</Button>
-                                      </DialogFooter>
-                                    </form>
-                                  </DialogContent>
-                                </Dialog>
-
-                                <Button size="sm" variant="ghost" onClick={() => toggleActive(school)} className={cn("h-10 rounded-xl font-bold text-[10px] uppercase tracking-widest", school.is_active ? 'text-red-500 hover:bg-red-500/10' : 'text-emerald-500 hover:bg-emerald-500/10')}>
-                                  {school.is_active ? <PowerOff className="w-3.5 h-3.5 mr-2" /> : <Power className="w-3.5 h-3.5 mr-2" />}
-                                  {school.is_active ? 'Off' : 'On'}
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => void openEditSchool(school)}
+                                  disabled={editFormLoading}
+                                  className="h-10 rounded-xl border-slate-200 dark:border-slate-800 font-bold text-[10px] uppercase tracking-widest hover:bg-slate-50 dark:hover:bg-slate-800"
+                                >
+                                  <Pencil className="w-3.5 h-3.5 mr-2" />
+                                  Edit
                                 </Button>
+
+                                <Button variant="outline" size="sm" onClick={() => setResetSchool(school)} className="h-10 rounded-xl border-emerald-200/80 dark:border-emerald-900/40 font-bold text-[10px] uppercase tracking-widest hover:bg-emerald-50 dark:hover:bg-emerald-950/30">
+                                  <KeyRound className="w-3.5 h-3.5 mr-2" />
+                                  Access
+                                </Button>
+
+                                {school.archived_at ? (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => void handleRestoreSchool(school)}
+                                    className="h-10 rounded-xl font-bold text-[10px] uppercase tracking-widest text-emerald-600 hover:bg-emerald-500/10"
+                                  >
+                                    <ArchiveRestore className="w-3.5 h-3.5 mr-2" />
+                                    Restore
+                                  </Button>
+                                ) : (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => toggleActive(school)}
+                                      className={cn(
+                                        'h-10 rounded-xl font-bold text-[10px] uppercase tracking-widest',
+                                        school.is_active ? 'text-amber-600 hover:bg-amber-500/10' : 'text-emerald-500 hover:bg-emerald-500/10'
+                                      )}
+                                    >
+                                      {school.is_active ? <PowerOff className="w-3.5 h-3.5 mr-2" /> : <Power className="w-3.5 h-3.5 mr-2" />}
+                                      {school.is_active ? 'Suspend' : 'Activate'}
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => setArchiveTarget(school)}
+                                      className="h-10 rounded-xl font-bold text-[10px] uppercase tracking-widest text-red-500 hover:bg-red-500/10"
+                                    >
+                                      <Archive className="w-3.5 h-3.5 mr-2" />
+                                      Archive
+                                    </Button>
+                                  </>
+                                )}
                                 
-                                <Button size="sm" onClick={() => openSchool(school)} className="h-10 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black text-[10px] uppercase tracking-widest hover:opacity-90 shadow-lg shadow-slate-900/10 transition-all">
+                                <Button size="sm" onClick={() => openSchool(school)} disabled={!!school.archived_at} className="h-10 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black text-[10px] uppercase tracking-widest hover:opacity-90 shadow-lg shadow-slate-900/10 transition-all disabled:opacity-40">
                                   <ArrowRight className="w-3.5 h-3.5 mr-2" />
                                   Launch
                                 </Button>
@@ -1567,33 +1744,199 @@ const SuperAdminDashboard = () => {
                         </Card>
                       ))}
                       
-                      {schools.length === 0 && (
+                      {visibleSchools.length === 0 && (
                         <Card className="col-span-full border-dashed border-2 border-slate-200 dark:border-slate-800 p-20 text-center bg-slate-50/50 dark:bg-slate-900/20">
                           <Building2 className="w-16 h-16 text-slate-200 dark:text-slate-700 mx-auto mb-6" />
-                          <h3 className="text-xl font-black text-slate-400 dark:text-slate-600 font-outfit uppercase tracking-tight">Zero Entities Detected</h3>
-                          <p className="text-slate-500 text-sm mb-8 max-w-xs mx-auto">Establish your first institutional anchor to begin system management.</p>
-                          <Button onClick={() => setShowCreate(true)} className="bg-indigo-600 hover:bg-indigo-700 h-12 px-10 rounded-xl font-bold text-[10px] uppercase tracking-widest text-white shadow-xl shadow-indigo-500/20 transition-all hover:scale-105">
-                            Initialize First School
-                          </Button>
+                          {!showArchivedSchools && archivedSchoolCount > 0 && schools.length > 0 ? (
+                            <>
+                              <h3 className="text-xl font-black text-slate-400 dark:text-slate-600 font-outfit uppercase tracking-tight">Archived Schools Hidden</h3>
+                              <p className="text-slate-500 text-sm mb-8 max-w-sm mx-auto">
+                                {archivedSchoolCount} archived school{archivedSchoolCount === 1 ? '' : 's'} {archivedSchoolCount === 1 ? 'is' : 'are'} hidden. Turn on <span className="font-semibold text-emerald-700 dark:text-emerald-400">Show archived</span> to view and restore them.
+                              </p>
+                              <Button onClick={() => setShowArchivedSchools(true)} variant="primaryAction" className="h-12 px-10 rounded-xl font-bold text-[10px] uppercase tracking-widest">
+                                Show Archived Schools
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <h3 className="text-xl font-black text-slate-400 dark:text-slate-600 font-outfit uppercase tracking-tight">Zero Entities Detected</h3>
+                              <p className="text-slate-500 text-sm mb-8 max-w-xs mx-auto">Establish your first institutional anchor to begin system management.</p>
+                              <Button onClick={() => setShowCreate(true)} className="bg-indigo-600 hover:bg-indigo-700 h-12 px-10 rounded-xl font-bold text-[10px] uppercase tracking-widest text-white shadow-xl shadow-indigo-500/20 transition-all hover:scale-105">
+                                Initialize First School
+                              </Button>
+                            </>
+                          )}
                         </Card>
                       )}
                     </div>
                   )}
                 </div>
 
+                <Dialog open={!!editForm} onOpenChange={(open) => { if (!open) { setEditForm(null); setEditLogoFile(null); setShowEditAdminPassword(false); } }}>
+                  <DialogContent className={formDialogContentWideClass}>
+                    <DialogHeader className={detailDialogHeaderClass}>
+                      <DialogTitle className={dialogTitleClass}>Edit School</DialogTitle>
+                      <DialogDescription className="text-sm">
+                        Update school identity, portal URL, branding, and primary administrator. Changes apply immediately — even while users are online.
+                      </DialogDescription>
+                    </DialogHeader>
+                    {editForm && (
+                      <form onSubmit={handleUpdateSchool} className="flex min-h-0 flex-1 flex-col">
+                        <DialogBody className={`${detailDialogBodyClass} space-y-6`}>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                          <div className="space-y-2">
+                            <Label className={dialogLabelClass}>School Name</Label>
+                            <Input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} className="h-12 rounded-xl" required />
+                          </div>
+                          <div className="space-y-2">
+                            <Label className={dialogLabelClass}>Portal Address</Label>
+                            <Input value={editForm.slug} onChange={(e) => setEditForm({ ...editForm, slug: e.target.value })} className="h-12 rounded-xl font-mono" placeholder="e.g. hope-academy" required />
+                          </div>
+                          <div className="space-y-2 md:col-span-2 lg:col-span-3">
+                            <Label className={dialogLabelClass}>School Logo</Label>
+                            <div className="flex items-start gap-4">
+                              <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-emerald-200/80 bg-emerald-50/40 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+                                {editLogoPreview ? (
+                                  <img src={editLogoPreview} alt="Logo preview" className="h-full w-full object-contain p-2" />
+                                ) : (
+                                  <Building2 className="h-8 w-8 text-slate-300 dark:text-slate-600" />
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1 space-y-2">
+                                <Input
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={(e) => setEditLogoFile(e.target.files?.[0] || null)}
+                                  className="h-12 rounded-xl bg-slate-50 dark:bg-slate-800/50 file:mr-4 file:rounded-full file:border-0 file:bg-emerald-600 file:px-4 file:py-2 file:text-[10px] file:font-bold file:text-white"
+                                />
+                                {editLogoFile ? (
+                                  <p className="truncate text-xs font-medium text-slate-500">{editLogoFile.name}</p>
+                                ) : editForm.logo_url ? (
+                                  <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400">Current school logo</p>
+                                ) : null}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <Label className={dialogLabelClass}>Primary Color</Label>
+                            <Input type="color" value={editForm.primary_color} onChange={(e) => setEditForm({ ...editForm, primary_color: e.target.value })} className="h-12 rounded-xl p-1 cursor-pointer" />
+                          </div>
+                          <div className="space-y-2">
+                            <Label className={dialogLabelClass}>Secondary Color</Label>
+                            <Input type="color" value={editForm.secondary_color} onChange={(e) => setEditForm({ ...editForm, secondary_color: e.target.value })} className="h-12 rounded-xl p-1 cursor-pointer" />
+                          </div>
+                        </div>
+
+                        <div className={dialogSectionClass}>
+                          <p className={dialogLabelClass}>Primary Administrator</p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                            <div className="space-y-2">
+                              <Label className={dialogLabelClass}>Admin Username</Label>
+                              <Input value={editForm.adminUsername} onChange={(e) => setEditForm({ ...editForm, adminUsername: e.target.value })} className="h-12 rounded-xl" required />
+                            </div>
+                            <div className="space-y-2">
+                              <Label className={dialogLabelClass}>Admin Full Name</Label>
+                              <Input value={editForm.adminFullName} onChange={(e) => setEditForm({ ...editForm, adminFullName: e.target.value })} className="h-12 rounded-xl" placeholder="Head of school" />
+                            </div>
+                            <div className="space-y-2">
+                              <Label className={dialogLabelClass}>Admin Email</Label>
+                              <Input type="email" value={editForm.adminEmail} onChange={(e) => setEditForm({ ...editForm, adminEmail: e.target.value })} className="h-12 rounded-xl" placeholder="admin@school.com" />
+                            </div>
+                            <div className="space-y-2">
+                              <Label className={dialogLabelClass}>Admin Phone</Label>
+                              <Input value={editForm.adminPhone} onChange={(e) => setEditForm({ ...editForm, adminPhone: e.target.value })} className="h-12 rounded-xl" placeholder="+233..." />
+                            </div>
+                            <div className="space-y-2 md:col-span-2">
+                              <Label className={dialogLabelClass}>New Password (optional)</Label>
+                              <div className="relative">
+                                <Input
+                                  type={showEditAdminPassword ? 'text' : 'password'}
+                                  value={editForm.adminNewPassword}
+                                  onChange={(e) => setEditForm({ ...editForm, adminNewPassword: e.target.value })}
+                                  className="h-12 rounded-xl pr-12"
+                                  placeholder="Leave blank to keep current password"
+                                  minLength={6}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setShowEditAdminPassword((v) => !v)}
+                                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                  aria-label={showEditAdminPassword ? 'Hide password' : 'Show password'}
+                                >
+                                  {showEditAdminPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        </DialogBody>
+                        <DialogFooter className={`${detailDialogFooterClass} gap-2`}>
+                          <Button type="button" variant="ghost" onClick={() => setEditForm(null)} className="rounded-xl font-bold text-[10px] uppercase tracking-widest">Cancel</Button>
+                          <Button type="submit" variant="primaryAction" className="rounded-xl font-bold text-[10px] uppercase tracking-widest h-12 px-8">Save Changes</Button>
+                        </DialogFooter>
+                      </form>
+                    )}
+                  </DialogContent>
+                </Dialog>
+
+                <Dialog open={!!resetSchool} onOpenChange={(o) => { if (!o) { setResetSchool(null); setNewPassword(''); } }}>
+                  <DialogContent className={formDialogContentClass}>
+                    <DialogHeader className={detailDialogHeaderClass}>
+                      <DialogTitle className={dialogTitleClass}>Credential Override</DialogTitle>
+                      <DialogDescription className="text-sm">
+                        Initialize a master password reset for {resetSchool?.name}&apos;s administrative console.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleResetPassword} className="flex min-h-0 flex-1 flex-col">
+                      <DialogBody className={`${detailDialogBodyClass} space-y-4`}>
+                        <div className="space-y-2">
+                          <Label className={dialogLabelClass}>Emergency Password (6+ chars)</Label>
+                          <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="h-12 rounded-xl" placeholder="••••••••" required minLength={6} />
+                        </div>
+                      </DialogBody>
+                      <DialogFooter className={`${detailDialogFooterClass} gap-2`}>
+                        <Button type="button" variant="ghost" onClick={() => setResetSchool(null)} className="rounded-xl font-bold text-[10px] uppercase tracking-widest">Cancel</Button>
+                        <Button type="submit" variant="destructive" className="rounded-xl font-bold text-[10px] uppercase tracking-widest h-12 px-8">Confirm Override</Button>
+                      </DialogFooter>
+                    </form>
+                  </DialogContent>
+                </Dialog>
+
+                <Dialog open={!!archiveTarget} onOpenChange={(open) => !open && setArchiveTarget(null)}>
+                  <DialogContent className={formDialogContentClass}>
+                    <DialogHeader className={detailDialogHeaderClass}>
+                      <DialogTitle className={dialogTitleClass}>Archive {archiveTarget?.name}?</DialogTitle>
+                      <DialogDescription>
+                        The school will be removed from login and hidden from parents and staff. All data is kept — you can restore it later from this dashboard.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className={`${detailDialogFooterClass} gap-2`}>
+                      <Button type="button" variant="ghost" onClick={() => setArchiveTarget(null)} className="rounded-xl">Cancel</Button>
+                      <Button type="button" variant="destructive" disabled={archiveLoading} onClick={() => void handleArchiveSchool()} className="rounded-xl">
+                        {archiveLoading ? 'Archiving…' : 'Archive School'}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+
                 <Dialog open={!!selectedSchoolDetail} onOpenChange={(open) => { if (!open) { setSelectedSchoolDetail(null); setSchoolOverview(null); } }}>
                   <DialogContent className={detailDialogContentWideClass}>
                     <DialogHeader className={detailDialogHeaderClass}>
-                      <DialogTitle className="text-xl font-black font-outfit flex items-center gap-3 pr-0">
+                      <DialogTitle className={`${dialogTitleClass} flex items-center gap-3 pr-0`}>
                         {selectedSchoolDetail?.logo_url ? (
-                          <img src={resolveLogoUrl(selectedSchoolDetail.logo_url)!} alt="" className="w-12 h-12 shrink-0 rounded-xl object-contain border border-slate-200" />
+                          <img src={resolveLogoUrl(selectedSchoolDetail.logo_url)!} alt="" className="w-12 h-12 shrink-0 rounded-xl object-contain border border-emerald-200/80" />
                         ) : (
-                          <Building2 className="w-8 h-8 shrink-0 text-indigo-500" />
+                          <Building2 className="w-8 h-8 shrink-0 text-emerald-600" />
                         )}
                         <span className="min-w-0 break-words">{selectedSchoolDetail?.name}</span>
                       </DialogTitle>
                       <DialogDescription>
-                        Tenant #{selectedSchoolDetail?.id} · {selectedSchoolDetail?.is_active ? 'Active' : 'Inactive'}
+                        Tenant #{selectedSchoolDetail?.id} ·{' '}
+                        {selectedSchoolDetail?.archived_at
+                          ? 'Archived'
+                          : selectedSchoolDetail?.is_active
+                            ? 'Active'
+                            : 'Suspended'}
                       </DialogDescription>
                     </DialogHeader>
                     <DialogBody className={`${detailDialogBodyClass} space-y-5 text-sm`}>
@@ -1622,9 +1965,9 @@ const SuperAdminDashboard = () => {
 
                         <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 space-y-2">
                           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Portal & Identity</p>
-                          <p><span className="text-slate-500">Slug:</span> <code className="text-indigo-600">{selectedSchoolDetail?.slug || '—'}</code></p>
+                          <p><span className="text-slate-500">Slug:</span> <code className="text-emerald-700 dark:text-emerald-400">{selectedSchoolDetail?.slug || '—'}</code></p>
                           <p><span className="text-slate-500">Portal URL:</span>{' '}
-                            <a href={selectedSchoolDetail ? loginUrl(selectedSchoolDetail) : '#'} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline break-all">
+                            <a href={selectedSchoolDetail ? loginUrl(selectedSchoolDetail) : '#'} target="_blank" rel="noreferrer" className="text-emerald-700 hover:underline dark:text-emerald-400 break-all">
                               {selectedSchoolDetail ? loginUrl(selectedSchoolDetail) : '—'}
                             </a>
                           </p>
@@ -1657,7 +2000,7 @@ const SuperAdminDashboard = () => {
                     </DialogBody>
                     <DialogFooter className={`${detailDialogFooterClass} flex-wrap`}>
                       <Button variant="outline" onClick={() => setSelectedSchoolDetail(null)}>Close</Button>
-                      {selectedSchoolDetail && (
+                      {selectedSchoolDetail && !selectedSchoolDetail.archived_at && (
                         <Button onClick={() => openSchool(selectedSchoolDetail)}>
                           <ExternalLink className="w-4 h-4 mr-2" />
                           Launch Portal
@@ -1666,6 +2009,12 @@ const SuperAdminDashboard = () => {
                     </DialogFooter>
                   </DialogContent>
                 </Dialog>
+              </div>
+            )}
+
+            {section === 'usage' && (
+              <div className="animate-in fade-in duration-700">
+                <PlatformUsageModule />
               </div>
             )}
 
@@ -2162,16 +2511,16 @@ const SuperAdminDashboard = () => {
                       setRestoreUnderstand(false);
                     }
                   }}>
-                    <DialogContent className="max-w-lg rounded-3xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                      <DialogHeader>
-                        <DialogTitle className="text-xl font-black font-outfit">Restore School Backup</DialogTitle>
-                        <DialogDescription className="text-xs font-medium">
+                    <DialogContent className={formDialogContentClass}>
+                      <DialogHeader className={detailDialogHeaderClass}>
+                        <DialogTitle className={dialogTitleClass}>Restore School Backup</DialogTitle>
+                        <DialogDescription className="text-sm">
                           This replaces all data for {selectedDataSchool?.name}. A safety backup of the current state is saved on the server first.
                         </DialogDescription>
                       </DialogHeader>
                       {importValidation && (
-                        <div className="space-y-3 text-xs">
-                          <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3 bg-slate-50 dark:bg-slate-950/50">
+                        <DialogBody className={`${detailDialogBodyClass} space-y-3 text-xs`}>
+                          <div className="rounded-xl border border-emerald-100/80 bg-emerald-50/40 p-3 dark:border-emerald-900/40 dark:bg-emerald-950/20">
                             <p className="font-bold text-slate-700 dark:text-slate-200 mb-1">Backup details</p>
                             <p>School: <span className="font-semibold">{importValidation.manifest?.tenant_name || importValidation.schoolName || '—'}</span></p>
                             <p>Backup date: <span className="font-semibold">{importValidation.manifest?.created_at ? new Date(importValidation.manifest.created_at).toLocaleString() : '—'}</span></p>
@@ -2205,15 +2554,16 @@ const SuperAdminDashboard = () => {
                               I understand this will replace all current data for this school with the backup contents.
                             </span>
                           </label>
-                        </div>
+                        </DialogBody>
                       )}
-                      <DialogFooter className="gap-2">
+                      <DialogFooter className={`${detailDialogFooterClass} gap-2`}>
                         <Button variant="outline" onClick={() => setShowImportDialog(false)} className="rounded-xl">
                           Cancel
                         </Button>
                         <Button
                           onClick={handleSuperAdminImport}
                           disabled={dataActionLoading || !restoreUnderstand}
+                          variant="primaryAction"
                           className="rounded-xl font-bold"
                         >
                           {dataActionLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
@@ -2441,22 +2791,24 @@ const SuperAdminDashboard = () => {
                 )}
 
                 <Dialog open={!!noteReg} onOpenChange={(o) => { if (!o) { setNoteReg(null); setInternalNote(''); } }}>
-                  <DialogContent className="rounded-3xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 max-w-md">
-                    <DialogHeader>
-                      <DialogTitle className="text-xl font-black font-outfit">Internal Review Note</DialogTitle>
-                      <DialogDescription className="text-xs font-medium">Add administrative context for {noteReg?.school_name}.</DialogDescription>
+                  <DialogContent className={formDialogContentClass}>
+                    <DialogHeader className={detailDialogHeaderClass}>
+                      <DialogTitle className={dialogTitleClass}>Internal Review Note</DialogTitle>
+                      <DialogDescription className="text-sm">Add administrative context for {noteReg?.school_name}.</DialogDescription>
                     </DialogHeader>
-                    <form onSubmit={saveInternalNote} className="space-y-4 pt-4">
+                    <form onSubmit={saveInternalNote} className="flex min-h-0 flex-1 flex-col">
+                      <DialogBody className={detailDialogBodyClass}>
                       <textarea
                         value={internalNote}
                         onChange={(e) => setInternalNote(e.target.value)}
-                        className="w-full min-h-[120px] rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 px-4 py-3 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                        className="w-full min-h-[120px] rounded-2xl border border-emerald-200/80 bg-emerald-50/30 px-4 py-3 text-sm text-slate-900 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                         placeholder="Detail the current status or required actions..."
                         rows={4}
                       />
-                      <DialogFooter>
+                      </DialogBody>
+                      <DialogFooter className={`${detailDialogFooterClass} gap-2`}>
                         <Button type="button" variant="ghost" onClick={() => { setNoteReg(null); setInternalNote(''); }} className="rounded-xl font-bold text-[10px] uppercase tracking-widest">Cancel</Button>
-                        <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700 rounded-xl font-bold text-[10px] uppercase tracking-widest text-white h-11 px-8 shadow-lg shadow-indigo-500/10">Commit Note</Button>
+                        <Button type="submit" variant="primaryAction" className="rounded-xl font-bold text-[10px] uppercase tracking-widest h-11 px-8">Commit Note</Button>
                       </DialogFooter>
                     </form>
                   </DialogContent>
@@ -2530,28 +2882,10 @@ const SuperAdminDashboard = () => {
                             </div>
                           </TableCell>
                           <TableCell className="text-right py-4">
-                            <Dialog open={!!resetSuperAdmin && resetSuperAdmin.id === sa.id} onOpenChange={(o) => { if (!o) { setResetSuperAdmin(null); setSuperAdminNewPass(''); } }}>
-                              <Button variant="outline" size="sm" onClick={() => setResetSuperAdmin({ id: sa.id, username: sa.username })} className="h-9 rounded-lg border-slate-200 dark:border-slate-800 font-bold text-[10px] uppercase tracking-widest">
-                                <KeyRound className="w-3.5 h-3.5 mr-2" />
-                                Reset
-                              </Button>
-                              <DialogContent className="rounded-3xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                                <DialogHeader>
-                                  <DialogTitle className="text-2xl font-black font-outfit">Credential Override</DialogTitle>
-                                  <DialogDescription className="text-xs font-medium">Update the access token for {resetSuperAdmin?.username}.</DialogDescription>
-                                </DialogHeader>
-                                <form onSubmit={handleResetSuperAdminPassword} className="space-y-6 pt-4">
-                                  <div className="space-y-2">
-                                    <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">New Access Token</Label>
-                                    <Input type="password" value={superAdminNewPass} onChange={(e) => setSuperAdminNewPass(e.target.value)} className="h-12 rounded-xl" placeholder="••••••••" required minLength={6} />
-                                  </div>
-                                  <DialogFooter>
-                                    <Button type="button" variant="ghost" onClick={() => { setResetSuperAdmin(null); setSuperAdminNewPass(''); }} className="rounded-xl font-bold text-[10px] uppercase tracking-widest">Cancel</Button>
-                                    <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700 rounded-xl font-bold text-[10px] uppercase tracking-widest text-white h-11 px-8">Confirm Update</Button>
-                                  </DialogFooter>
-                                </form>
-                              </DialogContent>
-                            </Dialog>
+                            <Button variant="outline" size="sm" onClick={() => setResetSuperAdmin({ id: sa.id, username: sa.username })} className="h-9 rounded-lg border-emerald-200/80 dark:border-emerald-900/40 font-bold text-[10px] uppercase tracking-widest hover:bg-emerald-50 dark:hover:bg-emerald-950/30">
+                              <KeyRound className="w-3.5 h-3.5 mr-2" />
+                              Reset
+                            </Button>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -2569,6 +2903,10 @@ const SuperAdminDashboard = () => {
 
             {section === 'system-health' && (
               <SystemHealthModule schools={schools} />
+            )}
+
+            {section === 'platform-settings' && (
+              <PlatformSettingsModule />
             )}
 
             {section === 'removed-staff' && (
@@ -2844,16 +3182,37 @@ const SuperAdminDashboard = () => {
               </div>
             )}
 
+            <Dialog open={!!resetSuperAdmin} onOpenChange={(o) => { if (!o) { setResetSuperAdmin(null); setSuperAdminNewPass(''); } }}>
+              <DialogContent className={formDialogContentClass}>
+                <DialogHeader className={detailDialogHeaderClass}>
+                  <DialogTitle className={dialogTitleClass}>Credential Override</DialogTitle>
+                  <DialogDescription className="text-sm">Update the access token for {resetSuperAdmin?.username}.</DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleResetSuperAdminPassword} className="flex min-h-0 flex-1 flex-col">
+                  <DialogBody className={`${detailDialogBodyClass} space-y-4`}>
+                    <div className="space-y-2">
+                      <Label className={dialogLabelClass}>New Access Token</Label>
+                      <Input type="password" value={superAdminNewPass} onChange={(e) => setSuperAdminNewPass(e.target.value)} className="h-12 rounded-xl" placeholder="••••••••" required minLength={6} />
+                    </div>
+                  </DialogBody>
+                  <DialogFooter className={`${detailDialogFooterClass} gap-2`}>
+                    <Button type="button" variant="ghost" onClick={() => { setResetSuperAdmin(null); setSuperAdminNewPass(''); }} className="rounded-xl font-bold text-[10px] uppercase tracking-widest">Cancel</Button>
+                    <Button type="submit" variant="primaryAction" className="rounded-xl font-bold text-[10px] uppercase tracking-widest h-11 px-8">Confirm Update</Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+
             <Dialog open={!!selectedAuditLog} onOpenChange={(open) => !open && setSelectedAuditLog(null)}>
-              <DialogContent className="max-w-3xl overflow-hidden rounded-3xl border-slate-200 bg-white p-0 dark:border-slate-800 dark:bg-slate-900">
-                <DialogHeader className="border-b border-slate-200 px-6 py-5 text-left dark:border-slate-800">
-                  <DialogTitle className="font-outfit text-2xl font-black">Audit Event Details</DialogTitle>
-                  <DialogDescription className="text-xs font-medium">
+              <DialogContent className={formDialogContentXWideClass}>
+                <DialogHeader className={detailDialogHeaderClass}>
+                  <DialogTitle className={dialogTitleClass}>Audit Event Details</DialogTitle>
+                  <DialogDescription className="text-sm">
                     Full event context, actor, device, target record, and captured values.
                   </DialogDescription>
                 </DialogHeader>
                 {selectedAuditLog && (
-                  <div className="max-h-[calc(90vh-110px)] overflow-y-auto p-6">
+                  <DialogBody className={`${detailDialogBodyClass} space-y-5`}>
                     <div className="mb-5 flex flex-wrap items-center gap-2">
                       <Badge className={cn('border px-2 py-0.5 text-[9px] font-black uppercase tracking-widest shadow-none', moduleTone(selectedAuditLog.module, selectedAuditLog.action, selectedAuditLog.entity_type))}>
                         {selectedAuditLog.module || 'general'}
@@ -2909,7 +3268,7 @@ const SuperAdminDashboard = () => {
                         </div>
                       ))}
                     </div>
-                  </div>
+                  </DialogBody>
                 )}
               </DialogContent>
             </Dialog>

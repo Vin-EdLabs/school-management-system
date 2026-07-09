@@ -17,8 +17,10 @@ import {
   X,
   Sparkles,
   Paperclip,
+  Trash2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import MessageDeleteConfirmDialog from '@/components/common/MessageDeleteConfirmDialog';
 
 interface Message {
   id: number;
@@ -38,6 +40,7 @@ interface SupportChatWindowProps {
   tenantName?: string;
   isSuperAdmin?: boolean;
   onBack?: () => void;
+  onReadStateChange?: () => void;
 }
 
 function apiOrigin(): string {
@@ -115,7 +118,7 @@ async function compressImageFile(file: File, maxEdge = 1600, quality = 0.82): Pr
   return blob;
 }
 
-const SupportChatWindow: React.FC<SupportChatWindowProps> = ({ tenantId, tenantName, isSuperAdmin = false, onBack }) => {
+const SupportChatWindow: React.FC<SupportChatWindowProps> = ({ tenantId, tenantName, isSuperAdmin = false, onBack, onReadStateChange }) => {
   const { socket } = useSocket();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -125,6 +128,7 @@ const SupportChatWindow: React.FC<SupportChatWindowProps> = ({ tenantId, tenantN
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [pendingPreview, setPendingPreview] = useState<string | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -132,27 +136,71 @@ const SupportChatWindow: React.FC<SupportChatWindowProps> = ({ tenantId, tenantN
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
-  const fetchMessages = async () => {
+  const applyReadReceipts = useCallback(
+    (readBy: 'super-admin' | 'school', ids?: number[]) => {
+      const now = new Date().toISOString();
+      setMessages((prev) =>
+        prev.map((m) => {
+          const isOutgoing = isSuperAdmin ? m.is_from_superadmin : !m.is_from_superadmin;
+          if (!isOutgoing || m.read_at) return m;
+          if (readBy === 'school' && isSuperAdmin && m.is_from_superadmin) {
+            if (ids?.length && !ids.includes(m.id)) return m;
+            return { ...m, read_at: now };
+          }
+          if (readBy === 'super-admin' && !isSuperAdmin && !m.is_from_superadmin) {
+            if (ids?.length && !ids.includes(m.id)) return m;
+            return { ...m, read_at: now };
+          }
+          return m;
+        })
+      );
+    },
+    [isSuperAdmin]
+  );
+
+  const markThreadRead = useCallback(async () => {
+    try {
+      if (isSuperAdmin && tenantId) {
+        await apiService.post('/support-chat/mark-read', { tenantId }, { skipTenant: true, skipTenantHeaders: true });
+      } else if (!isSuperAdmin) {
+        await apiService.post('/support-chat/mark-read-by-school', {}, { skipTenant: true });
+      }
+      onReadStateChange?.();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('comms-badges-refresh'));
+      }
+    } catch (error) {
+      console.error('Support mark-read failed:', error);
+    }
+  }, [isSuperAdmin, tenantId, onReadStateChange]);
+
+  const fetchMessages = useCallback(async () => {
     try {
       const endpoint = isSuperAdmin && tenantId ? `/support-chat?tenantId=${tenantId}` : '/support-chat';
-      const data = await apiService.get<Message[]>(endpoint);
+      const data = await apiService.get<Message[]>(endpoint, {
+        skipTenant: isSuperAdmin,
+      });
       setMessages(data);
       setLoading(false);
-
-      if (isSuperAdmin && tenantId) {
-        await apiService.post('/support-chat/mark-read', { tenantId });
-      } else if (!isSuperAdmin) {
-        await apiService.post('/support-chat/mark-read-by-school', {}).catch(() => {});
-      }
+      await markThreadRead();
     } catch (error) {
       console.error('Failed to fetch support messages:', error);
       setLoading(false);
     }
-  };
+  }, [isSuperAdmin, tenantId, markThreadRead]);
 
   useEffect(() => {
     void fetchMessages();
-  }, [tenantId]);
+  }, [fetchMessages]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void markThreadRead();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [markThreadRead]);
 
   useEffect(() => {
     if (!socket) return;
@@ -164,21 +212,45 @@ const SupportChatWindow: React.FC<SupportChatWindowProps> = ({ tenantId, tenantN
             if (prev.find((m) => m.id === msg.id)) return prev;
             return [...prev, msg];
           });
-          void apiService.post('/support-chat/mark-read', { ids: [msg.id] }).catch(() => {});
+          void markThreadRead();
         }
       } else {
         setMessages((prev) => {
           if (prev.find((m) => m.id === msg.id)) return prev;
           return [...prev, msg];
         });
+        if (msg.is_from_superadmin) {
+          void markThreadRead();
+        }
       }
     };
 
     socket.on('new-support-message', handleNewMessage);
+
+    const handleDeleted = (payload: { id?: number; tenantId?: number | null }) => {
+      const id = Number(payload?.id);
+      if (!id) return;
+      if (isSuperAdmin && tenantId != null && payload.tenantId != null && payload.tenantId !== tenantId) return;
+      setMessages((prev) => prev.filter((m) => m.id !== id));
+    };
+    socket.on('support-message-deleted', handleDeleted);
+
+    const handleRead = (payload: { tenantId?: number | null; readBy?: string; messageIds?: number[] }) => {
+      const tid = payload?.tenantId != null ? Number(payload.tenantId) : null;
+      if (isSuperAdmin && tid != null && tenantId != null && tid !== tenantId) return;
+      const readBy = payload?.readBy === 'school' || payload?.readBy === 'super-admin' ? payload.readBy : null;
+      if (!readBy) return;
+      applyReadReceipts(readBy, payload.messageIds);
+      onReadStateChange?.();
+    };
+    socket.on('support-chat-read', handleRead);
+
     return () => {
       socket.off('new-support-message', handleNewMessage);
+      socket.off('support-message-deleted', handleDeleted);
+      socket.off('support-chat-read', handleRead);
     };
-  }, [socket, tenantId, isSuperAdmin]);
+  }, [socket, tenantId, isSuperAdmin, applyReadReceipts, onReadStateChange, markThreadRead]);
 
   useEffect(() => {
     setTimeout(scrollToBottom, 80);
@@ -273,6 +345,16 @@ const SupportChatWindow: React.FC<SupportChatWindowProps> = ({ tenantId, tenantN
     }
   };
 
+  const handleDeleteMessage = async (messageId: number) => {
+    try {
+      await apiService.delete(`/support-chat/${messageId}`);
+      setMessages((prev) => prev.filter((m) => m.id !== messageId));
+    } catch (error: unknown) {
+      const err = error as { message?: string };
+      toast({ title: 'Could not delete', description: err.message || 'Failed to delete message', variant: 'destructive' });
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 bg-muted/20">
@@ -287,6 +369,15 @@ const SupportChatWindow: React.FC<SupportChatWindowProps> = ({ tenantId, tenantN
 
   return (
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-background">
+      <MessageDeleteConfirmDialog
+        open={pendingDeleteId != null}
+        onOpenChange={(open) => { if (!open) setPendingDeleteId(null); }}
+        onConfirm={() => {
+          if (pendingDeleteId != null) void handleDeleteMessage(pendingDeleteId);
+          setPendingDeleteId(null);
+        }}
+        kind="message"
+      />
       {lightbox && (
         <div
           className="fixed inset-0 z-[100] overflow-y-auto bg-black/90 p-4 backdrop-blur-md animate-in fade-in duration-200"
@@ -395,12 +486,23 @@ const SupportChatWindow: React.FC<SupportChatWindowProps> = ({ tenantId, tenantN
                     )}
                     <div
                       className={cn(
-                        'rounded-2xl border px-4 py-3 text-sm shadow-md transition-shadow hover:shadow-lg',
+                        'rounded-2xl border px-4 py-3 text-sm shadow-md transition-shadow hover:shadow-lg relative group',
                         isMe
                           ? 'rounded-tr-md border-purple-500/20 bg-gradient-to-br from-purple-600 to-indigo-700 text-white'
                           : 'rounded-tl-md border-border bg-card text-foreground'
                       )}
                     >
+                      <button
+                        type="button"
+                        onClick={() => setPendingDeleteId(msg.id)}
+                        className={cn(
+                          'absolute top-2 right-2 rounded-lg p-1.5 opacity-0 transition-all group-hover:opacity-100',
+                          isMe ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-muted-foreground hover:bg-red-500/10 hover:text-red-500'
+                        )}
+                        title="Delete message"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
                       {imgSrc && (
                         <button
                           type="button"
@@ -424,13 +526,23 @@ const SupportChatWindow: React.FC<SupportChatWindowProps> = ({ tenantId, tenantN
                       {msg.message ? (
                         <p className={cn('whitespace-pre-wrap leading-relaxed', isMe ? 'text-white/95' : 'text-foreground')}>{msg.message}</p>
                       ) : null}
-                    </div>
-                    {isMe && msg.read_at && i === messages.length - 1 && (
-                      <div className="flex items-center gap-1 px-1 text-[10px] font-semibold uppercase tracking-wide text-purple-600 dark:text-purple-400">
-                        <CheckCheck className="h-3.5 w-3.5" />
-                        Read
+                      <div className={cn(
+                        "mt-2 flex items-center justify-end gap-1 text-[10px] font-mono",
+                        isMe ? 'text-white/70' : 'text-muted-foreground/60'
+                      )}>
+                        {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {isMe && (
+                          msg.read_at ? (
+                            <span className="inline-flex items-center gap-0.5 font-semibold uppercase tracking-wide text-white/80">
+                              <CheckCheck className="h-3 w-3" />
+                              Read
+                            </span>
+                          ) : (
+                            <CheckCheck className="h-3 w-3 opacity-50" />
+                          )
+                        )}
                       </div>
-                    )}
+                    </div>
                   </div>
                 </div>
               );

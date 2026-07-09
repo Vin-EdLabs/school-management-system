@@ -100,11 +100,11 @@ router.get('/', requireRole('super-admin'), async (req, res) => {
   try {
     const result = await query(
       `SELECT t.id, t.name, t.slug, t.subdomain, t.logo_url, t.primary_color, t.secondary_color,
-              t.subscription_status, t.is_active, t.created_at, t.updated_at,
+              t.subscription_status, t.is_active, t.archived_at, t.created_at, t.updated_at,
               ss.school_name AS settings_school_name
        FROM tenants t
        LEFT JOIN school_settings ss ON ss.tenant_id = t.id
-       ORDER BY t.created_at DESC`
+       ORDER BY t.archived_at NULLS FIRST, t.created_at DESC`
     );
     res.json(result.rows);
   } catch (error) {
@@ -444,7 +444,7 @@ router.get('/:id/overview', requireRole('super-admin'), async (req: AuthRequest,
 
     const tenant = await query(
       `SELECT id, name, slug, subdomain, logo_url, primary_color, secondary_color,
-              subscription_status, is_active, created_at, updated_at
+              subscription_status, is_active, archived_at, created_at, updated_at
        FROM tenants WHERE id = $1`,
       [tenantId]
     );
@@ -463,10 +463,9 @@ router.get('/:id/overview', requireRole('super-admin'), async (req: AuthRequest,
     );
 
     const admin = await query(
-      `SELECT username, email, full_name, phone, created_at
+      `SELECT id, username, email, full_name, phone, created_at
        FROM users
-       WHERE tenant_id = $1 AND role = 'administrator'
-       ORDER BY created_at ASC
+       WHERE tenant_id = $1 AND is_primary_admin = true
        LIMIT 1`,
       [tenantId]
     );
@@ -666,24 +665,45 @@ router.post('/:id/logo', requireRole('super-admin'), upload.single('logo'), asyn
   }
 });
 
-// Update school
+// Update school (identity, portal URL, branding, primary admin — safe while users are online)
 router.put('/:id', requireRole('super-admin'), async (req: AuthRequest, res) => {
+  const client = await getClient();
   try {
     const { id } = req.params;
     const tenantId = parseInt(id, 10);
-    const { name, slug, subdomain, logo_url, primary_color, secondary_color, subscription_status, is_active } = req.body;
+    const {
+      name,
+      slug,
+      subdomain,
+      logo_url,
+      primary_color,
+      secondary_color,
+      subscription_status,
+      is_active,
+      adminUsername,
+      adminEmail,
+      adminFullName,
+      adminPhone,
+      adminNewPassword,
+    } = req.body;
 
-    const slugCheck = await resolveTenantSlugForUpdate({ query }, tenantId, { slug, subdomain });
+    const slugCheck = await resolveTenantSlugForUpdate(client, tenantId, { slug, subdomain });
     if ('error' in slugCheck) {
       return res.status(slugCheck.status).json({ error: slugCheck.error });
     }
-    const nextSlug = slugCheck.slug ?? slug;
-    const nextSubdomain = slugCheck.subdomain ?? subdomain;
-    
-    const result = await query(
+
+    const nextSlug = slugCheck.slug ?? (slug ? String(slug).trim() : undefined);
+    const nextSubdomain = slugCheck.subdomain ?? nextSlug ?? (subdomain ? String(subdomain).trim() : undefined);
+
+    await client.query('BEGIN');
+
+    const result = await client.query(
       `UPDATE tenants SET 
-        name = COALESCE($1, name), slug = COALESCE($2, slug), subdomain = COALESCE($3, subdomain),
-        logo_url = COALESCE($4, logo_url), primary_color = COALESCE($5, primary_color),
+        name = COALESCE($1, name),
+        slug = COALESCE($2, slug),
+        subdomain = COALESCE($3, subdomain),
+        logo_url = COALESCE($4, logo_url),
+        primary_color = COALESCE($5, primary_color),
         secondary_color = COALESCE($6, secondary_color),
         subscription_status = COALESCE($7, subscription_status),
         is_active = COALESCE($8, is_active),
@@ -691,32 +711,100 @@ router.put('/:id', requireRole('super-admin'), async (req: AuthRequest, res) => 
        WHERE id = $9 RETURNING *`,
       [name, nextSlug, nextSubdomain, logo_url, primary_color, secondary_color, subscription_status, is_active, id]
     );
-    
+
     if (result.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ error: 'School not found' });
     }
 
     if (name) {
-      await syncSchoolSettingsFromTenant(parseInt(id, 10), { name });
+      await client.query(
+        `UPDATE school_settings SET school_name = $1, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = $2`,
+        [name, tenantId]
+      ).catch(() => undefined);
     }
+
+    const adminFieldsProvided =
+      adminUsername != null ||
+      adminEmail != null ||
+      adminFullName != null ||
+      adminPhone != null ||
+      adminNewPassword;
+
+    if (adminFieldsProvided) {
+      if (adminNewPassword && String(adminNewPassword).length > 0 && String(adminNewPassword).length < 6) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'New password must be at least 6 characters' });
+      }
+      const adminRes = await client.query(
+        `SELECT id, username FROM users WHERE tenant_id = $1 AND is_primary_admin = true LIMIT 1`,
+        [tenantId]
+      );
+      if (adminRes.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'No primary admin found for this school' });
+      }
+      const adminId = adminRes.rows[0].id;
+      const nextUsername = adminUsername != null ? String(adminUsername).trim() : null;
+      if (nextUsername) {
+        const dup = await client.query(
+          `SELECT id FROM users WHERE tenant_id = $1 AND LOWER(username) = LOWER($2) AND id <> $3 LIMIT 1`,
+          [tenantId, nextUsername, adminId]
+        );
+        if (dup.rows.length > 0) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({ error: 'That admin username is already used in this school.' });
+        }
+      }
+      const passwordHash =
+        adminNewPassword && String(adminNewPassword).length >= 6
+          ? await bcrypt.hash(String(adminNewPassword), 10)
+          : null;
+      await client.query(
+        `UPDATE users SET
+          username = COALESCE($1, username),
+          email = COALESCE($2, email),
+          full_name = COALESCE($3, full_name),
+          phone = COALESCE($4, phone),
+          password_hash = COALESCE($5, password_hash),
+          updated_at = CURRENT_TIMESTAMP
+         WHERE id = $6`,
+        [
+          nextUsername || null,
+          adminEmail != null ? String(adminEmail).trim() || null : null,
+          adminFullName != null ? String(adminFullName).trim() || null : null,
+          adminPhone != null ? String(adminPhone).trim() || null : null,
+          passwordHash,
+          adminId,
+        ]
+      );
+    }
+
+    await client.query('COMMIT');
+
     if (logo_url) {
-      await syncSchoolSettingsFromTenant(parseInt(id, 10), { logo_url });
+      await syncSchoolSettingsFromTenant(tenantId, { logo_url });
     }
-    
-    // Log update
+    if (name) {
+      await syncSchoolSettingsFromTenant(tenantId, { name });
+    }
+
     await query(
       'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES (NULL, $1, $2, $3, $4)',
-      [req.user!.id, 'UPDATE', 'TENANT', parseInt(id)]
+      [req.user!.id, 'UPDATE', 'TENANT', tenantId]
     );
-    emitSystemDataChanged('school', 'updated', parseInt(id));
-    
+    emitSystemDataChanged('school', 'updated', tenantId);
+
     res.json(result.rows[0]);
   } catch (error: any) {
+    await client.query('ROLLBACK').catch(() => undefined);
     console.error('Update school error:', error);
     if (error.code === '23505') {
       return res.status(409).json({ error: formatTenantSlugConflictError(error) });
     }
     res.status(500).json({ error: 'Failed to update school' });
+  } finally {
+    client.release();
   }
 });
 
@@ -743,6 +831,73 @@ router.post('/:id/deactivate', requireRole('super-admin'), async (req: AuthReque
   } catch (error) {
     console.error('Deactivate school error:', error);
     res.status(500).json({ error: 'Failed to deactivate school' });
+  }
+});
+
+// Archive school (soft-remove from login; data retained for restore)
+router.post('/:id/archive', requireRole('super-admin'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = parseInt(req.params.id, 10);
+    if (!tenantId) return res.status(400).json({ error: 'Invalid school id' });
+
+    const tenant = await query('SELECT id, name, archived_at FROM tenants WHERE id = $1', [tenantId]);
+    if (tenant.rows.length === 0) return res.status(404).json({ error: 'School not found' });
+    if (tenant.rows[0].archived_at) {
+      return res.json({ message: 'School is already archived', id: tenantId });
+    }
+
+    await query(
+      `UPDATE tenants
+       SET archived_at = CURRENT_TIMESTAMP,
+           archived_by = $1,
+           is_active = false,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2`,
+      [req.user!.id, tenantId]
+    );
+
+    await query(
+      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id, details) VALUES (NULL, $1, $2, $3, $4, $5)',
+      [req.user!.id, 'ARCHIVE', 'TENANT', tenantId, JSON.stringify({ schoolName: tenant.rows[0].name })]
+    );
+    emitSystemDataChanged('school', 'updated', tenantId);
+
+    res.json({ message: 'School archived successfully', id: tenantId });
+  } catch (error) {
+    console.error('Archive school error:', error);
+    res.status(500).json({ error: 'Failed to archive school' });
+  }
+});
+
+// Restore archived school
+router.post('/:id/restore', requireRole('super-admin'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = parseInt(req.params.id, 10);
+    if (!tenantId) return res.status(400).json({ error: 'Invalid school id' });
+
+    const tenant = await query('SELECT id, name, archived_at FROM tenants WHERE id = $1', [tenantId]);
+    if (tenant.rows.length === 0) return res.status(404).json({ error: 'School not found' });
+
+    await query(
+      `UPDATE tenants
+       SET archived_at = NULL,
+           archived_by = NULL,
+           is_active = true,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1`,
+      [tenantId]
+    );
+
+    await query(
+      'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id, details) VALUES (NULL, $1, $2, $3, $4, $5)',
+      [req.user!.id, 'RESTORE', 'TENANT', tenantId, JSON.stringify({ schoolName: tenant.rows[0].name })]
+    );
+    emitSystemDataChanged('school', 'updated', tenantId);
+
+    res.json({ message: 'School restored successfully', id: tenantId });
+  } catch (error) {
+    console.error('Restore school error:', error);
+    res.status(500).json({ error: 'Failed to restore school' });
   }
 });
 

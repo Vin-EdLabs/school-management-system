@@ -62,7 +62,9 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
   const isHeadmaster = isHeadmasterRole(user?.role);
   const showTeacherBell = user?.role === 'teacher' || user?.role === 'staff';
   const showAdminBell =
-    !!user && (['administrator', 'finance', 'super-admin'].includes(user.role || '') || isHeadmaster);
+    !!user &&
+    user.role !== 'super-admin' &&
+    (['administrator', 'finance'].includes(user.role || '') || isHeadmaster);
   const showAdminNotifications = showAdminBell;
   const headmasterCombinedUnread = isHeadmaster ? unreadCount + adminUnreadCount : adminUnreadCount;
   const showPersonalTodos = canUsePersonalTodos(user?.role);
@@ -434,19 +436,15 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
     notificationDbId?: number
   ) => {
     try {
-      if (notificationType === 'parent-desk') {
-        await apiService.post('/messages/admin/mark-read-by-school', {});
-      }
-      if (notificationType === 'support-chat') {
-        await apiService.post('/support-chat/mark-read-by-school', {});
-      }
       if (notificationType === 'term-budget' && alertId) {
         await markBudgetAlertRead(alertId);
       }
       if (notificationType === 'lost-card' && notificationDbId) {
         await apiService.post(`/lost-cards/notifications/${notificationDbId}/read`, {});
       }
-      await loadAdminNotifications();
+      if (notificationType !== 'parent-desk' && notificationType !== 'support-chat') {
+        await loadAdminNotifications();
+      }
     } catch (error) {
       console.error('Mark admin notification read error:', error);
     }
@@ -459,7 +457,9 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
 
   useEffect(() => {
     if (!socket || !showAdminNotifications) return;
-    const onTenant = (evt: { entity?: string }) => {
+    const onTenant = (evt: { entity?: string; tenantId?: number | null }) => {
+      const tid = evt.tenantId;
+      if (tid != null && user?.tenantId != null && tid !== user.tenantId) return;
       const e = String(evt?.entity || '');
       if (e === 'parent-desk' || e === 'support-chat' || e === 'term-budget' || e === 'lost-card' || e === 'payment-submission') {
         void loadAdminNotifications();
@@ -474,12 +474,19 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
     const onLostCard = () => {
       void loadAdminNotifications();
     };
+    const onSupportRead = () => {
+      void loadAdminNotifications();
+    };
     socket.on('tenant-data-changed', onTenant);
     socket.on('new-parent-message', onNew);
+    socket.on('new-support-message', onNew);
+    socket.on('support-chat-read', onSupportRead);
     socket.on('lost-card-report', onLostCard);
     return () => {
       socket.off('tenant-data-changed', onTenant);
       socket.off('new-parent-message', onNew);
+      socket.off('new-support-message', onNew);
+      socket.off('support-chat-read', onSupportRead);
       socket.off('lost-card-report', onLostCard);
     };
   }, [socket, showAdminNotifications, loadAdminNotifications]);

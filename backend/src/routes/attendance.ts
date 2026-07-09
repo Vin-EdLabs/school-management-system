@@ -4,6 +4,7 @@ import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js'
 import { setTenantContext } from '../middleware/tenant.js';
 import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 import { getIO } from '../socket.js';
+import { writeAuditLog } from '../services/auditService.js';
 
 const router = express.Router();
 
@@ -149,6 +150,17 @@ router.post('/', async (req: AuthRequest, res) => {
         [tenantId, classId, r.studentId, date, r.present, userId]
       );
     }
+    void writeAuditLog({
+      tenantId,
+      userId,
+      userRole: req.user!.role,
+      action: 'ATTENDANCE_MARK',
+      entityType: 'attendance',
+      entityId: Number(classId),
+      module: 'attendance',
+      summary: `Attendance marked for class #${classId} on ${date}`,
+      details: { classId: Number(classId), date, count: activeRecords.length },
+    });
     emitTenantDataChanged(tenantId, 'attendance', 'updated');
     res.json({ message: 'Attendance saved', count: activeRecords.length });
   } catch (error) {

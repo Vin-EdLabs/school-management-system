@@ -2,6 +2,15 @@ import express from 'express';
 import { query } from '../db/connection.js';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth.js';
 import { listActiveSessionsForSuperAdmin } from '../services/presenceService.js';
+import {
+  getDailyUsage,
+  getHourlyUsageToday,
+  getUsageSummary,
+} from '../services/platformUsageService.js';
+import {
+  getPlatformUiSettings,
+  updatePlatformUiSettings,
+} from '../services/platformSettingsService.js';
 
 const router = express.Router();
 
@@ -37,6 +46,81 @@ router.get('/live-users', authenticate, requireRole('super-admin'), async (_req:
   } catch (error) {
     console.error('Get live users error:', error);
     res.status(500).json({ error: 'Failed to fetch live users' });
+  }
+});
+
+router.get('/usage/daily', authenticate, requireRole('super-admin'), async (req: AuthRequest, res) => {
+  try {
+    const days = parseInt(String(req.query.days || '30'), 10);
+    const rows = await getDailyUsage(days);
+    res.json(rows);
+  } catch (error) {
+    console.error('Get daily usage error:', error);
+    res.status(500).json({ error: 'Failed to fetch daily usage' });
+  }
+});
+
+router.get('/usage/hourly-today', authenticate, requireRole('super-admin'), async (_req: AuthRequest, res) => {
+  try {
+    const rows = await getHourlyUsageToday();
+    res.json(rows);
+  } catch (error) {
+    console.error('Get hourly usage error:', error);
+    res.status(500).json({ error: 'Failed to fetch hourly usage' });
+  }
+});
+
+router.get('/usage/summary', authenticate, requireRole('super-admin'), async (_req: AuthRequest, res) => {
+  try {
+    const summary = await getUsageSummary();
+    res.json(summary);
+  } catch (error) {
+    console.error('Get usage summary error:', error);
+    res.status(500).json({ error: 'Failed to fetch usage summary' });
+  }
+});
+
+router.get('/settings', authenticate, requireRole('super-admin'), async (_req: AuthRequest, res) => {
+  try {
+    const ui = await getPlatformUiSettings();
+    res.json({ ui });
+  } catch (error) {
+    console.error('Get platform settings error:', error);
+    res.status(500).json({ error: 'Failed to fetch platform settings' });
+  }
+});
+
+router.patch('/settings', authenticate, requireRole('super-admin'), async (req: AuthRequest, res) => {
+  try {
+    const body = req.body || {};
+    const ui = await updatePlatformUiSettings(
+      {
+        zoomNudgeEnabled:
+          body.zoomNudgeEnabled !== undefined ? Boolean(body.zoomNudgeEnabled) : undefined,
+      },
+      req.user?.id ?? null
+    );
+    res.json({ ui });
+  } catch (error) {
+    console.error('Update platform settings error:', error);
+    res.status(500).json({ error: 'Failed to update platform settings' });
+  }
+});
+
+router.put('/settings', authenticate, requireRole('super-admin'), async (req: AuthRequest, res) => {
+  try {
+    const body = req.body || {};
+    const ui = await updatePlatformUiSettings(
+      {
+        zoomNudgeEnabled:
+          body.zoomNudgeEnabled !== undefined ? Boolean(body.zoomNudgeEnabled) : undefined,
+      },
+      req.user?.id ?? null
+    );
+    res.json({ ui });
+  } catch (error) {
+    console.error('Update platform settings error:', error);
+    res.status(500).json({ error: 'Failed to update platform settings' });
   }
 });
 

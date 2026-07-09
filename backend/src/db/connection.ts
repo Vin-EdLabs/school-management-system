@@ -141,6 +141,12 @@ const runMigrations = async () => {
     await client.query(`
       ALTER TABLE tenants ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true
     `).catch(() => { });
+    await client.query(`
+      ALTER TABLE tenants ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ
+    `).catch(() => { });
+    await client.query(`
+      ALTER TABLE tenants ADD COLUMN IF NOT EXISTS archived_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+    `).catch(() => { });
 
     // Create users table
     await client.query(`
@@ -862,6 +868,7 @@ const runMigrations = async () => {
       CREATE INDEX IF NOT EXISTS idx_staff_user_push_user
       ON staff_user_push_subscriptions (user_id)
     `).catch(() => { });
+    await client.query(`ALTER TABLE staff_user_push_subscriptions ALTER COLUMN tenant_id DROP NOT NULL`).catch(() => { });
     await client.query(`
       CREATE TABLE IF NOT EXISTS parent_fcm_tokens (
         id SERIAL PRIMARY KEY,
@@ -1072,6 +1079,9 @@ const runMigrations = async () => {
       CREATE INDEX IF NOT EXISTS idx_message_replies_message
       ON message_replies (message_id, created_at ASC)
     `).catch(() => { });
+    await client.query(`ALTER TABLE parent_messages ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT false`).catch(() => { });
+    await client.query(`ALTER TABLE parent_messages ADD COLUMN IF NOT EXISTS is_initial_deleted BOOLEAN NOT NULL DEFAULT false`).catch(() => { });
+    await client.query(`ALTER TABLE message_replies ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT false`).catch(() => { });
     await client.query(`
       ALTER TABLE parent_portal_accounts
       ADD COLUMN IF NOT EXISTS unread_replies_count INTEGER DEFAULT 0
@@ -1408,10 +1418,7 @@ const runMigrations = async () => {
       )
     `);
     await client.query(`ALTER TABLE support_messages ALTER COLUMN image_url TYPE TEXT`).catch(() => { });
-    // Super-admin replies were incorrectly inserted with read_at set; school-unread uses read_at on SA rows.
-    await client
-      .query(`UPDATE support_messages SET read_at = NULL WHERE is_from_superadmin = true`)
-      .catch(() => { });
+    await client.query(`ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT false`).catch(() => { });
     await client.query(`ALTER TABLE global_chat_messages ADD COLUMN IF NOT EXISTS media_url TEXT`).catch(() => { });
     await client.query(`ALTER TABLE global_chat_messages ALTER COLUMN media_url TYPE TEXT`).catch(() => { });
 

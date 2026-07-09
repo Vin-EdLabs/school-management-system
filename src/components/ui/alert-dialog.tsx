@@ -17,7 +17,7 @@ const AlertDialogOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Overlay
     className={cn(
-      "fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className
     )}
     {...props}
@@ -126,6 +126,21 @@ const AlertDialogCancel = React.forwardRef<
   />
 ))
 AlertDialogCancel.displayName = AlertDialogPrimitive.Cancel.displayName
+
+export const alertDialogContentClass =
+  "flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg rounded-[1rem] border-t-4 border-emerald-500 bg-white/95 shadow-[0_20px_60px_rgba(15,118,110,0.18)] dark:bg-slate-950/95"
+
+export const alertDialogContentWideClass =
+  "flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl rounded-[1rem] border-t-4 border-emerald-500 bg-white/95 shadow-[0_20px_60px_rgba(15,118,110,0.18)] dark:bg-slate-950/95"
+
+export const alertDialogHeaderClass =
+  "shrink-0 space-y-1.5 border-b border-emerald-100/80 px-6 py-4 text-left dark:border-emerald-900/40"
+
+export const alertDialogBodyClass =
+  "min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-4"
+
+export const alertDialogFooterClass =
+  "form-action-bar shrink-0 gap-2 border-t border-emerald-100/80 px-6 py-4 dark:border-emerald-900/40"
 
 export {
   AlertDialog,

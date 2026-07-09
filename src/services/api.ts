@@ -129,6 +129,10 @@ export class ApiService {
     localStorage.removeItem('currentSchoolId');
   }
 
+  getTenantContext(): number | null {
+    return this.tenantId;
+  }
+
   getBaseUrl() {
     return this.baseURL;
   }
@@ -177,9 +181,9 @@ export class ApiService {
     return promise;
   }
 
-  async get<T>(endpoint: string, options?: { skipTenant?: boolean }): Promise<T> {
+  async get<T>(endpoint: string, options?: { skipTenant?: boolean; skipTenantHeaders?: boolean }): Promise<T> {
     const response = await fetch(this.buildURL(endpoint, !options?.skipTenant), {
-      headers: this.getAuthHeaders(),
+      headers: this.getAuthHeaders(options?.skipTenantHeaders),
     });
     const data = await readResponseJson<Record<string, unknown>>(response);
     if (!response.ok) {
@@ -269,12 +273,12 @@ export class ApiService {
     });
   }
 
-  async put<T>(endpoint: string, data: any): Promise<T> {
+  async put<T>(endpoint: string, data: any, options?: { skipTenant?: boolean; skipTenantHeaders?: boolean }): Promise<T> {
     const key = this.mutationKey('PUT', endpoint, data);
     return this.withMutationGuard(key, async () => {
-      const response = await fetch(this.buildURL(endpoint), {
+      const response = await fetch(this.buildURL(endpoint, !options?.skipTenant), {
         method: 'PUT',
-        headers: { ...this.getAuthHeaders(), 'X-Idempotency-Key': key },
+        headers: { ...this.getAuthHeaders(options?.skipTenantHeaders), 'X-Idempotency-Key': key },
         body: JSON.stringify(data),
       });
       const payload = await readResponseJson<Record<string, unknown>>(response);

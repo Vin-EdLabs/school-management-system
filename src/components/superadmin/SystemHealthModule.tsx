@@ -17,6 +17,11 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogBody,
+  formDialogContentWideClass,
+  detailDialogHeaderClass,
+  detailDialogBodyClass,
+  dialogTitleClass,
 } from '@/components/ui/dialog';
 import { apiService } from '@/services/api';
 import { toast } from '@/hooks/use-toast';
@@ -30,6 +35,10 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  alertDialogContentClass,
+  alertDialogHeaderClass,
+  alertDialogBodyClass,
+  alertDialogFooterClass,
 } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
 
@@ -512,12 +521,12 @@ const SystemHealthModule: React.FC<SystemHealthModuleProps> = ({ schools }) => {
       )}
 
       <Dialog open={!!selectedError} onOpenChange={(open) => !open && setSelectedError(null)}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Error Details</DialogTitle>
+        <DialogContent className={formDialogContentWideClass}>
+          <DialogHeader className={detailDialogHeaderClass}>
+            <DialogTitle className={dialogTitleClass}>Error Details</DialogTitle>
           </DialogHeader>
           {selectedError && (
-            <div className="space-y-4 text-sm">
+            <DialogBody className={`${detailDialogBodyClass} space-y-4 text-sm`}>
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Message</p>
                 <p className="mt-1 font-medium">{selectedError.message}</p>
@@ -562,20 +571,20 @@ const SystemHealthModule: React.FC<SystemHealthModuleProps> = ({ schools }) => {
                   </pre>
                 </div>
               )}
-            </div>
+            </DialogBody>
           )}
         </DialogContent>
       </Dialog>
 
       <AlertDialog open={clearOpen} onOpenChange={setClearOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Clear system errors?</AlertDialogTitle>
+        <AlertDialogContent className={alertDialogContentClass}>
+          <AlertDialogHeader className={alertDialogHeaderClass}>
+            <AlertDialogTitle className={dialogTitleClass}>Clear system errors?</AlertDialogTitle>
             <AlertDialogDescription>
               This permanently deletes {total} error record{total === 1 ? '' : 's'} matching the current filters. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
+          <AlertDialogFooter className={alertDialogFooterClass}>
             <AlertDialogCancel disabled={clearing}>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={() => void clearAllErrors()} disabled={clearing}>
               {clearing ? 'Clearing…' : 'Clear all'}

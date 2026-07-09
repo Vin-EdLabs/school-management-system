@@ -23,6 +23,19 @@ const normalizeRole = (role: string | null | undefined): string => {
 const isSuperAdminUser = (role: string | null | undefined, tenantId: number | null | undefined) =>
   normalizeRole(role) === 'super-admin' && (tenantId == null || Number.isNaN(Number(tenantId)));
 
+const PUSH_ENABLED_ROLES = new Set([
+  'teacher',
+  'staff',
+  'headmaster',
+  'administrator',
+  'finance',
+  'super-admin',
+]);
+
+function canUseStaffPush(role: string | null | undefined): boolean {
+  return PUSH_ENABLED_ROLES.has(normalizeRole(role));
+}
+
 const nextDayLockSql = `
   date_trunc('day', NOW() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' + interval '1 day'
 `;
@@ -50,11 +63,14 @@ router.post('/login', async (req, res) => {
 
     if (!isSuperAdminLogin && hasTenantId) {
       const tenantCheck = await query(
-        'SELECT id, is_active FROM tenants WHERE id = $1',
+        'SELECT id, is_active, archived_at FROM tenants WHERE id = $1',
         [tenantId]
       );
       if (tenantCheck.rows.length === 0) {
         return res.status(401).json({ error: 'Invalid credentials' });
+      }
+      if (tenantCheck.rows[0].archived_at) {
+        return res.status(403).json({ error: 'This school has been archived and is no longer available.' });
       }
       if (!tenantCheck.rows[0].is_active) {
         return res.status(403).json({ error: 'School account is suspended' });
@@ -499,8 +515,8 @@ router.post('/session-end', authenticate, async (req: AuthRequest, res) => {
 // Web push for teacher/staff school app (same VAPID keys as parent portal)
 router.get('/push/public-key', authenticate, async (req: AuthRequest, res) => {
   const role = normalizeRole(req.user!.role);
-  if (role !== 'teacher' && role !== 'staff' && role !== 'headmaster') {
-    return res.status(403).json({ error: 'Only teacher, staff, or headmaster accounts can use school push' });
+  if (!canUseStaffPush(role)) {
+    return res.status(403).json({ error: 'Push is not available for this account type' });
   }
   const publicKey = getVapidPublicKey();
   if (!publicKey) {
@@ -512,11 +528,13 @@ router.get('/push/public-key', authenticate, async (req: AuthRequest, res) => {
 router.post('/push/subscribe', authenticate, async (req: AuthRequest, res) => {
   try {
     const role = normalizeRole(req.user!.role);
-    if (role !== 'teacher' && role !== 'staff' && role !== 'headmaster') {
-      return res.status(403).json({ error: 'Only teacher, staff, or headmaster accounts can subscribe' });
+    if (!canUseStaffPush(role)) {
+      return res.status(403).json({ error: 'Push is not available for this account type' });
     }
-    const tenantId = req.user!.tenantId;
-    if (!tenantId) return res.status(400).json({ error: 'School context required' });
+    const tenantId = req.user!.tenantId ?? null;
+    if (!tenantId && role !== 'super-admin') {
+      return res.status(400).json({ error: 'School context required' });
+    }
 
     const { endpoint, keys } = req.body || {};
     const p256dh = keys?.p256dh;
@@ -529,7 +547,7 @@ router.post('/push/subscribe', authenticate, async (req: AuthRequest, res) => {
       `INSERT INTO staff_user_push_subscriptions (tenant_id, user_id, endpoint, p256dh, auth)
        VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (user_id, endpoint)
-       DO UPDATE SET p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth`,
+       DO UPDATE SET tenant_id = EXCLUDED.tenant_id, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth`,
       [tenantId, req.user!.id, endpoint, p256dh, auth]
     );
     return res.json({ success: true });

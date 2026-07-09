@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useParams, Link, useLocation, useNavigate } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
+import { PlatformSettingsProvider } from "./contexts/PlatformSettingsContext";
 import { SocketProvider } from "./contexts/SocketContext";
 import { TeacherNotificationProvider } from "./contexts/TeacherNotificationContext";
 import { AuditProvider } from "./contexts/AuditContext";
@@ -29,9 +30,11 @@ import { PARENT_IMPERSONATE_HANDOFF_KEY, STAFF_IMPERSONATE_HANDOFF_KEY } from "@
 import ImpersonationTransitionGate from "@/components/impersonation/ImpersonationTransitionGate";
 import { PublicErrorPage } from "@/components/common/PublicErrorPage";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import ZoomNudge from "@/components/common/ZoomNudge";
 import {
   parseTenantLookup,
   schoolPortalErrorPresentation,
+  schoolPortalErrorHidesLandingLink,
   type SchoolPortalErrorState,
 } from "./utils/schoolPortalError";
 import { MapPinOff } from "lucide-react";
@@ -277,6 +280,7 @@ const IndexWithSchool = () => {
         schoolName={errorState.schoolName}
         detail={detailParts.length > 0 ? detailParts.join(' · ') : undefined}
         icon={presentation.icon}
+        showLandingLink={!schoolPortalErrorHidesLandingLink(errorState)}
         onRetry={
           slug || schoolId
             ? () => {
@@ -313,7 +317,9 @@ const App = () => {
       <ThemeProvider>
         <BrowserRouter>
         <AuthProvider>
+          <PlatformSettingsProvider>
           <ImpersonationTransitionGate />
+          <ZoomNudge />
           <SocketProvider>
             <TeacherNotificationProvider>
             <TooltipProvider>
@@ -354,6 +360,7 @@ const App = () => {
             </TooltipProvider>
             </TeacherNotificationProvider>
           </SocketProvider>
+          </PlatformSettingsProvider>
         </AuthProvider>
         </BrowserRouter>
       </ThemeProvider>

@@ -3,7 +3,7 @@ import {
   GraduationCap, LogOut, BookOpen, Trophy, CreditCard,
   CalendarCheck, Eye, EyeOff, Lock, ChevronRight, Medal,
   TrendingUp, CheckCircle2, XCircle, Clock, AlertTriangle,
-  Home, RefreshCw, Activity, Bell, X, MessageSquare, Send, Phone, Mail, Plus, Paperclip, Cake, FileText,
+  Home, RefreshCw, Activity, Bell, X, MessageSquare, Send, Phone, Mail, Plus, Paperclip, Cake, FileText, Trash2,
 } from 'lucide-react';
 import ReceiptPrinter from '@/components/common/ReceiptPrinter';
 import { parseReceiptSnapshot, termsMatch } from '@/utils/feeCalculations';
@@ -11,7 +11,7 @@ import { io, Socket } from 'socket.io-client';
 import { detectTenantSlugFromHost } from '@/utils/tenantHost';
 import { applyTenantPwaBranding } from '@/utils/pwaBranding';
 import { getFcmToken, removeFcmToken } from '@/services/firebase';
-import StudentLearningMode from '@/components/parent/StudentLearningMode';
+import MessageDeleteConfirmDialog, { type MessageDeleteKind } from '@/components/common/MessageDeleteConfirmDialog';
 import { BrandedLoading, BrandedLoadingScreen } from '@/components/common/BrandedLoading';
 import { getFriendlyLoginMessage } from '@/utils/loginErrors';
 import { formatDisplayDate } from '@/utils/dateFormat';
@@ -436,7 +436,13 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   const [deskReply, setDeskReply] = useState('');
   const [deskReplyAttachment, setDeskReplyAttachment] = useState<File | null>(null);
   const [parentDeskUnread, setParentDeskUnread] = useState(0);
+  const [pendingDeskDelete, setPendingDeskDelete] = useState<
+    | { kind: 'message'; replyId?: number }
+    | { kind: 'conversation' }
+    | null
+  >(null);
   const parentScrollRef = useRef<HTMLDivElement>(null);
+  const selectedDeskIdRef = useRef<number | null>(null);
   const deskComposeFileRef = useRef<HTMLInputElement>(null);
   const deskReplyFileRef = useRef<HTMLInputElement>(null);
   const reportCardRef = useRef<HTMLDivElement>(null);
@@ -1316,6 +1322,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     const data = await parentFetch(`/messages/${id}`, {}, token);
     if (studentSessionRef.current !== sessionId) return;
     setSelectedDeskMessage(data?.message || null);
+    selectedDeskIdRef.current = id;
     setDeskConversation(Array.isArray(data?.replies) ? data.replies : []);
     await parentFetch(`/messages/${id}/read`, { method: 'PUT', body: JSON.stringify({}) }, token).catch(() => undefined);
     if (studentSessionRef.current !== sessionId) return;
@@ -1351,6 +1358,34 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     await loadDeskMessages();
     void refreshParentDeskUnread();
   }, [token, selectedDeskMessage, deskReply, deskReplyAttachment, openDeskConversation, loadDeskMessages, refreshParentDeskUnread]);
+
+  const executeDeskDelete = useCallback(async () => {
+    if (!token || !selectedDeskMessage?.id || !pendingDeskDelete) return;
+    try {
+      if (pendingDeskDelete.kind === 'conversation') {
+        await parentFetch(`/messages/${selectedDeskMessage.id}`, { method: 'DELETE' }, token);
+        setSelectedDeskMessage(null);
+        selectedDeskIdRef.current = null;
+        setDeskConversation([]);
+      } else if (pendingDeskDelete.replyId != null) {
+        await parentFetch(
+          `/messages/${selectedDeskMessage.id}/replies/${pendingDeskDelete.replyId}`,
+          { method: 'DELETE' },
+          token
+        );
+        setDeskConversation((prev) => prev.filter((r) => r.id !== pendingDeskDelete.replyId));
+      } else {
+        await parentFetch(`/messages/${selectedDeskMessage.id}/initial`, { method: 'DELETE' }, token);
+        setSelectedDeskMessage((prev: any) =>
+          prev ? { ...prev, is_initial_deleted: true, message: '', attachment_url: null } : prev
+        );
+      }
+      void loadDeskMessages();
+      void refreshParentDeskUnread();
+    } finally {
+      setPendingDeskDelete(null);
+    }
+  }, [token, selectedDeskMessage, pendingDeskDelete, loadDeskMessages, refreshParentDeskUnread]);
 
   const fetchTabData = useCallback(async (tab: Tab) => {
     if (!token || !student) return;
@@ -1572,10 +1607,48 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         void refreshParentDeskUnread();
         if (activeTab === 'desk') {
           await loadDeskMessages();
+          const openId = selectedDeskIdRef.current;
+          if (openId) {
+            const data = await parentFetch(`/messages/${openId}`, {}, token).catch(() => null);
+            if (data?.message) {
+              setSelectedDeskMessage(data.message);
+              setDeskConversation(Array.isArray(data.replies) ? data.replies : []);
+            }
+          }
         }
       } else if (entity === 'payment-submission') {
         await loadServerNotifications(token, studentSessionRef.current).catch(() => undefined);
       }
+    });
+
+    socket.on('parent-desk-update', async (evt: { messageId?: number; action?: string; reply?: any }) => {
+      const messageId = Number(evt?.messageId);
+      if (!messageId) return;
+      void refreshParentDeskUnread();
+      if (evt.action === 'initial-deleted' && selectedDeskIdRef.current === messageId) {
+        setSelectedDeskMessage((prev: any) =>
+          prev ? { ...prev, is_initial_deleted: true, message: '', attachment_url: null } : prev
+        );
+        return;
+      }
+      if (evt.action === 'thread-deleted') {
+        if (selectedDeskIdRef.current === messageId) {
+          setSelectedDeskMessage(null);
+          selectedDeskIdRef.current = null;
+          setDeskConversation([]);
+        }
+        if (activeTab === 'desk') await loadDeskMessages();
+        return;
+      }
+      if (evt.action === 'reply-deleted' && evt.reply?.id && selectedDeskIdRef.current === messageId) {
+        setDeskConversation((prev) => prev.filter((r) => r.id !== evt.reply.id));
+        return;
+      }
+      if (evt.action === 'reply' && evt.reply && selectedDeskIdRef.current === messageId) {
+        setDeskConversation((prev) => (prev.find((r) => r.id === evt.reply.id) ? prev : [...prev, evt.reply]));
+        return;
+      }
+      if (activeTab === 'desk') await loadDeskMessages();
     });
 
     return () => {
@@ -3688,18 +3761,33 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
       {selectedDeskMessage && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <MessageDeleteConfirmDialog
+            open={pendingDeskDelete != null}
+            onOpenChange={(open) => { if (!open) setPendingDeskDelete(null); }}
+            onConfirm={() => { void executeDeskDelete(); }}
+            kind={(pendingDeskDelete?.kind ?? 'message') as MessageDeleteKind}
+          />
           <div className="w-full sm:max-w-2xl rounded-t-3xl sm:rounded-2xl bg-white shadow-2xl max-h-[92dvh] overflow-hidden flex flex-col overscroll-contain">
             <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <p className="font-semibold text-slate-900 text-sm">{selectedDeskMessage.subject}</p>
                 <p className="text-xs text-slate-500 capitalize">{selectedDeskMessage.type} · {String(selectedDeskMessage.status || '').replace('_', ' ')}</p>
               </div>
-              <button onClick={() => setSelectedDeskMessage(null)} className="text-slate-500 hover:text-slate-700"><X className="w-4 h-4" /></button>
+              <button onClick={() => { setSelectedDeskMessage(null); selectedDeskIdRef.current = null; }} className="text-slate-500 hover:text-slate-700"><X className="w-4 h-4" /></button>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#e5ddd5]">
               {/* Parent's original message (own message) should be on the right */}
+              {!selectedDeskMessage.is_initial_deleted && (
               <div className="flex justify-end">
-                <div className="max-w-[86%] rounded-2xl rounded-br-md px-3 py-2 bg-[#dcf8c6] border border-green-200 text-sm text-slate-700 shadow-sm">
+                <div className="max-w-[86%] rounded-2xl rounded-br-md px-3 py-2 bg-[#dcf8c6] border border-green-200 text-sm text-slate-700 shadow-sm relative group">
+                  <button
+                    type="button"
+                    onClick={() => setPendingDeskDelete({ kind: 'message' })}
+                    className="absolute top-1 right-1 p-1 rounded-md opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-600 hover:bg-red-50 transition-all"
+                    title="Delete message"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                   <p>{selectedDeskMessage.message}</p>
                   {selectedDeskMessage.attachment_url && (
                     <div className="mt-2 rounded-lg overflow-hidden border border-green-300">
@@ -3714,12 +3802,21 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                   <div className="mt-1 text-[10px] text-slate-500 text-right">{new Date(selectedDeskMessage.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ✓✓</div>
                 </div>
               </div>
+              )}
               {deskConversation.map((r) => (
                 <div key={r.id} className={`flex ${r.sender_type === 'parent' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[86%] rounded-2xl px-3 py-2 text-sm shadow-sm ${r.sender_type === 'parent'
+                  <div className={`max-w-[86%] rounded-2xl px-3 py-2 text-sm shadow-sm relative group ${r.sender_type === 'parent'
                       ? 'bg-[#dcf8c6] border border-green-200 text-slate-700 rounded-br-md'
                       : 'bg-white border border-slate-200 text-slate-700 rounded-bl-md'
                     }`}>
+                    <button
+                      type="button"
+                      onClick={() => setPendingDeskDelete({ kind: 'message', replyId: Number(r.id) })}
+                      className="absolute top-1 right-1 p-1 rounded-md opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all"
+                      title="Delete message"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                     <p>{r.reply_text}</p>
                     {r.attachment_url && (
                       <div className={`mt-2 rounded-lg overflow-hidden border ${r.sender_type === 'parent' ? 'border-green-300' : 'border-slate-200'}`}>

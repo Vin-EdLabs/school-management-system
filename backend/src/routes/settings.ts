@@ -559,8 +559,23 @@ router.get('/users', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, r
       console.warn('[settings/users] Teacher user sync warning:', (err as Error).message);
     });
 
+    await query(
+      `UPDATE users u
+       SET email = NULLIF(TRIM(s.email), ''),
+           updated_at = CURRENT_TIMESTAMP
+       FROM other_staff s
+       WHERE u.other_staff_id = s.id
+         AND u.tenant_id = s.tenant_id
+         AND u.tenant_id = $1
+         AND (u.email IS NULL OR TRIM(u.email) = '')
+         AND NULLIF(TRIM(s.email), '') IS NOT NULL`,
+      [tenantId]
+    ).catch(() => {});
+
     const result = await query(
-      `SELECT u.id, u.username, COALESCE(u.email, t.email) as email, u.role, u.teacher_id, u.other_staff_id, u.is_active, u.is_primary_admin, u.created_at,
+      `SELECT u.id, u.username,
+        COALESCE(NULLIF(TRIM(u.email), ''), NULLIF(TRIM(t.email), ''), NULLIF(TRIM(s.email), '')) AS email,
+        u.role, u.teacher_id, u.other_staff_id, u.is_active, u.is_primary_admin, u.created_at,
         COALESCE(t.full_name, s.full_name, u.full_name, u.username) as full_name,
         COALESCE(t.staff_id, s.staff_id) as staff_id
        FROM users u

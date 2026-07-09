@@ -24,8 +24,8 @@ export async function isTenantSlugTaken(
   const normalized = slugifyTenant(slug);
   const params: Array<string | number> = [normalized];
   let sql = `SELECT id FROM tenants
-             WHERE LOWER(COALESCE(slug, '')) = LOWER($1)
-                OR LOWER(COALESCE(subdomain, '')) = LOWER($1)`;
+             WHERE (LOWER(COALESCE(slug, '')) = LOWER($1)
+                OR LOWER(COALESCE(subdomain, '')) = LOWER($1))`;
   if (excludeTenantId != null) {
     sql += ' AND id <> $2';
     params.push(excludeTenantId);
@@ -88,31 +88,30 @@ export async function resolveTenantSlugForUpdate(
   tenantId: number,
   opts: { slug?: string | null; subdomain?: string | null }
 ): Promise<{ slug?: string; subdomain?: string } | { error: string; status: number }> {
-  const rawSlug = opts.slug?.trim();
-  const rawSubdomain = opts.subdomain?.trim();
-
-  if (rawSlug) {
-    const slug = slugifyTenant(rawSlug);
-    if (await isTenantSlugTaken(db, slug, tenantId)) {
-      return {
-        error: 'This portal URL is already in use by another school.',
-        status: 409,
-      };
-    }
+  const currentRes = await db.query(`SELECT slug, subdomain FROM tenants WHERE id = $1 LIMIT 1`, [tenantId]);
+  const current = currentRes.rows[0] as { slug?: string | null; subdomain?: string | null } | undefined;
+  if (!current) {
+    return { error: 'School not found', status: 404 };
   }
 
-  if (rawSubdomain) {
-    const subdomain = slugifyTenant(rawSubdomain);
-    if (subdomain !== slugifyTenant(rawSlug || '') && (await isTenantSlugTaken(db, subdomain, tenantId))) {
-      return {
-        error: 'This subdomain is already in use by another school.',
-        status: 409,
-      };
-    }
+  const currentPortal = slugifyTenant(String(current.slug || current.subdomain || ''));
+  const rawPortal = (opts.slug ?? opts.subdomain ?? '').trim();
+
+  if (!rawPortal) {
+    return {};
   }
 
-  return {
-    slug: rawSlug ? slugifyTenant(rawSlug) : undefined,
-    subdomain: rawSubdomain ? slugifyTenant(rawSubdomain) : undefined,
-  };
+  const nextPortal = slugifyTenant(rawPortal);
+  if (nextPortal.length < 2) {
+    return { error: 'Portal URL must be at least 2 characters (letters, numbers, hyphens).', status: 400 };
+  }
+
+  if (nextPortal !== currentPortal && (await isTenantSlugTaken(db, nextPortal, tenantId))) {
+    return {
+      error: 'This portal URL is already in use by another school.',
+      status: 409,
+    };
+  }
+
+  return { slug: nextPortal, subdomain: nextPortal };
 }

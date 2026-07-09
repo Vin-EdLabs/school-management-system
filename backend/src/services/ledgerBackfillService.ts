@@ -1,5 +1,9 @@
 import { getClient, query } from '../db/connection.js';
-import { resolveLedgerTermFromSettings, syncMissingLedgerTermFeesForActiveTerm, reconcileDuplicateLedgerTerms } from './ledgerFinanceService.js';
+import {
+  resolveLedgerTermFromSettings,
+  reconcileDuplicateLedgerTerms,
+  repairMisplacedLedgerRowsByDescription,
+} from './ledgerFinanceService.js';
 import { beneficiaryAdjustedFee } from '../utils/beneficiaryFee.js';
 
 export type LedgerBackfillResult = {
@@ -9,20 +13,122 @@ export type LedgerBackfillResult = {
   message: string;
 };
 
-/** Idempotent backfill before fee reads (bulk-imported / direct-DB students). */
+export async function repairPaymentAndLedgerTermAttribution(tenantId: number): Promise<number> {
+  const paymentsRes = await query(
+    `SELECT id, term, term_id
+     FROM payments
+     WHERE tenant_id = $1
+       AND COALESCE(is_voided, false) = false
+       AND TRIM(COALESCE(term, '')) <> ''`,
+    [tenantId]
+  );
+
+  let fixed = 0;
+  for (const pay of paymentsRes.rows) {
+    const termLabel = String(pay.term || '').trim();
+    const yearMatch = termLabel.match(/\b(\d{4}(?:\/\d{4})?)\s*$/);
+    const year = yearMatch ? yearMatch[1] : null;
+    if (!year) continue;
+
+    const resolved = await resolveLedgerTermFromSettings(tenantId, year, termLabel);
+    if (!resolved || Number(pay.term_id) === resolved.termId) continue;
+
+    await query(`UPDATE payments SET term_id = $1 WHERE id = $2 AND tenant_id = $3`, [
+      resolved.termId,
+      pay.id,
+      tenantId,
+    ]);
+    await query(
+      `UPDATE student_ledger SET term_id = $1, academic_year_id = $2
+       WHERE tenant_id = $3 AND payment_id = $4`,
+      [resolved.termId, resolved.academicYearId, tenantId, pay.id]
+    );
+    fixed++;
+  }
+  return fixed;
+}
+
+export async function dedupeInflatedArrearsRows(tenantId: number): Promise<number> {
+  const res = await query(
+    `DELETE FROM student_ledger sl
+     WHERE sl.tenant_id = $1
+       AND sl.entry_type = 'arrears'
+       AND (
+         sl.description ILIKE 'Arrears from previous term%'
+         OR sl.description ILIKE 'Balance carried forward%'
+       )
+       AND EXISTS (
+         SELECT 1 FROM student_ledger keep
+         WHERE keep.tenant_id = sl.tenant_id
+           AND keep.student_id = sl.student_id
+           AND keep.term_id = sl.term_id
+           AND keep.entry_type = 'arrears'
+           AND keep.id <> sl.id
+           AND keep.description ILIKE '%brought forward from%'
+       )
+     RETURNING sl.id`,
+    [tenantId]
+  );
+  return res.rowCount ?? 0;
+}
+
+export async function removeUnauthorizedTermFees(tenantId: number): Promise<number> {
+  const settingsRes = await query(
+    `SELECT current_term, current_year FROM school_settings WHERE tenant_id = $1`,
+    [tenantId]
+  );
+  const currentTerm = settingsRes.rows[0]?.current_term;
+  const currentYear = settingsRes.rows[0]?.current_year;
+  if (!currentTerm || !currentYear) return 0;
+
+  const resolved = await resolveLedgerTermFromSettings(tenantId, String(currentYear), String(currentTerm));
+  if (!resolved) return 0;
+
+  const res = await query(
+    `DELETE FROM student_ledger sl
+     USING students s
+     WHERE sl.tenant_id = $1
+       AND sl.student_id = s.id
+       AND sl.term_id = $2
+       AND sl.entry_type = 'term_fee'
+       AND NOT EXISTS (
+         SELECT 1 FROM ledger_fee_structures lfs
+         WHERE lfs.tenant_id = sl.tenant_id
+           AND lfs.term_id = sl.term_id
+           AND lfs.class_id = s.class_assigned_id
+       )
+     RETURNING sl.id`,
+    [tenantId, resolved.termId]
+  );
+  return res.rowCount ?? 0;
+}
+
+/** Repairs attribution and payment credits — does NOT auto-bill term fees. */
 export async function ensureTenantLedgerSynced(tenantId: number): Promise<void> {
   try {
-    const { merged } = await reconcileDuplicateLedgerTerms(tenantId);
-    if (merged > 0) {
-      console.log(`[ensureTenantLedgerSynced] Tenant ${tenantId}: merged ${merged} duplicate ledger term(s)`);
-    }
+    await reconcileDuplicateLedgerTerms(tenantId);
   } catch (err) {
     console.error('[ensureTenantLedgerSynced] term reconcile failed (continuing):', err);
   }
   try {
-    await syncMissingLedgerTermFeesForActiveTerm(tenantId);
+    await repairMisplacedLedgerRowsByDescription(tenantId);
   } catch (err) {
-    console.error('[ensureTenantLedgerSynced] term fee sync failed (continuing):', err);
+    console.error('[ensureTenantLedgerSynced] ledger row repair failed (continuing):', err);
+  }
+  try {
+    await repairPaymentAndLedgerTermAttribution(tenantId);
+  } catch (err) {
+    console.error('[ensureTenantLedgerSynced] payment repair failed (continuing):', err);
+  }
+  try {
+    await dedupeInflatedArrearsRows(tenantId);
+  } catch (err) {
+    console.error('[ensureTenantLedgerSynced] arrears dedupe failed (continuing):', err);
+  }
+  try {
+    await removeUnauthorizedTermFees(tenantId);
+  } catch (err) {
+    console.error('[ensureTenantLedgerSynced] unauthorized term fee cleanup failed (continuing):', err);
   }
   try {
     await syncMissingPaymentLedgerCredits(tenantId);
@@ -31,10 +137,6 @@ export async function ensureTenantLedgerSynced(tenantId: number): Promise<void> 
   }
 }
 
-/**
- * Idempotent: writes student_ledger payment credits for payments that have term_id
- * but no matching ledger row (common after direct DB imports or legacy payment paths).
- */
 export async function syncMissingPaymentLedgerCredits(tenantId: number): Promise<number> {
   const client = await getClient();
   try {
@@ -46,18 +148,9 @@ export async function syncMissingPaymentLedgerCredits(tenantId: number): Promise
          debit, credit, payment_method, receipt_number, reference, payment_id, metadata
        )
        SELECT
-         p.tenant_id,
-         p.student_id,
-         t.academic_year_id,
-         p.term_id,
+         p.tenant_id, p.student_id, t.academic_year_id, p.term_id,
          'Payment recorded — Receipt #' || COALESCE(p.receipt_number, p.id::text) || ' (sync)',
-         'payment',
-         0,
-         p.amount,
-         p.payment_method,
-         p.receipt_number,
-         p.receipt_number,
-         p.id,
+         'payment', 0, p.amount, p.payment_method, p.receipt_number, p.receipt_number, p.id,
          jsonb_build_object('sync', true, 'paymentDate', p.payment_date)
        FROM payments p
        INNER JOIN terms t ON t.id = p.term_id AND t.tenant_id = p.tenant_id
@@ -67,8 +160,7 @@ export async function syncMissingPaymentLedgerCredits(tenantId: number): Promise
          AND p.term_id IS NOT NULL
          AND COALESCE(p.amount, 0) > 0
          AND NOT EXISTS (
-           SELECT 1 FROM student_ledger sl
-           WHERE sl.tenant_id = p.tenant_id AND sl.payment_id = p.id
+           SELECT 1 FROM student_ledger sl WHERE sl.tenant_id = p.tenant_id AND sl.payment_id = p.id
          )`,
       [tenantId]
     );
@@ -76,7 +168,7 @@ export async function syncMissingPaymentLedgerCredits(tenantId: number): Promise
     let paymentsAdded = bulkRes.rowCount ?? 0;
 
     const paymentsRes = await client.query(
-      `SELECT p.id, p.student_id, p.amount, p.receipt_number, p.term, p.payment_method, p.payment_date, p.term_id
+      `SELECT p.id, p.student_id, p.amount, p.receipt_number, p.term, p.payment_method, p.payment_date
        FROM payments p
        WHERE p.tenant_id = $1
          AND COALESCE(p.is_voided, false) = false
@@ -86,37 +178,24 @@ export async function syncMissingPaymentLedgerCredits(tenantId: number): Promise
       [tenantId]
     );
 
-    const settingsRes = await client.query(
-      `SELECT current_term, current_year FROM school_settings WHERE tenant_id = $1`,
-      [tenantId]
-    );
-    const currentTerm = settingsRes.rows[0]?.current_term;
-    const currentYear = settingsRes.rows[0]?.current_year;
-
     for (const pay of paymentsRes.rows) {
+      const termLabel = String(pay.term || '').trim();
+      if (!termLabel) continue;
+
+      const yearMatch = termLabel.match(/\b(\d{4}(?:\/\d{4})?)\s*$/);
+      if (!yearMatch) continue;
+
+      const resolved = await resolveLedgerTermFromSettings(tenantId, yearMatch[1], termLabel);
+      if (!resolved) continue;
+
+      const amount = parseFloat(pay.amount) || 0;
+      if (amount <= 0) continue;
+
       const existing = await client.query(
         `SELECT id FROM student_ledger WHERE tenant_id = $1 AND payment_id = $2`,
         [tenantId, pay.id]
       );
       if (existing.rows.length > 0) continue;
-
-      const termLabel = String(pay.term || '').trim();
-      let resolved = null;
-      if (termLabel) {
-        const parts = termLabel.match(/^(.+?)\s+(\d{4})$/);
-        const termName = parts ? parts[1] : termLabel;
-        const year = parts ? parts[2] : currentYear;
-        if (year) {
-          resolved = await resolveLedgerTermFromSettings(tenantId, String(year), termName);
-        }
-      }
-      if (!resolved && currentTerm && currentYear) {
-        resolved = await resolveLedgerTermFromSettings(tenantId, String(currentYear), String(currentTerm));
-      }
-      if (!resolved) continue;
-
-      const amount = parseFloat(pay.amount) || 0;
-      if (amount <= 0) continue;
 
       await client.query(
         `INSERT INTO student_ledger (
@@ -136,13 +215,15 @@ export async function syncMissingPaymentLedgerCredits(tenantId: number): Promise
           JSON.stringify({ sync: true, paymentDate: pay.payment_date }),
         ]
       );
+      await query(`UPDATE payments SET term_id = $1 WHERE id = $2 AND tenant_id = $3 AND term_id IS NULL`, [
+        resolved.termId,
+        pay.id,
+        tenantId,
+      ]);
       paymentsAdded++;
     }
 
     await client.query('COMMIT');
-    if (paymentsAdded > 0) {
-      console.log(`[syncMissingPaymentLedgerCredits] Tenant ${tenantId}: added ${paymentsAdded} payment ledger row(s)`);
-    }
     return paymentsAdded;
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
@@ -152,10 +233,6 @@ export async function syncMissingPaymentLedgerCredits(tenantId: number): Promise
   }
 }
 
-/**
- * Backfill missing student_ledger entries from payments and ledger_fee_structures.
- * Idempotent — skips rows that already have a matching ledger entry.
- */
 export async function runLedgerBackfill(
   tenantId: number,
   createdByUserId?: number
@@ -167,107 +244,31 @@ export async function runLedgerBackfill(
 
   try {
     await client.query('BEGIN');
+    await repairPaymentAndLedgerTermAttribution(tenantId);
 
-    const settingsRes = await client.query(
-      `SELECT current_term, current_year FROM school_settings WHERE tenant_id = $1`,
-      [tenantId]
-    );
-    const currentTerm = settingsRes.rows[0]?.current_term;
-    const currentYear = settingsRes.rows[0]?.current_year;
-
-    // ── Backfill payment credits ─────────────────────────────────────────────
     const bulkPayRes = await client.query(
       `INSERT INTO student_ledger (
          tenant_id, student_id, academic_year_id, term_id, description, entry_type,
          debit, credit, payment_method, receipt_number, reference, payment_id, created_by, metadata
        )
        SELECT
-         p.tenant_id,
-         p.student_id,
-         t.academic_year_id,
-         p.term_id,
+         p.tenant_id, p.student_id, t.academic_year_id, p.term_id,
          'Payment recorded — Receipt #' || COALESCE(p.receipt_number, p.id::text) || ' (backfill)',
-         'payment',
-         0,
-         p.amount,
-         p.payment_method,
-         p.receipt_number,
-         p.receipt_number,
-         p.id,
-         $2,
+         'payment', 0, p.amount, p.payment_method, p.receipt_number, p.receipt_number, p.id, $2,
          jsonb_build_object('backfill', true, 'paymentDate', p.payment_date)
        FROM payments p
        INNER JOIN terms t ON t.id = p.term_id AND t.tenant_id = p.tenant_id
        WHERE p.tenant_id = $1
          AND COALESCE(p.is_voided, false) = false
-         AND COALESCE(p.payment_category, 'term_fee') = 'term_fee'
          AND p.term_id IS NOT NULL
          AND COALESCE(p.amount, 0) > 0
          AND NOT EXISTS (
-           SELECT 1 FROM student_ledger sl
-           WHERE sl.tenant_id = p.tenant_id AND sl.payment_id = p.id
+           SELECT 1 FROM student_ledger sl WHERE sl.tenant_id = p.tenant_id AND sl.payment_id = p.id
          )`,
       [tenantId, createdByUserId ?? null]
     );
     paymentsAdded += bulkPayRes.rowCount ?? 0;
 
-    const paymentsRes = await client.query(
-      `SELECT p.id, p.student_id, p.amount, p.receipt_number, p.term, p.payment_method, p.payment_date, p.term_id
-       FROM payments p
-       WHERE p.tenant_id = $1 AND COALESCE(p.is_voided, false) = false
-         AND p.term_id IS NULL
-       ORDER BY p.payment_date ASC, p.id ASC`,
-      [tenantId]
-    );
-
-    for (const pay of paymentsRes.rows) {
-      const existing = await client.query(
-        `SELECT id FROM student_ledger WHERE tenant_id = $1 AND payment_id = $2`,
-        [tenantId, pay.id]
-      );
-      if (existing.rows.length > 0) continue;
-
-      const termLabel = String(pay.term || '').trim();
-      let resolved = null;
-      if (termLabel) {
-        const parts = termLabel.match(/^(.+?)\s+(\d{4})$/);
-        const termName = parts ? parts[1] : termLabel;
-        const year = parts ? parts[2] : currentYear;
-        if (year) {
-          resolved = await resolveLedgerTermFromSettings(tenantId, String(year), termName);
-        }
-      }
-      if (!resolved && currentTerm && currentYear) {
-        resolved = await resolveLedgerTermFromSettings(tenantId, String(currentYear), String(currentTerm));
-      }
-      if (!resolved) continue;
-
-      const amount = parseFloat(pay.amount) || 0;
-      if (amount <= 0) continue;
-
-      await client.query(
-        `INSERT INTO student_ledger (
-           tenant_id, student_id, academic_year_id, term_id, description, entry_type,
-           debit, credit, payment_method, receipt_number, reference, payment_id, created_by, metadata
-         ) VALUES ($1, $2, $3, $4, $5, 'payment', 0, $6, $7, $8, $8, $9, $10, $11::jsonb)`,
-        [
-          tenantId,
-          pay.student_id,
-          resolved.academicYearId,
-          resolved.termId,
-          `Payment recorded — Receipt #${pay.receipt_number || pay.id} (backfill)`,
-          amount,
-          pay.payment_method,
-          pay.receipt_number,
-          pay.id,
-          createdByUserId ?? null,
-          JSON.stringify({ backfill: true, paymentDate: pay.payment_date }),
-        ]
-      );
-      paymentsAdded++;
-    }
-
-    // ── Backfill term_fee debits from ledger_fee_structures ────────────────────
     const studentsRes = await client.query(
       `SELECT s.id, s.class_assigned_id, s.is_beneficiary, s.discount_type, s.discount_value
        FROM students s
@@ -316,19 +317,7 @@ export async function runLedgerBackfill(
       }
     }
 
-    // Refresh term_arrears cache for legacy reports
-    if (currentTerm) {
-      const { refreshArrearsForTenantWithClient } = await import('./arrearsService.js');
-      await refreshArrearsForTenantWithClient(
-        client,
-        tenantId,
-        String(currentTerm),
-        String(currentYear || '')
-      );
-    }
-
     await client.query('COMMIT');
-
     return {
       paymentsAdded,
       termFeesAdded,

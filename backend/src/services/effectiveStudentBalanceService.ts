@@ -84,7 +84,17 @@ export async function enrichBalanceShapeWithExpectedFees(
   const ledgerOutstanding = roundMoney(shape.outstanding ?? 0);
   const resolved = await resolveLedgerFeeStructureForStudent(client, tenantId, studentId, termId);
 
+  const run: QueryFn = client ? client.query.bind(client) : query;
+  const billedRes = await run(
+    `SELECT 1 FROM student_ledger
+     WHERE tenant_id = $1 AND student_id = $2 AND term_id = $3 AND entry_type = 'term_fee'
+     LIMIT 1`,
+    [tenantId, studentId, termId]
+  );
+  const hasBilledTermFee = billedRes.rows.length > 0;
+
   const needsEnrichment =
+    hasBilledTermFee &&
     ledgerTermFee <= 0 &&
     (shape.status === 'NotSet' || ledgerOutstanding <= 0) &&
     (shape.totalDue ?? 0) <= 0;

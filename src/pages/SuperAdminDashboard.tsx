@@ -110,6 +110,7 @@ import SystemHealthModule from '../components/superadmin/SystemHealthModule';
 import PlatformSettingsModule from '../components/superadmin/PlatformSettingsModule';
 import GlobalAnnouncementsModule from '../components/superadmin/GlobalAnnouncementsModule';
 import PlatformUsageModule from '../components/superadmin/PlatformUsageModule';
+import SuperAdminFinanceWipeModule from '../components/superadmin/SuperAdminFinanceWipeModule';
 import { SchoolProvider } from '../contexts/SchoolContext';
 import { ImpersonationProvider } from '../contexts/ImpersonationContext';
 import ImpersonationShell from '../components/impersonation/ImpersonationShell';
@@ -209,7 +210,7 @@ interface OnlineSession {
   durationSeconds?: number | null;
 }
 
-type Section = 'schools' | 'usage' | 'visits' | 'tracker' | 'registrations' | 'audit' | 'super-admins' | 'support-chat' | 'school-data' | 'system-health' | 'platform-settings' | 'announcements' | 'online-users' | 'removed-staff';
+type Section = 'schools' | 'usage' | 'visits' | 'tracker' | 'registrations' | 'audit' | 'super-admins' | 'support-chat' | 'school-data' | 'system-health' | 'platform-settings' | 'announcements' | 'online-users' | 'removed-staff' | 'finance-wipe';
 
 interface RemovedTeacher {
   id: number;
@@ -1273,6 +1274,7 @@ const SuperAdminDashboard = () => {
   ];
   const systemItems = [
     { id: 'platform-settings' as Section, label: 'Platform Settings', icon: Settings },
+    { id: 'finance-wipe' as Section, label: 'Finance Wipe', icon: Trash2 },
     { id: 'removed-staff' as Section, label: 'Removed Staff', icon: UserRoundSearch },
     { id: 'system-health' as Section, label: 'System Health', icon: Activity },
     { id: 'super-admins' as Section, label: 'Super Admins', icon: UserPlus },
@@ -1410,6 +1412,7 @@ const SuperAdminDashboard = () => {
               {section === 'audit' && 'Audit Logs'}
               {section === 'system-health' && 'System Health / Errors'}
               {section === 'platform-settings' && 'Platform Settings'}
+              {section === 'finance-wipe' && 'Term Finance Wipe'}
               {section === 'removed-staff' && 'Removed Staff'}
               {section === 'announcements' && 'Global Announcements'}
               {section === 'support-chat' && (
@@ -2907,6 +2910,10 @@ const SuperAdminDashboard = () => {
 
             {section === 'platform-settings' && (
               <PlatformSettingsModule />
+            )}
+
+            {section === 'finance-wipe' && (
+              <SuperAdminFinanceWipeModule schools={schools} />
             )}
 
             {section === 'removed-staff' && (

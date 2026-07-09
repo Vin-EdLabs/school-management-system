@@ -265,7 +265,7 @@ export const resolveLedgerTermFromSettings = async (
 
 /**
  * Merge ledger/fee data from duplicate terms into the canonical term for the active settings year.
- * Fixes tenants where billing landed on a mis-linked academic year or duplicate term name.
+ * Only merges TRUE duplicates: same academic year AND same term name.
  */
 export async function reconcileDuplicateLedgerTerms(tenantId: number): Promise<{ merged: number; canonicalTermId: number | null }> {
   const settingsRes = await query(
@@ -285,7 +285,7 @@ export async function reconcileDuplicateLedgerTerms(tenantId: number): Promise<{
   const ayId = Number(ayRes.rows[0].id);
 
   let canonical = await query(
-    `SELECT id FROM terms WHERE tenant_id = $1 AND academic_year_id = $2 AND name = $3 LIMIT 1`,
+    `SELECT id FROM terms WHERE tenant_id = $1 AND academic_year_id = $2 AND LOWER(TRIM(name)) = LOWER(TRIM($3)) LIMIT 1`,
     [tenantId, ayId, termOnly]
   );
   let canonicalId = canonical.rows[0]?.id ? Number(canonical.rows[0].id) : null;
@@ -300,12 +300,15 @@ export async function reconcileDuplicateLedgerTerms(tenantId: number): Promise<{
   const dupes = await query(
     `SELECT DISTINCT t.id
      FROM terms t
-     WHERE t.tenant_id = $1 AND t.id != $2
+     WHERE t.tenant_id = $1
+       AND t.id != $2
+       AND t.academic_year_id = $3
+       AND LOWER(TRIM(t.name)) = LOWER(TRIM($4))
        AND (
          EXISTS (SELECT 1 FROM student_ledger sl WHERE sl.term_id = t.id AND sl.tenant_id = t.tenant_id)
          OR EXISTS (SELECT 1 FROM ledger_fee_structures lfs WHERE lfs.term_id = t.id AND lfs.tenant_id = t.tenant_id)
        )`,
-    [tenantId, canonicalId]
+    [tenantId, canonicalId, ayId, termOnly]
   );
 
   let merged = 0;
@@ -325,12 +328,8 @@ export async function reconcileDuplicateLedgerTerms(tenantId: number): Promise<{
     merged++;
   }
 
-  if (merged > 0 || dupes.rows.length === 0) {
+  if (merged > 0) {
     await setCurrentLedgerTerm(tenantId, canonicalId);
-    await query(
-      `UPDATE school_settings SET current_term = $1, current_year = $2 WHERE tenant_id = $3 AND (current_term != $1 OR current_year != $2)`,
-      [termOnly, currentYear, tenantId]
-    ).catch(() => undefined);
   }
 
   return { merged, canonicalTermId: canonicalId };
@@ -772,12 +771,8 @@ export async function recalculateStudentTermFeeForActiveTerm(
 }
 
 /**
- * Switches to a new term (term close carry-forward only).
- * For each student on the closing term:
- *   net_balance = SUM(debit) - SUM(credit)
- *   net > 0 → arrears on next term
- *   net < 0 → carry_forward_credit on next term (full amount, not consumed mid-term)
- * Then posts term_fee for the new term. Credit is never auto-applied within the term.
+ * Carry forward closing balances when switching terms.
+ * Does NOT post term_fee — billing requires explicit fee structure assignment per term.
  */
 export const executeTermSwitchWithArrears = async (
   client: pg.PoolClient,
@@ -866,6 +861,31 @@ export const executeTermSwitchWithArrears = async (
         );
         if (exists.rows.length > 0) continue;
 
+        const prevCloseExists = await client.query(
+          `SELECT id FROM student_ledger
+           WHERE tenant_id = $1 AND student_id = $2 AND term_id = $3
+             AND entry_type = 'carry_forward_debit'
+             AND description LIKE $4
+           LIMIT 1`,
+          [tid, studentId, prevTermId, `%Term closed%`]
+        );
+        if (prevCloseExists.rows.length === 0) {
+          await client.query(
+            `INSERT INTO student_ledger
+               (tenant_id, student_id, academic_year_id, term_id, description, entry_type, debit, credit, metadata)
+             VALUES ($1, $2, $3, $4, $5, 'carry_forward_debit', $6, 0, $7::jsonb)`,
+            [
+              tid,
+              studentId,
+              prevTerm.academic_year_id,
+              prevTermId,
+              `Term closed — credit carried to next term`,
+              creditAmount,
+              JSON.stringify({ carried_to_term_id: nextTermId, amount: creditAmount }),
+            ]
+          );
+        }
+
         await client.query(
           `INSERT INTO student_ledger
              (tenant_id, student_id, academic_year_id, term_id, description, entry_type, debit, credit, metadata)
@@ -895,6 +915,31 @@ export const executeTermSwitchWithArrears = async (
         );
         if (exists.rows.length > 0) continue;
 
+        const prevCloseExists = await client.query(
+          `SELECT id FROM student_ledger
+           WHERE tenant_id = $1 AND student_id = $2 AND term_id = $3
+             AND entry_type = 'carry_forward_credit'
+             AND description LIKE $4
+           LIMIT 1`,
+          [tid, studentId, prevTermId, `%Term closed%`]
+        );
+        if (prevCloseExists.rows.length === 0) {
+          await client.query(
+            `INSERT INTO student_ledger
+               (tenant_id, student_id, academic_year_id, term_id, description, entry_type, debit, credit, metadata)
+             VALUES ($1, $2, $3, $4, $5, 'carry_forward_credit', 0, $6, $7::jsonb)`,
+            [
+              tid,
+              studentId,
+              prevTerm.academic_year_id,
+              prevTermId,
+              `Term closed — balance carried to next term`,
+              arrearsAmount,
+              JSON.stringify({ carried_to_term_id: nextTermId, amount: arrearsAmount }),
+            ]
+          );
+        }
+
         await client.query(
           `INSERT INTO student_ledger
              (tenant_id, student_id, academic_year_id, term_id, description, entry_type, debit, credit, metadata)
@@ -920,41 +965,14 @@ export const executeTermSwitchWithArrears = async (
         `total_arrears=${totalApplied.toFixed(2)} total_credits=${totalCreditApplied.toFixed(2)}`
     );
 
-    // ── STEP 2: Post new term fees (skip students already billed) ─────────────
-    const feeResult = await client.query(
-      `INSERT INTO student_ledger
-         (tenant_id, student_id, academic_year_id, term_id, description, entry_type, debit, credit)
-       SELECT
-         s.tenant_id, s.id, t.academic_year_id, t.id,
-         'Term Fee - ' || t.name, 'term_fee', 
-         (${SQL_BENEFICIARY_TERM_FEE_DEBIT_EFFECTIVE.trim()}), 0
-       FROM students s
-       INNER JOIN classes c ON s.class_assigned_id = c.id
-       INNER JOIN terms t ON t.id = $2 AND t.tenant_id = $1
-       INNER JOIN ledger_fee_structures fs
-         ON fs.class_id = c.id
-        AND fs.academic_year_id = t.academic_year_id
-        AND fs.term_id = t.id
-       WHERE s.tenant_id = $1
-         AND COALESCE(s.enrollment_status, 'active') = 'active'
-         AND NOT EXISTS (
-           SELECT 1 FROM student_ledger sl
-           WHERE sl.student_id = s.id
-             AND sl.term_id = $2
-             AND sl.entry_type = 'term_fee'
-             AND sl.tenant_id = $1
-         )`,
-      [tid, nextTermId]
-    );
-
     return {
       message:
-        `Term switched. Arrears carried: ${arrearsInserted} students (GH₵${totalApplied.toFixed(2)}). ` +
-        `Credits carried: ${creditsCarried} students (GH₵${totalCreditApplied.toFixed(2)}). ` +
-        `Term fees posted: ${feeResult.rowCount}.`,
+        `Balances carried forward. Arrears: ${arrearsInserted} students (GH₵${totalApplied.toFixed(2)}). ` +
+        `Credits: ${creditsCarried} students (GH₵${totalCreditApplied.toFixed(2)}). ` +
+        `Term fees were not billed — assign fee structures for this term first.`,
       arrearsRowsInserted: arrearsInserted,
       creditRowsInserted: creditsCarried,
-      termFeesInserted: feeResult.rowCount,
+      termFeesInserted: 0,
       totalArrearsAmount: totalApplied,
       totalCreditAmount: totalCreditApplied,
     };
@@ -1050,25 +1068,44 @@ export const recalculateTermOutstandingBalances = async (
   return { rowsUpdated: result.rowCount ?? 0 };
 };
 
-/** Derive previous term label for fallback backfill from old fee_structures/payments (e.g. "Term 2 2027" -> "Term 1 2027"). */
-function derivePreviousTermLabel(currentTerm: string): string {
-  const t = String(currentTerm || '').trim();
-  const yearMatch = t.match(/\s*(\d{4})\s*$/);
-  const year = yearMatch ? yearMatch[1] : '';
-  const rest = yearMatch ? t.slice(0, yearMatch.index).trim() : t;
-  if (/Term\s*3/i.test(rest)) return (rest.replace(/Term\s*3/i, 'Term 2') + (year ? ` ${year}` : '')).trim();
-  if (/Term\s*2/i.test(rest)) return (rest.replace(/Term\s*2/i, 'Term 1') + (year ? ` ${year}` : '')).trim();
-  if (/Term\s*1/i.test(rest)) return (rest.replace(/Term\s*1/i, 'Term 1') + (year ? ` ${year}` : '')).trim();
-  if (/\b2\b/.test(rest)) return (rest.replace(/\b2\b/, '1') + (year ? ` ${year}` : '')).trim();
-  return year ? `Term 1 ${year}` : 'Term 1';
+/** Move ledger rows to the term implied by their description (repairs bad merges). */
+export async function repairMisplacedLedgerRowsByDescription(tenantId: number): Promise<number> {
+  const rowsRes = await query(
+    `SELECT sl.id, sl.term_id, sl.description, sl.entry_type,
+            ay.name AS current_year
+     FROM student_ledger sl
+     JOIN terms t ON t.id = sl.term_id AND t.tenant_id = sl.tenant_id
+     JOIN academic_years ay ON ay.id = t.academic_year_id
+     WHERE sl.tenant_id = $1
+       AND sl.entry_type IN ('term_fee', 'payment')
+       AND (sl.description ILIKE 'Term Fee - %' OR sl.description ILIKE 'Term fee for %')`,
+    [tenantId]
+  );
+
+  let fixed = 0;
+  for (const row of rowsRes.rows) {
+    const desc = String(row.description || '');
+    const feeMatch = desc.match(/Term [Ff]ee(?: for)? -?\s*(.+)$/i) || desc.match(/Term fee for (.+?) \(backfill\)/i);
+    if (!feeMatch) continue;
+    const termHint = feeMatch[1].trim();
+    const yearMatch = termHint.match(/\b(\d{4}(?:\/\d{4})?)\s*$/);
+    const year = yearMatch ? yearMatch[1] : String(row.current_year || '').trim();
+    if (!year) continue;
+
+    const resolved = await resolveLedgerTermFromSettings(tenantId, year, termHint);
+    if (!resolved || resolved.termId === Number(row.term_id)) continue;
+
+    await query(
+      `UPDATE student_ledger SET term_id = $1, academic_year_id = $2 WHERE id = $3 AND tenant_id = $4`,
+      [resolved.termId, resolved.academicYearId, row.id, tenantId]
+    );
+    fixed++;
+  }
+  return fixed;
 }
 
 /**
- * Backfill arrears for the current term (from settings).
- * Use when term was already switched but arrears were not inserted (e.g. name mismatch).
- * Finds the chronologically previous term that has term_fee entries (same year or any earlier year),
- * then for each student with unpaid balance in that term inserts carry_forward_credit + arrears rows if not already present.
- * Idempotent: skips students who already have an 'arrears' row for the current term.
+ * Backfill arrears for the current term — per-term carry only (not cumulative).
  */
 export const backfillArrearsForCurrentTerm = async (tenantId: number) => {
   const settingsResult = await query(
@@ -1088,185 +1125,40 @@ export const backfillArrearsForCurrentTerm = async (tenantId: number) => {
 
     const newTermId = newLedgerTerm.termId;
     const newAyId = newLedgerTerm.academicYearId;
-    const fullCurrentTerm =
-      currentYear && !String(currentTerm).includes(String(currentYear))
-        ? `${currentTerm} ${currentYear}`.trim()
-        : String(currentTerm);
 
-    // Previous term = chronologically last term before current (same or any earlier academic year) that has term_fee entries
     const prevTermResult = await client.query(
-      `SELECT t.id, t.academic_year_id
+      `SELECT t.id
        FROM terms t
-       INNER JOIN (SELECT DISTINCT term_id FROM student_ledger WHERE tenant_id = $1 AND entry_type = 'term_fee') sl ON sl.term_id = t.id
-       WHERE t.tenant_id = $1 AND t.id != $2
+       WHERE t.tenant_id = $1
+         AND t.id != $2
          AND (t.academic_year_id < $3 OR (t.academic_year_id = $3 AND t.id < $2))
-       ORDER BY t.academic_year_id DESC, t.id DESC LIMIT 1`,
+       ORDER BY t.academic_year_id DESC, t.id DESC
+       LIMIT 1`,
       [tenantId, newTermId, newAyId]
     );
-    if (prevTermResult.rows.length === 0) {
-      // If this looks like a first term (e.g. "Term 1 ..."), there is no previous term to backfill.
-      const lower = String(currentTerm || '').toLowerCase();
-      if (/term\s*1\b/.test(lower) || /\b1st\b/.test(lower)) {
-        await client.query('COMMIT');
-        return {
-          message: 'No previous academic term detected for current term. Nothing to backfill.',
-          studentsProcessed: 0,
-          arrearsRowsInserted: 0,
-          creditRowsInserted: 0,
-        };
-      }
 
-      // Fallback: no previous term in ledger (e.g. older data only in fee_structures/payments). Compute unpaid from old tables and insert arrears only.
-      const prevTermLabel = derivePreviousTermLabel(currentTerm);
-      const prevTermOnly = prevTermLabel.replace(/\s+\d{4}$/, '').trim() || prevTermLabel;
-      const feeStruct = await client.query(
-        `SELECT fs.class_id, COALESCE(SUM(fs.amount), 0)::numeric AS total
-         FROM fee_structures fs
-         WHERE fs.tenant_id = $1 AND (fs.term = $2 OR fs.term = $3 OR fs.term LIKE $4 OR fs.term LIKE $5)
-         GROUP BY fs.class_id`,
-        [tenantId, prevTermLabel, prevTermOnly, `${prevTermLabel}%`, `%${prevTermOnly}%`]
-      );
-      if (feeStruct.rows.length === 0) {
-        await client.query('COMMIT');
-        return { message: 'No previous term in ledger and no fee_structures for previous term. Nothing to backfill.', studentsProcessed: 0, arrearsRowsInserted: 0 };
-      }
-      const classFees = Object.fromEntries(feeStruct.rows.map((r: any) => [r.class_id, parseFloat(r.total) || 0]));
-      const paidResult = await client.query(
-        `SELECT student_id, COALESCE(SUM(COALESCE(amount_paid, amount, 0)), 0)::numeric AS total_paid
-         FROM payments
-         WHERE tenant_id = $1 AND COALESCE(is_voided, false) = false
-           AND (term = $2 OR term = $3 OR term LIKE $4 OR term LIKE $5)
-         GROUP BY student_id`,
-        [tenantId, prevTermLabel, prevTermOnly, `${prevTermLabel}%`, `%${prevTermOnly}%`]
-      );
-      const paidByStudent = Object.fromEntries(paidResult.rows.map((r: any) => [r.student_id, parseFloat(r.total_paid) || 0]));
-      const studentsWithClass = await client.query(
-        'SELECT id, class_assigned_id FROM students WHERE tenant_id = $1 AND class_assigned_id IS NOT NULL',
-        [tenantId]
-      );
-      const existingArrears = await client.query(
-        `SELECT student_id FROM student_ledger WHERE tenant_id = $1 AND term_id = $2 AND entry_type = 'arrears'`,
-        [tenantId, newTermId]
-      );
-      const alreadyHas = new Set((existingArrears.rows as any[]).map((r: any) => r.student_id));
-      let inserted = 0;
-      for (const s of studentsWithClass.rows) {
-        const classId = s.class_assigned_id;
-        const fee = classFees[classId] ?? 0;
-        const paid = paidByStudent[s.id] ?? 0;
-        const unpaid = fee - paid;
-        if (unpaid <= 0 || alreadyHas.has(s.id)) continue;
-        await client.query(
-          `INSERT INTO student_ledger (tenant_id, student_id, academic_year_id, term_id, description, entry_type, debit, credit)
-           VALUES ($1, $2, $3, $4, 'Arrears from previous term (migrated)', 'arrears', $5, 0)`,
-          [tenantId, s.id, newAyId, newTermId, unpaid]
-        );
-        await client.query(
-          `INSERT INTO term_arrears (tenant_id, student_id, current_term, from_term, amount)
-           VALUES ($1, $2, $3, $4, $5)
-           ON CONFLICT (tenant_id, student_id, current_term)
-           DO UPDATE SET amount = EXCLUDED.amount, from_term = EXCLUDED.from_term`,
-          [tenantId, s.id, fullCurrentTerm, prevTermLabel, unpaid]
-        );
-        inserted++;
-        alreadyHas.add(s.id);
-      }
+    if (prevTermResult.rows.length === 0) {
       await client.query('COMMIT');
       return {
-        message: inserted > 0 ? `Backfilled ${inserted} arrears from old fee/payment data (previous term: ${prevTermLabel}).` : 'No unpaid balances in previous term (old system).',
-        studentsProcessed: studentsWithClass.rows.length,
-        arrearsRowsInserted: inserted,
+        message: 'No previous ledger term found. Nothing to backfill.',
+        studentsProcessed: 0,
+        arrearsRowsInserted: 0,
         creditRowsInserted: 0,
       };
     }
 
-    const prevTermId = prevTermResult.rows[0].id;
-    const prevAyId = prevTermResult.rows[0].academic_year_id;
-
-    // CUMULATIVE balance across ALL terms STRICTLY BEFORE the new term (newTermId).
-    // This ensures that by the time we reach Term 3, arrears reflect Term1+Term2 unpaid, etc.
-    // Uses ID-based comparison: (academic_year_id < newAyId) OR (academic_year_id = newAyId AND term_id < newTermId)
-    const balanceRows = await client.query(
-      `SELECT sl.student_id, (${SQL_TRUE_OUTSTANDING})::numeric AS balance
-       FROM student_ledger sl
-       INNER JOIN terms tt ON tt.id = sl.term_id
-       WHERE sl.tenant_id = $1
-         AND (tt.academic_year_id < $2 OR (tt.academic_year_id = $2 AND tt.id < $3))
-       GROUP BY sl.student_id
-       HAVING (${SQL_TRUE_OUTSTANDING}) != 0`,
-      [tenantId, newAyId, newTermId]
-    );
-
-    const existingArrears = await client.query(
-      `SELECT student_id FROM student_ledger
-       WHERE tenant_id = $1 AND term_id = $2 AND entry_type = 'arrears'`,
-      [tenantId, newTermId]
-    );
-    const existingCreditFwd = await client.query(
-      `SELECT student_id FROM student_ledger
-       WHERE tenant_id = $1 AND term_id = $2 AND entry_type = 'credit_brought_forward'`,
-      [tenantId, newTermId]
-    );
-    const alreadyHasArrears = new Set((existingArrears.rows as any[]).map((r: any) => r.student_id));
-    const alreadyHasCreditFwd = new Set((existingCreditFwd.rows as any[]).map((r: any) => r.student_id));
-
-    let arrearsInserted = 0;
-    let creditsInserted = 0;
-    for (const row of balanceRows.rows) {
-      const studentId = row.student_id;
-      const balance = parseFloat(row.balance);
-
-      if (balance > 0) {
-        if (alreadyHasArrears.has(studentId)) continue;
-        await client.query(
-          `INSERT INTO student_ledger (tenant_id, student_id, academic_year_id, term_id, description, entry_type, debit, credit)
-           VALUES ($1, $2, $3, $4, 'Balance carried forward to next term', 'carry_forward_credit', 0, $5)`,
-          [tenantId, studentId, prevAyId, prevTermId, balance]
-        );
-        await client.query(
-          `INSERT INTO student_ledger (tenant_id, student_id, academic_year_id, term_id, description, entry_type, debit, credit)
-           VALUES ($1, $2, $3, $4, 'Arrears from previous term', 'arrears', $5, 0)`,
-          [tenantId, studentId, newAyId, newTermId, balance]
-        );
-        await client.query(
-          `INSERT INTO term_arrears (tenant_id, student_id, current_term, amount)
-           VALUES ($1, $2, $3, $4)
-           ON CONFLICT (tenant_id, student_id, current_term)
-           DO UPDATE SET amount = EXCLUDED.amount`,
-          [tenantId, studentId, fullCurrentTerm, balance]
-        );
-        arrearsInserted++;
-        alreadyHasArrears.add(studentId);
-      } else if (balance < 0) {
-        if (alreadyHasCreditFwd.has(studentId)) continue;
-        const creditAmount = Math.abs(balance);
-        await client.query(
-          `INSERT INTO student_ledger (tenant_id, student_id, academic_year_id, term_id, description, entry_type, debit, credit)
-           VALUES ($1, $2, $3, $4, 'Credit carried forward to next term', 'carry_forward_debit', $5, 0)`,
-          [tenantId, studentId, prevAyId, prevTermId, creditAmount]
-        );
-        await client.query(
-          `INSERT INTO student_ledger (tenant_id, student_id, academic_year_id, term_id, description, entry_type, debit, credit)
-           VALUES ($1, $2, $3, $4, 'Credit from previous term', 'credit_brought_forward', 0, $5)`,
-          [tenantId, studentId, newAyId, newTermId, creditAmount]
-        );
-        creditsInserted++;
-        alreadyHasCreditFwd.add(studentId);
-      }
-    }
+    const prevTermId = Number(prevTermResult.rows[0].id);
+    const result = await executeTermSwitchWithArrears(client, tenantId, prevTermId, newTermId);
 
     await client.query('COMMIT');
-    const parts = [];
-    if (arrearsInserted > 0) parts.push(`${arrearsInserted} arrears`);
-    if (creditsInserted > 0) parts.push(`${creditsInserted} credit(s)`);
     return {
-      message: `Backfilled for current term. ${parts.length ? parts.join(', ') + ' inserted.' : 'No new rows (already present).'}`,
-      studentsProcessed: balanceRows.rows.length,
-      arrearsRowsInserted: arrearsInserted,
-      creditRowsInserted: creditsInserted,
+      message: result.message,
+      studentsProcessed: (result.arrearsRowsInserted ?? 0) + (result.creditRowsInserted ?? 0),
+      arrearsRowsInserted: result.arrearsRowsInserted ?? 0,
+      creditRowsInserted: result.creditRowsInserted ?? 0,
     };
   } catch (error) {
-    await client.query('ROLLBACK').catch(() => { });
+    await client.query('ROLLBACK').catch(() => {});
     console.error('[backfillArrearsForCurrentTerm] Error:', error);
     throw error;
   } finally {

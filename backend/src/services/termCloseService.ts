@@ -3,7 +3,6 @@ import { query, getClient } from '../db/connection.js';
 import {
   resolveLedgerTermFromSettings,
   executeTermSwitchWithArrears,
-  executePostFeesForNewTerm,
   recalculateTermOutstandingBalances,
 } from './ledgerFinanceService.js';
 import { refreshArrearsForTenantWithClient } from './arrearsService.js';
@@ -364,12 +363,18 @@ export async function closeTermAndActivateNext(
     );
 
     await recalculateTermOutstandingBalances(client, tenantId, preview.nextLedgerTermId);
-    await executePostFeesForNewTerm(client, tenantId, preview.nextLedgerTermId);
     await refreshArrearsForTenantWithClient(
       client,
       tenantId,
       preview.nextTermLabel!,
       preview.academicYear
+    );
+
+    await client.query(
+      `UPDATE academic_terms
+       SET closed_at = CURRENT_TIMESTAMP, is_active = false, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1 AND tenant_id = $2`,
+      [academicTermId, tenantId]
     );
 
     await client.query('COMMIT');

@@ -225,6 +225,12 @@ const runMigrations = async () => {
     await client.query(
       `UPDATE academic_terms SET is_archived = false WHERE is_archived IS NULL`
     ).catch(() => { });
+    await client.query(
+      `ALTER TABLE academic_terms ADD COLUMN IF NOT EXISTS closed_at TIMESTAMP`
+    ).catch(() => { });
+    await client.query(
+      `ALTER TABLE academic_terms ADD COLUMN IF NOT EXISTS ledger_term_id INTEGER REFERENCES terms(id) ON DELETE SET NULL`
+    ).catch(() => { });
 
     // Create classes table
     await client.query(`

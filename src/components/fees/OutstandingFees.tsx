@@ -13,7 +13,7 @@ import { fetchOutstandingFees, type OutstandingFeeStudent } from '../../services
 
 const OutstandingFees = () => {
   const { classes } = useData();
-  const { currentTerm } = useActiveTerm();
+  const { currentTerm, activeLedgerTermId } = useActiveTerm();
   const [apiStudents, setApiStudents] = useState<OutstandingFeeStudent[]>([]);
   const [apiSummary, setApiSummary] = useState({ studentsOwing: 0, totalOutstanding: 0, totalArrears: 0 });
   const [loading, setLoading] = useState(true);
@@ -30,7 +30,7 @@ const OutstandingFees = () => {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    void fetchOutstandingFees(classIdForApi)
+    void fetchOutstandingFees(classIdForApi, activeLedgerTermId)
       .then((res) => {
         if (cancelled) return;
         setApiStudents(res.students || []);
@@ -48,7 +48,7 @@ const OutstandingFees = () => {
     return () => {
       cancelled = true;
     };
-  }, [classIdForApi, selectedTerm]);
+  }, [classIdForApi, selectedTerm, activeLedgerTermId]);
 
   const filteredStudents = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();

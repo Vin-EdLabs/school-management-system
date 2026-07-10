@@ -59,8 +59,16 @@ export async function getClosedAcademicTermRecord(
   const year = String(row.year || '').trim();
   const termLabel = buildFullTermLabel(termName, year);
 
-  const resolved = await resolveLedgerTermFromSettings(tenantId, year, termLabel);
-  const ledgerTermId = resolved?.termId ?? null;
+  // Prefer explicit ledger_term_id link — never resolve by display name.
+  let ledgerTermId =
+    row.ledger_term_id != null && !Number.isNaN(Number(row.ledger_term_id))
+      ? Number(row.ledger_term_id)
+      : null;
+
+  if (ledgerTermId == null) {
+    const resolved = await resolveLedgerTermFromSettings(tenantId, year, termLabel);
+    ledgerTermId = resolved?.termId ?? null;
+  }
 
   let ledgerStatus: string | null = null;
   let closedAt: string | null = null;
@@ -138,6 +146,49 @@ export async function getClosedAcademicTermRecord(
             : [],
         })),
       };
+    } else {
+      // Fallback: live fee structures still on that ledger term
+      const liveRes = await query(
+        `SELECT
+           lfs.class_id,
+           COALESCE(NULLIF(TRIM(c.class_name), ''), NULLIF(TRIM(c.name), ''), 'Class ' || c.id) AS class_name,
+           c.level,
+           lfs.total,
+           lfs.id AS fee_structure_id
+         FROM ledger_fee_structures lfs
+         INNER JOIN classes c ON c.id = lfs.class_id AND c.tenant_id = lfs.tenant_id
+         WHERE lfs.tenant_id = $1 AND lfs.term_id = $2
+         ORDER BY class_name ASC`,
+        [tenantId, ledgerTermId]
+      );
+      if (liveRes.rows.length > 0) {
+        const structures: NonNullable<ClosedTermRecord['feeArchive']>['structures'] = [];
+        for (const c of liveRes.rows) {
+          const itemsRes = await query(
+            `SELECT item_name, amount, is_active
+             FROM fee_structure_items
+             WHERE tenant_id = $1 AND fee_structure_id = $2
+             ORDER BY sort_order ASC, id ASC`,
+            [tenantId, c.fee_structure_id]
+          );
+          structures.push({
+            class_id: Number(c.class_id),
+            class_name: String(c.class_name || ''),
+            level: c.level != null ? String(c.level) : null,
+            total: Number(c.total) || 0,
+            items: itemsRes.rows.map((i) => ({
+              item_name: String(i.item_name || ''),
+              amount: Number(i.amount) || 0,
+              is_active: Boolean(i.is_active),
+            })),
+          });
+        }
+        feeArchive = {
+          id: 0,
+          structureCount: structures.length,
+          structures,
+        };
+      }
     }
   }
 

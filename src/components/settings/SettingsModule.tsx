@@ -41,7 +41,9 @@ interface AcademicSettings {
   currentTerm: string;
 }
 
-const SettingsModule = () => {
+const SettingsModule: React.FC<{ onNavigateModule?: (module: string) => void }> = ({
+  onNavigateModule,
+}) => {
   const { user, hasAccess, changePassword, isPlatformSuperAdmin } = useAuth();
   const { school, reloadSchool } = useSchool();
   const { refresh: refreshData } = useData();
@@ -390,7 +392,7 @@ const SettingsModule = () => {
         </SettingsSection>
       )}
 
-      {hasSettingsFull && <AcademicTermManager />}
+      {hasSettingsFull && <AcademicTermManager onNavigateModule={onNavigateModule} />}
 
       {hasSettingsFull && (
         <SettingsSection

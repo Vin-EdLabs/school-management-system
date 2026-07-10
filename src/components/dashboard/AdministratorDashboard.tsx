@@ -11,6 +11,7 @@ import {
   useAttendanceSummary,
   useAcademicPerformance,
   useRecentAuditLogs,
+  useOutstandingFeesSummary,
 } from '../../hooks/useReportQueries';
 import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -139,6 +140,7 @@ const AdministratorDashboard = ({ onNavigate }: Props) => {
   const { currentTerm, currentYear, isLoading: termLoading, refresh: refreshTerm } = useActiveTerm();
 
   const { data: overview, isLoading: overviewLoading, refetch: refetchOverview } = useAdminOverview();
+  const { data: outstandingSummary } = useOutstandingFeesSummary();
   const { data: attendanceRows = [], isLoading: attendanceLoading, refetch: refetchAttendance } = useAttendanceSummary();
   const { data: performance, isLoading: performanceLoading, refetch: refetchPerformance } = useAcademicPerformance();
   const { data: auditLogs = [], isLoading: auditLoading, refetch: refetchAudit } = useRecentAuditLogs(8);
@@ -268,8 +270,15 @@ const AdministratorDashboard = ({ onNavigate }: Props) => {
     overview?.femaleStaff ??
     (overview?.teachers.female ?? 0) + (overview?.otherStaff?.female ?? 0);
   const activeClasses = overview?.classes.total ?? (useLocalFallback ? classes.filter((c) => c.className?.trim()).length : 0);
-  const feeCounts = overview?.feeStatus ?? { paid: 0, owing: 0, noFee: 0, credit: 0, totalOwing: 0 };
-  const totalOwing = feeCounts.totalOwing ?? 0;
+  const feeCountsBase = overview?.feeStatus ?? { paid: 0, owing: 0, noFee: 0, credit: 0, totalOwing: 0 };
+  // Same truth as Fees → Outstanding Fees (and finance/home dashboards).
+  const totalOwing = outstandingSummary?.totalOutstanding ?? feeCountsBase.totalOwing ?? 0;
+  const owingCount = outstandingSummary?.studentsOwing ?? feeCountsBase.owing ?? 0;
+  const feeCounts = {
+    ...feeCountsBase,
+    owing: owingCount,
+    totalOwing,
+  };
   const paymentTrend = overview?.paymentTrend ?? [];
   const enrollmentByClass = overview?.enrollmentByClass ?? [];
 

@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
+import { useEffectiveLedgerTerm } from '../../contexts/TermStatusContext';
 import { Search, AlertCircle, CreditCard, TrendingUp } from 'lucide-react';
 import { getActiveAcademicTerm } from '../../utils/feeCalculations';
 import { isActiveEnrolledStudent, isTermFeeClassStudent } from '../students/studentRegistryUtils';
@@ -23,13 +24,18 @@ import { GenerateInvoiceBulkButton, GenerateInvoiceButton } from '../invoices/Ge
 const StudentBalances = () => {
   const { students, payments, classes, ledgerBalances, feeStructures } = useData();
   const { hasAccess } = useAuth();
-  const { currentTerm: activeTerm, activeAcademicTermId, activeLedgerTermId, currentYear } = useActiveTerm();
+  const { currentYear, activeAcademicTermId } = useActiveTerm();
+  const {
+    termLabel: effectiveTermLabel,
+    ledgerTermId: effectiveLedgerTermId,
+  } = useEffectiveLedgerTerm();
   const canGenerateInvoice = hasAccess('invoices');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterClass, setFilterClass] = useState('all-classes');
   const [filterStatus, setFilterStatus] = useState('all-status');
 
-  const currentTerm = activeTerm || getActiveAcademicTerm();
+  const currentTerm = effectiveTermLabel || getActiveAcademicTerm();
+  const activeLedgerTermId = effectiveLedgerTermId;
 
   const classRow = filterClass !== 'all-classes' ? classes.find((c) => c.className === filterClass) : null;
 

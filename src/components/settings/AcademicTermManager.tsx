@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from '@/hooks/use-toast';
-import { Calendar, Plus, Edit2, PowerOff, CheckCircle, Archive, ArchiveRestore, Lock } from 'lucide-react';
+import { Calendar, Plus, Edit2, PowerOff, CheckCircle, Archive, ArchiveRestore, Lock, Eye } from 'lucide-react';
 import { apiService } from '../../services/api';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
 import { useTermStatus } from '../../contexts/TermStatusContext';
@@ -15,6 +15,11 @@ import TermActivationModal from './TermActivationModal';
 import ArrearsSyncModal from './ArrearsSyncModal';
 import CloseTermModal from './CloseTermModal';
 import CloseTermBeforeSwitchModal from './CloseTermBeforeSwitchModal';
+import ViewClosedTermModal from './ViewClosedTermModal';
+
+type AcademicTermManagerProps = {
+  onNavigateModule?: (module: string) => void;
+};
 
 interface AcademicTerm {
   id: string;
@@ -82,9 +87,9 @@ function findLedgerForAcademicTerm(term: AcademicTerm, list: LedgerTerm[]): Ledg
   });
 }
 
-const AcademicTermManager = () => {
+const AcademicTermManager: React.FC<AcademicTermManagerProps> = ({ onNavigateModule }) => {
   const { refresh: refreshActiveTerm } = useActiveTerm();
-  const { refresh: refreshTermStatus } = useTermStatus();
+  const { refresh: refreshTermStatus, enterClosedTermBrowse } = useTermStatus();
   const { user } = useAuth();
   const { refresh: refreshData } = useData();
   const [terms, setTerms] = useState<AcademicTerm[]>([]);
@@ -99,6 +104,8 @@ const AcademicTermManager = () => {
   const [closeTermOpen, setCloseTermOpen] = useState(false);
   const [closeBeforeSwitchOpen, setCloseBeforeSwitchOpen] = useState(false);
   const [pendingActivationTerm, setPendingActivationTerm] = useState<AcademicTerm | null>(null);
+  const [viewTermId, setViewTermId] = useState<string | null>(null);
+  const [viewTermOpen, setViewTermOpen] = useState(false);
   const closingFromSwitchRef = useRef(false);
   const [isArchivingAll, setIsArchivingAll] = useState(false);
   const [newTerm, setNewTerm] = useState({
@@ -616,7 +623,9 @@ const AcademicTermManager = () => {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h3 className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">Current Active Term</h3>
-                <p className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">{activeTerm.term_name} {activeTerm.year}</p>
+                <p className="text-sm text-emerald-700 dark:text-emerald-300 font-semibold break-words">
+                  {buildFullTermLabel(activeTerm)}
+                </p>
                 {activeTerm.start_date && activeTerm.end_date && (
                   <p className="text-xs text-muted-foreground">
                     {formatDisplayDate(activeTerm.start_date)} - {formatDisplayDate(activeTerm.end_date)}
@@ -700,7 +709,7 @@ const AcademicTermManager = () => {
           </div>
         )}
 
-        <div className="space-y-2">
+        <div className="space-y-3">
           <div className="flex items-center justify-between gap-2">
             <h3 className="text-sm font-semibold text-foreground">
               {showArchived ? 'All Terms (including archived)' : 'Visible Terms'}
@@ -718,90 +727,167 @@ const AcademicTermManager = () => {
               {showArchived ? 'No terms found.' : 'No visible terms. Add a term or show archived.'}
             </p>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
-              {visibleTerms.map((term) => (
-                <div key={term.id} className={`p-3 border rounded-xl transition-colors ${term.is_active ? 'border-emerald-500/30 bg-emerald-500/10' : term.is_archived ? 'border-muted bg-muted/30 opacity-80' : 'border-border bg-card hover:bg-muted/20'}`}>
-                  {editingTerm === term.id ? (
-                    <EditTermForm
-                      term={term}
-                      onSave={(data) => handleUpdateTerm(term.id, data)}
-                      onCancel={() => setEditingTerm(null)}
-                    />
-                  ) : (
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center space-x-2">
-                          <h4 className="text-sm font-medium truncate">{term.term_name} {term.year}</h4>
-                          {term.is_active && (
-                            <span className="px-2 py-0.5 text-xs font-medium bg-green-500 text-white rounded">Active</span>
-                          )}
-                          {!term.is_active && !isTermClosed(term) && (
-                            <span className="px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground rounded">Inactive</span>
-                          )}
-                          {term.is_archived && (
-                            <span className="px-2 py-0.5 text-xs font-medium bg-slate-500/15 text-slate-600 dark:text-slate-300 rounded">Archived</span>
-                          )}
-                          {isTermClosed(term) && (
-                            <span className="px-2 py-0.5 text-xs font-medium bg-amber-500/15 text-amber-800 dark:text-amber-200 rounded inline-flex items-center gap-1">
-                              <Lock className="w-3 h-3" />
-                              Closed
-                            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+              {visibleTerms.map((term) => {
+                const fullTitle = buildFullTermLabel(term);
+                const closed = isTermClosed(term);
+                return (
+                  <div
+                    key={term.id}
+                    className={`flex flex-col gap-3 rounded-2xl border p-4 transition-colors ${
+                      term.is_active
+                        ? 'border-emerald-500/35 bg-emerald-500/10'
+                        : term.is_archived
+                          ? 'border-muted bg-muted/25'
+                          : closed
+                            ? 'border-amber-200/80 bg-amber-50/40 dark:border-amber-900/40 dark:bg-amber-950/15'
+                            : 'border-border bg-card hover:bg-muted/15'
+                    }`}
+                  >
+                    {editingTerm === term.id ? (
+                      <EditTermForm
+                        term={term}
+                        onSave={(data) => handleUpdateTerm(term.id, data)}
+                        onCancel={() => setEditingTerm(null)}
+                      />
+                    ) : (
+                      <>
+                        <div className="min-w-0 space-y-2">
+                          <div className="flex flex-wrap items-start gap-1.5">
+                            {term.is_active && (
+                              <span className="inline-flex items-center rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                                Active
+                              </span>
+                            )}
+                            {!term.is_active && !closed && (
+                              <span className="inline-flex items-center rounded-full bg-slate-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+                                Inactive
+                              </span>
+                            )}
+                            {term.is_archived && (
+                              <span className="inline-flex items-center rounded-full bg-slate-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+                                Archived
+                              </span>
+                            )}
+                            {closed && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800 dark:text-amber-200">
+                                <Lock className="h-3 w-3" />
+                                Closed
+                              </span>
+                            )}
+                          </div>
+                          <h4
+                            className="text-sm font-semibold leading-snug text-foreground break-words"
+                            title={fullTitle}
+                          >
+                            {fullTitle}
+                          </h4>
+                          {term.start_date && term.end_date ? (
+                            <p className="text-xs text-muted-foreground">
+                              {formatDisplayDate(term.start_date)} – {formatDisplayDate(term.end_date)}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">No dates set</p>
                           )}
                         </div>
-                        {term.start_date && term.end_date && (
-                          <p className="text-xs text-muted-foreground">
-                            {formatDisplayDate(term.start_date)} - {formatDisplayDate(term.end_date)}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap justify-end gap-1.5 shrink-0">
-                        {!term.is_active && !term.is_archived && !isTermClosed(term) && !activeTerm && (
-                          <Button size="sm" variant="primaryAction" className="h-8 px-2" onClick={() => handleSetActiveTerm(term.id)}>
-                            Set Active
-                          </Button>
-                        )}
-                        {!term.is_active && !term.is_archived && !isTermClosed(term) && (
-                          <Button
-                            size="icon"
-                            variant="outline"
-                            className="h-8 w-8 text-slate-600"
-                            title="Archive term"
-                            onClick={() => void handleArchiveTerm(term.id)}
-                          >
-                            <Archive className="w-3 h-3" />
-                          </Button>
-                        )}
-                        {term.is_archived && (
+
+                        <div className="mt-auto flex flex-wrap items-center gap-1.5 border-t border-border/60 pt-3">
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-8 px-2"
-                            onClick={() => void handleRestoreTerm(term.id)}
+                            className="h-8 px-2.5 readonly-allowed"
+                            data-readonly-allow="view"
+                            title="View term details"
+                            onClick={() => {
+                              setViewTermId(term.id);
+                              setViewTermOpen(true);
+                            }}
                           >
-                            <ArchiveRestore className="w-3 h-3 mr-1" />
-                            Restore
+                            <Eye className="mr-1.5 h-3.5 w-3.5" />
+                            View
                           </Button>
-                        )}
-                        {!term.is_archived && !isTermClosed(term) && (
-                          <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => setEditingTerm(term.id)}>
-                            <Edit2 className="w-3 h-3" />
-                          </Button>
-                        )}
-                        {term.is_active && !isTermClosed(term) && (
-                          <Button size="icon" variant="outline" onClick={() => handleMarkInactive(term.id)} className="h-8 w-8 text-amber-600 hover:text-amber-700" title="Mark inactive (does not close finance)">
-                            <PowerOff className="w-3 h-3" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
+                          {!term.is_active && !term.is_archived && !closed && !activeTerm && (
+                            <Button
+                              size="sm"
+                              variant="primaryAction"
+                              className="h-8 px-2.5"
+                              onClick={() => handleSetActiveTerm(term.id)}
+                            >
+                              Set Active
+                            </Button>
+                          )}
+                          {!term.is_active && !term.is_archived && !closed && (
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              className="h-8 w-8 text-slate-600"
+                              title="Archive term"
+                              onClick={() => void handleArchiveTerm(term.id)}
+                            >
+                              <Archive className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                          {term.is_archived && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 px-2.5"
+                              onClick={() => void handleRestoreTerm(term.id)}
+                            >
+                              <ArchiveRestore className="mr-1 h-3.5 w-3.5" />
+                              Restore
+                            </Button>
+                          )}
+                          {!term.is_archived && !closed && (
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              className="h-8 w-8"
+                              title="Edit term"
+                              onClick={() => setEditingTerm(term.id)}
+                            >
+                              <Edit2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                          {term.is_active && !closed && (
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              onClick={() => handleMarkInactive(term.id)}
+                              className="h-8 w-8 text-amber-600 hover:text-amber-700"
+                              title="Mark inactive (does not close finance)"
+                            >
+                              <PowerOff className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
       </CardContent>
     </Card>
+
+    <ViewClosedTermModal
+      open={viewTermOpen}
+      onOpenChange={(open) => {
+        setViewTermOpen(open);
+        if (!open) setViewTermId(null);
+      }}
+      academicTermId={viewTermId}
+      onBrowseReadOnly={(termLabel, ledgerTermId) => {
+        enterClosedTermBrowse(termLabel, ledgerTermId);
+        toast({
+          title: `Browsing ${termLabel}`,
+          description: 'You can open any page in read-only mode. Click Exit to current term when finished.',
+        });
+        onNavigateModule?.('fees');
+      }}
+    />
     </>
   );
 };

@@ -8,6 +8,9 @@ import {
   getDirectActivityTotals,
   getFundTransfersReport,
   getIncomeAndExpenseTotalsAll,
+  getIncomeAndExpenseTotalsInRange,
+  getFeesCollectedAll,
+  getFeesCollectedForTerm,
   buildAccountSnapshots,
   getTotalOpeningBalance,
 } from '../services/financeSummaryService.js';
@@ -16,6 +19,8 @@ import { TEACHER_COUNTABLE_WHERE, OTHER_STAFF_COUNTABLE_WHERE, TEACHER_VISIBLE_W
 import { getStudentLiveFeeBreakdown } from '../services/studentLiveFeeBreakdownService.js';
 import { ensureTenantLedgerSynced } from '../services/ledgerBackfillService.js';
 import { SQL_EFFECTIVE_STUDENT_LEDGER_TOTALS_CTE } from '../utils/feeStructureSql.js';
+import { getOutstandingFeesFromLedger } from '../services/ledgerBalanceService.js';
+import { recalculateTermOutstandingBalances } from '../services/ledgerFinanceService.js';
 
 const router = express.Router();
 
@@ -139,6 +144,30 @@ async function resolveFinanceBounds(tenantId: number, academicYearKey: string): 
   return inferBoundsFromYearKey(key);
 }
 
+/** Prefer ledger term start/end dates for term-scoped finance reports. */
+async function resolveLedgerTermDateBounds(
+  tenantId: number,
+  ledgerTermId: number | null,
+  fallback: { from: string; to: string }
+): Promise<{ from: string; to: string }> {
+  if (ledgerTermId == null) return fallback;
+  try {
+    const r = await query(
+      `SELECT start_date::text AS d0, end_date::text AS d1
+       FROM terms
+       WHERE id = $1 AND tenant_id = $2
+       LIMIT 1`,
+      [ledgerTermId, tenantId]
+    );
+    const d0 = r.rows[0]?.d0 ? String(r.rows[0].d0).split('T')[0] : null;
+    const d1 = r.rows[0]?.d1 ? String(r.rows[0].d1).split('T')[0] : null;
+    if (d0 && d1) return { from: d0, to: d1 };
+  } catch {
+    /* fallback */
+  }
+  return fallback;
+}
+
 type ReportPeriod = {
   tenantId: number;
   term: string;
@@ -161,24 +190,69 @@ const TERM_FEE_STUDENT_CLASS_FILTER = `(c.id IS NULL OR COALESCE(c.fee_mode, 'te
 async function loadReportPeriod(req: AuthRequest): Promise<ReportPeriod> {
   const tenantId = req.user!.tenantId!;
 
-  const { resolveActiveLedgerTerm } = await import('../services/studentUnifiedBalanceService.js');
-  const activeLedger = await resolveActiveLedgerTerm(query, tenantId);
-  const ledgerTermId = activeLedger.ledgerTermId ?? null;
+  const {
+    resolveActiveLedgerTerm,
+    resolveLedgerTermById,
+    resolveLedgerTermByLabel,
+  } = await import('../services/studentUnifiedBalanceService.js');
 
-  const settingsResult = await query(
-    'SELECT current_term, current_year FROM school_settings WHERE tenant_id = $1',
-    [tenantId]
-  );
-  const defaultTerm = (activeLedger.termLabel || settingsResult.rows[0]?.current_term || 'Term 1')
-    .toString()
-    .trim();
-  const defaultYear = String(settingsResult.rows[0]?.current_year || new Date().getFullYear()).trim();
+  const rawTermId = req.query.termId ?? req.query.term_id;
+  const requestedTermId =
+    rawTermId != null && String(rawTermId).trim() !== ''
+      ? parseInt(String(rawTermId), 10)
+      : null;
+  const hasExplicitTermId =
+    requestedTermId != null && !Number.isNaN(requestedTermId);
 
   let termRaw = ((req.query.term as string) || '').trim();
   const yearRaw = ((req.query.year as string) || '').trim();
   if (termRaw && /^\d+$/.test(termRaw)) {
     termRaw = `Term ${termRaw}`;
   }
+  const hasTermOrYearQuery = !!(termRaw || yearRaw);
+
+  const settingsResult = await query(
+    'SELECT current_term, current_year FROM school_settings WHERE tenant_id = $1',
+    [tenantId]
+  );
+
+  let resolvedLedger: {
+    ledgerTermId: number | null;
+    academicYearId: number | null;
+    termLabel: string | null;
+  };
+
+  if (hasExplicitTermId) {
+    resolvedLedger = await resolveLedgerTermById(query, tenantId, requestedTermId!);
+  } else if (hasTermOrYearQuery) {
+    const yearHint = yearRaw || String(settingsResult.rows[0]?.current_year || '').trim();
+    const termHint =
+      termRaw ||
+      String(settingsResult.rows[0]?.current_term || '').trim() ||
+      'Term 1';
+    const byLabel = await resolveLedgerTermByLabel(query, tenantId, termHint, yearHint);
+    resolvedLedger =
+      byLabel.ledgerTermId != null
+        ? byLabel
+        : await resolveActiveLedgerTerm(query, tenantId);
+  } else {
+    resolvedLedger = await resolveActiveLedgerTerm(query, tenantId);
+  }
+
+  const ledgerTermId = resolvedLedger.ledgerTermId ?? null;
+
+  const defaultTerm = (resolvedLedger.termLabel || settingsResult.rows[0]?.current_term || 'Term 1')
+    .toString()
+    .trim();
+  const yearFromLabel =
+    resolvedLedger.termLabel?.match(/\b(20\d{2}(?:\/\d{2,4})?)\b/)?.[1] ?? null;
+  const defaultYear = String(
+    yearRaw ||
+      yearFromLabel ||
+      settingsResult.rows[0]?.current_year ||
+      new Date().getFullYear()
+  ).trim();
+
   const term = termRaw || defaultTerm;
   const academicYear = yearRaw || defaultYear;
 
@@ -365,6 +439,8 @@ router.get('/fee-status', async (req: AuthRequest, res) => {
 
 /**
  * GET /api/reports/financial-summary
+ * Term activity (fees / income / expenses) is scoped to the selected term.
+ * systemNetPosition is the school-wide carried total (all terms combined).
  */
 router.get('/financial-summary', async (req: AuthRequest, res) => {
   try {
@@ -376,6 +452,11 @@ router.get('/financial-summary', async (req: AuthRequest, res) => {
     } catch (syncErr) {
       console.error('[financial-summary] Ledger sync failed (continuing):', syncErr);
     }
+
+    const termBounds = await resolveLedgerTermDateBounds(tenantId, ledgerTermId, {
+      from: financeFrom,
+      to: financeTo,
+    });
 
     const feeTotalsRow = ledgerTermId
       ? await query(
@@ -396,49 +477,64 @@ router.get('/financial-summary', async (req: AuthRequest, res) => {
           })
       : { total_expected: 0, total_collected: 0, total_outstanding: 0 };
 
-    const summaryQuery = `
-      WITH expense_total AS (
-        SELECT COALESCE(SUM(amount), 0)::numeric AS total_expenses
-        FROM expenses
-        WHERE tenant_id = $1
-          AND COALESCE(payment_date::date, created_at::date) >= $2::date
-          AND COALESCE(payment_date::date, created_at::date) <= $3::date
-      ),
-      income_total AS (
-        SELECT COALESCE(SUM(amount), 0)::numeric AS total_other_income
-        FROM income
-        WHERE tenant_id = $1
-          AND COALESCE(income_date::date, created_at::date) >= $2::date
-          AND COALESCE(income_date::date, created_at::date) <= $3::date
-      )
-      SELECT et.total_expenses, it.total_other_income
-      FROM expense_total et, income_total it
-    `;
-
-    const result = await query(summaryQuery, [tenantId, financeFrom, financeTo]).catch((err) => {
-      console.error('[financial-summary] expense/income period query failed:', err);
-      return { rows: [{ total_expenses: 0, total_other_income: 0 }] };
-    });
-    const row = result.rows[0];
-
     const totalExpected = parseFloat(feeTotalsRow.total_expected) || 0;
-    const collected = parseFloat(feeTotalsRow.total_collected) || 0;
-    const feeOutstanding = parseFloat(feeTotalsRow.total_outstanding) || 0;
 
-    const [incomeExpenseAll, activity, cashPosition, collectionsByAccount, fundTransfers] = await Promise.all([
+    // Same source as Fees → Outstanding Fees module (student_ledger net owing).
+    let feeOutstanding = 0;
+    if (ledgerTermId) {
+      try {
+        await recalculateTermOutstandingBalances(null, tenantId, ledgerTermId);
+      } catch (recalcErr) {
+        console.error('[financial-summary] outstanding recalc failed (continuing):', recalcErr);
+      }
+      try {
+        const owingRows = await getOutstandingFeesFromLedger(null, tenantId, ledgerTermId, null);
+        feeOutstanding = owingRows.reduce((sum, row) => sum + (row.outstanding || 0), 0);
+        feeOutstanding = Math.round(feeOutstanding * 100) / 100;
+      } catch (outErr) {
+        console.error('[financial-summary] outstanding fees failed, falling back to CTE:', outErr);
+        feeOutstanding = parseFloat(feeTotalsRow.total_outstanding) || 0;
+      }
+    }
+
+    const [
+      incomeExpenseAll,
+      incomeExpenseTerm,
+      feesCollectedAll,
+      feesCollectedTermTxn,
+      activity,
+      cashPosition,
+      collectionsByAccount,
+      fundTransfers,
+    ] = await Promise.all([
       getIncomeAndExpenseTotalsAll(tenantId).catch((err) => {
         console.error('[financial-summary] income/expense totals failed:', err);
         return { otherIncome: 0, totalExpenses: 0 };
       }),
+      getIncomeAndExpenseTotalsInRange(tenantId, termBounds.from, termBounds.to).catch((err) => {
+        console.error('[financial-summary] term income/expense failed:', err);
+        return { otherIncome: 0, totalExpenses: 0 };
+      }),
+      getFeesCollectedAll(tenantId).catch((err) => {
+        console.error('[financial-summary] fees collected (all) failed:', err);
+        return 0;
+      }),
+      ledgerTermId
+        ? getFeesCollectedForTerm(tenantId, ledgerTermId).catch((err) => {
+            console.error('[financial-summary] fees collected (term) failed:', err);
+            return 0;
+          })
+        : Promise.resolve(0),
       getDirectActivityTotals(tenantId, {
-        financeFrom,
-        financeTo,
+        financeFrom: termBounds.from,
+        financeTo: termBounds.to,
         termMatch,
         termLike,
         termOnly,
+        ledgerTermId,
       }).catch((err) => {
         console.error('[financial-summary] activity totals failed:', err);
-        return { feesCollectedPeriod: 0 };
+        return { feesCollectedPeriod: 0, feesCollectedTerm: 0 };
       }),
       getCashPosition(tenantId).catch((err) => {
         console.error('[financial-summary] cash position failed:', err);
@@ -450,55 +546,77 @@ router.get('/financial-summary', async (req: AuthRequest, res) => {
         };
       }),
       getCollectionsByAccount(tenantId, {
-        financeFrom,
-        financeTo,
+        financeFrom: termBounds.from,
+        financeTo: termBounds.to,
         termMatch,
         termLike,
         termOnly,
+        feesScope: 'term',
+        ledgerTermId,
       }).catch((err) => {
         console.error('[financial-summary] collections by account failed:', err);
         return [];
       }),
-      getFundTransfersReport(tenantId, { startDate: financeFrom, endDate: financeTo }).catch((err) => {
+      getFundTransfersReport(tenantId, {
+        startDate: termBounds.from,
+        endDate: termBounds.to,
+      }).catch((err) => {
         console.error('[financial-summary] fund transfers failed:', err);
         return [];
       }),
     ]);
 
-    const otherIncome = incomeExpenseAll.otherIncome;
-    const expenses = incomeExpenseAll.totalExpenses;
+    // Term fees collected = real payment transactions for this term_id only.
+    // Do NOT fall back to ledger paid_amt or fuzzy term-label matches — those can
+    // count last-term credit / old receipts as "collected this term".
+    const collectedThisTerm = feesCollectedTermTxn;
+    const otherIncome = incomeExpenseTerm.otherIncome;
+    const expenses = incomeExpenseTerm.totalExpenses;
+    const collected = collectedThisTerm;
     const feesCollectedPeriod = activity.feesCollectedPeriod;
     const totalIncome = collected + otherIncome;
-    const totalOpeningBalance = getTotalOpeningBalance(cashPosition.accounts);
     const periodActivityNet = totalIncome - expenses;
-    const netBalance = totalOpeningBalance + totalIncome - expenses;
+
+    // System-wide carried totals (all terms / all transactions)
+    const otherIncomeAll = incomeExpenseAll.otherIncome;
+    const totalExpensesAll = incomeExpenseAll.totalExpenses;
+    const collectedAll = feesCollectedAll;
+    const totalOpeningBalance = getTotalOpeningBalance(cashPosition.accounts);
+    const systemNetPosition = totalOpeningBalance + collectedAll + otherIncomeAll - totalExpensesAll;
     const accountSnapshots = buildAccountSnapshots(cashPosition.accounts);
 
     res.set('Cache-Control', 'no-store');
     res.json({
       totalExpected,
+      /** Selected term fees collected (transactions / ledger). */
       collected,
+      collectedThisTerm,
+      collectedAll,
       feesCollectedPeriod,
       outstanding: feeOutstanding,
-      netBalance,
-      systemNetPosition: netBalance,
+      /** School-wide net (opening + all fees + all income − all expenses). */
+      netBalance: systemNetPosition,
+      systemNetPosition,
       cashOnHand: cashPosition.totalCashPosition,
+      /** Term activity net (this term only). */
       periodActivityNet,
-      periodIncome: feesCollectedPeriod + otherIncome,
+      periodIncome: totalIncome,
       totalIncome,
       otherIncome,
+      otherIncomeAll,
       totalExpenses: expenses,
+      totalExpensesAll,
       totalOpeningBalance,
       accountSnapshots,
       accountsTotal: cashPosition.accountsTotal,
       legacyUnlinkedNet: cashPosition.legacyUnlinkedNet,
       collectionsByAccount,
       fundTransfers,
-      collectionRate: totalExpected > 0 ? (collected / totalExpected) * 100 : 0,
+      collectionRate: totalExpected > 0 ? (collectedThisTerm / totalExpected) * 100 : 0,
       academicYear: academicYear,
       academicYearDisplay,
-      financePeriodStart: financeFrom,
-      financePeriodEnd: financeTo,
+      financePeriodStart: termBounds.from,
+      financePeriodEnd: termBounds.to,
       termLabel: term,
     });
   } catch (error) {
@@ -608,8 +726,12 @@ router.get('/outstanding-fees', async (req: AuthRequest, res) => {
  */
 router.get('/expenditure', async (req: AuthRequest, res) => {
   try {
-    const { tenantId, financeFrom, financeTo } = await loadReportPeriod(req);
+    const { tenantId, financeFrom, financeTo, ledgerTermId } = await loadReportPeriod(req);
     const scopeAll = String(req.query.scope || '').toLowerCase() === 'all';
+    const termBounds = await resolveLedgerTermDateBounds(tenantId, ledgerTermId, {
+      from: financeFrom,
+      to: financeTo,
+    });
 
     const expenditureQuery = scopeAll
       ? `
@@ -635,7 +757,7 @@ router.get('/expenditure', async (req: AuthRequest, res) => {
 
     const result = scopeAll
       ? await query(expenditureQuery, [tenantId])
-      : await query(expenditureQuery, [tenantId, financeFrom, financeTo]);
+      : await query(expenditureQuery, [tenantId, termBounds.from, termBounds.to]);
     res.set('Cache-Control', 'no-store');
     res.json(result.rows);
   } catch (error) {
@@ -776,9 +898,13 @@ router.get('/attendance-summary', async (req: AuthRequest, res) => {
  */
 router.get('/income-vs-expenditure', async (req: AuthRequest, res) => {
   try {
-    const { tenantId, financeFrom, financeTo } = await loadReportPeriod(req);
-    const startDate = ((req.query.startDate as string) || financeFrom).split('T')[0];
-    const endDate = ((req.query.endDate as string) || financeTo).split('T')[0];
+    const { tenantId, financeFrom, financeTo, ledgerTermId } = await loadReportPeriod(req);
+    const termBounds = await resolveLedgerTermDateBounds(tenantId, ledgerTermId, {
+      from: financeFrom,
+      to: financeTo,
+    });
+    const startDate = ((req.query.startDate as string) || termBounds.from).split('T')[0];
+    const endDate = ((req.query.endDate as string) || termBounds.to).split('T')[0];
 
     const monthlyQuery = `
       WITH bounds AS (
@@ -989,6 +1115,20 @@ router.get('/admin-overview', async (req: AuthRequest, res) => {
       };
     });
 
+    // Align owing amount/count with Fees → Outstanding Fees (student_ledger).
+    let owingCount = Number(feeMix.owing) || 0;
+    let totalOwing = parseFloat(feeMix.total_owing) || 0;
+    if (ledgerTermId) {
+      try {
+        await recalculateTermOutstandingBalances(null, tenantId, ledgerTermId);
+        const owingRows = await getOutstandingFeesFromLedger(null, tenantId, ledgerTermId, null);
+        owingCount = owingRows.length;
+        totalOwing = Math.round(owingRows.reduce((sum, row) => sum + (row.outstanding || 0), 0) * 100) / 100;
+      } catch (outErr) {
+        console.error('[admin-overview] outstanding fees align failed (using feeMix):', outErr);
+      }
+    }
+
     res.set('Cache-Control', 'no-store');
     res.json({
       students: {
@@ -1025,10 +1165,10 @@ router.get('/admin-overview', async (req: AuthRequest, res) => {
       classes: { total: Number(counts.class_total) || 0 },
       feeStatus: {
         paid: Number(feeMix.paid) || 0,
-        owing: Number(feeMix.owing) || 0,
+        owing: owingCount,
         noFee: Number(feeMix.no_fee) || 0,
         credit: Number(feeMix.credit) || 0,
-        totalOwing: parseFloat(feeMix.total_owing) || 0,
+        totalOwing,
       },
       enrollmentByClass,
       classNames: classesRes.rows.map((r) => String(r.class_name)).filter(Boolean),

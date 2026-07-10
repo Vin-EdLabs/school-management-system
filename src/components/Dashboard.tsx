@@ -65,6 +65,7 @@ import GlobalAnnouncementPopup from './announcements/GlobalAnnouncementPopup';
 import SetupProgressGate from './onboarding/SetupProgressGate';
 import ActiveTermWelcomeGate from './onboarding/ActiveTermWelcomeGate';
 import TermReadOnlyShell from './common/TermReadOnlyShell';
+import ClosedTermViewBar from './common/ClosedTermViewBar';
 import ActiveTermRequiredShell from './common/ActiveTermRequiredShell';
 import { useTermStatus } from '../contexts/TermStatusContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -134,13 +135,15 @@ const DashboardContent = () => {
 
   const domains = useMemo(() => domainsForModule(activeModule), [activeModule]);
   useEnsureData(domains);
-  const { setViewingTermLabel } = useTermStatus();
+  const { setViewingTermLabel, browseMode } = useTermStatus();
 
+  // Reports temporarily set viewingTermLabel — clear when leaving reports,
+  // but never clear an intentional closed-term browse session.
   useEffect(() => {
-    if (activeModule !== 'reports') {
+    if (activeModule !== 'reports' && browseMode === 'reports') {
       setViewingTermLabel(null);
     }
-  }, [activeModule, setViewingTermLabel]);
+  }, [activeModule, browseMode, setViewingTermLabel]);
 
   useEffect(() => {
     if (user?.role === 'finance' && activeModule === 'dashboard') {
@@ -282,7 +285,7 @@ const DashboardContent = () => {
       case 'users':
         return <UsersModule />;
       case 'settings':
-        return <SettingsModule />;
+        return <SettingsModule onNavigateModule={setActiveModule} />;
       case 'payment-accounts':
         return <PaymentAccountsModule />;
       case 'grade-configuration':
@@ -373,6 +376,7 @@ const DashboardContent = () => {
             activeModule={activeModule}
             onOpenSettings={() => setActiveModuleState('settings')}
           >
+            <ClosedTermViewBar setActiveModule={setActiveModule} />
             <TermReadOnlyShell activeModule={activeModule}>{renderActiveModule()}</TermReadOnlyShell>
           </ActiveTermRequiredShell>
         </SidebarWrapper>

@@ -20,22 +20,53 @@ function normalizeKey(value: string): string {
     .replace(/\s+/g, ' ');
 }
 
+function academicYearNameCandidates(year: string): string[] {
+  const y = String(year || '').trim();
+  if (!y) return [];
+  const out = new Set<string>([y]);
+  const slash = y.match(/^(\d{4})\s*\/\s*(\d{4})$/);
+  if (slash) {
+    out.add(`${slash[1]}/${slash[2]}`);
+    out.add(slash[1]);
+  } else {
+    const one = y.match(/^(\d{4})$/);
+    if (one) {
+      const n = parseInt(one[1], 10);
+      out.add(`${n}/${n + 1}`);
+    }
+  }
+  return [...out];
+}
+
+/**
+ * Resolve academic_years.id for a settings year string.
+ * Prefer exact / slash-year names. Never use loose LIKE '%2028%' — that can pick
+ * a later short year (e.g. "2028") over the correct "2028/2029" and break term close.
+ */
 async function resolveAcademicYearId(tenantId: number, yearRaw: string): Promise<number | null> {
   const year = String(yearRaw || '').trim();
   if (!year) return null;
-  const res = await query(
+
+  for (const name of academicYearNameCandidates(year)) {
+    const exact = await query(
+      `SELECT id FROM academic_years
+       WHERE tenant_id = $1 AND TRIM(name) = $2
+       ORDER BY id DESC
+       LIMIT 1`,
+      [tenantId, name]
+    );
+    if (exact.rows[0]?.id != null) return Number(exact.rows[0].id);
+  }
+
+  const normalized = await query(
     `SELECT id FROM academic_years
      WHERE tenant_id = $1
-       AND (
-         TRIM(name) = $2
-         OR TRIM(REPLACE(name, ' ', '')) = TRIM(REPLACE($2, ' ', ''))
-         OR name LIKE '%' || SPLIT_PART($2, '/', 1) || '%'
-       )
-     ORDER BY id DESC
+       AND TRIM(REPLACE(name, ' ', '')) = TRIM(REPLACE($2, ' ', ''))
+     ORDER BY CASE WHEN name LIKE '%/%' THEN 0 ELSE 1 END, id DESC
      LIMIT 1`,
     [tenantId, year]
   );
-  return res.rows[0]?.id != null ? Number(res.rows[0].id) : null;
+  return normalized.rows[0]?.id != null ? Number(normalized.rows[0].id) : null;
 }
 
 /** Ensure the active academic term points at the correct open ledger term (name + year). */
@@ -183,6 +214,21 @@ export async function resolveLedgerTermForAcademicTerm(
     );
     if (linkRes.rows.length) {
       return Number(linkRes.rows[0].id);
+    }
+
+    // Linked ledger exists with matching term name (year id may be a sibling
+    // like "2028" vs "2028/2029"). Trust the explicit link so close/activate can proceed.
+    const softLink = await query(
+      `SELECT t.id
+       FROM terms t
+       WHERE t.id = $1
+         AND t.tenant_id = $2
+         AND LOWER(TRIM(t.name)) = LOWER(TRIM($3))
+         ${openFilter}`,
+      [at.ledger_term_id, tenantId, termOnly]
+    );
+    if (softLink.rows.length) {
+      return Number(softLink.rows[0].id);
     }
   }
 

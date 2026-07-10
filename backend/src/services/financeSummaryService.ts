@@ -50,12 +50,15 @@ export type ActivityTotals = {
   periodActivityNet: number;
 };
 
-const PAYMENT_TERM_PRED = `
+/** Match payment rows to a term label — never treat blank term as a match. */
+const PAYMENT_TERM_LABEL_PRED = `
   (
-    TRIM(COALESCE(p.term, '')) = ''
-    OR p.term = $2 OR p.term = $4 OR p.term LIKE $3
-    OR $2 LIKE TRIM(p.term) || '%' OR TRIM(p.term) LIKE $2 || '%'
-    OR $4 LIKE TRIM(p.term) || '%' OR TRIM(p.term) LIKE $4 || '%'
+    TRIM(COALESCE(p.term, '')) <> ''
+    AND (
+      p.term = $2 OR p.term = $4 OR p.term LIKE $3
+      OR $2 LIKE TRIM(p.term) || '%' OR TRIM(p.term) LIKE $2 || '%'
+      OR $4 LIKE TRIM(p.term) || '%' OR TRIM(p.term) LIKE $4 || '%'
+    )
   )`;
 
 export async function getLegacyUnlinkedTotals(tenantId: number): Promise<LegacyUnlinkedTotals> {
@@ -120,6 +123,65 @@ export async function getIncomeAndExpenseTotalsAll(tenantId: number): Promise<{
   };
 }
 
+/** All non-voided fee payments from the transactions table (carries across term switches). */
+export async function getFeesCollectedAll(tenantId: number): Promise<number> {
+  const result = await query(
+    `SELECT COALESCE(SUM(COALESCE(amount_paid, amount, 0)), 0)::numeric AS total
+     FROM payments
+     WHERE tenant_id = $1
+       AND COALESCE(is_voided, false) = false
+       AND COALESCE(payment_category, 'term_fee') = 'term_fee'`,
+    [tenantId]
+  );
+  return parseFloat(String(result.rows[0]?.total ?? 0)) || 0;
+}
+
+/** Fee payments for one ledger term (by term_id on the payment transaction). */
+export async function getFeesCollectedForTerm(
+  tenantId: number,
+  ledgerTermId: number
+): Promise<number> {
+  const result = await query(
+    `SELECT COALESCE(SUM(COALESCE(amount_paid, amount, 0)), 0)::numeric AS total
+     FROM payments
+     WHERE tenant_id = $1
+       AND term_id = $2
+       AND COALESCE(is_voided, false) = false
+       AND COALESCE(payment_category, 'term_fee') = 'term_fee'`,
+    [tenantId, ledgerTermId]
+  );
+  return parseFloat(String(result.rows[0]?.total ?? 0)) || 0;
+}
+
+/** Other income + expenses within an inclusive date range (term window). */
+export async function getIncomeAndExpenseTotalsInRange(
+  tenantId: number,
+  fromDate: string,
+  toDate: string
+): Promise<{ otherIncome: number; totalExpenses: number }> {
+  const result = await query(
+    `SELECT
+       COALESCE((
+         SELECT SUM(amount) FROM income
+         WHERE tenant_id = $1
+           AND COALESCE(income_date::date, created_at::date) >= $2::date
+           AND COALESCE(income_date::date, created_at::date) <= $3::date
+       ), 0)::numeric AS other_income,
+       COALESCE((
+         SELECT SUM(amount) FROM expenses
+         WHERE tenant_id = $1
+           AND COALESCE(payment_date::date, created_at::date) >= $2::date
+           AND COALESCE(payment_date::date, created_at::date) <= $3::date
+       ), 0)::numeric AS total_expenses`,
+    [tenantId, fromDate, toDate]
+  );
+  const row = result.rows[0] ?? {};
+  return {
+    otherIncome: parseFloat(String(row.other_income ?? 0)) || 0,
+    totalExpenses: parseFloat(String(row.total_expenses ?? 0)) || 0,
+  };
+}
+
 export async function getDirectActivityTotals(
   tenantId: number,
   opts: {
@@ -128,21 +190,41 @@ export async function getDirectActivityTotals(
     termMatch: string;
     termLike: string;
     termOnly: string;
+    ledgerTermId?: number | null;
   }
 ): Promise<ActivityTotals> {
-  const { financeFrom, financeTo, termMatch, termLike, termOnly } = opts;
+  const { financeFrom, financeTo, termMatch, termLike, termOnly, ledgerTermId } = opts;
+
+  const feesTermSql =
+    ledgerTermId != null
+      ? `COALESCE((
+           SELECT SUM(COALESCE(p.amount_paid, p.amount, 0))
+           FROM payments p
+           WHERE p.tenant_id = $1 AND COALESCE(p.is_voided, false) = false
+             AND COALESCE(p.payment_category, 'term_fee') = 'term_fee'
+             AND p.term_id = $7
+         ), 0)::numeric`
+      : `COALESCE((
+           SELECT SUM(COALESCE(p.amount_paid, p.amount, 0))
+           FROM payments p
+           WHERE p.tenant_id = $1 AND COALESCE(p.is_voided, false) = false
+             AND COALESCE(p.payment_category, 'term_fee') = 'term_fee'
+             AND ${PAYMENT_TERM_LABEL_PRED}
+         ), 0)::numeric`;
+
+  const params: unknown[] =
+    ledgerTermId != null
+      ? [tenantId, termMatch, termLike, termOnly, financeFrom, financeTo, ledgerTermId]
+      : [tenantId, termMatch, termLike, termOnly, financeFrom, financeTo];
+
   const result = await query(
     `SELECT
+       ${feesTermSql} AS fees_collected_term,
        COALESCE((
          SELECT SUM(COALESCE(p.amount_paid, p.amount, 0))
          FROM payments p
          WHERE p.tenant_id = $1 AND COALESCE(p.is_voided, false) = false
-           AND ${PAYMENT_TERM_PRED}
-       ), 0)::numeric AS fees_collected_term,
-       COALESCE((
-         SELECT SUM(COALESCE(p.amount_paid, p.amount, 0))
-         FROM payments p
-         WHERE p.tenant_id = $1 AND COALESCE(p.is_voided, false) = false
+           AND COALESCE(p.payment_category, 'term_fee') = 'term_fee'
            AND COALESCE(p.payment_date::date, p.created_at::date) >= $5::date
            AND COALESCE(p.payment_date::date, p.created_at::date) <= $6::date
        ), 0)::numeric AS fees_collected_period,
@@ -158,7 +240,7 @@ export async function getDirectActivityTotals(
            AND COALESCE(e.payment_date::date, e.created_at::date) >= $5::date
            AND COALESCE(e.payment_date::date, e.created_at::date) <= $6::date
        ), 0)::numeric AS total_expenses`,
-    [tenantId, termMatch, termLike, termOnly, financeFrom, financeTo]
+    params
   );
   const row = result.rows[0] ?? {};
   const feesCollectedTerm = parseFloat(String(row.fees_collected_term ?? 0));
@@ -206,24 +288,63 @@ export async function getCollectionsByAccount(
     termMatch: string;
     termLike: string;
     termOnly: string;
+    /** 'all' = every fee payment (carries across terms); 'term' = selected term only */
+    feesScope?: 'all' | 'term';
+    ledgerTermId?: number | null;
   }
 ): Promise<AccountCollectionRow[]> {
-  const { financeFrom, financeTo, termMatch, termLike, termOnly } = opts;
+  const {
+    financeFrom,
+    financeTo,
+    termMatch,
+    termLike,
+    termOnly,
+    feesScope = 'term',
+    ledgerTermId,
+  } = opts;
   const cashPosition = await getCashPosition(tenantId);
 
-  const [feesRes, incomeRes, expenseRes] = await Promise.all([
-    query(
-      `SELECT p.payment_account_id AS account_id,
+  let feesQuery: string;
+  let feesParams: unknown[];
+  if (feesScope === 'all') {
+    feesQuery = `SELECT p.payment_account_id AS account_id,
               CASE WHEN p.payment_account_id IS NULL THEN 'Unlinked'
                    ELSE COALESCE(NULLIF(TRIM(pa.nickname), ''), pa.account_name) END AS account_label,
               COALESCE(SUM(COALESCE(p.amount_paid, p.amount, 0)), 0)::numeric AS amount
        FROM payments p
        LEFT JOIN payment_accounts pa ON pa.id = p.payment_account_id
        WHERE p.tenant_id = $1 AND COALESCE(p.is_voided, false) = false
-         AND ${PAYMENT_TERM_PRED}
-       GROUP BY p.payment_account_id, account_label`,
-      [tenantId, termMatch, termLike, termOnly]
-    ),
+         AND COALESCE(p.payment_category, 'term_fee') = 'term_fee'
+       GROUP BY p.payment_account_id, account_label`;
+    feesParams = [tenantId];
+  } else if (ledgerTermId != null) {
+    feesQuery = `SELECT p.payment_account_id AS account_id,
+              CASE WHEN p.payment_account_id IS NULL THEN 'Unlinked'
+                   ELSE COALESCE(NULLIF(TRIM(pa.nickname), ''), pa.account_name) END AS account_label,
+              COALESCE(SUM(COALESCE(p.amount_paid, p.amount, 0)), 0)::numeric AS amount
+       FROM payments p
+       LEFT JOIN payment_accounts pa ON pa.id = p.payment_account_id
+       WHERE p.tenant_id = $1 AND COALESCE(p.is_voided, false) = false
+         AND COALESCE(p.payment_category, 'term_fee') = 'term_fee'
+         AND p.term_id = $2
+       GROUP BY p.payment_account_id, account_label`;
+    feesParams = [tenantId, ledgerTermId];
+  } else {
+    feesQuery = `SELECT p.payment_account_id AS account_id,
+              CASE WHEN p.payment_account_id IS NULL THEN 'Unlinked'
+                   ELSE COALESCE(NULLIF(TRIM(pa.nickname), ''), pa.account_name) END AS account_label,
+              COALESCE(SUM(COALESCE(p.amount_paid, p.amount, 0)), 0)::numeric AS amount
+       FROM payments p
+       LEFT JOIN payment_accounts pa ON pa.id = p.payment_account_id
+       WHERE p.tenant_id = $1 AND COALESCE(p.is_voided, false) = false
+         AND COALESCE(p.payment_category, 'term_fee') = 'term_fee'
+         AND ${PAYMENT_TERM_LABEL_PRED}
+       GROUP BY p.payment_account_id, account_label`;
+    feesParams = [tenantId, termMatch, termLike, termOnly];
+  }
+
+  const [feesRes, incomeRes, expenseRes] = await Promise.all([
+    query(feesQuery, feesParams),
     query(
       `SELECT i.payment_account_id AS account_id,
               CASE WHEN i.payment_account_id IS NULL THEN 'Unlinked'

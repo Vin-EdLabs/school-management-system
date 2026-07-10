@@ -1,14 +1,16 @@
 import React, { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import {
-  getActiveAcademicTerm,
-  getActiveAcademicYear,
-  getDashboardCalendarYearForMonthlyChart,
-} from '../../utils/feeCalculations';
+import { getDashboardCalendarYearForMonthlyChart } from '../../utils/feeCalculations';
 import FinancialSummary from './FinancialSummary';
-import { useAdminOverview, useFinancialSummary, useIncomeVsExpenditure } from '../../hooks/useReportQueries';
+import {
+  useAdminOverview,
+  useFinancialSummary,
+  useIncomeVsExpenditure,
+  useOutstandingFeesSummary,
+} from '../../hooks/useReportQueries';
 import { useData } from '../../contexts/DataContext';
+import { useActiveTerm } from '../../contexts/ActiveTermContext';
 import { shouldTrackStudentFees } from '../students/studentRegistryUtils';
 import {
   Users,
@@ -58,9 +60,10 @@ function EmptyChart({ label }: { label: string }) {
 }
 
 const DashboardHome = () => {
-  const { students, ledgerBalanceSummary } = useData();
+  const { students } = useData();
   const { data: overview, isLoading: overviewLoading, isError: overviewError } = useAdminOverview();
   const { data: financial, isError: financialError } = useFinancialSummary();
+  const { data: outstandingSummary } = useOutstandingFeesSummary();
   const { data: monthlyRows = [] } = useIncomeVsExpenditure();
 
   const localActiveStudentCount = useMemo(
@@ -68,8 +71,7 @@ const DashboardHome = () => {
     [students]
   );
 
-  const currentTerm = getActiveAcademicTerm();
-  const currentYear = getActiveAcademicYear();
+  const { currentTerm, currentYear } = useActiveTerm();
 
   const stats = useMemo(() => {
     const totalStudents =
@@ -78,30 +80,39 @@ const DashboardHome = () => {
     const pendingStudents = overview?.students.pending ?? 0;
     const alumniStudents = overview?.students.alumni ?? 0;
     const totalTeachers = overview?.teachers.total ?? 0;
-    const feesCollectedThisTerm = financial?.collected ?? 0;
-    const otherIncomeThisYear = financial?.otherIncome ?? 0;
+    const feesCollected = financial?.collectedAll ?? financial?.collected ?? 0;
+    const otherIncome = financial?.otherIncomeAll ?? financial?.otherIncome ?? 0;
     const openingBalance = financial?.totalOpeningBalance ?? 0;
-    const totalIncome = financial?.totalIncome ?? feesCollectedThisTerm + otherIncomeThisYear;
-    const expensesThisYear = financial?.totalExpenses ?? 0;
+    const totalIncome = feesCollected + otherIncome;
+    const totalExpenses = financial?.totalExpensesAll ?? financial?.totalExpenses ?? 0;
     const netBalance =
-      financial?.netBalance ?? openingBalance + totalIncome - expensesThisYear;
+      financial?.systemNetPosition ??
+      financial?.netBalance ??
+      openingBalance + totalIncome - totalExpenses;
     const outstandingBalances =
-      financial?.outstanding ?? ledgerBalanceSummary?.totalOutstanding ?? 0;
+      outstandingSummary?.totalOutstanding ?? financial?.outstanding ?? 0;
 
     return {
       totalStudents,
       pendingStudents,
       alumniStudents,
       totalTeachers,
-      feesCollectedThisTerm,
-      otherIncomeThisYear,
+      feesCollectedThisTerm: feesCollected,
+      otherIncomeThisYear: otherIncome,
       openingBalance,
       totalIncome,
-      expensesThisYear,
+      expensesThisYear: totalExpenses,
       netBalance,
       outstandingBalances,
     };
-  }, [overview, overviewLoading, overviewError, localActiveStudentCount, financial, ledgerBalanceSummary]);
+  }, [
+    overview,
+    overviewLoading,
+    overviewError,
+    localActiveStudentCount,
+    financial,
+    outstandingSummary,
+  ]);
 
   const classFeesData = useMemo(
     () =>
@@ -183,21 +194,21 @@ const DashboardHome = () => {
             {
               label: 'Total income',
               value: `GHS ${stats.totalIncome.toLocaleString()}`,
-              sub: 'Fees + other',
+              sub: 'Fees + other (all terms)',
               icon: CreditCard,
               accent: 'from-emerald-500/20 to-emerald-500/5 border-emerald-500/25 text-emerald-700 dark:text-emerald-300',
             },
             {
               label: 'Expenses',
               value: `GHS ${stats.expensesThisYear.toLocaleString()}`,
-              sub: `Year ${currentYear}`,
+              sub: 'All recorded expenses',
               icon: TrendingDown,
               accent: 'from-amber-500/20 to-amber-500/5 border-amber-500/25 text-amber-800 dark:text-amber-200',
             },
             {
               label: 'Net balance',
               value: `GHS ${stats.netBalance.toLocaleString()}`,
-              sub: 'Opening + income − expenses',
+              sub: 'Opening + all income − expenses',
               icon: CreditCard,
               accent:
                 stats.netBalance >= 0
@@ -207,7 +218,7 @@ const DashboardHome = () => {
             {
               label: 'Outstanding',
               value: `GHS ${stats.outstandingBalances.toLocaleString()}`,
-              sub: 'Fees pending',
+              sub: 'From Outstanding Fees',
               icon: AlertCircle,
               accent: 'from-orange-500/20 to-orange-500/5 border-orange-500/25 text-orange-800 dark:text-orange-200',
             },

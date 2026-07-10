@@ -74,6 +74,27 @@ router.post('/:id/activate', requirePrimaryAdminOrSuperAdmin, async (req: AuthRe
   }
 });
 
+/** GET /api/academic-terms/:id/closed-record — view snapshot / fee archive for a term */
+router.get('/:id/closed-record', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const termId = parseInt(String(req.params.id), 10);
+    if (!termId || Number.isNaN(termId)) {
+      return res.status(400).json({ error: 'Invalid academic term id' });
+    }
+    const { getClosedAcademicTermRecord } = await import('../services/closedTermViewService.js');
+    const record = await getClosedAcademicTermRecord(tenantId, termId);
+    if (!record) {
+      return res.status(404).json({ error: 'Academic term not found' });
+    }
+    res.set('Cache-Control', 'no-store');
+    return res.json(record);
+  } catch (error: any) {
+    console.error('[academic-terms/closed-record] error:', error);
+    return res.status(500).json({ error: error?.message || 'Failed to load term record' });
+  }
+});
+
 /** GET /api/academic-terms/:id/close-preview — summary before closing */
 router.get('/:id/close-preview', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, res) => {
   try {

@@ -29,6 +29,7 @@ import { normalizeFinancialSummary } from '@/hooks/useReportQueries';
 import { downloadFinancialReportPdf } from './buildFinancialReportPdf';
 import { useFinanceRealtime } from '@/hooks/useFinanceRealtime';
 import { useTermStatus } from '@/contexts/TermStatusContext';
+import { useActiveTerm } from '@/contexts/ActiveTermContext';
 
 type AcademicTermRow = {
   id: number;
@@ -153,7 +154,14 @@ const MiniStatCard = ({ label, value, icon: Icon, delay = 0 }: { label: string; 
 const AdvancedReports = () => {
   const { theme } = useTheme();
   const { school } = useSchool();
-  const { setViewingTermLabel, isTermClosedByLabel } = useTermStatus();
+  const {
+    setViewingTermLabel,
+    isTermClosedByLabel,
+    isBrowsingClosedTerm,
+    viewingTermLabel,
+    viewingLedgerTermId,
+  } = useTermStatus();
+  const { currentTerm: contextTerm, currentYear: contextYear, activeLedgerTermId } = useActiveTerm();
   const [academicTerms, setAcademicTerms] = useState<AcademicTermRow[]>([]);
   const [activeYearKey, setActiveYearKey] = useState('');
   const [activeTerm, setActiveTerm] = useState('');
@@ -176,6 +184,8 @@ const AdvancedReports = () => {
   const [fundTransfers, setFundTransfers] = useState<any[]>([]);
   const [collectionsByAccount, setCollectionsByAccount] = useState<any[]>([]);
 
+  const stripYear = (n: string) => n.replace(/\s+\d{4}(\s*\/\s*\d{4})?$/, '').trim();
+
   useEffect(() => {
     let cancelled = false;
     Promise.all([
@@ -194,17 +204,29 @@ const AdvancedReports = () => {
         }));
         setAcademicTerms(list);
 
-        const cy = String(s?.current_year ?? '').trim();
-        const ct = String(s?.current_term ?? '').trim();
+        // When browsing a closed-term snapshot, lock reports to that term.
+        const browseLabel = isBrowsingClosedTerm
+          ? (viewingTermLabel || contextTerm || '').trim()
+          : '';
+        const cy = browseLabel
+          ? browseLabel.match(/\b(20\d{2}(?:\/\d{2,4})?)\b/)?.[1] || contextYear
+          : String(s?.current_year ?? '').trim();
+        const ct = browseLabel
+          ? stripYear(browseLabel) || browseLabel
+          : String(s?.current_term ?? '').trim();
         const yearSet = [...new Set(list.map((x) => x.year).filter(Boolean))].sort((a, b) => a.localeCompare(b));
         const yearKeys = yearSet.length ? yearSet : cy ? [cy] : [String(new Date().getFullYear())];
-        const pickYear = cy && yearKeys.includes(cy) ? cy : yearKeys[0];
+        const pickYear =
+          cy && yearKeys.includes(cy)
+            ? cy
+            : cy && yearKeys.find((y) => y.includes(cy) || cy.includes(y))
+              ? yearKeys.find((y) => y.includes(cy) || cy.includes(y))!
+              : yearKeys[0];
         setActiveYearKey(pickYear);
 
         const termsForYear = list
           .filter((t) => t.year === pickYear)
           .sort((a, b) => String(a.start_date || '').localeCompare(String(b.start_date || '')));
-        const stripYear = (n: string) => n.replace(/\s+\d{4}(\s*\/\s*\d{4})?$/, '').trim();
         let termPick = stripYear(ct) || 'Term 1';
         if (termsForYear.length) {
           const byName = termsForYear.find(
@@ -221,7 +243,17 @@ const AdvancedReports = () => {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isBrowsingClosedTerm, viewingTermLabel, contextTerm, contextYear]);
+
+  // Keep period selectors aligned when browse term changes after mount.
+  useEffect(() => {
+    if (!isBrowsingClosedTerm || !viewingTermLabel) return;
+    const year =
+      viewingTermLabel.match(/\b(20\d{2}(?:\/\d{2,4})?)\b/)?.[1] || contextYear;
+    const termName = stripYear(viewingTermLabel) || viewingTermLabel;
+    if (year) setActiveYearKey(year);
+    if (termName) setActiveTerm(termName);
+  }, [isBrowsingClosedTerm, viewingTermLabel, contextYear]);
 
   const yearOptions = useMemo(() => {
     const keys = [...new Set(academicTerms.map((t) => t.year).filter(Boolean))].sort((a, b) => a.localeCompare(b));
@@ -240,6 +272,7 @@ const AdvancedReports = () => {
   }, [termsForSelectedYear]);
 
   const handleAcademicYearSelect = (yearKey: string) => {
+    if (isBrowsingClosedTerm) return;
     setActiveYearKey(yearKey);
     const tfy = academicTerms
       .filter((t) => t.year === yearKey)
@@ -253,12 +286,18 @@ const AdvancedReports = () => {
   );
 
   useEffect(() => {
+    if (isBrowsingClosedTerm) return;
     if (periodReady && fullViewingTermLabel) {
       setViewingTermLabel(fullViewingTermLabel);
     }
-  }, [periodReady, fullViewingTermLabel, setViewingTermLabel]);
+  }, [periodReady, fullViewingTermLabel, setViewingTermLabel, isBrowsingClosedTerm]);
 
-  useEffect(() => () => setViewingTermLabel(null), [setViewingTermLabel]);
+  useEffect(
+    () => () => {
+      if (!isBrowsingClosedTerm) setViewingTermLabel(null);
+    },
+    [setViewingTermLabel, isBrowsingClosedTerm]
+  );
 
   const fetchData = useCallback(async () => {
     if (!periodReady || !activeYearKey || !activeTerm) return;
@@ -267,11 +306,16 @@ const AdvancedReports = () => {
     const params = new URLSearchParams();
     params.set('term', activeTerm);
     params.set('year', activeYearKey);
+    const reportTermId = viewingLedgerTermId ?? activeLedgerTermId;
+    if (reportTermId != null) params.set('termId', String(reportTermId));
     const base = `?${params.toString()}`;
     const bust = `&_=${Date.now()}`;
 
+    let finRaw: any = null;
+    let termFrom = '';
+    let termTo = '';
     try {
-      const finRaw = await apiService.get<any>(`/reports/financial-summary${base}${bust}`).catch((err) => {
+      finRaw = await apiService.get<any>(`/reports/financial-summary${base}${bust}`).catch((err) => {
         console.error('Failed to fetch financial summary:', err);
         return null;
       });
@@ -281,15 +325,31 @@ const AdvancedReports = () => {
         setCollectionsByAccount(
           Array.isArray(finRes?.collectionsByAccount) ? finRes.collectionsByAccount : []
         );
+        termFrom = String(finRes.financePeriodStart || '').split('T')[0];
+        termTo = String(finRes.financePeriodEnd || '').split('T')[0];
       } else {
         setError('Failed to fetch financial summary');
+        setCollectionsByAccount([]);
       }
     } catch (err: unknown) {
       console.error('Failed to fetch financial summary:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch financial summary');
+      setCollectionsByAccount([]);
     }
 
-    const listBust = `?_=${Date.now()}`;
+    const listParams = new URLSearchParams();
+    if (termFrom && termTo) {
+      listParams.set('startDate', termFrom);
+      listParams.set('endDate', termTo);
+    }
+    listParams.set('_', String(Date.now()));
+    const listBust = `?${listParams.toString()}`;
+    const iveParams = new URLSearchParams(params);
+    if (termFrom && termTo) {
+      iveParams.set('startDate', termFrom);
+      iveParams.set('endDate', termTo);
+    }
+    const iveBase = `?${iveParams.toString()}`;
 
     const [
       classFeesRes,
@@ -309,10 +369,14 @@ const AdvancedReports = () => {
       apiService.get<any[]>(`/reports/payroll-summary${base}${bust}`).catch(() => []),
       apiService.get<any>(`/reports/academic-performance${base}${bust}`).catch(() => ({})),
       apiService.get<any[]>(`/reports/attendance-summary${base}${bust}`).catch(() => []),
-      apiService.get<any[]>(`/reports/income-vs-expenditure${base}${bust}`).catch(() => []),
+      apiService.get<any[]>(`/reports/income-vs-expenditure${iveBase}${bust}`).catch(() => []),
       apiService.get<any[]>(`/income${listBust}`).catch(() => []),
       apiService.get<any[]>(`/expenses${listBust}`).catch(() => []),
-      apiService.get<any[]>(`/reports/fund-transfers?scope=all&limit=500&_=${Date.now()}`).catch(() => []),
+      apiService
+        .get<any[]>(
+          `/reports/fund-transfers?${termFrom && termTo ? `startDate=${termFrom}&endDate=${termTo}&` : ''}limit=500&_=${Date.now()}`
+        )
+        .catch(() => []),
     ]);
 
     setFeesByClass(classFeesRes);
@@ -343,12 +407,16 @@ const AdvancedReports = () => {
       }))
     );
     setFundTransfers(Array.isArray(fundTransfersRes) ? fundTransfersRes : []);
-    if (!finRaw) {
-      setCollectionsByAccount([]);
-    }
     setLastSync(new Date());
     setLoading(false);
-  }, [periodReady, activeYearKey, activeTerm]);
+  }, [
+    periodReady,
+    activeYearKey,
+    activeTerm,
+    viewingLedgerTermId,
+    isBrowsingClosedTerm,
+    activeLedgerTermId,
+  ]);
 
   const fetchDataRef = useRef(fetchData);
   fetchDataRef.current = fetchData;
@@ -590,8 +658,12 @@ const AdvancedReports = () => {
                 className={`tab-item readonly-allowed ${activeTerm === term ? 'active' : ''} ${closed ? 'opacity-70' : ''}`}
                 role="button"
                 tabIndex={0}
-                onClick={() => setActiveTerm(term)}
+                onClick={() => {
+                  if (isBrowsingClosedTerm) return;
+                  setActiveTerm(term);
+                }}
                 onKeyDown={(e) => {
+                  if (isBrowsingClosedTerm) return;
                   if (e.key === 'Enter' || e.key === ' ') setActiveTerm(term);
                 }}
               >
@@ -647,15 +719,15 @@ const AdvancedReports = () => {
         <StatCard 
           label="Fees Collected"
           value={`GHS ${financialSummary?.collected || 0}`}
-          subtext="Total payments received"
-          trend={{ value: `${Math.round(financialSummary?.collectionRate || 0)}% efficiency`, positive: true }}
+          subtext={`This term only (${fullViewingTermLabel || 'selected term'})`}
+          trend={{ value: `${Math.round(financialSummary?.collectionRate || 0)}% of expected`, positive: true }}
           glowColor="emerald"
           delay={200}
         />
         <StatCard 
           label="Other Income"
           value={`GHS ${financialSummary?.otherIncome || 0}`}
-          subtext={`Non-fee income (${academicYearLabel} window)`}
+          subtext="This term only"
           trend={{ value: 'Donations, services & more', positive: true }}
           glowColor="blue"
           delay={250}
@@ -663,32 +735,32 @@ const AdvancedReports = () => {
         <StatCard 
           label="Outstanding Balance"
           value={`GHS ${financialSummary?.outstanding || 0}`}
-          subtext="Current accounts receivable"
+          subtext="This term accounts receivable"
           trend={{ value: "Action required", positive: false }}
           glowColor="red"
           delay={300}
         />
         <StatCard 
           label="Total Income"
-          value={`GHS ${financialSummary?.totalIncome ?? ((financialSummary?.feesCollectedPeriod ?? financialSummary?.collected ?? 0) + (financialSummary?.otherIncome ?? 0))}`}
-          subtext={`Fees + other income (${academicYearLabel})`}
-          trend={{ value: 'Period activity', positive: true }}
+          value={`GHS ${financialSummary?.totalIncome ?? ((financialSummary?.collected ?? 0) + (financialSummary?.otherIncome ?? 0))}`}
+          subtext="Fees + other (this term)"
+          trend={{ value: 'Term activity', positive: true }}
           glowColor="emerald"
           delay={375}
         />
         <StatCard 
           label="Total Expenses"
           value={`GHS ${financialSummary?.totalExpenses ?? 0}`}
-          subtext={`All expenses (${academicYearLabel})`}
+          subtext="This term only"
           trend={{ value: 'Excludes fund transfers', positive: false }}
           glowColor="red"
           delay={385}
         />
         <StatCard 
-          label="Net Cash Position"
-          value={`GHS ${(financialSummary?.netBalance ?? financialSummary?.systemNetPosition) ?? 0}`}
-          subtext="All account balances (matches Cash & Bank)"
-          trend={{ value: (financialSummary?.netBalance ?? 0) >= 0 ? 'Surplus' : 'Deficit', positive: (financialSummary?.netBalance ?? 0) >= 0 }}
+          label="System Net Position"
+          value={`GHS ${(financialSummary?.systemNetPosition ?? financialSummary?.netBalance) ?? 0}`}
+          subtext="All terms combined (carried forward)"
+          trend={{ value: (financialSummary?.systemNetPosition ?? financialSummary?.netBalance ?? 0) >= 0 ? 'Surplus' : 'Deficit', positive: (financialSummary?.systemNetPosition ?? financialSummary?.netBalance ?? 0) >= 0 }}
           glowColor="blue"
           delay={400}
         />
@@ -711,7 +783,9 @@ const AdvancedReports = () => {
           <div className="flex justify-between items-center mb-8">
             <div>
               <h3 className="text-xl font-bold report-header-font">Fiscal Flow Analysis</h3>
-              <p className="text-sm text-[var(--report-text-secondary)]">Monthly fees + other income vs expenses ({academicYearLabel} date range)</p>
+              <p className="text-sm text-[var(--report-text-secondary)]">
+                Monthly fees + other income vs expenses (this term date range)
+              </p>
             </div>
             <div className="flex space-x-4">
               <div className="flex items-center text-xs">
@@ -821,37 +895,40 @@ const AdvancedReports = () => {
 
           <div className="luxury-card report-profit-card p-6">
             <h3 className="mb-2 text-lg font-bold text-emerald-700 dark:text-emerald-400 report-header-font">Profitability</h3>
-            <p className="mb-6 text-xs text-emerald-800/80 dark:text-emerald-400/70">Period activity for {academicYearLabel}. Net cash position equals all account balances combined (fund transfers excluded from income/expense totals).</p>
+            <p className="mb-6 text-xs text-emerald-800/80 dark:text-emerald-400/70">
+              Term activity below is for {fullViewingTermLabel || 'the selected term'} only.
+              System net combines opening balance with all prior terms.
+            </p>
             
             <div className="space-y-4">
               <div className="flex justify-between items-center border-b border-emerald-500/20 pb-2 dark:border-emerald-500/10">
-                <span className="text-sm text-[var(--report-text-primary)]">Fees collected (term)</span>
+                <span className="text-sm text-[var(--report-text-primary)]">Fees collected (this term)</span>
                 <span className="font-bold text-emerald-600 dark:text-emerald-400">GHS {(financialSummary?.collected ?? 0).toLocaleString()} <ArrowUpRight size={14} className="inline ml-1" /></span>
               </div>
               <div className="flex justify-between items-center border-b border-emerald-500/20 pb-2 dark:border-emerald-500/10">
-                <span className="text-sm text-[var(--report-text-primary)]">Other income ({academicYearLabel})</span>
+                <span className="text-sm text-[var(--report-text-primary)]">Other income (this term)</span>
                 <span className="font-bold text-sky-600 dark:text-sky-400">GHS {(financialSummary?.otherIncome ?? 0).toLocaleString()} <ArrowUpRight size={14} className="inline ml-1" /></span>
               </div>
               <div className="flex justify-between items-center border-b border-emerald-500/20 pb-2 dark:border-emerald-500/10">
-                <span className="text-sm font-medium text-[var(--report-text-primary)]">Total income</span>
+                <span className="text-sm font-medium text-[var(--report-text-primary)]">Total income (this term)</span>
                 <span className="font-bold text-[var(--report-text-primary)]">
-                  GHS {(financialSummary?.totalIncome ?? ((financialSummary?.feesCollectedPeriod ?? financialSummary?.collected ?? 0) + (financialSummary?.otherIncome ?? 0))).toLocaleString()}
+                  GHS {(financialSummary?.totalIncome ?? ((financialSummary?.collected ?? 0) + (financialSummary?.otherIncome ?? 0))).toLocaleString()}
                 </span>
               </div>
               <div className="flex justify-between items-center border-b border-emerald-500/20 pb-2 dark:border-emerald-500/10">
-                <span className="text-sm text-[var(--report-text-primary)]">Expenses ({academicYearLabel})</span>
+                <span className="text-sm text-[var(--report-text-primary)]">Expenses (this term)</span>
                 <span className="font-bold text-red-600 dark:text-red-400">GHS {(financialSummary?.totalExpenses ?? incomeVsExpense.reduce((a, b) => a + Number(b.expense || 0), 0)).toLocaleString()}</span>
               </div>
               <div className="flex justify-between items-center border-b border-emerald-500/20 pb-2 dark:border-emerald-500/10">
-                <span className="text-sm text-[var(--report-text-primary)]">Period activity net</span>
+                <span className="text-sm text-[var(--report-text-primary)]">Term activity net</span>
                 <span className="font-bold text-[var(--report-text-primary)]">
                   GHS {(financialSummary?.periodActivityNet ?? ((financialSummary?.collected ?? 0) + (financialSummary?.otherIncome ?? 0) - (financialSummary?.totalExpenses ?? 0))).toLocaleString()}
                 </span>
               </div>
               <div className="flex justify-between items-center pt-2">
-                <span className="text-base font-bold text-[var(--report-text-primary)]">Net cash position</span>
-                <span className={`text-2xl font-bold ${(financialSummary?.netBalance ?? financialSummary?.systemNetPosition ?? 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-                  GHS {(financialSummary?.netBalance ?? financialSummary?.systemNetPosition ?? 0).toLocaleString()}
+                <span className="text-base font-bold text-[var(--report-text-primary)]">System net (all terms)</span>
+                <span className={`text-2xl font-bold ${(financialSummary?.systemNetPosition ?? financialSummary?.netBalance ?? 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                  GHS {(financialSummary?.systemNetPosition ?? financialSummary?.netBalance ?? 0).toLocaleString()}
                 </span>
               </div>
             </div>

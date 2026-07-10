@@ -138,6 +138,87 @@ function buildTermLabel(term: string, year: string): string {
   return `${t} ${y}`.trim();
 }
 
+/** Resolve any ledger term by id (including closed) — used for read-only snapshot browse. */
+export async function resolveLedgerTermById(
+  run: QueryFn,
+  tenantId: number,
+  termId: number
+): Promise<{ ledgerTermId: number | null; academicYearId: number | null; termLabel: string | null }> {
+  if (termId == null || Number.isNaN(Number(termId))) {
+    return { ledgerTermId: null, academicYearId: null, termLabel: null };
+  }
+  const ledgerRes = await run(
+    `SELECT t.id, t.academic_year_id, t.name, ay.name AS year_name
+     FROM terms t
+     JOIN academic_years ay ON ay.id = t.academic_year_id
+     WHERE t.id = $1 AND t.tenant_id = $2
+     LIMIT 1`,
+    [termId, tenantId]
+  );
+  if (ledgerRes.rows.length === 0) {
+    return { ledgerTermId: null, academicYearId: null, termLabel: null };
+  }
+  const row = ledgerRes.rows[0];
+  return {
+    ledgerTermId: Number(row.id),
+    academicYearId: Number(row.academic_year_id),
+    termLabel: buildTermLabel(String(row.name), String(row.year_name)),
+  };
+}
+
+/**
+ * Find an existing ledger term by year + name, including closed terms.
+ * Does not create terms — for report/snapshot reads only.
+ */
+export async function resolveLedgerTermByLabel(
+  run: QueryFn,
+  tenantId: number,
+  termLabel: string,
+  academicYear: string
+): Promise<{ ledgerTermId: number | null; academicYearId: number | null; termLabel: string | null }> {
+  const year = String(academicYear || '').trim();
+  const label = String(termLabel || '').trim();
+  if (!label) return { ledgerTermId: null, academicYearId: null, termLabel: null };
+
+  const termOnly = label.replace(/\s+\d{4}(\s*\/\s*\d{2,4})?$/, '').trim() || label;
+
+  const ledgerRes = await run(
+    `SELECT t.id, t.academic_year_id, t.name, ay.name AS year_name
+     FROM terms t
+     JOIN academic_years ay ON ay.id = t.academic_year_id
+     WHERE t.tenant_id = $1
+       AND (
+         LOWER(TRIM(t.name)) = LOWER($2)
+         OR LOWER(TRIM(CONCAT(t.name, ' ', ay.name))) = LOWER($3)
+         OR LOWER(TRIM(CONCAT(t.name, ' ', ay.name))) LIKE LOWER($2) || '%'
+       )
+       AND (
+         $4::text = ''
+         OR ay.name = $4
+         OR ay.name ILIKE $4 || '%'
+         OR $4 ILIKE ay.name || '%'
+         OR ay.name ILIKE '%' || $4 || '%'
+       )
+     ORDER BY
+       CASE WHEN COALESCE(t.status, 'active') = 'closed' THEN 1 ELSE 0 END,
+       CASE WHEN t.is_current THEN 0 ELSE 1 END,
+       t.id DESC
+     LIMIT 1`,
+    [tenantId, termOnly, label, year]
+  );
+
+  if (ledgerRes.rows.length === 0) {
+    return { ledgerTermId: null, academicYearId: null, termLabel: null };
+  }
+
+  const row = ledgerRes.rows[0];
+  return {
+    ledgerTermId: Number(row.id),
+    academicYearId: Number(row.academic_year_id),
+    termLabel: buildTermLabel(String(row.name), String(row.year_name)),
+  };
+}
+
 export async function resolveActiveLedgerTerm(
   run: QueryFn,
   tenantId: number,

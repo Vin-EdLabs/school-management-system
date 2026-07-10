@@ -3,7 +3,10 @@ import { query } from '../db/connection.js';
 import { authenticate, requireTenant, AuthRequest, requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
-import { resolveActiveLedgerTerm } from '../services/studentUnifiedBalanceService.js';
+import {
+  resolveActiveLedgerTerm,
+  resolveLedgerTermById,
+} from '../services/studentUnifiedBalanceService.js';
 import { ensureTenantLedgerSynced } from '../services/ledgerBackfillService.js';
 import {
   getBatchStudentBalancesFromLedger,
@@ -27,22 +30,35 @@ function roundMoney(n: number): number {
 }
 
 /**
- * GET /fee-calculations/students/balances?classId=
+ * GET /fee-calculations/students/balances?classId=&termId=
  * Batch ledger balances — single SQL query, student_ledger only.
+ * Optional termId loads a specific (including closed) term snapshot for browse mode.
  */
 router.get('/students/balances', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
-    const { classId } = req.query;
+    const { classId, termId: rawTermId } = req.query;
 
-    // Auto-bill students added outside the app (direct DB) before reading balances.
-    try {
-      await ensureTenantLedgerSynced(tenantId);
-    } catch (syncErr) {
-      console.error('[students/balances] Ledger sync failed (continuing):', syncErr);
+    const requestedTermId =
+      rawTermId != null && String(rawTermId).trim() !== ''
+        ? parseInt(String(rawTermId), 10)
+        : null;
+    const hasExplicitTerm =
+      requestedTermId != null && !Number.isNaN(requestedTermId);
+
+    // Auto-bill only for the live active term — skip when browsing a historical snapshot.
+    if (!hasExplicitTerm) {
+      try {
+        await ensureTenantLedgerSynced(tenantId);
+      } catch (syncErr) {
+        console.error('[students/balances] Ledger sync failed (continuing):', syncErr);
+      }
     }
 
-    const { ledgerTermId, termLabel } = await resolveActiveLedgerTerm(query, tenantId);
+    const resolved = hasExplicitTerm
+      ? await resolveLedgerTermById(query, tenantId, requestedTermId!)
+      : await resolveActiveLedgerTerm(query, tenantId);
+    const { ledgerTermId, termLabel } = resolved;
     if (!ledgerTermId) {
       return res.json({ activeTermLabel: termLabel, balances: {}, summary: {} });
     }
@@ -170,21 +186,34 @@ router.get('/students/balances', async (req: AuthRequest, res) => {
 });
 
 /**
- * GET /fee-calculations/students/outstanding-fees?classId=
+ * GET /fee-calculations/students/outstanding-fees?classId=&termId=
  * Students owing money — calculated from student_ledger only.
+ * Optional termId loads a specific (including closed) term snapshot.
  */
 router.get('/students/outstanding-fees', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
-    const { classId } = req.query;
+    const { classId, termId: rawTermId } = req.query;
 
-    try {
-      await ensureTenantLedgerSynced(tenantId);
-    } catch (syncErr) {
-      console.error('[outstanding-fees] Ledger sync failed (continuing):', syncErr);
+    const requestedTermId =
+      rawTermId != null && String(rawTermId).trim() !== ''
+        ? parseInt(String(rawTermId), 10)
+        : null;
+    const hasExplicitTerm =
+      requestedTermId != null && !Number.isNaN(requestedTermId);
+
+    if (!hasExplicitTerm) {
+      try {
+        await ensureTenantLedgerSynced(tenantId);
+      } catch (syncErr) {
+        console.error('[outstanding-fees] Ledger sync failed (continuing):', syncErr);
+      }
     }
 
-    const { ledgerTermId, termLabel } = await resolveActiveLedgerTerm(query, tenantId);
+    const resolved = hasExplicitTerm
+      ? await resolveLedgerTermById(query, tenantId, requestedTermId!)
+      : await resolveActiveLedgerTerm(query, tenantId);
+    const { ledgerTermId, termLabel } = resolved;
     if (!ledgerTermId) {
       return res.json({
         activeTermLabel: termLabel,

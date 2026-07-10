@@ -27,6 +27,7 @@ export type ClosedTermRecord = {
   endDate: string | null;
   closedAt: string | null;
   isClosed: boolean;
+  ledgerTermId?: number | null;
   snapshot: {
     totalStudents: number;
     totalFeesBilled: number;
@@ -51,7 +52,7 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   academicTermId: string | null;
-  onBrowseReadOnly: (termLabel: string) => void;
+  onBrowseReadOnly: (termLabel: string, ledgerTermId?: number | null) => void;
 };
 
 const money = (n: number) =>
@@ -93,7 +94,7 @@ export function ViewClosedTermModal({ open, onOpenChange, academicTermId, onBrow
 
   const handleBrowse = () => {
     if (!record) return;
-    onBrowseReadOnly(record.termLabel);
+    onBrowseReadOnly(record.termLabel, record.ledgerTermId ?? null);
     onOpenChange(false);
   };
 
@@ -102,11 +103,13 @@ export function ViewClosedTermModal({ open, onOpenChange, academicTermId, onBrow
       <DialogContent className={`${detailDialogContentClass} readonly-view-allow`}>
         <DialogHeader className={detailDialogHeaderClass}>
           <DialogTitle className="flex items-center gap-2">
-            <Lock className="h-5 w-5 text-amber-600" />
-            Closed term — view only
+            <Eye className="h-5 w-5 text-emerald-600" />
+            {record?.isClosed ? 'Closed term — view only' : 'Term details'}
           </DialogTitle>
           <DialogDescription>
-            This term is permanently closed. You can browse records read-only without changing the active term.
+            {record?.isClosed
+              ? 'This term is permanently closed. Browse any page read-only as a snapshot, then click Exit to current term when finished.'
+              : 'Review this term’s dates, finance snapshot, and fee structures.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -121,7 +124,7 @@ export function ViewClosedTermModal({ open, onOpenChange, academicTermId, onBrow
           ) : record ? (
             <>
               <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4 space-y-1 dark:border-amber-900/40 dark:bg-amber-950/20">
-                <p className="font-semibold text-lg">{record.termLabel}</p>
+                <p className="font-semibold text-lg break-words">{record.termLabel}</p>
                 {record.startDate && record.endDate ? (
                   <p className="text-muted-foreground">
                     {formatDisplayDate(record.startDate)} – {formatDisplayDate(record.endDate)}
@@ -206,7 +209,7 @@ export function ViewClosedTermModal({ open, onOpenChange, academicTermId, onBrow
               View from archive
             </Button>
           ) : null}
-          <Button onClick={handleBrowse} disabled={!record || loading}>
+          <Button onClick={handleBrowse} disabled={!record || loading} variant="primaryAction">
             <Eye className="mr-2 h-4 w-4" />
             Browse all pages
           </Button>

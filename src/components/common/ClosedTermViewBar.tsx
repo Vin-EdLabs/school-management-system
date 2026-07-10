@@ -15,17 +15,17 @@ export function ClosedTermViewBar({ setActiveModule }: Props) {
   const currentOpen = ledgerTerms.find((t) => t.isCurrent && t.status === 'active');
 
   return (
-    <div className="readonly-allowed mx-3 mt-2 shrink-0 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-amber-950 shadow-sm dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-100 print:hidden">
+    <div className="readonly-allowed sticky top-0 z-40 mx-3 mt-2 shrink-0 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-amber-950 shadow-md dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-100 print:hidden">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-2 min-w-0">
           <Lock className="mt-0.5 h-4 w-4 shrink-0" />
           <div className="min-w-0 text-sm">
-            <p className="font-semibold truncate">
-              Viewing {viewingTermLabel} <span className="font-normal">(read-only)</span>
+            <p className="font-semibold break-words">
+              Viewing {viewingTermLabel} <span className="font-normal">(read-only snapshot)</span>
             </p>
             <p className="text-xs text-amber-800 dark:text-amber-200">
-              Use the sidebar to open any page. Edits are disabled until you exit.
-              {currentOpen ? ` Active term: ${currentOpen.label}.` : null}
+              Use the sidebar to open Fees, Students, Reports, and more. Edits stay disabled until you exit.
+              {currentOpen ? ` Live term: ${currentOpen.label}.` : null}
             </p>
           </div>
         </div>

@@ -31,7 +31,7 @@ type LedgerTermRow = {
 const defaultTerm = 'Not Set';
 const defaultYear = new Date().getFullYear().toString();
 
-const ActiveTermContext = createContext<ActiveTermContextType>({
+export const ActiveTermContext = createContext<ActiveTermContextType>({
   currentTerm: defaultTerm,
   currentYear: defaultYear,
   activeAcademicTermId: null,

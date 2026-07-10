@@ -187,7 +187,8 @@ export type OutstandingFeeStudent = {
 };
 
 export async function fetchOutstandingFees(
-  classId?: number | string | null
+  classId?: number | string | null,
+  ledgerTermId?: number | null
 ): Promise<{
   activeTermLabel: string | null;
   students: OutstandingFeeStudent[];
@@ -196,6 +197,9 @@ export async function fetchOutstandingFees(
   const params = new URLSearchParams();
   if (classId != null && String(classId).trim() !== '' && classId !== 'All') {
     params.set('classId', String(classId));
+  }
+  if (ledgerTermId != null && !Number.isNaN(Number(ledgerTermId))) {
+    params.set('termId', String(ledgerTermId));
   }
   const qs = params.toString();
   return apiService.get(`/fee-calculations/students/outstanding-fees${qs ? `?${qs}` : ''}`);

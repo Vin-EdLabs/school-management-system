@@ -2,10 +2,19 @@ import { useQuery } from '@tanstack/react-query';
 import { apiService } from '@/services/api';
 import { useSchool } from '@/contexts/SchoolContext';
 import { useActiveTerm } from '@/contexts/ActiveTermContext';
+import { fetchOutstandingFees } from '@/services/studentBalance';
+
+function withTermId(path: string, ledgerTermId: number | null | undefined): string {
+  if (ledgerTermId == null || Number.isNaN(Number(ledgerTermId))) return path;
+  const sep = path.includes('?') ? '&' : '?';
+  return `${path}${sep}termId=${Number(ledgerTermId)}`;
+}
 
 export type FinancialSummaryData = {
   totalExpected: number;
   collected: number;
+  collectedThisTerm?: number;
+  collectedAll?: number;
   feesCollectedPeriod?: number;
   outstanding: number;
   netBalance: number;
@@ -15,7 +24,9 @@ export type FinancialSummaryData = {
   periodIncome?: number;
   totalIncome?: number;
   otherIncome: number;
+  otherIncomeAll?: number;
   totalExpenses: number;
+  totalExpensesAll?: number;
   totalOpeningBalance?: number;
   accountsTotal?: number;
   legacyUnlinkedNet?: number;
@@ -133,32 +144,44 @@ function parseAmount(value: unknown): number {
 }
 
 export function normalizeFinancialSummary(raw: FinancialSummaryData): FinancialSummaryData {
-  const feesCollectedPeriod = parseAmount(raw.feesCollectedPeriod ?? raw.collected);
+  const feesCollectedPeriod = parseAmount(raw.feesCollectedPeriod);
   const otherIncome = parseAmount(raw.otherIncome);
   const totalExpenses = parseAmount(raw.totalExpenses);
   const collected = parseAmount(raw.collected);
-  const periodIncome = parseAmount(raw.periodIncome) || feesCollectedPeriod + otherIncome;
+  const collectedThisTerm = parseAmount(raw.collectedThisTerm ?? collected);
+  const collectedAll = parseAmount(raw.collectedAll ?? collected);
+  const otherIncomeAll = parseAmount(raw.otherIncomeAll ?? otherIncome);
+  const totalExpensesAll = parseAmount(raw.totalExpensesAll ?? totalExpenses);
+  const periodIncome = parseAmount(raw.periodIncome) || collected + otherIncome;
   const totalIncome = parseAmount(raw.totalIncome) || collected + otherIncome;
   const totalOpeningBalance = parseAmount(raw.totalOpeningBalance);
-  const netBalance =
-    raw.netBalance != null || raw.systemNetPosition != null
-      ? parseAmount(raw.netBalance ?? raw.systemNetPosition)
-      : totalOpeningBalance + totalIncome - totalExpenses;
+  const periodActivityNet =
+    raw.periodActivityNet != null
+      ? parseAmount(raw.periodActivityNet)
+      : totalIncome - totalExpenses;
+  const systemNetPosition =
+    raw.systemNetPosition != null || raw.netBalance != null
+      ? parseAmount(raw.systemNetPosition ?? raw.netBalance)
+      : totalOpeningBalance + collectedAll + otherIncomeAll - totalExpensesAll;
 
   return {
     ...raw,
     totalExpected: parseAmount(raw.totalExpected),
     collected,
+    collectedThisTerm,
+    collectedAll,
     feesCollectedPeriod,
     outstanding: parseAmount(raw.outstanding),
-    netBalance,
-    systemNetPosition: parseAmount(raw.systemNetPosition) || netBalance,
+    netBalance: systemNetPosition,
+    systemNetPosition,
     cashOnHand: parseAmount(raw.cashOnHand),
-    periodActivityNet: parseAmount(raw.periodActivityNet) || netBalance,
+    periodActivityNet,
     periodIncome,
     totalIncome,
     otherIncome,
+    otherIncomeAll,
     totalExpenses,
+    totalExpensesAll,
     totalOpeningBalance,
     accountsTotal: parseAmount(raw.accountsTotal),
     legacyUnlinkedNet: parseAmount(raw.legacyUnlinkedNet),
@@ -194,7 +217,9 @@ export function useFinancialSummary(active = true) {
   return useQuery({
     queryKey: ['reports', 'financial-summary', schoolId, activeLedgerTermId],
     queryFn: async () => {
-      const data = await apiService.get<FinancialSummaryData>('/reports/financial-summary');
+      const data = await apiService.get<FinancialSummaryData>(
+        withTermId('/reports/financial-summary', activeLedgerTermId)
+      );
       return normalizeFinancialSummary(data);
     },
     enabled: enabledForTenant(schoolId, active),
@@ -208,7 +233,8 @@ export function useAdminOverview(active = true) {
   const { activeLedgerTermId } = useActiveTerm();
   return useQuery({
     queryKey: ['reports', 'admin-overview', schoolId, activeLedgerTermId],
-    queryFn: () => apiService.get<AdminOverviewData>('/reports/admin-overview'),
+    queryFn: () =>
+      apiService.get<AdminOverviewData>(withTermId('/reports/admin-overview', activeLedgerTermId)),
     enabled: enabledForTenant(schoolId, active),
     staleTime: 15_000,
     refetchOnMount: 'always',
@@ -248,10 +274,13 @@ export function useIncomeVsExpenditure(
 
 export function useFeesByClass(active = true) {
   const { schoolId } = useSchool();
+  const { activeLedgerTermId } = useActiveTerm();
   return useQuery({
-    queryKey: ['reports', 'fees-by-class', schoolId],
+    queryKey: ['reports', 'fees-by-class', schoolId, activeLedgerTermId],
     queryFn: async () => {
-      const rows = await apiService.get<FeesByClassRow[]>('/reports/fees-by-class');
+      const rows = await apiService.get<FeesByClassRow[]>(
+        withTermId('/reports/fees-by-class', activeLedgerTermId)
+      );
       return (rows || []).map((row) => ({
         ...row,
         students: parseAmount(row.students),
@@ -308,14 +337,16 @@ export function useStudentFeeRoster(
   active = true
 ) {
   const { schoolId } = useSchool();
+  const { activeLedgerTermId } = useActiveTerm();
   const className = params.className ?? '';
   const search = params.search ?? '';
   return useQuery({
-    queryKey: ['reports', 'student-fee-roster', schoolId, className, search],
+    queryKey: ['reports', 'student-fee-roster', schoolId, className, search, activeLedgerTermId],
     queryFn: () => {
       const q = new URLSearchParams();
       if (className && className !== 'all-classes') q.set('className', className);
       if (search.trim()) q.set('search', search.trim());
+      if (activeLedgerTermId != null) q.set('termId', String(activeLedgerTermId));
       const suffix = q.toString() ? `?${q.toString()}` : '';
       return apiService.get<StudentFeeRosterRow[]>(`/reports/student-fee-roster${suffix}`);
     },
@@ -326,12 +357,34 @@ export function useStudentFeeRoster(
 
 export function useOutstandingFeesReport(active = true) {
   const { schoolId } = useSchool();
+  const { activeLedgerTermId } = useActiveTerm();
   return useQuery({
-    queryKey: ['reports', 'outstanding-fees', schoolId],
+    queryKey: ['reports', 'outstanding-fees', schoolId, activeLedgerTermId],
     queryFn: () =>
       apiService.get<Array<{ id: number; name: string; class: string; amount: number; days: number }>>(
-        '/reports/outstanding-fees'
+        withTermId('/reports/outstanding-fees', activeLedgerTermId)
       ),
+    enabled: enabledForTenant(schoolId, active),
+    staleTime: 15_000,
+    refetchOnMount: 'always',
+  });
+}
+
+/** Same total as Fees → Outstanding Fees (student_ledger owing). */
+export function useOutstandingFeesSummary(active = true) {
+  const { schoolId } = useSchool();
+  const { activeLedgerTermId } = useActiveTerm();
+  return useQuery({
+    queryKey: ['fee-calculations', 'outstanding-fees-summary', schoolId, activeLedgerTermId],
+    queryFn: async () => {
+      const res = await fetchOutstandingFees(null, activeLedgerTermId);
+      return {
+        totalOutstanding: Number(res.summary?.totalOutstanding ?? 0) || 0,
+        studentsOwing: Number(res.summary?.studentsOwing ?? 0) || 0,
+        totalArrears: Number(res.summary?.totalArrears ?? 0) || 0,
+        activeTermLabel: res.activeTermLabel ?? null,
+      };
+    },
     enabled: enabledForTenant(schoolId, active),
     staleTime: 15_000,
     refetchOnMount: 'always',

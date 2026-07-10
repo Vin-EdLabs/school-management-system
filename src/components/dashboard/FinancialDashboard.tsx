@@ -3,11 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  getActiveAcademicTerm,
-  getActiveAcademicYear,
-  getDashboardCalendarYearForMonthlyChart,
-} from '../../utils/feeCalculations';
+import { getDashboardCalendarYearForMonthlyChart } from '../../utils/feeCalculations';
 import { formatDisplayDate } from '../../utils/dateFormat';
 import FinancialSummary from './FinancialSummary';
 import OutstandingFees from '../fees/OutstandingFees';
@@ -18,8 +14,9 @@ import {
   useFinancialSummary,
   useIncomeVsExpenditure,
   useRecentFinanceActivity,
+  useOutstandingFeesSummary,
 } from '../../hooks/useReportQueries';
-import { useData } from '../../contexts/DataContext';
+import { useActiveTerm } from '../../contexts/ActiveTermContext';
 import { useFinanceRealtime } from '../../hooks/useFinanceRealtime';
 import { fetchUnreadBudgetAlerts } from '../../services/termBudgetApi';
 import { cn } from '@/lib/utils';
@@ -334,7 +331,7 @@ function ChartSkeleton() {
 
 const FinancialDashboard = () => {
   const { data: overview } = useAdminOverview();
-  const { ledgerBalanceSummary } = useData();
+  const { data: outstandingSummary } = useOutstandingFeesSummary();
   const {
     data: financial,
     isLoading: financialLoading,
@@ -342,8 +339,7 @@ const FinancialDashboard = () => {
     isError: financialError,
     refetch: refetchFinancial,
   } = useFinancialSummary();
-  const currentTerm = getActiveAcademicTerm();
-  const currentYear = getActiveAcademicYear();
+  const { currentTerm, currentYear } = useActiveTerm();
   const monthlyChartCalendarYear = getDashboardCalendarYearForMonthlyChart(currentYear);
   const chartStartDate = `${monthlyChartCalendarYear}-01-01`;
   const chartEndDate = `${monthlyChartCalendarYear}-12-31`;
@@ -406,15 +402,18 @@ const FinancialDashboard = () => {
   });
 
   const metrics = useMemo(() => {
-    const feesCollected = financial?.collected ?? 0;
-    const otherIncome = financial?.otherIncome ?? 0;
+    // Dashboard keeps school-wide carried totals; term activity lives in finance reports.
+    const feesCollected = financial?.collectedAll ?? financial?.collected ?? 0;
+    const otherIncome = financial?.otherIncomeAll ?? financial?.otherIncome ?? 0;
     const openingBalance = financial?.totalOpeningBalance ?? 0;
     const totalCombinedIncome = feesCollected + otherIncome;
-    const totalExpenses = financial?.totalExpenses ?? 0;
+    const totalExpenses = financial?.totalExpensesAll ?? financial?.totalExpenses ?? 0;
     const balanceLeft =
-      financial?.netBalance ?? openingBalance + totalCombinedIncome - totalExpenses;
+      financial?.systemNetPosition ??
+      financial?.netBalance ??
+      openingBalance + totalCombinedIncome - totalExpenses;
     const outstandingBalances =
-      financial?.outstanding ?? ledgerBalanceSummary?.totalOutstanding ?? 0;
+      outstandingSummary?.totalOutstanding ?? financial?.outstanding ?? 0;
 
     return {
       feesCollected,
@@ -425,7 +424,7 @@ const FinancialDashboard = () => {
       balanceLeft,
       outstandingBalances,
     };
-  }, [financial, ledgerBalanceSummary]);
+  }, [financial, outstandingSummary]);
 
   const monthlyFinance = useMemo(() => {
     let runningBalance = metrics.openingBalance;
@@ -522,7 +521,7 @@ const FinancialDashboard = () => {
       key: 'fees',
       label: 'Fees collected',
       value: metrics.feesCollected,
-      sub: 'Current term',
+      sub: 'All terms (transactions)',
       icon: CreditCard,
       accent: 'emerald',
     },
@@ -530,7 +529,7 @@ const FinancialDashboard = () => {
       key: 'other',
       label: 'Other income',
       value: metrics.otherIncome,
-      sub: `Year ${currentYear}`,
+      sub: 'All recorded income',
       icon: TrendingUp,
       accent: 'sky',
     },
@@ -538,7 +537,7 @@ const FinancialDashboard = () => {
       key: 'total',
       label: 'Total income',
       value: metrics.totalCombinedIncome,
-      sub: 'Fees + other',
+      sub: 'Fees + other (carried forward)',
       icon: TrendingUp,
       accent: 'violet',
     },
@@ -554,7 +553,7 @@ const FinancialDashboard = () => {
       key: 'exp',
       label: 'Total expenses',
       value: metrics.totalExpenses,
-      sub: `Year ${currentYear}`,
+      sub: 'All recorded expenses',
       icon: TrendingDown,
       accent: 'orange',
     },
@@ -562,7 +561,7 @@ const FinancialDashboard = () => {
       key: 'net',
       label: 'Net balance',
       value: metrics.balanceLeft,
-      sub: 'Opening + income − expenses',
+      sub: 'Opening + all income − expenses',
       icon: Calculator,
       accent: metrics.balanceLeft >= 0 ? 'indigo' : 'amber',
     },
@@ -570,7 +569,7 @@ const FinancialDashboard = () => {
       key: 'out',
       label: 'Outstanding',
       value: metrics.outstandingBalances,
-      sub: 'Pending fees',
+      sub: 'From Outstanding Fees',
       icon: AlertCircle,
       accent: 'rose',
     },
@@ -854,7 +853,7 @@ const FinancialDashboard = () => {
                   <BarChart3 className="h-5 w-5 text-emerald-500" />
                   Fees by class
                 </CardTitle>
-                <CardDescription>Collected in {currentTerm}</CardDescription>
+                <CardDescription>This term ({currentTerm}) — class breakdown</CardDescription>
               </CardHeader>
               <CardContent className="px-6 py-6">
                 {feesByClassLoading ? (

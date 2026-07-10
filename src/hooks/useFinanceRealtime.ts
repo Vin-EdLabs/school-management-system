@@ -27,6 +27,7 @@ export function invalidateFinanceQueries(
 ) {
   if (schoolId == null) return;
   queryClient.invalidateQueries({ queryKey: ['reports'] });
+  queryClient.invalidateQueries({ queryKey: ['fee-calculations'] });
   queryClient.invalidateQueries({ queryKey: paymentAccountKeys.all(schoolId) });
   queryClient.invalidateQueries({ queryKey: paymentAccountKeys.balances(schoolId) });
 }

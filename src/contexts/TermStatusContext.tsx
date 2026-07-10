@@ -1,7 +1,12 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { apiService } from '../services/api';
 import { useAuth } from './AuthContext';
-import { useActiveTerm } from './ActiveTermContext';
+import { ActiveTermContext, useActiveTerm } from './ActiveTermContext';
+import {
+  getClosedTermBrowse,
+  setClosedTermBrowse,
+} from '../utils/closedTermBrowse';
+import { setActiveTermCache } from '../utils/feeCalculations';
 
 export type LedgerTermStatus = {
   id: number;
@@ -12,6 +17,8 @@ export type LedgerTermStatus = {
   label: string;
   closedAt?: string | null;
 };
+
+type BrowseMode = 'closed-term' | 'reports' | null;
 
 function normalizeTermLabel(label: string): string {
   return String(label || '').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -41,9 +48,16 @@ type TermStatusContextType = {
   /** When set, app operates in this term's context (e.g. reports tab). Null = active term. */
   viewingTermLabel: string | null;
   setViewingTermLabel: (label: string | null) => void;
+  /** Enter read-only browse of a closed/old term across all pages. */
+  enterClosedTermBrowse: (label: string, ledgerTermId?: number | null) => void;
+  /** Exit browse mode and return to the live active term. */
+  exitClosedTermBrowse: () => void;
+  isBrowsingClosedTerm: boolean;
+  viewingLedgerTermId: number | null;
   effectiveViewingLabel: string;
   readOnly: boolean;
   readOnlyReason: string | null;
+  browseMode: BrowseMode;
 };
 
 const TermStatusContext = createContext<TermStatusContextType>({
@@ -56,17 +70,32 @@ const TermStatusContext = createContext<TermStatusContextType>({
   closedTermLabels: [],
   viewingTermLabel: null,
   setViewingTermLabel: () => {},
+  enterClosedTermBrowse: () => {},
+  exitClosedTermBrowse: () => {},
+  isBrowsingClosedTerm: false,
+  viewingLedgerTermId: null,
   effectiveViewingLabel: '',
   readOnly: false,
   readOnlyReason: null,
+  browseMode: null,
 });
 
 export const TermStatusProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuth();
-  const { currentTerm } = useActiveTerm();
+  const liveActiveTerm = useActiveTerm();
+  const { currentTerm } = liveActiveTerm;
   const [ledgerTerms, setLedgerTerms] = useState<LedgerTermStatus[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [viewingTermLabel, setViewingTermLabel] = useState<string | null>(null);
+  const initialBrowse = getClosedTermBrowse();
+  const [viewingTermLabel, setViewingTermLabelState] = useState<string | null>(
+    () => initialBrowse?.label ?? null
+  );
+  const [browseMode, setBrowseMode] = useState<BrowseMode>(() =>
+    initialBrowse?.label ? 'closed-term' : null
+  );
+  const [viewingLedgerTermIdOverride, setViewingLedgerTermIdOverride] = useState<number | null>(
+    () => initialBrowse?.ledgerTermId ?? null
+  );
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
@@ -98,10 +127,52 @@ export const TermStatusProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (isAuthenticated) void refresh();
   }, [isAuthenticated, refresh, currentTerm]);
 
-  // Reset viewing context when active term changes (e.g. after close + switch)
+  // Reset report viewing when active term changes; keep intentional closed-term browse
   useEffect(() => {
-    setViewingTermLabel(null);
-  }, [currentTerm]);
+    if (browseMode === 'reports') {
+      setViewingTermLabelState(null);
+      setBrowseMode(null);
+      setViewingLedgerTermIdOverride(null);
+    }
+  }, [currentTerm]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const setViewingTermLabel = useCallback((label: string | null) => {
+    setBrowseMode((prev) => {
+      // Never let reports tab overwrite / clear an intentional closed-term browse
+      if (prev === 'closed-term') return prev;
+      if (label) {
+        setViewingTermLabelState(label);
+        return 'reports';
+      }
+      setViewingTermLabelState(null);
+      setViewingLedgerTermIdOverride(null);
+      return null;
+    });
+  }, []);
+
+  const enterClosedTermBrowse = useCallback(
+    (label: string, ledgerTermId?: number | null) => {
+      const clean = String(label || '').trim();
+      if (!clean) return;
+      let id =
+        ledgerTermId != null && !Number.isNaN(Number(ledgerTermId)) ? Number(ledgerTermId) : null;
+      if (id == null) {
+        id = findLedgerByLabel(clean, ledgerTerms)?.id ?? null;
+      }
+      setViewingTermLabelState(clean);
+      setBrowseMode('closed-term');
+      setViewingLedgerTermIdOverride(id);
+      setClosedTermBrowse({ label: clean, ledgerTermId: id });
+    },
+    [ledgerTerms]
+  );
+
+  const exitClosedTermBrowse = useCallback(() => {
+    setViewingTermLabelState(null);
+    setBrowseMode(null);
+    setViewingLedgerTermIdOverride(null);
+    setClosedTermBrowse(null);
+  }, []);
 
   const isTermClosed = useCallback(
     (termId: number | null | undefined) => {
@@ -135,14 +206,36 @@ export const TermStatusProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     [ledgerTerms]
   );
 
+  const isBrowsingClosedTerm = browseMode === 'closed-term' && !!viewingTermLabel;
   const effectiveViewingLabel = viewingTermLabel ?? currentTerm ?? '';
+
+  // After ledger terms load, fill in missing browse ledgerTermId from the label.
+  useEffect(() => {
+    if (!isBrowsingClosedTerm || !viewingTermLabel || viewingLedgerTermIdOverride != null) return;
+    if (ledgerTerms.length === 0) return;
+    const found = findLedgerByLabel(viewingTermLabel, ledgerTerms);
+    if (found?.id != null) {
+      setViewingLedgerTermIdOverride(found.id);
+      setClosedTermBrowse({ label: viewingTermLabel, ledgerTermId: found.id });
+    }
+  }, [isBrowsingClosedTerm, viewingTermLabel, viewingLedgerTermIdOverride, ledgerTerms]);
 
   const viewingLedger = useMemo(
     () => findLedgerByLabel(effectiveViewingLabel, ledgerTerms),
     [effectiveViewingLabel, ledgerTerms]
   );
 
+  const viewingLedgerTermId =
+    viewingLedgerTermIdOverride ??
+    (isBrowsingClosedTerm || browseMode === 'reports' ? viewingLedger?.id ?? null : null);
+
   const { readOnly, readOnlyReason } = useMemo(() => {
+    if (isBrowsingClosedTerm) {
+      return {
+        readOnly: true,
+        readOnlyReason: `You are browsing ${viewingTermLabel} (read-only snapshot). Exit to return to the current term.`,
+      };
+    }
     if (!isCurrentTermWritable) {
       if (currentLedger?.status === 'closing') {
         return { readOnly: true, readOnlyReason: 'A term close is in progress. Please wait.' };
@@ -155,33 +248,109 @@ export const TermStatusProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (viewingLedger?.status === 'closed') {
       return {
         readOnly: true,
-        readOnlyReason: `${viewingLedger.label} is closed — the system is read-only for this term. Switch to the current term to make changes.`,
+        readOnlyReason: `${viewingLedger.label} is closed — the system is read-only for this term. Exit to the current term to make changes.`,
       };
     }
     if (viewingLedger?.status === 'closing') {
       return { readOnly: true, readOnlyReason: `${viewingLedger.label} is being closed. Please wait.` };
     }
     return { readOnly: false, readOnlyReason: null };
-  }, [isCurrentTermWritable, currentLedger, viewingLedger]);
+  }, [
+    isBrowsingClosedTerm,
+    viewingTermLabel,
+    isCurrentTermWritable,
+    currentLedger,
+    viewingLedger,
+  ]);
+
+  const browseActiveTermValue = useMemo(() => {
+    if (!isBrowsingClosedTerm || !viewingTermLabel) return liveActiveTerm;
+    const ledger =
+      (viewingLedgerTermId != null
+        ? ledgerTerms.find((t) => t.id === viewingLedgerTermId)
+        : null) ?? viewingLedger;
+    const year =
+      ledger?.academicYearName ||
+      viewingTermLabel.match(/\b(20\d{2}(?:\/\d{2,4})?)\b/)?.[1] ||
+      liveActiveTerm.currentYear;
+    return {
+      ...liveActiveTerm,
+      currentTerm: viewingTermLabel,
+      currentYear: year,
+      activeLedgerTermId: viewingLedgerTermId ?? ledger?.id ?? null,
+      // Keep live academic term id so Settings still knows the real active term.
+      hasActiveTerm: true,
+    };
+  }, [
+    isBrowsingClosedTerm,
+    viewingTermLabel,
+    viewingLedgerTermId,
+    viewingLedger,
+    ledgerTerms,
+    liveActiveTerm,
+  ]);
+
+  // Keep legacy getActiveAcademicTerm() cache in sync for finance dashboards/reports.
+  useEffect(() => {
+    if (isBrowsingClosedTerm && browseActiveTermValue.currentTerm) {
+      setActiveTermCache(browseActiveTermValue.currentTerm, browseActiveTermValue.currentYear);
+    } else if (liveActiveTerm.currentTerm) {
+      setActiveTermCache(liveActiveTerm.currentTerm, liveActiveTerm.currentYear);
+    }
+  }, [
+    isBrowsingClosedTerm,
+    browseActiveTermValue.currentTerm,
+    browseActiveTermValue.currentYear,
+    liveActiveTerm.currentTerm,
+    liveActiveTerm.currentYear,
+  ]);
+
+  const statusValue = useMemo(
+    () => ({
+      ledgerTerms,
+      isLoading,
+      refresh,
+      isTermClosed,
+      isTermClosedByLabel,
+      isCurrentTermWritable,
+      closedTermLabels,
+      viewingTermLabel,
+      setViewingTermLabel,
+      enterClosedTermBrowse,
+      exitClosedTermBrowse,
+      isBrowsingClosedTerm,
+      viewingLedgerTermId,
+      effectiveViewingLabel,
+      readOnly,
+      readOnlyReason,
+      browseMode,
+    }),
+    [
+      ledgerTerms,
+      isLoading,
+      refresh,
+      isTermClosed,
+      isTermClosedByLabel,
+      isCurrentTermWritable,
+      closedTermLabels,
+      viewingTermLabel,
+      setViewingTermLabel,
+      enterClosedTermBrowse,
+      exitClosedTermBrowse,
+      isBrowsingClosedTerm,
+      viewingLedgerTermId,
+      effectiveViewingLabel,
+      readOnly,
+      readOnlyReason,
+      browseMode,
+    ]
+  );
 
   return (
-    <TermStatusContext.Provider
-      value={{
-        ledgerTerms,
-        isLoading,
-        refresh,
-        isTermClosed,
-        isTermClosedByLabel,
-        isCurrentTermWritable,
-        closedTermLabels,
-        viewingTermLabel,
-        setViewingTermLabel,
-        effectiveViewingLabel,
-        readOnly,
-        readOnlyReason,
-      }}
-    >
-      {children}
+    <TermStatusContext.Provider value={statusValue}>
+      <ActiveTermContext.Provider value={browseActiveTermValue}>
+        {children}
+      </ActiveTermContext.Provider>
     </TermStatusContext.Provider>
   );
 };
@@ -203,5 +372,29 @@ export function useTermReadOnly(): {
     reason: readOnlyReason,
     currentTermLabel: viewingLedger?.label ?? (effectiveViewingLabel || null),
     viewingTermLabel,
+  };
+}
+
+/** Active term, or the closed term being browsed (for data filters). */
+export function useEffectiveLedgerTerm(): {
+  termLabel: string;
+  ledgerTermId: number | null;
+  isBrowsingClosedTerm: boolean;
+} {
+  const { currentTerm, activeLedgerTermId } = useActiveTerm();
+  const { isBrowsingClosedTerm, viewingTermLabel, viewingLedgerTermId, effectiveViewingLabel } =
+    useTermStatus();
+
+  if (isBrowsingClosedTerm) {
+    return {
+      termLabel: viewingTermLabel || effectiveViewingLabel || currentTerm,
+      ledgerTermId: viewingLedgerTermId,
+      isBrowsingClosedTerm: true,
+    };
+  }
+  return {
+    termLabel: currentTerm,
+    ledgerTermId: activeLedgerTermId,
+    isBrowsingClosedTerm: false,
   };
 }

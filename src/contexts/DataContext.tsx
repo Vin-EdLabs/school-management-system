@@ -16,6 +16,10 @@ import {
 } from '@/hooks/useStudentCache';
 import { getActiveAcademicTerm, getActiveAcademicYear } from '@/utils/feeCalculations';
 import type { StudentBalance } from '@/services/studentBalance';
+import {
+  getClosedTermBrowse,
+  subscribeClosedTermBrowse,
+} from '@/utils/closedTermBrowse';
 
 export interface Student {
   id: string;
@@ -499,9 +503,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         break;
       }
       case 'fees': {
+        const browse = getClosedTermBrowse();
+        const browseTermId = browse?.ledgerTermId;
+        const termQs =
+          browseTermId != null && !Number.isNaN(Number(browseTermId))
+            ? `termId=${Number(browseTermId)}`
+            : '';
+        const feesUrl = termQs ? `/fees?${termQs}` : '/fees';
+        const balancesUrl = termQs
+          ? `/fee-calculations/students/balances?${termQs}`
+          : '/fee-calculations/students/balances';
         const [feesRes, balancesRes] = await Promise.all([
-          apiService.get('/fees').catch(() => []),
-          apiService.get('/fee-calculations/students/balances').catch(() => ({ balances: {} })),
+          apiService.get(feesUrl).catch(() => []),
+          apiService.get(balancesUrl).catch(() => ({ balances: {} })),
         ]);
         setFeeStructures((Array.isArray(feesRes) ? feesRes : []).map((f: any) => ({
           id: f.id.toString(),
@@ -655,6 +669,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     },
     [loadDomains]
   );
+
+  // When entering/exiting closed-term browse, reload fee structures + balances for that term.
+  useEffect(() => {
+    if (!isAuthenticated || schoolId == null) return;
+    return subscribeClosedTermBrowse(() => {
+      if (!loadedDomainsRef.current.has('fees') && !loadedDomainsRef.current.has('payments')) {
+        return;
+      }
+      const domains: DataDomain[] = [];
+      if (loadedDomainsRef.current.has('fees')) domains.push('fees');
+      if (loadedDomainsRef.current.has('payments')) domains.push('payments');
+      void loadDomains(domains, { silent: true, force: true });
+    });
+  }, [isAuthenticated, schoolId, loadDomains]);
 
   useEffect(() => {
     if (!socket || !isAuthenticated) return;

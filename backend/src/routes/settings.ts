@@ -8,8 +8,9 @@ import bcrypt from 'bcryptjs';
 import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js';
 import { requireRole, requirePrimaryAdminOrSuperAdmin } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
-import { resolveLedgerTermFromSettings, postFeesForNewTerm, postFeesForNewTermWithArrears } from '../services/ledgerFinanceService.js';
+import { resolveLedgerTermFromSettings } from '../services/ledgerFinanceService.js';
 import { isLedgerTermClosed } from '../services/termCloseService.js';
+import { getAcademicTermsWithLedgerStatus } from '../services/academicTermLedgerSyncService.js';
 import { getIO } from '../socket.js';
 import {
   sendPushToTenantParents,
@@ -75,7 +76,11 @@ router.use(setTenantContext);
 router.get('/', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
-    
+    const { repairActiveAcademicTermLedgerLink } = await import(
+      '../services/academicTermLedgerSyncService.js'
+    );
+    await repairActiveAcademicTermLedgerLink(tenantId);
+
     const result = await query(
       'SELECT * FROM school_settings WHERE tenant_id = $1',
       [tenantId]
@@ -191,18 +196,6 @@ router.put('/', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, res) =
         ]
       );
       const saved = insertResult.rows[0];
-      const year = saved?.current_year ?? current_year;
-      const term = saved?.current_term ?? current_term;
-      if (year && term) {
-        try {
-          const ledgerTerm = await resolveLedgerTermFromSettings(tenantId, year, term);
-          if (ledgerTerm) {
-            await postFeesForNewTerm(tenantId, ledgerTerm.termId);
-          }
-        } catch (err) {
-          console.error('[Settings] Auto-post new term fees failed:', err);
-        }
-      }
       emitTenantDataChanged(tenantId, 'settings', 'updated');
       return res.json(saved);
     }
@@ -231,46 +224,22 @@ router.put('/', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, res) =
     const currentTermId = req.body.current_term_id ? parseInt(String(req.body.current_term_id), 10) : null;
     const newTermId = req.body.new_term_id ? parseInt(String(req.body.new_term_id), 10) : null;
 
-    // If skipAutoPost is true, do NOT trigger any automatic fee/arrears posting here.
-    // This allows frontend flows to call /finance/switch-term directly and have
-    // all arrears/fees logic handled in one place.
-    if (!skipAutoPost) {
-      // If term IDs are provided directly, use them (ID-based switching)
-      if (isTermChange && currentTermId && newTermId && currentTermId !== newTermId) {
-        try {
-          const postResult = await postFeesForNewTermWithArrears(tenantId, currentTermId, newTermId);
-          console.log('[Settings] Auto-posted new term fees and arrears using term IDs:', postResult);
-        } catch (err) {
-          console.error('[Settings] Auto-post using term IDs failed (settings saved):', err);
-        }
-      } else if (newYear && newTerm) {
-        // Fallback: resolve from names (for backward compatibility)
-        try {
-          const newLedgerTerm = await resolveLedgerTermFromSettings(tenantId, newYear, newTerm);
-          if (newLedgerTerm) {
-            const actuallyChanged = isTermChange && (previousYear !== newYear || previousTerm !== newTerm);
-            if (actuallyChanged && previousYear && previousTerm) {
-              const previousLedgerTerm = await resolveLedgerTermFromSettings(tenantId, previousYear, previousTerm);
-              if (previousLedgerTerm && previousLedgerTerm.termId !== newLedgerTerm.termId) {
-                const postResult = await postFeesForNewTermWithArrears(
-                  tenantId,
-                  previousLedgerTerm.termId,
-                  newLedgerTerm.termId
-                );
-                console.log('[Settings] Auto-posted new term fees and arrears on term switch:', postResult);
-              } else {
-                await postFeesForNewTerm(tenantId, newLedgerTerm.termId);
-                console.log('[Settings] Auto-posted new term fees on term switch.');
-              }
-            } else {
-              const postResult = await postFeesForNewTerm(tenantId, newLedgerTerm.termId);
-              console.log('[Settings] Auto-posted new term fees on term switch:', postResult);
-            }
-          }
-        } catch (err) {
-          console.error('[Settings] Auto-post new term fees failed (settings saved):', err);
-        }
+    // Always ensure a ledger term exists when term/year are set (even when skip_auto_post).
+    let resolvedNewLedger: { termId: number; academicYearId: number } | null = null;
+    if (newYear && newTerm) {
+      try {
+        resolvedNewLedger = await resolveLedgerTermFromSettings(tenantId, String(newYear), String(newTerm));
+      } catch (err) {
+        console.error('[Settings] Failed to resolve ledger term on settings update:', err);
       }
+    }
+
+    // Term fee billing is always manual per term (Set Fees / Bill Student).
+    // skipAutoPost remains for legacy callers but no longer triggers bulk billing.
+    if (!skipAutoPost && isTermChange && resolvedNewLedger) {
+      console.log(
+        '[Settings] Term changed — fee billing skipped (assign fee structures in Fees module).'
+      );
     }
 
     // Auto-refresh arrears in background whenever settings change (especially term changes)
@@ -340,17 +309,8 @@ router.get('/academic-terms', async (req: AuthRequest, res) => {
     const includeArchived =
       req.query.include_archived === 'true' || req.query.include_archived === '1';
 
-    const result = await query(
-      includeArchived
-        ? `SELECT * FROM academic_terms WHERE tenant_id = $1 ORDER BY year DESC, start_date DESC`
-        : `SELECT * FROM academic_terms
-           WHERE tenant_id = $1
-             AND (COALESCE(is_archived, false) = false OR is_active = true)
-           ORDER BY year DESC, start_date DESC`,
-      [tenantId]
-    );
-
-    res.json(result.rows);
+    const rows = await getAcademicTermsWithLedgerStatus(tenantId, includeArchived);
+    res.json(rows);
   } catch (error) {
     console.error('Get academic terms error:', error);
     res.status(500).json({ error: 'Failed to fetch academic terms' });
@@ -366,6 +326,21 @@ router.post('/academic-terms', requirePrimaryAdminOrSuperAdmin, async (req: Auth
     if (!term_name || !year) {
       return res.status(400).json({ error: 'Term name and year are required' });
     }
+
+    if (start_date && end_date) {
+      const { findOverlappingTerm } = await import('../services/termIdentityService.js');
+      // Overlap check uses ledger terms by date range (identity), not display name
+      const overlap = await findOverlappingTerm(
+        tenantId,
+        String(start_date).slice(0, 10),
+        String(end_date).slice(0, 10)
+      );
+      if (overlap) {
+        return res.status(409).json({
+          error: `Date range conflicts with an existing term (${overlap.name}, ${overlap.start_date}–${overlap.end_date}). Close or adjust that term first.`,
+        });
+      }
+    }
     
     // If setting as active, deactivate others
     if (is_active) {
@@ -380,24 +355,53 @@ router.post('/academic-terms', requirePrimaryAdminOrSuperAdmin, async (req: Auth
       [tenantId, term_name, year, start_date || null, end_date || null, is_active || false]
     );
     
-    // MANDATORY: Always create corresponding ledger term when academic term is created
-    // This ensures ledger terms exist BEFORE switching, preventing errors
+    // MANDATORY: dedicated open ledger for this academic term (never reuse a closed ledger id)
+    let created = result.rows[0];
     try {
-      const ledgerTerm = await resolveLedgerTermFromSettings(tenantId, year, term_name);
+      const fullLabel =
+        String(year).trim() && !String(term_name).includes(String(year))
+          ? `${String(term_name).trim()} ${String(year).trim()}`.trim()
+          : String(term_name).trim();
+      const ledgerTerm = await resolveLedgerTermFromSettings(tenantId, year, fullLabel);
       if (!ledgerTerm) {
-        throw new Error(`CRITICAL: Failed to create ledger term for ${term_name} ${year}. Term switching will fail without this.`);
+        throw new Error(
+          `CRITICAL: Failed to create ledger term for ${term_name} ${year}. Term switching will fail without this.`
+        );
       }
-      
-      // If setting as active, update ledger term flags
-      if (is_active && ledgerTerm) {
+
+      const { syncLedgerTermDates } = await import('../services/termIdentityService.js');
+      await syncLedgerTermDates(
+        tenantId,
+        ledgerTerm.termId,
+        start_date ? String(start_date).slice(0, 10) : null,
+        end_date ? String(end_date).slice(0, 10) : null
+      );
+
+      const linked = await query(
+        `UPDATE academic_terms
+         SET ledger_term_id = $1, closed_at = NULL, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2 AND tenant_id = $3
+         RETURNING *`,
+        [ledgerTerm.termId, created.id, tenantId]
+      );
+      created = linked.rows[0] || created;
+
+      if (is_active) {
         await query('UPDATE terms SET is_current = false WHERE tenant_id = $1', [tenantId]);
-        await query('UPDATE terms SET is_current = true WHERE id = $1', [ledgerTerm.termId]);
+        await query(
+          `UPDATE terms
+           SET is_current = true, status = 'active', closed_at = NULL
+           WHERE id = $1 AND tenant_id = $2`,
+          [ledgerTerm.termId, tenantId]
+        );
       }
     } catch (err: any) {
       console.error('[Settings] CRITICAL: Failed to create ledger term for new academic term:', err);
-      throw new Error(`CRITICAL: Cannot create academic term without corresponding ledger term. ${err?.message || 'Unknown error'}`);
+      throw new Error(
+        `CRITICAL: Cannot create academic term without corresponding ledger term. ${err?.message || 'Unknown error'}`
+      );
     }
-    
+
     const actor = await resolveActorFromRequest(req);
     await writeAuditLog({
       tenantId,
@@ -405,16 +409,16 @@ router.post('/academic-terms', requirePrimaryAdminOrSuperAdmin, async (req: Auth
       userRole: req.user!.role,
       action: 'CREATE',
       entityType: 'ACADEMIC_TERM',
-      entityId: result.rows[0].id,
+      entityId: created.id,
       module: 'settings',
       summary: withActor(`Academic term created — ${term_name} ${year}`, actor),
-      details: { term_name, year },
+      details: { term_name, year, ledger_term_id: created.ledger_term_id },
       ipAddress: getClientIp(req),
       userAgent: req.get('user-agent') ?? null,
     });
     emitTenantDataChanged(tenantId, 'academic-term', 'created');
     notifySetupProgressChanged(tenantId);
-    res.status(201).json(result.rows[0]);
+    res.status(201).json(created);
   } catch (error) {
     console.error('Create academic term error:', error);
     res.status(500).json({ error: 'Failed to create academic term' });
@@ -442,25 +446,41 @@ router.put('/academic-terms/:id', requirePrimaryAdminOrSuperAdmin, async (req: A
     }
 
     if (is_active) {
+      const targetTerm = await query(
+        `SELECT closed_at FROM academic_terms WHERE id = $1 AND tenant_id = $2`,
+        [id, tenantId]
+      );
+      if (targetTerm.rows[0]?.closed_at) {
+        return res.status(400).json({
+          error:
+            'This term is permanently closed and cannot be re-activated. Closed terms are read-only.',
+        });
+      }
+
       const previousActive = await query(
-        `SELECT term_name, year FROM academic_terms
+        `SELECT id, term_name, year, ledger_term_id, closed_at FROM academic_terms
          WHERE tenant_id = $1 AND is_active = true AND id != $2`,
         [tenantId, id]
       );
       if (previousActive.rows.length > 0) {
         const prev = previousActive.rows[0];
-        const year = String(prev.year || '').trim();
-        const termName = String(prev.term_name || '').trim();
-        const fullLabel = year && !termName.includes(year) ? `${termName} ${year}`.trim() : termName;
-        const resolved = await resolveLedgerTermFromSettings(tenantId, year, fullLabel);
-        if (resolved?.termId) {
-          const closed = await isLedgerTermClosed(tenantId, resolved.termId);
+        const prevLedgerId =
+          prev.ledger_term_id != null ? Number(prev.ledger_term_id) : null;
+        // Do not call resolveLedgerTermFromSettings here — it can create a new open ledger
+        // and incorrectly treat an already-closed previous term as still open.
+        if (prevLedgerId != null) {
+          const closed = await isLedgerTermClosed(tenantId, prevLedgerId);
           if (!closed) {
             return res.status(400).json({
               error:
                 'Close the current term before activating another. Go to Settings → Academic Terms → Close Term.',
             });
           }
+        } else if (!prev.closed_at) {
+          return res.status(400).json({
+            error:
+              'Close the current term before activating another. Go to Settings → Academic Terms → Close Term.',
+          });
         }
       }
 
@@ -492,6 +512,27 @@ router.put('/academic-terms/:id', requirePrimaryAdminOrSuperAdmin, async (req: A
     }
     
     const updatedTerm = result.rows[0];
+
+    if (is_active === true) {
+      const year = String(updatedTerm.year || '').trim();
+      const termName = String(updatedTerm.term_name || '').trim();
+      const fullLabel = year && !termName.includes(year) ? `${termName} ${year}`.trim() : termName;
+      const ledgerTerm = await resolveLedgerTermFromSettings(tenantId, year, fullLabel);
+      if (ledgerTerm?.termId) {
+        await query('UPDATE terms SET is_current = false WHERE tenant_id = $1', [tenantId]);
+        await query('UPDATE terms SET is_current = true WHERE tenant_id = $1 AND id = $2', [
+          tenantId,
+          ledgerTerm.termId,
+        ]);
+        await query(
+          `UPDATE academic_terms SET ledger_term_id = $1, updated_at = CURRENT_TIMESTAMP
+           WHERE id = $2 AND tenant_id = $3`,
+          [ledgerTerm.termId, id, tenantId]
+        );
+        updatedTerm.ledger_term_id = ledgerTerm.termId;
+      }
+    }
+
     const actor = await resolveActorFromRequest(req);
     await writeAuditLog({
       tenantId,

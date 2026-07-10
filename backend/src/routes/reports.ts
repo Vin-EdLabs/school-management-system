@@ -14,7 +14,6 @@ import {
 import { ACTIVE_STUDENT_WHERE } from '../utils/studentEnrollment.js';
 import { TEACHER_COUNTABLE_WHERE, OTHER_STAFF_COUNTABLE_WHERE, TEACHER_VISIBLE_WHERE, TEACHER_PAYROLL_WHERE } from '../constants/staffQueries.js';
 import { getStudentLiveFeeBreakdown } from '../services/studentLiveFeeBreakdownService.js';
-import { resolveLedgerTermFromSettings } from '../services/ledgerFinanceService.js';
 import { ensureTenantLedgerSynced } from '../services/ledgerBackfillService.js';
 import { SQL_EFFECTIVE_STUDENT_LEDGER_TOTALS_CTE } from '../utils/feeStructureSql.js';
 
@@ -161,11 +160,18 @@ const TERM_FEE_STUDENT_CLASS_FILTER = `(c.id IS NULL OR COALESCE(c.fee_mode, 'te
 
 async function loadReportPeriod(req: AuthRequest): Promise<ReportPeriod> {
   const tenantId = req.user!.tenantId!;
+
+  const { resolveActiveLedgerTerm } = await import('../services/studentUnifiedBalanceService.js');
+  const activeLedger = await resolveActiveLedgerTerm(query, tenantId);
+  const ledgerTermId = activeLedger.ledgerTermId ?? null;
+
   const settingsResult = await query(
     'SELECT current_term, current_year FROM school_settings WHERE tenant_id = $1',
     [tenantId]
   );
-  const defaultTerm = (settingsResult.rows[0]?.current_term as string)?.trim() || 'Term 1';
+  const defaultTerm = (activeLedger.termLabel || settingsResult.rows[0]?.current_term || 'Term 1')
+    .toString()
+    .trim();
   const defaultYear = String(settingsResult.rows[0]?.current_year || new Date().getFullYear()).trim();
 
   let termRaw = ((req.query.term as string) || '').trim();
@@ -183,8 +189,6 @@ async function loadReportPeriod(req: AuthRequest): Promise<ReportPeriod> {
 
   const { from: financeFrom, to: financeTo } = await resolveFinanceBounds(tenantId, academicYear);
   const academicYearDisplay = formatAcademicYearLabel(academicYear);
-  const ledgerResolved = await resolveLedgerTermFromSettings(tenantId, academicYear, term);
-  const ledgerTermId = ledgerResolved?.termId ?? null;
 
   return { tenantId, term, academicYear, termMatch, termLike, termOnly, financeFrom, financeTo, academicYearDisplay, ledgerTermId };
 }
@@ -948,6 +952,7 @@ router.get('/admin-overview', async (req: AuthRequest, res) => {
              AND COALESCE(p.is_voided, false) = false
              AND COALESCE(p.payment_category, 'term_fee') = 'term_fee'
              AND p.payment_date >= CURRENT_DATE - INTERVAL '29 days'
+             ${ledgerTermId ? 'AND p.term_id = $2' : ''}
            GROUP BY 1
          ),
          daily_pay AS (
@@ -966,7 +971,7 @@ router.get('/admin-overview', async (req: AuthRequest, res) => {
          LEFT JOIN term_pay t ON t.day = d.day
          LEFT JOIN daily_pay dp ON dp.day = d.day
          ORDER BY d.day ASC`,
-        [tenantId]
+        ledgerTermId ? [tenantId, ledgerTermId] : [tenantId]
       ).catch((err) => {
         console.error('[admin-overview] payment trend query failed:', err);
         return { rows: [] };

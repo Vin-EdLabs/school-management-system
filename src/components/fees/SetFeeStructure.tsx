@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,22 +15,23 @@ import {
 } from '@/components/ui/dialog';
 import { useData } from '../../contexts/DataContext';
 import { useActiveTerm } from '../../hooks/useActiveTerm';
-import { feeStructureCheckKey } from '../../hooks/useFeeStructureCheck';
 import { toast } from '@/hooks/use-toast';
-import { DollarSign, Pencil, Trash2, UserPlus, X } from 'lucide-react';
+import { DollarSign, Pencil, Trash2, UserPlus, Archive, PlusCircle } from 'lucide-react';
 import { apiService } from '../../services/api';
 import FeeStructureItemsForm, { validateFeeStructureItemsForm } from './FeeStructureItemsForm';
 import TermBillBreakdown from './TermBillBreakdown';
 import BillStudentModal from './BillStudentModal';
+import ArchivedFeeStructurePanel from './ArchivedFeeStructurePanel';
 import {
   saveFeeStructureItems,
   type FeeStructureItem,
 } from '../../services/feeStructureItems';
+import { feeStructureMatchesActiveTerm } from '../../utils/termLabelMatch';
 
 const SetFeeStructure = () => {
   const queryClient = useQueryClient();
   const { classes, updateFeeStructure, deleteFeeStructure, feeStructures, refresh } = useData();
-  const { currentTerm, currentYear, isLoading, activeAcademicTermId } = useActiveTerm();
+  const { currentTerm, currentYear, isLoading, activeLedgerTermId, refresh: refreshActiveTerm } = useActiveTerm();
   const [formData, setFormData] = useState({
     classId: '',
     dueDate: '',
@@ -47,6 +48,18 @@ const SetFeeStructure = () => {
   const [editItemErrors, setEditItemErrors] = useState<Record<number, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [billModalOpen, setBillModalOpen] = useState(false);
+  const [setupMode, setSetupMode] = useState<'new' | 'reuse'>('new');
+
+  const handleFeesRefreshed = async () => {
+    await Promise.all([refresh(['fees']), refreshActiveTerm()]);
+    void queryClient.invalidateQueries({ queryKey: ['fee-structure-check'] });
+  };
+
+  useEffect(() => {
+    if (activeLedgerTermId != null) {
+      void refresh(['fees']);
+    }
+  }, [activeLedgerTermId, refresh]);
 
   const openBillStudent = () => {
     setBillModalOpen(true);
@@ -101,10 +114,16 @@ const SetFeeStructure = () => {
     }
 
     const className = classes.find(c => c.id === formData.classId)?.className || '';
-    const duplicate = feeStructures.some(f => {
+    const duplicate = feeStructures.some((f) => {
       const feeClassId = f.classId ?? (f as { class_id?: number }).class_id;
-      return String(feeClassId) === String(formData.classId) &&
-        (!f.term || f.term === currentTerm || f.term.includes(currentTerm));
+      if (String(feeClassId) !== String(formData.classId)) return false;
+      return feeStructureMatchesActiveTerm(
+        f.term,
+        currentTerm,
+        currentYear,
+        f.termId,
+        activeLedgerTermId
+      );
     });
     if (duplicate) {
       toast({
@@ -127,7 +146,7 @@ const SetFeeStructure = () => {
       const structureId = String(created.id);
       const saved = await saveFeeStructureItems(structureId, feeItems);
 
-      void queryClient.invalidateQueries({ queryKey: feeStructureCheckKey() });
+      void queryClient.invalidateQueries({ queryKey: ['fee-structure-check'] });
 
       toast({
         title: 'Fee structure saved',
@@ -137,7 +156,7 @@ const SetFeeStructure = () => {
       setFormData({ classId: '', dueDate: '', description: '' });
       setFeeItems([]);
       setItemsTotal(0);
-      await refresh(['fees']);
+      await Promise.all([refresh(['fees']), refreshActiveTerm()]);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to set fee structure';
       toast({ title: 'Error', description: message, variant: 'destructive' });
@@ -175,7 +194,7 @@ const SetFeeStructure = () => {
         dueDate: editForm.dueDate || undefined,
         description: editForm.description || undefined,
       });
-      void queryClient.invalidateQueries({ queryKey: feeStructureCheckKey() });
+      void queryClient.invalidateQueries({ queryKey: ['fee-structure-check'] });
       toast({
         title: 'Fee structure saved',
         description: `Total Term Bill: GHS ${saved.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
@@ -195,7 +214,7 @@ const SetFeeStructure = () => {
     setIsSubmitting(true);
     try {
       await deleteFeeStructure(fee.id);
-      void queryClient.invalidateQueries({ queryKey: feeStructureCheckKey() });
+      void queryClient.invalidateQueries({ queryKey: ['fee-structure-check'] });
       toast({ title: 'Fee structure deleted' });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to delete';
@@ -217,10 +236,12 @@ const SetFeeStructure = () => {
 
   const currentTermFees = feeStructures.filter((f) => {
     if (isDailyFeeClass(f.classId ?? (f as { class_id?: number }).class_id)) return false;
-    return (
-      !f.term ||
-      f.term === currentTerm ||
-      (typeof f.term === 'string' && f.term.includes(currentTerm))
+    return feeStructureMatchesActiveTerm(
+      f.term,
+      currentTerm,
+      currentYear,
+      f.termId,
+      activeLedgerTermId
     );
   });
 
@@ -246,7 +267,52 @@ const SetFeeStructure = () => {
 
   return (
     <div className="space-y-6">
+      <Card className="border-border bg-card text-card-foreground shadow-sm">
+        <CardHeader className="border-b border-border/70 bg-muted/30 pb-4">
+          <CardTitle className="text-base font-semibold">Set up fees for {currentTerm}</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Choose how to assign fee structures for the active term ({currentYear}). Fees never carry over automatically.
+          </p>
+        </CardHeader>
+        <CardContent className="pt-5">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,280px)_1fr] md:items-end">
+            <div className="space-y-2">
+              <Label htmlFor="fee-setup-mode">Setup method</Label>
+              <Select
+                value={setupMode}
+                onValueChange={(v) => setSetupMode(v as 'new' | 'reuse')}
+              >
+                <SelectTrigger id="fee-setup-mode" className="h-11">
+                  <SelectValue placeholder="Choose setup method" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="new">
+                    <span className="inline-flex items-center gap-2">
+                      <PlusCircle className="h-4 w-4 text-emerald-600" />
+                      Create new structure (manual)
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="reuse">
+                    <span className="inline-flex items-center gap-2">
+                      <Archive className="h-4 w-4 text-emerald-600" />
+                      Reuse previous term fee setup
+                    </span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-xs text-muted-foreground md:pb-2">
+              {setupMode === 'new'
+                ? 'Set amounts class by class for this term only.'
+                : 'Copy fee structures from a previous term — billing is optional when you confirm.'}
+            </p>
+          </div>
+        </CardContent>
+      </Card>
 
+      {setupMode === 'reuse' ? (
+        <ArchivedFeeStructurePanel currentTerm={currentTerm} onReused={handleFeesRefreshed} />
+      ) : (
       <Card className="border-border bg-card text-card-foreground shadow-sm">
         <CardHeader className="border-b border-border/70 bg-muted/30">
           <CardTitle className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -351,6 +417,7 @@ const SetFeeStructure = () => {
           </form>
         </CardContent>
       </Card>
+      )}
 
       <Card className="border-border bg-card text-card-foreground shadow-sm">
         <CardHeader className="border-b border-border/70 bg-muted/30">
@@ -364,7 +431,9 @@ const SetFeeStructure = () => {
                 <div>
                   <p className="font-medium text-foreground">{resolveFeeClassLabel(fee)}</p>
                   <p className="text-sm text-muted-foreground">{fee.term || `${currentTerm} (legacy)`}</p>
-                  {fee.description && <p className="text-sm text-muted-foreground">{fee.description}</p>}
+                  {fee.description ? (
+                    <p className="text-xs text-muted-foreground italic">Note: {fee.description}</p>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
                   <div className="text-left sm:text-right min-w-[140px]">
@@ -381,7 +450,12 @@ const SetFeeStructure = () => {
               </div>
             ))}
             {currentTermFees.length === 0 && (
-              <p className="text-center py-8 text-muted-foreground">No fee structures for {currentTerm}. Add one above.</p>
+              <div className="text-center py-8 space-y-2">
+                <p className="text-muted-foreground">No fee structure assigned for {currentTerm}.</p>
+                <p className="text-xs text-muted-foreground">
+                  Create a new structure above, or reuse one from a closed term in the archive panel.
+                </p>
+              </div>
             )}
           </div>
         </CardContent>

@@ -103,10 +103,72 @@ export type TermLedgerSummaryRow = {
   status: 'Paid' | 'Owing' | 'Credit' | 'NotSet';
 };
 
+/** Previous closed term by end_date (never by name). */
+const PREV_CLOSED_TERM_LATERAL_SQL = `
+  LEFT JOIN LATERAL (
+    SELECT pt.id AS prev_term_id
+    FROM terms pt
+    WHERE pt.tenant_id = $2
+      AND pt.status = 'closed'
+      AND pt.id != $3
+      AND (
+        pt.end_date IS NULL
+        OR NOT EXISTS (SELECT 1 FROM terms cur WHERE cur.id = $3 AND cur.start_date IS NOT NULL)
+        OR pt.end_date < (SELECT start_date FROM terms WHERE id = $3)
+      )
+    ORDER BY
+      CASE WHEN pt.end_date IS NOT NULL THEN 0 ELSE 1 END,
+      pt.end_date DESC NULLS LAST,
+      pt.closed_at DESC NULLS LAST,
+      pt.id DESC
+    LIMIT 1
+  ) prev_closed_term ON true
+  LEFT JOIN term_closing_balances tcb_snap
+    ON tcb_snap.tenant_id = $2
+   AND tcb_snap.student_id = $1
+   AND tcb_snap.term_id = prev_closed_term.prev_term_id`;
+
+const BATCH_PREV_CLOSED_TERM_LATERAL_SQL = `
+  LEFT JOIN LATERAL (
+    SELECT pt.id AS prev_term_id
+    FROM terms pt
+    WHERE pt.tenant_id = $1
+      AND pt.status = 'closed'
+      AND pt.id != $2
+      AND (
+        pt.end_date IS NULL
+        OR NOT EXISTS (SELECT 1 FROM terms cur WHERE cur.id = $2 AND cur.start_date IS NOT NULL)
+        OR pt.end_date < (SELECT start_date FROM terms WHERE id = $2)
+      )
+    ORDER BY
+      CASE WHEN pt.end_date IS NOT NULL THEN 0 ELSE 1 END,
+      pt.end_date DESC NULLS LAST,
+      pt.closed_at DESC NULLS LAST,
+      pt.id DESC
+    LIMIT 1
+  ) prev_closed_term ON true
+  LEFT JOIN term_closing_balances tcb_snap
+    ON tcb_snap.tenant_id = $1
+   AND tcb_snap.student_id = s.id
+   AND tcb_snap.term_id = prev_closed_term.prev_term_id`;
+
+const ARREARS_DISPLAY_SQL = `CASE
+  WHEN prev_closed_term.prev_term_id IS NOT NULL
+    THEN COALESCE(tcb_snap.carried_balance, 0)
+  ELSE COALESCE(SUM(CASE WHEN entry_type = 'arrears' THEN debit ELSE 0 END), 0)
+END`;
+
+const BATCH_ARREARS_DISPLAY_SQL = `CASE
+  WHEN prev_closed_term.prev_term_id IS NOT NULL
+    THEN COALESCE(tcb_snap.carried_balance, 0)
+  ELSE COALESCE(SUM(CASE WHEN sl.entry_type = 'arrears' THEN sl.debit ELSE 0 END), 0)
+END`;
+
 /**
  * Master balance function — current-term isolated view.
  * Total Due = term_fee + arrears only. Credit shown separately.
  * Net balance = full ledger SUM(debit) - SUM(credit).
+ * Arrears display uses term_closing_balances from the previous closed term when available.
  */
 export async function getStudentBalanceFromLedger(
   client: pg.PoolClient | null,
@@ -116,13 +178,68 @@ export async function getStudentBalanceFromLedger(
 ): Promise<LedgerBalance> {
   const run: QueryFn = client ? client.query.bind(client) : query;
 
-  const params: unknown[] = [studentId, tenantId];
-  let termFilter = '';
   if (termId != null && !Number.isNaN(Number(termId))) {
-    termFilter = 'AND term_id = $3';
-    params.push(termId);
+    const res = await run(
+      `SELECT
+         COALESCE(SUM(CASE WHEN sl.entry_type = 'term_fee' THEN sl.debit ELSE 0 END), 0) AS term_fee,
+         COALESCE(SUM(CASE WHEN sl.entry_type = 'student_charge' THEN sl.debit ELSE 0 END), 0) AS individual_charges,
+         COALESCE(SUM(CASE WHEN sl.entry_type = 'arrears' THEN sl.debit ELSE 0 END), 0) AS arrears_ledger,
+         COALESCE(SUM(CASE WHEN sl.entry_type IN (${CREDIT_AVAILABLE_SQL}) THEN sl.credit ELSE 0 END), 0) AS credit_available,
+         COALESCE(SUM(CASE WHEN sl.entry_type = 'payment' THEN (${LEDGER_TERM_CREDIT_SQL}) ELSE 0 END), 0) AS payments_made,
+         COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(${LEDGER_TERM_CREDIT_SQL}), 0) AS net_balance,
+         COALESCE((
+           SELECT SUM(p.amount)::numeric
+           FROM payments p
+           WHERE p.tenant_id = $2
+             AND p.student_id = $1
+             AND p.term_id = $3
+             AND COALESCE(p.is_voided, false) = false
+             AND COALESCE(p.payment_category, 'term_fee') = 'term_fee'
+         ), 0) AS payments_table_total,
+         prev_closed_term.prev_term_id,
+         tcb_snap.carried_balance AS snapshot_arrears
+       FROM (SELECT $1::int AS student_id) base
+       LEFT JOIN student_ledger sl
+         ON sl.student_id = base.student_id AND sl.tenant_id = $2 AND sl.term_id = $3
+       ${PREV_CLOSED_TERM_LATERAL_SQL}
+       GROUP BY prev_closed_term.prev_term_id, tcb_snap.carried_balance`,
+      [studentId, tenantId, termId]
+    );
+
+    const row = res.rows[0] || {};
+    const termFee = roundMoney(parseFloat(row.term_fee) || 0);
+    const individualCharges = roundMoney(parseFloat(row.individual_charges) || 0);
+    const arrears =
+      row.prev_term_id != null
+        ? roundMoney(parseFloat(row.snapshot_arrears) || 0)
+        : roundMoney(parseFloat(row.arrears_ledger) || 0);
+    const creditFromCarryForward = roundMoney(parseFloat(row.credit_available) || 0);
+    const ledgerPaymentsMade = roundMoney(parseFloat(row.payments_made) || 0);
+    const paymentsTableTotal = roundMoney(parseFloat(row.payments_table_total) || 0);
+    const paymentsMade = roundMoney(Math.max(ledgerPaymentsMade, paymentsTableTotal));
+    const paymentGap = roundMoney(Math.max(0, paymentsMade - ledgerPaymentsMade));
+    const netBalance = roundMoney((parseFloat(row.net_balance) || 0) - paymentGap);
+    const totalDue = roundMoney(termFee + individualCharges + arrears);
+    const outstanding = roundMoney(Math.max(0, netBalance));
+    const creditBalance = roundMoney(netBalance < -0.001 ? Math.abs(netBalance) : 0);
+
+    return {
+      termFee,
+      individualCharges,
+      arrears,
+      creditFromCarryForward,
+      paymentsMade,
+      totalDue,
+      totalPaid: paymentsMade,
+      outstanding,
+      creditBalance,
+      netBalance,
+      rawBalance: netBalance,
+      totalCharged: totalDue,
+    };
   }
 
+  const params: unknown[] = [studentId, tenantId];
   const res = await run(
     `SELECT
        COALESCE(SUM(CASE WHEN entry_type = 'term_fee' THEN debit ELSE 0 END), 0) AS term_fee,
@@ -130,19 +247,10 @@ export async function getStudentBalanceFromLedger(
        COALESCE(SUM(CASE WHEN entry_type = 'arrears' THEN debit ELSE 0 END), 0) AS arrears,
        COALESCE(SUM(CASE WHEN entry_type IN (${CREDIT_AVAILABLE_SQL}) THEN credit ELSE 0 END), 0) AS credit_available,
        COALESCE(SUM(CASE WHEN entry_type = 'payment' THEN (${LEDGER_TERM_CREDIT_SQL_UNALIASED}) ELSE 0 END), 0) AS payments_made,
-       COALESCE(SUM(debit), 0) - COALESCE(SUM(${LEDGER_TERM_CREDIT_SQL_UNALIASED}), 0) AS net_balance,
-       COALESCE((
-         SELECT SUM(p.amount)::numeric
-         FROM payments p
-         WHERE p.tenant_id = $2
-           AND p.student_id = $1
-           AND p.term_id = $3
-           AND COALESCE(p.is_voided, false) = false
-           AND COALESCE(p.payment_category, 'term_fee') = 'term_fee'
-       ), 0) AS payments_table_total
+       COALESCE(SUM(debit), 0) - COALESCE(SUM(${LEDGER_TERM_CREDIT_SQL_UNALIASED}), 0) AS net_balance
      FROM student_ledger
-     WHERE student_id = $1 AND tenant_id = $2 ${termFilter}`,
-    termId != null && !Number.isNaN(Number(termId)) ? [studentId, tenantId, termId] : params
+     WHERE student_id = $1 AND tenant_id = $2`,
+    params
   );
 
   const row = res.rows[0] || {};
@@ -150,17 +258,10 @@ export async function getStudentBalanceFromLedger(
   const individualCharges = roundMoney(parseFloat(row.individual_charges) || 0);
   const arrears = roundMoney(parseFloat(row.arrears) || 0);
   const creditFromCarryForward = roundMoney(parseFloat(row.credit_available) || 0);
-  const ledgerPaymentsMade = roundMoney(parseFloat(row.payments_made) || 0);
-  const paymentsTableTotal =
-    termId != null && !Number.isNaN(Number(termId))
-      ? roundMoney(parseFloat(row.payments_table_total) || 0)
-      : 0;
-  const paymentsMade = roundMoney(Math.max(ledgerPaymentsMade, paymentsTableTotal));
-  const paymentGap = roundMoney(Math.max(0, paymentsMade - ledgerPaymentsMade));
-  const netBalance = roundMoney((parseFloat(row.net_balance) || 0) - paymentGap);
+  const paymentsMade = roundMoney(parseFloat(row.payments_made) || 0);
+  const netBalance = roundMoney(parseFloat(row.net_balance) || 0);
   const totalDue = roundMoney(termFee + individualCharges + arrears);
   const outstanding = roundMoney(Math.max(0, netBalance));
-  /** Overpayment in the current term (or net credit after payments) — not the same as brought-forward credit lines. */
   const creditBalance = roundMoney(netBalance < -0.001 ? Math.abs(netBalance) : 0);
 
   return {
@@ -279,7 +380,7 @@ export async function getBatchStudentBalancesFromLedger(
        c.class_name,
        COALESCE(SUM(CASE WHEN sl.entry_type = 'term_fee' THEN sl.debit ELSE 0 END), 0) AS term_fee,
        COALESCE(SUM(CASE WHEN sl.entry_type = 'student_charge' THEN sl.debit ELSE 0 END), 0) AS individual_charges,
-       COALESCE(SUM(CASE WHEN sl.entry_type = 'arrears' THEN sl.debit ELSE 0 END), 0) AS arrears,
+       (${BATCH_ARREARS_DISPLAY_SQL}) AS arrears,
        COALESCE(SUM(CASE WHEN sl.entry_type IN (${CREDIT_AVAILABLE_SQL}) THEN sl.credit ELSE 0 END), 0) AS credit_brought_forward,
        COALESCE(SUM(CASE WHEN sl.entry_type = 'payment' THEN (${LEDGER_TERM_CREDIT_SQL}) ELSE 0 END), 0) AS ledger_paid,
        COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(${LEDGER_TERM_CREDIT_SQL}), 0) AS net_balance,
@@ -289,6 +390,7 @@ export async function getBatchStudentBalancesFromLedger(
      LEFT JOIN student_ledger sl ON sl.student_id = s.id
        AND sl.tenant_id = s.tenant_id
        AND sl.term_id = $2
+     ${BATCH_PREV_CLOSED_TERM_LATERAL_SQL}
      LEFT JOIN LATERAL (
        SELECT COALESCE(SUM(p.amount), 0)::numeric AS paid
        FROM payments p
@@ -302,7 +404,8 @@ export async function getBatchStudentBalancesFromLedger(
        AND COALESCE(s.enrollment_status, 'active') = 'active'
        AND ${TERM_FEE_CLASS_FILTER_SQL}
        ${classFilter}
-     GROUP BY s.id, s.first_name, s.last_name, s.student_id, s.admission_number, c.class_name, pay_sum.paid
+     GROUP BY s.id, s.first_name, s.last_name, s.student_id, s.admission_number, c.class_name, pay_sum.paid,
+              prev_closed_term.prev_term_id, tcb_snap.carried_balance
      ORDER BY GREATEST(0, COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(${LEDGER_TERM_CREDIT_SQL}), 0)) DESC`,
     params
   );

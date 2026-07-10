@@ -11,18 +11,21 @@ export type FeeStructureCheckResult = {
   term_id: number | null;
 };
 
-/** Stable key — check always uses school_settings (same source as saving fees). */
-export const FEE_STRUCTURE_CHECK_KEY = ['fee-structure-check', 'active'] as const;
-
-export function feeStructureCheckKey(_termId?: number | null) {
-  return FEE_STRUCTURE_CHECK_KEY;
+export function feeStructureCheckKey(ledgerTermId?: number | null) {
+  return ['fee-structure-check', ledgerTermId ?? 'none'] as const;
 }
 
-export function useFeeStructureCheck(_termId?: number | null, enabled = true) {
+export function useFeeStructureCheck(ledgerTermId?: number | null, enabled = true) {
   return useQuery({
-    queryKey: FEE_STRUCTURE_CHECK_KEY,
-    queryFn: async () => apiService.get<FeeStructureCheckResult>('/fees/structure-check'),
-    enabled,
+    queryKey: feeStructureCheckKey(ledgerTermId),
+    queryFn: async () => {
+      const qs =
+        ledgerTermId != null && !Number.isNaN(Number(ledgerTermId))
+          ? `?term_id=${ledgerTermId}`
+          : '';
+      return apiService.get<FeeStructureCheckResult>(`/fees/structure-check${qs}`);
+    },
+    enabled: enabled && ledgerTermId != null,
     staleTime: 30 * 1000,
     gcTime: 30 * 60 * 1000,
     refetchOnMount: 'always',

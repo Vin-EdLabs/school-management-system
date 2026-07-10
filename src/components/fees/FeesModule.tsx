@@ -43,7 +43,20 @@ const FEE_STRUCTURE_DISABLED_TOOLTIP = 'Configure fee structures for all classes
 
 const FeesModule: React.FC<FeesModuleProps> = ({ onNavigate }) => {
   const { refresh } = useData();
-  const { currentTerm, currentYear, hasActiveTerm, activeAcademicTermId, isLoading: termLoading } = useActiveTerm();
+  const {
+    currentTerm,
+    currentYear,
+    hasActiveTerm,
+    activeAcademicTermId,
+    activeLedgerTermId,
+    isLoading: termLoading,
+  } = useActiveTerm();
+
+  useEffect(() => {
+    if (activeLedgerTermId != null) {
+      void refresh(['fees', 'payments']);
+    }
+  }, [activeLedgerTermId, refresh]);
 
   useFinanceRealtime({
     onInvalidate: () => {
@@ -57,7 +70,7 @@ const FeesModule: React.FC<FeesModuleProps> = ({ onNavigate }) => {
   const [structureModalDismissed, setStructureModalDismissed] = useState(false);
 
   const { data: structureCheck, isLoading: structureLoading } = useFeeStructureCheck(
-    null,
+    activeLedgerTermId,
     hasActiveTerm
   );
 
@@ -97,7 +110,7 @@ const FeesModule: React.FC<FeesModuleProps> = ({ onNavigate }) => {
 
   useEffect(() => {
     setStructureModalDismissed(false);
-  }, [activeAcademicTermId, currentTerm]);
+  }, [activeAcademicTermId, activeLedgerTermId, currentTerm]);
 
   useEffect(() => {
     if (

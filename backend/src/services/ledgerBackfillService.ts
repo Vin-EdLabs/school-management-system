@@ -26,12 +26,64 @@ export async function repairPaymentAndLedgerTermAttribution(tenantId: number): P
   let fixed = 0;
   for (const pay of paymentsRes.rows) {
     const termLabel = String(pay.term || '').trim();
+    if (!termLabel) continue;
+
+    // Never reassign payments that already have a term_id (prevents Term 1 payments bleeding into Term 2).
+    if (pay.term_id != null) continue;
+
     const yearMatch = termLabel.match(/\b(\d{4}(?:\/\d{4})?)\s*$/);
     const year = yearMatch ? yearMatch[1] : null;
     if (!year) continue;
 
     const resolved = await resolveLedgerTermFromSettings(tenantId, year, termLabel);
-    if (!resolved || Number(pay.term_id) === resolved.termId) continue;
+    if (!resolved) continue;
+
+    await query(`UPDATE payments SET term_id = $1 WHERE id = $2 AND tenant_id = $3`, [
+      resolved.termId,
+      pay.id,
+      tenantId,
+    ]);
+    await query(
+      `UPDATE student_ledger SET term_id = $1, academic_year_id = $2
+       WHERE tenant_id = $3 AND payment_id = $4`,
+      [resolved.termId, resolved.academicYearId, tenantId, pay.id]
+    );
+    fixed++;
+  }
+  return fixed;
+}
+
+/** Move payments back to a closed term when mis-tagged on the current open term. */
+export async function repairPaymentsMisassignedToCurrentTerm(tenantId: number): Promise<number> {
+  const { resolveActiveLedgerTerm } = await import('./studentUnifiedBalanceService.js');
+  const { ledgerTermId } = await resolveActiveLedgerTerm(query, tenantId);
+  if (!ledgerTermId) return 0;
+
+  const paymentsRes = await query(
+    `SELECT id, term, term_id
+     FROM payments
+     WHERE tenant_id = $1
+       AND term_id = $2
+       AND COALESCE(is_voided, false) = false
+       AND TRIM(COALESCE(term, '')) <> ''`,
+    [tenantId, ledgerTermId]
+  );
+
+  let fixed = 0;
+  for (const pay of paymentsRes.rows) {
+    const termLabel = String(pay.term || '').trim();
+    const yearMatch = termLabel.match(/\b(\d{4}(?:\/\d{4})?)\s*$/);
+    const year = yearMatch?.[1];
+    if (!year) continue;
+
+    const resolved = await resolveLedgerTermFromSettings(tenantId, year, termLabel);
+    if (!resolved || resolved.termId === ledgerTermId) continue;
+
+    const termStatusRes = await query(
+      `SELECT status FROM terms WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+      [resolved.termId, tenantId]
+    );
+    if (String(termStatusRes.rows[0]?.status || '') !== 'closed') continue;
 
     await query(`UPDATE payments SET term_id = $1 WHERE id = $2 AND tenant_id = $3`, [
       resolved.termId,
@@ -73,16 +125,9 @@ export async function dedupeInflatedArrearsRows(tenantId: number): Promise<numbe
 }
 
 export async function removeUnauthorizedTermFees(tenantId: number): Promise<number> {
-  const settingsRes = await query(
-    `SELECT current_term, current_year FROM school_settings WHERE tenant_id = $1`,
-    [tenantId]
-  );
-  const currentTerm = settingsRes.rows[0]?.current_term;
-  const currentYear = settingsRes.rows[0]?.current_year;
-  if (!currentTerm || !currentYear) return 0;
-
-  const resolved = await resolveLedgerTermFromSettings(tenantId, String(currentYear), String(currentTerm));
-  if (!resolved) return 0;
+  const { resolveActiveLedgerTerm } = await import('./studentUnifiedBalanceService.js');
+  const { ledgerTermId } = await resolveActiveLedgerTerm(query, tenantId);
+  if (!ledgerTermId) return 0;
 
   const res = await query(
     `DELETE FROM student_ledger sl
@@ -98,7 +143,7 @@ export async function removeUnauthorizedTermFees(tenantId: number): Promise<numb
            AND lfs.class_id = s.class_assigned_id
        )
      RETURNING sl.id`,
-    [tenantId, resolved.termId]
+    [tenantId, ledgerTermId]
   );
   return res.rowCount ?? 0;
 }
@@ -114,6 +159,11 @@ export async function ensureTenantLedgerSynced(tenantId: number): Promise<void> 
     await repairMisplacedLedgerRowsByDescription(tenantId);
   } catch (err) {
     console.error('[ensureTenantLedgerSynced] ledger row repair failed (continuing):', err);
+  }
+  try {
+    await repairPaymentsMisassignedToCurrentTerm(tenantId);
+  } catch (err) {
+    console.error('[ensureTenantLedgerSynced] payment term repair failed (continuing):', err);
   }
   try {
     await repairPaymentAndLedgerTermAttribution(tenantId);

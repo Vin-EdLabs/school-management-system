@@ -198,6 +198,8 @@ export function CloseTermModal({ open, onOpenChange, academicTermId, onClosed }:
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 Closing…
               </>
+            ) : preview?.nextTermLabel ? (
+              `Close Term & Activate ${preview.nextTermLabel}`
             ) : (
               'Close Term Permanently'
             )}

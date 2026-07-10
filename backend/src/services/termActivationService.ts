@@ -3,7 +3,6 @@ import { query, getClient } from '../db/connection.js';
 import {
   resolveLedgerTermFromSettings,
   executeTermSwitchWithArrears,
-  executePostFeesForNewTerm,
   recalculateTermOutstandingBalances,
 } from './ledgerFinanceService.js';
 import { refreshArrearsForTenantWithClient } from './arrearsService.js';
@@ -109,7 +108,6 @@ export async function syncArrearsCarryForwardForTenant(tenantId: number) {
     }
 
     const recalc = await recalculateTermOutstandingBalances(client, tenantId, currentLedgerTermId);
-    const feeBills = await executePostFeesForNewTerm(client, tenantId, currentLedgerTermId);
     const syncResult = await refreshArrearsForTenantWithClient(
       client,
       tenantId,
@@ -122,7 +120,7 @@ export async function syncArrearsCarryForwardForTenant(tenantId: number) {
     return {
       carryForward: carryResult,
       recalculated: recalc,
-      feeBills,
+      feeBills: { insertedCount: 0, skipped: true },
       arrears: syncResult,
       currentTerm: fullTermLabel,
     };
@@ -231,6 +229,12 @@ export async function activateAcademicTerm(
        WHERE id = $1 AND tenant_id = $2`,
       [academicTermId, tenantId]
     );
+    await client.query(
+      `UPDATE academic_terms
+       SET ledger_term_id = $1, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2 AND tenant_id = $3`,
+      [newLedgerTermId, academicTermId, tenantId]
+    );
     await client.query('UPDATE terms SET is_current = false WHERE tenant_id = $1', [tenantId]);
     await client.query('UPDATE terms SET is_current = true WHERE id = $1 AND tenant_id = $2', [
       newLedgerTermId,
@@ -261,14 +265,12 @@ export async function activateAcademicTerm(
       };
       steps.push({ key: 'carry_forward', label: step2Label, status: 'success', details: carryDetails });
     } else {
-      const firstTermFees = await executePostFeesForNewTerm(client, tenantId, newLedgerTermId);
-      carryDetails = { firstTerm: true, termFeesInserted: firstTermFees.insertedCount };
       steps.push({
         key: 'carry_forward',
         label: step2Label,
         status: 'skipped',
         message: 'No previous active term — first term activation.',
-        details: carryDetails,
+        details: { firstTerm: true },
       });
     }
 
@@ -282,14 +284,15 @@ export async function activateAcademicTerm(
       details: { rowsUpdated: recalc.rowsUpdated },
     });
 
-    // Step 4 — ensure fee bills exist (executePostFeesForNewTerm if not already from step 2)
+    // Step 4 — fee billing is always manual per term (Set Fees / Bill Student)
     const step4Label = 'Updating fee bill records';
-    const feeBills = await executePostFeesForNewTerm(client, tenantId, newLedgerTermId);
     steps.push({
       key: 'update_fee_bills',
       label: step4Label,
-      status: 'success',
-      details: { feeBillsCreated: feeBills.insertedCount },
+      status: 'skipped',
+      message:
+        'Skipped — assign fee structures in Fees for this term before students are billed.',
+      details: { feeBillsCreated: 0 },
     });
 
     // Step 5 — final arrears sync

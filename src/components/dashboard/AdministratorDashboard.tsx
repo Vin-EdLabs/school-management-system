@@ -407,7 +407,11 @@ const AdministratorDashboard = ({ onNavigate }: Props) => {
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <Badge variant="outline" className="gap-1.5 rounded-full px-3 py-1 font-normal">
                   <Calendar className="h-3 w-3" />
-                  {termLoading ? 'Loading term…' : `${currentTerm} · ${currentYear}`}
+                  {termLoading
+                    ? 'Loading term…'
+                    : currentYear && !currentTerm.includes(currentYear)
+                      ? `${currentTerm} · ${currentYear}`
+                      : currentTerm}
                 </Badge>
                 <Badge className="gap-1.5 rounded-full border-0 bg-emerald-600 px-3 py-1 font-normal text-white hover:bg-emerald-600">
                   <CircleCheck className="h-3 w-3" />

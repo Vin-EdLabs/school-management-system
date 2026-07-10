@@ -74,7 +74,18 @@ export async function ensureSupplementalSchema(): Promise<void> {
     `ALTER TABLE academic_years ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active'`,
     'academic_years.status'
   );
+  await safe(`ALTER TABLE academic_years ADD COLUMN IF NOT EXISTS label VARCHAR(20)`, 'academic_years.label');
+  await safe(
+    `UPDATE academic_years SET label = LEFT(TRIM(name), 20) WHERE label IS NULL AND name IS NOT NULL`,
+    'academic_years.label backfill'
+  );
   await safe(`UPDATE academic_years SET status = 'active' WHERE status IS NULL`, 'academic_years.status backfill');
+  await safe(`ALTER TABLE terms ADD COLUMN IF NOT EXISTS start_date DATE`, 'terms.start_date');
+  await safe(`ALTER TABLE terms ADD COLUMN IF NOT EXISTS end_date DATE`, 'terms.end_date');
+  await safe(
+    `CREATE UNIQUE INDEX IF NOT EXISTS unique_current_term_per_tenant ON terms (tenant_id) WHERE is_current = true`,
+    'unique_current_term_per_tenant'
+  );
 
   // --- classes ---
   await safe(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS level_order INTEGER`, 'classes.level_order');

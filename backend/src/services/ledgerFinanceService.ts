@@ -122,6 +122,8 @@ const TERM_HAS_ACTIVITY_SQL = `
   )
 `;
 
+const TERM_NOT_CLOSED_SQL = `COALESCE(t.status, 'active') NOT IN ('closed', 'closing') AND t.closed_at IS NULL`;
+
 async function findLedgerTermWithPriority(
   tenantId: number,
   academicYearId: number,
@@ -138,6 +140,7 @@ async function findLedgerTermWithPriority(
     `SELECT t.id FROM terms t
      WHERE t.tenant_id = $1 AND t.academic_year_id = $2
        AND t.is_current = true AND ${nameMatch}
+       AND ${TERM_NOT_CLOSED_SQL}
        AND ${TERM_HAS_ACTIVITY_SQL}
      LIMIT 1`,
     baseParams
@@ -147,54 +150,39 @@ async function findLedgerTermWithPriority(
   const p2 = await query(
     `SELECT t.id FROM terms t
      WHERE t.tenant_id = $1 AND t.academic_year_id = $2
-       AND ${nameMatch} AND ${TERM_HAS_ACTIVITY_SQL}
+       AND ${nameMatch} AND ${TERM_NOT_CLOSED_SQL} AND ${TERM_HAS_ACTIVITY_SQL}
      ORDER BY t.id DESC
      LIMIT 1`,
     baseParams
   );
   if (p2.rows.length > 0) return Number(p2.rows[0].id);
 
-  const p2b = await query(
-    `SELECT t.id FROM terms t
-     WHERE t.tenant_id = $1
-       AND (t.name = $2 OR t.name = $3 OR t.name ILIKE $4 OR t.name ILIKE $5)
-       AND ${TERM_HAS_ACTIVITY_SQL}
-     ORDER BY t.academic_year_id DESC, t.id DESC
-     LIMIT 1`,
-    [tenantId, termLabel, termOnly, likeTerm, likeFull]
-  );
-  if (p2b.rows.length > 0) return Number(p2b.rows[0].id);
-
-  const p2c = await query(
-    `SELECT t.id FROM terms t
-     WHERE t.tenant_id = $1 AND ${TERM_HAS_ACTIVITY_SQL}
-     ORDER BY t.is_current DESC, t.id DESC
-     LIMIT 1`,
-    [tenantId]
-  );
-  if (p2c.rows.length > 0) return Number(p2c.rows[0].id);
-
   const p3 = await query(
     `SELECT t.id FROM terms t
      WHERE t.tenant_id = $1 AND t.academic_year_id = $2
        AND t.is_current = true AND ${nameMatch}
+       AND ${TERM_NOT_CLOSED_SQL}
      LIMIT 1`,
     baseParams
   );
   if (p3.rows.length > 0) return Number(p3.rows[0].id);
 
+  // Exact open name match (no cross-term fallback — never reuse another term's ledger).
   const p4 = await query(
     `SELECT t.id FROM terms t
-     WHERE t.tenant_id = $1 AND t.is_current = true
-     ORDER BY t.id DESC
+     WHERE t.tenant_id = $1 AND t.academic_year_id = $2
+       AND LOWER(TRIM(t.name)) = LOWER(TRIM($3))
+       AND ${TERM_NOT_CLOSED_SQL}
+     ORDER BY t.is_current DESC, t.id DESC
      LIMIT 1`,
-    [tenantId]
+    [tenantId, academicYearId, termOnly]
   );
   if (p4.rows.length > 0) return Number(p4.rows[0].id);
 
   return null;
 }
 
+/** Open ledger only — never reuse a closed term row for a new academic term. */
 async function findSimilarLedgerTerm(
   tenantId: number,
   academicYearId: number,
@@ -203,10 +191,11 @@ async function findSimilarLedgerTerm(
 ): Promise<number | null> {
   const likeTerm = `%${termOnly}%`;
   const res = await query(
-    `SELECT id FROM terms
-     WHERE tenant_id = $1 AND academic_year_id = $2
-       AND (name = $3 OR name = $4 OR name ILIKE $5 OR name ILIKE $6)
-     ORDER BY id DESC
+    `SELECT id FROM terms t
+     WHERE t.tenant_id = $1 AND t.academic_year_id = $2
+       AND (t.name = $3 OR t.name = $4 OR t.name ILIKE $5 OR t.name ILIKE $6)
+       AND ${TERM_NOT_CLOSED_SQL}
+     ORDER BY t.is_current DESC, t.id DESC
      LIMIT 1`,
     [tenantId, academicYearId, termLabel, termOnly, likeTerm, `%${termLabel}%`]
   );
@@ -227,8 +216,59 @@ export const resolveLedgerTermFromSettings = async (
   const termLabel = String(currentTerm || '').trim();
   if (!year || !termLabel) return null;
 
-  const academicYearId = await resolveAcademicYearId(tenantId, year);
   const termOnly = extractTermOnly(termLabel);
+  const yearCandidates = new Set([
+    ...academicYearNameCandidates(year),
+    ...academicYearNameCandidates(termLabel),
+  ]);
+
+  const activeAcademic = await query(
+    `SELECT at.term_name, at.year, at.ledger_term_id
+     FROM academic_terms at
+     WHERE at.tenant_id = $1 AND at.is_active = true AND at.closed_at IS NULL
+     LIMIT 1`,
+    [tenantId]
+  );
+  if (activeAcademic.rows[0]?.ledger_term_id != null) {
+    const row = activeAcademic.rows[0];
+    const activeYear = String(row.year || '').trim();
+    const activeTermOnly = extractTermOnly(String(row.term_name || '')).toLowerCase();
+    const reqTermOnly = termOnly.toLowerCase();
+    const activeYearCandidates = academicYearNameCandidates(activeYear);
+    const yearMatches =
+      yearCandidates.has(activeYear) ||
+      activeYearCandidates.some((c) => yearCandidates.has(c)) ||
+      year === activeYear;
+    const termMatches =
+      activeTermOnly === reqTermOnly ||
+      termLabel.toLowerCase().includes(activeTermOnly) ||
+      activeTermOnly.includes(reqTermOnly);
+    if (yearMatches && termMatches) {
+      const ledgerId = Number(row.ledger_term_id);
+      const termMeta = await query(
+        `SELECT t.academic_year_id, t.status, t.name, t.closed_at, ay.name AS year_name
+         FROM terms t
+         JOIN academic_years ay ON ay.id = t.academic_year_id
+         WHERE t.id = $1 AND t.tenant_id = $2
+         LIMIT 1`,
+        [ledgerId, tenantId]
+      );
+      const meta = termMeta.rows[0];
+      if (
+        meta &&
+        meta.closed_at == null &&
+        String(meta.status || '') !== 'closed' &&
+        String(meta.name || '').trim().toLowerCase() === termOnly.toLowerCase()
+      ) {
+        return {
+          academicYearId: Number(meta.academic_year_id),
+          termId: ledgerId,
+        };
+      }
+    }
+  }
+
+  const academicYearId = await resolveAcademicYearId(tenantId, year);
 
   let termId = await findLedgerTermWithPriority(tenantId, academicYearId, termLabel, termOnly);
 
@@ -244,14 +284,29 @@ export const resolveLedgerTermFromSettings = async (
          WHERE id = $1 AND tenant_id = $2`,
         [termId, tenantId, termOnly, termLabel]
       );
-    } else {
-      const ins = await query(
-        'INSERT INTO terms (tenant_id, academic_year_id, name, is_current) VALUES ($1, $2, $3, true) RETURNING id',
-        [tenantId, academicYearId, termOnly]
-      );
-      termId = Number(ins.rows[0].id);
-      await setCurrentLedgerTerm(tenantId, termId);
     }
+  }
+
+  // Closed (or missing) match → always create a fresh open ledger. Never reuse a closed id.
+  if (termId) {
+    const openCheck = await query(
+      `SELECT id FROM terms t
+       WHERE t.id = $1 AND t.tenant_id = $2 AND ${TERM_NOT_CLOSED_SQL}
+       LIMIT 1`,
+      [termId, tenantId]
+    );
+    if (!openCheck.rows.length) {
+      termId = null;
+    }
+  }
+
+  if (!termId) {
+    const ins = await query(
+      `INSERT INTO terms (tenant_id, academic_year_id, name, is_current, status)
+       VALUES ($1, $2, $3, false, 'active') RETURNING id`,
+      [tenantId, academicYearId, termOnly]
+    );
+    termId = Number(ins.rows[0].id);
   }
 
   const termMeta = await query(
@@ -802,6 +857,11 @@ export const executeTermSwitchWithArrears = async (
     const newAyId = termMap[nextTermId].academic_year_id;
 
     const prevTerm = termMap[prevTermId];
+    const prevStatusRes = await client.query(
+      `SELECT status FROM terms WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+      [prevTermId, tid]
+    );
+    const prevTermClosed = String(prevStatusRes.rows[0]?.status || '') === 'closed';
     const ayRows = await client.query(
       `SELECT id, name FROM academic_years WHERE id = ANY($1::int[])`,
       [[prevTerm.academic_year_id, newAyId]]
@@ -824,28 +884,40 @@ export const executeTermSwitchWithArrears = async (
     );
     const fullWaiverStudentIds = new Set(fullWaiverRes.rows.map((r: { id: number }) => Number(r.id)));
 
-    // ── STEP 1: Closing balance per student for the term we are leaving ─────────
-    // closing_balance = SUM(debit) - SUM(credit); >0 owes (arrears), <0 overpaid (credit)
-    const closingRes = await client.query(
-      `SELECT student_id,
-              COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) AS closing_balance
-       FROM student_ledger
-       WHERE tenant_id = $1 AND term_id = $2
-       GROUP BY student_id
-       HAVING COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) != 0`,
-      [tid, prevTermId]
-    );
+    type ClosingRow = { student_id: number; closing_balance: string | number };
+    let closingRows: ClosingRow[];
+
+    if (prevTermClosed) {
+      const snapshotRes = await client.query(
+        `SELECT student_id, carried_balance AS closing_balance
+         FROM term_closing_balances
+         WHERE tenant_id = $1 AND term_id = $2 AND carried_balance > 0`,
+        [tid, prevTermId]
+      );
+      closingRows = snapshotRes.rows as ClosingRow[];
+    } else {
+      const closingRes = await client.query(
+        `SELECT student_id,
+                COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) AS closing_balance
+         FROM student_ledger
+         WHERE tenant_id = $1 AND term_id = $2
+         GROUP BY student_id
+         HAVING COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) != 0`,
+        [tid, prevTermId]
+      );
+      closingRows = closingRes.rows as ClosingRow[];
+    }
 
     let arrearsInserted = 0;
     let creditsCarried = 0;
     let totalApplied = 0;
     let totalCreditApplied = 0;
 
-    for (const row of closingRes.rows) {
+    for (const row of closingRows) {
       const studentId = Number(row.student_id);
       if (fullWaiverStudentIds.has(studentId)) continue;
 
-      const closingBalance = roundMoney(parseFloat(row.closing_balance) || 0);
+      const closingBalance = roundMoney(parseFloat(String(row.closing_balance)) || 0);
       if (Math.abs(closingBalance) < 0.001) continue;
 
       if (closingBalance < 0) {

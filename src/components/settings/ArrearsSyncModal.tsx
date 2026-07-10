@@ -88,7 +88,10 @@ const ArrearsSyncModal: React.FC<ArrearsSyncModalProps> = ({
     }, 650);
   }, [clearProgressTimer]);
 
+  const syncGenerationRef = useRef(0);
+
   const runSync = useCallback(async () => {
+    const gen = ++syncGenerationRef.current;
     resetSteps();
     setPhase('running');
     setErrorMessage(null);
@@ -102,6 +105,7 @@ const ArrearsSyncModal: React.FC<ArrearsSyncModalProps> = ({
         studentsProcessed?: number;
       }>('/finance/backfill-arrears', {});
 
+      if (gen !== syncGenerationRef.current) return;
       clearProgressTimer();
       setStepStatus(
         'backfill',
@@ -120,6 +124,7 @@ const ArrearsSyncModal: React.FC<ArrearsSyncModalProps> = ({
         carryForward?: { arrearsRowsInserted?: number };
       }>('/settings/sync-arrears', {});
 
+      if (gen !== syncGenerationRef.current) return;
       const syncCount =
         sync.studentsUpdated ??
         sync.carryForward?.arrearsRowsInserted ??
@@ -135,10 +140,12 @@ const ArrearsSyncModal: React.FC<ArrearsSyncModalProps> = ({
 
       setStepStatus('refresh', 'running');
       await new Promise((r) => setTimeout(r, 400));
+      if (gen !== syncGenerationRef.current) return;
       setStepStatus('refresh', 'success');
       setStepStatus('complete', 'success');
       setPhase('success');
     } catch (err: any) {
+      if (gen !== syncGenerationRef.current) return;
       clearProgressTimer();
       setPhase('failed');
       setErrorMessage(err?.message || 'Arrears sync failed');
@@ -156,13 +163,15 @@ const ArrearsSyncModal: React.FC<ArrearsSyncModalProps> = ({
     if (open) {
       void runSync();
     } else {
+      syncGenerationRef.current += 1;
       clearProgressTimer();
       setPhase('idle');
       setErrorMessage(null);
       resetSteps();
     }
     return () => clearProgressTimer();
-  }, [open, runSync, resetSteps, clearProgressTimer]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once per open
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;

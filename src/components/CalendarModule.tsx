@@ -12,7 +12,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Plus, Edit, Trash2, ChevronLeft, ChevronRight, Bell, Clock, Eye, Calendar as CalendarIcon, MapPin, Tag, Info } from 'lucide-react';
-import { format, addMonths, subMonths, isSameDay, isSameMonth } from 'date-fns';
+import { format } from 'date-fns/format';
+import { addMonths } from 'date-fns/addMonths';
+import { subMonths } from 'date-fns/subMonths';
+import { isSameDay } from 'date-fns/isSameDay';
+import { isSameMonth } from 'date-fns/isSameMonth';
 import { toast } from '@/hooks/use-toast';
 import { apiService } from '../services/api';
 import { useSchool } from '../contexts/SchoolContext';

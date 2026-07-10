@@ -1274,7 +1274,7 @@ const SuperAdminDashboard = () => {
   ];
   const systemItems = [
     { id: 'platform-settings' as Section, label: 'Platform Settings', icon: Settings },
-    { id: 'finance-wipe' as Section, label: 'Finance Wipe', icon: Trash2 },
+    { id: 'finance-wipe' as Section, label: 'Finance Config', icon: Trash2 },
     { id: 'removed-staff' as Section, label: 'Removed Staff', icon: UserRoundSearch },
     { id: 'system-health' as Section, label: 'System Health', icon: Activity },
     { id: 'super-admins' as Section, label: 'Super Admins', icon: UserPlus },
@@ -1412,7 +1412,7 @@ const SuperAdminDashboard = () => {
               {section === 'audit' && 'Audit Logs'}
               {section === 'system-health' && 'System Health / Errors'}
               {section === 'platform-settings' && 'Platform Settings'}
-              {section === 'finance-wipe' && 'Term Finance Wipe'}
+              {section === 'finance-wipe' && 'Finance Configuration'}
               {section === 'removed-staff' && 'Removed Staff'}
               {section === 'announcements' && 'Global Announcements'}
               {section === 'support-chat' && (

@@ -4,7 +4,7 @@ import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js'
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { getIO } from '../socket.js';
-import { postFeesForClass, resolveLedgerTermFromSettings } from '../services/ledgerFinanceService.js';
+import { postFeesForClass } from '../services/ledgerFinanceService.js';
 import { ensureTenantLedgerSynced } from '../services/ledgerBackfillService.js';
 import { writeAuditLog } from '../services/auditService.js';
 import { formatMoneyGhs, resolveActorFromRequest, resolveClassName, withActor } from '../utils/auditResolve.js';
@@ -12,6 +12,7 @@ import { getClientIp } from '../utils/clientIp.js';
 import { sqlBeneficiaryAdjustedAmount } from '../utils/beneficiaryFee.js';
 import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 import { checkFeeStructureCompleteness } from '../services/feeStructureCheckService.js';
+import { resolveActiveLedgerTerm } from '../services/studentUnifiedBalanceService.js';
 
 const router = express.Router();
 
@@ -63,22 +64,13 @@ const mapFeeRow = (row: Record<string, unknown>) => ({
 
 async function resolveTermIds(
   tenantId: number,
-  termRaw: string
+  _termRaw?: string
 ): Promise<{ academicYearId: number; termId: number } | null> {
-  const settingsRes = await query(
-    'SELECT current_year, current_term FROM school_settings WHERE tenant_id = $1 LIMIT 1',
-    [tenantId]
-  );
-  const fallbackYear = settingsRes.rows[0]?.current_year
-    ? String(settingsRes.rows[0].current_year)
-    : undefined;
-  const raw = String(termRaw || '').trim();
-  const yearMatch = raw.match(/(19|20)\d{2}$/);
-  const year = yearMatch?.[0] || fallbackYear;
-  if (!year) return null;
-  const termLabel = raw || String(settingsRes.rows[0]?.current_term || '').trim();
-  if (!termLabel) return null;
-  return resolveLedgerTermFromSettings(tenantId, year, termLabel);
+  const active = await resolveActiveLedgerTerm(query, tenantId);
+  if (active.ledgerTermId && active.academicYearId) {
+    return { academicYearId: active.academicYearId, termId: active.ledgerTermId };
+  }
+  return null;
 }
 
 router.use(authenticate);
@@ -90,7 +82,8 @@ attachWritableTermGuard(router);
 router.get('/', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
-    const { classId, term } = req.query;
+    const { classId } = req.query;
+    const rawTermId = req.query.term_id ?? req.query.termId;
 
     let queryText = `${FEE_SELECT} WHERE lfs.tenant_id = $1`;
     const params: unknown[] = [tenantId];
@@ -99,10 +92,21 @@ router.get('/', async (req: AuthRequest, res) => {
       queryText += ` AND lfs.class_id = $${params.length + 1}`;
       params.push(classId);
     }
-    if (term) {
-      queryText += ` AND TRIM(CONCAT(t.name, ' ', ay.name)) = $${params.length + 1}`;
-      params.push(String(term).trim());
+
+    let ledgerTermId: number | null = null;
+    if (rawTermId != null && String(rawTermId).trim() !== '') {
+      const parsed = parseInt(String(rawTermId), 10);
+      if (!Number.isNaN(parsed)) ledgerTermId = parsed;
     }
+    if (ledgerTermId == null) {
+      const active = await resolveActiveLedgerTerm(query, tenantId);
+      ledgerTermId = active.ledgerTermId;
+    }
+    if (ledgerTermId == null) {
+      return res.json([]);
+    }
+    queryText += ` AND lfs.term_id = $${params.length + 1}`;
+    params.push(ledgerTermId);
 
     queryText += ' ORDER BY lfs.created_at DESC';
 
@@ -132,20 +136,15 @@ router.post('/sync-ledger', requireRole('super-admin', 'administrator', 'finance
 router.get('/structure-check', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
-    const rawTermId = req.query.term_id ?? req.query.termId;
-    const academicTermId =
-      rawTermId != null && String(rawTermId).trim() !== ''
-        ? parseInt(String(rawTermId), 10)
-        : undefined;
-    const termHint =
-      req.query.term != null && String(req.query.term).trim() !== ''
-        ? String(req.query.term).trim()
+    const rawLedgerTermId = req.query.term_id ?? req.query.termId ?? req.query.ledger_term_id;
+    const ledgerTermId =
+      rawLedgerTermId != null && String(rawLedgerTermId).trim() !== ''
+        ? parseInt(String(rawLedgerTermId), 10)
         : undefined;
 
     const result = await checkFeeStructureCompleteness(tenantId, {
-      academicTermId:
-        academicTermId != null && !Number.isNaN(academicTermId) ? academicTermId : undefined,
-      termHint,
+      ledgerTermId:
+        ledgerTermId != null && !Number.isNaN(ledgerTermId) ? ledgerTermId : undefined,
     });
 
     return res.json({
@@ -160,6 +159,173 @@ router.get('/structure-check', async (req: AuthRequest, res) => {
     res.status(500).json({ error: 'Failed to check fee structure completeness' });
   }
 });
+
+// GET /api/fees/archives — list archived fee structures from closed terms
+router.get('/archives', requireRole('super-admin', 'administrator', 'finance'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const { listFeeStructureArchives } = await import('../services/feeStructureArchiveService.js');
+    const archives = await listFeeStructureArchives(tenantId);
+    res.json(archives);
+  } catch (error) {
+    console.error('List fee archives error:', error);
+    res.status(500).json({ error: 'Failed to list archived fee structures' });
+  }
+});
+
+// GET /api/fees/archives/latest — most recent archived term fees (view only until reuse)
+router.get('/archives/latest', requireRole('super-admin', 'administrator', 'finance'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const { getLatestFeeStructureArchive } = await import('../services/feeStructureArchiveService.js');
+    const archive = await getLatestFeeStructureArchive(tenantId);
+    if (!archive) {
+      return res.json(null);
+    }
+    res.json(archive);
+  } catch (error) {
+    console.error('Latest fee archive error:', error);
+    res.status(500).json({ error: 'Failed to load archived fee structure' });
+  }
+});
+
+/** Previous terms / archives that can be copied into the active term. */
+router.get('/copy-sources', requireRole('super-admin', 'administrator', 'finance'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const { listFeeStructureCopySources } = await import('../services/feeStructureArchiveService.js');
+    const sources = await listFeeStructureCopySources(tenantId);
+    res.set('Cache-Control', 'no-store');
+    res.json(sources);
+  } catch (error) {
+    console.error('List fee copy sources error:', error);
+    res.status(500).json({ error: 'Failed to list previous fee setups' });
+  }
+});
+
+router.get('/copy-sources/:sourceType/:sourceId', requireRole('super-admin', 'administrator', 'finance'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const sourceType = String(req.params.sourceType || '') === 'archive' ? 'archive' : 'term';
+    const sourceId = parseInt(req.params.sourceId, 10);
+    if (Number.isNaN(sourceId)) {
+      return res.status(400).json({ error: 'Invalid source id' });
+    }
+    const { getFeeStructuresForCopySource } = await import('../services/feeStructureArchiveService.js');
+    const detail = await getFeeStructuresForCopySource(tenantId, sourceType, sourceId);
+    res.set('Cache-Control', 'no-store');
+    res.json(detail);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to load fee setup';
+    console.error('Get fee copy source error:', error);
+    res.status(400).json({ error: message });
+  }
+});
+
+router.post(
+  '/copy-from-term/:sourceTermId',
+  requireRole('super-admin', 'administrator', 'finance'),
+  async (req: AuthRequest, res) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const sourceTermId = parseInt(req.params.sourceTermId, 10);
+      if (Number.isNaN(sourceTermId)) {
+        return res.status(400).json({ error: 'Invalid source term id' });
+      }
+      const targetTermId =
+        req.body?.term_id != null ? parseInt(String(req.body.term_id), 10) : undefined;
+      const billStudents =
+        req.body?.bill_students === true || req.body?.billStudents === true;
+
+      const { copyFeeStructuresFromTerm } = await import('../services/feeStructureArchiveService.js');
+      const result = await copyFeeStructuresFromTerm(
+        tenantId,
+        sourceTermId,
+        targetTermId != null && !Number.isNaN(targetTermId) ? targetTermId : undefined,
+        { billStudents }
+      );
+
+      emitTenantDataChanged(tenantId, 'fee', 'created');
+
+      res.json({
+        message:
+          result.structuresCopied > 0
+            ? billStudents
+              ? `Copied ${result.structuresCopied} fee structure(s) from ${result.sourceTermLabel} and billed students.`
+              : `Copied ${result.structuresCopied} fee structure(s) from ${result.sourceTermLabel}. Students were not billed.`
+            : 'No new structures copied — classes may already be configured for this term.',
+        ...result,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to copy fee structures';
+      console.error('Copy fee from term error:', error);
+      res.status(400).json({ error: message });
+    }
+  }
+);
+
+// GET /api/fees/archives/:archiveId — view archived fee structure details
+router.get('/archives/:archiveId', requireRole('super-admin', 'administrator', 'finance'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const archiveId = parseInt(req.params.archiveId, 10);
+    if (Number.isNaN(archiveId)) {
+      return res.status(400).json({ error: 'Invalid archive id' });
+    }
+    const { getFeeStructureArchive } = await import('../services/feeStructureArchiveService.js');
+    const archive = await getFeeStructureArchive(tenantId, archiveId);
+    if (!archive) {
+      return res.status(404).json({ error: 'Archived fee structure not found' });
+    }
+    res.json(archive);
+  } catch (error) {
+    console.error('Get fee archive error:', error);
+    res.status(500).json({ error: 'Failed to load archived fee structure' });
+  }
+});
+
+// POST /api/fees/archives/:archiveId/reuse — apply archived fees to active term and bill students
+router.post(
+  '/archives/:archiveId/reuse',
+  requireRole('super-admin', 'administrator', 'finance'),
+  async (req: AuthRequest, res) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const archiveId = parseInt(req.params.archiveId, 10);
+      if (Number.isNaN(archiveId)) {
+        return res.status(400).json({ error: 'Invalid archive id' });
+      }
+      const targetTermId =
+        req.body?.term_id != null ? parseInt(String(req.body.term_id), 10) : undefined;
+      const billStudents =
+        req.body?.bill_students === true || req.body?.billStudents === true;
+
+      const { reuseArchivedFeeStructures } = await import('../services/feeStructureArchiveService.js');
+      const result = await reuseArchivedFeeStructures(
+        tenantId,
+        archiveId,
+        targetTermId != null && !Number.isNaN(targetTermId) ? targetTermId : undefined,
+        { billStudents }
+      );
+
+      emitTenantDataChanged(tenantId, 'fee', 'created');
+
+      res.json({
+        message:
+          result.structuresCopied > 0
+            ? billStudents
+              ? `Reused ${result.structuresCopied} fee structure(s) from ${result.sourceTermLabel} and billed students.`
+              : `Copied ${result.structuresCopied} fee structure(s) from ${result.sourceTermLabel}. Students were not billed — set fees or bill manually when ready.`
+            : 'No new structures copied — classes may already be configured for this term.',
+        ...result,
+      });
+    } catch (error) {
+      console.error('Reuse fee archive error:', error);
+      const message = error instanceof Error ? error.message : 'Failed to reuse archived fee structure';
+      res.status(500).json({ error: message });
+    }
+  }
+);
 
 // Get single fee structure
 router.get('/:id', async (req: AuthRequest, res) => {
@@ -199,9 +365,11 @@ router.post('/', requireRole('super-admin', 'administrator', 'finance'), async (
       return res.status(400).json({ error: 'Invalid class or amount' });
     }
 
-    const resolved = await resolveTermIds(tenantId, String(term));
+    const resolved = await resolveTermIds(tenantId);
     if (!resolved) {
-      return res.status(400).json({ error: 'Could not resolve academic term for fee structure' });
+      return res.status(400).json({
+        error: 'No active ledger term. Set an academic term as active before saving fee structures.',
+      });
     }
 
     const { academicYearId, termId } = resolved;
@@ -265,26 +433,28 @@ router.put('/:id', requireRole('super-admin', 'administrator', 'finance'), async
       return res.status(404).json({ error: 'Fee structure not found' });
     }
     const previous = oldRes.rows[0] as Record<string, unknown>;
+    const activeResolved = await resolveTermIds(tenantId);
+    if (!activeResolved) {
+      return res.status(400).json({
+        error: 'No active ledger term. Cannot update fee structures until a term is active.',
+      });
+    }
+
+    const existingTermId = Number(previous.term_id);
+    if (!Number.isNaN(existingTermId) && existingTermId !== activeResolved.termId) {
+      return res.status(400).json({
+        error: 'This fee structure belongs to a closed or previous term. Create a new structure for the active term instead.',
+      });
+    }
 
     const classIdNum = updates.class_id != null ? Number(updates.class_id) : Number(previous.class_id);
     const amountNum = updates.amount != null ? Number(updates.amount) : Number(previous.total);
-    const termStr = updates.term != null ? String(updates.term) : String(previous.term || '');
 
     if (Number.isNaN(classIdNum) || Number.isNaN(amountNum)) {
       return res.status(400).json({ error: 'Invalid class or amount' });
     }
 
-    let academicYearId = Number(previous.academic_year_id);
-    let termId = Number(previous.term_id);
-
-    if (updates.term != null || updates.class_id != null) {
-      const resolved = await resolveTermIds(tenantId, termStr);
-      if (!resolved) {
-        return res.status(400).json({ error: 'Could not resolve academic term for fee structure' });
-      }
-      academicYearId = resolved.academicYearId;
-      termId = resolved.termId;
-    }
+    const { academicYearId, termId } = activeResolved;
 
     const result = await query(
       `UPDATE ledger_fee_structures
@@ -323,7 +493,7 @@ router.put('/:id', requireRole('super-admin', 'administrator', 'finance'), async
         previous.class_name ||
         (await resolveClassName(tenantId, classIdNum))
     ).trim();
-    const termLabel = String(next.term || termStr).trim();
+    const termLabel = String(next.term || '').trim();
     const actor = await resolveActorFromRequest(req);
 
     await writeAuditLog({

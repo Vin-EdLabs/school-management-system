@@ -1,6 +1,13 @@
 import { query } from '../db/connection.js';
-import { resolveLedgerTermFromSettings } from './ledgerFinanceService.js';
+import { resolveActiveLedgerTerm } from './studentUnifiedBalanceService.js';
 import { ACTIVE_STUDENT_WHERE } from '../utils/studentEnrollment.js';
+
+function normalizeClassName(name: string): string {
+  return String(name || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
 
 export type MissingClass = { id: string; name: string };
 
@@ -13,117 +20,41 @@ export type FeeStructureCheckResult = {
 };
 
 type FeeCheckContext = {
-  termLabels: string[];
-  ledgerTermIds: number[];
-  academicYearIds: number[];
-  primaryTermId: number | null;
+  ledgerTermId: number | null;
+  academicYearId: number | null;
 };
 
-function normalizeClassName(name: string): string {
-  return String(name || '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ');
-}
-
-/** Match fee_structures.term against active term labels (same rules as finance reports). */
-function resolveTermMatch(term: string | null, academicYear: string | null): string | null {
-  if (!term) return null;
-  const t = String(term).trim();
-  if (!academicYear) return t;
-  const y = String(academicYear).trim();
-  if (!y || t.endsWith(y)) return t;
-  return `${t} ${y}`;
-}
-
-function termMatchSql(alias: string): string {
-  const t = alias;
-  return `(
-    TRIM(COALESCE(${t}.term, '')) = ''
-    OR ${t}.term = $2 OR ${t}.term = $4 OR ${t}.term LIKE $3
-    OR $2 LIKE TRIM(${t}.term) || '%' OR TRIM(${t}.term) LIKE $2 || '%'
-    OR $4 LIKE TRIM(${t}.term) || '%' OR TRIM(${t}.term) LIKE $4 || '%'
-  )`;
-}
-
-function ledgerTermLabelSql(): string {
-  return `TRIM(CONCAT(t.name, ' ', ay.name))`;
-}
-
-function addTermLabelVariants(labels: Set<string>, year: string, termRaw: string) {
-  const raw = String(termRaw || '').trim();
-  const y = String(year || '').trim();
-  if (!raw) return;
-
-  labels.add(raw);
-  const yearInRaw = raw.match(/(19|20)\d{2}$/)?.[0];
-  const termOnly = raw.replace(/\s+(19|20)\d{2}$/, '').trim() || raw;
-
-  if (y) {
-    labels.add(resolveTermMatch(termOnly, y) || `${termOnly} ${y}`.trim());
-    labels.add(`${termOnly} ${y}`.trim());
-    if (!yearInRaw) {
-      labels.add(`${raw} ${y}`.trim());
-    }
-  }
-  labels.add(termOnly);
-}
-
-/**
- * Resolve the same term context used when saving fees (school_settings first),
- * plus optional academic_terms hints. Collects every ledger term id / label variant.
- */
 async function resolveFeeCheckContext(
   tenantId: number,
-  options?: { academicTermId?: number | null; termHint?: string | null }
-): Promise<FeeCheckContext> {
-  const labels = new Set<string>();
-  const ledgerTermIds = new Set<number>();
-  const academicYearIds = new Set<number>();
-
-  const settingsRes = await query(
-    `SELECT current_term, current_year FROM school_settings WHERE tenant_id = $1 LIMIT 1`,
-    [tenantId]
-  );
-  const settingsTerm = String(settingsRes.rows[0]?.current_term || '').trim();
-  const settingsYear = String(settingsRes.rows[0]?.current_year || '').trim();
-
-  const register = async (year: string, termRaw: string) => {
-    if (!year || !termRaw) return;
-    addTermLabelVariants(labels, year, termRaw);
-    const resolved = await resolveLedgerTermFromSettings(tenantId, year, termRaw);
-    if (!resolved) return;
-    ledgerTermIds.add(resolved.termId);
-    academicYearIds.add(resolved.academicYearId);
-  };
-
-  // Primary: school settings — same source as POST /fees when saving fee structures.
-  await register(settingsYear, settingsTerm);
-
-  if (options?.termHint) {
-    const hint = String(options.termHint).trim();
-    const hintYear = hint.match(/(19|20)\d{2}$/)?.[0] || settingsYear;
-    await register(hintYear, hint);
+  options?: {
+    academicTermId?: number | null;
+    ledgerTermId?: number | null;
+    termHint?: string | null;
   }
+): Promise<FeeCheckContext> {
+  void options?.termHint;
 
-  if (options?.academicTermId != null && !Number.isNaN(Number(options.academicTermId))) {
-    const academicRes = await query(
-      `SELECT term_name, year FROM academic_terms WHERE id = $1 AND tenant_id = $2`,
-      [options.academicTermId, tenantId]
+  if (options?.ledgerTermId != null && !Number.isNaN(Number(options.ledgerTermId))) {
+    const rowRes = await query(
+      `SELECT id, academic_year_id FROM terms WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+      [options.ledgerTermId, tenantId]
     );
-    if (academicRes.rows.length > 0) {
-      const row = academicRes.rows[0];
-      await register(String(row.year), String(row.term_name));
+    if (rowRes.rows.length > 0) {
+      return {
+        ledgerTermId: Number(rowRes.rows[0].id),
+        academicYearId: Number(rowRes.rows[0].academic_year_id),
+      };
     }
   }
 
-  const primaryTermId = ledgerTermIds.size > 0 ? [...ledgerTermIds][0] : null;
-
+  const active = await resolveActiveLedgerTerm(
+    query,
+    tenantId,
+    options?.academicTermId ?? undefined
+  );
   return {
-    termLabels: [...labels].filter(Boolean),
-    ledgerTermIds: [...ledgerTermIds],
-    academicYearIds: [...academicYearIds],
-    primaryTermId,
+    ledgerTermId: active.ledgerTermId,
+    academicYearId: active.academicYearId,
   };
 }
 
@@ -210,75 +141,18 @@ async function listConfiguredClassIds(
   ctx: FeeCheckContext
 ): Promise<Set<number>> {
   const configured = new Set<number>();
+  if (ctx.ledgerTermId == null) return configured;
 
-  if (ctx.ledgerTermIds.length > 0) {
-    const byTerm = await query(
-      `SELECT DISTINCT class_id
-       FROM ledger_fee_structures
-       WHERE tenant_id = $1
-         AND term_id = ANY($2::int[])`,
-      [tenantId, ctx.ledgerTermIds]
-    );
-    for (const row of byTerm.rows) {
-      configured.add(Number(row.class_id));
-    }
+  const byTerm = await query(
+    `SELECT DISTINCT class_id
+     FROM ledger_fee_structures
+     WHERE tenant_id = $1 AND term_id = $2`,
+    [tenantId, ctx.ledgerTermId]
+  );
+  for (const row of byTerm.rows) {
+    configured.add(Number(row.class_id));
   }
 
-  if (ctx.academicYearIds.length > 0 && ctx.ledgerTermIds.length > 0) {
-    const exact = await query(
-      `SELECT DISTINCT class_id
-       FROM ledger_fee_structures
-       WHERE tenant_id = $1
-         AND academic_year_id = ANY($2::int[])
-         AND term_id = ANY($3::int[])`,
-      [tenantId, ctx.academicYearIds, ctx.ledgerTermIds]
-    );
-    for (const row of exact.rows) {
-      configured.add(Number(row.class_id));
-    }
-  }
-
-  const labelSql = ledgerTermLabelSql();
-  for (const label of ctx.termLabels) {
-    const termOnly = label.replace(/\s+(19|20)\d{2}$/, '').trim() || label;
-    const termLike = `${label}%`;
-
-    const byLabel = await query(
-      `SELECT DISTINCT lfs.class_id
-       FROM ledger_fee_structures lfs
-       INNER JOIN terms t ON t.id = lfs.term_id AND t.tenant_id = lfs.tenant_id
-       INNER JOIN academic_years ay ON ay.id = lfs.academic_year_id AND ay.tenant_id = lfs.tenant_id
-       WHERE lfs.tenant_id = $1
-         AND (
-           ${labelSql} = $2
-           OR TRIM(t.name) = $2
-           OR TRIM(t.name) = $4
-           OR ${labelSql} ILIKE $3
-           OR $2 ILIKE TRIM(t.name) || '%'
-           OR TRIM(t.name) ILIKE $2 || '%'
-         )`,
-      [tenantId, label, termLike, termOnly]
-    );
-    for (const row of byLabel.rows) {
-      configured.add(Number(row.class_id));
-    }
-
-    const termMatch = resolveTermMatch(termOnly, label.match(/(19|20)\d{2}$/)?.[0] ?? null);
-    const legacyLike = termMatch ? `${termMatch}%` : '%';
-    const legacy = await query(
-      `SELECT DISTINCT class_id
-       FROM fee_structures fs
-       WHERE fs.tenant_id = $1
-         AND fs.class_id IS NOT NULL
-         AND ${termMatchSql('fs')}`,
-      [tenantId, termMatch, legacyLike, termOnly]
-    );
-    for (const row of legacy.rows) {
-      configured.add(Number(row.class_id));
-    }
-  }
-
-  // DB-direct classes: fee may be on a different class row with the same display name.
   if (configured.size > 0) {
     const feeClassIds = [...configured];
     const aliasRes = await query(
@@ -307,11 +181,15 @@ async function listConfiguredClassIds(
  */
 export async function checkFeeStructureCompleteness(
   tenantId: number,
-  options?: { academicTermId?: number | null; termHint?: string | null }
+  options?: {
+    academicTermId?: number | null;
+    ledgerTermId?: number | null;
+    termHint?: string | null;
+  }
 ): Promise<FeeStructureCheckResult> {
   const ctx = await resolveFeeCheckContext(tenantId, options);
 
-  if (ctx.ledgerTermIds.length === 0 || ctx.termLabels.length === 0) {
+  if (ctx.ledgerTermId == null) {
     return {
       complete: false,
       total_classes: 0,
@@ -332,7 +210,7 @@ export async function checkFeeStructureCompleteness(
       total_classes: 0,
       configured_classes: 0,
       missing_classes: [],
-      term_id: ctx.primaryTermId,
+      term_id: ctx.ledgerTermId,
     };
   }
 
@@ -356,6 +234,6 @@ export async function checkFeeStructureCompleteness(
     total_classes,
     configured_classes: total_classes - missing_classes.length,
     missing_classes,
-    term_id: ctx.primaryTermId,
+    term_id: ctx.ledgerTermId,
   };
 }

@@ -53,11 +53,44 @@ export const SQL_BENEFICIARY_TERM_FEE_DEBIT_EFFECTIVE = sqlBeneficiaryAdjustedAm
  * Params: $1 tenant_id, $2 ledger term_id (academic_terms.id / terms.id).
  */
 export const SQL_EFFECTIVE_STUDENT_LEDGER_TOTALS_CTE = `
+  prev_closed_term AS (
+    SELECT pt.id AS prev_term_id
+    FROM terms pt
+    WHERE pt.tenant_id = $1
+      AND pt.status = 'closed'
+      AND pt.id <> $2::integer
+      AND (
+        (
+          EXISTS (
+            SELECT 1 FROM terms cur
+            WHERE cur.id = $2::integer AND cur.tenant_id = $1 AND cur.start_date IS NOT NULL
+          )
+          AND pt.end_date IS NOT NULL
+          AND pt.end_date < (SELECT start_date FROM terms WHERE id = $2::integer AND tenant_id = $1)
+        )
+        OR NOT EXISTS (
+          SELECT 1 FROM terms cur
+          WHERE cur.id = $2::integer AND cur.tenant_id = $1 AND cur.start_date IS NOT NULL
+        )
+      )
+    ORDER BY
+      CASE WHEN pt.end_date IS NOT NULL THEN 0 ELSE 1 END,
+      pt.end_date DESC NULLS LAST,
+      pt.closed_at DESC NULLS LAST,
+      pt.id DESC
+    LIMIT 1
+  ),
+  snapshot_arrears AS (
+    SELECT tcb.student_id, tcb.carried_balance::numeric AS arrears_amt
+    FROM term_closing_balances tcb
+    INNER JOIN prev_closed_term pct ON pct.prev_term_id = tcb.term_id
+    WHERE tcb.tenant_id = $1
+  ),
   raw_ledger_totals AS (
     SELECT
       sl.student_id,
       COALESCE(SUM(CASE WHEN sl.entry_type = 'term_fee' THEN sl.debit ELSE 0 END), 0)::numeric AS term_fee,
-      COALESCE(SUM(CASE WHEN sl.entry_type = 'arrears' THEN sl.debit ELSE 0 END), 0)::numeric AS arrears_amt,
+      COALESCE(SUM(CASE WHEN sl.entry_type = 'arrears' THEN sl.debit ELSE 0 END), 0)::numeric AS arrears_ledger,
       COALESCE(SUM(CASE WHEN sl.entry_type = 'payment' THEN sl.credit ELSE 0 END), 0)::numeric AS paid_amt
     FROM student_ledger sl
     WHERE sl.tenant_id = $1 AND sl.term_id = $2::integer
@@ -83,18 +116,29 @@ export const SQL_EFFECTIVE_STUDENT_LEDGER_TOTALS_CTE = `
         WHEN COALESCE(rlt.term_fee, 0) > 0 THEN rlt.term_fee
         ELSE COALESCE(stf.structure_term_fee, 0)
       END::numeric AS term_fee,
-      COALESCE(rlt.arrears_amt, 0)::numeric AS arrears_amt,
+      CASE
+        WHEN EXISTS (SELECT 1 FROM prev_closed_term)
+          THEN COALESCE(sa.arrears_amt, 0)
+        ELSE COALESCE(rlt.arrears_ledger, 0)
+      END::numeric AS arrears_amt,
       COALESCE(rlt.paid_amt, 0)::numeric AS paid_amt,
       GREATEST(
         0,
         CASE
           WHEN COALESCE(rlt.term_fee, 0) > 0 THEN rlt.term_fee
           ELSE COALESCE(stf.structure_term_fee, 0)
-        END + COALESCE(rlt.arrears_amt, 0) - COALESCE(rlt.paid_amt, 0)
+        END
+        + CASE
+            WHEN EXISTS (SELECT 1 FROM prev_closed_term)
+              THEN COALESCE(sa.arrears_amt, 0)
+            ELSE COALESCE(rlt.arrears_ledger, 0)
+          END
+        - COALESCE(rlt.paid_amt, 0)
       )::numeric AS outstanding_amt,
       COALESCE(stf.has_fee_structure, false) AS has_fee_structure
     FROM students s
     LEFT JOIN raw_ledger_totals rlt ON rlt.student_id = s.id
+    LEFT JOIN snapshot_arrears sa ON sa.student_id = s.id
     LEFT JOIN structure_term_fees stf ON stf.student_id = s.id
     WHERE s.tenant_id = $1
   )`;

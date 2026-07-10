@@ -1,10 +1,13 @@
 import type pg from 'pg';
 import { query, getClient } from '../db/connection.js';
 import {
-  resolveLedgerTermFromSettings,
   executeTermSwitchWithArrears,
   recalculateTermOutstandingBalances,
 } from './ledgerFinanceService.js';
+import {
+  repairActiveAcademicTermLedgerLink,
+  resolveLedgerTermForAcademicTerm,
+} from './academicTermLedgerSyncService.js';
 import { refreshArrearsForTenantWithClient } from './arrearsService.js';
 
 function roundMoney(n: number): number {
@@ -63,19 +66,6 @@ export type TermCloseResult = {
   };
   error?: string;
 };
-
-async function resolveLedgerTermId(
-  tenantId: number,
-  termName: string,
-  year: string
-): Promise<number | null> {
-  const resolved = await resolveLedgerTermFromSettings(
-    tenantId,
-    year,
-    buildFullTermLabel(termName, year)
-  );
-  return resolved?.termId ?? null;
-}
 
 async function fetchClosingBalances(
   run: typeof query,
@@ -175,11 +165,10 @@ export async function getTermClosePreview(
   const academicYear = String(current.year || '').trim();
   const termLabel = buildFullTermLabel(termName, academicYear);
 
-  let ledgerTermId = await resolveLedgerTermId(tenantId, termName, academicYear);
-  if (!ledgerTermId) {
-    const resolved = await resolveLedgerTermFromSettings(tenantId, academicYear, termLabel);
-    ledgerTermId = resolved?.termId ?? null;
-  }
+  await repairActiveAcademicTermLedgerLink(tenantId);
+  let ledgerTermId = await resolveLedgerTermForAcademicTerm(tenantId, academicTermId, {
+    requireOpen: true,
+  });
   if (!ledgerTermId) {
     throw new Error(`Ledger term for "${termLabel}" could not be resolved. Open Settings and confirm the active term.`);
   }
@@ -207,12 +196,9 @@ export async function getTermClosePreview(
     nextAcademicTermId = Number(nextAcademic.id);
     nextAcademicYear = String(nextAcademic.year || '').trim();
     nextTermLabel = buildFullTermLabel(String(nextAcademic.term_name), nextAcademicYear);
-    const resolvedNext = await resolveLedgerTermFromSettings(
-      tenantId,
-      nextAcademicYear,
-      nextTermLabel
-    );
-    nextLedgerTermId = resolvedNext?.termId ?? null;
+    nextLedgerTermId = await resolveLedgerTermForAcademicTerm(tenantId, nextAcademicTermId, {
+      requireOpen: false,
+    });
     if (!nextLedgerTermId) {
       closeBlockReason = `Could not prepare ledger for next term "${nextTermLabel}".`;
     }
@@ -276,6 +262,26 @@ export async function closeTermAndActivateNext(
     );
     const stats = aggregateCloseStats(studentRows);
 
+    for (const row of studentRows) {
+      if (row.closingBalance <= 0) continue;
+      await client.query(
+        `INSERT INTO term_closing_balances (tenant_id, term_id, student_id, carried_balance)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (tenant_id, term_id, student_id)
+         DO UPDATE SET
+           carried_balance = EXCLUDED.carried_balance,
+           snapshotted_at = CURRENT_TIMESTAMP`,
+        [tenantId, preview.ledgerTermId, row.studentId, row.closingBalance]
+      );
+      await client.query(
+        `INSERT INTO term_outstanding_balances (tenant_id, term_id, student_id, outstanding_balance, calculated_at)
+         VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+         ON CONFLICT (tenant_id, term_id, student_id)
+         DO UPDATE SET outstanding_balance = EXCLUDED.outstanding_balance, calculated_at = CURRENT_TIMESTAMP`,
+        [tenantId, preview.ledgerTermId, row.studentId, row.closingBalance]
+      );
+    }
+
     const termMetaRes = await client.query(
       `SELECT t.academic_year_id, t.name, ay.name AS year_name
        FROM terms t
@@ -328,6 +334,18 @@ export async function closeTermAndActivateNext(
       ]
     );
 
+    const snapshotId = Number(snapshotInsert.rows[0]?.id) || null;
+    const { archiveFeeStructuresForClosingTerm } = await import('./feeStructureArchiveService.js');
+    await archiveFeeStructuresForClosingTerm(
+      client,
+      tenantId,
+      preview.ledgerTermId,
+      preview.termLabel,
+      preview.academicYear,
+      snapshotId,
+      closedByUserId
+    );
+
     await client.query(
       `UPDATE terms
        SET status = 'closed',
@@ -346,6 +364,12 @@ export async function closeTermAndActivateNext(
       `UPDATE academic_terms SET is_active = true, updated_at = CURRENT_TIMESTAMP
        WHERE id = $1 AND tenant_id = $2`,
       [preview.nextAcademicTermId, tenantId]
+    );
+    await client.query(
+      `UPDATE academic_terms
+       SET ledger_term_id = $1, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2 AND tenant_id = $3`,
+      [preview.nextLedgerTermId, preview.nextAcademicTermId, tenantId]
     );
 
     await client.query('UPDATE terms SET is_current = false WHERE tenant_id = $1', [tenantId]);

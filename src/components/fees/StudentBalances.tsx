@@ -16,13 +16,14 @@ import type { StudentBalance } from '../../services/studentBalance';
 import type { Payment } from '../../contexts/DataContext';
 import CompactTermBillCell from './CompactTermBillCell';
 import { resolveFeeStructureId, prefetchFeeStructureItemsSummary } from '../../services/feeStructureItems';
+import { feeStructureMatchesActiveTerm } from '../../utils/termLabelMatch';
 import { resolveStudentDisplayBalance } from '../../utils/resolveStudentDisplayBalance';
 import { GenerateInvoiceBulkButton, GenerateInvoiceButton } from '../invoices/GenerateInvoiceActions';
 
 const StudentBalances = () => {
   const { students, payments, classes, ledgerBalances, feeStructures } = useData();
   const { hasAccess } = useAuth();
-  const { currentTerm: activeTerm, activeAcademicTermId } = useActiveTerm();
+  const { currentTerm: activeTerm, activeAcademicTermId, activeLedgerTermId, currentYear } = useActiveTerm();
   const canGenerateInvoice = hasAccess('invoices');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterClass, setFilterClass] = useState('all-classes');
@@ -39,7 +40,7 @@ const StudentBalances = () => {
       .replace(/\s+/g, ' ');
 
   const feeStructureMatchesStudent = (
-    fee: { classId?: number | string | null; class_id?: number | string | null; className?: string; class_name?: string; term?: string },
+    fee: { classId?: number | string | null; class_id?: number | string | null; className?: string; class_name?: string; term?: string; termId?: number },
     student: { classAssignedId?: number | string | null; classAssigned?: string }
   ) => {
     const feeClassId = fee.classId ?? fee.class_id;
@@ -53,10 +54,9 @@ const StudentBalances = () => {
       normalizeClassName(feeClassName) !== '' &&
       normalizeClassName(feeClassName) === normalizeClassName(studentClassName);
     const classMatch = classMatchById || classMatchByName;
-    const term = String(fee.term || '').trim();
     return (
       classMatch &&
-      (term === currentTerm || term.startsWith(currentTerm) || currentTerm.startsWith(term))
+      feeStructureMatchesActiveTerm(fee.term, currentTerm, currentYear, fee.termId, activeLedgerTermId)
     );
   };
 
@@ -118,12 +118,14 @@ const StudentBalances = () => {
   const roundMoney = (value: number) => Math.round(value * 100) / 100;
 
   const currentTermPayments = useMemo(() => {
-    const activeTermId = Object.values(ledgerBalances || {})[0]?.activeTermId ?? null;
+    const activeTermId = activeLedgerTermId ?? Object.values(ledgerBalances || {})[0]?.activeTermId ?? null;
     return (payments || []).filter((p: Payment) => {
-      if (activeTermId != null && p.termId != null) return p.termId === activeTermId;
-      return !currentTerm || p.term === currentTerm || (p.term || '').startsWith(currentTerm);
+      if (p.isVoided) return false;
+      if (activeTermId != null && p.termId != null) return Number(p.termId) === Number(activeTermId);
+      if (!currentTerm || currentTerm === 'Not Set') return false;
+      return p.term === currentTerm || (p.term || '').includes(currentTerm) || currentTerm.includes(p.term || '');
     });
-  }, [payments, ledgerBalances, currentTerm]);
+  }, [payments, ledgerBalances, currentTerm, activeLedgerTermId]);
 
   const countTermPayments = (studentId: string | number) =>
     currentTermPayments.filter((p) => String(p.studentId) === String(studentId)).length;
@@ -152,7 +154,9 @@ const StudentBalances = () => {
       student,
       balance,
       feeStructures || [],
-      currentTerm
+      currentTerm,
+      currentYear,
+      activeLedgerTermId
     );
     const creditBroughtForward = balance?.creditBroughtForward ?? 0;
     const individualCharges = balance?.individualCharges ?? 0;

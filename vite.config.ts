@@ -38,6 +38,9 @@ export default defineConfig(({ mode }) => ({
     },
     dedupe: ["react", "react-dom"],
   },
+  optimizeDeps: {
+    include: ["date-fns", "react-day-picker"],
+  },
   build: {
     sourcemap: false,
     reportCompressedSize: false,

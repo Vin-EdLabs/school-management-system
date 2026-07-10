@@ -4,7 +4,6 @@ import {
   getStudentSummary,
   postFeesForClass,
   recordPayment,
-  postFeesForNewTerm,
   postFeesForNewTermWithArrears,
   backfillArrearsForCurrentTerm,
   resolveLedgerTermFromSettings,
@@ -250,6 +249,10 @@ router.post('/payment', requireCompleteFeeStructures, async (req: AuthRequest, r
 router.get('/terms', async (req: AuthRequest, res: Response) => {
   try {
     const tenantId = getTenantId(req);
+    const { repairActiveAcademicTermLedgerLink } = await import(
+      '../services/academicTermLedgerSyncService.js'
+    );
+    await repairActiveAcademicTermLedgerLink(tenantId);
     const { query } = await import('../db/connection.js');
     const result = await query(
       `SELECT t.id, t.name, t.is_current, t.status, t.closed_at,
@@ -264,6 +267,43 @@ router.get('/terms', async (req: AuthRequest, res: Response) => {
   } catch (error: any) {
     console.error('Error fetching ledger terms:', error);
     return res.status(500).json({ error: 'Failed to fetch ledger terms.' });
+  }
+});
+
+// POST /api/finance/ensure-ledger-term — create or resolve ledger term without posting fees
+router.post('/ensure-ledger-term', async (req: AuthRequest, res: Response) => {
+  try {
+    const schema = z.object({
+      year: z.string().min(1),
+      term: z.string().min(1),
+    });
+    const { year, term } = schema.parse(req.body);
+    const tenantId = getTenantId(req);
+    const resolved = await resolveLedgerTermFromSettings(tenantId, year, term);
+    if (!resolved?.termId) {
+      return res.status(400).json({
+        error: `Ledger term for "${term}" (${year}) could not be resolved.`,
+      });
+    }
+    const row = await query(
+      `SELECT t.id, t.name, t.is_current, t.status, t.closed_at,
+              ay.id as academic_year_id, ay.name as academic_year_name
+       FROM terms t
+       INNER JOIN academic_years ay ON ay.id = t.academic_year_id
+       WHERE t.id = $1 AND t.tenant_id = $2
+       LIMIT 1`,
+      [resolved.termId, tenantId]
+    );
+    if (row.rows.length === 0) {
+      return res.status(404).json({ error: 'Resolved ledger term not found.' });
+    }
+    return res.json(row.rows[0]);
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Invalid request body.', details: error.errors });
+    }
+    console.error('Error ensuring ledger term:', error);
+    return res.status(500).json({ error: error.message || 'Failed to ensure ledger term.' });
   }
 });
 
@@ -301,12 +341,17 @@ router.post('/switch-term', async (req: AuthRequest, res: Response) => {
       }
     }
 
-    // If no currentTermId, this is the first term ever - just post fees, no arrears to carry
+    // No auto fee posting — billing is manual per term (Set Fees / Bill Student).
     if (!validatedBody.currentTermId) {
-      console.log(`[switch-term] First term detected (no currentTermId). Posting fees only for term ${validatedBody.newTermId}`);
-      const result = await postFeesForNewTerm(tenantId, validatedBody.newTermId);
+      console.log(
+        `[switch-term] First term detected (no currentTermId). Skipping auto fee post for term ${validatedBody.newTermId}`
+      );
       emitTenantDataChanged(tenantId, 'finance-term-switch', 'updated');
-      return res.json({ ...result, message: 'First term - fees posted. No arrears to carry forward.' });
+      return res.json({
+        arrearsRowsInserted: 0,
+        termFeesInserted: 0,
+        message: 'First term — no arrears to carry. Assign fee structures in Fees when ready.',
+      });
     }
     
     if (validatedBody.currentTermId === validatedBody.newTermId) {

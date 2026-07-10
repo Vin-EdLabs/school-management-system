@@ -1,5 +1,5 @@
 /* ScholarNerve service worker — caching + push. Bump CACHE_VERSION on breaking cache changes. */
-const CACHE_VERSION = '2026-06-10-v15';
+const CACHE_VERSION = '2026-07-09-v16';
 const CACHE_NAME = `scholarnerve-app-${CACHE_VERSION}`;
 const APP_SHELL = ['/', '/index.html'];
 
@@ -30,6 +30,7 @@ function isNavigationRequest(request) {
 function isViteDevPath(url) {
   return (
     url.pathname.startsWith('/node_modules/') ||
+    url.pathname.includes('/.vite/deps/') ||
     url.pathname.startsWith('/@vite/') ||
     url.pathname.startsWith('/@react-refresh') ||
     url.pathname.startsWith('/@fs/') ||

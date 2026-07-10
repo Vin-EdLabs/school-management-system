@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiService } from '@/services/api';
 import { useSchool } from '@/contexts/SchoolContext';
+import { useActiveTerm } from '@/contexts/ActiveTermContext';
 
 export type FinancialSummaryData = {
   totalExpected: number;
@@ -189,8 +190,9 @@ export function normalizeFinancialSummary(raw: FinancialSummaryData): FinancialS
 
 export function useFinancialSummary(active = true) {
   const { schoolId } = useSchool();
+  const { activeLedgerTermId } = useActiveTerm();
   return useQuery({
-    queryKey: ['reports', 'financial-summary', schoolId],
+    queryKey: ['reports', 'financial-summary', schoolId, activeLedgerTermId],
     queryFn: async () => {
       const data = await apiService.get<FinancialSummaryData>('/reports/financial-summary');
       return normalizeFinancialSummary(data);
@@ -203,8 +205,9 @@ export function useFinancialSummary(active = true) {
 
 export function useAdminOverview(active = true) {
   const { schoolId } = useSchool();
+  const { activeLedgerTermId } = useActiveTerm();
   return useQuery({
-    queryKey: ['reports', 'admin-overview', schoolId],
+    queryKey: ['reports', 'admin-overview', schoolId, activeLedgerTermId],
     queryFn: () => apiService.get<AdminOverviewData>('/reports/admin-overview'),
     enabled: enabledForTenant(schoolId, active),
     staleTime: 15_000,

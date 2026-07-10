@@ -235,7 +235,8 @@ export type ReuseArchiveResult = {
 export async function reuseArchivedFeeStructures(
   tenantId: number,
   archiveId: number,
-  targetLedgerTermId?: number | null
+  targetLedgerTermId?: number | null,
+  options?: { billStudents?: boolean }
 ): Promise<ReuseArchiveResult> {
   const archive = await getFeeStructureArchive(tenantId, archiveId);
   if (!archive?.structures?.length) {
@@ -321,38 +322,362 @@ export async function reuseArchivedFeeStructures(
     client.release();
   }
 
-  // Bill per class — same as POST /fees + items save flow
-  for (const src of archive.structures) {
-    const hasStructure = await query(
-      `SELECT 1 FROM ledger_fee_structures
-       WHERE tenant_id = $1 AND class_id = $2 AND term_id = $3`,
-      [tenantId, src.class_id, target.termId]
-    );
-    if (hasStructure.rows.length === 0) continue;
-    await postFeesForClass(tenantId, src.class_id, target.academicYearId, target.termId);
-  }
+  let billingInserted = 0;
+  if (options?.billStudents) {
+    for (const src of archive.structures) {
+      const hasStructure = await query(
+        `SELECT 1 FROM ledger_fee_structures
+         WHERE tenant_id = $1 AND class_id = $2 AND term_id = $3`,
+        [tenantId, src.class_id, target.termId]
+      );
+      if (hasStructure.rows.length === 0) continue;
+      await postFeesForClass(tenantId, src.class_id, target.academicYearId, target.termId);
+    }
 
-  const billing = await (async () => {
     const billClient = await getClient();
     try {
       await billClient.query('BEGIN');
       const result = await executePostFeesForNewTerm(billClient, tenantId, target.termId);
       await billClient.query('COMMIT');
-      return result.insertedCount;
+      billingInserted = result.insertedCount;
     } catch (err) {
       await billClient.query('ROLLBACK').catch(() => {});
       throw err;
     } finally {
       billClient.release();
     }
-  })();
+  }
 
   return {
     structuresCopied,
     itemsCopied,
     skippedExisting,
-    billingInserted: billing,
+    billingInserted,
     targetTermLabel,
     sourceTermLabel: archive.term_label,
+  };
+}
+
+export type FeeStructureCopySource = {
+  sourceType: 'term' | 'archive';
+  /** Archive id when sourceType=archive; otherwise ledger term id */
+  id: number;
+  ledgerTermId: number;
+  termLabel: string;
+  academicYear: string | null;
+  structureCount: number;
+  startDate: string | null;
+  status: string | null;
+};
+
+/** Previous terms (and archives) that can be copied into the active term. */
+export async function listFeeStructureCopySources(
+  tenantId: number
+): Promise<FeeStructureCopySource[]> {
+  const active = await resolveTargetLedgerTerm(tenantId, null);
+  const activeId = active?.termId ?? null;
+
+  const termSources = await query(
+    `SELECT
+       t.id AS ledger_term_id,
+       TRIM(CONCAT(t.name, ' ', COALESCE(ay.label, ay.name))) AS term_label,
+       COALESCE(ay.label, ay.name) AS academic_year,
+       t.start_date::text AS start_date,
+       t.status,
+       COUNT(lfs.id)::int AS structure_count
+     FROM terms t
+     JOIN academic_years ay ON ay.id = t.academic_year_id
+     INNER JOIN ledger_fee_structures lfs
+       ON lfs.tenant_id = t.tenant_id AND lfs.term_id = t.id
+     INNER JOIN classes c ON c.id = lfs.class_id AND c.tenant_id = lfs.tenant_id
+     WHERE t.tenant_id = $1
+       AND ($2::int IS NULL OR t.id <> $2::int)
+       AND COALESCE(c.fee_mode, 'term') <> 'daily'
+     GROUP BY t.id, t.name, ay.label, ay.name, t.start_date, t.status
+     HAVING COUNT(lfs.id) > 0
+     ORDER BY t.start_date DESC NULLS LAST, t.id DESC`,
+    [tenantId, activeId]
+  );
+
+  const byTermId = new Map<number, FeeStructureCopySource>();
+  for (const row of termSources.rows) {
+    const ledgerTermId = Number(row.ledger_term_id);
+    byTermId.set(ledgerTermId, {
+      sourceType: 'term',
+      id: ledgerTermId,
+      ledgerTermId,
+      termLabel: String(row.term_label || '').trim(),
+      academicYear: row.academic_year != null ? String(row.academic_year) : null,
+      structureCount: Number(row.structure_count) || 0,
+      startDate: row.start_date ? String(row.start_date).slice(0, 10) : null,
+      status: row.status != null ? String(row.status) : null,
+    });
+  }
+
+  const archives = await listFeeStructureArchives(tenantId);
+  for (const arch of archives) {
+    if (activeId != null && arch.ledger_term_id === activeId) continue;
+    if (arch.structure_count <= 0) continue;
+    // Prefer live term source when both exist; otherwise expose archive
+    if (byTermId.has(arch.ledger_term_id)) continue;
+    byTermId.set(arch.ledger_term_id, {
+      sourceType: 'archive',
+      id: arch.id,
+      ledgerTermId: arch.ledger_term_id,
+      termLabel: arch.term_label,
+      academicYear: arch.academic_year,
+      structureCount: arch.structure_count,
+      startDate: null,
+      status: 'archived',
+    });
+  }
+
+  return [...byTermId.values()].sort((a, b) => {
+    const da = a.startDate || '';
+    const db = b.startDate || '';
+    if (da && db) return db.localeCompare(da);
+    if (da) return -1;
+    if (db) return 1;
+    return b.ledgerTermId - a.ledgerTermId;
+  });
+}
+
+async function loadLiveStructuresForTerm(
+  tenantId: number,
+  ledgerTermId: number
+): Promise<ArchivedFeeStructureClass[]> {
+  const structuresRes = await query(
+    `SELECT
+       lfs.class_id,
+       COALESCE(NULLIF(TRIM(c.class_name), ''), NULLIF(TRIM(c.name), ''), 'Class ' || c.id) AS class_name,
+       c.level,
+       lfs.total,
+       lfs.tuition_fee,
+       lfs.pta_fee,
+       lfs.exam_fee,
+       lfs.id AS fee_structure_id
+     FROM ledger_fee_structures lfs
+     INNER JOIN classes c ON c.id = lfs.class_id AND c.tenant_id = lfs.tenant_id
+     WHERE lfs.tenant_id = $1
+       AND lfs.term_id = $2
+       AND COALESCE(c.fee_mode, 'term') <> 'daily'
+     ORDER BY class_name ASC`,
+    [tenantId, ledgerTermId]
+  );
+
+  const structures: ArchivedFeeStructureClass[] = [];
+  for (const row of structuresRes.rows) {
+    const feeStructureId = Number(row.fee_structure_id);
+    const itemsRes = await query(
+      `SELECT item_name, amount, is_active, sort_order
+       FROM fee_structure_items
+       WHERE tenant_id = $1 AND fee_structure_id = $2
+       ORDER BY sort_order ASC, id ASC`,
+      [tenantId, feeStructureId]
+    );
+    const items: ArchivedFeeStructureItem[] =
+      itemsRes.rows.length > 0
+        ? itemsRes.rows.map((item) => ({
+            item_name: String(item.item_name),
+            amount: Number(item.amount) || 0,
+            is_active: Boolean(item.is_active),
+            sort_order: Number(item.sort_order) || 0,
+          }))
+        : [
+            {
+              item_name: 'Tuition',
+              amount: Number(row.total) || 0,
+              is_active: true,
+              sort_order: 1,
+            },
+          ];
+
+    structures.push({
+      class_id: Number(row.class_id),
+      class_name: String(row.class_name),
+      level: row.level != null ? String(row.level) : null,
+      total: Number(row.total) || 0,
+      tuition_fee: Number(row.tuition_fee) || 0,
+      pta_fee: Number(row.pta_fee) || 0,
+      exam_fee: Number(row.exam_fee) || 0,
+      items,
+    });
+  }
+  return structures;
+}
+
+export async function getFeeStructuresForCopySource(
+  tenantId: number,
+  sourceType: 'term' | 'archive',
+  sourceId: number
+): Promise<{
+  sourceType: 'term' | 'archive';
+  id: number;
+  ledgerTermId: number;
+  termLabel: string;
+  academicYear: string | null;
+  structureCount: number;
+  structures: ArchivedFeeStructureClass[];
+}> {
+  if (sourceType === 'archive') {
+    const archive = await getFeeStructureArchive(tenantId, sourceId);
+    if (!archive?.structures?.length) {
+      throw new Error('Archived fee structure not found or empty.');
+    }
+    return {
+      sourceType: 'archive',
+      id: archive.id,
+      ledgerTermId: archive.ledger_term_id,
+      termLabel: archive.term_label,
+      academicYear: archive.academic_year,
+      structureCount: archive.structure_count,
+      structures: archive.structures,
+    };
+  }
+
+  const termRes = await query(
+    `SELECT t.id, TRIM(CONCAT(t.name, ' ', COALESCE(ay.label, ay.name))) AS term_label,
+            COALESCE(ay.label, ay.name) AS academic_year
+     FROM terms t
+     JOIN academic_years ay ON ay.id = t.academic_year_id
+     WHERE t.id = $1 AND t.tenant_id = $2`,
+    [sourceId, tenantId]
+  );
+  if (!termRes.rows.length) {
+    throw new Error('Source term not found.');
+  }
+  const structures = await loadLiveStructuresForTerm(tenantId, sourceId);
+  if (!structures.length) {
+    throw new Error('No fee structures found on that term.');
+  }
+  return {
+    sourceType: 'term',
+    id: sourceId,
+    ledgerTermId: sourceId,
+    termLabel: String(termRes.rows[0].term_label || '').trim(),
+    academicYear: termRes.rows[0].academic_year != null ? String(termRes.rows[0].academic_year) : null,
+    structureCount: structures.length,
+    structures,
+  };
+}
+
+/** Copy fee structures from a previous term (by term_id) into the active term. */
+export async function copyFeeStructuresFromTerm(
+  tenantId: number,
+  sourceLedgerTermId: number,
+  targetLedgerTermId?: number | null,
+  options?: { billStudents?: boolean }
+): Promise<ReuseArchiveResult> {
+  const source = await getFeeStructuresForCopySource(tenantId, 'term', sourceLedgerTermId);
+  const target = await resolveTargetLedgerTerm(tenantId, targetLedgerTermId);
+  if (!target) {
+    throw new Error('Could not resolve the active term for fee copy.');
+  }
+  if (source.ledgerTermId === target.termId) {
+    throw new Error('Cannot copy fees into the same term.');
+  }
+
+  // Copy live structures from source term_id into the active target term_id
+  const termLabelRes = await query(
+    `SELECT TRIM(CONCAT(t.name, ' ', COALESCE(ay.label, ay.name))) AS label
+     FROM terms t
+     JOIN academic_years ay ON ay.id = t.academic_year_id
+     WHERE t.id = $1 AND t.tenant_id = $2`,
+    [target.termId, tenantId]
+  );
+  const targetTermLabel = termLabelRes.rows[0]?.label
+    ? String(termLabelRes.rows[0].label)
+    : null;
+
+  const client = await getClient();
+  let structuresCopied = 0;
+  let itemsCopied = 0;
+  let skippedExisting = 0;
+
+  try {
+    await client.query('BEGIN');
+    for (const src of source.structures) {
+      const exists = await client.query(
+        `SELECT 1 FROM ledger_fee_structures
+         WHERE tenant_id = $1 AND class_id = $2 AND term_id = $3
+         LIMIT 1`,
+        [tenantId, src.class_id, target.termId]
+      );
+      if (exists.rows.length > 0) {
+        skippedExisting++;
+        continue;
+      }
+
+      const inserted = await client.query(
+        `INSERT INTO ledger_fee_structures (
+           tenant_id, class_id, academic_year_id, term_id,
+           tuition_fee, pta_fee, exam_fee, total
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING id`,
+        [
+          tenantId,
+          src.class_id,
+          target.academicYearId,
+          target.termId,
+          src.tuition_fee,
+          src.pta_fee,
+          src.exam_fee,
+          src.total,
+        ]
+      );
+      const newId = Number(inserted.rows[0]?.id);
+      if (!newId) continue;
+      structuresCopied++;
+
+      for (const item of src.items) {
+        await client.query(
+          `INSERT INTO fee_structure_items (tenant_id, fee_structure_id, item_name, amount, is_active, sort_order)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [tenantId, newId, item.item_name, item.amount, item.is_active, item.sort_order]
+        );
+        itemsCopied++;
+      }
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  let billingInserted = 0;
+  if (options?.billStudents) {
+    for (const src of source.structures) {
+      const hasStructure = await query(
+        `SELECT 1 FROM ledger_fee_structures
+         WHERE tenant_id = $1 AND class_id = $2 AND term_id = $3`,
+        [tenantId, src.class_id, target.termId]
+      );
+      if (hasStructure.rows.length === 0) continue;
+      await postFeesForClass(tenantId, src.class_id, target.academicYearId, target.termId);
+    }
+
+    const billClient = await getClient();
+    try {
+      await billClient.query('BEGIN');
+      const result = await executePostFeesForNewTerm(billClient, tenantId, target.termId);
+      await billClient.query('COMMIT');
+      billingInserted = result.insertedCount;
+    } catch (err) {
+      await billClient.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      billClient.release();
+    }
+  }
+
+  return {
+    structuresCopied,
+    itemsCopied,
+    skippedExisting,
+    billingInserted,
+    targetTermLabel,
+    sourceTermLabel: source.termLabel,
   };
 }

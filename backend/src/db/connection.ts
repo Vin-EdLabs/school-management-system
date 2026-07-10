@@ -1533,6 +1533,11 @@ const runMigrations = async () => {
     await client.query(`ALTER TABLE academic_years ADD COLUMN IF NOT EXISTS start_date DATE`).catch(() => { });
     await client.query(`ALTER TABLE academic_years ADD COLUMN IF NOT EXISTS end_date DATE`).catch(() => { });
     await client.query(`ALTER TABLE academic_years ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active'`).catch(() => { });
+    // label is the display identity for the year (alias of name for ScholarNerve identity model)
+    await client.query(`ALTER TABLE academic_years ADD COLUMN IF NOT EXISTS label VARCHAR(20)`).catch(() => { });
+    await client.query(
+      `UPDATE academic_years SET label = LEFT(TRIM(name), 20) WHERE label IS NULL AND name IS NOT NULL`
+    ).catch(() => { });
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS terms (
@@ -1551,7 +1556,28 @@ const runMigrations = async () => {
     await client.query(`ALTER TABLE terms ADD COLUMN IF NOT EXISTS closed_at TIMESTAMP`).catch(() => { });
     await client.query(`ALTER TABLE terms ADD COLUMN IF NOT EXISTS closed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL`).catch(() => { });
     await client.query(`ALTER TABLE terms ADD COLUMN IF NOT EXISTS snapshot_completed_at TIMESTAMP`).catch(() => { });
+    await client.query(`ALTER TABLE terms ADD COLUMN IF NOT EXISTS start_date DATE`).catch(() => { });
+    await client.query(`ALTER TABLE terms ADD COLUMN IF NOT EXISTS end_date DATE`).catch(() => { });
     await client.query(`UPDATE terms SET status = 'active' WHERE status IS NULL`).catch(() => { });
+    // Backfill ledger term dates from linked academic_terms (identity = id + dates + year)
+    await client.query(`
+      UPDATE terms t
+      SET start_date = COALESCE(t.start_date, at.start_date),
+          end_date = COALESCE(t.end_date, at.end_date)
+      FROM academic_terms at
+      WHERE at.ledger_term_id = t.id
+        AND at.tenant_id = t.tenant_id
+        AND (t.start_date IS NULL OR t.end_date IS NULL)
+        AND at.start_date IS NOT NULL
+        AND at.end_date IS NOT NULL
+    `).catch(() => { });
+    // Only one current ledger term per tenant
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS unique_current_term_per_tenant
+      ON terms (tenant_id)
+      WHERE is_current = true
+    `).catch(() => { });
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_terms_tenant_start_date ON terms (tenant_id, start_date)`).catch(() => { });
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS term_snapshots (
@@ -1602,6 +1628,22 @@ const runMigrations = async () => {
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_term_outstanding_tenant_term ON term_outstanding_balances(tenant_id, term_id)`).catch(() => { });
     await client.query(`CREATE INDEX IF NOT EXISTS idx_term_outstanding_student ON term_outstanding_balances(student_id)`).catch(() => { });
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS term_closing_balances (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        term_id INTEGER NOT NULL REFERENCES terms(id) ON DELETE CASCADE,
+        student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+        carried_balance NUMERIC(12, 2) NOT NULL DEFAULT 0,
+        snapshotted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(tenant_id, term_id, student_id)
+      )
+    `).catch(() => { });
+    await client.query(
+      `CREATE INDEX IF NOT EXISTS idx_term_closing_balances_tenant_term ON term_closing_balances(tenant_id, term_id)`
+    ).catch(() => { });
+
     await client.query(`CREATE INDEX IF NOT EXISTS idx_ledger_fee_structures_tenant ON ledger_fee_structures(tenant_id)`).catch(() => { });
 
     await client.query(`

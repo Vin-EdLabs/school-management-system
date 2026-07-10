@@ -143,6 +143,67 @@ export async function resolveActiveLedgerTerm(
   tenantId: number,
   activeTermId?: number | null
 ): Promise<{ ledgerTermId: number | null; academicYearId: number | null; termLabel: string | null }> {
+  const { repairActiveAcademicTermLedgerLink } = await import('./academicTermLedgerSyncService.js');
+  await repairActiveAcademicTermLedgerLink(tenantId);
+
+  const activeAcademicRes = await run(
+    `SELECT id, term_name, year, ledger_term_id, closed_at
+     FROM academic_terms
+     WHERE tenant_id = $1 AND is_active = true
+     LIMIT 1`,
+    [tenantId]
+  );
+  const activeAcademic = activeAcademicRes.rows[0];
+  if (activeAcademic && !activeAcademic.closed_at) {
+    if (activeAcademic.ledger_term_id != null) {
+      const linkedRes = await run(
+        `SELECT t.id, t.academic_year_id, t.name, t.status, t.closed_at, ay.name AS year_name
+         FROM terms t
+         JOIN academic_years ay ON ay.id = t.academic_year_id
+         WHERE t.id = $1 AND t.tenant_id = $2
+           AND t.closed_at IS NULL
+           AND COALESCE(t.status, 'active') NOT IN ('closed', 'closing')
+         LIMIT 1`,
+        [activeAcademic.ledger_term_id, tenantId]
+      );
+      if (linkedRes.rows.length > 0) {
+        const row = linkedRes.rows[0];
+        const ledgerName = String(row.name || '').trim().toLowerCase();
+        const academicName = String(activeAcademic.term_name || '').trim().toLowerCase();
+        const nameMatches =
+          ledgerName === academicName ||
+          ledgerName.includes(academicName) ||
+          academicName.includes(ledgerName);
+        if (nameMatches) {
+          return {
+            ledgerTermId: Number(row.id),
+            academicYearId: Number(row.academic_year_id),
+            termLabel: buildTermLabel(String(row.name), String(row.year_name)),
+          };
+        }
+      }
+    }
+
+    const resolved = await resolveLedgerTermFromSettings(
+      tenantId,
+      String(activeAcademic.year),
+      buildTermLabel(String(activeAcademic.term_name), String(activeAcademic.year))
+    );
+    if (resolved?.termId) {
+      const openRes = await run(
+        `SELECT status FROM terms WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+        [resolved.termId, tenantId]
+      );
+      if (openRes.rows[0] && String(openRes.rows[0].status) !== 'closed') {
+        return {
+          ledgerTermId: resolved.termId,
+          academicYearId: resolved.academicYearId,
+          termLabel: buildTermLabel(String(activeAcademic.term_name), String(activeAcademic.year)),
+        };
+      }
+    }
+  }
+
   if (activeTermId != null && !Number.isNaN(Number(activeTermId))) {
     const academicRes = await run(
       `SELECT id, term_name, year FROM academic_terms WHERE id = $1 AND tenant_id = $2`,
@@ -173,6 +234,23 @@ export async function resolveActiveLedgerTerm(
         termLabel: `${row.name} ${row.year_name}`.trim(),
       };
     }
+  }
+
+  const currentLedgerRes = await run(
+    `SELECT t.id, t.academic_year_id, t.name, ay.name AS year_name
+     FROM terms t
+     JOIN academic_years ay ON ay.id = t.academic_year_id
+     WHERE t.tenant_id = $1 AND t.is_current = true AND COALESCE(t.status, 'active') != 'closed'
+     LIMIT 1`,
+    [tenantId]
+  );
+  if (currentLedgerRes.rows.length > 0) {
+    const row = currentLedgerRes.rows[0];
+    return {
+      ledgerTermId: Number(row.id),
+      academicYearId: Number(row.academic_year_id),
+      termLabel: buildTermLabel(String(row.name), String(row.year_name)),
+    };
   }
 
   const settingsRes = await run(

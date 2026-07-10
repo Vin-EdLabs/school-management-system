@@ -129,3 +129,98 @@ export function buildActiveItemsLabel(items: FeeStructureItem[]): string {
     .map(i => i.item_name.trim())
     .join(' + ');
 }
+
+export type FeeStructureArchiveItem = {
+  item_name: string;
+  amount: number;
+  is_active: boolean;
+  sort_order: number;
+};
+
+export type FeeStructureArchiveClass = {
+  class_id: number;
+  class_name: string;
+  level: string | null;
+  total: number;
+  items: FeeStructureArchiveItem[];
+};
+
+export type FeeStructureArchive = {
+  id: number;
+  tenant_id?: number;
+  ledger_term_id?: number;
+  term_label: string;
+  academic_year?: string | null;
+  structure_count: number;
+  term_snapshot_id?: number | null;
+  created_at?: string;
+  structures?: FeeStructureArchiveClass[];
+};
+
+export async function fetchFeeStructureArchives(): Promise<FeeStructureArchive[]> {
+  return apiService.get<FeeStructureArchive[]>('/fees/archives');
+}
+
+export async function fetchFeeStructureArchive(archiveId: number): Promise<FeeStructureArchive> {
+  return apiService.get<FeeStructureArchive>(`/fees/archives/${archiveId}`);
+}
+
+export async function fetchLatestFeeStructureArchive(): Promise<FeeStructureArchive | null> {
+  return apiService.get<FeeStructureArchive | null>('/fees/archives/latest');
+}
+
+export type ReuseFeeStructureArchiveResult = {
+  message: string;
+  structuresCopied: number;
+  itemsCopied: number;
+  skippedExisting: number;
+  billingInserted: number;
+  targetTermLabel: string | null;
+  sourceTermLabel: string;
+};
+
+export async function reuseArchivedFeeStructure(
+  archiveId: number,
+  options?: { termId?: number; billStudents?: boolean }
+): Promise<ReuseFeeStructureArchiveResult> {
+  return apiService.post<ReuseFeeStructureArchiveResult>(`/fees/archives/${archiveId}/reuse`, {
+    ...(options?.termId != null ? { term_id: options.termId } : {}),
+    ...(options?.billStudents ? { bill_students: true } : {}),
+  });
+}
+
+export type FeeStructureCopySource = {
+  sourceType: 'term' | 'archive';
+  id: number;
+  ledgerTermId: number;
+  termLabel: string;
+  academicYear: string | null;
+  structureCount: number;
+  startDate: string | null;
+  status: string | null;
+};
+
+export type FeeStructureCopySourceDetail = FeeStructureCopySource & {
+  structures: FeeStructureArchiveClass[];
+};
+
+export async function fetchFeeStructureCopySources(): Promise<FeeStructureCopySource[]> {
+  return apiService.get<FeeStructureCopySource[]>('/fees/copy-sources');
+}
+
+export async function fetchFeeStructureCopySourceDetail(
+  sourceType: 'term' | 'archive',
+  sourceId: number
+): Promise<FeeStructureCopySourceDetail> {
+  return apiService.get<FeeStructureCopySourceDetail>(`/fees/copy-sources/${sourceType}/${sourceId}`);
+}
+
+export async function copyFeeStructuresFromTerm(
+  sourceTermId: number,
+  options?: { termId?: number; billStudents?: boolean }
+): Promise<ReuseFeeStructureArchiveResult> {
+  return apiService.post<ReuseFeeStructureArchiveResult>(`/fees/copy-from-term/${sourceTermId}`, {
+    ...(options?.termId != null ? { term_id: options.termId } : {}),
+    ...(options?.billStudents ? { bill_students: true } : {}),
+  });
+}

@@ -127,6 +127,7 @@ export interface FeeStructure {
   id: string;
   className: string;
   classId?: number;
+  termId?: number;
   term: string;
   amount: number;
   dueDate: string;
@@ -498,7 +499,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         break;
       }
       case 'fees': {
-        await apiService.post('/fees/sync-ledger').catch(() => undefined);
         const [feesRes, balancesRes] = await Promise.all([
           apiService.get('/fees').catch(() => []),
           apiService.get('/fee-calculations/students/balances').catch(() => ({ balances: {} })),
@@ -509,6 +509,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           classId: f.class_id,
           class_id: f.class_id,
           class_name: f.class_name || '',
+          termId: f.term_id != null ? Number(f.term_id) : undefined,
           term: f.term,
           amount: parseFloat(f.amount),
           dueDate: formatDateForInput(f.due_date),
@@ -666,6 +667,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       payment: ['payments', 'fees'],
       'finance-arrears': ['fees'],
       finance: ['fees', 'payments'],
+      'finance-term-switch': ['fees', 'payments'],
+      'finance-term-closed': ['fees', 'payments'],
+      'academic-term': ['fees', 'payments'],
+      settings: ['fees', 'payments'],
       income: ['income'],
       expense: ['expenses'],
       subject: ['subjects'],

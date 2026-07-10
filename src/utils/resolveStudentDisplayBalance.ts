@@ -1,4 +1,5 @@
 import type { StudentBalance } from '@/services/studentBalance';
+import { feeStructureMatchesActiveTerm } from '@/utils/termLabelMatch';
 
 type FeeStructureRef = {
   id: string;
@@ -7,6 +8,7 @@ type FeeStructureRef = {
   className?: string;
   class_name?: string;
   term?: string;
+  termId?: number;
   amount?: number;
 };
 
@@ -30,7 +32,9 @@ const normalizeClassName = (name: string) =>
 function feeStructureMatchesStudent(
   fee: FeeStructureRef,
   student: StudentRef,
-  currentTerm: string | null
+  currentTerm: string | null,
+  currentYear?: string | null,
+  activeLedgerTermId?: number | null
 ) {
   if (!currentTerm || currentTerm === 'Not Set') return false;
   const feeClassId = fee.classId ?? fee.class_id;
@@ -43,23 +47,28 @@ function feeStructureMatchesStudent(
   const classMatchByName =
     normalizeClassName(feeClassName) !== '' &&
     normalizeClassName(feeClassName) === normalizeClassName(studentClassName);
-  const term = String(fee.term || '').trim();
-  const normTerm = currentTerm.trim();
-  const termMatch =
-    !term ||
-    term === normTerm ||
-    term.startsWith(normTerm) ||
-    normTerm.startsWith(term) ||
-    normTerm.replace(/\s+\d{4}(\/\d{4})?$/, '').trim() === term.replace(/\s+\d{4}(\/\d{4})?$/, '').trim();
-  return (classMatchById || classMatchByName) && termMatch;
+  return (
+    (classMatchById || classMatchByName) &&
+    feeStructureMatchesActiveTerm(
+      fee.term,
+      currentTerm,
+      currentYear,
+      fee.termId,
+      activeLedgerTermId
+    )
+  );
 }
 
 function hasFeeStructureForStudent(
   student: StudentRef,
   feeStructures: FeeStructureRef[],
-  currentTerm: string | null
+  currentTerm: string | null,
+  currentYear?: string | null,
+  activeLedgerTermId?: number | null
 ) {
-  return feeStructures.some((f) => feeStructureMatchesStudent(f, student, currentTerm));
+  return feeStructures.some((f) =>
+    feeStructureMatchesStudent(f, student, currentTerm, currentYear, activeLedgerTermId)
+  );
 }
 
 /** Ledger-only display amounts — no unbilled fee-structure preview. */
@@ -67,7 +76,9 @@ export function resolveStudentDisplayBalance(
   student: StudentRef,
   balance: StudentBalance | undefined | null,
   feeStructures: FeeStructureRef[],
-  currentTerm: string | null
+  currentTerm: string | null,
+  currentYear?: string | null,
+  activeLedgerTermId?: number | null
 ): {
   currentTermFee: number;
   arrears: number;
@@ -78,7 +89,13 @@ export function resolveStudentDisplayBalance(
   status: StudentBalance['status'];
   feeStructureConfigured: boolean;
 } {
-  const feeStructureConfigured = hasFeeStructureForStudent(student, feeStructures, currentTerm);
+  const feeStructureConfigured = hasFeeStructureForStudent(
+    student,
+    feeStructures,
+    currentTerm,
+    currentYear,
+    activeLedgerTermId
+  );
 
   if (!balance) {
     return {

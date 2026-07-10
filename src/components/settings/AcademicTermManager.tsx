@@ -24,6 +24,9 @@ interface AcademicTerm {
   end_date: string;
   is_active: boolean;
   is_archived?: boolean;
+  closed_at?: string | null;
+  ledger_status?: string | null;
+  ledger_term_id?: number | null;
 }
 
 interface LedgerTerm {
@@ -33,6 +36,50 @@ interface LedgerTerm {
   status?: string;
   academic_year_id: number;
   academic_year_name: string;
+}
+
+function extractTermOnly(termLabel: string): string {
+  return String(termLabel || '')
+    .replace(/\s+\d{4}(\/\d{4})?$/, '')
+    .trim() || String(termLabel || '').trim();
+}
+
+function academicYearMatches(ledgerYear: string, academicYear: string): boolean {
+  const norm = (y: string) => String(y || '').trim().replace(/\s+/g, '');
+  const a = norm(ledgerYear);
+  const b = norm(academicYear);
+  if (a === b) return true;
+  const slashA = a.match(/^(\d{4})\/(\d{4})$/);
+  const slashB = b.match(/^(\d{4})\/(\d{4})$/);
+  if (slashA && slashB) return slashA[1] === slashB[1] && slashA[2] === slashB[2];
+  const oneA = a.match(/^(\d{4})$/);
+  const oneB = b.match(/^(\d{4})$/);
+  if (oneA && slashB) return oneA[1] === slashB[1];
+  if (slashA && oneB) return slashA[1] === oneB[1];
+  if (oneA && oneB) return oneA[1] === oneB[1];
+  return false;
+}
+
+function buildFullTermLabel(term: Pick<AcademicTerm, 'term_name' | 'year'>): string {
+  const year = String(term.year || '').trim();
+  const name = String(term.term_name || '').trim();
+  return year && !name.includes(year) ? `${name} ${year}`.trim() : name;
+}
+
+function findLedgerForAcademicTerm(term: AcademicTerm, list: LedgerTerm[]): LedgerTerm | undefined {
+  const termOnly = extractTermOnly(term.term_name);
+  const fullLabel = buildFullTermLabel(term);
+  const norm = (s: string) => String(s || '').trim().toLowerCase();
+  return list.find((lt) => {
+    if (!academicYearMatches(lt.academic_year_name, term.year)) return false;
+    const composite = `${lt.name} ${lt.academic_year_name}`.trim();
+    return (
+      norm(lt.name) === norm(term.term_name) ||
+      norm(lt.name) === norm(termOnly) ||
+      norm(composite) === norm(fullLabel) ||
+      norm(composite) === norm(term.term_name)
+    );
+  });
 }
 
 const AcademicTermManager = () => {
@@ -80,6 +127,9 @@ const AcademicTermManager = () => {
         end_date: t.end_date || '',
         is_active: t.is_active,
         is_archived: !!t.is_archived,
+        closed_at: t.closed_at || null,
+        ledger_status: t.ledger_status || null,
+        ledger_term_id: t.ledger_term_id != null ? Number(t.ledger_term_id) : null,
       })));
       const ledgerList = Array.isArray(ledgerData) ? ledgerData : [];
       setLedgerTerms(ledgerList.map((t: any) => ({
@@ -103,15 +153,13 @@ const AcademicTermManager = () => {
     void loadTerms(showArchived);
   }, [showArchived]);
 
-  const findLedgerForAcademic = (term: AcademicTerm) => {
-    const cleanName = term.term_name.replace(/\s+\d{4}$/, '').trim();
-    return ledgerTerms.find(
-      (lt) =>
-        (lt.name === term.term_name ||
-          lt.name === cleanName ||
-          `${lt.name} ${lt.academic_year_name}` === term.term_name) &&
-        lt.academic_year_name === term.year
-    );
+  const findLedgerForAcademic = (term: AcademicTerm) => findLedgerForAcademicTerm(term, ledgerTerms);
+
+  const isTermClosed = (term: AcademicTerm) => {
+    if (term.closed_at) return true;
+    if (term.ledger_status === 'closed') return true;
+    const ledger = findLedgerForAcademic(term);
+    return ledger?.status === 'closed';
   };
 
   const handleArchiveTerm = async (termId: string) => {
@@ -226,6 +274,15 @@ const AcademicTermManager = () => {
     const term = terms.find((t) => t.id === termId);
     if (!term || term.is_active) return;
 
+    if (isTermClosed(term)) {
+      toast({
+        title: 'Term is closed',
+        description: 'Closed terms cannot be re-activated. They are permanently locked.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     const currentActive = terms.find((t) => t.is_active);
     if (currentActive && currentActive.id !== termId) {
       const activeLedger = findLedgerForAcademic(currentActive);
@@ -239,51 +296,56 @@ const AcademicTermManager = () => {
     setActivationTerm(term);
   };
 
+  const skipArrearsSyncRef = useRef(false);
+
+  const termsRef = useRef(terms);
+  const ledgerTermsRef = useRef(ledgerTerms);
+  const activationTermRef = useRef(activationTerm);
+  termsRef.current = terms;
+  ledgerTermsRef.current = ledgerTerms;
+  activationTermRef.current = activationTerm;
+
   const performTermActivation = useCallback(async () => {
-    if (!activationTerm) return;
+    const termToActivate = activationTermRef.current;
+    if (!termToActivate) return;
 
-    const termId = activationTerm.id;
-    const termToActivate = activationTerm;
-    const previousActive = terms.find((t) => t.is_active);
+    const termId = termToActivate.id;
+    const previousActive = termsRef.current.find((t) => t.is_active);
 
-    const cleanTermName = (name: string) => name.replace(/\s+\d{4}$/, '').trim();
-    const findLedgerTerm = (academicTerm: AcademicTerm, list: LedgerTerm[]) => {
-      const cleanName = cleanTermName(academicTerm.term_name);
-      return list.find((lt) => {
-        const matchName =
-          lt.name === academicTerm.term_name ||
-          lt.name === cleanName ||
-          `${lt.name} ${lt.academic_year_name}` === academicTerm.term_name;
-        return matchName && lt.academic_year_name === academicTerm.year;
-      });
-    };
+    const findLedgerTerm = (academicTerm: AcademicTerm, list: LedgerTerm[]) =>
+      findLedgerForAcademicTerm(academicTerm, list);
 
-    let workingLedgerTerms = [...ledgerTerms];
+    let workingLedgerTerms = [...ledgerTermsRef.current];
     let prevLedgerTerm = previousActive ? findLedgerTerm(previousActive, workingLedgerTerms) : null;
     let newLedgerTerm = findLedgerTerm(termToActivate, workingLedgerTerms);
 
-    const ensureLedgerTerm = async (academicTerm: AcademicTerm) => {
-      const fullTermName = academicTerm.term_name.includes(academicTerm.year)
-        ? academicTerm.term_name
-        : `${academicTerm.term_name} ${academicTerm.year}`;
-
-      await apiService.put('/settings', {
-        current_term: fullTermName,
-        current_year: academicTerm.year,
-        skip_auto_post: true,
+    const ensureLedgerTerm = async (academicTerm: AcademicTerm): Promise<LedgerTerm> => {
+      const fullTermName = buildFullTermLabel(academicTerm);
+      const row = await apiService.post<{
+        id: number;
+        name: string;
+        is_current?: boolean;
+        status?: string;
+        academic_year_id: number;
+        academic_year_name: string;
+      }>('/finance/ensure-ledger-term', {
+        year: academicTerm.year,
+        term: fullTermName,
       });
 
-      const updatedLedgerData = await apiService.get<LedgerTerm[]>('/finance/terms');
-      const updatedLedgerList = Array.isArray(updatedLedgerData) ? updatedLedgerData : [];
-      workingLedgerTerms = updatedLedgerList.map((t: any) => ({
-        id: parseInt(String(t.id), 10),
-        name: t.name || '',
-        is_current: t.is_current || false,
-        academic_year_id: parseInt(String(t.academic_year_id), 10),
-        academic_year_name: t.academic_year_name || '',
-      }));
-      setLedgerTerms(workingLedgerTerms);
-      return findLedgerTerm(academicTerm, workingLedgerTerms);
+      const mapped: LedgerTerm = {
+        id: parseInt(String(row.id), 10),
+        name: row.name || '',
+        is_current: row.is_current || false,
+        status: row.status,
+        academic_year_id: parseInt(String(row.academic_year_id), 10),
+        academic_year_name: row.academic_year_name || '',
+      };
+
+      const idx = workingLedgerTerms.findIndex((t) => t.id === mapped.id);
+      if (idx >= 0) workingLedgerTerms[idx] = mapped;
+      else workingLedgerTerms.push(mapped);
+      return mapped;
     };
 
     if (!newLedgerTerm) {
@@ -294,7 +356,7 @@ const AcademicTermManager = () => {
       try {
         prevLedgerTerm = await ensureLedgerTerm(previousActive);
       } catch (err) {
-        console.warn('[TermSwitch] Could not create previous ledger term:', err);
+        console.warn('[TermSwitch] Could not resolve previous ledger term:', err);
       }
     }
 
@@ -305,41 +367,50 @@ const AcademicTermManager = () => {
       );
     }
 
-    if (!prevLedgerTerm && previousActive) {
-      throw new Error(
-        `Cannot switch terms — ledger term for previous term not found. ` +
-          `Previous: ${previousActive.term_name} ${previousActive.year}.`
-      );
-    }
-
     if (prevLedgerTerm && prevLedgerTerm.id === newLedgerTerm.id) {
       throw new Error(`Cannot switch to the same term (ID: ${newLedgerTerm.id}).`);
     }
 
-    await apiService.post('/finance/switch-term', {
-      currentTermId: prevLedgerTerm?.id,
-      newTermId: newLedgerTerm.id,
-    });
+    const prevIsClosed = prevLedgerTerm?.status === 'closed';
+    if (prevLedgerTerm && prevIsClosed && prevLedgerTerm.id !== newLedgerTerm.id) {
+      await apiService.post('/finance/switch-term', {
+        currentTermId: prevLedgerTerm.id,
+        newTermId: newLedgerTerm.id,
+      });
+      skipArrearsSyncRef.current = true;
+    } else {
+      skipArrearsSyncRef.current = false;
+    }
 
     await apiService.put(`/settings/academic-terms/${termId}`, {
       is_active: true,
     });
 
-    const finalTermName = termToActivate.term_name.includes(termToActivate.year)
-      ? termToActivate.term_name
-      : `${termToActivate.term_name} ${termToActivate.year}`;
+    const finalTermName = buildFullTermLabel(termToActivate);
 
     await apiService.put('/settings', {
       current_term: finalTermName,
       current_year: termToActivate.year,
       skip_auto_post: true,
     });
-  }, [activationTerm, terms, ledgerTerms]);
+  }, []);
 
-  const handleActivationSuccess = () => {
+  const handleActivationSuccess = async () => {
     const label = `${activationTerm?.term_name || ''} ${activationTerm?.year || ''}`.trim();
-    setArrearsSyncTermLabel(label);
     setActivationTerm(null);
+
+    if (skipArrearsSyncRef.current) {
+      skipArrearsSyncRef.current = false;
+      toast({
+        title: 'Active Term Changed',
+        description: `${label || 'The new term'} is now active. Balances were carried forward during the term switch.`,
+      });
+      await loadTerms();
+      await Promise.all([refreshActiveTerm(), refreshData()]);
+      return;
+    }
+
+    setArrearsSyncTermLabel(label);
     setArrearsSyncOpen(true);
   };
 
@@ -356,13 +427,21 @@ const AcademicTermManager = () => {
   const handleMarkInactive = async (termId: string) => {
     const termToDeactivate = terms.find(t => t.id === termId);
     if (!termToDeactivate) return;
+    if (isTermClosed(termToDeactivate)) {
+      toast({
+        title: 'Term is closed',
+        description: 'This term is already permanently closed.',
+        variant: 'destructive',
+      });
+      return;
+    }
     try {
       await apiService.put(`/settings/academic-terms/${termId}`, {
         is_active: false
       });
       toast({
         title: "Term Marked Inactive",
-        description: `${termToDeactivate.term_name} ${termToDeactivate.year} is inactive. Historical records were not changed.`,
+        description: `${termToDeactivate.term_name} ${termToDeactivate.year} is inactive. Use Close Term to lock finance records permanently.`,
       });
       await loadTerms();
       await refreshActiveTerm();
@@ -656,30 +735,19 @@ const AcademicTermManager = () => {
                           {term.is_active && (
                             <span className="px-2 py-0.5 text-xs font-medium bg-green-500 text-white rounded">Active</span>
                           )}
-                          {!term.is_active && (
+                          {!term.is_active && !isTermClosed(term) && (
                             <span className="px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground rounded">Inactive</span>
                           )}
                           {term.is_archived && (
                             <span className="px-2 py-0.5 text-xs font-medium bg-slate-500/15 text-slate-600 dark:text-slate-300 rounded">Archived</span>
                           )}
-                          {findLedgerForAcademic(term)?.status === 'closed' && (
+                          {isTermClosed(term) && (
                             <span className="px-2 py-0.5 text-xs font-medium bg-amber-500/15 text-amber-800 dark:text-amber-200 rounded inline-flex items-center gap-1">
                               <Lock className="w-3 h-3" />
                               Closed
                             </span>
                           )}
                         </div>
-                        {ledgerTerms
-                          .filter(lt => {
-                            const cleanName = term.term_name.replace(/\s+\d{4}$/, '').trim();
-                            return (lt.name === term.term_name || lt.name === cleanName || `${lt.name} ${lt.academic_year_name}` === term.term_name) && 
-                                   lt.academic_year_name === term.year;
-                          })
-                          .map(lt => (
-                            <p key={lt.id} className="text-[11px] text-blue-500 dark:text-blue-400 font-mono mt-1 truncate">
-                              Ledger ID: {lt.id} - Year ID: {lt.academic_year_id}
-                            </p>
-                          ))}
                         {term.start_date && term.end_date && (
                           <p className="text-xs text-muted-foreground">
                             {formatDisplayDate(term.start_date)} - {formatDisplayDate(term.end_date)}
@@ -687,12 +755,12 @@ const AcademicTermManager = () => {
                         )}
                       </div>
                       <div className="flex flex-wrap justify-end gap-1.5 shrink-0">
-                        {!term.is_active && !term.is_archived && (
+                        {!term.is_active && !term.is_archived && !isTermClosed(term) && !activeTerm && (
                           <Button size="sm" variant="primaryAction" className="h-8 px-2" onClick={() => handleSetActiveTerm(term.id)}>
                             Set Active
                           </Button>
                         )}
-                        {!term.is_active && !term.is_archived && (
+                        {!term.is_active && !term.is_archived && !isTermClosed(term) && (
                           <Button
                             size="icon"
                             variant="outline"
@@ -714,13 +782,13 @@ const AcademicTermManager = () => {
                             Restore
                           </Button>
                         )}
-                        {!term.is_archived && (
+                        {!term.is_archived && !isTermClosed(term) && (
                           <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => setEditingTerm(term.id)}>
                             <Edit2 className="w-3 h-3" />
                           </Button>
                         )}
-                        {term.is_active && (
-                          <Button size="icon" variant="outline" onClick={() => handleMarkInactive(term.id)} className="h-8 w-8 text-amber-600 hover:text-amber-700" title="Mark inactive">
+                        {term.is_active && !isTermClosed(term) && (
+                          <Button size="icon" variant="outline" onClick={() => handleMarkInactive(term.id)} className="h-8 w-8 text-amber-600 hover:text-amber-700" title="Mark inactive (does not close finance)">
                             <PowerOff className="w-3 h-3" />
                           </Button>
                         )}

@@ -1,4 +1,3 @@
-import type { Response, NextFunction } from 'express';
 import { getClient, query } from '../db/connection.js';
 import { writeAuditLog } from './auditService.js';
 
@@ -28,27 +27,12 @@ export type FinanceWipeResult = {
     arrearsCacheRowsDeleted: number;
     outstandingCacheRowsDeleted: number;
     invoiceRowsDeleted: number;
+    closingBalanceRowsDeleted: number;
+    studentChargeRowsDeleted: number;
   };
 };
 
-async function countRecentWipes(actorUserId: number): Promise<number> {
-  const res = await query(
-    `SELECT COUNT(*)::int AS c
-     FROM audit_logs
-     WHERE user_id = $1
-       AND action = 'FINANCE_WIPE'
-       AND created_at > NOW() - INTERVAL '1 hour'`,
-    [actorUserId]
-  );
-  return Number(res.rows[0]?.c) || 0;
-}
-
 export async function wipeTermFinance(input: FinanceWipeInput): Promise<FinanceWipeResult> {
-  const recent = await countRecentWipes(input.actorUserId);
-  if (recent >= 5) {
-    throw new Error('Rate limit exceeded. Maximum 5 finance wipes per hour.');
-  }
-
   const termRes = await query(
     `SELECT t.id, t.name, ay.name AS year_name
      FROM terms t
@@ -92,6 +76,8 @@ export async function wipeTermFinance(input: FinanceWipeInput): Promise<FinanceW
     let arrearsCacheRowsDeleted = 0;
     let outstandingCacheRowsDeleted = 0;
     let invoiceRowsDeleted = 0;
+    let closingBalanceRowsDeleted = 0;
+    let studentChargeRowsDeleted = 0;
 
     if (studentIds.length > 0) {
       const ledgerDel = await client.query(
@@ -121,6 +107,20 @@ export async function wipeTermFinance(input: FinanceWipeInput): Promise<FinanceW
         [input.tenantId, input.termId, studentIds]
       );
       outstandingCacheRowsDeleted = outstandingDel.rowCount ?? 0;
+
+      const closingDel = await client.query(
+        `DELETE FROM term_closing_balances
+         WHERE tenant_id = $1 AND term_id = $2 AND student_id = ANY($3::int[])`,
+        [input.tenantId, input.termId, studentIds]
+      );
+      closingBalanceRowsDeleted = closingDel.rowCount ?? 0;
+
+      const chargesDel = await client.query(
+        `DELETE FROM student_charges
+         WHERE tenant_id = $1 AND term_id = $2 AND student_id = ANY($3::int[])`,
+        [input.tenantId, input.termId, studentIds]
+      ).catch(() => ({ rowCount: 0 }));
+      studentChargeRowsDeleted = chargesDel.rowCount ?? 0;
 
       const invoiceDel = await client.query(
         `DELETE FROM invoices
@@ -192,6 +192,8 @@ export async function wipeTermFinance(input: FinanceWipeInput): Promise<FinanceW
         arrearsCacheRowsDeleted,
         outstandingCacheRowsDeleted,
         invoiceRowsDeleted,
+        closingBalanceRowsDeleted,
+        studentChargeRowsDeleted,
       },
     };
   } catch (err) {

@@ -64,12 +64,19 @@ export function termsMatch(a: string, b: string): boolean {
 export function feeStructureMatchesActiveTerm(
   feeTerm: string | null | undefined,
   currentTerm: string,
-  currentYear?: string | null
+  currentYear?: string | null,
+  feeTermId?: number | null,
+  activeLedgerTermId?: number | null
 ): boolean {
+  if (activeLedgerTermId != null && !Number.isNaN(Number(activeLedgerTermId))) {
+    if (feeTermId == null || Number.isNaN(Number(feeTermId))) return false;
+    return Number(feeTermId) === Number(activeLedgerTermId);
+  }
+
   const ft = String(feeTerm || '').trim();
   const activeFull = buildActiveTermLabel(currentTerm, currentYear);
-  if (!ft) return true;
-  if (!activeFull) return true;
+  if (!ft) return false;
+  if (!activeFull) return false;
 
   const activeVariants = buildTermLabelVariants(activeFull, currentYear);
   const feeVariants = buildTermLabelVariants(ft, currentYear);

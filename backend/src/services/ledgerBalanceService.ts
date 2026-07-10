@@ -607,6 +607,10 @@ export type StudentBalanceApiShape = {
     reason: string | null;
   }>;
   discountAmount?: number;
+  /** Present when the student is in a daily-fee class (not term ledger billing). */
+  feeMode?: 'daily' | 'term';
+  dailyCoverageStatus?: string;
+  dailyPaidUntil?: string | null;
 };
 
 function deriveBalanceStatus(balance: LedgerBalance): StudentBalanceApiShape['status'] {

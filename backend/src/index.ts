@@ -67,6 +67,8 @@ import invoiceRoutes from './routes/invoices.js';
 import transportRoutes from './routes/transport.js';
 import dailyFeesRoutes from './routes/dailyFees.js';
 import paymentSubmissionsRoutes from './routes/paymentSubmissions.js';
+import studentCheckinsRoutes from './routes/studentCheckins.js';
+import publicCheckinsRoutes from './routes/publicCheckins.js';
 import { startInvoiceStatusJob } from './jobs/invoiceStatusJob.js';
 import { initSocket } from './socket.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -218,6 +220,8 @@ app.use('/api/invoices', invoiceRoutes);
 app.use('/api/transport', transportRoutes);
 app.use('/api/daily-fees', dailyFeesRoutes);
 app.use('/api/payment-submissions', paymentSubmissionsRoutes);
+app.use('/api/student-checkins', studentCheckinsRoutes);
+app.use('/api/public-checkins', publicCheckinsRoutes);
 
 // Error handling middleware
 app.use(errorHandler);

@@ -4,6 +4,7 @@ import {
   CalendarCheck, Eye, EyeOff, Lock, ChevronRight, Medal,
   TrendingUp, CheckCircle2, XCircle, Clock, AlertTriangle,
   Home, RefreshCw, Activity, Bell, X, MessageSquare, Send, Phone, Mail, Plus, Paperclip, Cake, FileText, Trash2,
+  Smartphone,
 } from 'lucide-react';
 import ReceiptPrinter from '@/components/common/ReceiptPrinter';
 import { parseReceiptSnapshot, termsMatch } from '@/utils/feeCalculations';
@@ -29,6 +30,7 @@ import {
 } from '@/services/invoiceApi';
 import ParentMakePaymentPanel from '@/components/parent/ParentMakePaymentPanel';
 import StudentLearningMode from '@/components/parent/StudentLearningMode';
+import ParentCheckinPanel from '@/components/checkins/ParentCheckinPanel';
 import { buildInvoiceFilename, downloadInvoicePdf } from '@/components/invoices/buildInvoicePdf';
 import { createRoot } from 'react-dom/client';
 import ParentReportCardMobileViewport from '@/components/parent/ParentReportCardMobileViewport';
@@ -312,7 +314,7 @@ interface LinkedAccount {
   student: StudentInfo;
 }
 
-type Tab = 'overview' | 'grades' | 'position' | 'finance' | 'attendance' | 'desk';
+type Tab = 'overview' | 'grades' | 'position' | 'finance' | 'attendance' | 'desk' | 'checkin';
 type FinanceSubTab = 'balance' | 'make-payment';
 type ParentAppNotification = {
   id: string;
@@ -2109,6 +2111,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     { key: 'grades', icon: <BookOpen className="w-4 h-4" />, label: 'Grades' },
     { key: 'position', icon: <Trophy className="w-4 h-4" />, label: 'Position' },
     { key: 'finance', icon: <CreditCard className="w-4 h-4" />, label: 'Finance' },
+    { key: 'checkin', icon: <Smartphone className="w-4 h-4" />, label: 'Check-in/out' },
     { key: 'attendance', icon: <CalendarCheck className="w-4 h-4" />, label: 'Attendance' },
     { key: 'desk', icon: <MessageSquare className="w-4 h-4" />, label: 'Parent Desk' },
   ];
@@ -3446,6 +3449,11 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               </div>
             )}
           </div>
+        )}
+
+        {/* ── Check-in tab ── */}
+        {activeTab === 'checkin' && token && (
+          <ParentCheckinPanel token={token} tenantId={tenantId} />
         )}
 
         {/* ── Attendance tab ── */}

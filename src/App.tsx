@@ -16,6 +16,7 @@ import { ActiveTermProvider } from "./contexts/ActiveTermContext";
 import { TermStatusProvider } from "./contexts/TermStatusContext";
 import Index from "./pages/Index";
 import VerifyCardPage from "./pages/VerifyCardPage";
+import PublicCheckinPage from "./pages/PublicCheckinPage";
 import NotFound from "./pages/NotFound";
 import SchoolSelector from "./pages/SchoolSelector";
 import LandingPage from "./pages/LandingPage";
@@ -335,6 +336,7 @@ const App = () => {
                     <Route path="/portal" element={<ParentPortalRoute />} />
                     <Route path="/portal/*" element={<ParentPortalRoute />} />
                     <Route path="/verify/:entityType/:entityId" element={<VerifyCardPage />} />
+                    <Route path="/checkin" element={<PublicCheckinPage />} />
                     
                     {/* Standard Shared Dashboard Routes */}
                     <Route path="/register-school" element={<RegisterSchool />} />
@@ -348,6 +350,7 @@ const App = () => {
                   <Routes>
                     {/* --- APEX DOMAIN / STATIC SUBDOMAIN ROUTING --- */}
                     <Route path="/verify/:entityType/:entityId" element={<VerifyCardPage />} />
+                    <Route path="/checkin" element={<PublicCheckinPage />} />
                     <Route path="/" element={<LandingPage />} />
                     <Route path="/register-school" element={<RegisterSchool />} />
                     <Route path="/super-admin" element={<SuperAdminDashboard />} />

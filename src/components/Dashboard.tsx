@@ -59,6 +59,9 @@ import BulkPrintIdCards from './id-cards/BulkPrintIdCards';
 import InvoicesModule from './invoices/InvoicesModule';
 import EndOfYearWizard from './academic/EndOfYearWizard';
 import BirthdayModule from './birthday/BirthdayModule';
+import CheckinDashboard from './checkins/CheckinDashboard';
+import StaffCheckinPanel from './checkins/StaffCheckinPanel';
+import CheckinSettings from './checkins/CheckinSettings';
 import HeadmasterDashboard from './headmaster/HeadmasterDashboard';
 import AllStaffView from './staff/AllStaffView';
 import GlobalAnnouncementPopup from './announcements/GlobalAnnouncementPopup';
@@ -348,6 +351,12 @@ const DashboardContent = () => {
         return <TransportDrivers />;
       case 'transport-students':
         return <TransportStudents />;
+      case 'checkin-dashboard':
+        return <CheckinDashboard />;
+      case 'checkin-staff':
+        return <StaffCheckinPanel />;
+      case 'checkin-settings':
+        return <CheckinSettings />;
       default:
         if (user?.role === 'headmaster') {
           return <HeadmasterDashboard onNavigate={setActiveModule} />;

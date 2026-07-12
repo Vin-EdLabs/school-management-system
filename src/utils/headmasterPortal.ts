@@ -26,6 +26,7 @@ export const HEADMASTER_MODULES = [
   'settings',
   'settings-password-only',
   'grade-configuration',
+  'checkin-staff',
 ] as const;
 
 export function isHeadmasterRole(role?: UserRole | string | null): boolean {

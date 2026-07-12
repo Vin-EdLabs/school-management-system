@@ -51,6 +51,7 @@ import {
   Crown,
   School,
   UserRoundSearch,
+  QrCode,
 } from 'lucide-react';
 import { resolveLogoUrl } from '../services/tenantService';
 import { headmasterHasTeachingAccess, isHeadmasterRole } from '../utils/headmasterPortal';
@@ -148,6 +149,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
       : []),
     ...(hasAccess('lost-cards') ? [{ id: 'lost-cards', label: 'Lost Cards', icon: AlertTriangle }] : []),
     ...(hasAccess('reports') ? [{ id: 'academic-reports', label: 'Academic Report', icon: BarChart3 }] : []),
+    ...(hasAccess('checkin-dashboard') ? [{ id: 'checkin-dashboard', label: 'Check-in/out', icon: UserCheck }] : []),
   ],
   teaching: [
     ...(hasAccess('teacher-classes') ? [{ id: 'teacher-classes', label: 'My Classes', icon: BookOpen }] : []),
@@ -159,6 +161,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
       ? [{ id: 'teacher-appointment-letters', label: 'Appointment Letters', icon: FileText }]
       : []),
     ...(hasAccess('teacher-payment-history') ? [{ id: 'teacher-payment-history', label: 'Payment History', icon: History }] : []),
+    ...(hasAccess('checkin-staff') ? [{ id: 'checkin-staff', label: 'Check-in/out', icon: UserCheck }] : []),
   ],
   financial: [
     ...(hasAccess('fees') ? [{ id: 'fees', label: 'Fees', icon: DollarSign }] : []),
@@ -196,6 +199,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
     ...(hasAccess('settings-full') ? [{ id: 'appointment-letter-settings', label: 'Appointment Letters', icon: FileText }] : []),
     ...(hasAccess('settings-full') ? [{ id: 'admission-letter-settings', label: 'Admission Letter', icon: FileText }] : []),
     ...(hasAccess('id-card-settings') ? [{ id: 'id-card-settings', label: 'ID Card Colors', icon: IdCard }] : []),
+    ...(hasAccess('checkin-settings') ? [{ id: 'checkin-settings', label: 'QR Codes', icon: QrCode }] : []),
   ],
   transport: [
     ...(hasAccess('transport-overview') ? [{ id: 'transport-overview', label: 'Overview', icon: LayoutDashboard }] : []),

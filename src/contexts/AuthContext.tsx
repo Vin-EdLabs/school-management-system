@@ -23,6 +23,8 @@ const PRIMARY_ADMIN_MODULES = [
   'transport-vehicles', 'transport-drivers', 'transport-students', 'end-of-year', 'invoices',
   'daily-fees',
   'payment-submissions',
+  'checkin-dashboard',
+  'checkin-settings',
 ] as const;
 
 const PLATFORM_SUPER_ADMIN_MODULES = [...PRIMARY_ADMIN_MODULES, 'schools'] as const;
@@ -402,7 +404,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Additional administrators: academic only
     if (user.role === 'administrator') {
-      return ['students', 'teachers', 'other-staff', 'classes', 'calendar', 'dashboard', 'settings', 'settings-password-only', 'print-fee-status', 'records', 'support-chat', 'parent-desk', 'push-notifications', 'audit', 'parent-accounts', 'birthdays', 'transport-overview', 'transport-map', 'transport-routes', 'transport-vehicles', 'transport-drivers', 'transport-students'].includes(module);
+      return ['students', 'teachers', 'other-staff', 'classes', 'calendar', 'dashboard', 'settings', 'settings-password-only', 'print-fee-status', 'records', 'support-chat', 'parent-desk', 'push-notifications', 'audit', 'parent-accounts', 'birthdays', 'transport-overview', 'transport-map', 'transport-routes', 'transport-vehicles', 'transport-drivers', 'transport-students', 'checkin-dashboard', 'checkin-settings'].includes(module);
     }
 
     // Finance: financial sections only (financial dashboard, not the general admin dashboard)
@@ -412,12 +414,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Teacher: teacher section + profile + payment history
     if (user.role === 'teacher') {
-      return ['teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'calendar', 'teacher-profile', 'teacher-appointment-letters', 'teacher-payment-history', 'settings', 'settings-password-only', 'birthdays'].includes(module);
+      return ['teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'calendar', 'teacher-profile', 'teacher-appointment-letters', 'teacher-payment-history', 'settings', 'settings-password-only', 'birthdays', 'checkin-staff'].includes(module);
     }
 
     // Staff (non-teaching): similar to teacher
     if (user.role === 'staff') {
-      return ['teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'calendar', 'teacher-profile', 'teacher-appointment-letters', 'teacher-payment-history', 'settings', 'settings-password-only'].includes(module);
+      return ['teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'calendar', 'teacher-profile', 'teacher-appointment-letters', 'teacher-payment-history', 'settings', 'settings-password-only', 'checkin-staff'].includes(module);
     }
 
     // Headmaster: teacher portal (when linked) + school-wide read-only oversight

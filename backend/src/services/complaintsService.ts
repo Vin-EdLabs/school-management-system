@@ -1,6 +1,7 @@
 import { query } from '../db/connection.js';
 import { getIO } from '../socket.js';
 import { sendPushToStaffUser } from './webPushService.js';
+import { notifyStaffUser } from './staffNotificationService.js';
 import { TEACHER_VISIBLE_WHERE } from '../constants/staffQueries.js';
 
 export type ComplaintType = 'student' | 'teacher';
@@ -120,10 +121,17 @@ async function notifyFilingTeacher(opts: {
     /* socket optional */
   }
 
-  await sendPushToStaffUser(opts.userId, {
+  await notifyStaffUser(opts.userId, opts.tenantId, {
+    kind: 'complaint',
     title: opts.title,
-    body: opts.body,
+    message: opts.body,
     url: '/?module=my-complaints',
+    referenceKey: `complaint:${opts.complaintId}:${opts.userId}`,
+    push: {
+      title: opts.title,
+      body: opts.body,
+      url: '/?module=my-complaints',
+    },
   }).catch(() => undefined);
 }
 

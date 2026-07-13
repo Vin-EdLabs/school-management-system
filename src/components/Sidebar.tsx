@@ -205,6 +205,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
   announcements: [
     ...(hasAccess('push-notifications') ? [{ id: 'push-notifications', label: 'Push Notifications', icon: BellRing }] : []),
     ...(hasAccess('parent-desk') ? [{ id: 'parent-desk', label: 'Parent Desk', icon: MessagesSquare }] : []),
+    ...(hasAccess('messages') ? [{ id: 'messages', label: 'Messages', icon: MessageCircle }] : []),
   ],
   ai: [
     ...(hasAccess('ai-assistant') ? [{ id: 'ai-assistant', label: 'AI Assistant', icon: Bot, badge: 'New' }] : []),
@@ -493,6 +494,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
   const { socket } = useSocket();
   const [parentDeskUnread, setParentDeskUnread] = useState(0);
   const [supportUnread, setSupportUnread] = useState(0);
+  const [messagesUnread, setMessagesUnread] = useState(0);
   const [paymentSubmissionsPending, setPaymentSubmissionsPending] = useState(0);
   const [becomeUserOpen, setBecomeUserOpen] = useState(false);
   const impersonation = useImpersonationOptional();
@@ -529,10 +531,18 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
       } else {
         setPaymentSubmissionsPending(0);
       }
+      if (hasAccess('messages')) {
+        const { chatService } = await import('../services/chatService');
+        const c = await chatService.listChannels();
+        setMessagesUnread(Number(c?.total_unread ?? 0));
+      } else {
+        setMessagesUnread(0);
+      }
     } catch {
       setParentDeskUnread(0);
       setSupportUnread(0);
       setPaymentSubmissionsPending(0);
+      setMessagesUnread(0);
     }
   }, [hasAccess]);
 
@@ -557,7 +567,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
     if (!socket) return;
     const onTenant = (evt: { entity?: string }) => {
       const e = String(evt?.entity || '');
-      if (e === 'parent-desk' || e === 'support-chat' || e === 'payment-submission') void refreshCommsBadges();
+      if (e === 'parent-desk' || e === 'support-chat' || e === 'payment-submission' || e === 'chat' || e === 'staff-notification') void refreshCommsBadges();
     };
     const onCountUpdate = () => void refreshCommsBadges();
     const onLocalRefresh = () => void refreshCommsBadges();
@@ -647,7 +657,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
           label="Announcements & parent desk"
           activeModule={activeModule}
           setActiveModule={setActiveModule}
-          itemCounts={{ 'parent-desk': parentDeskUnread }}
+          itemCounts={{ 'parent-desk': parentDeskUnread, messages: messagesUnread }}
           markCommsRead={markCommsRead}
           termNavigationBlocked={termNavigationBlocked}
         />

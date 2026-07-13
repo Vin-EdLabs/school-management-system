@@ -6,9 +6,11 @@ import { toast } from '@/hooks/use-toast';
 interface ParentCheckinPanelProps {
   token: string;
   tenantId: number;
+  /** Compact layout for the parent portal home overview card */
+  embedded?: boolean;
 }
 
-const ParentCheckinPanel: React.FC<ParentCheckinPanelProps> = ({ token, tenantId }) => {
+const ParentCheckinPanel: React.FC<ParentCheckinPanelProps> = ({ token, tenantId, embedded = false }) => {
   const [students, setStudents] = useState<CheckinStudent[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<number | null>(null);
@@ -73,20 +75,22 @@ const ParentCheckinPanel: React.FC<ParentCheckinPanelProps> = ({ token, tenantId
 
   if (loading) {
     return (
-      <div className="p-4 md:p-6 lg:p-8 animate-in fade-in duration-500">
-        <div className="flex items-center justify-center py-12">
+      <div className={embedded ? 'py-6 animate-in fade-in duration-500' : 'p-4 md:p-6 lg:p-8 animate-in fade-in duration-500'}>
+        <div className="flex items-center justify-center py-8">
           <RefreshCw className="w-6 h-6 animate-spin text-violet-500" />
         </div>
       </div>
     );
   }
 
+  const shellClass = embedded ? 'animate-in fade-in duration-500' : 'p-4 md:p-6 lg:p-8 animate-in fade-in duration-500';
+
   return (
-    <div className="p-4 md:p-6 lg:p-8 animate-in fade-in duration-500">
+    <div className={shellClass}>
       <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-          <Smartphone className="w-5 h-5 text-violet-600" /> Student Check-in/out
+        <h2 className={`flex items-center gap-2 ${embedded ? 'text-base font-black tracking-tight text-slate-950' : 'text-lg font-bold text-gray-800'}`}>
+          <Smartphone className={`${embedded ? 'w-5 h-5 text-emerald-600' : 'w-5 h-5 text-violet-600'}`} /> Student Check-in/out
         </h2>
         <button onClick={fetchStatus} className="text-gray-400 hover:text-violet-600 transition-colors">
           <RefreshCw className="w-4 h-4" />
@@ -117,7 +121,7 @@ const ParentCheckinPanel: React.FC<ParentCheckinPanelProps> = ({ token, tenantId
           const busy = processingId === student.id;
 
           return (
-            <div key={student.id} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+            <div key={student.id} className={`rounded-xl p-4 shadow-sm ${embedded ? 'border border-white/80 bg-white/75 backdrop-blur-sm' : 'bg-white border border-slate-200'}`}>
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <p className="text-sm font-bold text-slate-900">

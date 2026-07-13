@@ -6,7 +6,7 @@ import { authenticate, requireTenant, AuthRequest } from '../middleware/auth.js'
 import { requireRole } from '../middleware/auth.js';
 import { setTenantContext } from '../middleware/tenant.js';
 import { getIO } from '../socket.js';
-import { sendPushToTenantStaff } from '../services/webPushService.js';
+import { notifyTenantStaffByRoles } from '../services/staffNotificationService.js';
 import { writeAuditLog } from '../services/auditService.js';
 import { getClientIp } from '../utils/clientIp.js';
 import { resolveActorFromRequest, withActor } from '../utils/auditResolve.js';
@@ -183,12 +183,25 @@ router.post(
       const title = String(req.body?.title || 'Message from school').slice(0, 120);
       const body = String(req.body?.message || '').trim().slice(0, 800);
       if (!body) return res.status(400).json({ error: 'message is required' });
-      emitTenantDataChanged(tenantId, 'school-staff-notice', 'created', { title, body });
-      await sendPushToTenantStaff(tenantId, {
+      const at = Date.now();
+      emitTenantDataChanged(tenantId, 'school-staff-notice', 'created', { title, body, at });
+      await notifyTenantStaffByRoles(tenantId, ['teacher', 'staff', 'headmaster'], {
+        kind: 'admin',
         title,
-        body,
+        message: body,
         url: `/school/${tenantId}`,
-      }).catch(() => {});
+        referenceKeyPrefix: `admin-${at}`,
+        push: { title, body, url: `/school/${tenantId}` },
+      });
+      try {
+        const { getIO } = await import('../socket.js');
+        getIO().to(`tenant:${tenantId}`).emit('tenant-data-changed', {
+          tenantId,
+          entity: 'staff-notification',
+        });
+      } catch {
+        /* non-fatal */
+      }
       await query(
         'INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, details) VALUES ($1, $2, $3, $4, $5)',
         [tenantId, req.user!.id, 'SCHOOL_STAFF_ANNOUNCE', 'TEACHERS_AND_STAFF', JSON.stringify({ title, bodyLen: body.length })],

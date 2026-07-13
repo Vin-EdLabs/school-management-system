@@ -4,7 +4,6 @@ import {
   CalendarCheck, Eye, EyeOff, Lock, ChevronRight, Medal,
   TrendingUp, CheckCircle2, XCircle, Clock, AlertTriangle,
   Home, RefreshCw, Activity, Bell, X, MessageSquare, Send, Phone, Mail, Plus, Paperclip, Cake, FileText, Trash2,
-  Smartphone,
 } from 'lucide-react';
 import ReceiptPrinter from '@/components/common/ReceiptPrinter';
 import { parseReceiptSnapshot, termsMatch } from '@/utils/feeCalculations';
@@ -314,7 +313,7 @@ interface LinkedAccount {
   student: StudentInfo;
 }
 
-type Tab = 'overview' | 'grades' | 'position' | 'finance' | 'attendance' | 'desk' | 'checkin';
+type Tab = 'overview' | 'grades' | 'position' | 'finance' | 'attendance' | 'desk';
 type FinanceSubTab = 'balance' | 'make-payment';
 type ParentAppNotification = {
   id: string;
@@ -2111,7 +2110,6 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     { key: 'grades', icon: <BookOpen className="w-4 h-4" />, label: 'Grades' },
     { key: 'position', icon: <Trophy className="w-4 h-4" />, label: 'Position' },
     { key: 'finance', icon: <CreditCard className="w-4 h-4" />, label: 'Finance' },
-    { key: 'checkin', icon: <Smartphone className="w-4 h-4" />, label: 'Student Check-in' },
     { key: 'attendance', icon: <CalendarCheck className="w-4 h-4" />, label: 'Attendance' },
     { key: 'desk', icon: <MessageSquare className="w-4 h-4" />, label: 'Parent Desk' },
   ];
@@ -2500,6 +2498,14 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                 </span>
               </div>
             </section>
+
+            {/* Student Check-in — below Continue Learning */}
+            {token && (
+              <section className="relative overflow-hidden rounded-[2rem] border border-emerald-200/70 bg-gradient-to-br from-emerald-50/90 via-white/70 to-teal-50/50 p-4 sm:p-5 shadow-[0_14px_38px_rgba(16,185,129,0.16)] backdrop-blur-2xl">
+                <div className="absolute -right-10 -top-10 h-28 w-28 rounded-full bg-emerald-300/25 blur-3xl pointer-events-none" />
+                <ParentCheckinPanel token={token} tenantId={tenantId} embedded />
+              </section>
+            )}
 
             {/* Birthday */}
             {birthdayInfo?.birthdays && birthdayInfo.birthdays.length > 0 && birthdayInfo.birthdays.map((bday) => (
@@ -3449,11 +3455,6 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               </div>
             )}
           </div>
-        )}
-
-        {/* ── Check-in tab ── */}
-        {activeTab === 'checkin' && token && (
-          <ParentCheckinPanel token={token} tenantId={tenantId} />
         )}
 
         {/* ── Attendance tab ── */}

@@ -926,6 +926,91 @@ export async function ensureSupplementalSchema(): Promise<void> {
     'platform_settings_seed'
   );
 
+  await safe(
+    `INSERT INTO platform_settings (key, value)
+     VALUES ('ui', '{"zoomNudgeEnabled": true}'::jsonb)
+     ON CONFLICT (key) DO NOTHING`,
+    'platform_settings_seed'
+  );
+
+  // --- in-app messaging (chat) ---
+  await safe(
+    `DO $$ BEGIN
+      CREATE TYPE chat_channel_type AS ENUM ('general', 'teachers', 'non_teaching', 'announcements', 'dm');
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END $$`,
+    'chat_channel_type'
+  );
+  await safe(
+    `CREATE TABLE IF NOT EXISTS chat_channels (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
+      name VARCHAR(100) NOT NULL,
+      channel_type chat_channel_type NOT NULL,
+      description TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    'chat_channels'
+  );
+  await safe(
+    `CREATE UNIQUE INDEX IF NOT EXISTS chat_channels_tenant_type_uidx
+     ON chat_channels (tenant_id, channel_type)
+     WHERE channel_type <> 'dm'`,
+    'chat_channels_tenant_type_uidx'
+  );
+  await safe(
+    `CREATE TABLE IF NOT EXISTS chat_channel_members (
+      id SERIAL PRIMARY KEY,
+      channel_id INTEGER NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_read_at TIMESTAMPTZ,
+      UNIQUE(channel_id, user_id)
+    )`,
+    'chat_channel_members'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS chat_channel_members_user_idx ON chat_channel_members(user_id)`,
+    'chat_channel_members_user_idx'
+  );
+  await safe(
+    `ALTER TABLE chat_channel_members ADD COLUMN IF NOT EXISTS notifications_muted BOOLEAN NOT NULL DEFAULT false`,
+    'chat_channel_members_notifications_muted'
+  );
+  await safe(
+    `CREATE TABLE IF NOT EXISTS chat_messages (
+      id SERIAL PRIMARY KEY,
+      channel_id INTEGER NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      sender_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      sender_label VARCHAR(100),
+      message TEXT,
+      image_url TEXT,
+      image_thumbnail_url TEXT,
+      is_deleted BOOLEAN NOT NULL DEFAULT false,
+      deleted_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    'chat_messages'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS chat_messages_channel_created_idx
+     ON chat_messages(channel_id, created_at DESC, id DESC)`,
+    'chat_messages_channel_created_idx'
+  );
+  await safe(
+    `CREATE TABLE IF NOT EXISTS dm_conversations (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      participant_one INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      participant_two INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      channel_id INTEGER NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(tenant_id, participant_one, participant_two)
+    )`,
+    'dm_conversations'
+  );
+
   const critical = [
     'subjects',
     'classes',

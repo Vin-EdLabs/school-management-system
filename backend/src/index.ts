@@ -72,6 +72,7 @@ import paymentSubmissionsRoutes from './routes/paymentSubmissions.js';
 import studentCheckinsRoutes from './routes/studentCheckins.js';
 import publicCheckinsRoutes from './routes/publicCheckins.js';
 import complaintsRoutes from './routes/complaints.js';
+import chatRoutes from './routes/chat.js';
 import { startInvoiceStatusJob } from './jobs/invoiceStatusJob.js';
 import { initSocket } from './socket.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -227,6 +228,7 @@ app.use('/api/payment-submissions', paymentSubmissionsRoutes);
 app.use('/api/student-checkins', studentCheckinsRoutes);
 app.use('/api/public-checkins', publicCheckinsRoutes);
 app.use('/api/complaints', complaintsRoutes);
+app.use('/api/chat', chatRoutes);
 
 // Error handling middleware
 app.use(errorHandler);

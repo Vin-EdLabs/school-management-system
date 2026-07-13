@@ -29,6 +29,7 @@ export const MODULE_DATA_NEEDS: Record<string, DataDomain[]> = {
   records: [],
   calendar: [],
   'support-chat': [],
+  messages: [],
   'push-notifications': ['students', 'classes'],
   'parent-desk': [],
   'parent-accounts': [],

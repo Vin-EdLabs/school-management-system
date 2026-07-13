@@ -1,4 +1,5 @@
 import React from 'react';
+import { cn } from '@/lib/utils';
 import ClosedTermBanner from './ClosedTermBanner';
 import { useTermReadOnly } from '../../contexts/TermStatusContext';
 
@@ -21,7 +22,12 @@ export function TermReadOnlyShell({
   const lockUi = readOnly && !exempt;
 
   return (
-    <div className={lockUi ? 'term-read-only' : undefined}>
+    <div
+      className={cn(
+        lockUi ? 'term-read-only' : undefined,
+        activeModule === 'messages' && 'flex min-h-0 flex-1 flex-col'
+      )}
+    >
       {readOnly ? <ClosedTermBanner inSettings={exempt} /> : null}
       {children}
     </div>

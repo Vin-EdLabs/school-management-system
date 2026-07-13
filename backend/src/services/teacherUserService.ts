@@ -65,6 +65,12 @@ export async function ensureTeacherUserAccount(
        WHERE id = $3`,
       [teacher.full_name, teacher.email || null, userId, loginActive]
     );
+    try {
+      const { syncUserChatMemberships } = await import('./chatService.js');
+      await syncUserChatMemberships(tenantId, userId, 'teacher');
+    } catch {
+      /* non-fatal */
+    }
     return { created: false, userId };
   }
 
@@ -101,7 +107,15 @@ export async function ensureTeacherUserAccount(
     [tenantId, username, teacher.full_name, teacher.email || null, passwordHash, teacherId]
   );
 
-  return { created: true, userId: Number(inserted.rows[0]?.id) };
+  const userId = Number(inserted.rows[0]?.id);
+  try {
+    const { syncUserChatMemberships } = await import('./chatService.js');
+    await syncUserChatMemberships(tenantId, userId, 'teacher');
+  } catch {
+    /* non-fatal */
+  }
+
+  return { created: true, userId };
 }
 
 /** Backfill user accounts for all teachers missing a linked login. */

@@ -2,8 +2,9 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { toast } from 'sonner';
 import { useAuth } from './AuthContext';
 import { useSocket } from './SocketContext';
+import { apiService } from '../services/api';
 
-export type TeacherNotifKind = 'salary' | 'admin' | 'parent-desk' | 'support-chat' | 'complaint';
+export type TeacherNotifKind = 'salary' | 'admin' | 'parent-desk' | 'support-chat' | 'complaint' | 'chat';
 
 export interface TeacherNotifItem {
   id: string;
@@ -12,11 +13,13 @@ export interface TeacherNotifItem {
   body: string;
   at: number;
   read: boolean;
+  url?: string | null;
 }
 
 interface TeacherNotificationContextValue {
   items: TeacherNotifItem[];
   unreadCount: number;
+  unreadChatCount: number;
   markRead: (id: string) => void;
   markAllRead: () => void;
   dismiss: (id: string) => void;
@@ -29,10 +32,39 @@ const STORAGE_PREFIX = 'rosaTeacherNotif:';
 const SCHOOL_STAFF_ROLES = new Set(['teacher', 'staff', 'headmaster', 'administrator', 'finance']);
 const TEACHER_STAFF_ROLES = new Set(['teacher', 'staff']);
 
-/** Parent desk + support alerts are for school leadership only, not classroom staff. */
+/** Classroom staff see admin broadcasts, salary, complaints, and chat alerts. */
 function filterItemsForRole(role: string | undefined, list: TeacherNotifItem[]): TeacherNotifItem[] {
   if (!role || !TEACHER_STAFF_ROLES.has(role)) return list;
-  return list.filter((item) => item.kind === 'admin' || item.kind === 'salary' || item.kind === 'complaint');
+  return list.filter((item) =>
+    item.kind === 'admin' || item.kind === 'salary' || item.kind === 'complaint' || item.kind === 'chat'
+  );
+}
+
+function mapApiNotification(row: {
+  id: number;
+  kind: string;
+  title: string;
+  message: string;
+  is_read: boolean;
+  created_at: string;
+  url?: string | null;
+}): TeacherNotifItem {
+  const kind = (
+    ['salary', 'admin', 'complaint', 'chat', 'general', 'birthday', 'attendance'].includes(row.kind)
+      ? row.kind === 'general' || row.kind === 'birthday' || row.kind === 'attendance'
+        ? 'admin'
+        : row.kind
+      : 'admin'
+  ) as TeacherNotifKind;
+  return {
+    id: `sn-${row.id}`,
+    kind,
+    title: row.title,
+    body: row.message,
+    at: new Date(row.created_at).getTime(),
+    read: row.is_read,
+    url: row.url ?? null,
+  };
 }
 
 function storageKeyForUser(user: { role?: string; tenantId?: number | null } | null): string | null {
@@ -93,6 +125,8 @@ export const TeacherNotificationProvider: React.FC<{ children: React.ReactNode }
   const { user } = useAuth();
   const { socket } = useSocket();
   const [items, setItems] = useState<TeacherNotifItem[]>([]);
+  const itemsRef = useRef<TeacherNotifItem[]>([]);
+  itemsRef.current = items;
 
   const storeKey = storageKeyForUser(user);
   const isSchoolStaff = !!user?.role && SCHOOL_STAFF_ROLES.has(user.role);
@@ -100,25 +134,50 @@ export const TeacherNotificationProvider: React.FC<{ children: React.ReactNode }
   const isRecipient = isSchoolStaff || isSuperAdmin;
   const hydratedKeyRef = useRef<string | null>(null);
 
+  const fetchFromServer = useCallback(async (): Promise<TeacherNotifItem[]> => {
+    if (!isSchoolStaff) return [];
+    try {
+      const data = await apiService.get<{
+        notifications: Array<{
+          id: number;
+          kind: string;
+          title: string;
+          message: string;
+          is_read: boolean;
+          created_at: string;
+          url?: string | null;
+        }>;
+      }>('/auth/notifications');
+      const mapped = (data.notifications || []).map(mapApiNotification);
+      const filtered = filterItemsForRole(user?.role, mapped);
+      setItems(filtered);
+      return filtered;
+    } catch {
+      return itemsRef.current;
+    }
+  }, [isSchoolStaff, user?.role]);
+
   useEffect(() => {
     if (!isRecipient) {
       setItems([]);
       hydratedKeyRef.current = null;
       return;
     }
-    // Keep in-memory alerts while tenant context is still loading.
     if (!storeKey) return;
 
     if (hydratedKeyRef.current === storeKey) return;
 
     const previousKey = hydratedKeyRef.current;
     hydratedKeyRef.current = storeKey;
-    const stored = filterItemsForRole(user?.role, loadStored(storeKey));
 
+    if (isSchoolStaff) {
+      void fetchFromServer();
+      return;
+    }
+
+    const stored = filterItemsForRole(user?.role, loadStored(storeKey));
     setItems((prev) => {
-      if (previousKey != null && previousKey !== storeKey) {
-        return stored;
-      }
+      if (previousKey != null && previousKey !== storeKey) return stored;
       const scopedPrev = filterItemsForRole(user?.role, prev);
       if (scopedPrev.length === 0) return stored;
       const ids = new Set(scopedPrev.map((p) => p.id));
@@ -129,12 +188,12 @@ export const TeacherNotificationProvider: React.FC<{ children: React.ReactNode }
       merged.sort((a, b) => b.at - a.at);
       return merged.slice(0, 50);
     });
-  }, [isRecipient, storeKey, user?.role]);
+  }, [isRecipient, storeKey, user?.role, isSchoolStaff, fetchFromServer]);
 
   useEffect(() => {
-    if (!isRecipient || !storeKey) return;
+    if (!isRecipient || !storeKey || isSchoolStaff) return;
     saveStored(storeKey, filterItemsForRole(user?.role, items));
-  }, [items, isRecipient, storeKey, user?.role]);
+  }, [items, isRecipient, storeKey, user?.role, isSchoolStaff]);
 
   const pushItem = useCallback((item: TeacherNotifItem) => {
     setItems((prev) => {
@@ -160,7 +219,27 @@ export const TeacherNotificationProvider: React.FC<{ children: React.ReactNode }
         const at = Number(evt.at) || Date.now();
         const id = `push-test-${at}-${title.slice(0, 24)}`;
         pushItem({ id, kind: 'admin', title, body, at, read: false });
-        showOnScreenNotification(title, body, 'violet');
+        showOnScreenNotification(title, body, 'indigo');
+        void fetchFromServer();
+        return;
+      }
+
+      if (entity === 'staff-notification' || entity === 'chat') {
+        if (isSchoolStaff) {
+          const prevIds = new Set(itemsRef.current.map((i) => i.id));
+          void fetchFromServer().then((mapped) => {
+            const fresh = filterItemsForRole(user?.role, mapped);
+            const newChat = fresh.find((n) => !n.read && n.kind === 'chat' && !prevIds.has(n.id));
+            if (newChat) {
+              showOnScreenNotification(newChat.title, newChat.body, 'violet');
+            } else {
+              const anyNew = fresh.find((n) => !n.read && !prevIds.has(n.id));
+              if (anyNew && entity === 'staff-notification') {
+                showOnScreenNotification(anyNew.title, anyNew.body, 'violet');
+              }
+            }
+          });
+        }
         return;
       }
 
@@ -173,6 +252,7 @@ export const TeacherNotificationProvider: React.FC<{ children: React.ReactNode }
         const id = `admin-${at}-${title.slice(0, 24)}-${body.slice(0, 40)}`;
         pushItem({ id, kind: 'admin', title, body, at, read: false });
         showOnScreenNotification(title, body, 'indigo');
+        void fetchFromServer();
         return;
       }
 
@@ -188,6 +268,7 @@ export const TeacherNotificationProvider: React.FC<{ children: React.ReactNode }
         const id = `complaint-${complaintId}-${at}`;
         pushItem({ id, kind: 'complaint', title, body, at, read: false });
         showOnScreenNotification(title, body, 'violet');
+        void fetchFromServer();
         return;
       }
 
@@ -227,6 +308,7 @@ export const TeacherNotificationProvider: React.FC<{ children: React.ReactNode }
         const id = `salary-${payeeId}-${month}-${year}-${at}`;
         pushItem({ id, kind: 'salary', title, body, at, read: false });
         showOnScreenNotification(title, body, 'emerald');
+        void fetchFromServer();
       }
     };
 
@@ -254,26 +336,42 @@ export const TeacherNotificationProvider: React.FC<{ children: React.ReactNode }
       socket.off('tenant-data-changed', onTenant);
       socket.off('new-support-message', onNewSupportMessage);
     };
-  }, [socket, isRecipient, isSchoolStaff, isSuperAdmin, user, pushItem]);
+  }, [socket, isRecipient, isSchoolStaff, isSuperAdmin, user, pushItem, fetchFromServer]);
 
   const visibleItems = useMemo(() => filterItemsForRole(user?.role, items), [items, user?.role]);
-  const unreadCount = useMemo(() => visibleItems.filter((i) => !i.read).length, [visibleItems]);
+  const unreadCount = useMemo(
+    () => visibleItems.filter((i) => !i.read && i.kind !== 'chat').length,
+    [visibleItems]
+  );
+  const unreadChatCount = useMemo(
+    () => visibleItems.filter((i) => !i.read && i.kind === 'chat').length,
+    [visibleItems]
+  );
 
   const markRead = useCallback((id: string) => {
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, read: true } : i)));
+    if (id.startsWith('sn-')) {
+      const dbId = Number(id.slice(3));
+      if (Number.isFinite(dbId)) {
+        void apiService.post(`/auth/notifications/${dbId}/read`, {}).catch(() => undefined);
+      }
+    }
   }, []);
 
   const markAllRead = useCallback(() => {
     setItems((prev) => prev.map((i) => ({ ...i, read: true })));
-  }, []);
+    if (isSchoolStaff) {
+      void apiService.post('/auth/notifications/read-all', {}).catch(() => undefined);
+    }
+  }, [isSchoolStaff]);
 
   const dismiss = useCallback((id: string) => {
     setItems((prev) => prev.filter((i) => i.id !== id));
   }, []);
 
   const value = useMemo(
-    () => ({ items: visibleItems, unreadCount, markRead, markAllRead, dismiss }),
-    [visibleItems, unreadCount, markRead, markAllRead, dismiss]
+    () => ({ items: visibleItems, unreadCount, unreadChatCount, markRead, markAllRead, dismiss }),
+    [visibleItems, unreadCount, unreadChatCount, markRead, markAllRead, dismiss]
   );
 
   return <TeacherNotificationContext.Provider value={value}>{children}</TeacherNotificationContext.Provider>;

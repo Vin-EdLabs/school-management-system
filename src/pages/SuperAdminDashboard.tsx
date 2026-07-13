@@ -103,6 +103,8 @@ import {
 import { cn } from "@/lib/utils";
 import SuperAdminLoginForm from '../components/SuperAdminLoginForm';
 import SupportModule from '../components/support/SupportModule';
+import ChatBroadcastPanel from '../components/chat/ChatBroadcastPanel';
+import SuperAdminSchoolChatModule from '../components/chat/SuperAdminSchoolChatModule';
 import { resolveLogoUrl } from '../services/tenantService';
 import { useTheme } from '../contexts/ThemeContext';
 import PwaInstallButton from '../components/common/PwaInstallButton';
@@ -210,7 +212,7 @@ interface OnlineSession {
   durationSeconds?: number | null;
 }
 
-type Section = 'schools' | 'usage' | 'visits' | 'tracker' | 'registrations' | 'audit' | 'super-admins' | 'support-chat' | 'school-data' | 'system-health' | 'platform-settings' | 'announcements' | 'online-users' | 'removed-staff' | 'finance-wipe';
+type Section = 'schools' | 'usage' | 'visits' | 'tracker' | 'registrations' | 'audit' | 'super-admins' | 'support-chat' | 'school-general-chat' | 'chat-broadcast' | 'school-data' | 'system-health' | 'platform-settings' | 'announcements' | 'online-users' | 'removed-staff' | 'finance-wipe';
 
 interface RemovedTeacher {
   id: number;
@@ -1271,6 +1273,8 @@ const SuperAdminDashboard = () => {
     { id: 'school-data' as Section, label: 'School Data', icon: FileText },
     { id: 'registrations' as Section, label: 'Registration Requests', icon: ClipboardList },
     { id: 'support-chat' as Section, label: 'Support Chat', icon: MessageCircle },
+    { id: 'school-general-chat' as Section, label: 'School General Chat', icon: Globe },
+    { id: 'chat-broadcast' as Section, label: 'School Broadcast', icon: Megaphone },
   ];
   const systemItems = [
     { id: 'platform-settings' as Section, label: 'Platform Settings', icon: Settings },
@@ -3284,6 +3288,18 @@ const SuperAdminDashboard = () => {
             {section === 'support-chat' && (
               <div className="animate-in fade-in duration-700 h-full">
                 <SupportModule />
+              </div>
+            )}
+
+            {section === 'school-general-chat' && (
+              <div className="animate-in fade-in duration-700 h-full">
+                <SuperAdminSchoolChatModule />
+              </div>
+            )}
+
+            {section === 'chat-broadcast' && (
+              <div className="animate-in fade-in duration-700 p-4 md:p-6">
+                <ChatBroadcastPanel />
               </div>
             )}
           </div>

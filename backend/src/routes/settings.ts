@@ -16,8 +16,8 @@ import {
   sendPushToTenantParents,
   sendPushToStudentsParents,
   sendPushToClassParents,
-  sendPushToTenantStaff,
 } from '../services/webPushService.js';
+import { notifyTenantStaffByRoles } from '../services/staffNotificationService.js';
 import { isFcmConfigured } from '../services/fcmService.js';
 import { notifySetupProgressChanged } from '../services/setupProgressService.js';
 import { writeAuditLog } from '../services/auditService.js';
@@ -924,7 +924,24 @@ router.post('/push/test', requireRole('super-admin', 'administrator', 'headmaste
     let targetClassId: number | undefined;
 
     if (audience === 'staff') {
-      stats = await sendPushToTenantStaff(tenantId, pushPayloadStaff);
+      const at = Date.now();
+      const { userCount } = await notifyTenantStaffByRoles(
+        tenantId,
+        ['teacher', 'staff', 'headmaster', 'administrator', 'finance'],
+        {
+          kind: 'admin',
+          title,
+          message: body,
+          url: `/school/${tenantId}`,
+          referenceKeyPrefix: `admin-test-${at}`,
+          push: pushPayloadStaff,
+        }
+      );
+      stats = {
+        staffUserAccounts: userCount,
+        subscribedUserAccounts: userCount,
+        subscribedDevices: userCount,
+      };
       try {
         const io = getIO();
         io.to(`tenant:${tenantId}`).emit('tenant-data-changed', {

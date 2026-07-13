@@ -180,6 +180,12 @@ router.patch('/:id/status', authenticate, requireRole('super-admin'), async (req
       );
 
       await client.query('COMMIT');
+      try {
+        const { bootstrapTenantChat } = await import('../services/chatService.js');
+        await bootstrapTenantChat(tenantId);
+      } catch (chatErr) {
+        console.warn('chat channel setup (non-fatal):', (chatErr as Error)?.message);
+      }
       emitSystemDataChanged('school-registration', 'updated', tenantId);
       return res.json(result.rows[0]);
     }

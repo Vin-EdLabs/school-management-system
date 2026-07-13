@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSchool } from '../../contexts/SchoolContext';
-import { useTeacherNotifications } from '../../contexts/TeacherNotificationContext';
+import { useTeacherNotifications, type TeacherNotifItem } from '../../contexts/TeacherNotificationContext';
 import { useSocket } from '../../contexts/SocketContext';
 import { apiService } from '../../services/api';
 import { resolveLogoUrl } from '../../services/tenantService';
@@ -79,6 +79,8 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
     (['administrator', 'finance'].includes(user.role || '') || isHeadmaster);
   const showAdminNotifications = showAdminBell;
   const headmasterCombinedUnread = isHeadmaster ? unreadCount + adminUnreadCount : adminUnreadCount;
+  const bellUnreadCount = showTeacherBell ? unreadCount : headmasterCombinedUnread;
+  const bellItems = useMemo(() => items.filter((n) => n.kind !== 'chat'), [items]);
   const showPersonalTodos = canUsePersonalTodos(user?.role);
   const displayName = user?.fullName?.trim() || user?.username || '';
   const mobileGreetingName = useMemo(
@@ -136,7 +138,24 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
     };
   }, [notifOpen]);
 
-  const bellUnreadCount = showTeacherBell ? unreadCount : headmasterCombinedUnread;
+  const openStaffNotification = useCallback(
+    (n: TeacherNotifItem) => {
+      markRead(n.id);
+      setNotifOpen(false);
+      if (n.kind === 'chat') {
+        const match = n.url?.match(/channel=(\d+)/);
+        if (match?.[1]) {
+          try {
+            sessionStorage.setItem('chat-open-channel', match[1]);
+          } catch {
+            /* ignore */
+          }
+        }
+        setActiveModule('messages');
+      }
+    },
+    [markRead, setActiveModule]
+  );
 
   const renderNotificationPanel = () => {
     if (!notifOpen) return null;
@@ -150,7 +169,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
         <div ref={notifPanelRef} className={NOTIF_PANEL_CLASS} style={panelStyle}>
           <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2 shrink-0 bg-white dark:bg-slate-900 rounded-t-2xl">
             <p className="text-xs font-semibold text-foreground">Notifications</p>
-            {items.length > 0 && (
+            {bellItems.length > 0 && (
               <button
                 type="button"
                 className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
@@ -161,15 +180,15 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
             )}
           </div>
           <div className={NOTIF_LIST_SCROLL_CLASS}>
-            {items.length === 0 ? (
+            {bellItems.length === 0 ? (
               <p className="p-4 text-xs text-muted-foreground">No notifications yet.</p>
             ) : (
               <div className="space-y-2 p-2 pb-4">
-                {items.map((n) => (
+                {bellItems.map((n) => (
                   <button
                     key={n.id}
                     type="button"
-                    onClick={() => markRead(n.id)}
+                    onClick={() => openStaffNotification(n)}
                     className={`w-full rounded-lg border p-3 text-left transition-colors touch-manipulation select-text ${
                       n.read
                         ? 'border-border bg-card hover:bg-muted/50'
@@ -193,7 +212,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
             <p className="text-xs font-semibold text-foreground">
               {isHeadmaster ? 'Notifications' : 'School Messages'}
             </p>
-            {isHeadmaster && items.length > 0 && (
+            {isHeadmaster && bellItems.length > 0 && (
               <button
                 type="button"
                 className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
@@ -204,16 +223,16 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
             )}
           </div>
           <div className={NOTIF_LIST_SCROLL_CLASS}>
-            {isHeadmaster && items.length > 0 && (
+            {isHeadmaster && bellItems.length > 0 && (
               <div className="space-y-2 border-b border-border p-2 pb-3">
                 <p className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                   Staff alerts
                 </p>
-                {items.map((n) => (
+                {bellItems.map((n) => (
                   <button
                     key={n.id}
                     type="button"
-                    onClick={() => markRead(n.id)}
+                    onClick={() => openStaffNotification(n)}
                     className={`w-full rounded-lg border p-3 text-left transition-colors touch-manipulation select-text ${
                       n.read
                         ? 'border-border bg-card hover:bg-muted/50'
@@ -228,7 +247,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
               </div>
             )}
             {adminNotifications.length === 0 ? (
-              !(isHeadmaster && items.length > 0) ? (
+              !(isHeadmaster && bellItems.length > 0) ? (
                 <p className="p-4 text-xs text-muted-foreground">
                   {isHeadmaster ? 'No notifications yet.' : 'No unread school messages.'}
                 </p>
@@ -540,7 +559,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
       const tid = evt.tenantId;
       if (tid != null && user?.tenantId != null && tid !== user.tenantId) return;
       const e = String(evt?.entity || '');
-      if (e === 'parent-desk' || e === 'support-chat' || e === 'term-budget' || e === 'lost-card' || e === 'payment-submission' || e === 'complaint') {
+      if (e === 'parent-desk' || e === 'support-chat' || e === 'term-budget' || e === 'lost-card' || e === 'payment-submission' || e === 'complaint' || e === 'chat' || e === 'staff-notification') {
         void loadAdminNotifications();
       }
     };

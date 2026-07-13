@@ -4,6 +4,11 @@ import jwt from 'jsonwebtoken';
 import { query } from '../db/connection.js';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { getVapidPublicKey } from '../services/webPushService.js';
+import {
+  listStaffNotifications,
+  markAllStaffNotificationsRead,
+  markStaffNotificationRead,
+} from '../services/staffNotificationService.js';
 import { writeAuditLog } from '../services/auditService.js';
 import { getClientIp } from '../utils/clientIp.js';
 import { resolveUserDisplayName } from '../utils/auditResolve.js';
@@ -569,6 +574,48 @@ router.post('/push/unsubscribe', authenticate, async (req: AuthRequest, res) => 
   } catch (error) {
     console.error('Staff push unsubscribe error:', error);
     return res.status(500).json({ error: 'Failed to remove push subscription' });
+  }
+});
+
+router.get('/notifications', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const role = normalizeRole(req.user!.role);
+    if (!canUseStaffPush(role)) {
+      return res.status(403).json({ error: 'Notifications are not available for this account type' });
+    }
+    const notifications = await listStaffNotifications(req.user!.id);
+    return res.json({ notifications });
+  } catch (error) {
+    console.error('Staff notifications list error:', error);
+    return res.status(500).json({ error: 'Failed to fetch notifications' });
+  }
+});
+
+router.post('/notifications/:id/read', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const role = normalizeRole(req.user!.role);
+    if (!canUseStaffPush(role)) {
+      return res.status(403).json({ error: 'Notifications are not available for this account type' });
+    }
+    await markStaffNotificationRead(Number(req.params.id), req.user!.id);
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Staff mark notification read error:', error);
+    return res.status(500).json({ error: 'Failed to update notification' });
+  }
+});
+
+router.post('/notifications/read-all', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const role = normalizeRole(req.user!.role);
+    if (!canUseStaffPush(role)) {
+      return res.status(403).json({ error: 'Notifications are not available for this account type' });
+    }
+    await markAllStaffNotificationsRead(req.user!.id);
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Staff mark all notifications read error:', error);
+    return res.status(500).json({ error: 'Failed to update notifications' });
   }
 });
 

@@ -21,6 +21,7 @@ import { apiService } from '@/services/api';
 import { useEnsureData } from '@/hooks/useEnsureData';
 import { formatDisplayDate } from '@/utils/dateFormat';
 import StaffAttendanceClockCard from '@/components/staffAttendance/StaffAttendanceClockCard';
+import StaffPortalMessagesChip from '@/components/chat/StaffPortalMessagesChip';
 import { BrandedLoading } from '@/components/common/BrandedLoading';
 
 type HeadmasterDashboardProps = {
@@ -102,6 +103,9 @@ const HeadmasterDashboard: React.FC<HeadmasterDashboardProps> = ({ onNavigate })
               school, support your teachers, and stay connected with parents.
             </p>
             <p className="text-xs text-white/50">{formatDisplayDate(new Date())}</p>
+          </div>
+          <div className="w-full sm:w-auto sm:min-w-[200px]">
+            <StaffPortalMessagesChip onNavigate={onNavigate} variant="dark-hero" />
           </div>
         </div>
       </div>

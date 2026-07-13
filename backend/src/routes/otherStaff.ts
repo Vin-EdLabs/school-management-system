@@ -148,6 +148,13 @@ async function handleCreateStaffUser(req: AuthRequest, res: express.Response) {
     });
 
     try {
+      const { syncUserChatMemberships } = await import('../services/chatService.js');
+      await syncUserChatMemberships(tenantId, Number(created.id), String(role));
+    } catch {
+      /* non-fatal */
+    }
+
+    try {
       getIO().to(`tenant:${tenantId}`).emit('tenant-data-changed', {
         tenantId,
         entity: 'user',

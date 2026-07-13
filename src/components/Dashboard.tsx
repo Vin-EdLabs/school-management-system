@@ -67,6 +67,7 @@ import StaffAttendanceDashboard from './staffAttendance/StaffAttendanceDashboard
 import MyAttendanceHistory from './staffAttendance/MyAttendanceHistory';
 import ComplaintsDashboard from './complaints/ComplaintsDashboard';
 import MyComplaintsPage from './complaints/MyComplaintsPage';
+import ChatModule from './chat/ChatModule';
 import { isHeadmasterRole } from '../utils/headmasterPortal';
 import HeadmasterDashboard from './headmaster/HeadmasterDashboard';
 import AllStaffView from './staff/AllStaffView';
@@ -205,7 +206,7 @@ const DashboardContent = () => {
     switch (activeModule) {
       case 'dashboard':
         if (user?.role === 'finance') {
-          return <FinancialDashboard />;
+          return <FinancialDashboard onNavigate={setActiveModule} />;
         }
         if (shouldUseAdministratorDashboard(user?.role)) {
           return <AdministratorDashboard onNavigate={setActiveModule} />;
@@ -232,7 +233,7 @@ const DashboardContent = () => {
       case 'headmaster-grades':
         return <GradesModule schoolWideReadOnly />;
       case 'financial-dashboard':
-        return <FinancialDashboard />;
+        return <FinancialDashboard onNavigate={setActiveModule} />;
       case 'teacher-dashboard':
         return <TeacherDashboard onNavigate={setActiveModule} />;
       case 'ai-assistant':
@@ -373,6 +374,12 @@ const DashboardContent = () => {
         return <ComplaintsDashboard readOnly={isHeadmasterRole(user?.role)} />;
       case 'my-complaints':
         return <MyComplaintsPage />;
+      case 'messages':
+        return (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <ChatModule />
+          </div>
+        );
       default:
         if (user?.role === 'headmaster') {
           return <HeadmasterDashboard onNavigate={setActiveModule} />;
@@ -401,8 +408,22 @@ const DashboardContent = () => {
             activeModule={activeModule}
             onOpenSettings={() => setActiveModuleState('settings')}
           >
-            <ClosedTermViewBar setActiveModule={setActiveModule} />
-            <TermReadOnlyShell activeModule={activeModule}>{renderActiveModule()}</TermReadOnlyShell>
+            <div
+              className={
+                activeModule === 'messages' ? 'flex min-h-0 flex-1 flex-col' : undefined
+              }
+            >
+              <ClosedTermViewBar setActiveModule={setActiveModule} />
+              <TermReadOnlyShell activeModule={activeModule}>
+                <div
+                  className={
+                    activeModule === 'messages' ? 'flex min-h-0 flex-1 flex-col' : undefined
+                  }
+                >
+                  {renderActiveModule()}
+                </div>
+              </TermReadOnlyShell>
+            </div>
           </ActiveTermRequiredShell>
         </SidebarWrapper>
       </ImpersonationShell>

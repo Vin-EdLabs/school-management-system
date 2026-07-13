@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { School, Users, ClipboardCheck, BookOpen, Wallet, CheckCircle, XCircle, Cake, Sparkles, Gift, GraduationCap, Flag } from 'lucide-react';
 import { apiService } from '../../services/api';
 import { useSchool } from '../../contexts/SchoolContext';
+import StaffPortalMessagesChip from '@/components/chat/StaffPortalMessagesChip';
 import { type TeacherMySalaryResponse, formatTeacherMoney, salaryStatusBadgeClass } from './teacherSalaryPortal';
 import { formatDisplayDate } from '../../utils/dateFormat';
 import TeacherSubjectClassDisplay from '../teachers/TeacherSubjectClassDisplay';
@@ -131,9 +132,13 @@ const TeacherDashboard = ({ onNavigate }: TeacherDashboardProps) => {
             </p>
             <p className="text-xs text-white/50">{formatDisplayDate(new Date())}</p>
           </div>
-          <div className="shrink-0 rounded-xl bg-white/10 px-4 py-3 ring-1 ring-white/15 backdrop-blur-sm">
-            <p className="text-[10px] uppercase tracking-wider text-white/60">Staff ID</p>
-            <p className="font-mono text-lg font-semibold text-white">{profile.staff_id}</p>
+          <div className="shrink-0 flex flex-col gap-2.5 w-full sm:w-auto sm:min-w-[200px]">
+            <div className="rounded-xl bg-white/10 px-4 py-3 ring-1 ring-white/15 backdrop-blur-sm">
+              <p className="text-[10px] uppercase tracking-wider text-white/60">Staff ID</p>
+              <p className="font-mono text-lg font-semibold text-white">{profile.staff_id}</p>
+            </div>
+
+            {onNavigate && <StaffPortalMessagesChip onNavigate={onNavigate} variant="dark-hero" />}
           </div>
         </div>
       </div>

@@ -54,6 +54,7 @@ import {
 import type { PersonalTodo } from '../todos/PersonalTodosPanel';
 import { countTodayPendingTodos } from '../todos/PersonalTodosPanel';
 import StaffAttendanceClockCard from '../staffAttendance/StaffAttendanceClockCard';
+import StaffPortalMessagesChip from '@/components/chat/StaffPortalMessagesChip';
 
 const CHART_GREEN = '#10b981';
 
@@ -429,7 +430,15 @@ const AdministratorDashboard = ({ onNavigate }: Props) => {
                 </Badge>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-col gap-3 sm:items-end">
+              {onNavigate && (
+                <StaffPortalMessagesChip
+                  onNavigate={onNavigate}
+                  variant="light"
+                  className="w-full sm:min-w-[220px] sm:max-w-[260px]"
+                />
+              )}
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
           <Button
             type="button"
             variant="outline"
@@ -450,6 +459,7 @@ const AdministratorDashboard = ({ onNavigate }: Props) => {
               <Button size="sm" variant="outline" className="h-9 gap-1.5 rounded-lg" onClick={() => nav('push-notifications')}>
                 <Megaphone className="h-4 w-4" /> Announcement
               </Button>
+            </div>
             </div>
           </div>
         </div>

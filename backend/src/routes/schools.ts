@@ -607,6 +607,12 @@ router.post('/', requireRole('super-admin'), async (req: AuthRequest, res) => {
       } catch (setupErr) {
         console.warn('setup progress row (non-fatal):', (setupErr as Error)?.message);
       }
+      try {
+        const { bootstrapTenantChat } = await import('../services/chatService.js');
+        await bootstrapTenantChat(tenantId);
+      } catch (chatErr) {
+        console.warn('chat channel setup (non-fatal):', (chatErr as Error)?.message);
+      }
       
       // Log creation
       await query(

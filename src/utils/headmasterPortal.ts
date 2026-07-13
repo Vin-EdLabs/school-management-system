@@ -30,6 +30,7 @@ export const HEADMASTER_MODULES = [
   'staff-attendance',
   'my-staff-attendance',
   'complaints',
+  'messages',
 ] as const;
 
 export function isHeadmasterRole(role?: UserRole | string | null): boolean {

@@ -110,6 +110,16 @@ export const initSocket = (server: HttpServer) => {
     }
   });
 
+  void (async () => {
+    try {
+      const { initChatSocket, tryAttachRedisAdapter } = await import('./socket/chatSocket.js');
+      await tryAttachRedisAdapter(io);
+      initChatSocket(io);
+    } catch (err) {
+      console.warn('Chat socket init failed:', (err as Error).message);
+    }
+  })();
+
   io.on('connection', (socket: AuthenticatedSocket) => {
     if (socket.user) {
       const { id, tenantId, role } = socket.user;

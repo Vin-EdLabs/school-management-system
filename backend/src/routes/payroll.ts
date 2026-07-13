@@ -7,6 +7,7 @@ import { setTenantContext } from '../middleware/tenant.js';
 import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 import { getIO } from '../socket.js';
 import { sendPushToStaffUser } from '../services/webPushService.js';
+import { notifyStaffUser } from '../services/staffNotificationService.js';
 import { writeAuditLog } from '../services/auditService.js';
 import { formatMoneyGhs, resolveActorFromRequest, resolveTeacherLabel, resolveOtherStaffLabel, withActor } from '../utils/auditResolve.js';
 import { getClientIp } from '../utils/clientIp.js';
@@ -1451,10 +1452,17 @@ router.post('/pay', requireRole('super-admin', 'administrator', 'finance'), asyn
         ).catch(() => ({ rows: [] as any[] }));
         const targetUserId = Number(userRes.rows[0]?.id);
         if (Number.isFinite(targetUserId)) {
-          await sendPushToStaffUser(targetUserId, {
+          await notifyStaffUser(targetUserId, tenantId, {
+            kind: 'salary',
             title: salaryTitle,
-            body: salaryBody,
+            message: salaryBody,
             url: `/school/${tenantId}`,
+            referenceKey: `salary:${normalizedPayeeType}:${normalizedPayeeId}:${m}:${y}`,
+            push: {
+              title: salaryTitle,
+              body: salaryBody,
+              url: `/school/${tenantId}`,
+            },
           }).catch(() => {});
         }
       }

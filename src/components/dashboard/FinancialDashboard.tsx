@@ -5,8 +5,9 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getDashboardCalendarYearForMonthlyChart } from '../../utils/feeCalculations';
 import { formatDisplayDate } from '../../utils/dateFormat';
-import FinancialSummary from './FinancialSummary';
 import OutstandingFees from '../fees/OutstandingFees';
+import StaffPortalMessagesChip from '../chat/StaffPortalMessagesChip';
+import { useAuth } from '../../contexts/AuthContext';
 import {
   useAdminOverview,
   useExpenditureByCategory,
@@ -31,13 +32,16 @@ import {
   FileText,
   Plus,
   Users,
-  ChevronLeft,
   ChevronRight,
   Wallet,
   Landmark,
   RefreshCw,
   PieChart as PieChartIcon,
   BarChart3,
+  Calendar,
+  CircleCheck,
+  AlertTriangle,
+  MessageCircle,
 } from 'lucide-react';
 import {
   BarChart,
@@ -72,8 +76,22 @@ const tooltipStyle = {
   color: 'hsl(var(--foreground))',
 };
 
+const surfaceCard =
+  'rounded-2xl border border-border bg-card shadow-[0_1px_3px_rgba(0,0,0,0.06),0_4px_16px_rgba(0,0,0,0.04)] transition-all duration-200 dark:shadow-none dark:ring-1 dark:ring-border/50';
+
 function formatGhs(value: number) {
   return `GHS ${Number(value || 0).toLocaleString()}`;
+}
+
+function formatGhsCompact(value: number) {
+  return `GHS ${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+}
+
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
 }
 
 function formatAxisAmount(value: number) {
@@ -180,122 +198,16 @@ function ChartSummaryStrip({
 
 type FinanceMetricAccent = 'emerald' | 'sky' | 'violet' | 'teal' | 'orange' | 'indigo' | 'amber' | 'rose';
 
-const METRIC_ACCENT: Record<
-  FinanceMetricAccent,
-  { iconWrap: string; bar: string; ring: string; gradient: string }
-> = {
-  emerald: {
-    iconWrap: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
-    bar: 'bg-emerald-500',
-    ring: 'ring-emerald-500/15',
-    gradient: 'from-emerald-500/[0.07] via-card to-card',
-  },
-  sky: {
-    iconWrap: 'bg-sky-500/15 text-sky-600 dark:text-sky-400',
-    bar: 'bg-sky-500',
-    ring: 'ring-sky-500/15',
-    gradient: 'from-sky-500/[0.07] via-card to-card',
-  },
-  violet: {
-    iconWrap: 'bg-violet-500/15 text-violet-600 dark:text-violet-400',
-    bar: 'bg-violet-500',
-    ring: 'ring-violet-500/15',
-    gradient: 'from-violet-500/[0.07] via-card to-card',
-  },
-  teal: {
-    iconWrap: 'bg-teal-500/15 text-teal-600 dark:text-teal-400',
-    bar: 'bg-teal-500',
-    ring: 'ring-teal-500/15',
-    gradient: 'from-teal-500/[0.07] via-card to-card',
-  },
-  orange: {
-    iconWrap: 'bg-orange-500/15 text-orange-600 dark:text-orange-400',
-    bar: 'bg-orange-500',
-    ring: 'ring-orange-500/15',
-    gradient: 'from-orange-500/[0.07] via-card to-card',
-  },
-  indigo: {
-    iconWrap: 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400',
-    bar: 'bg-indigo-500',
-    ring: 'ring-indigo-500/15',
-    gradient: 'from-indigo-500/[0.07] via-card to-card',
-  },
-  amber: {
-    iconWrap: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
-    bar: 'bg-amber-500',
-    ring: 'ring-amber-500/15',
-    gradient: 'from-amber-500/[0.09] via-card to-card',
-  },
-  rose: {
-    iconWrap: 'bg-rose-500/15 text-rose-600 dark:text-rose-400',
-    bar: 'bg-rose-500',
-    ring: 'ring-rose-500/15',
-    gradient: 'from-rose-500/[0.07] via-card to-card',
-  },
+const KPI_BORDER: Record<FinanceMetricAccent, { border: string; iconBg: string }> = {
+  emerald: { border: 'border-l-emerald-600 dark:border-l-emerald-500', iconBg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' },
+  sky: { border: 'border-l-sky-500', iconBg: 'bg-sky-500/10 text-sky-600 dark:text-sky-400' },
+  violet: { border: 'border-l-violet-600 dark:border-l-violet-400', iconBg: 'bg-violet-500/10 text-violet-600 dark:text-violet-400' },
+  teal: { border: 'border-l-teal-500', iconBg: 'bg-teal-500/10 text-teal-600 dark:text-teal-400' },
+  orange: { border: 'border-l-orange-500', iconBg: 'bg-orange-500/10 text-orange-600 dark:text-orange-400' },
+  indigo: { border: 'border-l-indigo-600 dark:border-l-indigo-400', iconBg: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' },
+  amber: { border: 'border-l-amber-500', iconBg: 'bg-amber-500/10 text-amber-600 dark:text-amber-400' },
+  rose: { border: 'border-l-rose-500', iconBg: 'bg-rose-500/10 text-rose-600 dark:text-rose-400' },
 };
-
-function FinanceMetricCard({
-  label,
-  value,
-  sub,
-  icon: Icon,
-  accent,
-}: {
-  label: string;
-  value: number;
-  sub: string;
-  icon: React.ComponentType<{ className?: string }>;
-  accent: FinanceMetricAccent;
-}) {
-  const styles = METRIC_ACCENT[accent];
-  return (
-    <Card
-      className={cn(
-        'group relative min-h-[148px] overflow-hidden rounded-2xl border-border/70 bg-gradient-to-br shadow-sm ring-1 transition-shadow hover:shadow-md',
-        styles.gradient,
-        styles.ring
-      )}
-    >
-      <div className={cn('absolute inset-x-0 top-0 h-1', styles.bar)} />
-      <CardContent className="flex h-full flex-col justify-between p-5 sm:p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0 flex-1 space-y-1">
-            <p className="text-sm font-medium text-muted-foreground">{label}</p>
-            <p className="text-2xl font-bold tabular-nums tracking-tight text-foreground sm:text-[1.65rem]">
-              {formatGhs(value)}
-            </p>
-          </div>
-          <div
-            className={cn(
-              'flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ring-1 ring-black/5 dark:ring-white/10',
-              styles.iconWrap
-            )}
-          >
-            <Icon className="h-5 w-5" aria-hidden />
-          </div>
-        </div>
-        <p className="mt-4 text-xs font-medium text-muted-foreground/90">{sub}</p>
-      </CardContent>
-    </Card>
-  );
-}
-
-function FinanceMetricCardSkeleton() {
-  return (
-    <Card className="min-h-[148px] overflow-hidden rounded-2xl border-border/70 shadow-sm">
-      <CardContent className="space-y-4 p-5 sm:p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1 space-y-2">
-            <Skeleton className="h-4 w-28" />
-            <Skeleton className="h-8 w-36" />
-          </div>
-          <Skeleton className="h-11 w-11 shrink-0 rounded-xl" />
-        </div>
-        <Skeleton className="h-3 w-24" />
-      </CardContent>
-    </Card>
-  );
-}
 
 function EmptyChart({ label }: { label: string }) {
   return (
@@ -330,7 +242,12 @@ function ChartSkeleton() {
   );
 }
 
-const FinancialDashboard = () => {
+type FinancialDashboardProps = {
+  onNavigate?: (module: string) => void;
+};
+
+const FinancialDashboard = ({ onNavigate }: FinancialDashboardProps) => {
+  const { user } = useAuth();
   const { data: overview } = useAdminOverview();
   const { data: outstandingSummary } = useOutstandingFeesSummary();
   const {
@@ -340,7 +257,7 @@ const FinancialDashboard = () => {
     isError: financialError,
     refetch: refetchFinancial,
   } = useFinancialSummary();
-  const { currentTerm, currentYear } = useActiveTerm();
+  const { currentTerm, currentYear, isLoading: termLoading } = useActiveTerm();
   const monthlyChartCalendarYear = getDashboardCalendarYearForMonthlyChart(currentYear);
   const chartStartDate = `${monthlyChartCalendarYear}-01-01`;
   const chartEndDate = `${monthlyChartCalendarYear}-12-31`;
@@ -508,8 +425,6 @@ const FinancialDashboard = () => {
   const hasClassFees = classFeesData.length > 0;
   const isRefreshing = refreshing || financialFetching;
 
-  const termLabel = currentTerm.includes(currentYear) ? currentTerm : `${currentTerm} · ${currentYear}`;
-
   const kpi: Array<{
     key: string;
     label: string;
@@ -576,120 +491,203 @@ const FinancialDashboard = () => {
     },
   ];
 
-  return (
-    <div className="flex h-full min-h-0">
-      <div className={`relative min-h-full flex-1 overflow-auto transition-all duration-300 ${sidebarOpen ? 'xl:mr-0' : ''}`}>
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_70%_45%_at_70%_-10%,hsl(var(--primary)/0.1),transparent)] dark:bg-[radial-gradient(ellipse_70%_45%_at_70%_-10%,hsl(var(--primary)/0.16),transparent)]" />
+  const displayName = user?.fullName || user?.username || 'Finance';
+  const dateLabel = new Date().toLocaleDateString('en-GB', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+  const nav = useCallback(
+    (module: string) => {
+      if (onNavigate) {
+        onNavigate(module);
+      }
+    },
+    [onNavigate]
+  );
 
-        <div className="relative space-y-8 p-6 md:p-8">
-          {budgetAlerts.length > 0 && (
-            <div className="rounded-xl border border-amber-300/80 bg-amber-50/90 px-4 py-3 dark:border-amber-800 dark:bg-amber-950/40">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">
-                    Budget alerts ({budgetAlerts.length})
-                  </p>
-                  <ul className="mt-1 space-y-1">
-                    {budgetAlerts.slice(0, 3).map((a) => (
-                      <li key={String(a.id)} className="text-xs text-amber-800 dark:text-amber-200">
-                        {String(a.message || a.category_name)}
-                      </li>
-                    ))}
-                  </ul>
-                  {budgetAlerts.length > 3 && (
-                    <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
-                      +{budgetAlerts.length - 3} more — open Budget for details
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-          {financialError && (
-            <div className="rounded-xl border border-amber-300/80 bg-amber-50/90 px-4 py-3 dark:border-amber-800 dark:bg-amber-950/40">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm text-amber-900 dark:text-amber-100">
-                  Live finance summary could not be loaded. Showing cached totals where available.
+  return (
+    <div className="min-h-full bg-[#FAFAFA] dark:bg-background">
+      <div className="mx-auto max-w-[1440px] space-y-6 p-4 md:p-6">
+        {budgetAlerts.length > 0 && (
+          <div className="rounded-xl border border-amber-300/80 bg-amber-50/90 px-4 py-3 dark:border-amber-800 dark:bg-amber-950/40">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+                  Budget alerts ({budgetAlerts.length})
                 </p>
-                <Button type="button" variant="outline" size="sm" onClick={() => void refetchFinancial()}>
-                  Retry
+                <ul className="mt-1 space-y-1">
+                  {budgetAlerts.slice(0, 3).map((a) => (
+                    <li key={String(a.id)} className="text-xs text-amber-800 dark:text-amber-200">
+                      {String(a.message || a.category_name)}
+                    </li>
+                  ))}
+                </ul>
+                {budgetAlerts.length > 3 && (
+                  <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                    +{budgetAlerts.length - 3} more — open Budget for details
+                  </p>
+                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="mt-2 h-8 rounded-lg text-xs"
+                  onClick={() => nav('term-budget')}
+                >
+                  Open budget
                 </Button>
               </div>
             </div>
-          )}
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="flex items-start gap-3">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/20">
-                <Wallet className="h-6 w-6" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">Finance dashboard</h1>
-                <p className="mt-0.5 max-w-xl text-sm text-muted-foreground">
-                  Income, expenses, and fee health — with live charts from your school data.
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <Badge variant="secondary" className="font-normal">
-                    {overview?.teachers.active ?? overview?.teachers.total ?? 0} active staff
-                  </Badge>
-                  <Badge variant="secondary" className="font-normal">
-                    {overview?.students.total ?? 0} students
-                  </Badge>
-                </div>
-              </div>
+          </div>
+        )}
+        {financialError && (
+          <div className="rounded-xl border border-amber-300/80 bg-amber-50/90 px-4 py-3 dark:border-amber-800 dark:bg-amber-950/40">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm text-amber-900 dark:text-amber-100">
+                Live finance summary could not be loaded. Showing cached totals where available.
+              </p>
+              <Button type="button" variant="outline" size="sm" onClick={() => void refetchFinancial()}>
+                Retry
+              </Button>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                variant="outline"
-                className="gap-2 shadow-sm"
-                onClick={() => void handleRefresh()}
-                disabled={isRefreshing}
-              >
-                <RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} />
-                Refresh
-              </Button>
-              <Button onClick={() => setSidebarOpen(!sidebarOpen)} variant="outline" className="gap-2 shadow-sm">
-                <Users className="h-4 w-4" />
-                Outstanding fees
-                {sidebarOpen ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-              </Button>
-              <div className="rounded-2xl border border-border/80 bg-card/90 px-5 py-3.5 text-right shadow-sm backdrop-blur-sm">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Billing term</p>
-                <p className="mt-1 text-sm font-semibold text-foreground">{termLabel}</p>
+          </div>
+        )}
+
+        {/* Hero */}
+        <div className={cn(surfaceCard, 'border-l-4 border-l-emerald-600 p-5 dark:border-l-emerald-500 md:p-6')}>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-foreground md:text-[28px]">
+                {greeting()}, {displayName.split(' ')[0]}
+              </h1>
+              <p className="mt-1 text-sm text-muted-foreground">{dateLabel}</p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className="gap-1.5 rounded-full px-3 py-1 font-normal">
+                  <Calendar className="h-3 w-3" />
+                  {termLoading
+                    ? 'Loading term…'
+                    : currentYear && !currentTerm.includes(currentYear)
+                      ? `${currentTerm} · ${currentYear}`
+                      : currentTerm}
+                </Badge>
+                <Badge className="gap-1.5 rounded-full border-0 bg-emerald-600 px-3 py-1 font-normal text-white hover:bg-emerald-600">
+                  <CircleCheck className="h-3 w-3" />
+                  Finance Portal
+                </Badge>
                 {lastSync && (
-                  <p className="mt-0.5 text-[10px] text-muted-foreground">
+                  <Badge variant="secondary" className="rounded-full px-3 py-1 font-normal">
                     Updated {lastSync.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
-                  </p>
+                  </Badge>
                 )}
               </div>
             </div>
+            <div className="flex flex-col gap-3 sm:items-end">
+              {onNavigate ? (
+                <StaffPortalMessagesChip
+                  onNavigate={onNavigate}
+                  variant="light"
+                  className="w-full sm:min-w-[220px] sm:max-w-[260px]"
+                />
+              ) : null}
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9 gap-1.5 rounded-lg"
+                  onClick={() => void handleRefresh()}
+                  disabled={isRefreshing}
+                >
+                  <RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} />
+                  Refresh
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-9 gap-1.5 rounded-lg border-violet-500/30 text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-violet-950/30"
+                  onClick={() => nav('messages')}
+                >
+                  <MessageCircle className="h-4 w-4" /> Messages
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-9 gap-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"
+                  onClick={() => nav('fees')}
+                >
+                  <Plus className="h-4 w-4" /> Record Payment
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-9 gap-1.5 rounded-lg"
+                  onClick={() => nav('expenses')}
+                >
+                  <FileText className="h-4 w-4" /> Expenses
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-9 gap-1.5 rounded-lg"
+                  onClick={() => setSidebarOpen(true)}
+                >
+                  <Users className="h-4 w-4" /> Outstanding
+                </Button>
+              </div>
+            </div>
           </div>
+        </div>
 
-          <FinancialSummary />
+        {/* KPI row */}
+        <div className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-1 md:grid md:grid-cols-4 md:overflow-visible xl:grid-cols-7">
+          {financialLoading
+            ? Array.from({ length: 7 }).map((_, i) => (
+                <div key={i} className={cn(surfaceCard, 'min-w-[200px] flex-shrink-0 snap-start border-l-4 p-4 md:min-w-0')}>
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="mt-2 h-7 w-28" />
+                  <Skeleton className="mt-2 h-3 w-20" />
+                </div>
+              ))
+            : kpi.map((k) => {
+                const styles = KPI_BORDER[k.accent];
+                return (
+                  <div
+                    key={k.key}
+                    className={cn(
+                      surfaceCard,
+                      'min-w-[200px] flex-shrink-0 snap-start border-l-4 p-4 hover:-translate-y-0.5 md:min-w-0',
+                      styles.border
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-[10px] font-medium uppercase leading-tight tracking-wide text-muted-foreground">
+                        {k.label}
+                      </p>
+                      <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-full', styles.iconBg)}>
+                        <k.icon className="h-4 w-4" />
+                      </div>
+                    </div>
+                    <p
+                      className="mt-1.5 text-base font-bold tabular-nums leading-tight text-foreground sm:text-lg"
+                      title={formatGhs(k.value)}
+                    >
+                      {formatGhsCompact(k.value)}
+                    </p>
+                    <p className="mt-1 truncate text-[11px] text-muted-foreground">{k.sub}</p>
+                  </div>
+                );
+              })}
+        </div>
 
-          <section className="space-y-4">
-            <div>
-              <h2 className="text-lg font-semibold tracking-tight text-foreground">Key metrics</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Snapshot of income, expenses, and balances for {termLabel}
-              </p>
-            </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-              {financialLoading
-                ? Array.from({ length: 7 }).map((_, i) => <FinanceMetricCardSkeleton key={i} />)
-                : kpi.map((k) => (
-                    <FinanceMetricCard
-                      key={k.key}
-                      label={k.label}
-                      value={k.value}
-                      sub={k.sub}
-                      icon={k.icon}
-                      accent={k.accent}
-                    />
-                  ))}
-            </div>
-          </section>
-
+        {/* Main grid */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.85fr)_minmax(0,1fr)]">
+          <div className="space-y-6">
           <Card className="overflow-hidden rounded-2xl border-border/80 shadow-sm ring-1 ring-border/40">
             <CardHeader className="border-b border-border/60 bg-gradient-to-r from-indigo-500/8 via-card to-violet-500/8 px-6 py-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -1034,36 +1032,147 @@ const FinancialDashboard = () => {
               </CardContent>
             </Card>
           </div>
+          </div>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <div className="lg:col-span-1">
-              <StaffAttendanceClockCard variant="sidebar" />
-            </div>
-            <Card className="overflow-hidden rounded-2xl border-border/80 shadow-sm ring-1 ring-border/40 lg:col-span-2">
-              <CardHeader className="px-6 py-5">
-                <CardTitle className="text-lg">Quick actions</CardTitle>
-                <CardDescription>Common finance workflows</CardDescription>
-              </CardHeader>
-              <CardContent className="px-6 pb-6">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <Button className="h-12 justify-start gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 text-emerald-900 shadow-none hover:bg-emerald-500/15 dark:text-emerald-100">
-                    <Receipt className="h-4 w-4 shrink-0" />
-                    Record fee payment
-                  </Button>
-                  <Button className="h-12 justify-start gap-3 rounded-xl border border-sky-500/25 bg-sky-500/10 px-4 text-sky-900 shadow-none hover:bg-sky-500/15 dark:text-sky-100">
-                    <Plus className="h-4 w-4 shrink-0" />
-                    Add other income
-                  </Button>
-                  <Button className="h-12 justify-start gap-3 rounded-xl border border-rose-500/25 bg-rose-500/10 px-4 text-rose-900 shadow-none hover:bg-rose-500/15 dark:text-rose-100">
-                    <FileText className="h-4 w-4 shrink-0" />
-                    Record expense
-                  </Button>
-                  <Button className="h-12 justify-start gap-3 rounded-xl border border-violet-500/25 bg-violet-500/10 px-4 text-violet-900 shadow-none hover:bg-violet-500/15 dark:text-violet-100">
-                    <Calculator className="h-4 w-4 shrink-0" />
-                    Open reports
-                  </Button>
+          {/* Sidebar */}
+          <div className="space-y-4">
+            <StaffAttendanceClockCard
+              variant="sidebar"
+              onOpenHistory={onNavigate ? () => onNavigate('my-staff-attendance') : undefined}
+            />
+
+            {onNavigate ? (
+              <StaffPortalMessagesChip
+                onNavigate={onNavigate}
+                variant="light"
+                className="w-full"
+              />
+            ) : null}
+
+            <Card className={cn(surfaceCard, 'border-l-4 border-l-red-500 p-5')}>
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-red-500" />
+                <h3 className="text-sm font-semibold text-foreground">Outstanding Fees</h3>
+              </div>
+              {financialLoading ? (
+                <Skeleton className="mt-3 h-12" />
+              ) : metrics.outstandingBalances <= 0 ? (
+                <p className="mt-2 text-sm text-muted-foreground">No outstanding balances recorded.</p>
+              ) : (
+                <>
+                  <p className="mt-2 text-lg font-bold tabular-nums leading-tight text-red-600 dark:text-red-400" title={formatGhs(metrics.outstandingBalances)}>
+                    {formatGhsCompact(metrics.outstandingBalances)}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">Total unpaid fee balances</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button type="button" size="sm" variant="outline" className="h-8 rounded-lg text-xs" onClick={() => setSidebarOpen(true)}>
+                      View breakdown
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" className="h-8 rounded-lg text-xs" onClick={() => nav('fees')}>
+                      Collect fees
+                    </Button>
+                  </div>
+                </>
+              )}
+            </Card>
+
+            <Card className={cn(surfaceCard, 'p-5')}>
+              <h3 className="text-sm font-semibold text-foreground">School snapshot</h3>
+              <div className="mt-3 space-y-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Active staff</span>
+                  <span className="font-medium tabular-nums">{overview?.teachers.active ?? overview?.teachers.total ?? 0}</span>
                 </div>
-              </CardContent>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Students</span>
+                  <span className="font-medium tabular-nums">{overview?.students.total ?? 0}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Net balance</span>
+                  <span className={cn('font-semibold tabular-nums', metrics.balanceLeft >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                    {formatGhsCompact(metrics.balanceLeft)}
+                  </span>
+                </div>
+              </div>
+            </Card>
+
+            <Card className={cn(surfaceCard, 'p-5')}>
+              <h3 className="text-sm font-semibold text-foreground">Quick actions</h3>
+              <p className="mt-0.5 text-xs text-muted-foreground">Common finance workflows</p>
+              <div className="mt-3 grid grid-cols-1 gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 justify-start gap-2 rounded-lg border-violet-500/25 bg-violet-500/5 text-sm hover:bg-violet-500/10"
+                  onClick={() => nav('messages')}
+                >
+                  <MessageCircle className="h-4 w-4 shrink-0 text-violet-600" />
+                  Staff messages
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 justify-start gap-2 rounded-lg border-emerald-500/25 bg-emerald-500/5 text-sm hover:bg-emerald-500/10"
+                  onClick={() => nav('fees')}
+                >
+                  <Receipt className="h-4 w-4 shrink-0 text-emerald-600" />
+                  Record fee payment
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 justify-start gap-2 rounded-lg border-sky-500/25 bg-sky-500/5 text-sm hover:bg-sky-500/10"
+                  onClick={() => nav('income')}
+                >
+                  <Plus className="h-4 w-4 shrink-0 text-sky-600" />
+                  Add other income
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 justify-start gap-2 rounded-lg border-rose-500/25 bg-rose-500/5 text-sm hover:bg-rose-500/10"
+                  onClick={() => nav('expenses')}
+                >
+                  <FileText className="h-4 w-4 shrink-0 text-rose-600" />
+                  Record expense
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 justify-start gap-2 rounded-lg border-violet-500/25 bg-violet-500/5 text-sm hover:bg-violet-500/10"
+                  onClick={() => nav('cash-bank')}
+                >
+                  <Landmark className="h-4 w-4 shrink-0 text-violet-600" />
+                  Cash &amp; bank
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 justify-start gap-2 rounded-lg border-indigo-500/25 bg-indigo-500/5 text-sm hover:bg-indigo-500/10"
+                  onClick={() => nav('reports')}
+                >
+                  <Calculator className="h-4 w-4 shrink-0 text-indigo-600" />
+                  Open reports
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 justify-start gap-2 rounded-lg border-amber-500/25 bg-amber-500/5 text-sm hover:bg-amber-500/10"
+                  onClick={() => nav('term-budget')}
+                >
+                  <TrendingUp className="h-4 w-4 shrink-0 text-amber-600" />
+                  Budget
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 justify-start gap-2 rounded-lg border-teal-500/25 bg-teal-500/5 text-sm hover:bg-teal-500/10"
+                  onClick={() => nav('finance-statement')}
+                >
+                  <FileText className="h-4 w-4 shrink-0 text-teal-600" />
+                  Finance statement
+                </Button>
+              </div>
             </Card>
           </div>
         </div>

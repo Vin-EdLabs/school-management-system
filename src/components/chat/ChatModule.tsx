@@ -100,13 +100,26 @@ function mergeServerMessagesWithInFlight(
   const serverIds = new Set(serverMessages.map((m) => String(m.id)));
   const extras = inFlight.filter((m) => {
     if (serverIds.has(String(m.id))) return false;
-    if (m.pending && m.message) {
-      const duplicate = serverMessages.some(
-        (s) =>
-          s.is_mine &&
-          s.message === m.message &&
-          Math.abs(new Date(s.created_at).getTime() - new Date(m.created_at).getTime()) < 120_000,
-      );
+    if (m.pending) {
+      const duplicate = serverMessages.some((s) => {
+        if (!s.is_mine) return false;
+        const timeClose =
+          Math.abs(new Date(s.created_at).getTime() - new Date(m.created_at).getTime()) < 120_000;
+        if (m.message && s.message === m.message && timeClose) return true;
+        if (m.image_url && s.image_url === m.image_url && timeClose) return true;
+        return false;
+      });
+      if (duplicate) return false;
+    }
+    if (m.failed) {
+      const duplicate = serverMessages.some((s) => {
+        if (!s.is_mine) return false;
+        const timeClose =
+          Math.abs(new Date(s.created_at).getTime() - new Date(m.created_at).getTime()) < 120_000;
+        if (m.message && s.message === m.message && timeClose) return true;
+        if (m.image_url && s.image_url === m.image_url && timeClose) return true;
+        return false;
+      });
       if (duplicate) return false;
     }
     return true;
@@ -115,6 +128,26 @@ function mergeServerMessagesWithInFlight(
   return [...serverMessages, ...extras].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
   );
+}
+
+function asDeletedMessage(msg: ChatMessage): ChatMessage {
+  return {
+    ...msg,
+    is_deleted: true,
+    message: null,
+    image_url: null,
+    image_thumbnail_url: null,
+    local_image_preview: null,
+    pending: false,
+  };
+}
+
+function applyPendingDeletes(messages: ChatMessage[], pendingDeletes: Set<number>): ChatMessage[] {
+  if (pendingDeletes.size === 0) return messages;
+  return messages.map((m) => {
+    const id = Number(m.id);
+    return Number.isFinite(id) && pendingDeletes.has(id) ? asDeletedMessage(m) : m;
+  });
 }
 
 function messagesAreEqual(a: ChatMessage[], b: ChatMessage[]): boolean {
@@ -127,6 +160,8 @@ function messagesAreEqual(a: ChatMessage[], b: ChatMessage[]): boolean {
     if (left.message !== right.message) return false;
     if (left.pending !== right.pending) return false;
     if (left.failed !== right.failed) return false;
+    if (left.image_url !== right.image_url) return false;
+    if (left.image_thumbnail_url !== right.image_thumbnail_url) return false;
   }
   return true;
 }
@@ -182,6 +217,7 @@ const ChatModule: React.FC = () => {
   const desktopPickerRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
   const pendingRetryRef = useRef<Map<string, () => void>>(new Map());
+  const pendingDeletesRef = useRef<Set<number>>(new Set());
   const activeChannelRef = useRef<ChatChannel | null>(null);
   const channelsFingerprintRef = useRef('');
   activeChannelRef.current = activeChannel;
@@ -252,7 +288,10 @@ const ChatModule: React.FC = () => {
       const data = await chatService.listMessages(channelId);
       let shouldScroll = false;
       setMessages((prev) => {
-        const merged = mergeServerMessagesWithInFlight(data.messages, prev);
+        const merged = applyPendingDeletes(
+          mergeServerMessagesWithInFlight(data.messages, prev),
+          pendingDeletesRef.current,
+        );
         if (messagesAreEqual(merged, prev)) return prev;
         shouldScroll = merged.length > prev.length && nearBottomRef.current;
         return merged;
@@ -281,7 +320,12 @@ const ChatModule: React.FC = () => {
         setMessages((prev) => [...data.messages, ...prev]);
         setHasMore(data.messages.length >= 30);
       } else {
-        setMessages((prev) => mergeServerMessagesWithInFlight(data.messages, prev));
+        setMessages((prev) =>
+          applyPendingDeletes(
+            mergeServerMessagesWithInFlight(data.messages, prev),
+            pendingDeletesRef.current,
+          ),
+        );
         setHasMore(data.messages.length >= 30);
       }
     } catch {
@@ -341,13 +385,10 @@ const ChatModule: React.FC = () => {
       }
     },
     onMessageDeleted: ({ message_id, channel_id }) => {
+      pendingDeletesRef.current.delete(message_id);
       if (activeChannelRef.current?.id === channel_id) {
         setMessages((prev) =>
-          prev.map((m) =>
-            Number(m.id) === message_id
-              ? { ...m, is_deleted: true, message: null, image_url: null, image_thumbnail_url: null }
-              : m
-          )
+          prev.map((m) => (String(m.id) === String(message_id) ? asDeletedMessage(m) : m)),
         );
       }
     },
@@ -379,6 +420,37 @@ const ChatModule: React.FC = () => {
       void refreshChannelsQuietRef.current();
     },
   });
+
+  const chatSocketRef = useRef(chatSocket);
+  chatSocketRef.current = chatSocket;
+
+  const confirmDeleteMessage = useCallback(async (msg: ChatMessage) => {
+    const numericId = Number(msg.id);
+    if (!Number.isFinite(numericId)) {
+      setMessages((prev) =>
+        prev.filter((m) => String(m.id) !== String(msg.id) && m.temp_id !== msg.temp_id),
+      );
+      setDeleteTarget(null);
+      return;
+    }
+
+    pendingDeletesRef.current.add(numericId);
+    setMessages((prev) => prev.map((m) => (Number(m.id) === numericId ? asDeletedMessage(m) : m)));
+    setDeleteTarget(null);
+    setSelectedMessageId(null);
+
+    try {
+      chatSocketRef.current.deleteMessage(numericId);
+      await chatService.deleteMessage(numericId);
+      pendingDeletesRef.current.delete(numericId);
+      void refreshChannelsQuietRef.current();
+    } catch {
+      pendingDeletesRef.current.delete(numericId);
+      const ch = activeChannelRef.current;
+      if (ch) void syncMessagesQuietRef.current(ch.id);
+      toast({ title: 'Could not delete message', variant: 'destructive' });
+    }
+  }, []);
 
   useEffect(() => {
     chatSocket.setActiveChannelId(activeChannel?.id ?? null);
@@ -479,6 +551,7 @@ const ChatModule: React.FC = () => {
   }, [draft, resizeCompose]);
 
   const openChannel = async (ch: ChatChannel) => {
+    pendingDeletesRef.current.clear();
     setMobileView('chat');
     setTypingUsers([]);
     setShowNewPill(false);
@@ -542,6 +615,7 @@ const ChatModule: React.FC = () => {
       message: text || null,
       image_url: pendingImage?.image_url || null,
       image_thumbnail_url: pendingImage?.image_thumbnail_url || null,
+      local_image_preview: pendingImage?.preview || null,
       created_at: new Date().toISOString(),
       is_deleted: false,
       is_mine: true,
@@ -1173,9 +1247,7 @@ const ChatModule: React.FC = () => {
           if (!open) setDeleteTarget(null);
         }}
         onConfirm={() => {
-          const id = Number(deleteTarget?.id);
-          if (Number.isFinite(id)) chatSocket.deleteMessage(id);
-          setDeleteTarget(null);
+          if (deleteTarget) void confirmDeleteMessage(deleteTarget);
         }}
       />
     </div>

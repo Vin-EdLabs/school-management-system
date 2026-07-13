@@ -1,5 +1,5 @@
 /* ScholarNerve service worker — caching + push. Bump CACHE_VERSION on breaking cache changes. */
-const CACHE_VERSION = '2026-07-13-v20';
+const CACHE_VERSION = '2026-07-13-v21';
 const CACHE_NAME = `scholarnerve-app-${CACHE_VERSION}`;
 const BRANDING_CACHE = 'scholarnerve-branding-v1';
 const BRANDING_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -39,19 +39,49 @@ function transparentPngResponse() {
 }
 
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then(async (cache) => {
-      await cache.addAll(APP_SHELL).catch(() => undefined);
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
+
+      // Strategy: try multiple ways to get index.html into cache
+      // iOS Safari blocks some fetch() calls during SW install,
+      // so we try several fallback approaches.
+
+      // Attempt 1: fetch with no-cache to get a fresh copy
       try {
-        const indexResponse = await fetch('/index.html');
-        if (indexResponse && indexResponse.ok) {
-          await cache.put('/index.html', indexResponse.clone());
-          await cache.put('/', indexResponse.clone());
+        const response = await fetch('/index.html', {
+          cache: 'no-cache',
+          credentials: 'same-origin',
+        });
+        if (response && response.ok) {
+          await cache.put('/index.html', response.clone());
+          await cache.put('/', response.clone());
+          return; // success — done
         }
-      } catch {
-        // Best-effort — addAll may have already cached the shell.
+      } catch (e) {
+        console.warn('[SW] Install fetch attempt 1 failed:', e);
       }
-    }),
+
+      // Attempt 2: fetch with default settings
+      try {
+        const response = await fetch('/index.html');
+        if (response && response.ok) {
+          await cache.put('/index.html', response.clone());
+          await cache.put('/', response.clone());
+          return;
+        }
+      } catch (e) {
+        console.warn('[SW] Install fetch attempt 2 failed:', e);
+      }
+
+      // Attempt 3: cache.addAll as last resort
+      try {
+        await cache.addAll(['/index.html', '/']);
+      } catch (e) {
+        console.warn('[SW] Install cache.addAll failed:', e);
+      }
+    })(),
   );
 });
 
@@ -67,6 +97,15 @@ self.addEventListener('activate', (event) => {
         // to prevent reload storm when connection is restored.
         return self.clients.matchAll({ type: 'window' }).then((clients) => {
           if (clients.length === 0) return self.clients.claim();
+        });
+      })
+      .then(() => {
+        // Re-verify index.html is in cache after activation
+        // This catches cases where iOS blocked the install-time fetch
+        return self.clients.matchAll({ type: 'window' }).then((windowClients) => {
+          windowClients.forEach((client) => {
+            client.postMessage({ type: 'SW_ACTIVATED', version: CACHE_VERSION });
+          });
         });
       }),
   );
@@ -100,6 +139,9 @@ function isHashedBuildAsset(url) {
 }
 
 function isStaticAsset(url) {
+  if (url.pathname.startsWith('/uploads/')) {
+    return false;
+  }
   if (
     url.pathname === '/manifest.json' ||
     url.pathname === '/site.webmanifest' ||
@@ -402,6 +444,12 @@ self.addEventListener('fetch', (event) => {
   // Vite dev-server internals (deps, HMR client) must never be cached — stale
   // optimized-dep chunks cause 404s after re-optimization. Always go network.
   if (isViteDevPath(url)) {
+    return;
+  }
+
+  // Chat photos and other uploads must load from the network (not cached offline stubs).
+  if (url.pathname.startsWith('/uploads/')) {
+    event.respondWith(fetch(event.request));
     return;
   }
 

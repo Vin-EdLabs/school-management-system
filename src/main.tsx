@@ -176,6 +176,40 @@ function bootstrapWithTimeout() {
   return Promise.race([bootstrapTenantBrandingAndManifest(), timeout]);
 }
 
+async function cacheIndexHtmlFromClient(version?: string) {
+  try {
+    let cacheName: string | undefined;
+    if (version) {
+      cacheName = `scholarnerve-app-${version}`;
+    } else {
+      const keys = await caches.keys();
+      cacheName = keys.find((k) => k.startsWith('scholarnerve-app-'));
+    }
+    if (!cacheName) return;
+
+    const cache = await caches.open(cacheName);
+    const response = await fetch('/index.html', { cache: 'no-cache' });
+    if (response && response.ok) {
+      await cache.put('/index.html', response.clone());
+      await cache.put('/', response.clone());
+    }
+  } catch (e) {
+    console.warn('[PWA] Client-side index.html cache failed:', e);
+  }
+}
+
+function setupServiceWorkerMessageListener() {
+  if (!('serviceWorker' in navigator)) return;
+
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event.data?.type === 'SW_ACTIVATED') {
+      void cacheIndexHtmlFromClient(
+        typeof event.data.version === 'string' ? event.data.version : undefined,
+      );
+    }
+  });
+}
+
 async function registerServiceWorker() {
   if ('serviceWorker' in navigator) {
     const host = window.location.hostname;
@@ -187,6 +221,7 @@ async function registerServiceWorker() {
     if (isDevHost) {
       return;
     }
+    setupServiceWorkerMessageListener();
     try {
       const registration = await navigator.serviceWorker.ready.catch(() =>
         navigator.serviceWorker.getRegistration()

@@ -1,4 +1,5 @@
 import { apiService } from './api';
+import { resolveUploadUrl } from '../utils/mediaUrl';
 
 export type ChatChannelType = 'general' | 'teachers' | 'non_teaching' | 'announcements' | 'dm';
 
@@ -30,6 +31,8 @@ export type ChatMessage = {
   created_at: string;
   is_deleted: boolean;
   is_mine: boolean;
+  /** Local blob preview while an image message is still sending. */
+  local_image_preview?: string | null;
   sender?: {
     id: number | null;
     name: string;
@@ -160,11 +163,7 @@ export type SuperAdminSchoolChat = {
 };
 
 export function resolveChatImageUrl(url: string | null | undefined): string | null {
-  if (!url) return null;
-  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) return url;
-  const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
-  const origin = base.replace(/\/api\/?$/, '');
-  return `${origin}${url.startsWith('/') ? url : `/${url}`}`;
+  return resolveUploadUrl(url);
 }
 
 export function isPlatformMessage(msg: ChatMessage): boolean {

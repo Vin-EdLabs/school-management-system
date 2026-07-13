@@ -88,7 +88,10 @@ export default function ChatMessageBubble({ msg, onLongPress, onImageClick, onRe
   }
 
   const mine = msg.is_mine;
-  const thumb = resolveChatImageUrl(msg.image_thumbnail_url || msg.image_url);
+  const thumb =
+    resolveChatImageUrl(msg.image_thumbnail_url || msg.image_url) ||
+    msg.local_image_preview ||
+    null;
 
   return (
     <div

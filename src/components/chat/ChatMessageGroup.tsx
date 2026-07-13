@@ -213,8 +213,12 @@ export default function ChatMessageGroup({
 
         <div className={cn('flex flex-col gap-0.5', isMine ? 'items-end' : 'items-start')}>
           {messages.map((msg, index) => {
+            if (msg.is_deleted) return null;
             const position = bubblePosition(index, messages.length);
-            const thumb = resolveChatImageUrl(msg.image_thumbnail_url || msg.image_url);
+            const thumb =
+              resolveChatImageUrl(msg.image_thumbnail_url || msg.image_url) ||
+              msg.local_image_preview ||
+              null;
 
             return (
               <div

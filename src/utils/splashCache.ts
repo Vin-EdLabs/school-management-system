@@ -5,6 +5,7 @@ export interface SplashBranding {
   secondaryColor: string;
   cachedAt: number;
   tenantSlug: string;
+  tenantId?: number;
 }
 
 const BRANDING_TTL_MS = 7 * 24 * 60 * 60 * 1000;

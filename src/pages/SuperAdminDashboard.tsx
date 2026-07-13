@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { BrandedLoading, BrandedLoadingScreen } from '@/components/common/BrandedLoading';
+import { BrandedLoading, BrandedLoadingScreen, isSplashGone } from '@/components/common/BrandedLoading';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -1233,7 +1233,9 @@ const SuperAdminDashboard = () => {
 
   const formatDate = (d: string) => new Date(d).toLocaleString();
 
-  if (authLoading) return <BrandedLoadingScreen label="Loading…" active={authLoading} />;
+  if (authLoading) {
+    return isSplashGone() ? <BrandedLoadingScreen label="Loading…" active={authLoading} /> : null;
+  }
   if (!user || user.role !== 'super-admin') return <SuperAdminLoginForm />;
 
   const moduleTone = (module?: string, action?: string, entityType?: string) => {

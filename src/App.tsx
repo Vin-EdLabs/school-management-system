@@ -26,7 +26,7 @@ import { ParentPortalRoute } from "./pages/ParentPortal";
 import { detectTenantSlugFromHost, getSubdomainUrl, normalizeLegacyPathOnSubdomain } from "./utils/tenantHost";
 import { PwaUpdateManager } from "@/components/pwa/PwaUpdateManager";
 import { NetworkStatusBanner } from "@/components/ui/NetworkStatusBanner";
-import { BrandedLoadingScreen } from "@/components/common/BrandedLoading";
+import { BrandedLoadingScreen, isSplashGone } from "@/components/common/BrandedLoading";
 import { PARENT_IMPERSONATE_HANDOFF_KEY, STAFF_IMPERSONATE_HANDOFF_KEY } from "@/utils/impersonationHelpers";
 import ImpersonationTransitionGate from "@/components/impersonation/ImpersonationTransitionGate";
 import { PublicErrorPage } from "@/components/common/PublicErrorPage";
@@ -84,7 +84,7 @@ const LegacySubdomainRedirect = () => {
     }
   }, [slug]);
 
-  return <BrandedLoadingScreen label="Redirecting to your portal..." />;
+  return isSplashGone() ? <BrandedLoadingScreen label="Redirecting to your portal..." /> : null;
 };
 
 const LegacyPortalRedirect = () => {
@@ -126,7 +126,9 @@ const LegacyPortalRedirect = () => {
   }, [tenantId]);
 
   if (redirecting) {
-    return <BrandedLoadingScreen label="Redirecting to parent portal..." tone="dark" />;
+    return isSplashGone() ? (
+      <BrandedLoadingScreen label="Redirecting to parent portal..." tone="dark" />
+    ) : null;
   }
 
   return <ParentPortalRoute />;
@@ -254,7 +256,7 @@ const IndexWithSchool = () => {
   }, [schoolId, slug, resolveAttempt, apiBase, lookupTenant]);
 
   if (resolving) {
-    return (
+    return isSplashGone() ? (
       <BrandedLoadingScreen
         label="Opening your school…"
         active={resolving}
@@ -263,7 +265,7 @@ const IndexWithSchool = () => {
           setResolveAttempt((n) => n + 1);
         }}
       />
-    );
+    ) : null;
   }
   if (!resolvedId) {
     const detailParts = [slug ? `School: ${slug}` : null, schoolId ? `ID: ${schoolId}` : null].filter(Boolean);

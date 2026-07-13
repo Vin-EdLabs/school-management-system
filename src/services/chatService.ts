@@ -213,17 +213,17 @@ export function formatDateSeparator(iso: string): string {
 export function roleAccentClass(role: string): string {
   switch (role) {
     case 'teacher':
-      return 'text-blue-600';
+      return 'text-blue-600 dark:text-blue-400';
     case 'headmaster':
-      return 'text-indigo-600';
+      return 'text-indigo-600 dark:text-indigo-400';
     case 'administrator':
-      return 'text-purple-600';
+      return 'text-purple-600 dark:text-purple-400';
     case 'finance':
-      return 'text-teal-600';
+      return 'text-teal-600 dark:text-teal-400';
     case 'platform':
-      return 'text-violet-600';
+      return 'text-violet-600 dark:text-violet-400';
     default:
-      return 'text-slate-600';
+      return 'text-slate-600 dark:text-slate-300';
   }
 }
 

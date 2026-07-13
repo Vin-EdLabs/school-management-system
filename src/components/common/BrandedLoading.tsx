@@ -5,6 +5,16 @@ import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { LOADING_TIMEOUT_MS, useLoadingTimeout } from '@/hooks/useLoadingTimeout';
 import { cn } from '@/lib/utils';
 
+export function isSplashGone(): boolean {
+  const el = document.getElementById('sn-splash');
+  return !el || el.classList.contains('sn-splash-hidden');
+}
+
+function splashStillVisible(): boolean {
+  const el = document.getElementById('sn-splash');
+  return el !== null && !el.classList.contains('sn-splash-hidden');
+}
+
 const API_ROOT = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api').replace(/\/api\/?$/, '');
 
 function resolveLogo(url: string | null | undefined): string | null {
@@ -95,6 +105,8 @@ export function BrandedLoading({
   const { isOnline, isLowData, isSlowResponse, retryPing } = useNetworkStatus({ enablePing: networkAware });
   const { timedOut, reset } = useLoadingTimeout(active, timeoutMs);
 
+  if (splashStillVisible()) return null;
+
   const handleRetry = useCallback(() => {
     reset();
     retryPing();
@@ -155,6 +167,8 @@ export function BrandedLoadingScreen({
   onRetry,
   networkAware,
 }: BrandedLoadingScreenProps) {
+  if (splashStillVisible()) return null;
+
   const bg =
     tone === 'dark'
       ? 'bg-gradient-to-b from-slate-950 to-indigo-950'

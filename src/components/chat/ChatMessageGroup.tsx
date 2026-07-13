@@ -204,7 +204,7 @@ export default function ChatMessageGroup({
           <span
             className={cn(
               'text-xs font-semibold mb-1 px-0.5',
-              isPlatform ? 'text-violet-700 dark:text-violet-300' : roleAccentClass(sender?.role || 'staff')
+              isPlatform ? 'text-violet-700 dark:text-violet-300 max-lg:text-violet-300' : roleAccentClass(sender?.role || 'staff')
             )}
           >
             {displayName}

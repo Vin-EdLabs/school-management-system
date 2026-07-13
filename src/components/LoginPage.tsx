@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '../contexts/AuthContext';
 import { GraduationCap, Lock, User, Eye, EyeOff, RefreshCw, AlertTriangle } from 'lucide-react';
-import { BrandedLoading, BrandedLoadingScreen } from '@/components/common/BrandedLoading';
+import { BrandedLoading, BrandedLoadingScreen, isSplashGone } from '@/components/common/BrandedLoading';
 import { toast } from '@/hooks/use-toast';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
@@ -110,7 +110,9 @@ const LoginPage = () => {
   };
 
   if (tenantBrandingLoading && tenantId) {
-    return <BrandedLoadingScreen logoUrl={tenant?.logo_url ?? undefined} label="Loading school…" />;
+    return isSplashGone() ? (
+      <BrandedLoadingScreen logoUrl={tenant?.logo_url ?? undefined} label="Loading school…" />
+    ) : null;
   }
 
   return (

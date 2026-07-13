@@ -88,6 +88,35 @@ function channelIcon(type: string) {
 
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😊', '🙏', '👏', '✅', '🎉', '📷', '💯'];
 
+function mergeServerMessagesWithInFlight(
+  serverMessages: ChatMessage[],
+  previous: ChatMessage[],
+): ChatMessage[] {
+  const inFlight = previous.filter(
+    (m) => m.pending || m.failed || (typeof m.id === 'string' && !!m.temp_id),
+  );
+  if (inFlight.length === 0) return serverMessages;
+
+  const serverIds = new Set(serverMessages.map((m) => String(m.id)));
+  const extras = inFlight.filter((m) => {
+    if (serverIds.has(String(m.id))) return false;
+    if (m.pending && m.message) {
+      const duplicate = serverMessages.some(
+        (s) =>
+          s.is_mine &&
+          s.message === m.message &&
+          Math.abs(new Date(s.created_at).getTime() - new Date(m.created_at).getTime()) < 120_000,
+      );
+      if (duplicate) return false;
+    }
+    return true;
+  });
+
+  return [...serverMessages, ...extras].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+  );
+}
+
 const ChatModule: React.FC = () => {
   const { user, token } = useAuth();
 
@@ -169,6 +198,16 @@ const ChatModule: React.FC = () => {
     }
   }, []);
 
+  const refreshChannelsQuiet = useCallback(async () => {
+    try {
+      const data = await chatService.listChannels();
+      setChannels(data.channels || []);
+      setTotalUnread(data.total_unread || 0);
+    } catch {
+      // Background refresh — ignore errors so chat stays usable offline.
+    }
+  }, []);
+
   const loadMessages = useCallback(async (channelId: number, beforeId?: number) => {
     if (beforeId) setLoadingOlder(true);
     else setLoadingMessages(true);
@@ -178,7 +217,7 @@ const ChatModule: React.FC = () => {
         setMessages((prev) => [...data.messages, ...prev]);
         setHasMore(data.messages.length >= 30);
       } else {
-        setMessages(data.messages);
+        setMessages((prev) => mergeServerMessagesWithInFlight(data.messages, prev));
         setHasMore(data.messages.length >= 30);
       }
     } catch {
@@ -214,10 +253,13 @@ const ChatModule: React.FC = () => {
         setMessages((prev) => {
           if (prev.some((m) => String(m.id) === String(msg.id))) return prev;
           if (msg.is_mine) {
-            const pendingIdx = prev.findIndex((m) => m.pending && m.temp_id);
+            const pendingIdx =
+              msg.temp_id != null
+                ? prev.findIndex((m) => m.temp_id === msg.temp_id)
+                : prev.findIndex((m) => m.pending && m.temp_id);
             if (pendingIdx >= 0) {
               return prev.map((m, i) =>
-                i === pendingIdx ? { ...msg, pending: false, failed: false } : m
+                i === pendingIdx ? { ...msg, pending: false, failed: false } : m,
               );
             }
           }
@@ -229,8 +271,9 @@ const ChatModule: React.FC = () => {
           }
           return next;
         });
+      } else if (!msg.is_mine) {
+        setTotalUnread((n) => n + 1);
       }
-      void loadChannels();
     },
     onMessageDeleted: ({ message_id, channel_id }) => {
       if (activeChannel?.id === channel_id) {
@@ -265,7 +308,7 @@ const ChatModule: React.FC = () => {
       if (activeChannel?.id !== channel_id) return;
       setTypingUsers((prev) => prev.filter((t) => t.id !== user_id));
     },
-    onUnreadChanged: () => void loadChannels(),
+    onUnreadChanged: () => void refreshChannelsQuiet(),
   });
 
   useEffect(() => {
@@ -418,12 +461,37 @@ const ChatModule: React.FC = () => {
       temp_id: tempId,
     };
 
+    const deliverMessage = async () => {
+      if (chatSocket.connected) {
+        chatSocket.sendMessage(payload);
+        return;
+      }
+      try {
+        const saved = await chatService.sendMessage(activeChannel.id, {
+          message: text || undefined,
+          image_url: optimistic.image_url || undefined,
+          image_thumbnail_url: optimistic.image_thumbnail_url || undefined,
+        });
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.temp_id === tempId ? { ...saved, pending: false, failed: false, temp_id: tempId } : m,
+          ),
+        );
+        pendingRetryRef.current.delete(tempId);
+        void refreshChannelsQuiet();
+      } catch {
+        setMessages((prev) =>
+          prev.map((m) => (m.temp_id === tempId ? { ...m, pending: false, failed: true } : m)),
+        );
+      }
+    };
+
     const retry = () => {
       setMessages((prev) => prev.map((m) => (m.temp_id === tempId ? { ...m, pending: true, failed: false } : m)));
-      chatSocket.sendMessage(payload);
+      void deliverMessage();
     };
     pendingRetryRef.current.set(tempId, retry);
-    chatSocket.sendMessage(payload);
+    void deliverMessage();
     chatSocket.typingStop(activeChannel.id);
   };
 
@@ -600,7 +668,7 @@ const ChatModule: React.FC = () => {
                     )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
-                        <p className={cn('font-semibold truncate', ch.unread_count > 0 && 'text-foreground')}>
+                        <p className="font-semibold truncate text-foreground">
                           {ch.name}
                         </p>
                         {lm?.created_at && (
@@ -610,11 +678,13 @@ const ChatModule: React.FC = () => {
                         )}
                       </div>
                       <div className="flex items-center gap-1 mt-0.5">
-                        {lm?.is_platform && <Sparkles className="h-3 w-3 text-violet-600 shrink-0" />}
+                        {lm?.is_platform && <Sparkles className="h-3 w-3 text-violet-500 dark:text-violet-300 shrink-0" />}
                         <p
                           className={cn(
                             'text-sm truncate',
-                            lm?.is_platform ? 'text-violet-700' : 'text-muted-foreground',
+                            lm?.is_platform
+                              ? 'text-violet-600 dark:text-violet-300'
+                              : 'text-muted-foreground',
                             ch.unread_count > 0 && 'font-medium text-foreground'
                           )}
                         >
@@ -671,7 +741,7 @@ const ChatModule: React.FC = () => {
                   </div>
                 )}
                 <div className="min-w-0 flex-1">
-                  <p className="font-bold text-base md:text-lg truncate">{activeChannel.name}</p>
+                  <p className="font-bold text-base md:text-lg truncate text-foreground">{activeChannel.name}</p>
                   <p className="text-xs text-muted-foreground truncate flex items-center gap-1.5">
                     {activeChannel.channel_type === 'dm' && channelStats?.online_count ? (
                       <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500 shrink-0" aria-hidden />
@@ -712,7 +782,7 @@ const ChatModule: React.FC = () => {
                       <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                     </div>
                   )}
-                  {loadingMessages ? (
+                  {loadingMessages && messages.length === 0 ? (
                     <div className="flex justify-center py-10">
                       <Loader2 className="h-6 w-6 animate-spin text-violet-600" />
                     </div>
@@ -729,7 +799,13 @@ const ChatModule: React.FC = () => {
                       </p>
                     </div>
                   ) : (
-                    groupedMessages.map((group) => (
+                    <>
+                      {loadingMessages && (
+                        <div className="flex justify-center py-2">
+                          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                        </div>
+                      )}
+                      {groupedMessages.map((group) => (
                       <div key={group.date}>
                         <div className="flex justify-center my-3">
                           <span className="text-[11px] px-3 py-1 rounded-full bg-muted/80 text-muted-foreground border border-border/50">
@@ -750,7 +826,8 @@ const ChatModule: React.FC = () => {
                           ))}
                         </div>
                       </div>
-                    ))
+                      ))}
+                    </>
                   )}
                   {typingUsers.length > 0 && (
                     <p className="text-xs text-muted-foreground px-2 animate-in fade-in">
@@ -920,7 +997,7 @@ const ChatModule: React.FC = () => {
                 >
                   <AvatarCircle label={s.name} role={s.role} />
                   <div>
-                    <p className="font-semibold">{s.name}</p>
+                    <p className="font-semibold text-foreground">{s.name}</p>
                     <p className="text-xs text-muted-foreground capitalize">{s.role.replace(/-/g, ' ')}</p>
                   </div>
                 </button>

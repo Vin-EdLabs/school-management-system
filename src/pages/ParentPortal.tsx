@@ -12,7 +12,7 @@ import { detectTenantSlugFromHost } from '@/utils/tenantHost';
 import { applyTenantPwaBranding } from '@/utils/pwaBranding';
 import { getFcmToken, removeFcmToken } from '@/services/firebase';
 import MessageDeleteConfirmDialog, { type MessageDeleteKind } from '@/components/common/MessageDeleteConfirmDialog';
-import { BrandedLoading, BrandedLoadingScreen } from '@/components/common/BrandedLoading';
+import { BrandedLoading, BrandedLoadingScreen, isSplashGone } from '@/components/common/BrandedLoading';
 import { getFriendlyLoginMessage } from '@/utils/loginErrors';
 import { formatDisplayDate } from '@/utils/dateFormat';
 import { resolveSocketBaseUrl, SOCKET_IO_OPTIONS } from '@/utils/socketUrl';
@@ -1915,14 +1915,14 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   }
 
   if (sessionRestoring && token) {
-    return (
+    return isSplashGone() ? (
       <BrandedLoadingScreen
         logoUrl={schoolLogoUrl}
         label="Loading your portal…"
         tone="dark"
         active
       />
-    );
+    ) : null;
   }
 
   if (!token || !student) {
@@ -4241,7 +4241,7 @@ export const ParentPortalRoute: React.FC = () => {
   }, [tenantIdParam, slug, fetchAttempt]);
 
   if (loading) {
-    return (
+    return isSplashGone() ? (
       <BrandedLoadingScreen
         logoUrl={schoolLogoUrl}
         label="Opening parent portal…"
@@ -4249,7 +4249,7 @@ export const ParentPortalRoute: React.FC = () => {
         active={loading}
         onRetry={() => setFetchAttempt((n) => n + 1)}
       />
-    );
+    ) : null;
   }
 
   if (!tenantId) {

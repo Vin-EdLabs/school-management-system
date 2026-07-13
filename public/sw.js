@@ -7,7 +7,18 @@ const APP_SHELL = ['/', '/index.html'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL).catch(() => undefined))
+    caches.open(CACHE_NAME).then(async (cache) => {
+      await cache.addAll(APP_SHELL).catch(() => undefined);
+      try {
+        const indexResponse = await fetch('/index.html');
+        if (indexResponse.ok) {
+          await cache.put('/index.html', indexResponse.clone());
+          await cache.put('/', indexResponse.clone());
+        }
+      } catch {
+        // Best-effort — addAll may have already cached the shell.
+      }
+    }),
   );
 });
 
@@ -170,6 +181,21 @@ function appendIconQueryParams(iconSrc, manifestParams) {
 
 function isSocketIoRequest(url) {
   return url.pathname.startsWith('/socket.io');
+}
+
+function networkWithTimeout(request, timeout = 3000) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout')), timeout);
+    fetch(request)
+      .then((res) => {
+        clearTimeout(timer);
+        resolve(res);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
 }
 
 function transparentPngResponse() {
@@ -355,7 +381,7 @@ self.addEventListener('fetch', (event) => {
 
   if (isNavigationRequest(event.request)) {
     event.respondWith(
-      fetch(event.request)
+      networkWithTimeout(event.request, 3000)
         .then((response) => {
           if (response.ok) {
             const clone = response.clone();
@@ -364,8 +390,8 @@ self.addEventListener('fetch', (event) => {
           return response;
         })
         .catch(() =>
-          caches.match(event.request).then((cached) => cached || caches.match('/index.html'))
-        )
+          caches.match(event.request).then((cached) => cached || caches.match('/index.html')),
+        ),
     );
     return;
   }

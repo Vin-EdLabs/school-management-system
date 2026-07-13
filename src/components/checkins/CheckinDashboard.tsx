@@ -9,6 +9,7 @@ const CheckinDashboard: React.FC = () => {
   const [history, setHistory] = useState<CheckinRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [classFilter, setClassFilter] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'status' | 'history'>('status');
 
   const fetchData = useCallback(async () => {
@@ -30,6 +31,18 @@ const CheckinDashboard: React.FC = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const filteredStudents = students.filter((s) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      s.first_name.toLowerCase().includes(q) ||
+      s.last_name.toLowerCase().includes(q) ||
+      s.student_id.toLowerCase().includes(q) ||
+      (s.admission_number || '').toLowerCase().includes(q) ||
+      (s.class_name || '').toLowerCase().includes(q)
+    );
+  });
 
   const onCampus = students.filter((s) => s.current_status === 'on_campus');
   const offCampus = students.filter((s) => s.current_status === 'off_campus');
@@ -91,8 +104,18 @@ const CheckinDashboard: React.FC = () => {
 
       {/* Filters */}
       <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by name, ID or class..."
+            className="w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 py-1.5 text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+          />
+        </div>
         <div className="flex items-center gap-1.5 text-xs text-slate-500">
-          <Filter className="w-3.5 h-3.5" /> Filter:
+          <Filter className="w-3.5 h-3.5" /> Class:
         </div>
         <select
           value={classFilter}
@@ -151,13 +174,13 @@ const CheckinDashboard: React.FC = () => {
       {activeTab === 'status' && (
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
           <div className="divide-y divide-slate-100">
-            {students.length === 0 ? (
+            {filteredStudents.length === 0 ? (
               <div className="p-8 text-center text-slate-500">
                 <Search className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-                <p className="text-sm">No opted-in students found</p>
+                <p className="text-sm">{students.length === 0 ? 'No opted-in students found' : 'No students match your search'}</p>
               </div>
             ) : (
-              students.map((s) => (
+              filteredStudents.map((s) => (
                 <div key={s.id} className="flex items-center justify-between px-4 py-3 hover:bg-slate-50">
                   <div className="flex items-center gap-3">
                     <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold ${

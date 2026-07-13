@@ -43,7 +43,7 @@ export const SOCKET_IO_PATH = '/socket.io';
 
 export const SOCKET_IO_OPTIONS = {
   path: SOCKET_IO_PATH,
-  transports: ['polling', 'websocket'] as ('polling' | 'websocket')[],
+  transports: ['websocket', 'polling'] as ('polling' | 'websocket')[],
   reconnection: true,
   reconnectionAttempts: 10,
   reconnectionDelay: 1000,

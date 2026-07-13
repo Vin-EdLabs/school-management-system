@@ -1,9 +1,42 @@
 /* ScholarNerve service worker — caching + push. Bump CACHE_VERSION on breaking cache changes. */
-const CACHE_VERSION = '2026-07-13-v18';
+const CACHE_VERSION = '2026-07-13-v19';
 const CACHE_NAME = `scholarnerve-app-${CACHE_VERSION}`;
 const BRANDING_CACHE = 'scholarnerve-branding-v1';
 const BRANDING_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const APP_SHELL = ['/', '/index.html'];
+
+const OFFLINE_HTML =
+  '<html><body><h2>You are offline</h2><p>Please reconnect and try again.</p></body></html>';
+const OFFLINE_HTML_SHORT = '<html><body><h2>You are offline</h2></body></html>';
+
+const TRANSPARENT_PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+function offlineHtmlResponse(short) {
+  return new Response(short ? OFFLINE_HTML_SHORT : OFFLINE_HTML, {
+    headers: { 'Content-Type': 'text/html' },
+  });
+}
+
+function offlineIndexFallback(short) {
+  return caches.match('/index.html').then((cached) => cached || offlineHtmlResponse(short));
+}
+
+function offlineAssetResponse() {
+  return new Response('', { status: 408, statusText: 'Offline' });
+}
+
+function nullSafeIndexCatch(promise, short) {
+  return promise.catch(() => offlineIndexFallback(short));
+}
+
+function transparentPngResponse() {
+  const bytes = Uint8Array.from(atob(TRANSPARENT_PNG), (c) => c.charCodeAt(0));
+  return new Response(bytes, {
+    status: 200,
+    headers: { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' },
+  });
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -11,7 +44,7 @@ self.addEventListener('install', (event) => {
       await cache.addAll(APP_SHELL).catch(() => undefined);
       try {
         const indexResponse = await fetch('/index.html');
-        if (indexResponse.ok) {
+        if (indexResponse && indexResponse.ok) {
           await cache.put('/index.html', indexResponse.clone());
           await cache.put('/', indexResponse.clone());
         }
@@ -27,15 +60,16 @@ self.addEventListener('activate', (event) => {
     caches
       .keys()
       .then((keys) =>
-        Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+        Promise.all(keys.filter((k) => k !== CACHE_NAME && k !== BRANDING_CACHE).map((k) => caches.delete(k))),
       )
-      .then(() => self.clients.claim())
+      .then(() => self.clients.claim()),
   );
 });
 
 function isNavigationRequest(request) {
   return (
     request.mode === 'navigate' ||
+    request.destination === 'document' ||
     (request.headers.get('accept') || '').includes('text/html')
   );
 }
@@ -142,25 +176,25 @@ function buildLogoProxyUrl(url) {
 
 function fetchTenantLogo(url) {
   const logoUrl = buildLogoProxyUrl(url);
-  console.log('[PWA SW] Fetching tenant logo:', logoUrl);
-  return fetch(logoUrl)
-    .then((response) => {
-      if (response.ok) return response;
-      console.warn('[PWA SW] Logo proxy failed, using fallback icon');
-      const fallback =
-        url.pathname === '/pwa-icon-512.png'
-          ? '/android-chrome-512x512.png'
-          : '/android-chrome-192x192.png';
-      return fetch(fallback);
-    })
-    .catch((err) => {
-      console.error('[PWA SW] Logo proxy error:', err);
-      const fallback =
-        url.pathname === '/pwa-icon-512.png'
-          ? '/android-chrome-512x512.png'
-          : '/android-chrome-192x192.png';
-      return fetch(fallback);
-    });
+  return nullSafeIndexCatch(
+    fetch(logoUrl)
+      .then((response) => {
+        if (response && response.ok) return response;
+        const fallback =
+          url.pathname === '/pwa-icon-512.png'
+            ? '/android-chrome-512x512.png'
+            : '/android-chrome-192x192.png';
+        return fetch(fallback);
+      })
+      .catch(() => {
+        const fallback =
+          url.pathname === '/pwa-icon-512.png'
+            ? '/android-chrome-512x512.png'
+            : '/android-chrome-192x192.png';
+        return fetch(fallback);
+      }),
+    true,
+  ).catch(() => transparentPngResponse());
 }
 
 function appendIconQueryParams(iconSrc, manifestParams) {
@@ -181,32 +215,6 @@ function appendIconQueryParams(iconSrc, manifestParams) {
 
 function isSocketIoRequest(url) {
   return url.pathname.startsWith('/socket.io');
-}
-
-function networkWithTimeout(request, timeout = 3000) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('timeout')), timeout);
-    fetch(request)
-      .then((res) => {
-        clearTimeout(timer);
-        resolve(res);
-      })
-      .catch((err) => {
-        clearTimeout(timer);
-        reject(err);
-      });
-  });
-}
-
-function transparentPngResponse() {
-  const bytes = Uint8Array.from(
-    atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=='),
-    (c) => c.charCodeAt(0),
-  );
-  return new Response(bytes, {
-    status: 200,
-    headers: { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' },
-  });
 }
 
 function brandingCacheAgeMs(response) {
@@ -241,28 +249,32 @@ async function writeBrandingCached(request, response) {
 }
 
 async function handlePwaLogoRequest(request) {
-  const cached = await readBrandingCached(request);
-  if (cached && isBrandingCacheFresh(cached)) {
-    return cached;
-  }
-
   try {
-    const network = await fetch(request);
-    if (network.ok) {
-      await writeBrandingCached(request, network.clone());
-      return network;
+    const cached = await readBrandingCached(request);
+    if (cached && isBrandingCacheFresh(cached)) {
+      return cached;
     }
-  } catch (err) {
-    console.warn('[PWA SW] Logo network failed:', err);
-  }
 
-  if (cached) return cached;
-  return transparentPngResponse();
+    try {
+      const network = await fetch(request);
+      if (network && network.ok) {
+        await writeBrandingCached(request, network.clone());
+        return network;
+      }
+    } catch (err) {
+      console.warn('[PWA SW] Logo network failed:', err);
+    }
+
+    if (cached) return cached;
+    return transparentPngResponse();
+  } catch {
+    return transparentPngResponse();
+  }
 }
 
 async function buildManifestResponse(apiUrl, params, origin) {
   const response = await fetch(apiUrl, { cache: 'no-store' });
-  if (!response.ok) throw new Error('API manifest failed');
+  if (!response || !response.ok) throw new Error('API manifest failed');
   const data = await response.json();
   const apiOrigin = apiUrl.replace(/\/api\/pwa\/manifest.*$/, '');
 
@@ -300,26 +312,56 @@ async function buildManifestResponse(apiUrl, params, origin) {
 }
 
 async function handlePwaManifestRequest(request, apiUrl, params, origin) {
-  const cached = await readBrandingCached(request);
+  try {
+    const cached = await readBrandingCached(request);
 
-  const revalidate = buildManifestResponse(apiUrl, params, origin)
-    .then(async (fresh) => {
-      await writeBrandingCached(request, fresh.clone());
-      return fresh;
-    })
-    .catch((err) => {
-      console.error('[PWA SW] Dynamic manifest failed:', err);
-      return null;
+    const revalidate = buildManifestResponse(apiUrl, params, origin)
+      .then(async (fresh) => {
+        await writeBrandingCached(request, fresh.clone());
+        return fresh;
+      })
+      .catch((err) => {
+        console.error('[PWA SW] Dynamic manifest failed:', err);
+        return null;
+      });
+
+    if (cached) {
+      void revalidate;
+      return cached;
+    }
+
+    const fresh = await revalidate;
+    if (fresh) return fresh;
+
+    const siteManifest = await fetch('/site.webmanifest', { cache: 'no-store' }).catch(() => null);
+    if (siteManifest && siteManifest.ok) return siteManifest;
+
+    return new Response('{}', {
+      headers: { 'Content-Type': 'application/manifest+json' },
     });
-
-  if (cached) {
-    void revalidate;
-    return cached;
+  } catch {
+    const cached = await readBrandingCached(request).catch(() => null);
+    if (cached) return cached;
+    return new Response('{}', {
+      headers: { 'Content-Type': 'application/manifest+json' },
+    });
   }
+}
 
-  const fresh = await revalidate;
-  if (fresh) return fresh;
-  return fetch('/site.webmanifest', { cache: 'no-store' });
+function handleNavigationRequest(event) {
+  return nullSafeIndexCatch(
+    fetch(event.request)
+      .then((response) => {
+        if (response && response.status < 400) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', clone));
+          return response;
+        }
+        return offlineIndexFallback(true);
+      })
+      .catch(() => offlineIndexFallback(true)),
+    true,
+  );
 }
 
 self.addEventListener('fetch', (event) => {
@@ -330,14 +372,18 @@ self.addEventListener('fetch', (event) => {
   // Socket.IO long-polling MUST bypass the service worker. Caching or offline
   // fallbacks here cause net::ERR_FAILED 200 (OK) in production.
   if (isSocketIoRequest(url)) {
-    event.respondWith(fetch(event.request));
+    event.respondWith(
+      nullSafeIndexCatch(fetch(event.request), true).catch(() => offlineAssetResponse()),
+    );
     return;
   }
 
   // Vite dev-server internals (deps, HMR client) must never be cached — stale
   // optimized-dep chunks cause 404s after re-optimization. Always go network.
   if (isViteDevPath(url)) {
-    event.respondWith(fetch(event.request));
+    event.respondWith(
+      nullSafeIndexCatch(fetch(event.request), true).catch(() => offlineAssetResponse()),
+    );
     return;
   }
 
@@ -350,12 +396,14 @@ self.addEventListener('fetch', (event) => {
     url.pathname === '/pwa-icon-192.png' || url.pathname === '/pwa-icon-512.png';
 
   if (isPwaIcon || (DYNAMIC_ICON_PATHS.has(url.pathname) && hasTenantContext(url))) {
-    event.respondWith(fetchTenantLogo(url));
+    event.respondWith(nullSafeIndexCatch(fetchTenantLogo(url), true).catch(() => transparentPngResponse()));
     return;
   }
 
   if (url.pathname === '/api/pwa/logo') {
-    event.respondWith(handlePwaLogoRequest(event.request));
+    event.respondWith(
+      nullSafeIndexCatch(handlePwaLogoRequest(event.request), true).catch(() => transparentPngResponse()),
+    );
     return;
   }
 
@@ -367,84 +415,91 @@ self.addEventListener('fetch', (event) => {
     }
     const apiUrl = `${apiBase}/pwa/manifest?${params.toString()}`;
 
-    event.respondWith(handlePwaManifestRequest(event.request, apiUrl, params, self.location.origin));
+    event.respondWith(
+      nullSafeIndexCatch(
+        handlePwaManifestRequest(event.request, apiUrl, params, self.location.origin),
+        true,
+      ).catch(() =>
+        new Response('{}', {
+          headers: { 'Content-Type': 'application/manifest+json' },
+        }),
+      ),
+    );
     return;
   }
 
   const isApiRequest = url.pathname.startsWith('/api/');
   if (isApiRequest) {
     event.respondWith(
-      fetch(event.request).catch(() => caches.match(event.request)),
+      nullSafeIndexCatch(
+        fetch(event.request).catch(() => caches.match(event.request)),
+        true,
+      ).catch(() => offlineAssetResponse()),
     );
     return;
   }
 
   if (isNavigationRequest(event.request)) {
-    event.respondWith(
-      networkWithTimeout(event.request, 3000)
-        .then((response) => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          }
-          return response;
-        })
-        .catch(() =>
-          caches.match(event.request).then((cached) => cached || caches.match('/index.html')),
-        ),
-    );
+    event.respondWith(handleNavigationRequest(event));
     return;
   }
 
   // Vite hashed bundles must be network-first so deploys never mix stale vendor chunks.
   if (isHashedBuildAsset(url)) {
     event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          }
-          return response;
-        })
-        .catch(() =>
-          caches.match(event.request).then((cached) => cached || caches.match('/index.html'))
-        )
+      nullSafeIndexCatch(
+        fetch(event.request)
+          .then((response) => {
+            if (response && response.ok) {
+              const clone = response.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+            }
+            return response;
+          })
+          .catch(() => caches.match(event.request)),
+        true,
+      ).catch(() => offlineAssetResponse()),
     );
     return;
   }
 
   if (isStaticAsset(url)) {
     event.respondWith(
-      caches.match(event.request).then((cached) => {
-        if (cached) return cached;
-        return fetch(event.request)
-          .then((response) => {
-            if (response.ok) {
-              const clone = response.clone();
-              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-            }
-            return response;
-          })
-          .catch(() => caches.match('/index.html'));
-      })
+      nullSafeIndexCatch(
+        caches.match(event.request).then((cached) => {
+          if (cached) return cached;
+          return fetch(event.request)
+            .then((response) => {
+              if (response && response.ok) {
+                const clone = response.clone();
+                caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+              }
+              return response;
+            })
+            .catch(() => caches.match(event.request));
+        }),
+        true,
+      ).catch(() => offlineAssetResponse()),
     );
     return;
   }
 
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const networkFetch = fetch(event.request)
-        .then((response) => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          }
-          return response;
-        })
-        .catch(() => cached);
-      return cached || networkFetch;
-    })
+    nullSafeIndexCatch(
+      caches.match(event.request).then((cached) => {
+        const networkFetch = fetch(event.request)
+          .then((response) => {
+            if (response && response.ok) {
+              const clone = response.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+            }
+            return response;
+          })
+          .catch(() => cached);
+        return cached || networkFetch;
+      }),
+      true,
+    ).catch(() => offlineAssetResponse()),
   );
 });
 
@@ -494,7 +549,7 @@ self.addEventListener('push', (event) => {
       const notifs = await self.registration.getNotifications();
       if (notifs.length > 0) await navigator.setAppBadge(notifs.length);
       else if (navigator.clearAppBadge) await navigator.clearAppBadge();
-    })()
+    })(),
   );
 });
 
@@ -515,7 +570,7 @@ self.addEventListener('notificationclick', (event) => {
         }
       }
       return clients.openWindow(targetUrl);
-    })
+    }),
   );
 });
 
@@ -526,7 +581,7 @@ self.addEventListener('notificationclose', (event) => {
       const notifs = await self.registration.getNotifications();
       if (notifs.length > 0) await self.registration.setAppBadge(notifs.length);
       else if (self.registration.clearAppBadge) await self.registration.clearAppBadge();
-    })()
+    })(),
   );
 });
 
@@ -538,7 +593,7 @@ self.addEventListener('message', (event) => {
   }
   if (data.type === 'INVALIDATE_PWA_CACHE') {
     event.waitUntil(
-      caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+      caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))),
     );
     return;
   }
@@ -549,7 +604,7 @@ self.addEventListener('message', (event) => {
       if (!self.registration.setAppBadge) return;
       if (count > 0) await self.registration.setAppBadge(count);
       else if (self.registration.clearAppBadge) await self.registration.clearAppBadge();
-    })()
+    })(),
   );
 });
 

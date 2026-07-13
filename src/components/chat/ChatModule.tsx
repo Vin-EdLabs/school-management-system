@@ -154,6 +154,8 @@ const ChatModule: React.FC = () => {
   const desktopPickerRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
   const pendingRetryRef = useRef<Map<string, () => void>>(new Map());
+  const activeChannelRef = useRef<ChatChannel | null>(null);
+  activeChannelRef.current = activeChannel;
 
   useSyncMobileChatOpen(mobileView === 'chat' && !!activeChannel);
 
@@ -231,6 +233,7 @@ const ChatModule: React.FC = () => {
   const chatSocket = useChatSocket(token, {
     onNewMessage: (msg) => {
       const channelId = Number(msg.channel_id);
+      const currentActive = activeChannelRef.current;
       setChannels((prev) =>
         prev.map((c) =>
           c.id === channelId
@@ -244,12 +247,12 @@ const ChatModule: React.FC = () => {
                   created_at: msg.created_at,
                   is_platform: msg.sender?.role === 'platform',
                 },
-                unread_count: activeChannel?.id === channelId ? 0 : c.unread_count + (msg.is_mine ? 0 : 1),
+                unread_count: currentActive?.id === channelId ? 0 : c.unread_count + (msg.is_mine ? 0 : 1),
               }
             : c
         )
       );
-      if (activeChannel?.id === channelId) {
+      if (currentActive?.id === channelId) {
         setMessages((prev) => {
           if (prev.some((m) => String(m.id) === String(msg.id))) return prev;
           if (msg.is_mine) {
@@ -276,7 +279,7 @@ const ChatModule: React.FC = () => {
       }
     },
     onMessageDeleted: ({ message_id, channel_id }) => {
-      if (activeChannel?.id === channel_id) {
+      if (activeChannelRef.current?.id === channel_id) {
         setMessages((prev) =>
           prev.map((m) =>
             Number(m.id) === message_id
@@ -298,18 +301,22 @@ const ChatModule: React.FC = () => {
       setMessages((prev) => prev.map((m) => (m.temp_id === temp_id ? { ...m, pending: false, failed: true } : m)));
     },
     onTyping: ({ channel_id, name, user_id }) => {
-      if (activeChannel?.id !== channel_id) return;
+      if (activeChannelRef.current?.id !== channel_id) return;
       if (user_id === user?.id) return;
       setTypingUsers((prev) =>
         prev.some((t) => t.id === user_id) ? prev : [...prev, { id: user_id, name }]
       );
     },
     onStoppedTyping: ({ channel_id, user_id }) => {
-      if (activeChannel?.id !== channel_id) return;
+      if (activeChannelRef.current?.id !== channel_id) return;
       setTypingUsers((prev) => prev.filter((t) => t.id !== user_id));
     },
     onUnreadChanged: () => void refreshChannelsQuiet(),
   });
+
+  useEffect(() => {
+    chatSocket.setActiveChannelId(activeChannel?.id ?? null);
+  }, [activeChannel?.id, chatSocket]);
 
   useEffect(() => {
     void loadChannels();
@@ -462,10 +469,9 @@ const ChatModule: React.FC = () => {
     };
 
     const deliverMessage = async () => {
-      if (chatSocket.connected) {
-        chatSocket.sendMessage(payload);
-        return;
-      }
+      const sentViaSocket = await chatSocket.sendMessageOrWait(payload, 2500);
+      if (sentViaSocket) return;
+
       try {
         const saved = await chatService.sendMessage(activeChannel.id, {
           message: text || undefined,

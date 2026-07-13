@@ -8,6 +8,7 @@ import { BrowserRouter, Routes, Route, Navigate, useParams, Link, useLocation, u
 import { AuthProvider } from "./contexts/AuthContext";
 import { PlatformSettingsProvider } from "./contexts/PlatformSettingsContext";
 import { SocketProvider } from "./contexts/SocketContext";
+import { ChatSocketProvider } from "./contexts/ChatSocketContext";
 import { TeacherNotificationProvider } from "./contexts/TeacherNotificationContext";
 import { AuditProvider } from "./contexts/AuditContext";
 import { DataProvider } from "./contexts/DataContext";
@@ -324,6 +325,7 @@ const App = () => {
           <ImpersonationTransitionGate />
           <ZoomNudge />
           <SocketProvider>
+            <ChatSocketProvider>
             <TeacherNotificationProvider>
             <TooltipProvider>
               <NetworkStatusBanner />
@@ -364,6 +366,7 @@ const App = () => {
                 )}
             </TooltipProvider>
             </TeacherNotificationProvider>
+            </ChatSocketProvider>
           </SocketProvider>
           </PlatformSettingsProvider>
         </AuthProvider>

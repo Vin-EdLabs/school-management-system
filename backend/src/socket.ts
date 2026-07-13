@@ -52,7 +52,7 @@ export const initSocket = (server: HttpServer) => {
       methods: ['GET', 'POST'],
       credentials: true,
     },
-    transports: ['polling', 'websocket'],
+    transports: ['websocket', 'polling'],
     pingTimeout: 60000,
     pingInterval: 25000,
     allowEIO3: true,

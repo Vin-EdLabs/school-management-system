@@ -1,5 +1,5 @@
 /* ScholarNerve service worker — caching + push. Bump CACHE_VERSION on breaking cache changes. */
-const CACHE_VERSION = '2026-07-13-v21';
+const CACHE_VERSION = '2026-07-13-v22';
 const CACHE_NAME = `scholarnerve-app-${CACHE_VERSION}`;
 const BRANDING_CACHE = 'scholarnerve-branding-v1';
 const BRANDING_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -630,8 +630,9 @@ self.addEventListener('notificationclick', (event) => {
       }
       for (const client of clientList) {
         if ('focus' in client) {
-          client.navigate(targetUrl);
-          return client.focus();
+          await client.focus();
+          client.postMessage({ type: 'APP_NAV', url: targetUrl });
+          return;
         }
       }
       return clients.openWindow(targetUrl);

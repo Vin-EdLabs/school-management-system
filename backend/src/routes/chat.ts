@@ -1,7 +1,5 @@
 import express from 'express';
 import path from 'path';
-import fs from 'fs';
-import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
 import sharp from 'sharp';
@@ -49,8 +47,38 @@ function handleError(res: express.Response, err: unknown) {
   res.status(status).json({ error: e.message || 'Request failed' });
 }
 
-const uploadRoot = path.join(__dirname, '../../uploads/chat');
-if (!fs.existsSync(uploadRoot)) fs.mkdirSync(uploadRoot, { recursive: true });
+async function chatImageToDataUrls(
+  file: Express.Multer.File,
+): Promise<{ image_url: string; image_thumbnail_url: string }> {
+  if (file.mimetype === 'image/gif') {
+    const image_url = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
+    const thumbBuf = await sharp(file.buffer, { animated: false })
+      .resize({ width: 300, withoutEnlargement: true })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+    return {
+      image_url,
+      image_thumbnail_url: `data:image/jpeg;base64,${thumbBuf.toString('base64')}`,
+    };
+  }
+
+  const pipeline = sharp(file.buffer).rotate();
+  const fullBuf = await pipeline
+    .clone()
+    .resize({ width: 1200, withoutEnlargement: true })
+    .jpeg({ quality: 85 })
+    .toBuffer();
+  const thumbBuf = await pipeline
+    .clone()
+    .resize({ width: 300, withoutEnlargement: true })
+    .jpeg({ quality: 80 })
+    .toBuffer();
+
+  return {
+    image_url: `data:image/jpeg;base64,${fullBuf.toString('base64')}`,
+    image_thumbnail_url: `data:image/jpeg;base64,${thumbBuf.toString('base64')}`,
+  };
+}
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -277,29 +305,7 @@ router.post(
       const tenantId = Number(req.body?.tenant_id);
       if (!Number.isFinite(tenantId)) return res.status(400).json({ error: 'tenant_id required' });
 
-      const tenantDir = path.join(uploadRoot, String(tenantId));
-      if (!fs.existsSync(tenantDir)) fs.mkdirSync(tenantDir, { recursive: true });
-
-      const id = randomUUID();
-      const fullName = `${id}_full.jpg`;
-      const thumbName = `${id}_thumb.jpg`;
-      const fullPath = path.join(tenantDir, fullName);
-      const thumbPath = path.join(tenantDir, thumbName);
-
-      const pipeline = sharp(req.file.buffer).rotate();
-      if (req.file.mimetype === 'image/gif') {
-        await fs.promises.writeFile(fullPath, req.file.buffer);
-        await sharp(req.file.buffer, { animated: false })
-          .resize({ width: 300, withoutEnlargement: true })
-          .jpeg({ quality: 80 })
-          .toFile(thumbPath);
-      } else {
-        await pipeline.clone().resize({ width: 1200, withoutEnlargement: true }).jpeg({ quality: 85 }).toFile(fullPath);
-        await pipeline.clone().resize({ width: 300, withoutEnlargement: true }).jpeg({ quality: 80 }).toFile(thumbPath);
-      }
-
-      const image_url = `/uploads/chat/${tenantId}/${fullName}`;
-      const image_thumbnail_url = `/uploads/chat/${tenantId}/${thumbName}`;
+      const { image_url, image_thumbnail_url } = await chatImageToDataUrls(req.file);
       res.json({ image_url, image_thumbnail_url });
     } catch (err) {
       console.error('Super admin chat image upload error:', err);
@@ -311,30 +317,9 @@ router.post(
 router.post('/upload-image', requireTenant, setTenantContext, upload.single('image'), async (req: AuthRequest, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No image provided' });
-    const tenantId = tenantIdOf(req);
-    const tenantDir = path.join(uploadRoot, String(tenantId));
-    if (!fs.existsSync(tenantDir)) fs.mkdirSync(tenantDir, { recursive: true });
+    tenantIdOf(req);
 
-    const id = randomUUID();
-    const fullName = `${id}_full.jpg`;
-    const thumbName = `${id}_thumb.jpg`;
-    const fullPath = path.join(tenantDir, fullName);
-    const thumbPath = path.join(tenantDir, thumbName);
-
-    const pipeline = sharp(req.file.buffer).rotate();
-    if (req.file.mimetype === 'image/gif') {
-      await fs.promises.writeFile(fullPath, req.file.buffer);
-      await sharp(req.file.buffer, { animated: false })
-        .resize({ width: 300, withoutEnlargement: true })
-        .jpeg({ quality: 80 })
-        .toFile(thumbPath);
-    } else {
-      await pipeline.clone().resize({ width: 1200, withoutEnlargement: true }).jpeg({ quality: 85 }).toFile(fullPath);
-      await pipeline.clone().resize({ width: 300, withoutEnlargement: true }).jpeg({ quality: 80 }).toFile(thumbPath);
-    }
-
-    const image_url = `/uploads/chat/${tenantId}/${fullName}`;
-    const image_thumbnail_url = `/uploads/chat/${tenantId}/${thumbName}`;
+    const { image_url, image_thumbnail_url } = await chatImageToDataUrls(req.file);
     res.json({ image_url, image_thumbnail_url });
   } catch (err) {
     console.error('Chat image upload error:', err);

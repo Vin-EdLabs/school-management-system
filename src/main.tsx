@@ -26,6 +26,7 @@ import {
   saveSplashBranding,
   SPLASH_LAST_TENANT_SLUG_KEY,
 } from './utils/splashCache'
+import { applyAppNavigationFromUrl } from './utils/appNavigation'
 
 const API_BASE = (() => {
   if (import.meta.env.VITE_API_BASE_URL) return import.meta.env.VITE_API_BASE_URL;
@@ -206,6 +207,10 @@ function setupServiceWorkerMessageListener() {
       void cacheIndexHtmlFromClient(
         typeof event.data.version === 'string' ? event.data.version : undefined,
       );
+      return;
+    }
+    if (event.data?.type === 'APP_NAV' && typeof event.data.url === 'string') {
+      applyAppNavigationFromUrl(event.data.url);
     }
   });
 }

@@ -86,6 +86,8 @@ import { domainsForModule } from '../config/moduleDataNeeds';
 import { ImpersonationProvider } from '../contexts/ImpersonationContext';
 import ImpersonationShell from './impersonation/ImpersonationShell';
 import { IMPERSONATION_GO_MODULE_KEY } from '../utils/impersonationHelpers';
+import { readInitialModuleFromUrl } from '../utils/appNavigation';
+import { readInitialModuleFromUrl } from '../utils/appNavigation';
 import { shouldUseAdministratorDashboard } from '../utils/schoolAdminView';
 import { PrintPreviewProvider } from '../contexts/PrintPreviewContext';
 import { NavigationGuardProvider, useNavigationGuard } from '../contexts/NavigationGuardContext';
@@ -95,6 +97,9 @@ const DashboardContent = () => {
   useStaffPushSync();
   useFinanceRealtime();
   const [activeModule, setActiveModuleState] = useState(() => {
+    const urlModule = readInitialModuleFromUrl();
+    if (urlModule) return urlModule;
+
     const path = window.location.pathname;
     if (path.includes('/finance/transactions')) return 'transactions';
     if (path.includes('/finance/daily-fees')) return 'daily-fees';
@@ -171,6 +176,17 @@ const DashboardContent = () => {
     sessionStorage.removeItem(IMPERSONATION_GO_MODULE_KEY);
     setActiveModuleState(goMod);
   }, [user?.id, user?.role]);
+
+  /** In-app navigation from push notifications — no full page reload. */
+  useEffect(() => {
+    const onAppNav = (event: Event) => {
+      const detail = (event as CustomEvent<{ module?: string }>).detail;
+      const module = detail?.module;
+      if (module) setActiveModuleState(module);
+    };
+    window.addEventListener('scholarnerve-app-nav', onAppNav);
+    return () => window.removeEventListener('scholarnerve-app-nav', onAppNav);
+  }, []);
 
   const { requestNavigation } = useNavigationGuard();
 

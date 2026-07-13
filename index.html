@@ -113,6 +113,57 @@
     })();
   </script>
 
+  <style id="sn-splash-style">
+    #sn-splash {
+      position: fixed;
+      inset: 0;
+      z-index: 99999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      background: var(--sn-splash-bg, #0f766e);
+      transition: opacity 0.35s ease, visibility 0.35s ease;
+    }
+    #sn-splash.sn-splash-hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+    #sn-splash-logo {
+      width: 96px;
+      height: 96px;
+      border-radius: 16px;
+      object-fit: contain;
+      background: rgba(255, 255, 255, 0.15);
+    }
+    #sn-splash-name {
+      color: #ffffff;
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      text-align: center;
+      max-width: 240px;
+      opacity: 0.9;
+    }
+    #sn-splash-spinner {
+      width: 28px;
+      height: 28px;
+      border: 3px solid rgba(255, 255, 255, 0.3);
+      border-top-color: #ffffff;
+      border-radius: 50%;
+      animation: sn-spin 0.8s linear infinite;
+      margin-top: 8px;
+    }
+    @keyframes sn-spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+  </style>
+
   <!-- Typography -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -425,6 +476,71 @@
 </head>
 
 <body>
+  <div id="sn-splash">
+    <img id="sn-splash-logo" src="" alt="" style="display:none" />
+    <div id="sn-splash-name"></div>
+    <div id="sn-splash-spinner"></div>
+  </div>
+  <script>
+    (function () {
+      try {
+        var host = location.hostname;
+        var path = location.pathname || '/';
+        var hostParts = host.toLowerCase().replace(/^www\./, '').split('.');
+        var reserved = ['www', 'api', 'app', 'admin', 'dev', 'staging', 'scholarnerve', 'portal', 'school'];
+        var slug = null;
+
+        if (host.indexOf('.localhost') > -1 && hostParts.length >= 2 && reserved.indexOf(hostParts[0]) === -1) {
+          slug = hostParts[0];
+        } else if (host.indexOf('.lvh.me') > -1 && hostParts.length >= 3 && reserved.indexOf(hostParts[0]) === -1) {
+          slug = hostParts[0];
+        } else if (
+          host.indexOf('scholarnerve.com') > -1 &&
+          host !== 'scholarnerve.com' &&
+          host !== 'www.scholarnerve.com' &&
+          hostParts.length >= 3 &&
+          reserved.indexOf(hostParts[0]) === -1
+        ) {
+          slug = hostParts[0];
+        }
+
+        var schMatch = path.match(/^\/sch\/([^/]+)/);
+        if (schMatch) slug = schMatch[1];
+
+        if (!slug) {
+          var schoolMatch = path.match(/^\/school\/(\d+)/);
+          var portalMatch = path.match(/^\/portal\/(\d+)/);
+          if (schoolMatch) slug = 'id-' + schoolMatch[1];
+          else if (portalMatch) slug = 'id-' + portalMatch[1];
+        }
+
+        if (!slug) {
+          slug = localStorage.getItem('sn_last_tenant_slug');
+        }
+
+        var splash = document.getElementById('sn-splash');
+        if (!splash) return;
+
+        if (slug) {
+          var branding = JSON.parse(localStorage.getItem('sn_splash_' + slug) || 'null');
+          if (branding) {
+            splash.style.setProperty('--sn-splash-bg', branding.primaryColor || '#0f766e');
+            var nameEl = document.getElementById('sn-splash-name');
+            if (branding.schoolName && nameEl) nameEl.textContent = branding.schoolName;
+            var logoDataUrl = localStorage.getItem('sn_splash_logo_' + slug);
+            var logoEl = document.getElementById('sn-splash-logo');
+            var logoSrc = logoDataUrl || branding.logoUrl;
+            if (logoSrc && logoEl) {
+              logoEl.src = logoSrc;
+              logoEl.style.display = 'block';
+            }
+          }
+        }
+      } catch (e) {
+        /* splash is best-effort */
+      }
+    })();
+  </script>
   <div id="root"></div>
   <script type="module" src="/src/main.tsx"></script>
 </body>

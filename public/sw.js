@@ -1,6 +1,8 @@
 /* ScholarNerve service worker — caching + push. Bump CACHE_VERSION on breaking cache changes. */
-const CACHE_VERSION = '2026-07-09-v16';
+const CACHE_VERSION = '2026-07-13-v18';
 const CACHE_NAME = `scholarnerve-app-${CACHE_VERSION}`;
+const BRANDING_CACHE = 'scholarnerve-branding-v1';
+const BRANDING_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const APP_SHELL = ['/', '/index.html'];
 
 self.addEventListener('install', (event) => {
@@ -39,6 +41,13 @@ function isViteDevPath(url) {
   );
 }
 
+function isHashedBuildAsset(url) {
+  return (
+    url.pathname.startsWith('/assets/') &&
+    /\.[a-zA-Z0-9_-]{6,}\.(js|css|mjs)$/i.test(url.pathname)
+  );
+}
+
 function isStaticAsset(url) {
   if (
     url.pathname === '/manifest.json' ||
@@ -48,6 +57,9 @@ function isStaticAsset(url) {
     return false;
   }
   if (isViteDevPath(url)) {
+    return false;
+  }
+  if (isHashedBuildAsset(url)) {
     return false;
   }
   return (
@@ -160,6 +172,130 @@ function isSocketIoRequest(url) {
   return url.pathname.startsWith('/socket.io');
 }
 
+function transparentPngResponse() {
+  const bytes = Uint8Array.from(
+    atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=='),
+    (c) => c.charCodeAt(0),
+  );
+  return new Response(bytes, {
+    status: 200,
+    headers: { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' },
+  });
+}
+
+function brandingCacheAgeMs(response) {
+  const raw = response.headers.get('X-Cached-At');
+  if (!raw) return Number.POSITIVE_INFINITY;
+  const ts = Number(raw);
+  if (!Number.isFinite(ts)) return Number.POSITIVE_INFINITY;
+  return Date.now() - ts;
+}
+
+function isBrandingCacheFresh(response) {
+  return brandingCacheAgeMs(response) <= BRANDING_MAX_AGE_MS;
+}
+
+async function readBrandingCached(request) {
+  const cache = await caches.open(BRANDING_CACHE);
+  return cache.match(request);
+}
+
+async function writeBrandingCached(request, response) {
+  if (!response || !response.ok) return;
+  const headers = new Headers(response.headers);
+  headers.set('X-Cached-At', String(Date.now()));
+  const body = await response.clone().blob();
+  const cached = new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+  const cache = await caches.open(BRANDING_CACHE);
+  await cache.put(request, cached);
+}
+
+async function handlePwaLogoRequest(request) {
+  const cached = await readBrandingCached(request);
+  if (cached && isBrandingCacheFresh(cached)) {
+    return cached;
+  }
+
+  try {
+    const network = await fetch(request);
+    if (network.ok) {
+      await writeBrandingCached(request, network.clone());
+      return network;
+    }
+  } catch (err) {
+    console.warn('[PWA SW] Logo network failed:', err);
+  }
+
+  if (cached) return cached;
+  return transparentPngResponse();
+}
+
+async function buildManifestResponse(apiUrl, params, origin) {
+  const response = await fetch(apiUrl, { cache: 'no-store' });
+  if (!response.ok) throw new Error('API manifest failed');
+  const data = await response.json();
+  const apiOrigin = apiUrl.replace(/\/api\/pwa\/manifest.*$/, '');
+
+  const toAbsolute = (value) => {
+    if (typeof value === 'string' && value.startsWith('/') && !value.startsWith('//')) {
+      return origin + value;
+    }
+    return value;
+  };
+
+  if (data.start_url) data.start_url = toAbsolute(data.start_url);
+  if (data.scope) data.scope = toAbsolute(data.scope);
+  if (data.id) data.id = toAbsolute(data.id);
+
+  if (Array.isArray(data.icons)) {
+    data.icons = data.icons.map((icon) => {
+      if (icon.src && icon.src.startsWith('/') && !icon.src.startsWith('//')) {
+        if (icon.src.startsWith('/uploads/')) {
+          icon.src = apiOrigin + icon.src;
+        } else {
+          icon.src = origin + icon.src;
+        }
+      }
+      icon.src = appendIconQueryParams(icon.src, params);
+      return icon;
+    });
+  }
+
+  return new Response(JSON.stringify(data), {
+    headers: {
+      'Content-Type': 'application/manifest+json',
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+    },
+  });
+}
+
+async function handlePwaManifestRequest(request, apiUrl, params, origin) {
+  const cached = await readBrandingCached(request);
+
+  const revalidate = buildManifestResponse(apiUrl, params, origin)
+    .then(async (fresh) => {
+      await writeBrandingCached(request, fresh.clone());
+      return fresh;
+    })
+    .catch((err) => {
+      console.error('[PWA SW] Dynamic manifest failed:', err);
+      return null;
+    });
+
+  if (cached) {
+    void revalidate;
+    return cached;
+  }
+
+  const fresh = await revalidate;
+  if (fresh) return fresh;
+  return fetch('/site.webmanifest', { cache: 'no-store' });
+}
+
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
@@ -192,6 +328,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  if (url.pathname === '/api/pwa/logo') {
+    event.respondWith(handlePwaLogoRequest(event.request));
+    return;
+  }
+
   if (isManifestRequest) {
     const apiBase = apiBaseForLocation();
     const params = new URLSearchParams(url.search);
@@ -200,76 +341,37 @@ self.addEventListener('fetch', (event) => {
     }
     const apiUrl = `${apiBase}/pwa/manifest?${params.toString()}`;
 
-    event.respondWith(
-      fetch(apiUrl, { cache: 'no-store' })
-        .then((response) => {
-          if (!response.ok) throw new Error('API manifest failed');
-          return response.json();
-        })
-        .then((data) => {
-          console.log('[PWA SW] Dynamic manifest loaded', {
-            name: data.name,
-            startUrl: data.start_url,
-            iconCount: Array.isArray(data.icons) ? data.icons.length : 0,
-            firstIcon: data.icons?.[0]?.src,
-          });
-
-          const origin = self.location.origin;
-          const apiOrigin = apiBase.replace(/\/api$/, '');
-
-          const toAbsolute = (value) => {
-            if (typeof value === 'string' && value.startsWith('/') && !value.startsWith('//')) {
-              return origin + value;
-            }
-            return value;
-          };
-
-          if (data.start_url) data.start_url = toAbsolute(data.start_url);
-          if (data.scope) data.scope = toAbsolute(data.scope);
-          if (data.id) data.id = toAbsolute(data.id);
-
-          if (Array.isArray(data.icons)) {
-            data.icons = data.icons.map((icon) => {
-              if (icon.src && icon.src.startsWith('/') && !icon.src.startsWith('//')) {
-                if (icon.src.startsWith('/uploads/')) {
-                  icon.src = apiOrigin + icon.src;
-                } else {
-                  icon.src = origin + icon.src;
-                }
-              }
-              icon.src = appendIconQueryParams(icon.src, params);
-              return icon;
-            });
-          }
-
-          return new Response(JSON.stringify(data), {
-            headers: {
-              'Content-Type': 'application/manifest+json',
-              'Cache-Control': 'no-store, no-cache, must-revalidate',
-            },
-          });
-        })
-        .catch((err) => {
-          console.error('[PWA SW] Dynamic manifest failed:', err);
-          return fetch('/site.webmanifest', { cache: 'no-store' });
-        })
-    );
+    event.respondWith(handlePwaManifestRequest(event.request, apiUrl, params, self.location.origin));
     return;
   }
 
   const isApiRequest = url.pathname.startsWith('/api/');
   if (isApiRequest) {
-    const isPwaAsset =
-      url.pathname === '/api/pwa/logo' || url.pathname === '/api/pwa/manifest';
     event.respondWith(
-      fetch(event.request, isPwaAsset ? { cache: 'no-store' } : undefined).catch(() =>
-        caches.match(event.request),
-      ),
+      fetch(event.request).catch(() => caches.match(event.request)),
     );
     return;
   }
 
   if (isNavigationRequest(event.request)) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return response;
+        })
+        .catch(() =>
+          caches.match(event.request).then((cached) => cached || caches.match('/index.html'))
+        )
+    );
+    return;
+  }
+
+  // Vite hashed bundles must be network-first so deploys never mix stale vendor chunks.
+  if (isHashedBuildAsset(url)) {
     event.respondWith(
       fetch(event.request)
         .then((response) => {

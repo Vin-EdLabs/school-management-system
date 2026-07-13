@@ -16,9 +16,12 @@ import { detectTenantSlugFromHost } from './utils/tenantHost'
 import { initSystemErrorReporter } from './utils/systemErrorReporter'
 import {
   applyTenantPwaBranding,
+  buildPwaLogoUrl,
+  buildPwaQueryParams,
   detectPwaKind,
   detectTenantIdFromPath,
 } from './utils/pwaBranding'
+import { saveSplashBranding, SPLASH_LAST_TENANT_SLUG_KEY } from './utils/splashCache'
 
 const API_BASE = (() => {
   if (import.meta.env.VITE_API_BASE_URL) return import.meta.env.VITE_API_BASE_URL;
@@ -33,6 +36,20 @@ const API_BASE = (() => {
 function detectSchSlugFromPath(pathname: string): string | null {
   const m = pathname.match(/^\/sch\/([^/]+)/i);
   return m ? decodeURIComponent(m[1]) : null;
+}
+
+function hideSplash() {
+  const splash = document.getElementById('sn-splash');
+  if (splash) splash.classList.add('sn-splash-hidden');
+}
+
+function resolveSplashCacheKey(
+  tenant: { id: number; slug?: string | null },
+  pathSlug: string | null,
+  hostSlug: string | null,
+  pathTenantId: number | null,
+): string {
+  return tenant.slug || pathSlug || hostSlug || (pathTenantId ? `id-${pathTenantId}` : `id-${tenant.id}`);
 }
 
 async function bootstrapTenantBrandingAndManifest() {
@@ -67,6 +84,36 @@ async function bootstrapTenantBrandingAndManifest() {
         },
         kind,
       );
+
+      const cacheKey = resolveSplashCacheKey(tenant, pathSlug, hostSlug, pathTenantId);
+      const params = buildPwaQueryParams(
+        {
+          id: tenant.id,
+          name: tenant.name,
+          slug: tenant.slug,
+          logo_url: tenant.logo_url,
+          primary_color: tenant.primary_color,
+          secondary_color: tenant.secondary_color,
+        },
+        kind,
+        pathTenantId,
+      );
+      const logoUrl = buildPwaLogoUrl(params, 180);
+
+      saveSplashBranding({
+        schoolName: tenant.name || 'ScholarNerve',
+        logoUrl,
+        primaryColor: tenant.primary_color || '#0f766e',
+        secondaryColor: tenant.secondary_color || tenant.primary_color || '#0f766e',
+        cachedAt: Date.now(),
+        tenantSlug: cacheKey,
+      });
+
+      try {
+        localStorage.setItem(SPLASH_LAST_TENANT_SLUG_KEY, cacheKey);
+      } catch {
+        // ignore
+      }
     }
   } catch (error) {
     console.warn('[PWA] Tenant branding bootstrap failed:', error);
@@ -116,6 +163,18 @@ document.addEventListener(
   true
 );
 
-bootstrapTenantBrandingAndManifest().finally(registerServiceWorker);
+const root = createRoot(document.getElementById('root')!);
 
-createRoot(document.getElementById("root")!).render(<App />);
+bootstrapTenantBrandingAndManifest()
+  .finally(() => {
+    void registerServiceWorker();
+    try {
+      root.render(<App />);
+    } finally {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          hideSplash();
+        });
+      });
+    }
+  });

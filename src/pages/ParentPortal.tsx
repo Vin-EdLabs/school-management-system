@@ -2111,7 +2111,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     { key: 'grades', icon: <BookOpen className="w-4 h-4" />, label: 'Grades' },
     { key: 'position', icon: <Trophy className="w-4 h-4" />, label: 'Position' },
     { key: 'finance', icon: <CreditCard className="w-4 h-4" />, label: 'Finance' },
-    { key: 'checkin', icon: <Smartphone className="w-4 h-4" />, label: 'Check-in/out' },
+    { key: 'checkin', icon: <Smartphone className="w-4 h-4" />, label: 'Student Check-in' },
     { key: 'attendance', icon: <CalendarCheck className="w-4 h-4" />, label: 'Attendance' },
     { key: 'desk', icon: <MessageSquare className="w-4 h-4" />, label: 'Parent Desk' },
   ];

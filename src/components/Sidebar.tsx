@@ -48,10 +48,12 @@ import {
   MapPin,
   IdCard,
   AlertTriangle,
+  Clock,
   Crown,
   School,
   UserRoundSearch,
   QrCode,
+  Flag,
 } from 'lucide-react';
 import { resolveLogoUrl } from '../services/tenantService';
 import { headmasterHasTeachingAccess, isHeadmasterRole } from '../utils/headmasterPortal';
@@ -89,6 +91,9 @@ const getHeadmasterMenuItems = (hasAccess: (permission: string) => boolean, user
     ...(hasTeaching && hasAccess('attendance') ? [{ id: 'attendance', label: 'My Attendance', icon: UserCheck }] : []),
     ...(hasTeaching && hasAccess('grades') ? [{ id: 'grades', label: 'My Grades', icon: Award }] : []),
     ...(hasTeaching && hasAccess('grades') ? [{ id: 'teacher-quizzes', label: 'My Assessments', icon: ClipboardList }] : []),
+    ...(hasTeaching && hasAccess('my-staff-attendance')
+      ? [{ id: 'my-staff-attendance', label: 'Staff Clock', icon: Clock }]
+      : []),
     ...(hasAccess('teacher-profile') ? [{ id: 'teacher-profile', label: 'My Profile', icon: User }] : []),
   ],
   schoolOverview: [
@@ -97,6 +102,10 @@ const getHeadmasterMenuItems = (hasAccess: (permission: string) => boolean, user
       ? [{ id: 'headmaster-all-attendance', label: 'All Attendance', icon: ClipboardList }]
       : []),
     ...(hasAccess('headmaster-all-staff') ? [{ id: 'headmaster-all-staff', label: 'All Staff', icon: Users }] : []),
+    ...(hasAccess('staff-attendance')
+      ? [{ id: 'staff-attendance', label: 'Staff Attendance', icon: Clock }]
+      : []),
+    ...(hasAccess('complaints') ? [{ id: 'complaints', label: 'Complaints', icon: Flag }] : []),
     ...(hasAccess('students-view-only') ? [{ id: 'students', label: 'All Students', icon: Users }] : []),
     ...(hasAccess('headmaster-grades') ? [{ id: 'headmaster-grades', label: 'Grades & Reports', icon: Award }] : []),
     ...(hasAccess('print-fee-status') ? [{ id: 'print-fee-status', label: 'Fees Status', icon: FileText }] : []),
@@ -132,6 +141,9 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
     ...(hasAccess('teacher-dashboard') && userRole !== 'super-admin' && userRole !== 'administrator'
       ? [{ id: 'teacher-dashboard', label: 'My Dashboard', icon: GraduationCap }]
       : []),
+    ...(hasAccess('my-staff-attendance') && userRole !== 'teacher' && userRole !== 'staff' && userRole !== 'headmaster'
+      ? [{ id: 'my-staff-attendance', label: 'Staff Clock', icon: Clock }]
+      : []),
   ],
   academic: [
     ...(hasAccess('students') || hasAccess('students-view-only') ? [{ id: 'students', label: 'Students', icon: Users }] : []),
@@ -149,7 +161,9 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
       : []),
     ...(hasAccess('lost-cards') ? [{ id: 'lost-cards', label: 'Lost Cards', icon: AlertTriangle }] : []),
     ...(hasAccess('reports') ? [{ id: 'academic-reports', label: 'Academic Report', icon: BarChart3 }] : []),
-    ...(hasAccess('checkin-dashboard') ? [{ id: 'checkin-dashboard', label: 'Check-in/out', icon: UserCheck }] : []),
+    ...(hasAccess('checkin-dashboard') ? [{ id: 'checkin-dashboard', label: 'Student Check-in', icon: UserCheck }] : []),
+    ...(hasAccess('staff-attendance') ? [{ id: 'staff-attendance', label: 'Staff Attendance', icon: Clock }] : []),
+    ...(hasAccess('complaints') ? [{ id: 'complaints', label: 'Complaints', icon: Flag }] : []),
   ],
   teaching: [
     ...(hasAccess('teacher-classes') ? [{ id: 'teacher-classes', label: 'My Classes', icon: BookOpen }] : []),
@@ -161,7 +175,11 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
       ? [{ id: 'teacher-appointment-letters', label: 'Appointment Letters', icon: FileText }]
       : []),
     ...(hasAccess('teacher-payment-history') ? [{ id: 'teacher-payment-history', label: 'Payment History', icon: History }] : []),
-    ...(hasAccess('checkin-staff') ? [{ id: 'checkin-staff', label: 'Check-in/out', icon: UserCheck }] : []),
+    ...(hasAccess('checkin-staff') ? [{ id: 'checkin-staff', label: 'Student Check-in', icon: UserCheck }] : []),
+    ...(hasAccess('my-staff-attendance')
+      ? [{ id: 'my-staff-attendance', label: 'Staff Clock', icon: Clock }]
+      : []),
+    ...(hasAccess('my-complaints') ? [{ id: 'my-complaints', label: 'My Complaints', icon: Flag }] : []),
   ],
   financial: [
     ...(hasAccess('fees') ? [{ id: 'fees', label: 'Fees', icon: DollarSign }] : []),
@@ -199,7 +217,10 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
     ...(hasAccess('settings-full') ? [{ id: 'appointment-letter-settings', label: 'Appointment Letters', icon: FileText }] : []),
     ...(hasAccess('settings-full') ? [{ id: 'admission-letter-settings', label: 'Admission Letter', icon: FileText }] : []),
     ...(hasAccess('id-card-settings') ? [{ id: 'id-card-settings', label: 'ID Card Colors', icon: IdCard }] : []),
-    ...(hasAccess('checkin-settings') ? [{ id: 'checkin-settings', label: 'QR Codes', icon: QrCode }] : []),
+    ...(hasAccess('checkin-settings') ? [{ id: 'checkin-settings', label: 'Student QR Codes', icon: QrCode }] : []),
+    ...(hasAccess('staff-attendance-settings')
+      ? [{ id: 'staff-attendance-settings', label: 'Staff Clock Settings', icon: Clock }]
+      : []),
   ],
   transport: [
     ...(hasAccess('transport-overview') ? [{ id: 'transport-overview', label: 'Overview', icon: LayoutDashboard }] : []),

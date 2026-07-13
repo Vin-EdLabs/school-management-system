@@ -25,6 +25,11 @@ const PRIMARY_ADMIN_MODULES = [
   'payment-submissions',
   'checkin-dashboard',
   'checkin-settings',
+  'staff-attendance',
+  'staff-attendance-settings',
+  'my-staff-attendance',
+  'complaints',
+  'my-complaints',
 ] as const;
 
 const PLATFORM_SUPER_ADMIN_MODULES = [...PRIMARY_ADMIN_MODULES, 'schools'] as const;
@@ -404,22 +409,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Additional administrators: academic only
     if (user.role === 'administrator') {
-      return ['students', 'teachers', 'other-staff', 'classes', 'calendar', 'dashboard', 'settings', 'settings-password-only', 'print-fee-status', 'records', 'support-chat', 'parent-desk', 'push-notifications', 'audit', 'parent-accounts', 'birthdays', 'transport-overview', 'transport-map', 'transport-routes', 'transport-vehicles', 'transport-drivers', 'transport-students', 'checkin-dashboard', 'checkin-settings'].includes(module);
+      return ['students', 'teachers', 'other-staff', 'classes', 'calendar', 'dashboard', 'settings', 'settings-password-only', 'print-fee-status', 'records', 'support-chat', 'parent-desk', 'push-notifications', 'audit', 'parent-accounts', 'birthdays', 'transport-overview', 'transport-map', 'transport-routes', 'transport-vehicles', 'transport-drivers', 'transport-students', 'checkin-dashboard', 'checkin-settings', 'staff-attendance', 'staff-attendance-settings', 'my-staff-attendance', 'complaints'].includes(module);
     }
 
     // Finance: financial sections only (financial dashboard, not the general admin dashboard)
     if (user.role === 'finance') {
-      return ['students-view-only', 'teachers-view-only', 'other-staff-view-only', 'fees', 'daily-fees', 'income', 'expenses', 'transactions', 'cash-bank', 'payroll', 'reports', 'financial-dashboard', 'term-budget', 'calendar', 'settings', 'settings-password-only', 'payment-accounts', 'print-fee-status', 'finance-statement', 'ai-assistant', 'support-chat', 'parent-desk', 'audit', 'manual-adjustments', 'invoices', 'payment-submissions'].includes(module);
+      return ['students-view-only', 'teachers-view-only', 'other-staff-view-only', 'fees', 'daily-fees', 'income', 'expenses', 'transactions', 'cash-bank', 'payroll', 'reports', 'financial-dashboard', 'term-budget', 'calendar', 'settings', 'settings-password-only', 'payment-accounts', 'print-fee-status', 'finance-statement', 'ai-assistant', 'support-chat', 'parent-desk', 'audit', 'manual-adjustments', 'invoices', 'payment-submissions', 'my-staff-attendance'].includes(module);
     }
 
     // Teacher: teacher section + profile + payment history
     if (user.role === 'teacher') {
-      return ['teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'calendar', 'teacher-profile', 'teacher-appointment-letters', 'teacher-payment-history', 'settings', 'settings-password-only', 'birthdays', 'checkin-staff'].includes(module);
+      return ['teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'calendar', 'teacher-profile', 'teacher-appointment-letters', 'teacher-payment-history', 'settings', 'settings-password-only', 'birthdays', 'checkin-staff', 'my-staff-attendance', 'my-complaints'].includes(module);
     }
 
     // Staff (non-teaching): similar to teacher
     if (user.role === 'staff') {
-      return ['teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'calendar', 'teacher-profile', 'teacher-appointment-letters', 'teacher-payment-history', 'settings', 'settings-password-only', 'checkin-staff'].includes(module);
+      return ['teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'calendar', 'teacher-profile', 'teacher-appointment-letters', 'teacher-payment-history', 'settings', 'settings-password-only', 'checkin-staff', 'my-staff-attendance', 'my-complaints'].includes(module);
     }
 
     // Headmaster: teacher portal (when linked) + school-wide read-only oversight
@@ -443,9 +448,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return modules.includes(module as (typeof HEADMASTER_MODULES)[number]);
     }
 
-    // Driver: driver role
+    // Driver: transport + staff clock
     if (user.role === 'driver') {
-      return ['settings', 'settings-password-only'].includes(module);
+      return ['settings', 'settings-password-only', 'my-staff-attendance'].includes(module);
     }
 
     return false;

@@ -53,6 +53,7 @@ import {
 } from 'recharts';
 import type { PersonalTodo } from '../todos/PersonalTodosPanel';
 import { countTodayPendingTodos } from '../todos/PersonalTodosPanel';
+import StaffAttendanceClockCard from '../staffAttendance/StaffAttendanceClockCard';
 
 const CHART_GREEN = '#10b981';
 
@@ -654,6 +655,11 @@ const AdministratorDashboard = ({ onNavigate }: Props) => {
 
           {/* Sidebar */}
           <div className="space-y-4">
+            <StaffAttendanceClockCard
+              variant="sidebar"
+              onOpenHistory={onNavigate ? () => onNavigate('my-staff-attendance') : undefined}
+            />
+
             <Card className={cn(surfaceCard, 'p-5')}>
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Attendance Rate</p>
               {attendanceLoading ? (

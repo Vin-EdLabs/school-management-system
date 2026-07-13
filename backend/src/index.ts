@@ -7,6 +7,7 @@ import { startReceiptLockJob } from './jobs/receiptLockJob.js';
 import { startTeacherSuspensionJob } from './jobs/teacherSuspensionJob.js';
 import { startTodoReminderJob } from './jobs/todoReminderJob.js';
 import { startScheduledAnnouncementJob } from './jobs/announcementScheduleJob.js';
+import { startStaffAttendanceAutoCheckoutJobs } from './jobs/staffAttendanceAutoCheckoutJob.js';
 import authRoutes from './routes/auth.js';
 import impersonationRoutes from './routes/impersonation.js';
 import schoolRoutes from './routes/schools.js';
@@ -28,6 +29,7 @@ import superAdminFinanceRoutes from './routes/superAdminFinance.js';
 import feeCalculationsRoutes from './routes/feeCalculations.js';
 import payrollRoutes from './routes/payroll.js';
 import attendanceRoutes from './routes/attendance.js';
+import staffAttendanceRoutes from './routes/staffAttendance.js';
 import gradesRoutes from './routes/grades.js';
 import gradeConfigRoutes from './routes/gradeConfig.js';
 import assessmentsRoutes from './routes/assessments.js';
@@ -69,6 +71,7 @@ import dailyFeesRoutes from './routes/dailyFees.js';
 import paymentSubmissionsRoutes from './routes/paymentSubmissions.js';
 import studentCheckinsRoutes from './routes/studentCheckins.js';
 import publicCheckinsRoutes from './routes/publicCheckins.js';
+import complaintsRoutes from './routes/complaints.js';
 import { startInvoiceStatusJob } from './jobs/invoiceStatusJob.js';
 import { initSocket } from './socket.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -192,6 +195,7 @@ app.use('/api/audit', auditRoutes);
 app.use('/api/fee-calculations', feeCalculationsRoutes);
 app.use('/api/payroll', payrollRoutes);
 app.use('/api/attendance', attendanceRoutes);
+app.use('/api/staff-attendance', staffAttendanceRoutes);
 app.use('/api/grades', gradesRoutes);
 app.use('/api/grade-config', gradeConfigRoutes);
 app.use('/api/assessments', assessmentsRoutes);
@@ -222,6 +226,7 @@ app.use('/api/daily-fees', dailyFeesRoutes);
 app.use('/api/payment-submissions', paymentSubmissionsRoutes);
 app.use('/api/student-checkins', studentCheckinsRoutes);
 app.use('/api/public-checkins', publicCheckinsRoutes);
+app.use('/api/complaints', complaintsRoutes);
 
 // Error handling middleware
 app.use(errorHandler);
@@ -234,6 +239,7 @@ initializeDatabase()
     startTeacherSuspensionJob();
     startTodoReminderJob();
     startScheduledAnnouncementJob();
+    void startStaffAttendanceAutoCheckoutJobs();
     httpServer.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📊 Database connected`);

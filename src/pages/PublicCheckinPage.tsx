@@ -263,7 +263,7 @@ const PublicCheckinPage: React.FC = () => {
         </div>
 
         <p className="text-center text-[10px] text-slate-400 mt-6">
-          School Safety Check-in System
+          School Safety — Student Check-in
         </p>
       </div>
     </div>

@@ -5,11 +5,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useImpersonation } from '../../contexts/ImpersonationContext';
+import { useImpersonationOptional } from '../../contexts/ImpersonationContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSchool } from '../../contexts/SchoolContext';
 import { apiService } from '../../services/api';
-import { cn } from '@/lib/utils';
 import { Eye, Loader2, Search, UserRoundSearch, X } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
@@ -30,7 +29,11 @@ type Props = {
 const BecomeUserPanel: React.FC<Props> = ({ open, onClose }) => {
   const { user } = useAuth();
   const { schoolId, school } = useSchool();
-  const { loading, startAutoImpersonation, startStaffImpersonation, startParentImpersonation } = useImpersonation();
+  const impersonation = useImpersonationOptional();
+  const loading = impersonation?.loading ?? false;
+  const startAutoImpersonation = impersonation?.startAutoImpersonation;
+  const startStaffImpersonation = impersonation?.startStaffImpersonation;
+  const startParentImpersonation = impersonation?.startParentImpersonation;
 
   const [identifier, setIdentifier] = useState('');
   const [selectedTenantId, setSelectedTenantId] = useState<string>(schoolId ? String(schoolId) : '');
@@ -112,6 +115,7 @@ const BecomeUserPanel: React.FC<Props> = ({ open, onClose }) => {
       toast({ title: 'Select a school first', variant: 'destructive' });
       return;
     }
+    if (!startAutoImpersonation) return;
     try {
       onClose();
       await startAutoImpersonation(id, tenantId);
@@ -126,6 +130,7 @@ const BecomeUserPanel: React.FC<Props> = ({ open, onClose }) => {
 
   const handlePick = async (row: SearchRow) => {
     if (!tenantId || Number.isNaN(tenantId)) return;
+    if (!startStaffImpersonation || !startParentImpersonation) return;
     try {
       onClose();
       if (row.kind === 'parent' && row.studentId) {
@@ -161,7 +166,7 @@ const BecomeUserPanel: React.FC<Props> = ({ open, onClose }) => {
     }
   }, [open, schoolId]);
 
-  if (!open) return null;
+  if (!open || !impersonation) return null;
 
   const panel = (
     <div className="fixed inset-0 z-[10050] flex items-end justify-center sm:items-center sm:p-4">

@@ -86,7 +86,7 @@ const ParentCheckinPanel: React.FC<ParentCheckinPanelProps> = ({ token, tenantId
       <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-          <Smartphone className="w-5 h-5 text-violet-600" /> Check-in/out
+          <Smartphone className="w-5 h-5 text-violet-600" /> Student Check-in/out
         </h2>
         <button onClick={fetchStatus} className="text-gray-400 hover:text-violet-600 transition-colors">
           <RefreshCw className="w-4 h-4" />

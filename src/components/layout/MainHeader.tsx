@@ -58,7 +58,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
   const [adminNotifications, setAdminNotifications] = useState<
     Array<{
       id: string;
-      type: 'parent-desk' | 'support-chat' | 'term-budget' | 'lost-card' | 'payment-submissions';
+      type: 'parent-desk' | 'support-chat' | 'term-budget' | 'lost-card' | 'payment-submissions' | 'complaint';
       title: string;
       body: string;
       unread: number;
@@ -262,6 +262,10 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
                         setActiveModule('lost-cards');
                         return;
                       }
+                      if (notification.type === 'complaint') {
+                        setActiveModule('complaints');
+                        return;
+                      }
                       setActiveModule(notification.type === 'term-budget' ? 'term-budget' : notification.type);
                     }}
                     className={cn(
@@ -354,7 +358,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
         count: number;
         title: string;
         body: string;
-        type: 'parent-desk' | 'support-chat' | 'term-budget' | 'lost-card' | 'payment-submissions';
+        type: 'parent-desk' | 'support-chat' | 'term-budget' | 'lost-card' | 'payment-submissions' | 'complaint';
         priority?: 'HIGH' | 'NORMAL';
         reportId?: string;
         notificationDbId?: number;
@@ -380,6 +384,29 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
           body: n.message,
           priority: n.priority === 'HIGH' ? 'HIGH' : 'NORMAL',
           reportId: n.report_id,
+          notificationDbId: n.id,
+          timestamp: new Date(n.created_at).getTime(),
+        });
+      }
+
+      const complaintRes = await apiService.get<{
+        items: Array<{
+          id: number;
+          title: string;
+          message: string;
+          priority: string;
+          link: string;
+          created_at: string;
+        }>;
+      }>('/complaints/notifications/unread').catch(() => ({ items: [] }));
+      for (const n of complaintRes.items || []) {
+        results.push({
+          id: `complaint-${n.id}`,
+          type: 'complaint',
+          count: 1,
+          title: n.title,
+          body: n.message,
+          priority: n.priority === 'HIGH' ? 'HIGH' : 'NORMAL',
           notificationDbId: n.id,
           timestamp: new Date(n.created_at).getTime(),
         });
@@ -475,7 +502,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
   }, []);
 
   const markAdminNotificationRead = useCallback(async (
-    notificationType: 'parent-desk' | 'support-chat' | 'term-budget' | 'lost-card' | 'payment-submissions',
+    notificationType: 'parent-desk' | 'support-chat' | 'term-budget' | 'lost-card' | 'payment-submissions' | 'complaint',
     alertId?: number,
     notificationDbId?: number
   ) => {
@@ -485,6 +512,9 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
       }
       if (notificationType === 'lost-card' && notificationDbId) {
         await apiService.post(`/lost-cards/notifications/${notificationDbId}/read`, {});
+      }
+      if (notificationType === 'complaint' && notificationDbId) {
+        await apiService.post(`/complaints/notifications/${notificationDbId}/read`, {});
       }
       if (notificationType !== 'parent-desk' && notificationType !== 'support-chat') {
         await loadAdminNotifications();
@@ -510,7 +540,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
       const tid = evt.tenantId;
       if (tid != null && user?.tenantId != null && tid !== user.tenantId) return;
       const e = String(evt?.entity || '');
-      if (e === 'parent-desk' || e === 'support-chat' || e === 'term-budget' || e === 'lost-card' || e === 'payment-submission') {
+      if (e === 'parent-desk' || e === 'support-chat' || e === 'term-budget' || e === 'lost-card' || e === 'payment-submission' || e === 'complaint') {
         void loadAdminNotifications();
       }
     };
@@ -532,6 +562,9 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
     const onLostCard = () => {
       void loadAdminNotifications();
     };
+    const onComplaint = () => {
+      void loadAdminNotifications();
+    };
     const onSupportRead = () => {
       void loadAdminNotifications();
     };
@@ -540,12 +573,14 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
     socket.on('new-support-message', onSupportMessage);
     socket.on('support-chat-read', onSupportRead);
     socket.on('lost-card-report', onLostCard);
+    socket.on('complaint-filed', onComplaint);
     return () => {
       socket.off('tenant-data-changed', onTenant);
       socket.off('new-parent-message', onNew);
       socket.off('new-support-message', onSupportMessage);
       socket.off('support-chat-read', onSupportRead);
       socket.off('lost-card-report', onLostCard);
+      socket.off('complaint-filed', onComplaint);
     };
   }, [socket, showAdminNotifications, loadAdminNotifications, showAdminCommsToast]);
 

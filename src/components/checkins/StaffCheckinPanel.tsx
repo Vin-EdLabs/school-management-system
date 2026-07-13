@@ -1,14 +1,50 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { Search, UserCheck, UserX, Clock, RefreshCw, Users, BarChart3 } from 'lucide-react';
+import {
+  Search,
+  UserCheck,
+  UserX,
+  Clock,
+  RefreshCw,
+  Users,
+  HandHelping,
+  LogIn,
+  LogOut,
+  X,
+} from 'lucide-react';
 import { checkinService } from '@/services/checkinService';
 import { apiService } from '@/services/api';
 import { toast } from '@/hooks/use-toast';
 import { useData } from '@/contexts/DataContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
 
 interface TeacherClass {
   id: number;
   class_name: string;
+}
+
+type TabId = 'assist' | 'class';
+
+function studentName(s: any) {
+  return `${s.firstName || s.first_name || ''} ${s.lastName || s.last_name || ''}`.trim() || 'Student';
+}
+
+function studentInitials(s: any) {
+  const a = (s.firstName || s.first_name || '?')[0];
+  const b = (s.lastName || s.last_name || '?')[0];
+  return `${a}${b}`.toUpperCase();
+}
+
+function studentIdLabel(s: any) {
+  return s.studentId || s.student_id || s.admissionNumber || s.admission_number || '';
+}
+
+function classLabel(s: any) {
+  return s.className || s.class_name || 'No class';
 }
 
 const StaffCheckinPanel: React.FC = () => {
@@ -17,17 +53,12 @@ const StaffCheckinPanel: React.FC = () => {
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [processing, setProcessing] = useState(false);
-  const [tab, setTab] = useState<'search' | 'class'>('search');
+  const [tab, setTab] = useState<TabId>('assist');
   const [teacherClasses, setTeacherClasses] = useState<TeacherClass[]>([]);
   const [liveStatus, setLiveStatus] = useState<Map<number, { action: string | null; time: string | null }>>(new Map());
   const [statusLoading, setStatusLoading] = useState(false);
-  const [allClasses, setAllClasses] = useState<any[]>([]);
-  const [classStatusData, setClassStatusData] = useState<any[]>([]);
-  const [classDataLoading, setClassDataLoading] = useState(false);
-  const [selectedClassId, setSelectedClassId] = useState<string>('');
-  const [classSearch, setClassSearch] = useState('');
 
-  const isTeacher = user?.role === 'teacher' || (user?.role === 'staff' && user?.teacherId);
+  const isTeacher = user?.role === 'teacher' || user?.role === 'headmaster' || !!(user?.role === 'staff' && user?.teacherId);
 
   useEffect(() => {
     if (!isTeacher) return;
@@ -46,132 +77,70 @@ const StaffCheckinPanel: React.FC = () => {
         setLiveStatus(map);
       }
     } catch {
-      // silent
+      /* silent */
     } finally {
       setStatusLoading(false);
     }
   }, []);
 
-  const fetchClassStatusData = useCallback(async () => {
-    setClassDataLoading(true);
-    try {
-      const data = await checkinService.getStatus();
-      if (Array.isArray(data)) setClassStatusData(data);
-    } catch {
-      setClassStatusData([]);
-    } finally {
-      setClassDataLoading(false);
-    }
-  }, []);
-
-  const fetchAllClasses = useCallback(async () => {
-    try {
-      const data = await apiService.get('/classes');
-      setAllClasses(Array.isArray(data) ? data : []);
-    } catch {
-      setAllClasses([]);
-    }
-  }, []);
-
   useEffect(() => {
-    if (tab === 'class') {
-      fetchLiveStatus();
-    }
-    if (tab === 'classes') {
-      fetchClassStatusData();
-      fetchAllClasses();
-    }
-  }, [tab, fetchLiveStatus, fetchClassStatusData, fetchAllClasses]);
+    void fetchLiveStatus();
+  }, [fetchLiveStatus]);
 
-  const classStudentIds = new Set<number>();
-  const classStudents = (students || []).filter((s: any) => {
-    if (teacherClasses.some((tc) => tc.id === Number(s.classAssignedId))) {
-      classStudentIds.add(Number(s.id));
-      return true;
-    }
-    return false;
-  });
+  const classStudents = useMemo(() => {
+    const ids = new Set(teacherClasses.map((tc) => Number(tc.id)));
+    return (students || []).filter((s: any) => ids.has(Number(s.classAssignedId)));
+  }, [students, teacherClasses]);
 
-  const groupedByClass = teacherClasses.map((tc) => ({
-    ...tc,
-    students: classStudents.filter((s: any) => Number(s.classAssignedId) === tc.id),
-  })).filter((g) => g.students.length > 0);
+  const groupedByClass = useMemo(
+    () =>
+      teacherClasses
+        .map((tc) => ({
+          ...tc,
+          students: classStudents.filter((s: any) => Number(s.classAssignedId) === tc.id),
+        }))
+        .filter((g) => g.students.length > 0),
+    [teacherClasses, classStudents]
+  );
 
-  // Per-class stats for the Classes tab
-  const classStats = useMemo(() => {
-    let filtered = classStatusData;
-
-    if (selectedClassId) {
-      filtered = filtered.filter((s: any) => Number(s.class_id) === Number(selectedClassId));
-    }
-
-    if (classSearch.trim()) {
-      const q = classSearch.toLowerCase();
-      filtered = filtered.filter((s: any) =>
-        (s.class_name || '').toLowerCase().includes(q) ||
-        (s.first_name || '').toLowerCase().includes(q) ||
-        (s.last_name || '').toLowerCase().includes(q) ||
-        (s.student_id || s.admission_number || '').toLowerCase().includes(q)
-      );
-    }
-
-    const groups = new Map<string, { classId: number; onCampus: number; offCampus: number; total: number }>();
-
-    filtered.forEach((s: any) => {
-      const name = s.class_name || 'No Class';
-      if (!groups.has(name)) {
-        groups.set(name, { classId: Number(s.class_id), onCampus: 0, offCampus: 0, total: 0 });
-      }
-      const g = groups.get(name)!;
-      g.total++;
-      if (s.current_status === 'on_campus') {
-        g.onCampus++;
-      } else {
-        g.offCampus++;
-      }
-    });
-
-    return Array.from(groups.entries())
-      .map(([name, stats]) => ({ name, ...stats }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [classStatusData, selectedClassId, classSearch]);
-
-  const filtered = (students || []).filter((s: any) => {
-    const q = search.toLowerCase();
-    return (
-      (s.firstName || s.first_name || '').toLowerCase().includes(q) ||
-      (s.lastName || s.last_name || '').toLowerCase().includes(q) ||
-      (s.studentId || s.student_id || '').toLowerCase().includes(q) ||
-      (s.admissionNumber || s.admission_number || '').toLowerCase().includes(q)
-    );
-  }).slice(0, 10);
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return [];
+    const pool = isTeacher && teacherClasses.length > 0 ? classStudents : students || [];
+    return pool
+      .filter((s: any) => {
+        return (
+          (s.firstName || s.first_name || '').toLowerCase().includes(q) ||
+          (s.lastName || s.last_name || '').toLowerCase().includes(q) ||
+          studentName(s).toLowerCase().includes(q) ||
+          studentIdLabel(s).toLowerCase().includes(q) ||
+          classLabel(s).toLowerCase().includes(q)
+        );
+      })
+      .slice(0, 12);
+  }, [search, students, classStudents, isTeacher, teacherClasses.length]);
 
   const selectedStudent = selectedId
     ? (students || []).find((s: any) => Number(s.id) === selectedId)
     : null;
 
-  const getStudentStatus = (s: any) => {
-    const live = liveStatus.get(Number(s.id));
-    if (live) return live;
-    return { action: null, time: null };
-  };
+  const getStudentStatus = (s: any) => liveStatus.get(Number(s.id)) || { action: null, time: null };
 
-  const handleCheckin = async (action: 'check_in' | 'check_out') => {
-    if (!selectedId) return;
+  const handleCheckin = async (studentId: number, action: 'check_in' | 'check_out') => {
     setProcessing(true);
     try {
-      await checkinService.manualCheckin(selectedId, action);
+      await checkinService.manualCheckin(studentId, action);
       toast({
-        title: 'Success',
-        description: `Student ${action === 'check_in' ? 'checked in' : 'checked out'}`,
+        title: action === 'check_in' ? 'Student checked in' : 'Student checked out',
+        description: 'Recorded to help the parent — campus status updated.',
       });
       setSelectedId(null);
       setSearch('');
-      if (tab === 'class') fetchLiveStatus();
-    } catch (err: any) {
+      await fetchLiveStatus();
+    } catch (err: unknown) {
       toast({
-        title: 'Failed',
-        description: err.message || 'Could not record check-in/out',
+        title: 'Could not update',
+        description: err instanceof Error ? err.message : 'Try again',
         variant: 'destructive',
       });
     } finally {
@@ -179,306 +148,311 @@ const StaffCheckinPanel: React.FC = () => {
     }
   };
 
-  const quickCheckin = async (studentId: number, action: 'check_in' | 'check_out') => {
-    setProcessing(true);
-    try {
-      await checkinService.manualCheckin(studentId, action);
-      toast({ title: 'Success', description: `Student ${action === 'check_in' ? 'checked in' : 'checked out'}` });
-      fetchLiveStatus();
-    } catch (err: any) {
-      toast({ title: 'Failed', description: err.message || 'Could not record', variant: 'destructive' });
-    } finally {
-      setProcessing(false);
+  const onCampusCount = useMemo(() => {
+    let n = 0;
+    for (const s of classStudents) {
+      if (getStudentStatus(s).action === 'check_in') n += 1;
     }
-  };
+    return n;
+  }, [classStudents, liveStatus]);
 
   return (
-    <div className="p-4 md:p-6 lg:p-8 animate-in fade-in duration-500">
-      <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-          <UserCheck className="w-5 h-5 text-blue-600" /> Staff Check-in/out
-        </h2>
-        {tab === 'class' && (
-          <button onClick={fetchLiveStatus} disabled={statusLoading} className="text-gray-400 hover:text-blue-600 transition-colors">
-            <RefreshCw className={`w-4 h-4 ${statusLoading ? 'animate-spin' : ''}`} />
-          </button>
-        )}
+    <div className="mx-auto max-w-5xl p-4 md:p-6 space-y-5 animate-in fade-in duration-300">
+      {/* Hero */}
+      <div className="relative overflow-hidden rounded-2xl border border-sky-200/70 bg-gradient-to-br from-slate-900 via-sky-950 to-indigo-950 p-6 text-white shadow-lg">
+        <div className="absolute -right-8 -top-8 h-36 w-36 rounded-full bg-sky-400/15 blur-2xl" />
+        <div className="relative space-y-2">
+          <div className="inline-flex items-center gap-2 rounded-full bg-sky-500/20 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-sky-100 ring-1 ring-sky-400/30">
+            <HandHelping className="h-3.5 w-3.5" />
+            Assist parents
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight">Student Check-in</h1>
+          <p className="text-sm text-white/75 max-w-xl">
+            Help parents complete drop-off and pick-up when they cannot scan the QR code. Search a student or use your class list.
+          </p>
+          {isTeacher && (
+            <div className="flex flex-wrap gap-2 pt-2">
+              <Badge className="bg-white/15 text-white border-0 hover:bg-white/20">
+                {classStudents.length} in your classes
+              </Badge>
+              <Badge className="bg-emerald-500/25 text-emerald-50 border-0 hover:bg-emerald-500/30">
+                {onCampusCount} on campus now
+              </Badge>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+      <div className="flex gap-1 rounded-xl bg-muted/80 p-1">
         <button
           type="button"
-          onClick={() => { setTab('search'); setSelectedId(null); }}
-          className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold transition-colors ${
-            tab === 'search' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-          }`}
+          onClick={() => {
+            setTab('assist');
+            setSelectedId(null);
+          }}
+          className={cn(
+            'flex-1 flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold transition-colors',
+            tab === 'assist' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+          )}
         >
-          <Search className="w-4 h-4" /> Search
+          <Search className="h-4 w-4" />
+          Help a parent
         </button>
         {isTeacher && (
           <button
             type="button"
-            onClick={() => { setTab('class'); setSelectedId(null); }}
-            className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold transition-colors ${
-              tab === 'class' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-            }`}
+            onClick={() => {
+              setTab('class');
+              setSelectedId(null);
+              void fetchLiveStatus();
+            }}
+            className={cn(
+              'flex-1 flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold transition-colors',
+              tab === 'class' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+            )}
           >
-            <Users className="w-4 h-4" /> My Class
+            <Users className="h-4 w-4" />
+            My class
           </button>
         )}
-        <button
-          type="button"
-          onClick={() => { setTab('classes'); setSelectedId(null); }}
-          className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold transition-colors ${
-            tab === 'classes' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          <BarChart3 className="w-4 h-4" /> Classes
-        </button>
       </div>
 
-      {/* ── Search tab ── */}
-      {tab === 'search' && (
-        <>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setSelectedId(null); }}
-              placeholder="Search student by name or ID..."
-              className="w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
-            />
-          </div>
+      {/* Assist tab */}
+      {tab === 'assist' && (
+        <div className="space-y-4">
+          <Card className="rounded-2xl border-border shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Find student</CardTitle>
+              <CardDescription>
+                Type a name or student ID, then record check-in or check-out for the parent.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setSelectedId(null);
+                  }}
+                  placeholder="Search by name or student ID…"
+                  className="h-11 pl-10 rounded-xl"
+                  autoFocus
+                />
+              </div>
 
-          {search && !selectedId && (
-            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100 max-h-64 overflow-y-auto">
-              {filtered.length === 0 ? (
-                <div className="p-4 text-center text-sm text-slate-500">No students found</div>
-              ) : (
-                filtered.map((s: any) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => setSelectedId(Number(s.id))}
-                    className="w-full text-left px-4 py-3 hover:bg-slate-50 flex items-center gap-3 transition-colors"
-                  >
-                    <div className="w-9 h-9 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-sm font-bold">
-                      {(s.firstName || s.first_name || '?')[0]}{(s.lastName || s.last_name || '?')[0]}
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">
-                        {s.firstName || s.first_name} {s.lastName || s.last_name}
-                      </p>
-                      <p className="text-xs text-slate-500">{s.className || s.class_name || 'No class'}</p>
-                    </div>
-                  </button>
-                ))
-              )}
-            </div>
-          )}
-        </>
-      )}
-
-      {/* ── Classes tab ── */}
-      {tab === 'classes' && (
-        <div className="space-y-3">
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                value={classSearch}
-                onChange={(e) => setClassSearch(e.target.value)}
-                placeholder="Search by student name, class or ID..."
-                className="w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
-              />
-            </div>
-            <select
-              value={selectedClassId}
-              onChange={(e) => setSelectedClassId(e.target.value)}
-              className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 min-w-[160px]"
-            >
-              <option value="">All Classes</option>
-              {allClasses.map((c: any) => (
-                <option key={c.id} value={c.id}>{c.class_name || c.name || 'Unnamed'}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Stats table */}
-          {classDataLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <RefreshCw className="w-6 h-6 animate-spin text-blue-500" />
-            </div>
-          ) : (
-            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr>
-                    <th className="text-left px-4 py-3 font-semibold text-slate-700">Class</th>
-                    <th className="text-center px-4 py-3 font-semibold text-green-700">On Campus</th>
-                    <th className="text-center px-4 py-3 font-semibold text-slate-500">Left / No Record</th>
-                    <th className="text-center px-4 py-3 font-semibold text-slate-700">Total</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {classStats.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="text-center py-8 text-slate-500">No data found</td>
-                    </tr>
+              {search.trim() && !selectedId && (
+                <div className="rounded-xl border border-border overflow-hidden divide-y divide-border max-h-72 overflow-y-auto">
+                  {filtered.length === 0 ? (
+                    <p className="p-6 text-center text-sm text-muted-foreground">No matching students</p>
                   ) : (
-                    classStats.map((stat) => (
-                      <tr key={stat.classId} className="hover:bg-slate-50">
-                        <td className="px-4 py-3 font-medium text-slate-900">{stat.name}</td>
-                        <td className="text-center px-4 py-3">
-                          <span className="inline-flex items-center gap-1 text-green-700 font-semibold">
-                            <UserCheck className="w-4 h-4" /> {stat.onCampus}
-                          </span>
-                        </td>
-                        <td className="text-center px-4 py-3">
-                          <span className="inline-flex items-center gap-1 text-slate-500 font-semibold">
-                            <UserX className="w-4 h-4" /> {stat.offCampus}
-                          </span>
-                        </td>
-                        <td className="text-center px-4 py-3 font-semibold text-slate-700">{stat.total}</td>
-                      </tr>
+                    filtered.map((s: any) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => setSelectedId(Number(s.id))}
+                        className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="h-10 w-10 rounded-full bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-200 flex items-center justify-center text-sm font-bold shrink-0">
+                          {studentInitials(s)}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-foreground truncate">{studentName(s)}</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {classLabel(s)}
+                            {studentIdLabel(s) ? ` · ${studentIdLabel(s)}` : ''}
+                          </p>
+                        </div>
+                        {getStudentStatus(s).action === 'check_in' ? (
+                          <Badge className="bg-emerald-100 text-emerald-800 border-0 shrink-0">On campus</Badge>
+                        ) : getStudentStatus(s).action ? (
+                          <Badge variant="secondary" className="shrink-0">Off campus</Badge>
+                        ) : (
+                          <Badge variant="outline" className="shrink-0 text-amber-700 border-amber-300">No record</Badge>
+                        )}
+                      </button>
                     ))
                   )}
-                </tbody>
-              </table>
-            </div>
+                </div>
+              )}
+
+              {!search.trim() && !selectedId && (
+                <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-8 text-center">
+                  <HandHelping className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
+                  <p className="text-sm font-medium text-foreground">Ready to assist</p>
+                  <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
+                    When a parent cannot scan the QR code, search their child here and tap Check In or Check Out.
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {selectedStudent && selectedId && (
+            <Card className="rounded-2xl border-sky-200 dark:border-sky-900 shadow-md overflow-hidden">
+              <div className="bg-sky-50/80 dark:bg-sky-950/40 px-5 py-4 flex items-start justify-between gap-3 border-b border-sky-100 dark:border-sky-900">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="h-12 w-12 rounded-full bg-sky-600 text-white flex items-center justify-center text-base font-bold shrink-0">
+                    {studentInitials(selectedStudent)}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-bold text-foreground truncate">{studentName(selectedStudent)}</p>
+                    <p className="text-sm text-muted-foreground truncate">
+                      {classLabel(selectedStudent)}
+                      {studentIdLabel(selectedStudent) ? ` · ${studentIdLabel(selectedStudent)}` : ''}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="shrink-0"
+                  onClick={() => {
+                    setSelectedId(null);
+                    setSearch('');
+                  }}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <CardContent className="p-5 space-y-4">
+                <p className="text-xs text-muted-foreground text-center">
+                  Confirm with the parent, then record the action below.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Button
+                    type="button"
+                    disabled={processing}
+                    onClick={() => void handleCheckin(selectedId, 'check_in')}
+                    className="h-auto min-h-[88px] flex-col gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white py-4"
+                  >
+                    {processing ? (
+                      <RefreshCw className="h-6 w-6 animate-spin" />
+                    ) : (
+                      <LogIn className="h-6 w-6" />
+                    )}
+                    <span className="text-sm font-bold">Check In</span>
+                    <span className="text-[11px] font-normal text-emerald-100">Drop-off / arrived</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    disabled={processing}
+                    variant="outline"
+                    onClick={() => void handleCheckin(selectedId, 'check_out')}
+                    className="h-auto min-h-[88px] flex-col gap-1.5 rounded-xl border-sky-300 text-sky-800 hover:bg-sky-50 dark:border-sky-700 dark:text-sky-200 dark:hover:bg-sky-950 py-4"
+                  >
+                    {processing ? (
+                      <RefreshCw className="h-6 w-6 animate-spin" />
+                    ) : (
+                      <LogOut className="h-6 w-6" />
+                    )}
+                    <span className="text-sm font-bold">Check Out</span>
+                    <span className="text-[11px] font-normal text-muted-foreground">Pick-up / leaving</span>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           )}
         </div>
       )}
 
-      {/* ── My Class tab ── */}
-      {tab === 'class' && (
-        <div className="space-y-3">
+      {/* My class tab */}
+      {tab === 'class' && isTeacher && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm text-muted-foreground">Quick In / Out for students in your classes</p>
+            <Button type="button" variant="outline" size="sm" onClick={() => void fetchLiveStatus()} disabled={statusLoading}>
+              <RefreshCw className={cn('h-3.5 w-3.5 mr-1.5', statusLoading && 'animate-spin')} />
+              Refresh
+            </Button>
+          </div>
+
           {groupedByClass.length === 0 ? (
-            <div className="text-center py-8 text-slate-500 bg-white rounded-xl border border-slate-200">
-              <Users className="w-10 h-10 mx-auto mb-2 text-slate-300" />
-              <p className="text-sm font-medium">No students in your class</p>
-            </div>
+            <Card className="rounded-2xl">
+              <CardContent className="py-12 text-center">
+                <Users className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
+                <p className="text-sm font-medium text-foreground">No students in your classes</p>
+                <p className="text-xs text-muted-foreground mt-1">Use Help a parent to search the whole school.</p>
+              </CardContent>
+            </Card>
           ) : (
             groupedByClass.map((group) => (
-              <div key={group.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-                <div className="px-4 py-2 bg-slate-50 border-b border-slate-200">
-                  <p className="text-sm font-bold text-slate-700">{group.class_name}</p>
-                </div>
-                <div className="divide-y divide-slate-100">
+              <Card key={group.id} className="rounded-2xl overflow-hidden shadow-sm">
+                <CardHeader className="py-3 px-4 bg-muted/40 border-b border-border">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <Users className="h-4 w-4 text-sky-600" />
+                    {group.class_name}
+                    <Badge variant="secondary" className="ml-auto font-normal">
+                      {group.students.length}
+                    </Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0 divide-y divide-border">
                   {group.students.map((s: any) => {
                     const status = getStudentStatus(s);
                     const onCampus = status.action === 'check_in';
                     return (
-                      <div key={s.id} className="px-4 py-3 flex items-center justify-between hover:bg-slate-50">
+                      <div key={s.id} className="px-4 py-3 flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-bold shrink-0">
-                            {(s.firstName || s.first_name || '?')[0]}{(s.lastName || s.last_name || '?')[0]}
+                          <div className="h-9 w-9 rounded-full bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-200 flex items-center justify-center text-xs font-bold shrink-0">
+                            {studentInitials(s)}
                           </div>
                           <div className="min-w-0">
-                            <p className="text-sm font-semibold text-slate-900 truncate">
-                              {s.firstName || s.first_name} {s.lastName || s.last_name}
+                            <p className="text-sm font-semibold text-foreground truncate">{studentName(s)}</p>
+                            <p className="text-[11px] text-muted-foreground truncate">
+                              {studentIdLabel(s)}
+                              {status.time
+                                ? ` · ${new Date(status.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                                : ''}
                             </p>
-                            <p className="text-xs text-slate-500 truncate">{s.studentId || s.admissionNumber || s.admission_number || ''}</p>
-                            {status.time && (
-                              <p className="text-[10px] text-slate-400 mt-0.5">
-                                {new Date(status.time).toLocaleString()}
-                              </p>
-                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
-                          <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full ${
-                            onCampus
-                              ? 'text-green-700 bg-green-100'
-                              : status.action
-                                ? 'text-slate-500 bg-slate-100'
-                                : 'text-amber-600 bg-amber-50'
-                          }`}>
+                          <span
+                            className={cn(
+                              'inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-full',
+                              onCampus
+                                ? 'text-emerald-700 bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-300'
+                                : status.action
+                                  ? 'text-slate-600 bg-slate-100 dark:bg-slate-800'
+                                  : 'text-amber-700 bg-amber-50 dark:bg-amber-950/40'
+                            )}
+                          >
                             {onCampus ? <UserCheck className="w-3 h-3" /> : status.action ? <UserX className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
-                            {onCampus ? 'On' : status.action ? 'Left' : '--'}
+                            {onCampus ? 'On campus' : status.action ? 'Left' : '—'}
                           </span>
-                          <button
+                          <Button
                             type="button"
-                            onClick={() => quickCheckin(Number(s.id), 'check_in')}
+                            size="sm"
                             disabled={processing}
-                            className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 disabled:opacity-50"
+                            onClick={() => void handleCheckin(Number(s.id), 'check_in')}
+                            className="h-8 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
                           >
                             In
-                          </button>
-                          <button
+                          </Button>
+                          <Button
                             type="button"
-                            onClick={() => quickCheckin(Number(s.id), 'check_out')}
+                            size="sm"
+                            variant="outline"
                             disabled={processing}
-                            className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 disabled:opacity-50"
+                            onClick={() => void handleCheckin(Number(s.id), 'check_out')}
+                            className="h-8 px-2.5 rounded-lg text-xs"
                           >
                             Out
-                          </button>
+                          </Button>
                         </div>
                       </div>
                     );
                   })}
-                </div>
-              </div>
+                </CardContent>
+              </Card>
             ))
           )}
         </div>
       )}
-
-      {/* Selected student actions */}
-      {selectedStudent && selectedId && tab === 'search' && (
-        <div className="bg-white border-2 border-blue-200 rounded-xl p-5 space-y-4 shadow-lg">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-lg font-bold">
-              {(selectedStudent.firstName || selectedStudent.first_name || '?')[0]}
-              {(selectedStudent.lastName || selectedStudent.last_name || '?')[0]}
-            </div>
-            <div>
-              <p className="text-base font-bold text-slate-900">
-                {selectedStudent.firstName || selectedStudent.first_name} {selectedStudent.lastName || selectedStudent.last_name}
-              </p>
-              <p className="text-sm text-slate-500">
-                {selectedStudent.className || selectedStudent.class_name || 'No class'}
-                {' · '}
-                {selectedStudent.studentId || selectedStudent.student_id || selectedStudent.admissionNumber || selectedStudent.admission_number || ''}
-              </p>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => handleCheckin('check_in')}
-              disabled={processing}
-              className="flex flex-col items-center gap-2 rounded-xl border-2 border-green-200 bg-green-50 p-4 text-green-700 hover:bg-green-100 transition-all disabled:opacity-50"
-            >
-              <UserCheck className="w-7 h-7" />
-              <span className="text-sm font-bold">Check In</span>
-              <span className="text-xs text-green-600">Student arrived</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleCheckin('check_out')}
-              disabled={processing}
-              className="flex flex-col items-center gap-2 rounded-xl border-2 border-blue-200 bg-blue-50 p-4 text-blue-700 hover:bg-blue-100 transition-all disabled:opacity-50"
-            >
-              <UserX className="w-7 h-7" />
-              <span className="text-sm font-bold">Check Out</span>
-              <span className="text-xs text-blue-600">Student leaving</span>
-            </button>
-          </div>
-          <button
-            type="button"
-            onClick={() => { setSelectedId(null); setSearch(''); }}
-            className="w-full text-center text-sm text-slate-500 hover:text-slate-700 py-2"
-          >
-            Cancel
-          </button>
-        </div>
-      )}
-    </div>
     </div>
   );
 };

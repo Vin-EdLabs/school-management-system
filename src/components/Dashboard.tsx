@@ -62,6 +62,12 @@ import BirthdayModule from './birthday/BirthdayModule';
 import CheckinDashboard from './checkins/CheckinDashboard';
 import StaffCheckinPanel from './checkins/StaffCheckinPanel';
 import CheckinSettings from './checkins/CheckinSettings';
+import StaffAttendanceSettings from './configurations/StaffAttendanceSettings';
+import StaffAttendanceDashboard from './staffAttendance/StaffAttendanceDashboard';
+import MyAttendanceHistory from './staffAttendance/MyAttendanceHistory';
+import ComplaintsDashboard from './complaints/ComplaintsDashboard';
+import MyComplaintsPage from './complaints/MyComplaintsPage';
+import { isHeadmasterRole } from '../utils/headmasterPortal';
 import HeadmasterDashboard from './headmaster/HeadmasterDashboard';
 import AllStaffView from './staff/AllStaffView';
 import GlobalAnnouncementPopup from './announcements/GlobalAnnouncementPopup';
@@ -228,7 +234,7 @@ const DashboardContent = () => {
       case 'financial-dashboard':
         return <FinancialDashboard />;
       case 'teacher-dashboard':
-        return <TeacherDashboard />;
+        return <TeacherDashboard onNavigate={setActiveModule} />;
       case 'ai-assistant':
         return <AiChatModule />;
       case 'students':
@@ -357,12 +363,22 @@ const DashboardContent = () => {
         return <StaffCheckinPanel />;
       case 'checkin-settings':
         return <CheckinSettings />;
+      case 'staff-attendance-settings':
+        return <StaffAttendanceSettings />;
+      case 'staff-attendance':
+        return <StaffAttendanceDashboard readOnly={isHeadmasterRole(user?.role)} />;
+      case 'my-staff-attendance':
+        return <MyAttendanceHistory />;
+      case 'complaints':
+        return <ComplaintsDashboard readOnly={isHeadmasterRole(user?.role)} />;
+      case 'my-complaints':
+        return <MyComplaintsPage />;
       default:
         if (user?.role === 'headmaster') {
           return <HeadmasterDashboard onNavigate={setActiveModule} />;
         }
         if (user?.role === 'teacher') {
-          return <TeacherDashboard />;
+          return <TeacherDashboard onNavigate={setActiveModule} />;
         }
         if (shouldUseAdministratorDashboard(user?.role)) {
           return <AdministratorDashboard onNavigate={setActiveModule} />;

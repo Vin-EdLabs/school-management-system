@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import { useAuth } from './AuthContext';
 import { useSocket } from './SocketContext';
 
-export type TeacherNotifKind = 'salary' | 'admin' | 'parent-desk' | 'support-chat';
+export type TeacherNotifKind = 'salary' | 'admin' | 'parent-desk' | 'support-chat' | 'complaint';
 
 export interface TeacherNotifItem {
   id: string;
@@ -32,7 +32,7 @@ const TEACHER_STAFF_ROLES = new Set(['teacher', 'staff']);
 /** Parent desk + support alerts are for school leadership only, not classroom staff. */
 function filterItemsForRole(role: string | undefined, list: TeacherNotifItem[]): TeacherNotifItem[] {
   if (!role || !TEACHER_STAFF_ROLES.has(role)) return list;
-  return list.filter((item) => item.kind === 'admin' || item.kind === 'salary');
+  return list.filter((item) => item.kind === 'admin' || item.kind === 'salary' || item.kind === 'complaint');
 }
 
 function storageKeyForUser(user: { role?: string; tenantId?: number | null } | null): string | null {
@@ -173,6 +173,21 @@ export const TeacherNotificationProvider: React.FC<{ children: React.ReactNode }
         const id = `admin-${at}-${title.slice(0, 24)}-${body.slice(0, 40)}`;
         pushItem({ id, kind: 'admin', title, body, at, read: false });
         showOnScreenNotification(title, body, 'indigo');
+        return;
+      }
+
+      if (entity === 'complaint-update') {
+        if (!isSchoolStaff) return;
+        const targetUserId = Number(evt.userId);
+        if (!Number.isFinite(targetUserId) || targetUserId !== Number(user.id)) return;
+        const title = String(evt.title || 'Complaint update');
+        const body = String(evt.body || '').trim();
+        if (!body) return;
+        const at = Number(evt.at) || Date.now();
+        const complaintId = Number(evt.complaintId) || at;
+        const id = `complaint-${complaintId}-${at}`;
+        pushItem({ id, kind: 'complaint', title, body, at, read: false });
+        showOnScreenNotification(title, body, 'violet');
         return;
       }
 

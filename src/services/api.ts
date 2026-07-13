@@ -84,10 +84,16 @@ function apiErrorMessage(payload: Record<string, unknown> | null, status: number
 }
 
 function throwApiError(payload: Record<string, unknown> | null, status: number): never {
-  const err = new Error(apiErrorMessage(payload, status)) as Error & { code?: string; status?: number; apiError?: string };
+  const err = new Error(apiErrorMessage(payload, status)) as Error & {
+    code?: string;
+    status?: number;
+    apiError?: string;
+    data?: Record<string, unknown> | null;
+  };
   if (payload?.code) err.code = String(payload.code);
   if (payload?.error) err.apiError = String(payload.error);
   err.status = status;
+  err.data = payload;
 
   // If the server reports session expired, clear token and redirect for tracked sessions
   try {

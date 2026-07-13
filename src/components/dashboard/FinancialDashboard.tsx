@@ -20,6 +20,7 @@ import { useActiveTerm } from '../../contexts/ActiveTermContext';
 import { useFinanceRealtime } from '../../hooks/useFinanceRealtime';
 import { fetchUnreadBudgetAlerts } from '../../services/termBudgetApi';
 import { cn } from '@/lib/utils';
+import StaffAttendanceClockCard from '../staffAttendance/StaffAttendanceClockCard';
 import {
   CreditCard,
   TrendingUp,
@@ -1034,32 +1035,37 @@ const FinancialDashboard = () => {
             </Card>
           </div>
 
-          <Card className="overflow-hidden rounded-2xl border-border/80 shadow-sm ring-1 ring-border/40">
-            <CardHeader className="px-6 py-5">
-              <CardTitle className="text-lg">Quick actions</CardTitle>
-              <CardDescription>Common finance workflows</CardDescription>
-            </CardHeader>
-            <CardContent className="px-6 pb-6">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <Button className="h-12 justify-start gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 text-emerald-900 shadow-none hover:bg-emerald-500/15 dark:text-emerald-100">
-                  <Receipt className="h-4 w-4 shrink-0" />
-                  Record fee payment
-                </Button>
-                <Button className="h-12 justify-start gap-3 rounded-xl border border-sky-500/25 bg-sky-500/10 px-4 text-sky-900 shadow-none hover:bg-sky-500/15 dark:text-sky-100">
-                  <Plus className="h-4 w-4 shrink-0" />
-                  Add other income
-                </Button>
-                <Button className="h-12 justify-start gap-3 rounded-xl border border-rose-500/25 bg-rose-500/10 px-4 text-rose-900 shadow-none hover:bg-rose-500/15 dark:text-rose-100">
-                  <FileText className="h-4 w-4 shrink-0" />
-                  Record expense
-                </Button>
-                <Button className="h-12 justify-start gap-3 rounded-xl border border-violet-500/25 bg-violet-500/10 px-4 text-violet-900 shadow-none hover:bg-violet-500/15 dark:text-violet-100">
-                  <Calculator className="h-4 w-4 shrink-0" />
-                  Open reports
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <div className="lg:col-span-1">
+              <StaffAttendanceClockCard variant="sidebar" />
+            </div>
+            <Card className="overflow-hidden rounded-2xl border-border/80 shadow-sm ring-1 ring-border/40 lg:col-span-2">
+              <CardHeader className="px-6 py-5">
+                <CardTitle className="text-lg">Quick actions</CardTitle>
+                <CardDescription>Common finance workflows</CardDescription>
+              </CardHeader>
+              <CardContent className="px-6 pb-6">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Button className="h-12 justify-start gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 text-emerald-900 shadow-none hover:bg-emerald-500/15 dark:text-emerald-100">
+                    <Receipt className="h-4 w-4 shrink-0" />
+                    Record fee payment
+                  </Button>
+                  <Button className="h-12 justify-start gap-3 rounded-xl border border-sky-500/25 bg-sky-500/10 px-4 text-sky-900 shadow-none hover:bg-sky-500/15 dark:text-sky-100">
+                    <Plus className="h-4 w-4 shrink-0" />
+                    Add other income
+                  </Button>
+                  <Button className="h-12 justify-start gap-3 rounded-xl border border-rose-500/25 bg-rose-500/10 px-4 text-rose-900 shadow-none hover:bg-rose-500/15 dark:text-rose-100">
+                    <FileText className="h-4 w-4 shrink-0" />
+                    Record expense
+                  </Button>
+                  <Button className="h-12 justify-start gap-3 rounded-xl border border-violet-500/25 bg-violet-500/10 px-4 text-violet-900 shadow-none hover:bg-violet-500/15 dark:text-violet-100">
+                    <Calculator className="h-4 w-4 shrink-0" />
+                    Open reports
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
 

@@ -114,7 +114,7 @@ const CheckinSettings: React.FC = () => {
       <div className="space-y-6 max-w-2xl">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-          <QrCode className="w-5 h-5 text-emerald-600" /> Check-in QR Codes
+          <QrCode className="w-5 h-5 text-emerald-600" /> Student Check-in QR Codes
         </h2>
         <button
           type="button"

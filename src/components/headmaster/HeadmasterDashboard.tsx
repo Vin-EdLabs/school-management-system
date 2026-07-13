@@ -20,6 +20,8 @@ import { useData } from '@/contexts/DataContext';
 import { apiService } from '@/services/api';
 import { useEnsureData } from '@/hooks/useEnsureData';
 import { formatDisplayDate } from '@/utils/dateFormat';
+import StaffAttendanceClockCard from '@/components/staffAttendance/StaffAttendanceClockCard';
+import { BrandedLoading } from '@/components/common/BrandedLoading';
 
 type HeadmasterDashboardProps = {
   onNavigate: (module: string) => void;
@@ -28,24 +30,30 @@ type HeadmasterDashboardProps = {
 const HeadmasterDashboard: React.FC<HeadmasterDashboardProps> = ({ onNavigate }) => {
   const { user } = useAuth();
   const { school } = useSchool();
-  const { students, classes } = useData();
+  const { students, classes, loading: dataLoading } = useData();
   useEnsureData(['students', 'classes']);
   const [upcomingEvents, setUpcomingEvents] = useState(0);
   const [totalStaff, setTotalStaff] = useState(0);
+  const [overviewLoading, setOverviewLoading] = useState(true);
 
   useEffect(() => {
-    void apiService
-      .get<unknown[]>('/events')
-      .then((rows) => setUpcomingEvents(Array.isArray(rows) ? rows.length : 0))
-      .catch(() => setUpcomingEvents(0));
-    void apiService
-      .get<{ count: number }>('/reports/admin-overview')
-      .then((data) => {
-        const teachers = data?.teachers?.total ?? 0;
-        const other = data?.otherStaff?.total ?? 0;
-        setTotalStaff(teachers + other);
-      })
-      .catch(() => setTotalStaff(0));
+    let cancelled = false;
+    setOverviewLoading(true);
+    void Promise.all([
+      apiService.get<unknown[]>('/events').catch(() => []),
+      apiService.get<{ teachers?: { total?: number }; otherStaff?: { total?: number } }>('/reports/admin-overview').catch(() => null),
+    ]).then(([events, overview]) => {
+      if (cancelled) return;
+      setUpcomingEvents(Array.isArray(events) ? events.length : 0);
+      const teachers = overview?.teachers?.total ?? 0;
+      const other = overview?.otherStaff?.total ?? 0;
+      setTotalStaff(teachers + other);
+    }).finally(() => {
+      if (!cancelled) setOverviewLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const activeStudents = useMemo(
@@ -53,13 +61,28 @@ const HeadmasterDashboard: React.FC<HeadmasterDashboardProps> = ({ onNavigate })
     [students]
   );
 
+  const showBrandedLoader = overviewLoading || (dataLoading && students.length === 0 && classes.length === 0);
+
   const quickLinks = [
     { id: 'push-notifications', label: 'Announcements', icon: Megaphone },
     { id: 'calendar', label: 'Calendar', icon: Calendar },
     { id: 'headmaster-grades', label: 'Grades', icon: Award },
-    { id: 'headmaster-all-attendance', label: 'Attendance', icon: ClipboardCheck },
+    { id: 'staff-attendance', label: 'Staff Clock', icon: ClipboardCheck },
+    { id: 'headmaster-all-attendance', label: 'Class Attendance', icon: ClipboardCheck },
     { id: 'records', label: 'Records', icon: Search },
   ];
+
+  if (showBrandedLoader) {
+    return (
+      <div className="px-4 py-5 sm:p-6 min-h-[55vh] flex items-center justify-center">
+        <BrandedLoading
+          logoUrl={school?.logo_url}
+          label="Loading your dashboard…"
+          active
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="px-4 py-5 sm:p-6 space-y-6 max-w-7xl mx-auto w-full">
@@ -129,6 +152,10 @@ const HeadmasterDashboard: React.FC<HeadmasterDashboardProps> = ({ onNavigate })
           </CardContent>
         </Card>
       </div>
+
+      <StaffAttendanceClockCard
+        onOpenHistory={() => onNavigate('my-staff-attendance')}
+      />
 
       <Card>
         <CardHeader className="pb-3">

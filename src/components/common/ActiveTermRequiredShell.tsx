@@ -2,7 +2,14 @@ import React from 'react';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
 
 /** Modules fully usable before an academic term is activated. */
-export const ACTIVE_TERM_EXEMPT_MODULES = new Set(['settings']);
+export const ACTIVE_TERM_EXEMPT_MODULES = new Set([
+  'settings',
+  'staff-attendance-settings',
+  'staff-attendance',
+  'my-staff-attendance',
+  'complaints',
+  'my-complaints',
+]);
 
 /**
  * Locks module content when no active term is set.

@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { School, Users, ClipboardCheck, BookOpen, Wallet, CheckCircle, XCircle, Cake, Sparkles, Gift } from 'lucide-react';
+import { School, Users, ClipboardCheck, BookOpen, Wallet, CheckCircle, XCircle, Cake, Sparkles, Gift, GraduationCap, Flag } from 'lucide-react';
 import { apiService } from '../../services/api';
 import { useSchool } from '../../contexts/SchoolContext';
 import { type TeacherMySalaryResponse, formatTeacherMoney, salaryStatusBadgeClass } from './teacherSalaryPortal';
 import { formatDisplayDate } from '../../utils/dateFormat';
 import TeacherSubjectClassDisplay from '../teachers/TeacherSubjectClassDisplay';
 import type { TeacherSubjectClassesResponse } from '@/types/teacherSubjectClass';
+import StaffAttendanceClockCard from '../staffAttendance/StaffAttendanceClockCard';
+import { BrandedLoading } from '@/components/common/BrandedLoading';
+import { Button } from '@/components/ui/button';
+import FileComplaintDialog from '../complaints/FileComplaintDialog';
 
 interface TeacherProfile {
   id: number;
@@ -32,17 +35,12 @@ interface TeacherClass {
 
 type SalaryInfo = TeacherMySalaryResponse;
 
-const resolvePhotoUrl = (photoUrl?: string | null) => {
-  if (!photoUrl) return '';
-  if (/^https?:\/\//i.test(photoUrl) || photoUrl.startsWith('data:')) return photoUrl;
-  const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
-  const origin = apiBase.replace(/\/api\/?$/, '');
-  const normalized = photoUrl.startsWith('/') ? photoUrl : `/${photoUrl}`;
-  return `${origin}${normalized}`;
+type TeacherDashboardProps = {
+  onNavigate?: (module: string) => void;
 };
 
-const TeacherDashboard = () => {
-  const { schoolId } = useSchool();
+const TeacherDashboard = ({ onNavigate }: TeacherDashboardProps) => {
+  const { schoolId, school } = useSchool();
   const [profile, setProfile] = useState<TeacherProfile | null>(null);
   const [teacherClasses, setTeacherClasses] = useState<TeacherClass[]>([]);
   const [salaryInfo, setSalaryInfo] = useState<SalaryInfo | null>(null);
@@ -50,6 +48,7 @@ const TeacherDashboard = () => {
   const [birthdayStudents, setBirthdayStudents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [profileError, setProfileError] = useState(false);
+  const [fileComplaintOpen, setFileComplaintOpen] = useState(false);
 
   useEffect(() => {
     if (schoolId != null) apiService.setTenantContext(schoolId);
@@ -83,18 +82,24 @@ const TeacherDashboard = () => {
   }, [schoolId]);
 
   const totalStudents = teacherClasses.reduce((sum, c) => sum + parseInt(c.student_count || '0', 10), 0);
+  const clockHistory = onNavigate ? () => onNavigate('my-staff-attendance') : undefined;
 
   if (loading) {
     return (
-      <div className="px-4 py-5 sm:p-6">
-        <div className="animate-pulse text-slate-500 dark:text-slate-400">Loading your dashboard...</div>
+      <div className="px-4 py-5 sm:p-6 min-h-[55vh] flex items-center justify-center">
+        <BrandedLoading
+          logoUrl={school?.logo_url}
+          label="Loading your dashboard…"
+          active
+        />
       </div>
     );
   }
 
   if (profileError || !profile) {
     return (
-      <div className="px-4 py-5 sm:p-6">
+      <div className="px-4 py-5 sm:p-6 space-y-5 max-w-7xl mx-auto w-full">
+        <StaffAttendanceClockCard onOpenHistory={clockHistory} />
         <Card>
           <CardContent className="p-6 sm:p-8 text-center">
             <BookOpen className="w-12 h-12 text-gray-400 dark:text-gray-500 mx-auto mb-4" />
@@ -108,74 +113,110 @@ const TeacherDashboard = () => {
 
   return (
     <div className="px-4 py-5 sm:p-6 space-y-5 sm:space-y-6 max-w-7xl mx-auto w-full">
-      {/* Welcome Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-start gap-3 min-w-0">
-          <div className="w-11 h-11 shrink-0 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center">
-            <BookOpen className="w-6 h-6 text-white" />
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-800 dark:text-gray-100 leading-tight break-words">
-              Welcome back, {profile.full_name}!
+      {/* Hero — headmaster-inspired */}
+      <div className="relative overflow-hidden rounded-2xl border border-emerald-200/60 bg-gradient-to-br from-slate-900 via-emerald-950 to-teal-950 p-6 sm:p-8 text-white shadow-xl">
+        <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-emerald-400/15 blur-2xl" />
+        <div className="absolute -left-10 bottom-0 h-32 w-32 rounded-full bg-teal-400/10 blur-2xl" />
+        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-2 min-w-0">
+            <div className="inline-flex items-center gap-2 rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-emerald-100 ring-1 ring-emerald-400/30">
+              <GraduationCap className="h-3.5 w-3.5" />
+              Teacher Portal
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-bold leading-tight break-words">
+              Welcome, {profile.full_name}
             </h1>
-            <p className="text-sm sm:text-base text-gray-600 dark:text-gray-300 mt-1">Your teaching overview for today</p>
+            <p className="text-sm text-white/75 max-w-xl">
+              {school?.name ? `${school.name}` : 'Your teaching workspace'} — classes, attendance, and salary at a glance.
+            </p>
+            <p className="text-xs text-white/50">{formatDisplayDate(new Date())}</p>
           </div>
-        </div>
-        <div className="text-left sm:text-right text-xs sm:text-sm text-gray-500 dark:text-gray-300 shrink-0 pl-14 sm:pl-0">
-          <p>{formatDisplayDate(new Date())}</p>
+          <div className="shrink-0 rounded-xl bg-white/10 px-4 py-3 ring-1 ring-white/15 backdrop-blur-sm">
+            <p className="text-[10px] uppercase tracking-wider text-white/60">Staff ID</p>
+            <p className="font-mono text-lg font-semibold text-white">{profile.staff_id}</p>
+          </div>
         </div>
       </div>
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-6">
-        <Card>
-          <CardContent className="p-4 sm:p-6">
-            <div className="flex items-center justify-between">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+        <Card className="border-emerald-200/50 dark:border-emerald-900/40">
+          <CardContent className="p-4 sm:p-5">
+            <div className="flex items-center justify-between gap-2">
               <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-300">My Classes</p>
-                <p className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">{teacherClasses.length}</p>
+                <p className="text-xs font-medium text-muted-foreground">My Classes</p>
+                <p className="text-2xl sm:text-3xl font-bold tabular-nums">{teacherClasses.length}</p>
               </div>
-              <School className="w-8 h-8 text-blue-500" />
+              <School className="h-8 w-8 text-blue-500 shrink-0" />
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-4 sm:p-6">
-            <div className="flex items-center justify-between">
+          <CardContent className="p-4 sm:p-5">
+            <div className="flex items-center justify-between gap-2">
               <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Total Students</p>
-                <p className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">{totalStudents}</p>
+                <p className="text-xs font-medium text-muted-foreground">Total Students</p>
+                <p className="text-2xl sm:text-3xl font-bold tabular-nums">{totalStudents}</p>
               </div>
-              <Users className="w-8 h-8 text-green-500" />
+              <Users className="h-8 w-8 text-emerald-500 shrink-0" />
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-4 sm:p-6">
-            <div className="flex items-center justify-between">
+          <CardContent className="p-4 sm:p-5">
+            <div className="flex items-center justify-between gap-2">
               <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Subjects</p>
-                <p className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">{subjectClasses?.by_subject?.length || profile.subjects_taught?.length || 0}</p>
+                <p className="text-xs font-medium text-muted-foreground">Subjects</p>
+                <p className="text-2xl sm:text-3xl font-bold tabular-nums">
+                  {subjectClasses?.by_subject?.length || profile.subjects_taught?.length || 0}
+                </p>
               </div>
-              <ClipboardCheck className="w-8 h-8 text-purple-500" />
+              <ClipboardCheck className="h-8 w-8 text-violet-500 shrink-0" />
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-4 sm:p-6">
+          <CardContent className="p-4 sm:p-5">
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Staff ID</p>
-                <p className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white truncate">{profile.staff_id}</p>
+                <p className="text-xs font-medium text-muted-foreground">Staff ID</p>
+                <p className="text-lg sm:text-xl font-bold truncate font-mono">{profile.staff_id}</p>
               </div>
-              <BookOpen className="w-8 h-8 text-orange-500" />
+              <BookOpen className="h-8 w-8 text-orange-500 shrink-0" />
             </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Staff clock — below stats */}
+      <StaffAttendanceClockCard onOpenHistory={clockHistory} />
+
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          className="h-auto min-h-[48px] rounded-xl px-4 py-3 border-rose-200 text-rose-800 hover:bg-rose-50"
+          onClick={() => setFileComplaintOpen(true)}
+        >
+          <Flag className="h-4 w-4 mr-2 text-rose-600" />
+          File Complaint
+        </Button>
+        {onNavigate && (
+          <Button
+            type="button"
+            variant="outline"
+            className="h-auto min-h-[48px] rounded-xl px-4 py-3"
+            onClick={() => onNavigate('my-complaints')}
+          >
+            My Complaints
+          </Button>
+        )}
+      </div>
+
+      <FileComplaintDialog open={fileComplaintOpen} onOpenChange={setFileComplaintOpen} />
 
       {birthdayStudents.length > 0 && (
         <Card className="border-amber-200/60 dark:border-amber-800/40 overflow-hidden">
@@ -211,7 +252,6 @@ const TeacherDashboard = () => {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* My Classes */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
@@ -224,7 +264,7 @@ const TeacherDashboard = () => {
               <div className="text-center py-8">
                 <School className="w-12 h-12 text-gray-400 dark:text-gray-500 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No Classes Assigned</h3>
-                <p className="text-gray-500 dark:text-gray-300">You don't have any classes assigned yet.</p>
+                <p className="text-gray-500 dark:text-gray-300">You don&apos;t have any classes assigned yet.</p>
               </div>
             ) : (
               <div className="space-y-2 sm:space-y-3">
@@ -244,7 +284,6 @@ const TeacherDashboard = () => {
           </CardContent>
         </Card>
 
-        {/* Profile & Salary */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
@@ -330,7 +369,6 @@ const TeacherDashboard = () => {
         </Card>
       </div>
 
-      {/* Class overview — counts only; open My Classes for full rosters */}
       {teacherClasses.length > 0 && (
         <Card>
           <CardHeader>

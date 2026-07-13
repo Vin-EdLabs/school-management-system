@@ -144,7 +144,7 @@ const ParentCheckinPanel: React.FC<ParentCheckinPanelProps> = ({ token, tenantId
                     className={`text-sm font-bold px-3 py-2 rounded-xl transition-colors ${
                       student.is_checkin_enabled
                         ? 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100'
-                        : 'text-slate-400 bg-slate-100 hover:bg-slate-200'
+                        : 'text-red-600 bg-red-50 hover:bg-red-100'
                     }`}
                     title={student.is_checkin_enabled ? 'Disable check-in' : 'Enable check-in'}
                   >

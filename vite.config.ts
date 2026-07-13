@@ -49,6 +49,16 @@ export default defineConfig(({ mode }) => ({
       output: {
         manualChunks(id) {
           if (!id.includes("node_modules")) return;
+          // React must load in the same chunk as Radix — separate vendor-radix chunks
+          // can execute before React is initialized (React.forwardRef undefined).
+          if (
+            id.includes("node_modules/react/") ||
+            id.includes("node_modules/react-dom/") ||
+            id.includes("node_modules/scheduler/") ||
+            id.includes("@radix-ui")
+          ) {
+            return "vendor-react-radix";
+          }
           if (id.includes("firebase")) return "vendor-firebase";
           if (id.includes("leaflet") || id.includes("react-leaflet")) return "vendor-maps";
           if (
@@ -61,7 +71,6 @@ export default defineConfig(({ mode }) => ({
           }
           if (id.includes("xlsx") || id.includes("jszip")) return "vendor-export";
           if (id.includes("recharts")) return "vendor-charts";
-          if (id.includes("@radix-ui")) return "vendor-radix";
           if (id.includes("@tanstack/react-query")) return "vendor-query";
           if (id.includes("lucide-react")) return "vendor-icons";
           return "vendor";

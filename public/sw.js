@@ -1,5 +1,5 @@
 /* ScholarNerve service worker — caching + push. Bump CACHE_VERSION on breaking cache changes. */
-const CACHE_VERSION = '2026-07-13-v19';
+const CACHE_VERSION = '2026-07-13-v20';
 const CACHE_NAME = `scholarnerve-app-${CACHE_VERSION}`;
 const BRANDING_CACHE = 'scholarnerve-branding-v1';
 const BRANDING_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -62,7 +62,13 @@ self.addEventListener('activate', (event) => {
       .then((keys) =>
         Promise.all(keys.filter((k) => k !== CACHE_NAME && k !== BRANDING_CACHE).map((k) => caches.delete(k))),
       )
-      .then(() => self.clients.claim()),
+      .then(() => {
+        // Only claim clients on first install, not on every update,
+        // to prevent reload storm when connection is restored.
+        return self.clients.matchAll({ type: 'window' }).then((clients) => {
+          if (clients.length === 0) return self.clients.claim();
+        });
+      }),
   );
 });
 
@@ -348,20 +354,36 @@ async function handlePwaManifestRequest(request, apiUrl, params, origin) {
   }
 }
 
-function handleNavigationRequest(event) {
-  return nullSafeIndexCatch(
+async function handleNavigationRequest(event) {
+  // Try network first with a 5 second timeout
+  const networkWithTimeout = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout')), 5000);
     fetch(event.request)
-      .then((response) => {
-        if (response && response.status < 400) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', clone));
-          return response;
-        }
-        return offlineIndexFallback(true);
-      })
-      .catch(() => offlineIndexFallback(true)),
-    true,
-  );
+      .then((res) => { clearTimeout(timer); resolve(res); })
+      .catch((err) => { clearTimeout(timer); reject(err); });
+  });
+
+  try {
+    const response = await networkWithTimeout;
+    if (response && response.ok) {
+      // Update the cached index.html in background
+      const clone = response.clone();
+      caches.open(CACHE_NAME).then((cache) => {
+        cache.put('/index.html', clone);
+        cache.put('/', clone.clone());
+      });
+      return response;
+    }
+    // Non-ok response — serve from cache
+    const cached = await caches.match('/index.html');
+    return cached || offlineHtmlResponse(false);
+  } catch {
+    // Network failed or timed out — serve from cache
+    const cached = await caches.match('/index.html');
+    if (cached) return cached;
+    // Last resort — inline offline HTML (never null)
+    return offlineHtmlResponse(false);
+  }
 }
 
 self.addEventListener('fetch', (event) => {
@@ -372,18 +394,14 @@ self.addEventListener('fetch', (event) => {
   // Socket.IO long-polling MUST bypass the service worker. Caching or offline
   // fallbacks here cause net::ERR_FAILED 200 (OK) in production.
   if (isSocketIoRequest(url)) {
-    event.respondWith(
-      nullSafeIndexCatch(fetch(event.request), true).catch(() => offlineAssetResponse()),
-    );
+    // Socket.IO must never be intercepted — let it fail naturally offline
+    // Wrapping in respondWith causes Safari to throw null response errors
     return;
   }
 
   // Vite dev-server internals (deps, HMR client) must never be cached — stale
   // optimized-dep chunks cause 404s after re-optimization. Always go network.
   if (isViteDevPath(url)) {
-    event.respondWith(
-      nullSafeIndexCatch(fetch(event.request), true).catch(() => offlineAssetResponse()),
-    );
     return;
   }
 
@@ -431,10 +449,12 @@ self.addEventListener('fetch', (event) => {
   const isApiRequest = url.pathname.startsWith('/api/');
   if (isApiRequest) {
     event.respondWith(
-      nullSafeIndexCatch(
-        fetch(event.request).catch(() => caches.match(event.request)),
-        true,
-      ).catch(() => offlineAssetResponse()),
+      fetch(event.request)
+        .then((response) => {
+          if (response && response.ok) return response;
+          return offlineAssetResponse();
+        })
+        .catch(() => offlineAssetResponse())
     );
     return;
   }
@@ -447,59 +467,56 @@ self.addEventListener('fetch', (event) => {
   // Vite hashed bundles must be network-first so deploys never mix stale vendor chunks.
   if (isHashedBuildAsset(url)) {
     event.respondWith(
-      nullSafeIndexCatch(
-        fetch(event.request)
+      caches.match(event.request).then((cached) => {
+        if (cached) return cached;
+        return fetch(event.request)
           .then((response) => {
             if (response && response.ok) {
               const clone = response.clone();
               caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+              return response;
             }
-            return response;
+            return cached || offlineAssetResponse();
           })
-          .catch(() => caches.match(event.request)),
-        true,
-      ).catch(() => offlineAssetResponse()),
+          .catch(() => cached || offlineAssetResponse());
+      }).catch(() => offlineAssetResponse())
     );
     return;
   }
 
   if (isStaticAsset(url)) {
     event.respondWith(
-      nullSafeIndexCatch(
-        caches.match(event.request).then((cached) => {
-          if (cached) return cached;
-          return fetch(event.request)
-            .then((response) => {
-              if (response && response.ok) {
-                const clone = response.clone();
-                caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-              }
+      caches.match(event.request).then((cached) => {
+        if (cached) return cached;
+        return fetch(event.request)
+          .then((response) => {
+            if (response && response.ok) {
+              const clone = response.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
               return response;
-            })
-            .catch(() => caches.match(event.request));
-        }),
-        true,
-      ).catch(() => offlineAssetResponse()),
+            }
+            return offlineAssetResponse();
+          })
+          .catch(() => offlineAssetResponse());
+      }).catch(() => offlineAssetResponse())
     );
     return;
   }
 
   event.respondWith(
-    nullSafeIndexCatch(
-      caches.match(event.request).then((cached) => {
-        const networkFetch = fetch(event.request)
-          .then((response) => {
-            if (response && response.ok) {
-              const clone = response.clone();
-              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-            }
+    caches.match(event.request).then((cached) => {
+      const networkFetch = fetch(event.request)
+        .then((response) => {
+          if (response && response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
             return response;
-          })
-          .catch(() => cached);
-        return cached || networkFetch;
-      }),
-      true,
-    ).catch(() => offlineAssetResponse()),
+          }
+          return cached || offlineAssetResponse();
+        })
+        .catch(() => cached || offlineAssetResponse());
+      return cached || networkFetch;
+    }).catch(() => offlineAssetResponse())
   );
 });
 

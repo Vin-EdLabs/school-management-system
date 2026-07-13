@@ -117,6 +117,34 @@ function mergeServerMessagesWithInFlight(
   );
 }
 
+function messagesAreEqual(a: ChatMessage[], b: ChatMessage[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    const left = a[i];
+    const right = b[i];
+    if (String(left.id) !== String(right.id)) return false;
+    if (left.is_deleted !== right.is_deleted) return false;
+    if (left.message !== right.message) return false;
+    if (left.pending !== right.pending) return false;
+    if (left.failed !== right.failed) return false;
+  }
+  return true;
+}
+
+function channelsFingerprint(channels: ChatChannel[], totalUnread: number): string {
+  return JSON.stringify({
+    totalUnread,
+    channels: channels.map((c) => ({
+      id: c.id,
+      unread: c.unread_count,
+      at: c.last_message?.created_at || null,
+      preview: c.last_message?.message || null,
+    })),
+  });
+}
+
+const CHAT_BACKGROUND_SYNC_MS = 3000;
+
 const ChatModule: React.FC = () => {
   const { user, token } = useAuth();
 
@@ -155,6 +183,7 @@ const ChatModule: React.FC = () => {
   const nearBottomRef = useRef(true);
   const pendingRetryRef = useRef<Map<string, () => void>>(new Map());
   const activeChannelRef = useRef<ChatChannel | null>(null);
+  const channelsFingerprintRef = useRef('');
   activeChannelRef.current = activeChannel;
 
   useSyncMobileChatOpen(mobileView === 'chat' && !!activeChannel);
@@ -189,8 +218,11 @@ const ChatModule: React.FC = () => {
     setChannelsError(null);
     try {
       const data = await chatService.listChannels();
-      setChannels(data.channels || []);
-      setTotalUnread(data.total_unread || 0);
+      const nextChannels = data.channels || [];
+      const nextUnread = data.total_unread || 0;
+      setChannels(nextChannels);
+      setTotalUnread(nextUnread);
+      channelsFingerprintRef.current = channelsFingerprint(nextChannels, nextUnread);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not load channels';
       setChannelsError(message);
@@ -203,12 +235,42 @@ const ChatModule: React.FC = () => {
   const refreshChannelsQuiet = useCallback(async () => {
     try {
       const data = await chatService.listChannels();
-      setChannels(data.channels || []);
-      setTotalUnread(data.total_unread || 0);
+      const nextChannels = data.channels || [];
+      const nextUnread = data.total_unread || 0;
+      const fingerprint = channelsFingerprint(nextChannels, nextUnread);
+      if (fingerprint === channelsFingerprintRef.current) return;
+      channelsFingerprintRef.current = fingerprint;
+      setChannels(nextChannels);
+      setTotalUnread(nextUnread);
     } catch {
       // Background refresh — ignore errors so chat stays usable offline.
     }
   }, []);
+
+  const syncMessagesQuiet = useCallback(async (channelId: number) => {
+    try {
+      const data = await chatService.listMessages(channelId);
+      let shouldScroll = false;
+      setMessages((prev) => {
+        const merged = mergeServerMessagesWithInFlight(data.messages, prev);
+        if (messagesAreEqual(merged, prev)) return prev;
+        shouldScroll = merged.length > prev.length && nearBottomRef.current;
+        return merged;
+      });
+      if (shouldScroll) {
+        requestAnimationFrame(() => {
+          scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'auto' });
+        });
+      }
+    } catch {
+      // Silent background sync — never show loaders or toasts.
+    }
+  }, []);
+
+  const syncMessagesQuietRef = useRef(syncMessagesQuiet);
+  syncMessagesQuietRef.current = syncMessagesQuiet;
+  const refreshChannelsQuietRef = useRef(refreshChannelsQuiet);
+  refreshChannelsQuietRef.current = refreshChannelsQuiet;
 
   const loadMessages = useCallback(async (channelId: number, beforeId?: number) => {
     if (beforeId) setLoadingOlder(true);
@@ -311,7 +373,11 @@ const ChatModule: React.FC = () => {
       if (activeChannelRef.current?.id !== channel_id) return;
       setTypingUsers((prev) => prev.filter((t) => t.id !== user_id));
     },
-    onUnreadChanged: () => void refreshChannelsQuiet(),
+    onConnect: () => {
+      const ch = activeChannelRef.current;
+      if (ch) void syncMessagesQuietRef.current(ch.id);
+      void refreshChannelsQuietRef.current();
+    },
   });
 
   useEffect(() => {
@@ -321,6 +387,29 @@ const ChatModule: React.FC = () => {
   useEffect(() => {
     void loadChannels();
   }, [loadChannels]);
+
+  // Silent background sync while chat is open — no spinners, no page shake.
+  useEffect(() => {
+    const tick = () => {
+      void refreshChannelsQuietRef.current();
+      const ch = activeChannelRef.current;
+      if (ch) {
+        void syncMessagesQuietRef.current(ch.id);
+      }
+    };
+
+    const intervalId = window.setInterval(tick, CHAT_BACKGROUND_SYNC_MS);
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') tick();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [activeChannel?.id]);
 
   useEffect(() => {
     if (loadingChannels || channels.length === 0) return;
@@ -405,6 +494,10 @@ const ChatModule: React.FC = () => {
       setActiveChannel(resolved);
       setChannels(channelData.channels || []);
       setTotalUnread(channelData.total_unread || 0);
+      channelsFingerprintRef.current = channelsFingerprint(
+        channelData.channels || [],
+        channelData.total_unread || 0,
+      );
       if (stats) setChannelStats(stats);
     } catch {
       setActiveChannel(ch);

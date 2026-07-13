@@ -88,7 +88,7 @@ const PlatformSettingsModule: React.FC = () => {
               <CardTitle className="text-lg">Desktop zoom tip</CardTitle>
               <CardDescription>
                 Shows a bottom-right tip on desktop when browser zoom is at 100% or higher, suggesting 80–90% for
-                Markbook and dashboards.
+                Macbook and dashboards.
               </CardDescription>
             </div>
           </div>

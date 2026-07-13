@@ -212,7 +212,7 @@ export const ZoomNudge: React.FC = () => {
               </button>
             </div>
             <p className="text-xs leading-relaxed text-slate-400">
-              For the best experience — especially in <span className="font-medium text-slate-300">Markbook</span> —
+              For the best experience — especially in <span className="font-medium text-slate-300">Macbook</span> —
               zoom out to <span className="font-medium text-slate-300">80%</span> or{' '}
               <span className="font-medium text-slate-300">90%</span> using:
             </p>

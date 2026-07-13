@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { Search, UserCheck, UserX, Clock, RefreshCw, Users } from 'lucide-react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import { Search, UserCheck, UserX, Clock, RefreshCw, Users, BarChart3 } from 'lucide-react';
 import { checkinService } from '@/services/checkinService';
 import { apiService } from '@/services/api';
 import { toast } from '@/hooks/use-toast';
@@ -21,6 +21,11 @@ const StaffCheckinPanel: React.FC = () => {
   const [teacherClasses, setTeacherClasses] = useState<TeacherClass[]>([]);
   const [liveStatus, setLiveStatus] = useState<Map<number, { action: string | null; time: string | null }>>(new Map());
   const [statusLoading, setStatusLoading] = useState(false);
+  const [allClasses, setAllClasses] = useState<any[]>([]);
+  const [classStatusData, setClassStatusData] = useState<any[]>([]);
+  const [classDataLoading, setClassDataLoading] = useState(false);
+  const [selectedClassId, setSelectedClassId] = useState<string>('');
+  const [classSearch, setClassSearch] = useState('');
 
   const isTeacher = user?.role === 'teacher' || (user?.role === 'staff' && user?.teacherId);
 
@@ -47,11 +52,36 @@ const StaffCheckinPanel: React.FC = () => {
     }
   }, []);
 
+  const fetchClassStatusData = useCallback(async () => {
+    setClassDataLoading(true);
+    try {
+      const data = await checkinService.getStatus();
+      if (Array.isArray(data)) setClassStatusData(data);
+    } catch {
+      setClassStatusData([]);
+    } finally {
+      setClassDataLoading(false);
+    }
+  }, []);
+
+  const fetchAllClasses = useCallback(async () => {
+    try {
+      const data = await apiService.get('/classes');
+      setAllClasses(Array.isArray(data) ? data : []);
+    } catch {
+      setAllClasses([]);
+    }
+  }, []);
+
   useEffect(() => {
     if (tab === 'class') {
       fetchLiveStatus();
     }
-  }, [tab, fetchLiveStatus]);
+    if (tab === 'classes') {
+      fetchClassStatusData();
+      fetchAllClasses();
+    }
+  }, [tab, fetchLiveStatus, fetchClassStatusData, fetchAllClasses]);
 
   const classStudentIds = new Set<number>();
   const classStudents = (students || []).filter((s: any) => {
@@ -66,6 +96,45 @@ const StaffCheckinPanel: React.FC = () => {
     ...tc,
     students: classStudents.filter((s: any) => Number(s.classAssignedId) === tc.id),
   })).filter((g) => g.students.length > 0);
+
+  // Per-class stats for the Classes tab
+  const classStats = useMemo(() => {
+    let filtered = classStatusData;
+
+    if (selectedClassId) {
+      filtered = filtered.filter((s: any) => Number(s.class_id) === Number(selectedClassId));
+    }
+
+    if (classSearch.trim()) {
+      const q = classSearch.toLowerCase();
+      filtered = filtered.filter((s: any) =>
+        (s.class_name || '').toLowerCase().includes(q) ||
+        (s.first_name || '').toLowerCase().includes(q) ||
+        (s.last_name || '').toLowerCase().includes(q) ||
+        (s.student_id || s.admission_number || '').toLowerCase().includes(q)
+      );
+    }
+
+    const groups = new Map<string, { classId: number; onCampus: number; offCampus: number; total: number }>();
+
+    filtered.forEach((s: any) => {
+      const name = s.class_name || 'No Class';
+      if (!groups.has(name)) {
+        groups.set(name, { classId: Number(s.class_id), onCampus: 0, offCampus: 0, total: 0 });
+      }
+      const g = groups.get(name)!;
+      g.total++;
+      if (s.current_status === 'on_campus') {
+        g.onCampus++;
+      } else {
+        g.offCampus++;
+      }
+    });
+
+    return Array.from(groups.entries())
+      .map(([name, stats]) => ({ name, ...stats }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [classStatusData, selectedClassId, classSearch]);
 
   const filtered = (students || []).filter((s: any) => {
     const q = search.toLowerCase();
@@ -159,6 +228,15 @@ const StaffCheckinPanel: React.FC = () => {
             <Users className="w-4 h-4" /> My Class
           </button>
         )}
+        <button
+          type="button"
+          onClick={() => { setTab('classes'); setSelectedId(null); }}
+          className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold transition-colors ${
+            tab === 'classes' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <BarChart3 className="w-4 h-4" /> Classes
+        </button>
       </div>
 
       {/* ── Search tab ── */}
@@ -204,6 +282,78 @@ const StaffCheckinPanel: React.FC = () => {
         </>
       )}
 
+      {/* ── Classes tab ── */}
+      {tab === 'classes' && (
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                value={classSearch}
+                onChange={(e) => setClassSearch(e.target.value)}
+                placeholder="Search by student name, class or ID..."
+                className="w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+              />
+            </div>
+            <select
+              value={selectedClassId}
+              onChange={(e) => setSelectedClassId(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 min-w-[160px]"
+            >
+              <option value="">All Classes</option>
+              {allClasses.map((c: any) => (
+                <option key={c.id} value={c.id}>{c.class_name || c.name || 'Unnamed'}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Stats table */}
+          {classDataLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <RefreshCw className="w-6 h-6 animate-spin text-blue-500" />
+            </div>
+          ) : (
+            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="text-left px-4 py-3 font-semibold text-slate-700">Class</th>
+                    <th className="text-center px-4 py-3 font-semibold text-green-700">On Campus</th>
+                    <th className="text-center px-4 py-3 font-semibold text-slate-500">Left / No Record</th>
+                    <th className="text-center px-4 py-3 font-semibold text-slate-700">Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {classStats.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="text-center py-8 text-slate-500">No data found</td>
+                    </tr>
+                  ) : (
+                    classStats.map((stat) => (
+                      <tr key={stat.classId} className="hover:bg-slate-50">
+                        <td className="px-4 py-3 font-medium text-slate-900">{stat.name}</td>
+                        <td className="text-center px-4 py-3">
+                          <span className="inline-flex items-center gap-1 text-green-700 font-semibold">
+                            <UserCheck className="w-4 h-4" /> {stat.onCampus}
+                          </span>
+                        </td>
+                        <td className="text-center px-4 py-3">
+                          <span className="inline-flex items-center gap-1 text-slate-500 font-semibold">
+                            <UserX className="w-4 h-4" /> {stat.offCampus}
+                          </span>
+                        </td>
+                        <td className="text-center px-4 py-3 font-semibold text-slate-700">{stat.total}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── My Class tab ── */}
       {tab === 'class' && (
         <div className="space-y-3">
@@ -233,6 +383,11 @@ const StaffCheckinPanel: React.FC = () => {
                               {s.firstName || s.first_name} {s.lastName || s.last_name}
                             </p>
                             <p className="text-xs text-slate-500 truncate">{s.studentId || s.admissionNumber || s.admission_number || ''}</p>
+                            {status.time && (
+                              <p className="text-[10px] text-slate-400 mt-0.5">
+                                {new Date(status.time).toLocaleString()}
+                              </p>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">

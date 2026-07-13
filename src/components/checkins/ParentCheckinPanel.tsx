@@ -141,22 +141,22 @@ const ParentCheckinPanel: React.FC<ParentCheckinPanelProps> = ({ token, tenantId
                   <button
                     type="button"
                     onClick={() => handleToggleOptIn(student.id, !!student.is_checkin_enabled)}
-                    className={`text-xs font-semibold px-2 py-1 rounded-lg transition-colors ${
+                    className={`text-sm font-bold px-3 py-2 rounded-xl transition-colors ${
                       student.is_checkin_enabled
                         ? 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100'
                         : 'text-slate-400 bg-slate-100 hover:bg-slate-200'
                     }`}
                     title={student.is_checkin_enabled ? 'Disable check-in' : 'Enable check-in'}
                   >
-                    {student.is_checkin_enabled ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
+                    {student.is_checkin_enabled ? <ToggleRight className="w-7 h-7" /> : <ToggleLeft className="w-7 h-7" />}
                   </button>
                 </div>
               </div>
 
-              {student.last_action_time && (
+                  {student.last_action_time && (
                 <p className="text-[10px] text-slate-400 mb-3">
-                  {onCampus ? 'Checked in at ' : 'Left at '}
-                  {new Date(student.last_action_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {onCampus ? 'Checked in ' : 'Left '}
+                  {new Date(student.last_action_time).toLocaleString()}
                 </p>
               )}
 

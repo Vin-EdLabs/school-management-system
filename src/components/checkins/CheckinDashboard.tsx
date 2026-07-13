@@ -189,7 +189,7 @@ const CheckinDashboard: React.FC = () => {
                     </span>
                     {s.last_action_time && (
                       <p className="text-[10px] text-slate-400 mt-0.5">
-                        {new Date(s.last_action_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {new Date(s.last_action_time).toLocaleString()}
                       </p>
                     )}
                   </div>
@@ -230,7 +230,7 @@ const CheckinDashboard: React.FC = () => {
                       {r.action === 'check_in' ? 'Check-in' : 'Check-out'}
                     </span>
                     <p className="text-[10px] text-slate-400 mt-0.5">
-                      {new Date(r.action_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {new Date(r.action_time).toLocaleString()}
                       {r.performed_by_type === 'staff' && ' · by staff'}
                     </p>
                   </div>

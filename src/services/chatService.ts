@@ -167,7 +167,20 @@ export function resolveChatImageUrl(url: string | null | undefined): string | nu
 }
 
 export function isPlatformMessage(msg: ChatMessage): boolean {
-  return msg.sender?.role === 'platform' || (msg.sender?.id == null && !msg.is_deleted);
+  if (msg.is_deleted || msg.is_mine) return false;
+  return msg.sender?.role === 'platform' || msg.sender?.id == null;
+}
+
+export function chatDisplayName(name: string | null | undefined, fallback = 'Staff'): string {
+  const trimmed = String(name ?? '').trim();
+  return trimmed || fallback;
+}
+
+export function chatInitials(name: string | null | undefined, fallback = '?'): string {
+  const parts = chatDisplayName(name, '').split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return fallback;
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 }
 
 export function formatChatTime(iso: string): string {

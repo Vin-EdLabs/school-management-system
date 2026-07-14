@@ -38,11 +38,24 @@ async function authenticateChatSocket(socket: AuthenticatedSocket): Promise<Sock
   );
   if (result.rows.length === 0) return null;
   const row = result.rows[0];
+  const role = normalizeRole(row.role);
+  let tenantId = row.tenant_id != null ? Number(row.tenant_id) : null;
+
+  const authTenant = socket.handshake.auth?.tenant_id;
+  const requestTenantId =
+    authTenant != null && authTenant !== '' && !Number.isNaN(Number(authTenant))
+      ? Number(authTenant)
+      : null;
+
+  if (requestTenantId != null && role === 'super-admin') {
+    tenantId = requestTenantId;
+  }
+
   return {
     id: Number(row.id),
-    tenantId: row.tenant_id != null ? Number(row.tenant_id) : null,
+    tenantId,
     username: row.username,
-    role: normalizeRole(row.role),
+    role,
     fullName: row.full_name,
   };
 }

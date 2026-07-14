@@ -128,11 +128,17 @@ export class ApiService {
   setTenantContext(schoolId: number) {
     this.tenantId = schoolId;
     localStorage.setItem('currentSchoolId', schoolId.toString());
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('tenant-context-changed', { detail: schoolId }));
+    }
   }
 
   clearTenantContext() {
     this.tenantId = null;
     localStorage.removeItem('currentSchoolId');
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('tenant-context-changed', { detail: null }));
+    }
   }
 
   getTenantContext(): number | null {

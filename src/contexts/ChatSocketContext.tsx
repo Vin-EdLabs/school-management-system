@@ -3,6 +3,7 @@ import { io, type Socket } from 'socket.io-client';
 import { resolveSocketBaseUrl, SOCKET_IO_OPTIONS } from '@/utils/socketUrl';
 import type { ChatMessage } from '@/services/chatService';
 import { useAuth } from '@/contexts/AuthContext';
+import { apiService } from '@/services/api';
 
 export type ChatSocketHandlers = {
   onNewMessage?: (msg: ChatMessage) => void;
@@ -48,10 +49,22 @@ const ChatSocketContext = createContext<ChatSocketContextValue | null>(null);
 export function ChatSocketProvider({ children }: { children: React.ReactNode }) {
   const { token } = useAuth();
   const [connected, setConnected] = useState(false);
+  const [tenantId, setTenantId] = useState<number | null>(() => apiService.getTenantContext());
   const socketRef = useRef<Socket | null>(null);
   const handlersRef = useRef<ChatSocketHandlers>({});
   const activeChannelIdRef = useRef<number | null>(null);
   const typingStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const syncTenant = () => setTenantId(apiService.getTenantContext());
+    syncTenant();
+    window.addEventListener('storage', syncTenant);
+    window.addEventListener('tenant-context-changed', syncTenant);
+    return () => {
+      window.removeEventListener('storage', syncTenant);
+      window.removeEventListener('tenant-context-changed', syncTenant);
+    };
+  }, [token]);
 
   const joinActiveChannel = useCallback(() => {
     const channelId = activeChannelIdRef.current;
@@ -73,9 +86,12 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
     }
 
     const base = resolveSocketBaseUrl();
+    const auth: { token: string; tenant_id?: number } = { token };
+    if (tenantId != null) auth.tenant_id = tenantId;
+
     const socket = io(`${base}/chat`, {
       ...SOCKET_IO_OPTIONS,
-      auth: { token },
+      auth,
       autoConnect: true,
     });
     socketRef.current = socket;
@@ -99,7 +115,7 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
       socketRef.current = null;
       setConnected(false);
     };
-  }, [token, joinActiveChannel]);
+  }, [token, tenantId, joinActiveChannel]);
 
   const joinChannel = useCallback((channelId: number) => {
     activeChannelIdRef.current = channelId;

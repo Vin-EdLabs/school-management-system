@@ -3,6 +3,7 @@ import { Check, CheckCheck, Sparkles, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   type ChatMessage,
+  chatInitials,
   formatChatTime,
   formatDateSeparator,
   isPlatformMessage,
@@ -70,14 +71,8 @@ export function groupMessagesForDisplay(messages: ChatMessage[]) {
   return result;
 }
 
-function avatarInitials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0])
-    .join('')
-    .toUpperCase();
+function avatarInitials(name: string | null | undefined): string {
+  return chatInitials(name);
 }
 
 function bubblePosition(index: number, total: number): 'single' | 'first' | 'middle' | 'last' {

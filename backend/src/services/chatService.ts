@@ -289,7 +289,7 @@ export async function listUserChannels(userId: number, tenantId: number) {
     const isDm = row.channel_type === 'dm';
     return {
       id: Number(row.id),
-      name: isDm ? row.dm_peer_name || row.name : row.name,
+      name: isDm ? row.dm_peer_name || row.name || 'Direct Message' : row.name || 'Channel',
       channel_type: row.channel_type as ChatChannelType,
       description: row.description,
       unread_count: Number(row.unread_count || 0),
@@ -297,7 +297,7 @@ export async function listUserChannels(userId: number, tenantId: number) {
       dm_conversation_id: row.dm_conversation_id ? Number(row.dm_conversation_id) : null,
       dm_peer: isDm
         ? {
-            name: row.dm_peer_name,
+            name: row.dm_peer_name || 'Direct Message',
             role: normalizeRole(row.dm_peer_role),
             avatar_initials: avatarInitials(row.dm_peer_name),
           }

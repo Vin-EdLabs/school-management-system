@@ -33,6 +33,7 @@ import {
   type ChatChannel,
   type ChatMessage,
   canPostAnnouncements,
+  chatInitials,
   chatService,
   formatChatTime,
   resolveChatImageUrl,
@@ -47,17 +48,11 @@ function AvatarCircle({
   role,
   className,
 }: {
-  label: string;
+  label: string | null | undefined;
   role?: string;
   className?: string;
 }) {
-  const initials = label
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0])
-    .join('')
-    .toUpperCase();
+  const initials = chatInitials(label);
   return (
     <div
       className={cn(
@@ -180,6 +175,23 @@ function channelsFingerprint(channels: ChatChannel[], totalUnread: number): stri
 
 const CHAT_BACKGROUND_SYNC_MS = 3000;
 
+function normalizeIncomingMessage(msg: ChatMessage): ChatMessage {
+  return {
+    ...msg,
+    channel_id: Number(msg.channel_id),
+    created_at: msg.created_at || new Date().toISOString(),
+    is_deleted: msg.is_deleted ?? false,
+    is_mine: msg.is_mine ?? false,
+    sender: msg.sender
+      ? {
+          ...msg.sender,
+          name: msg.sender.name || 'Staff',
+          role: msg.sender.role || 'staff',
+        }
+      : msg.sender,
+  };
+}
+
 const ChatModule: React.FC = () => {
   const { user, token } = useAuth();
 
@@ -217,6 +229,17 @@ const ChatModule: React.FC = () => {
   const desktopPickerRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
   const pendingRetryRef = useRef<Map<string, () => void>>(new Map());
+  const pendingSendFallbackRef = useRef<
+    Map<
+      string,
+      {
+        channelId: number;
+        message?: string;
+        image_url?: string;
+        image_thumbnail_url?: string;
+      }
+    >
+  >(new Map());
   const pendingDeletesRef = useRef<Set<number>>(new Set());
   const activeChannelRef = useRef<ChatChannel | null>(null);
   const channelsFingerprintRef = useRef('');
@@ -337,7 +360,8 @@ const ChatModule: React.FC = () => {
   }, []);
 
   const chatSocket = useChatSocket(token, {
-    onNewMessage: (msg) => {
+    onNewMessage: (rawMsg) => {
+      const msg = normalizeIncomingMessage(rawMsg);
       const channelId = Number(msg.channel_id);
       const currentActive = activeChannelRef.current;
       setChannels((prev) =>
@@ -367,6 +391,7 @@ const ChatModule: React.FC = () => {
                 ? prev.findIndex((m) => m.temp_id === msg.temp_id)
                 : prev.findIndex((m) => m.pending && m.temp_id);
             if (pendingIdx >= 0) {
+              if (msg.temp_id) pendingSendFallbackRef.current.delete(msg.temp_id);
               return prev.map((m, i) =>
                 i === pendingIdx ? { ...msg, pending: false, failed: false } : m,
               );
@@ -393,6 +418,7 @@ const ChatModule: React.FC = () => {
       }
     },
     onMessageAck: ({ temp_id, real_id }) => {
+      pendingSendFallbackRef.current.delete(temp_id);
       setMessages((prev) =>
         prev.map((m) =>
           m.temp_id === temp_id ? { ...m, id: real_id, pending: false, failed: false } : m
@@ -401,6 +427,31 @@ const ChatModule: React.FC = () => {
     },
     onSendError: ({ temp_id }) => {
       if (!temp_id) return;
+      const fallback = pendingSendFallbackRef.current.get(temp_id);
+      if (fallback) {
+        void (async () => {
+          try {
+            const saved = await chatService.sendMessage(fallback.channelId, {
+              message: fallback.message,
+              image_url: fallback.image_url,
+              image_thumbnail_url: fallback.image_thumbnail_url,
+            });
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.temp_id === temp_id ? { ...saved, pending: false, failed: false, temp_id } : m,
+              ),
+            );
+            pendingSendFallbackRef.current.delete(temp_id);
+            pendingRetryRef.current.delete(temp_id);
+            void refreshChannelsQuietRef.current();
+          } catch {
+            setMessages((prev) =>
+              prev.map((m) => (m.temp_id === temp_id ? { ...m, pending: false, failed: true } : m)),
+            );
+          }
+        })();
+        return;
+      }
       setMessages((prev) => prev.map((m) => (m.temp_id === temp_id ? { ...m, pending: false, failed: true } : m)));
     },
     onTyping: ({ channel_id, name, user_id }) => {
@@ -587,7 +638,7 @@ const ChatModule: React.FC = () => {
     if (!q) return visible;
     return visible.filter(
       (c) =>
-        c.name.toLowerCase().includes(q) ||
+        (c.name || '').toLowerCase().includes(q) ||
         (c.last_message?.message || '').toLowerCase().includes(q)
     );
   }, [channels, search]);
@@ -620,7 +671,11 @@ const ChatModule: React.FC = () => {
       is_deleted: false,
       is_mine: true,
       pending: true,
-      sender: { id: user?.id ?? null, name: user?.fullName || 'You', role: user?.role || 'staff' },
+      sender: {
+        id: user?.id ?? null,
+        name: user?.fullName || user?.username || 'You',
+        role: user?.role || 'staff',
+      },
     };
     setMessages((prev) => [...prev, optimistic]);
     setDraft('');
@@ -634,6 +689,13 @@ const ChatModule: React.FC = () => {
       image_thumbnail_url: optimistic.image_thumbnail_url || undefined,
       temp_id: tempId,
     };
+
+    pendingSendFallbackRef.current.set(tempId, {
+      channelId: activeChannel.id,
+      message: text || undefined,
+      image_url: optimistic.image_url || undefined,
+      image_thumbnail_url: optimistic.image_thumbnail_url || undefined,
+    });
 
     const deliverMessage = async () => {
       const sentViaSocket = await chatSocket.sendMessageOrWait(payload, 2500);
@@ -650,6 +712,7 @@ const ChatModule: React.FC = () => {
             m.temp_id === tempId ? { ...saved, pending: false, failed: false, temp_id: tempId } : m,
           ),
         );
+        pendingSendFallbackRef.current.delete(tempId);
         pendingRetryRef.current.delete(tempId);
         void refreshChannelsQuiet();
       } catch {
@@ -832,8 +895,8 @@ const ChatModule: React.FC = () => {
                       activeChannel?.id === ch.id && 'bg-violet-50/70 dark:bg-violet-950/25'
                     )}
                   >
-                    {ch.channel_type === 'dm' && ch.dm_peer ? (
-                      <AvatarCircle label={ch.dm_peer.name} role={ch.dm_peer.role} />
+                    {ch.channel_type === 'dm' ? (
+                      <AvatarCircle label={ch.dm_peer?.name || ch.name} role={ch.dm_peer?.role} />
                     ) : (
                       <div className="h-11 w-11 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 flex items-center justify-center shrink-0">
                         <Icon className="h-5 w-5" />
@@ -906,8 +969,12 @@ const ChatModule: React.FC = () => {
                 >
                   <ArrowLeft className="h-5 w-5" />
                 </Button>
-                {activeChannel.channel_type === 'dm' && activeChannel.dm_peer ? (
-                  <AvatarCircle label={activeChannel.dm_peer.name} role={activeChannel.dm_peer.role} className="h-12 w-12 text-base" />
+                {activeChannel.channel_type === 'dm' ? (
+                  <AvatarCircle
+                    label={activeChannel.dm_peer?.name || activeChannel.name}
+                    role={activeChannel.dm_peer?.role}
+                    className="h-12 w-12 text-base"
+                  />
                 ) : (
                   <div className="h-12 w-12 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300 flex items-center justify-center shrink-0">
                     {React.createElement(channelIcon(activeChannel.channel_type), { className: 'h-5 w-5' })}
@@ -1171,7 +1238,7 @@ const ChatModule: React.FC = () => {
                   <AvatarCircle label={s.name} role={s.role} />
                   <div>
                     <p className="font-semibold text-foreground">{s.name}</p>
-                    <p className="text-xs text-muted-foreground capitalize">{s.role.replace(/-/g, ' ')}</p>
+                    <p className="text-xs text-muted-foreground capitalize">{(s.role || 'staff').replace(/-/g, ' ')}</p>
                   </div>
                 </button>
               ))}
@@ -1218,7 +1285,7 @@ const ChatModule: React.FC = () => {
                       <AvatarCircle label={s.name} role={s.role} className="h-9 w-9 text-xs" />
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold">{s.name}</p>
-                        <p className="truncate text-xs capitalize text-muted-foreground">{s.role.replace(/-/g, ' ')}</p>
+                        <p className="truncate text-xs capitalize text-muted-foreground">{(s.role || 'staff').replace(/-/g, ' ')}</p>
                       </div>
                     </button>
                   ))

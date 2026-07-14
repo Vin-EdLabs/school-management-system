@@ -1,4 +1,4 @@
-import { resolveLogoUrl } from '@/services/tenantService';
+import { isPlatformAdminPath } from '@/constants/platformAdminRoute';
 import { detectTenantSlugFromHost } from '@/utils/tenantHost';
 
 export type PwaKind = 'parent' | 'school' | 'super-admin';
@@ -82,7 +82,7 @@ export function setDynamicHeadIcons(params: URLSearchParams) {
 }
 
 export function detectPwaKind(pathname: string): PwaKind {
-  if (/^\/super-admin(\/|$)/i.test(pathname)) return 'super-admin';
+  if (isPlatformAdminPath(pathname)) return 'super-admin';
   if (/^\/portal(\/|$)/i.test(pathname)) return 'parent';
   if (/^\/(school|sch)(\/|$)/i.test(pathname)) return 'school';
   if (detectTenantSlugFromHost()) return 'school';

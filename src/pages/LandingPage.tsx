@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import ParentAppShowcase from '../components/landing/ParentAppShowcase';
 import ScrollToTopButton from '../components/landing/ScrollToTopButton';
 import LandingHeader from '../components/landing/LandingHeader';
+import { LandingStructuredData } from '../components/landing/LandingStructuredData';
 
 type IconProps = {
   className?: string;
@@ -393,6 +394,7 @@ const LandingPage = () => {
 
   return (
     <div className="scholar-landing min-h-screen overflow-x-hidden">
+      <LandingStructuredData />
       <LandingHeader brandMark={<BrandMark className="h-full w-full" />} />
 
       <main className="pt-14 sm:pt-16">

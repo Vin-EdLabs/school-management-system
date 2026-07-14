@@ -25,7 +25,7 @@ import RegisterSchool from "./pages/RegisterSchool";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import { ParentPortalRoute } from "./pages/ParentPortal";
 import { detectTenantSlugFromHost, getSubdomainUrl, normalizeLegacyPathOnSubdomain } from "./utils/tenantHost";
-import { PwaUpdateManager } from "@/components/pwa/PwaUpdateManager";
+import { PLATFORM_ADMIN_PATH } from '@/constants/platformAdminRoute';
 import { NetworkStatusBanner } from "@/components/ui/NetworkStatusBanner";
 import { BrandedLoadingScreen, isSplashGone } from "@/components/common/BrandedLoading";
 import { PARENT_IMPERSONATE_HANDOFF_KEY, STAFF_IMPERSONATE_HANDOFF_KEY } from "@/utils/impersonationHelpers";
@@ -33,6 +33,7 @@ import ImpersonationTransitionGate from "@/components/impersonation/Impersonatio
 import { PublicErrorPage } from "@/components/common/PublicErrorPage";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import ZoomNudge from "@/components/common/ZoomNudge";
+import { PwaUpdateManager } from "@/components/pwa/PwaUpdateManager";
 import {
   parseTenantLookup,
   schoolPortalErrorPresentation,
@@ -344,7 +345,7 @@ const App = () => {
                     
                     {/* Standard Shared Dashboard Routes */}
                     <Route path="/register-school" element={<RegisterSchool />} />
-                    <Route path="/super-admin" element={<SuperAdminDashboard />} />
+                    <Route path={PLATFORM_ADMIN_PATH} element={<SuperAdminDashboard />} />
                     
                     {/* School Portal Dashboard mounts directly at root and handles all sub-navigation (e.g. /teachers) */}
                     <Route path="/" element={<IndexWithSchool />} />
@@ -357,7 +358,7 @@ const App = () => {
                     <Route path="/checkin" element={<PublicCheckinPage />} />
                     <Route path="/" element={<LandingPage />} />
                     <Route path="/register-school" element={<RegisterSchool />} />
-                    <Route path="/super-admin" element={<SuperAdminDashboard />} />
+                    <Route path={PLATFORM_ADMIN_PATH} element={<SuperAdminDashboard />} />
                     <Route path="/school/:schoolId/*" element={<IndexWithSchool />} />
                     <Route path="/sch/:slug/*" element={<LegacySubdomainRedirect />} />
                     <Route path="/portal/:tenantId" element={<LegacyPortalRedirect />} />

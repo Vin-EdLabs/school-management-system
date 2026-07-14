@@ -12,6 +12,7 @@ import {
   resolveClientHost,
   resolvePwaKind,
 } from '../utils/tenantHost.js';
+import { PLATFORM_ADMIN_PATH } from '../constants/platformAdminRoute.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -354,8 +355,8 @@ router.get('/manifest', async (req: TenantRequest, res) => {
     let scope = '/';
 
     if (kind === 'super-admin') {
-      startUrl = '/super-admin';
-      scope = '/super-admin';
+      startUrl = PLATFORM_ADMIN_PATH;
+      scope = PLATFORM_ADMIN_PATH;
     } else if (tenantId > 0) {
       if (isTenantSubdomain) {
         if (kind === 'parent') {

@@ -1,6 +1,7 @@
 import { apiService } from '../services/api';
 import { getTenantSchoolUrl } from './tenantHost';
 import { isSchoolTenantView, isSuperAdminRoute } from './schoolAdminView';
+import { PLATFORM_ADMIN_PATH } from '@/constants/platformAdminRoute';
 
 export const ADMIN_BACKUP_KEY = 'impersonation_admin_backup';
 export const IMPERSONATION_META_KEY = 'impersonation_meta';
@@ -344,7 +345,7 @@ export function resolvePostImpersonationPath(
 ): string {
   const role = String(user.role || '').toLowerCase();
   if (role === 'super-admin' || backup?.startedFromSuperAdmin || backup?.returnModule === 'super-admin') {
-    return '/super-admin';
+    return PLATFORM_ADMIN_PATH;
   }
   const schoolPath = getTenantSchoolUrl(backup?.schoolSlug ?? null, backup?.schoolId ?? undefined);
   return schoolPath || '/';

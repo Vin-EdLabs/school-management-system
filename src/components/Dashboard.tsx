@@ -87,7 +87,6 @@ import { ImpersonationProvider } from '../contexts/ImpersonationContext';
 import ImpersonationShell from './impersonation/ImpersonationShell';
 import { IMPERSONATION_GO_MODULE_KEY } from '../utils/impersonationHelpers';
 import { readInitialModuleFromUrl } from '../utils/appNavigation';
-import { readInitialModuleFromUrl } from '../utils/appNavigation';
 import { shouldUseAdministratorDashboard } from '../utils/schoolAdminView';
 import { PrintPreviewProvider } from '../contexts/PrintPreviewContext';
 import { NavigationGuardProvider, useNavigationGuard } from '../contexts/NavigationGuardContext';

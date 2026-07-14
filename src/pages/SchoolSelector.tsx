@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { PLATFORM_ADMIN_PATH } from '@/constants/platformAdminRoute';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -111,7 +112,7 @@ const SchoolSelector = () => {
                 type="button"
                 variant="outline"
                 className="w-full border-blue-300 text-blue-700 hover:bg-blue-50 hover:text-blue-800"
-                onClick={() => navigate('/super-admin')}
+                onClick={() => navigate(PLATFORM_ADMIN_PATH)}
               >
                 <Shield className="w-4 h-4 mr-2" />
                 Super Admin Login
@@ -139,7 +140,7 @@ const SchoolSelector = () => {
               : 'Select your school'}
           </p>
           {user?.role === 'super-admin' && (
-            <Button variant="outline" size="sm" onClick={() => navigate('/super-admin')} className="mt-2">
+            <Button variant="outline" size="sm" onClick={() => navigate(PLATFORM_ADMIN_PATH)} className="mt-2">
               Super Admin Panel
             </Button>
           )}

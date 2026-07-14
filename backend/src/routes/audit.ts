@@ -7,6 +7,7 @@ import { writeAuditLog } from '../services/auditService.js';
 import { enrichAuditLogRow, AUDIT_ENTITY_JOINS, AUDIT_ENTITY_LABEL_SQL } from '../utils/auditDisplay.js';
 import { getClientIp } from '../utils/clientIp.js';
 import { listActiveSessionsForSuperAdmin } from '../services/presenceService.js';
+import { PLATFORM_ADMIN_PATH } from '../constants/platformAdminRoute.js';
 
 const router = express.Router();
 
@@ -219,7 +220,7 @@ router.post('/super-admin/portal-visit', async (req, res) => {
       status: 'success',
       summary: 'Super Admin portal visited',
       details: {
-        path: typeof path === 'string' ? path.slice(0, 300) : '/super-admin',
+        path: typeof path === 'string' ? path.slice(0, 300) : PLATFORM_ADMIN_PATH,
         visitorId: typeof visitorId === 'string' ? visitorId.slice(0, 120) : null,
       },
       ipAddress: getClientIp(req),

@@ -1,4 +1,5 @@
 import type { Request } from 'express';
+import { isPlatformAdminPath } from '../constants/platformAdminRoute.js';
 
 const EXCLUDED_DOMAINS = [
   'scholarnerve.com',
@@ -97,7 +98,7 @@ export function resolvePwaKind(
     }
   }
 
-  if (refererPath.startsWith('/super-admin')) return 'super-admin';
+  if (isPlatformAdminPath(refererPath)) return 'super-admin';
   if (refererPath.startsWith('/portal')) return 'parent';
 
   // On a school subdomain, default to the school app unless explicitly on /portal.

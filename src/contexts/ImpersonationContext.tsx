@@ -4,6 +4,7 @@ import { apiService } from '../services/api';
 import { useAuth } from './AuthContext';
 import { useSchool } from './SchoolContext';
 import { detectTenantSlugFromHost } from '../utils/tenantHost';
+import { isPlatformAdminPath, PLATFORM_ADMIN_PATH } from '@/constants/platformAdminRoute';
 import {
   ADMIN_BACKUP_KEY,
   ADMIN_ELIGIBLE_KEY,
@@ -73,7 +74,7 @@ function backupAdminSession(
   const storedSchoolId = localStorage.getItem('currentSchoolId');
   if (!token || !userRaw) return;
   const startedFromSuperAdmin =
-    returnModule === 'super-admin' || window.location.pathname.includes('/super-admin');
+    returnModule === 'super-admin' || isPlatformAdminPath(window.location.pathname);
   const backup: AdminBackup = {
     token,
     user: JSON.parse(userRaw),
@@ -105,7 +106,7 @@ async function finishStaffImpersonation(
   const mod = defaultModuleForRole(String(user.role || ''));
   sessionStorage.setItem(IMPERSONATION_GO_MODULE_KEY, mod);
 
-  const onSuperAdmin = window.location.pathname.includes('/super-admin');
+  const onSuperAdmin = isPlatformAdminPath(window.location.pathname);
   if (onSuperAdmin && tid) {
     sessionStorage.setItem(STAFF_IMPERSONATE_HANDOFF_KEY, String(tid));
     window.location.href = `/school/${tid}/`;
@@ -135,7 +136,7 @@ async function finishParentImpersonation(
   navigate: (path: string) => void
 ): Promise<'hard' | 'soft'> {
   const onSchoolSubdomain = !!detectTenantSlugFromHost();
-  const onSuperAdmin = window.location.pathname.includes('/super-admin');
+  const onSuperAdmin = isPlatformAdminPath(window.location.pathname);
   const useSameOriginPortal = onSuperAdmin || !onSchoolSubdomain;
 
   await bootstrapParentImpersonationSession(
@@ -362,7 +363,7 @@ export const ImpersonationProvider: React.FC<{ children: React.ReactNode; return
       toast({ title: 'Impersonation ended', description: 'Back to your account' });
 
       const dest = resolvePostImpersonationPath(merged as Record<string, unknown>, restored.backup);
-      if (restored.backup?.startedFromSuperAdmin || dest === '/super-admin') {
+      if (restored.backup?.startedFromSuperAdmin || dest === PLATFORM_ADMIN_PATH) {
         window.location.href = dest;
         hardNav = true;
         return;

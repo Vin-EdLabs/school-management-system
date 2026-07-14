@@ -1,8 +1,9 @@
 import { detectTenantSlugFromHost } from './tenantHost';
+import { isPlatformAdminPath } from '@/constants/platformAdminRoute';
 
 /** True when the user is on the platform super-admin dashboard (not inside a school). */
 export function isSuperAdminRoute(pathname: string = typeof window !== 'undefined' ? window.location.pathname : ''): boolean {
-  return /^\/super-admin(\/|$)/i.test(pathname);
+  return isPlatformAdminPath(pathname);
 }
 
 /**

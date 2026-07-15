@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '../contexts/AuthContext';
 import { useSchool } from '../contexts/SchoolContext';
@@ -74,11 +74,12 @@ import {
 } from '@/components/ui/sidebar';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 import { useImpersonationOptional } from '../contexts/ImpersonationContext';
-import BecomeUserPanel from './impersonation/BecomeUserPanel';
+import SidebarMenuSearch, { type SidebarSearchItem } from './sidebar/SidebarMenuSearch';
 
 interface AppSidebarProps {
   activeModule: string;
   setActiveModule: (module: string) => void;
+  onOpenBecomeUser?: () => void;
 }
 
 const getHeadmasterMenuItems = (hasAccess: (permission: string) => boolean, userRole?: string, hasTeaching?: boolean) => ({
@@ -486,7 +487,7 @@ const CollapsibleMenuSection: React.FC<{
   );
 };
 
-export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveModule }) => {
+export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveModule, onOpenBecomeUser }) => {
   const { logout, hasAccess, user, actsAsPrimaryAdmin, isPlatformSuperAdmin } = useAuth();
   const { hasActiveTerm, isLoading: activeTermLoading } = useActiveTerm();
   const termNavigationBlocked = !activeTermLoading && !hasActiveTerm;
@@ -497,7 +498,6 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
   const [supportUnread, setSupportUnread] = useState(0);
   const [messagesUnread, setMessagesUnread] = useState(0);
   const [paymentSubmissionsPending, setPaymentSubmissionsPending] = useState(0);
-  const [becomeUserOpen, setBecomeUserOpen] = useState(false);
   const impersonation = useImpersonationOptional();
   const adminEligible =
     typeof sessionStorage !== 'undefined' && sessionStorage.getItem('impersonation_admin_eligible') === '1';
@@ -511,6 +511,32 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
     ? getHeadmasterMenuItems(hasAccess, user?.role, headmasterHasTeachingAccess(user))
     : null;
   const menuItems = headmasterMenu ?? getMenuItems(hasAccess, user?.role);
+
+  const sidebarSearchItems = useMemo((): SidebarSearchItem[] => {
+    const sections: Array<[string, Array<{ id: string; label: string }>]> = isHeadmaster && headmasterMenu
+      ? [
+          ['My Work', headmasterMenu.myWork],
+          ['School Overview', headmasterMenu.schoolOverview],
+          ['Communication', headmasterMenu.communication],
+          ['Management', headmasterMenu.management],
+          ['Configurations', headmasterMenu.configurations],
+        ]
+      : [
+          ['Overview', menuItems.dashboard],
+          ['Academic Central', menuItems.academic],
+          ['Teaching Room', menuItems.teaching],
+          ['Financial Ops', menuItems.financial],
+          ['Data Center', menuItems.records],
+          ['Transport Management', menuItems.transport],
+          ['Announcements & parent desk', menuItems.announcements],
+          ['Innovation', menuItems.ai],
+          ['Configurations', menuItems.configurations],
+          ['System', menuItems.system],
+        ];
+    return sections.flatMap(([group, items]) =>
+      items.map((item) => ({ id: item.id, label: item.label, group }))
+    );
+  }, [isHeadmaster, headmasterMenu, menuItems]);
 
   const refreshCommsBadges = useCallback(async () => {
     try {
@@ -636,6 +662,17 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
         </div>
       </SidebarHeader>
 
+      {user && sidebarSearchItems.length > 0 ? (
+        <SidebarMenuSearch
+          items={sidebarSearchItems}
+          activeId={activeModule}
+          onSelect={(id) => {
+            setActiveModule(id);
+            if (isMobile) setOpenMobile(false);
+          }}
+        />
+      ) : null}
+
       <SidebarContent className="flex-1 min-h-0 overflow-y-auto scrollbar-hide overscroll-contain px-1 py-3 gap-3 bg-transparent outline-none border-none">
         {isHeadmaster && headmasterMenu ? (
           <>
@@ -684,8 +721,12 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
             <SidebarMenuItem className="flex justify-center">
               <SidebarMenuButton
                 onClick={() => {
-                  if (isMobile) setOpenMobile(false);
-                  setBecomeUserOpen(true);
+                  if (isMobile) {
+                    setOpenMobile(false);
+                    window.setTimeout(() => onOpenBecomeUser?.(), 150);
+                  } else {
+                    onOpenBecomeUser?.();
+                  }
                 }}
                 className="rounded-xl w-full h-10 text-amber-200/90 hover:text-amber-50 hover:bg-amber-500/15 transition-all group-data-[collapsible=icon]:w-10 group-data-[collapsible=icon]:justify-center"
                 tooltip="Become a User"
@@ -725,7 +766,6 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
           </div>
         </div>
       </SidebarFooter>
-      <BecomeUserPanel open={becomeUserOpen} onClose={() => setBecomeUserOpen(false)} />
     </Sidebar>
   );
 };

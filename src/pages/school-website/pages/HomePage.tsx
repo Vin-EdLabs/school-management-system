@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Award, BookOpen, CalendarDays, Clock, GraduationCap, Layers, MapPin, Sparkles, TrendingUp, Users } from 'lucide-react';
+import { ArrowRight, Award, BookOpen, CalendarDays, Clock, GraduationCap, Layers, MapPin, TrendingUp, Users } from 'lucide-react';
 import { resolveWebsiteImageUrl, type WebsiteHomeContent } from '@/services/schoolWebsiteService';
 import { formatDisplayDate } from '@/utils/dateFormat';
 import { useSchoolWebsite } from '../SchoolWebsiteContext';
@@ -441,7 +441,6 @@ export default function HomePage() {
                   background: `linear-gradient(135deg, ${home.cta_bg_color || accent} 0%, color-mix(in srgb, ${home.cta_bg_color || accent} 72%, #0c2340) 100%)`,
                 }}
               >
-                <Sparkles className="sw-cta-sparkle absolute right-6 top-6 h-5 w-5 text-white/25" aria-hidden />
                 <div className="relative z-[1] flex flex-col gap-5 md:flex-row md:items-center md:justify-between md:gap-8">
                   <div className="min-w-0 flex-1 text-left">
                     <span className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-white/90">

@@ -108,7 +108,12 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
     socket.on('message_send_error', (p) => handlersRef.current.onSendError?.(p));
     socket.on('user_typing', (p) => handlersRef.current.onTyping?.(p));
     socket.on('user_stopped_typing', (p) => handlersRef.current.onStoppedTyping?.(p));
-    socket.on('chat_unread_changed', () => handlersRef.current.onUnreadChanged?.());
+    socket.on('chat_unread_changed', () => {
+      handlersRef.current.onUnreadChanged?.();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('comms-badges-refresh'));
+      }
+    });
 
     return () => {
       socket.disconnect();

@@ -611,27 +611,272 @@
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
 }
 
+.school-website .sw-navbar-inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding-top: 0.875rem;
+  padding-bottom: 0.875rem;
+}
+
+@media (min-width: 1280px) {
+  .school-website .sw-navbar-inner {
+    grid-template-columns: minmax(160px, min(28vw, 300px)) minmax(0, 1fr) auto;
+    gap: 16px;
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+  }
+}
+
+.school-website .sw-brand {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+@media (min-width: 640px) {
+  .school-website .sw-brand {
+    gap: 0.75rem;
+  }
+}
+
+.school-website .sw-brand-logo {
+  height: 2.25rem;
+  width: 2.25rem;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  object-fit: cover;
+  font-size: 1rem;
+}
+
+@media (min-width: 640px) {
+  .school-website .sw-brand-logo {
+    height: 2.75rem;
+    width: 2.75rem;
+    font-size: 1.25rem;
+  }
+}
+
 .school-website .sw-brand-name {
   display: block;
-  font-size: 0.8125rem;
+  min-width: 0;
+  font-size: 0.875rem;
   line-height: 1.25;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
+
 @media (min-width: 640px) {
   .school-website .sw-brand-name {
     font-size: 1rem;
-  }
-}
-@media (min-width: 768px) {
-  .school-website .sw-brand-name {
-    font-size: 1.25rem;
     line-height: 1.3;
   }
 }
 
-.school-website .sw-nav-link {
-  font-size: 14px;
+@media (min-width: 1280px) {
+  .school-website .sw-brand-name {
+    font-size: 1.125rem;
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+@media (min-width: 1536px) {
+  .school-website .sw-brand-name {
+    font-size: 1.25rem;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+  }
+}
+
+.school-website .sw-desktop-nav {
+  display: none;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem 1rem;
+}
+
+@media (min-width: 1280px) {
+  .school-website .sw-desktop-nav {
+    display: flex;
+  }
+}
+
+@media (min-width: 1536px) {
+  .school-website .sw-desktop-nav {
+    gap: 0.75rem 1.75rem;
+  }
+}
+
+.school-website .sw-navbar-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.school-website .sw-navbar-cta {
+  display: inline-flex;
+  padding: 0.5rem 0.875rem !important;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 639px) {
+  .school-website .sw-navbar-cta {
+    display: none;
+  }
+}
+
+@media (min-width: 1536px) {
+  .school-website .sw-navbar-cta {
+    padding: 0.625rem 1.25rem !important;
+    font-size: 0.875rem;
+  }
+}
+
+.school-website .sw-mobile-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.625rem;
+  border-width: 1px;
+  border-style: solid;
+  padding: 0.5rem;
+  background: #fff;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.school-website .sw-mobile-menu-btn.is-active {
+  background: var(--sw-offwhite);
+  border-color: color-mix(in srgb, var(--sw-primary) 25%, var(--sw-border));
+}
+
+@media (min-width: 1280px) {
+  .school-website .sw-mobile-menu-btn {
+    display: none;
+  }
+}
+
+.school-website .sw-mobile-nav-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.36s cubic-bezier(0.4, 0, 0.2, 1);
+  border-top: 1px solid transparent;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(12, 35, 64, 0.08);
+}
+
+.school-website .sw-mobile-nav-wrap.is-open {
+  grid-template-rows: 1fr;
+  border-top-color: var(--sw-border);
+}
+
+.school-website .sw-mobile-nav {
+  overflow: hidden;
+  background: #fff;
+}
+
+.school-website .sw-mobile-nav-inner {
+  padding-top: 0.75rem;
+  padding-bottom: 1.25rem;
+}
+
+.school-website .sw-mobile-nav-label {
+  margin: 0 0 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--sw-muted);
+}
+
+.school-website .sw-mobile-nav-links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.school-website .sw-mobile-nav-link {
+  display: flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding: 0.625rem 0.875rem;
+  border-radius: 0.75rem;
+  font-size: 0.9375rem;
   font-weight: 500;
+  color: var(--sw-navy-light);
+  text-decoration: none;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(12, 35, 64, 0.06);
+  opacity: 0;
+  transform: translateY(-6px);
+  transition:
+    opacity 0.28s ease,
+    transform 0.32s cubic-bezier(0.4, 0, 0.2, 1),
+    background 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease;
+  transition-delay: calc(var(--sw-nav-i, 0) * 35ms);
+}
+
+.school-website .sw-mobile-nav-wrap.is-open .sw-mobile-nav-link {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.school-website .sw-mobile-nav-link.is-active {
+  color: var(--sw-primary);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--sw-primary) 8%, #ffffff);
+  border-color: color-mix(in srgb, var(--sw-primary) 18%, transparent);
+  box-shadow: inset 3px 0 0 var(--sw-gold);
+}
+
+.school-website .sw-mobile-nav-cta {
+  margin-top: 1rem;
+  width: 100%;
+  opacity: 0;
+  transform: translateY(8px);
+  transition:
+    opacity 0.32s ease 0.12s,
+    transform 0.36s cubic-bezier(0.4, 0, 0.2, 1) 0.12s;
+}
+
+.school-website .sw-mobile-nav-wrap.is-open .sw-mobile-nav-cta {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.school-website .sw-navbar.is-mobile-open {
+  box-shadow: 0 8px 28px rgba(12, 35, 64, 0.12);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .school-website .sw-mobile-nav-wrap,
+  .school-website .sw-mobile-nav-link,
+  .school-website .sw-mobile-nav-cta {
+    transition: none;
+  }
+  .school-website .sw-mobile-nav-link,
+  .school-website .sw-mobile-nav-cta {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.school-website .sw-nav-link {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
   color: var(--sw-navy-light);
   transition: color 0.2s ease;
   text-decoration: none;
@@ -656,20 +901,7 @@
   background: var(--sw-gold);
 }
 
-/* Mobile full-screen slide-down nav */
-.school-website .sw-mobile-nav {
-  animation: swSlideDown 0.25s ease both;
-}
-@keyframes swSlideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
+/* Mobile slide-down nav (panel expands under header — no blur overlay) */
 
 /* ---------- Scroll reveal ---------- */
 .school-website .sw-reveal {

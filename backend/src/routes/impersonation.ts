@@ -342,6 +342,42 @@ router.post('/start-auto', async (req: AuthRequest, res) => {
       return res.status(400).json({ error: e?.message || 'School context required' });
     }
 
+    const student = await resolveStudentForParentPortal(tenantId, id);
+    if (student) {
+      assertCanImpersonateParent(actor, tenantId);
+      const parentAccountId = await ensureParentAccountForStudent(tenantId, student.studentPk);
+      await query('UPDATE parent_portal_accounts SET must_change_password = false WHERE id = $1', [
+        parentAccountId,
+      ]);
+      const tenantRes = await query('SELECT name, slug FROM tenants WHERE id = $1', [tenantId]);
+      const schoolName = tenantRes.rows[0]?.name || 'School';
+      const schoolSlug = tenantRes.rows[0]?.slug || null;
+      const token = signParentImpersonationToken(actor, parentAccountId, student.studentPk, tenantId);
+      await logImpersonationStart(
+        actor,
+        `${actor.fullName || actor.username} started parent portal view for ${student.studentName}`,
+        { mode: 'parent', studentId: student.studentPk, studentName: student.studentName, targetTenantId: tenantId },
+        getClientIp(req),
+        req.get('user-agent') || null
+      );
+      return res.json({
+        mode: 'parent',
+        token,
+        tenantId,
+        schoolSlug,
+        schoolName,
+        student: { id: student.studentPk, name: student.studentName, studentId: student.studentDisplayId },
+        impersonation: {
+          active: true,
+          targetName: student.studentName,
+          targetRole: 'parent',
+          schoolName,
+          impersonatorId: actor.id,
+          impersonatorName: actor.fullName || actor.username,
+        },
+      });
+    }
+
     const staff = await resolveStaffTargetByIdentifier(tenantId, id);
     if (staff) {
       assertCanImpersonateStaff(actor, staff);
@@ -372,42 +408,6 @@ router.post('/start-auto', async (req: AuthRequest, res) => {
           active: true,
           targetName: staff.fullName,
           targetRole: staff.role,
-          schoolName,
-          impersonatorId: actor.id,
-          impersonatorName: actor.fullName || actor.username,
-        },
-      });
-    }
-
-    const student = await resolveStudentForParentPortal(tenantId, id);
-    if (student) {
-      assertCanImpersonateParent(actor, tenantId);
-      const parentAccountId = await ensureParentAccountForStudent(tenantId, student.studentPk);
-      await query('UPDATE parent_portal_accounts SET must_change_password = false WHERE id = $1', [
-        parentAccountId,
-      ]);
-      const tenantRes = await query('SELECT name, slug FROM tenants WHERE id = $1', [tenantId]);
-      const schoolName = tenantRes.rows[0]?.name || 'School';
-      const schoolSlug = tenantRes.rows[0]?.slug || null;
-      const token = signParentImpersonationToken(actor, parentAccountId, student.studentPk, tenantId);
-      await logImpersonationStart(
-        actor,
-        `${actor.fullName || actor.username} started parent portal view for ${student.studentName}`,
-        { mode: 'parent', studentId: student.studentPk, studentName: student.studentName, targetTenantId: tenantId },
-        getClientIp(req),
-        req.get('user-agent') || null
-      );
-      return res.json({
-        mode: 'parent',
-        token,
-        tenantId,
-        schoolSlug,
-        schoolName,
-        student: { id: student.studentPk, name: student.studentName, studentId: student.studentDisplayId },
-        impersonation: {
-          active: true,
-          targetName: student.studentName,
-          targetRole: 'parent',
           schoolName,
           impersonatorId: actor.id,
           impersonatorName: actor.fullName || actor.username,

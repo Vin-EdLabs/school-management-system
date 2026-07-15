@@ -28,7 +28,6 @@ import {
   Briefcase,
   Info,
   ShieldCheck,
-  Sparkles,
   ArrowRight,
   ScrollText,
 } from 'lucide-react';
@@ -68,8 +67,10 @@ import WebsiteEmploymentDetailsDialog from './WebsiteEmploymentDetailsDialog';
 import WebsiteContactMessageDetailsDialog from './WebsiteContactMessageDetailsDialog';
 import WebsiteFeaturePromo from './WebsiteFeaturePromo';
 import WebsiteAlumniAdminPanel from './WebsiteAlumniAdminPanel';
+import WebsiteAlumniProfilesPanel from './WebsiteAlumniProfilesPanel';
+import WebsiteManagementTeamPanel from './WebsiteManagementTeamPanel';
 
-type Tab = 'overview' | 'homepage' | 'about' | 'admissions' | 'careers' | 'alumni' | 'events' | 'gallery' | 'contact';
+type Tab = 'overview' | 'homepage' | 'about' | 'management' | 'admissions' | 'careers' | 'alumni' | 'events' | 'gallery' | 'contact';
 
 const EMPTY_EVENT_DRAFT = {
   title: '',
@@ -393,6 +394,8 @@ export default function WebsiteManagementModule() {
   const [employmentApps, setEmploymentApps] = useState<Array<Record<string, unknown>>>([]);
   const [transcriptRequests, setTranscriptRequests] = useState<Array<Record<string, unknown>>>([]);
   const [testimonialSubmissions, setTestimonialSubmissions] = useState<Array<Record<string, unknown>>>([]);
+  const [teamMembers, setTeamMembers] = useState<Array<Record<string, unknown>>>([]);
+  const [alumniProfiles, setAlumniProfiles] = useState<Array<Record<string, unknown>>>([]);
   const [selectedEmployment, setSelectedEmployment] = useState<Record<string, unknown> | null>(null);
   const [employmentStatusSaving, setEmploymentStatusSaving] = useState(false);
   const [selectedContactMessage, setSelectedContactMessage] = useState<Record<string, unknown> | null>(null);
@@ -449,7 +452,7 @@ export default function WebsiteManagementModule() {
         return;
       }
 
-      const [ab, ad, cr, ct, msgs, apps, gal, evs, emp, tr, te] = await Promise.all([
+      const [ab, ad, cr, ct, msgs, apps, gal, evs, emp, tr, te, team, alumni] = await Promise.all([
         schoolWebsiteAdminService.getAbout(),
         schoolWebsiteAdminService.getAdmissionConfig(),
         schoolWebsiteAdminService.getCareersConfig(),
@@ -461,6 +464,8 @@ export default function WebsiteManagementModule() {
         schoolWebsiteAdminService.listEmploymentApplications(),
         schoolWebsiteAdminService.listTranscriptRequests(),
         schoolWebsiteAdminService.listTestimonialSubmissions(),
+        schoolWebsiteAdminService.listTeamMembers(),
+        schoolWebsiteAdminService.listAlumniProfiles(),
       ]);
       setAbout(ab);
       setAdmission(ad);
@@ -473,6 +478,8 @@ export default function WebsiteManagementModule() {
       setEmploymentApps(emp.items || []);
       setTranscriptRequests(tr.items || []);
       setTestimonialSubmissions(te.items || []);
+      setTeamMembers(team.items || []);
+      setAlumniProfiles(alumni.items || []);
     } catch (e) {
       toast({
         title: 'Could not load website data',
@@ -758,6 +765,7 @@ export default function WebsiteManagementModule() {
             { id: 'overview', label: 'Overview', icon: LayoutDashboard },
             { id: 'homepage', label: 'Homepage', icon: Settings2 },
             { id: 'about', label: 'About', icon: Globe },
+            { id: 'management', label: 'Management', icon: Users, badge: teamMembers.length || undefined },
             { id: 'admissions', label: 'Admissions', icon: GraduationCap, badge: pendingCount },
             { id: 'careers', label: 'Careers', icon: Briefcase, badge: pendingEmployment || undefined },
             { id: 'alumni', label: 'Alumni', icon: ScrollText, badge: unreadAlumni || undefined },
@@ -801,11 +809,10 @@ export default function WebsiteManagementModule() {
             <div className="grid gap-3 p-6 md:grid-cols-2">
               <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-900/30">
                 <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
-                  <Sparkles className="h-3.5 w-3.5" />
                   You manage
                 </p>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Homepage content, gallery, events, contact details, admissions settings, and whether the site is live for visitors.
+                  Homepage content, gallery, events, management team, alumni highlights, contact details, admissions settings, and whether the site is live for visitors.
                 </p>
               </div>
               <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-900/30">
@@ -1241,6 +1248,10 @@ export default function WebsiteManagementModule() {
           />
         </TabsContent>
 
+        <TabsContent value="management" className="mt-6 max-w-4xl space-y-5">
+          <WebsiteManagementTeamPanel members={teamMembers} onRefresh={loadAll} />
+        </TabsContent>
+
         <TabsContent value="admissions" className="mt-6 space-y-5">
           <Tabs value={admissionSubTab} onValueChange={(v) => setAdmissionSubTab(v as 'settings' | 'applications')}>
             <TabsList className={INNER_TAB_LIST}>
@@ -1471,7 +1482,16 @@ export default function WebsiteManagementModule() {
           </Tabs>
         </TabsContent>
 
-        <TabsContent value="alumni" className="mt-6 max-w-5xl space-y-5">
+        <TabsContent value="alumni" className="mt-6 max-w-5xl space-y-8">
+          <div className={PANEL_CLASS}>
+            <div className="border-b border-slate-100 px-6 py-4 dark:border-slate-800">
+              <h3 className="font-bold text-slate-900 dark:text-white">Alumni showcase</h3>
+              <p className="mt-1 text-sm text-muted-foreground">Profiles displayed on the public Alumni page.</p>
+            </div>
+            <div className="p-6">
+              <WebsiteAlumniProfilesPanel profiles={alumniProfiles} onRefresh={loadAll} />
+            </div>
+          </div>
           <WebsiteAlumniAdminPanel
             transcriptRequests={transcriptRequests}
             testimonials={testimonialSubmissions}

@@ -63,6 +63,30 @@ export type PublicWebsiteBundle = {
   gallery?: Array<{ id: number; url: string; thumbnail_url: string; category: string }>;
   events?: WebsiteEvent[];
   classes?: Array<{ id: number; name: string; level: string | null }>;
+  management?: {
+    leadership: WebsiteTeamMember[];
+    teachers: WebsiteTeamMember[];
+  };
+  alumni_profiles?: WebsiteAlumniProfile[];
+};
+
+export type WebsiteTeamMember = {
+  id: number;
+  member_type: 'leadership' | 'teacher';
+  position: string;
+  full_name: string;
+  photo_url: string | null;
+  bio: string | null;
+  subjects: string[];
+};
+
+export type WebsiteAlumniProfile = {
+  id: number;
+  full_name: string;
+  graduation_year: string | null;
+  photo_url: string | null;
+  achievement: string | null;
+  testimonial: string | null;
 };
 
 function resolvePublicApiBase(): string {
@@ -330,6 +354,38 @@ export const schoolWebsiteAdminService = {
     return apiService.patch<Record<string, unknown>>(`/school-website/alumni/testimonials/${id}/status`, {
       status,
     });
+  },
+
+  listTeamMembers() {
+    return apiService.get<{ items: WebsiteTeamMember[] }>('/school-website/management/team');
+  },
+
+  createTeamMember(body: Record<string, unknown>) {
+    return apiService.post<WebsiteTeamMember>('/school-website/management/team', body);
+  },
+
+  updateTeamMember(id: number, body: Record<string, unknown>) {
+    return apiService.put<WebsiteTeamMember>(`/school-website/management/team/${id}`, body);
+  },
+
+  deleteTeamMember(id: number) {
+    return apiService.delete<{ ok: boolean }>(`/school-website/management/team/${id}`);
+  },
+
+  listAlumniProfiles() {
+    return apiService.get<{ items: WebsiteAlumniProfile[] }>('/school-website/alumni/profiles');
+  },
+
+  createAlumniProfile(body: Record<string, unknown>) {
+    return apiService.post<WebsiteAlumniProfile>('/school-website/alumni/profiles', body);
+  },
+
+  updateAlumniProfile(id: number, body: Record<string, unknown>) {
+    return apiService.put<WebsiteAlumniProfile>(`/school-website/alumni/profiles/${id}`, body);
+  },
+
+  deleteAlumniProfile(id: number) {
+    return apiService.delete<{ ok: boolean }>(`/school-website/alumni/profiles/${id}`);
   },
 };
 

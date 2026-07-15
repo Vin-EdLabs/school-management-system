@@ -20,9 +20,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
-import { schoolWebsitePublicService } from '@/services/schoolWebsiteService';
+import { resolveWebsiteImageUrl, type WebsiteAlumniProfile } from '@/services/schoolWebsiteService';
 import { useSchoolWebsite } from '../SchoolWebsiteContext';
-import { PageHero, Reveal } from '../SchoolWebsiteLayout';
+import { PageHero, Reveal, SectionHeading } from '../SchoolWebsiteLayout';
 import ApplicationSuccessScreen from '../components/ApplicationSuccessScreen';
 
 const SW_FIELD = 'sw-field h-11 w-full';
@@ -79,7 +79,8 @@ function notesPlaceholder(documentType: string) {
 }
 
 export default function AlumniPage() {
-  const { slug, schoolName } = useSchoolWebsite();
+  const { slug, schoolName, data } = useSchoolWebsite();
+  const alumniProfiles = (data?.alumni_profiles || []) as WebsiteAlumniProfile[];
   const [submittedType, setSubmittedType] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -131,13 +132,77 @@ export default function AlumniPage() {
   return (
     <>
       <PageHero
-        title="Alumni & Records"
-        subtitle="Request official documents from the school — select what you need and submit one simple form"
+        title="Alumni"
+        subtitle="Celebrating our graduates and supporting document requests from former students"
       />
+
+      {alumniProfiles.length > 0 && (
+        <section className="sw-section bg-white">
+          <div className="sw-container">
+            <SectionHeading
+              eyebrow="Success stories"
+              title="Distinguished alumni"
+              centered
+            />
+            <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+              {alumniProfiles.map((profile, i) => {
+                const photo = resolveWebsiteImageUrl(profile.photo_url);
+                return (
+                  <Reveal key={profile.id} delay={i * 80}>
+                    <article className="sw-card h-full overflow-hidden">
+                      <div className="flex items-center gap-4 border-b border-slate-100 p-6">
+                        <div className="h-16 w-16 shrink-0 overflow-hidden rounded-full ring-2 ring-[var(--sw-gold)]/30">
+                          {photo ? (
+                            <img src={photo} alt={profile.full_name} className="h-full w-full object-cover" />
+                          ) : (
+                            <div
+                              className="sw-serif flex h-full w-full items-center justify-center text-xl text-white"
+                              style={{ background: 'var(--sw-primary)' }}
+                            >
+                              {profile.full_name.slice(0, 1)}
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <h3 className="sw-serif text-lg">{profile.full_name}</h3>
+                          {profile.graduation_year && (
+                            <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--sw-gold)' }}>
+                              Class of {profile.graduation_year}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="p-6 pt-5">
+                        {profile.achievement && (
+                          <p className="text-sm font-semibold" style={{ color: 'var(--sw-primary)' }}>
+                            {profile.achievement}
+                          </p>
+                        )}
+                        {profile.testimonial && (
+                          <p className="mt-3 text-sm leading-relaxed italic" style={{ color: 'var(--sw-muted)' }}>
+                            &ldquo;{profile.testimonial}&rdquo;
+                          </p>
+                        )}
+                      </div>
+                    </article>
+                  </Reveal>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="sw-section sw-alumni-section" style={{ background: 'var(--sw-offwhite)' }}>
         <div className="sw-container sw-alumni-page">
           <Reveal>
+            <SectionHeading
+              eyebrow="Records office"
+              title="Alumni & document requests"
+              centered
+            />
+          </Reveal>
+          <Reveal delay={40}>
             <p className="sw-alumni-intro mx-auto max-w-2xl text-center text-sm leading-relaxed md:text-base">
               Former students and alumni can request transcripts, BECE results, or a testimonial letter from{' '}
               {schoolName}. Choose the document type below, fill in the form, and our office will call you when it

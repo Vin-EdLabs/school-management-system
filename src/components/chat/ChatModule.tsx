@@ -470,6 +470,10 @@ const ChatModule: React.FC = () => {
       if (ch) void syncMessagesQuietRef.current(ch.id);
       void refreshChannelsQuietRef.current();
     },
+    onUnreadChanged: () => {
+      void refreshChannelsQuietRef.current();
+      window.dispatchEvent(new Event('comms-badges-refresh'));
+    },
   });
 
   const chatSocketRef = useRef(chatSocket);
@@ -609,6 +613,13 @@ const ChatModule: React.FC = () => {
     setSelectedMessageId(null);
     setChannelStats(null);
     chatSocket.joinChannel(ch.id);
+    const priorUnread = ch.unread_count || 0;
+    chatSocket.markRead(ch.id);
+    setChannels((prev) => prev.map((c) => (c.id === ch.id ? { ...c, unread_count: 0 } : c)));
+    if (priorUnread > 0) {
+      setTotalUnread((prev) => Math.max(0, prev - priorUnread));
+    }
+    window.dispatchEvent(new Event('comms-badges-refresh'));
     try {
       const [channelData, stats] = await Promise.all([
         chatService.listChannels(),
@@ -627,8 +638,7 @@ const ChatModule: React.FC = () => {
       setActiveChannel(ch);
     }
     await loadMessages(ch.id);
-    chatSocket.markRead(ch.id);
-    setChannels((prev) => prev.map((c) => (c.id === ch.id ? { ...c, unread_count: 0 } : c)));
+    window.dispatchEvent(new Event('comms-badges-refresh'));
     requestAnimationFrame(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }));
   };
 

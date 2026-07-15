@@ -549,7 +549,11 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       if (!saved) return [];
       const parsed = JSON.parse(saved) as LinkedAccount[];
       return Array.isArray(parsed)
-        ? parsed.filter((acc) => studentBelongsToTenant(acc.student, tenantId))
+        ? parsed
+            .map((acc) => ({
+              student: { ...acc.student, tenant_id: acc.student.tenant_id ?? tenantId },
+            }))
+            .filter((acc) => studentBelongsToTenant(acc.student, tenantId))
         : [];
     } catch {
       return [];
@@ -557,8 +561,14 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   });
   const [showSwitcher, setShowSwitcher] = useState(false);
 
+  const normalizeLinkedAccount = (acc: LinkedAccount): LinkedAccount => ({
+    student: { ...acc.student, tenant_id: acc.student.tenant_id ?? tenantId },
+  });
+
   const syncLinkedAccounts = (accounts: LinkedAccount[]) => {
-    const scoped = accounts.filter((acc) => studentBelongsToTenant(acc.student, tenantId));
+    const scoped = accounts
+      .map(normalizeLinkedAccount)
+      .filter((acc) => studentBelongsToTenant(acc.student, tenantId));
     setLinkedAccounts(scoped);
     localStorage.setItem(`parent_accounts_${tenantId}`, JSON.stringify(scoped));
   };
@@ -624,20 +634,26 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   }, [cacheCurrentStudentData]);
 
   const persist = (t: string, s: StudentInfo) => {
-    localStorage.setItem(`parent_token_${tenantId}`, t);
-    localStorage.setItem(`parent_student_${tenantId}`, JSON.stringify(s));
+    const scopedStudent = { ...s, tenant_id: s.tenant_id ?? tenantId };
+    if (!studentBelongsToTenant(scopedStudent, tenantId)) return;
 
-    setLinkedAccounts(prev => {
-      const existingIdx = prev.findIndex(acc => acc.student.admission_number === s.admission_number);
-      let updated;
+    localStorage.setItem(`parent_token_${tenantId}`, t);
+    localStorage.setItem(`parent_student_${tenantId}`, JSON.stringify(scopedStudent));
+
+    setLinkedAccounts((prev) => {
+      const existingIdx = prev.findIndex(
+        (acc) => acc.student.admission_number === scopedStudent.admission_number
+      );
+      let updated: LinkedAccount[];
       if (existingIdx >= 0) {
         updated = [...prev];
-        updated[existingIdx] = { student: s };
+        updated[existingIdx] = { student: scopedStudent };
       } else {
-        updated = [...prev, { student: s }];
+        updated = [...prev, { student: scopedStudent }];
       }
-      localStorage.setItem(`parent_accounts_${tenantId}`, JSON.stringify(updated));
-      return updated;
+      const scoped = updated.filter((acc) => studentBelongsToTenant(acc.student, tenantId));
+      localStorage.setItem(`parent_accounts_${tenantId}`, JSON.stringify(scoped));
+      return scoped;
     });
   };
 
@@ -1321,6 +1337,11 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   const openDeskConversation = useCallback(async (id: number) => {
     if (!token) return;
     const sessionId = studentSessionRef.current;
+    let priorUnread = 0;
+    setDeskMessages((prev) => {
+      priorUnread = Number(prev.find((m) => Number(m.id) === Number(id))?.unread_replies) || 0;
+      return prev;
+    });
     const data = await parentFetch(`/messages/${id}`, {}, token);
     if (studentSessionRef.current !== sessionId) return;
     setSelectedDeskMessage(data?.message || null);
@@ -1328,6 +1349,9 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     setDeskConversation(Array.isArray(data?.replies) ? data.replies : []);
     await parentFetch(`/messages/${id}/read`, { method: 'PUT', body: JSON.stringify({}) }, token).catch(() => undefined);
     if (studentSessionRef.current !== sessionId) return;
+    if (priorUnread > 0) {
+      setParentDeskUnread((prev) => Math.max(0, prev - priorUnread));
+    }
     setDeskMessages((prev) => prev.map((m) => (Number(m.id) === Number(id) ? { ...m, unread_replies: 0 } : m)));
     void refreshParentDeskUnread();
   }, [token, refreshParentDeskUnread]);
@@ -1835,6 +1859,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   // Resolved school logo — from student record (richer) or prop fallback
   const resolvedLogo = resolveMediaUrl(student?.school_logo_url || schoolLogoUrl);
   const unreadNotifCount = appNotifications.filter(n => !n.read).length;
+  const totalPwaBadgeCount = unreadNotifCount + parentDeskUnread;
   const premiumLoginGradient = `linear-gradient(140deg, #050816 0%, #111a2f 38%, ${brandPrimary} 72%, ${brandSecondary} 100%)`;
 
   // Resolved student photo
@@ -1865,8 +1890,8 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       clearAppBadge?: () => Promise<void>;
     };
     if (typeof nav.setAppBadge !== 'function') return;
-    if (unreadNotifCount > 0) {
-      nav.setAppBadge(unreadNotifCount).catch(() => undefined);
+    if (totalPwaBadgeCount > 0) {
+      nav.setAppBadge(totalPwaBadgeCount).catch(() => undefined);
     } else if (typeof nav.clearAppBadge === 'function') {
       nav.clearAppBadge().catch(() => undefined);
     } else {
@@ -1876,11 +1901,11 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.ready
         .then((reg) => {
-          reg.active?.postMessage({ type: 'SET_BADGE_COUNT', count: unreadNotifCount });
+          reg.active?.postMessage({ type: 'SET_BADGE_COUNT', count: totalPwaBadgeCount });
         })
         .catch(() => undefined);
     }
-  }, [unreadNotifCount]);
+  }, [totalPwaBadgeCount]);
 
   const handleInstallApp = async () => {
     if (!installPromptEvent) {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { BrandedLoading, BrandedLoadingScreen, isSplashGone } from '@/components/common/BrandedLoading';
 import { PlatformAdminNoIndex } from '@/components/superadmin/PlatformAdminNoIndex';
+import SidebarMenuSearch from '@/components/sidebar/SidebarMenuSearch';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -48,6 +49,7 @@ import {
   SidebarMenuItem,
   SidebarSeparator,
   SidebarTrigger,
+  useSidebar,
 } from '@/components/ui/sidebar';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
@@ -217,6 +219,27 @@ interface OnlineSession {
 
 type Section = 'schools' | 'usage' | 'visits' | 'tracker' | 'registrations' | 'audit' | 'super-admins' | 'support-chat' | 'school-general-chat' | 'chat-broadcast' | 'school-websites' | 'school-data' | 'system-health' | 'platform-settings' | 'announcements' | 'online-users' | 'removed-staff' | 'finance-wipe';
 
+const SUPER_ADMIN_SIDEBAR_SEARCH_ITEMS = [
+  { id: 'schools', label: 'Schools', group: 'Overview' as const },
+  { id: 'usage', label: 'Usage', group: 'Overview' as const },
+  { id: 'announcements', label: 'Announcements', group: 'Overview' as const },
+  { id: 'visits', label: 'Visitor Analytics', group: 'Overview' as const },
+  { id: 'online-users', label: 'Online Users', group: 'Overview' as const },
+  { id: 'tracker', label: 'Tracker', group: 'Overview' as const },
+  { id: 'school-data', label: 'School Data', group: 'Overview' as const },
+  { id: 'registrations', label: 'Registration Requests', group: 'Overview' as const },
+  { id: 'support-chat', label: 'Support Chat', group: 'Overview' as const },
+  { id: 'school-general-chat', label: 'School General Chat', group: 'Overview' as const },
+  { id: 'chat-broadcast', label: 'School Broadcast', group: 'Overview' as const },
+  { id: 'school-websites', label: 'School Websites', group: 'Overview' as const },
+  { id: 'platform-settings', label: 'Platform Settings', group: 'System' as const },
+  { id: 'finance-wipe', label: 'Finance Config', group: 'System' as const },
+  { id: 'removed-staff', label: 'Removed Staff', group: 'System' as const },
+  { id: 'system-health', label: 'System Health', group: 'System' as const },
+  { id: 'super-admins', label: 'Super Admins', group: 'System' as const },
+  { id: 'audit', label: 'Audit Logs', group: 'System' as const },
+];
+
 interface RemovedTeacher {
   id: number;
   tenant_id: number;
@@ -253,6 +276,28 @@ function schoolResetDisplayName(school: { name: string; settings_school_name?: s
     return `${school.name} (or ${settingsName})`;
   }
   return school.name;
+}
+
+function SuperAdminBecomeUserButton({ onOpen }: { onOpen: () => void }) {
+  const { isMobile, setOpenMobile } = useSidebar();
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        onClick={() => {
+          if (isMobile) {
+            setOpenMobile(false);
+            window.setTimeout(() => onOpen(), 150);
+          } else {
+            onOpen();
+          }
+        }}
+        className="rounded-xl mx-2 text-amber-600/90 hover:text-amber-700 hover:bg-amber-500/10 transition-colors"
+      >
+        <UserRoundSearch className="h-4 w-4" />
+        <span>Become a User</span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
 }
 
 const SuperAdminDashboard = () => {
@@ -1350,6 +1395,8 @@ const SuperAdminDashboard = () => {
     { id: 'audit' as Section, label: 'Audit Logs', icon: Shield },
   ];
 
+  const sidebarSearchItems = SUPER_ADMIN_SIDEBAR_SEARCH_ITEMS;
+
   return (
     <>
       <PlatformAdminNoIndex />
@@ -1370,6 +1417,13 @@ const SuperAdminDashboard = () => {
               </div>
             </div>
           </SidebarHeader>
+
+          <SidebarMenuSearch
+            items={sidebarSearchItems}
+            activeId={section}
+            onSelect={(id) => setSection(id as Section)}
+            className="px-2"
+          />
 
           <SidebarContent className="px-2 py-4 gap-6 flex flex-col overflow-y-auto scrollbar-hide">
             <SidebarGroup>
@@ -1433,15 +1487,7 @@ const SuperAdminDashboard = () => {
           <SidebarFooter className="border-t border-slate-200 dark:border-slate-800 p-2">
             <SidebarMenu>
               {isPlatformSuperAdmin && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    onClick={() => setBecomeUserOpen(true)}
-                    className="rounded-xl mx-2 text-amber-600/90 hover:text-amber-700 hover:bg-amber-500/10 transition-colors"
-                  >
-                    <UserRoundSearch className="h-4 w-4" />
-                    <span>Become a User</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                <SuperAdminBecomeUserButton onOpen={() => setBecomeUserOpen(true)} />
               )}
               <SidebarMenuItem>
                 <SidebarMenuButton

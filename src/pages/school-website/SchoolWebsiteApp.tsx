@@ -10,6 +10,7 @@ import EventsPage from './pages/EventsPage';
 import ContactPage from './pages/ContactPage';
 import CareersPage from './pages/CareersPage';
 import AlumniPage from './pages/AlumniPage';
+import ManagementPage from './pages/ManagementPage';
 import ComingSoonPage from './pages/ComingSoonPage';
 import './schoolWebsite.css';
 
@@ -50,6 +51,7 @@ function SchoolWebsiteRoutes() {
       <Route element={<SchoolWebsiteLayout />}>
         <Route index element={<HomePage />} />
         <Route path="about" element={<AboutPage />} />
+        <Route path="management" element={<ManagementPage />} />
         <Route path="admissions" element={<AdmissionsPage />} />
         <Route path="events" element={<EventsPage />} />
         <Route path="gallery" element={<GalleryPage />} />

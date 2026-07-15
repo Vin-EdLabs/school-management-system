@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import { AppSidebar } from './Sidebar';
 import MainHeader from './layout/MainHeader';
 import { MobileChatShellProvider } from '@/contexts/MobileChatShellContext';
+import BecomeUserPanel from './impersonation/BecomeUserPanel';
 
 interface SidebarWrapperProps {
   activeModule: string;
@@ -17,6 +18,7 @@ const SidebarWrapper: React.FC<SidebarWrapperProps> = ({
   children,
 }) => {
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
+  const [becomeUserOpen, setBecomeUserOpen] = useState(false);
   const handleAiAssistantClick = () => {
     setActiveModule('ai-assistant');
   };
@@ -29,7 +31,11 @@ const SidebarWrapper: React.FC<SidebarWrapperProps> = ({
     <SidebarProvider>
       <MobileChatShellProvider setMobileChatOpen={setMobileChatOpen}>
       <div className="flex h-screen w-full overflow-hidden bg-[#F8FAFC] bg-[radial-gradient(circle_at_top_left,rgba(34,197,94,0.14),transparent_30%),radial-gradient(circle_at_top_right,rgba(20,108,67,0.10),transparent_28%)] dark:bg-slate-950/80 dark:bg-none">
-        <AppSidebar activeModule={activeModule} setActiveModule={setActiveModule} />
+        <AppSidebar
+          activeModule={activeModule}
+          setActiveModule={setActiveModule}
+          onOpenBecomeUser={() => setBecomeUserOpen(true)}
+        />
 
         <SidebarInset className="flex-1 flex flex-col min-h-0 h-full bg-transparent">
           <header
@@ -61,6 +67,7 @@ const SidebarWrapper: React.FC<SidebarWrapperProps> = ({
         </SidebarInset>
       </div>
       </MobileChatShellProvider>
+      <BecomeUserPanel open={becomeUserOpen} onClose={() => setBecomeUserOpen(false)} />
     </SidebarProvider>
   );
 };

@@ -45,14 +45,17 @@ export default function StaffPortalMessagesChip({ onNavigate, variant = 'light',
       const e = String(evt?.entity || '');
       if (e === 'chat' || e === 'staff-notification') void refresh();
     };
-    const onUnread = () => void refresh();
     socket.on('tenant-data-changed', onUpdate);
-    socket.on('chat_unread_changed', onUnread);
     return () => {
       socket.off('tenant-data-changed', onUpdate);
-      socket.off('chat_unread_changed', onUnread);
     };
   }, [socket, refresh]);
+
+  useEffect(() => {
+    const onRefresh = () => void refresh();
+    window.addEventListener('comms-badges-refresh', onRefresh);
+    return () => window.removeEventListener('comms-badges-refresh', onRefresh);
+  }, [refresh]);
 
   const hasUnread = messagesUnread > 0;
   const preview = useMemo(() => {

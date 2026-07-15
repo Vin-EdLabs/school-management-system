@@ -8,6 +8,7 @@ import { useSchoolWebsite } from './SchoolWebsiteContext';
 const NAV = [
   { to: '/', label: 'Home', end: true },
   { to: '/about', label: 'About' },
+  { to: '/management', label: 'Management' },
   { to: '/admissions', label: 'Admissions' },
   { to: '/events', label: 'Events' },
   { to: '/gallery', label: 'Gallery' },
@@ -81,26 +82,35 @@ function Navbar() {
     setMobileOpen(false);
   }, [location.pathname]);
 
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [mobileOpen]);
+
   return (
-    <header className={cn('sw-navbar', scrolled && 'is-scrolled')}>
-      <div className="sw-container flex items-center justify-between gap-4 py-4">
-        <Link to="/" className="sw-brand flex min-w-0 max-w-[58%] items-center gap-2 no-underline sm:max-w-[65%] sm:gap-3 md:max-w-none">
+    <header className={cn('sw-navbar', scrolled && 'is-scrolled', mobileOpen && 'is-mobile-open')}>
+      <div className="sw-container sw-navbar-inner">
+        <Link to="/" className="sw-brand no-underline" title={schoolName}>
           {logo ? (
-            <img src={logo} alt={`${schoolName} logo`} className="h-9 w-9 shrink-0 rounded-full object-cover sm:h-11 sm:w-11" />
+            <img src={logo} alt={`${schoolName} logo`} className="sw-brand-logo" />
           ) : (
             <div
-              className="sw-serif flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-base text-white sm:h-11 sm:w-11 sm:text-xl"
+              className="sw-brand-logo sw-serif flex items-center justify-center text-white"
               style={{ backgroundColor: accent }}
             >
               {schoolName.slice(0, 1)}
             </div>
           )}
-          <span className="sw-brand-name sw-serif truncate" style={{ color: accent }} title={schoolName}>
+          <span className="sw-brand-name sw-serif" style={{ color: accent }}>
             {schoolName}
           </span>
         </Link>
 
-        <nav className="hidden items-center gap-8 md:flex">
+        <nav className="sw-desktop-nav" aria-label="Main">
           {NAV.map((item) => (
             <NavLink
               key={item.to}
@@ -113,51 +123,56 @@ function Navbar() {
           ))}
         </nav>
 
-        <div className="hidden md:block">
-          <Link to="/admissions" className="sw-btn sw-btn-primary !py-2.5 !px-6 text-sm">
+        <div className="sw-navbar-actions">
+          <Link to="/admissions" className="sw-btn sw-btn-primary sw-navbar-cta">
             Apply Now
           </Link>
+          <button
+            type="button"
+            className={cn('sw-mobile-menu-btn', mobileOpen && 'is-active')}
+            style={{ borderColor: 'var(--sw-border)', color: 'var(--sw-navy-light)' }}
+            onClick={() => setMobileOpen((v) => !v)}
+            aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={mobileOpen}
+            aria-controls="sw-mobile-nav-panel"
+          >
+            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
         </div>
-
-        <button
-          type="button"
-          className="rounded-lg border p-2 md:hidden"
-          style={{ borderColor: 'var(--sw-border)', color: 'var(--sw-navy-light)' }}
-          onClick={() => setMobileOpen((v) => !v)}
-          aria-label="Menu"
-        >
-          {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </button>
       </div>
 
-      {mobileOpen && (
-        <div className="sw-mobile-nav border-t bg-white px-5 pb-8 pt-4 md:hidden" style={{ borderColor: 'var(--sw-border)' }}>
-          <div className="flex flex-col">
-            {NAV.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                className={({ isActive }) =>
-                  cn(
-                    'border-b py-4 text-base font-medium no-underline',
-                    isActive ? 'font-semibold' : ''
-                  )
-                }
-                style={({ isActive }) => ({
-                  borderColor: 'var(--sw-border)',
-                  color: isActive ? accent : 'var(--sw-navy-light)',
-                })}
-              >
-                {item.label}
-              </NavLink>
-            ))}
-            <Link to="/admissions" className="sw-btn sw-btn-primary mt-6 w-full">
+      <div
+        id="sw-mobile-nav-panel"
+        className={cn('sw-mobile-nav-wrap xl:hidden', mobileOpen && 'is-open')}
+        aria-hidden={!mobileOpen}
+      >
+        <div className="sw-mobile-nav">
+          <div className="sw-container sw-mobile-nav-inner">
+            <p className="sw-mobile-nav-label">Menu</p>
+            <nav className="sw-mobile-nav-links" aria-label="Mobile">
+              {NAV.map((item, index) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.end}
+                  className={({ isActive }) => cn('sw-mobile-nav-link', isActive && 'is-active')}
+                  style={{ ['--sw-nav-i' as string]: index }}
+                  onClick={() => setMobileOpen(false)}
+                >
+                  {item.label}
+                </NavLink>
+              ))}
+            </nav>
+            <Link
+              to="/admissions"
+              className="sw-btn sw-btn-primary sw-mobile-nav-cta"
+              onClick={() => setMobileOpen(false)}
+            >
               Apply Now
             </Link>
           </div>
         </div>
-      )}
+      </div>
     </header>
   );
 }
@@ -340,7 +355,12 @@ export default function SchoolWebsiteLayout() {
   const location = useLocation();
 
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const isMobile = window.matchMedia('(max-width: 768px)').matches;
+    window.scrollTo({
+      top: 0,
+      behavior: prefersReduced || isMobile ? 'auto' : 'smooth',
+    });
   }, [location.pathname]);
 
   return (

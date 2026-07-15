@@ -136,7 +136,6 @@ export async function resolveStaffTargetByIdentifier(
          OR LOWER(COALESCE(u.email, '')) = LOWER($2)
          OR LOWER(COALESCE(t.staff_id, '')) = LOWER($2)
          OR LOWER(COALESCE(s.staff_id, '')) = LOWER($2)
-         OR (regexp_replace($2, '\\D', '', 'g') <> '' AND u.id::text = regexp_replace($2, '\\D', '', 'g'))
        )
      LIMIT 1`,
     [tenantId, id]
@@ -165,7 +164,11 @@ export async function resolveStudentForParentPortal(
     `SELECT id, student_id, admission_number, first_name, last_name
      FROM students
      WHERE tenant_id = $1
-       AND (LOWER(student_id) = LOWER($2) OR LOWER(COALESCE(admission_number, '')) = LOWER($2))
+       AND (
+         LOWER(student_id) = LOWER($2)
+         OR LOWER(COALESCE(admission_number, '')) = LOWER($2)
+         OR id::text = $2
+       )
      LIMIT 1`,
     [tenantId, id]
   );
@@ -190,8 +193,10 @@ export async function ensureParentAccountForStudent(tenantId: number, studentPk:
     [studentPk, tenantId]
   );
   if (studentRes.rows.length === 0) throw new Error('Student not found');
-  const loginId = studentRes.rows[0].student_id || studentRes.rows[0].admission_number;
-  if (!loginId) throw new Error('Student has no portal login ID');
+  const loginId =
+    studentRes.rows[0].student_id ||
+    studentRes.rows[0].admission_number ||
+    `S${studentPk}`;
 
   const bcrypt = await import('bcryptjs');
   const hash = await bcrypt.hash(String(loginId), 10);

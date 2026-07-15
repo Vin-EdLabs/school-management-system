@@ -35,6 +35,7 @@ export function studentBelongsToTenant(
   tenantId: number
 ): boolean {
   if (!student) return false;
-  if (student.tenant_id == null) return true;
-  return Number(student.tenant_id) === tenantId;
+  const studentTenant = Number(student.tenant_id);
+  if (!Number.isInteger(studentTenant) || studentTenant <= 0) return false;
+  return studentTenant === tenantId;
 }

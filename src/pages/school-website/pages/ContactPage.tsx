@@ -6,6 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { schoolWebsitePublicService } from '@/services/schoolWebsiteService';
 import { useSchoolWebsite } from '../SchoolWebsiteContext';
 import { PageHero, Reveal, SectionHeading } from '../SchoolWebsiteLayout';
+import ApplicationSuccessScreen from '../components/ApplicationSuccessScreen';
 
 export default function ContactPage() {
   const { slug, data } = useSchoolWebsite();
@@ -27,12 +28,22 @@ export default function ContactPage() {
       await schoolWebsitePublicService.submitContact(slug, form);
       setSent(true);
       setForm({ name: '', phone: '', email: '', message: '' });
+      window.scrollTo({ top: 0, behavior: 'auto' });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send');
     } finally {
       setSending(false);
     }
   };
+
+  if (sent) {
+    return (
+      <ApplicationSuccessScreen
+        title="Message Sent!"
+        message="Thank you for reaching out. Our team will respond within one working day."
+      />
+    );
+  }
 
   const infoCards = [
     { icon: Phone, label: 'Phone', value: contact.primary_phone || contact.secondary_phone },
@@ -109,11 +120,6 @@ export default function ContactPage() {
             <Reveal delay={120}>
               <form onSubmit={(e) => void submit(e)} className="sw-card p-8 md:p-10">
                 <h2 className="sw-serif text-2xl">Send a message</h2>
-                {sent && (
-                  <p className="mt-3 rounded-lg px-4 py-2.5 text-sm font-medium" style={{ background: 'var(--sw-primary-tint)', color: 'var(--sw-primary)' }}>
-                    Message sent — thank you! We will be in touch soon.
-                  </p>
-                )}
                 {error && <p className="mt-3 text-sm font-medium text-red-600">{error}</p>}
                 <div className="mt-6 space-y-5">
                   <div className="space-y-2">

@@ -14,8 +14,12 @@ import {
   addGalleryImage,
   bufferToDataUrl,
   createEvent,
+  createAlumniProfile,
+  createTeamMember,
+  deleteAlumniProfile,
   deleteEvent,
   deleteGalleryImage,
+  deleteTeamMember,
   getAboutContent,
   getAdminOverview,
   getAdmissionConfig,
@@ -24,10 +28,12 @@ import {
   getContactInfo,
   getWebsitePortalNotificationSummary,
   listApplications,
+  listAlumniProfiles,
   listContactMessages,
   listEmploymentApplications,
   listEvents,
   listGallery,
+  listTeamMembers,
   listTranscriptRequests,
   listTestimonialSubmissions,
   markContactMessagesRead,
@@ -38,6 +44,7 @@ import {
   requestWebsiteEnable,
   updateAboutContent,
   updateAdmissionConfig,
+  updateAlumniProfile,
   updateCareersConfig,
   updateApplicationStatus,
   updateContactInfo,
@@ -45,6 +52,7 @@ import {
   updateTranscriptRequestStatus,
   updateTestimonialStatus,
   updateEvent,
+  updateTeamMember,
   updateWebsiteSettings,
   type ApplicationStatus,
 } from '../services/schoolWebsiteService.js';
@@ -387,6 +395,70 @@ router.patch('/alumni/testimonials/:id/read', async (req: AuthRequest, res) => {
 router.patch('/alumni/testimonials/:id/status', async (req: AuthRequest, res) => {
   try {
     res.json(await updateTestimonialStatus(tenantIdOf(req), Number(req.params.id), String(req.body.status)));
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+router.get('/management/team', async (req: AuthRequest, res) => {
+  try {
+    res.json({ items: await listTeamMembers(tenantIdOf(req)) });
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+router.post('/management/team', async (req: AuthRequest, res) => {
+  try {
+    res.status(201).json(await createTeamMember(tenantIdOf(req), req.body));
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+router.put('/management/team/:id', async (req: AuthRequest, res) => {
+  try {
+    res.json(await updateTeamMember(tenantIdOf(req), Number(req.params.id), req.body));
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+router.delete('/management/team/:id', async (req: AuthRequest, res) => {
+  try {
+    res.json(await deleteTeamMember(tenantIdOf(req), Number(req.params.id)));
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+router.get('/alumni/profiles', async (req: AuthRequest, res) => {
+  try {
+    res.json({ items: await listAlumniProfiles(tenantIdOf(req)) });
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+router.post('/alumni/profiles', async (req: AuthRequest, res) => {
+  try {
+    res.status(201).json(await createAlumniProfile(tenantIdOf(req), req.body));
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+router.put('/alumni/profiles/:id', async (req: AuthRequest, res) => {
+  try {
+    res.json(await updateAlumniProfile(tenantIdOf(req), Number(req.params.id), req.body));
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+router.delete('/alumni/profiles/:id', async (req: AuthRequest, res) => {
+  try {
+    res.json(await deleteAlumniProfile(tenantIdOf(req), Number(req.params.id)));
   } catch (err) {
     handleError(res, err);
   }

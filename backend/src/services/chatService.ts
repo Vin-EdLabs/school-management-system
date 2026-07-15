@@ -695,6 +695,21 @@ export async function markChannelRead(channelId: number, userId: number): Promis
      WHERE channel_id = $1 AND user_id = $2`,
     [channelId, userId]
   );
+
+  try {
+    const tenantRow = await query(`SELECT tenant_id FROM chat_channels WHERE id = $1`, [channelId]);
+    const tenantId = Number(tenantRow.rows[0]?.tenant_id);
+    if (!tenantId) return;
+    const { getIO } = await import('../socket.js');
+    getIO().to(`tenant:${tenantId}`).emit('tenant-data-changed', {
+      tenantId,
+      entity: 'chat',
+      action: 'read',
+      at: Date.now(),
+    });
+  } catch {
+    /* non-fatal */
+  }
 }
 
 export async function getOrCreateDm(tenantId: number, userId: number, targetUserId: number) {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 
 export default function ApplicationSuccessScreen({
@@ -8,6 +8,10 @@ export default function ApplicationSuccessScreen({
   title?: string;
   message?: string;
 }) {
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }, []);
+
   return (
     <section className="flex min-h-[75vh] items-center justify-center bg-white px-4 py-24">
       <div className="text-center">

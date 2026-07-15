@@ -13,9 +13,10 @@ import {
   RefreshCw,
   SearchX,
   Send,
-  Sparkles,
   TrendingDown,
   Users,
+  UserRound,
+  Award,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -65,6 +66,18 @@ const FEATURES = [
     description: 'Messages from your contact page land in the admin panel with read/unread tracking — never lose an enquiry.',
     tone: 'from-sky-500/10 to-sky-600/5 text-sky-700 dark:text-sky-300',
   },
+  {
+    icon: UserRound,
+    title: 'Leadership board',
+    description: 'Showcase proprietors, head teachers, finance officers, administrators, and selected teachers with photos and bios.',
+    tone: 'from-teal-500/10 to-teal-600/5 text-teal-700 dark:text-teal-300',
+  },
+  {
+    icon: Award,
+    title: 'Alumni spotlight',
+    description: 'Celebrate distinguished alumni with photos, graduation years, achievements, and inspiring success stories.',
+    tone: 'from-purple-500/10 to-purple-600/5 text-purple-700 dark:text-purple-300',
+  },
 ];
 
 const MISSED = [
@@ -111,7 +124,8 @@ function BrowserMock({ url, schoolName }: { url: string; schoolName: string }) {
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
             <span className="rounded-full bg-white/15 px-3 py-1 text-[10px] font-semibold backdrop-blur">Admissions</span>
-            <span className="rounded-full bg-white/15 px-3 py-1 text-[10px] font-semibold backdrop-blur">About us</span>
+            <span className="rounded-full bg-white/15 px-3 py-1 text-[10px] font-semibold backdrop-blur">Management</span>
+            <span className="rounded-full bg-white/15 px-3 py-1 text-[10px] font-semibold backdrop-blur">Alumni</span>
             <span className="rounded-full bg-white/15 px-3 py-1 text-[10px] font-semibold backdrop-blur">Careers</span>
           </div>
         </div>
@@ -296,7 +310,6 @@ export default function WebsiteFeaturePromo({
           <div className="flex flex-col gap-10 lg:flex-row lg:items-start lg:justify-between">
             <div className="max-w-xl">
               <Badge className="mb-4 border-0 bg-white/10 text-white hover:bg-white/10">
-                <Sparkles className="mr-1.5 h-3 w-3" />
                 Website feature not enabled yet
               </Badge>
               <div className="flex items-start gap-4">

@@ -47,7 +47,10 @@ function detectSchSlugFromPath(pathname: string): string | null {
 
 function hideSplash() {
   const splash = document.getElementById('sn-splash');
-  if (splash) splash.classList.add('sn-splash-hidden');
+  if (splash) {
+    splash.classList.add('sn-splash-hidden');
+    window.dispatchEvent(new Event('sn-splash-hidden'));
+  }
 }
 
 function resolveSplashCacheKey(
@@ -298,10 +301,10 @@ document.addEventListener(
 
 const root = createRoot(document.getElementById('root')!);
 
+// Mount immediately so the landing page and app shell render without waiting on branding/API.
+mountAppAndHideSplash();
+
 void (async () => {
-  // Seed the offline backup cache immediately — fire and forget, in parallel
-  // with the rest of the bootstrap so first-load users get offline coverage
-  // even if the SW install-time fetch is blocked (iOS Safari).
   void seedOfflineCacheNow();
 
   try {
@@ -311,6 +314,5 @@ void (async () => {
     applyCachedBrandingFallback();
   } finally {
     void registerServiceWorker();
-    mountAppAndHideSplash();
   }
 })();

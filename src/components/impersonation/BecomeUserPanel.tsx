@@ -83,6 +83,7 @@ const BecomeUserPanel: React.FC<Props> = ({ open, onClose }) => {
   }, [open, showSchoolPicker, schoolId]);
 
   const tenantId = parseInt(selectedTenantId || String(schoolId || ''), 10);
+  const canSearch = !!tenantId && !Number.isNaN(tenantId);
 
   const runSearch = useCallback(async () => {
     const q = searchQ.trim();
@@ -151,10 +152,15 @@ const BecomeUserPanel: React.FC<Props> = ({ open, onClose }) => {
     if (!open) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
     return () => {
       document.body.style.overflow = prev;
+      window.removeEventListener('keydown', onKeyDown);
     };
-  }, [open]);
+  }, [open, onClose]);
 
   useEffect(() => {
     if (!open) {
@@ -169,16 +175,26 @@ const BecomeUserPanel: React.FC<Props> = ({ open, onClose }) => {
   if (!open || !impersonation) return null;
 
   const panel = (
-    <div className="fixed inset-0 z-[10050] flex items-end justify-center sm:items-center sm:p-4">
-      <button type="button" className="absolute inset-0 bg-black/50 backdrop-blur-[2px]" aria-label="Close" onClick={onClose} />
+    <div
+      className="fixed inset-0 z-[10050] flex items-end justify-center sm:items-center sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="become-user-title"
+    >
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
+        aria-label="Close"
+        onClick={onClose}
+      />
       <div
         className="relative z-10 w-full max-w-md rounded-t-2xl border border-border bg-card p-5 shadow-2xl sm:rounded-2xl"
-        onMouseDown={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
-            <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
+            <h2 id="become-user-title" className="flex items-center gap-2 text-base font-semibold text-foreground">
               <UserRoundSearch className="h-5 w-5 text-amber-500" />
               Become a User
             </h2>
@@ -186,7 +202,17 @@ const BecomeUserPanel: React.FC<Props> = ({ open, onClose }) => {
               View the system exactly as another user — no password required.
             </p>
           </div>
-          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onClose}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9 shrink-0 touch-manipulation"
+            aria-label="Close"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+          >
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -231,7 +257,7 @@ const BecomeUserPanel: React.FC<Props> = ({ open, onClose }) => {
           <p className="mb-3 text-xs text-amber-700 dark:text-amber-400">Select a school above to search or enter an ID.</p>
         )}
 
-        {isSuper ? (
+        {canSearch ? (
           <>
             <div className="mb-3 space-y-1.5">
               <Label className="text-xs">Search user or student</Label>
@@ -279,16 +305,16 @@ const BecomeUserPanel: React.FC<Props> = ({ open, onClose }) => {
         ) : null}
 
         <div className="space-y-1.5">
-          <Label className="text-xs">{isSuper ? 'Or enter ID directly' : 'Teacher ID or Student ID'}</Label>
+          <Label className="text-xs">{canSearch ? 'Or enter ID directly' : 'Teacher ID or Student ID'}</Label>
           <Input
             value={identifier}
             onChange={(e) => setIdentifier(e.target.value)}
-            placeholder="e.g. TCH001 or 20260045"
+            placeholder="e.g. TCH001 or student ID"
             className="h-10"
             onKeyDown={(e) => e.key === 'Enter' && void handleSubmitId()}
           />
           <p className="text-[10px] text-muted-foreground">
-            Staff IDs open their dashboard. Student IDs open the parent portal (account created if needed).
+            Staff IDs open their dashboard. Student IDs open the parent portal instantly — no parent signup required.
           </p>
         </div>
 

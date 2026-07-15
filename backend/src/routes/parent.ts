@@ -870,11 +870,27 @@ async function linkSiblingStudentToAccount(
 
 async function syncFamilyFromStudentSiblingRecords(tenantId: number, anchorStudentPk: number, anchorAccountId: number) {
   const profile = await fetchParentStudentProfile(tenantId, anchorStudentPk);
+  if (!profile) return;
   const namesStr = String(profile?.names_of_siblings || '');
+  const anchorGuardianContact = String(profile?.guardian_contact || '').trim().toLowerCase();
+  const anchorGuardianName = String(profile?.guardian_name || '').trim().toLowerCase();
   const matches = [...namesStr.matchAll(/\(([^)]+)\)/g)];
   for (const match of matches) {
     const siblingPk = await resolveStudentInternalId(tenantId, match[1]?.trim());
     if (!siblingPk || siblingPk === anchorStudentPk) continue;
+    const siblingProfile = await fetchParentStudentProfile(tenantId, siblingPk);
+    if (!siblingProfile || Number(siblingProfile.tenant_id) !== tenantId) continue;
+
+    const siblingGuardianContact = String(siblingProfile.guardian_contact || '').trim().toLowerCase();
+    const siblingGuardianName = String(siblingProfile.guardian_name || '').trim().toLowerCase();
+    const hasAnchorGuardian = !!(anchorGuardianContact || anchorGuardianName);
+    const hasSiblingGuardian = !!(siblingGuardianContact || siblingGuardianName);
+    if (hasAnchorGuardian && hasSiblingGuardian) {
+      const contactMatch = anchorGuardianContact && siblingGuardianContact && anchorGuardianContact === siblingGuardianContact;
+      const nameMatch = anchorGuardianName && siblingGuardianName && anchorGuardianName === siblingGuardianName;
+      if (!contactMatch && !nameMatch) continue;
+    }
+
     const siblingAccount = await ensureParentPortalAccount(tenantId, siblingPk);
     await linkParentAccountsInFamily(tenantId, anchorAccountId, Number(siblingAccount.id));
   }
@@ -910,7 +926,7 @@ async function buildLinkedAccountsPayload(tenantId: number, accountId: number, s
   const linkedAccounts: Array<{ student: Record<string, unknown> }> = [];
   for (const member of members.rows) {
     const profile = await fetchParentStudentProfile(tenantId, Number(member.student_pk));
-    if (!profile) continue;
+    if (!profile || Number(profile.tenant_id) !== tenantId) continue;
     linkedAccounts.push({ student: profile });
   }
   return linkedAccounts;

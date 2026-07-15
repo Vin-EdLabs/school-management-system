@@ -142,10 +142,10 @@ router.get('/unread-count', authenticateParent, async (req: ParentRequest, res) 
       `SELECT COUNT(*)::int AS c
        FROM message_replies r
        INNER JOIN parent_messages m ON m.id = r.message_id
-       WHERE m.parent_account_id = $1 AND m.is_deleted = false
+       WHERE m.parent_account_id = $1 AND m.tenant_id = $2 AND m.is_deleted = false
          AND r.is_deleted = false
          AND r.sender_type = 'school' AND r.is_read = false`,
-      [req.parent!.accountId]
+      [req.parent!.accountId, req.parent!.tenantId]
     );
     return res.json({ count: Number(r.rows[0]?.c ?? 0) });
   } catch (error) {

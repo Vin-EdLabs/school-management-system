@@ -226,7 +226,7 @@ export async function getPublicWebsiteBundle(tenantId: number) {
     return { enabled: false as const, tenant: { name: tenant.name, slug: tenant.slug }, comingSoon: true as const };
   }
 
-  const [aboutRes, admissionRes, careersRes, contactRes, settingsRes, galleryRes, eventsRes, classesRes] = await Promise.all([
+  const [aboutRes, admissionRes, careersRes, contactRes, settingsRes, galleryRes, eventsRes, classesRes, teamRes, alumniRes] = await Promise.all([
     query(`SELECT * FROM school_website_about WHERE tenant_id = $1`, [tenantId]),
     query(`SELECT * FROM school_website_admission_config WHERE tenant_id = $1`, [tenantId]),
     query(`SELECT * FROM school_website_careers_config WHERE tenant_id = $1`, [tenantId]),
@@ -245,6 +245,8 @@ export async function getPublicWebsiteBundle(tenantId: number) {
       [tenantId]
     ),
     listPublicClasses(tenantId),
+    listPublicTeamMembers(tenantId),
+    listPublicAlumniProfiles(tenantId),
   ]);
 
   const about = aboutRes.rows[0] || {};
@@ -297,6 +299,11 @@ export async function getPublicWebsiteBundle(tenantId: number) {
     })),
     events: eventsRes.rows.map((row) => mapEventRow(row)),
     classes: classesRes,
+    management: {
+      leadership: teamRes.filter((m) => m.member_type === 'leadership'),
+      teachers: teamRes.filter((m) => m.member_type === 'teacher'),
+    },
+    alumni_profiles: alumniRes,
   };
 }
 
@@ -1591,4 +1598,233 @@ export async function superAdminWebsiteStats() {
 export async function isWebsiteFeatureEnabled(tenantId: number): Promise<boolean> {
   const res = await query(`SELECT is_enabled FROM school_websites WHERE tenant_id = $1`, [tenantId]);
   return !!res.rows[0]?.is_enabled;
+}
+
+export type WebsiteTeamMemberType = 'leadership' | 'teacher';
+
+function mapTeamMemberRow(row: Record<string, unknown>) {
+  let subjects: string[] = [];
+  const raw = row.subjects;
+  if (Array.isArray(raw)) subjects = raw.map(String);
+  else if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) subjects = parsed.map(String);
+    } catch {
+      subjects = [];
+    }
+  }
+  return {
+    id: Number(row.id),
+    member_type: String(row.member_type || 'leadership') as WebsiteTeamMemberType,
+    position: String(row.position || 'other'),
+    full_name: String(row.full_name || ''),
+    photo_url: (row.photo_url as string | null) || null,
+    bio: (row.bio as string | null) || null,
+    subjects,
+    sort_order: Number(row.sort_order || 0),
+    is_published: row.is_published !== false,
+  };
+}
+
+function mapAlumniProfileRow(row: Record<string, unknown>) {
+  return {
+    id: Number(row.id),
+    full_name: String(row.full_name || ''),
+    graduation_year: (row.graduation_year as string | null) || null,
+    photo_url: (row.photo_url as string | null) || null,
+    achievement: (row.achievement as string | null) || null,
+    testimonial: (row.testimonial as string | null) || null,
+    sort_order: Number(row.sort_order || 0),
+    is_published: row.is_published !== false,
+  };
+}
+
+async function listTeamMembersInternal(tenantId: number, publishedOnly: boolean) {
+  const res = await query(
+    `SELECT id, member_type, position, full_name, photo_url, bio, subjects, sort_order, is_published
+     FROM school_website_team_members
+     WHERE tenant_id = $1 ${publishedOnly ? 'AND is_published = true' : ''}
+     ORDER BY member_type ASC, sort_order ASC, id ASC`,
+    [tenantId]
+  );
+  return res.rows.map((row) => mapTeamMemberRow(row));
+}
+
+async function listAlumniProfilesInternal(tenantId: number, publishedOnly: boolean) {
+  const res = await query(
+    `SELECT id, full_name, graduation_year, photo_url, achievement, testimonial, sort_order, is_published
+     FROM school_website_alumni_profiles
+     WHERE tenant_id = $1 ${publishedOnly ? 'AND is_published = true' : ''}
+     ORDER BY sort_order ASC, id ASC`,
+    [tenantId]
+  );
+  return res.rows.map((row) => mapAlumniProfileRow(row));
+}
+
+export async function listTeamMembers(tenantId: number) {
+  return listTeamMembersInternal(tenantId, false);
+}
+
+export async function listPublicTeamMembers(tenantId: number) {
+  return listTeamMembersInternal(tenantId, true);
+}
+
+export async function createTeamMember(tenantId: number, body: Record<string, unknown>) {
+  const memberType = String(body.member_type || 'leadership') === 'teacher' ? 'teacher' : 'leadership';
+  const fullName = String(body.full_name || '').trim();
+  if (!fullName) throw httpError(400, 'Name is required');
+  const maxRes = await query(
+    `SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order
+     FROM school_website_team_members WHERE tenant_id = $1 AND member_type = $2`,
+    [tenantId, memberType]
+  );
+  const sortOrder = Number(maxRes.rows[0]?.next_order || 0);
+  const subjects = Array.isArray(body.subjects) ? body.subjects.map(String) : [];
+  const insert = await query(
+    `INSERT INTO school_website_team_members
+       (tenant_id, member_type, position, full_name, photo_url, bio, subjects, sort_order, is_published)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+     RETURNING *`,
+    [
+      tenantId,
+      memberType,
+      String(body.position || 'other').trim() || 'other',
+      fullName,
+      body.photo_url ? String(body.photo_url) : null,
+      body.bio ? String(body.bio).trim() : null,
+      JSON.stringify(subjects),
+      sortOrder,
+      body.is_published !== false,
+    ]
+  );
+  return mapTeamMemberRow(insert.rows[0]);
+}
+
+export async function updateTeamMember(tenantId: number, id: number, body: Record<string, unknown>) {
+  const existing = await query(
+    `SELECT id FROM school_website_team_members WHERE tenant_id = $1 AND id = $2`,
+    [tenantId, id]
+  );
+  if (!existing.rows.length) throw httpError(404, 'Team member not found');
+  const subjects = Array.isArray(body.subjects) ? body.subjects.map(String) : undefined;
+  const res = await query(
+    `UPDATE school_website_team_members SET
+       member_type = COALESCE($3, member_type),
+       position = COALESCE($4, position),
+       full_name = COALESCE($5, full_name),
+       photo_url = CASE WHEN $6::boolean THEN $7 ELSE photo_url END,
+       bio = CASE WHEN $8::boolean THEN $9 ELSE bio END,
+       subjects = COALESCE($10, subjects),
+       sort_order = COALESCE($11, sort_order),
+       is_published = COALESCE($12, is_published),
+       updated_at = NOW()
+     WHERE tenant_id = $1 AND id = $2
+     RETURNING *`,
+    [
+      tenantId,
+      id,
+      body.member_type ? (String(body.member_type) === 'teacher' ? 'teacher' : 'leadership') : null,
+      body.position != null ? String(body.position).trim() || 'other' : null,
+      body.full_name != null ? String(body.full_name).trim() : null,
+      body.photo_url !== undefined,
+      body.photo_url ? String(body.photo_url) : null,
+      body.bio !== undefined,
+      body.bio ? String(body.bio).trim() : null,
+      subjects != null ? JSON.stringify(subjects) : null,
+      body.sort_order != null ? Number(body.sort_order) : null,
+      body.is_published != null ? body.is_published !== false : null,
+    ]
+  );
+  return mapTeamMemberRow(res.rows[0]);
+}
+
+export async function deleteTeamMember(tenantId: number, id: number) {
+  const res = await query(
+    `DELETE FROM school_website_team_members WHERE tenant_id = $1 AND id = $2 RETURNING id`,
+    [tenantId, id]
+  );
+  if (!res.rows.length) throw httpError(404, 'Team member not found');
+  return { ok: true };
+}
+
+export async function listAlumniProfiles(tenantId: number) {
+  return listAlumniProfilesInternal(tenantId, false);
+}
+
+export async function listPublicAlumniProfiles(tenantId: number) {
+  return listAlumniProfilesInternal(tenantId, true);
+}
+
+export async function createAlumniProfile(tenantId: number, body: Record<string, unknown>) {
+  const fullName = String(body.full_name || '').trim();
+  if (!fullName) throw httpError(400, 'Name is required');
+  const maxRes = await query(
+    `SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order FROM school_website_alumni_profiles WHERE tenant_id = $1`,
+    [tenantId]
+  );
+  const sortOrder = Number(maxRes.rows[0]?.next_order || 0);
+  const insert = await query(
+    `INSERT INTO school_website_alumni_profiles
+       (tenant_id, full_name, graduation_year, photo_url, achievement, testimonial, sort_order, is_published)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+     RETURNING *`,
+    [
+      tenantId,
+      fullName,
+      body.graduation_year ? String(body.graduation_year).trim() : null,
+      body.photo_url ? String(body.photo_url) : null,
+      body.bio || body.achievement ? String(body.achievement || body.bio).trim() : null,
+      body.testimonial ? String(body.testimonial).trim() : null,
+      sortOrder,
+      body.is_published !== false,
+    ]
+  );
+  return mapAlumniProfileRow(insert.rows[0]);
+}
+
+export async function updateAlumniProfile(tenantId: number, id: number, body: Record<string, unknown>) {
+  const existing = await query(
+    `SELECT id FROM school_website_alumni_profiles WHERE tenant_id = $1 AND id = $2`,
+    [tenantId, id]
+  );
+  if (!existing.rows.length) throw httpError(404, 'Alumni profile not found');
+  const res = await query(
+    `UPDATE school_website_alumni_profiles SET
+       full_name = COALESCE($3, full_name),
+       graduation_year = CASE WHEN $4::boolean THEN $5 ELSE graduation_year END,
+       photo_url = CASE WHEN $6::boolean THEN $7 ELSE photo_url END,
+       achievement = CASE WHEN $8::boolean THEN $9 ELSE achievement END,
+       testimonial = CASE WHEN $10::boolean THEN $11 ELSE testimonial END,
+       sort_order = COALESCE($12, sort_order),
+       is_published = COALESCE($13, is_published),
+       updated_at = NOW()
+     WHERE tenant_id = $1 AND id = $2
+     RETURNING *`,
+    [
+      tenantId,
+      id,
+      body.full_name != null ? String(body.full_name).trim() : null,
+      body.graduation_year !== undefined,
+      body.graduation_year ? String(body.graduation_year).trim() : null,
+      body.photo_url !== undefined,
+      body.photo_url ? String(body.photo_url) : null,
+      body.achievement !== undefined || body.bio !== undefined,
+      body.achievement || body.bio ? String(body.achievement || body.bio).trim() : null,
+      body.testimonial !== undefined,
+      body.testimonial ? String(body.testimonial).trim() : null,
+      body.sort_order != null ? Number(body.sort_order) : null,
+      body.is_published != null ? body.is_published !== false : null,
+    ]
+  );
+  return mapAlumniProfileRow(res.rows[0]);
+}
+
+export async function deleteAlumniProfile(tenantId: number, id: number) {
+  const res = await query(
+    `DELETE FROM school_website_alumni_profiles WHERE tenant_id = $1 AND id = $2 RETURNING id`,
+    [tenantId, id]
+  );
+  if (!res.rows.length) throw httpError(404, 'Alumni profile not found');
+  return { ok: true };
 }

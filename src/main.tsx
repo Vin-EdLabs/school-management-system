@@ -241,6 +241,9 @@ function setupServiceWorkerMessageListener() {
     if (event.data?.type === 'APP_NAV' && typeof event.data.url === 'string') {
       applyAppNavigationFromUrl(event.data.url);
     }
+    if (event.data?.type === 'SYNC_BADGE') {
+      window.dispatchEvent(new Event('pwa-badge-sync'));
+    }
   });
 }
 

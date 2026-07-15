@@ -153,12 +153,15 @@ router.post('/login', resolveTenant, async (req: ParentRequest & TenantRequest, 
     // Look up student by their auto-generated student_id (e.g. "20260001")
     // Also try admission_number in case school uses that format instead
     const studentRow = await query(
-      `SELECT id, first_name, last_name, student_id AS admission_number,
+      `SELECT id, first_name, last_name, student_id, admission_number,
               class_assigned_id, passport_photo_url, guardian_name, guardian_contact
        FROM students
        WHERE tenant_id = $1
-         AND (LOWER(student_id) = LOWER($2) OR LOWER(admission_number) = LOWER($2))`,
-      [tenantId, admissionNumber]
+         AND (
+           LOWER(TRIM(student_id)) = LOWER($2)
+           OR LOWER(TRIM(COALESCE(admission_number, ''))) = LOWER($2)
+         )`,
+      [tenantId, admissionNumber.trim()]
     );
     if (studentRow.rows.length === 0) {
       return res.status(401).json({ error: 'Invalid student ID or password' });

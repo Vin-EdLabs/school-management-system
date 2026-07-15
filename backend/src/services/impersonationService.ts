@@ -165,28 +165,57 @@ export async function resolveStudentForParentPortal(
      FROM students
      WHERE tenant_id = $1
        AND (
-         LOWER(student_id) = LOWER($2)
-         OR LOWER(COALESCE(admission_number, '')) = LOWER($2)
-         OR id::text = $2
+         LOWER(TRIM(student_id)) = LOWER($2)
+         OR LOWER(TRIM(COALESCE(admission_number, ''))) = LOWER($2)
+         OR TRIM(id::text) = $2
        )
      LIMIT 1`,
     [tenantId, id]
   );
   if (res.rows.length === 0) return null;
   const row = res.rows[0];
+  const displayId =
+    String(row.student_id || '').trim() ||
+    String(row.admission_number || '').trim() ||
+    String(row.id);
   return {
     studentPk: row.id,
-    studentDisplayId: row.student_id || row.admission_number || String(row.id),
+    studentDisplayId: displayId,
     studentName: `${row.first_name || ''} ${row.last_name || ''}`.trim(),
   };
 }
 
 export async function ensureParentAccountForStudent(tenantId: number, studentPk: number) {
   const existing = await query(
-    `SELECT id FROM parent_portal_accounts WHERE tenant_id = $1 AND student_id = $2`,
+    `SELECT id, is_active, password_hash FROM parent_portal_accounts WHERE tenant_id = $1 AND student_id = $2`,
     [tenantId, studentPk]
   );
-  if (existing.rows.length > 0) return Number(existing.rows[0].id);
+  if (existing.rows.length > 0) {
+    const accountId = Number(existing.rows[0].id);
+    await query(
+      `UPDATE parent_portal_accounts
+       SET is_active = true
+       WHERE id = $1 AND tenant_id = $2`,
+      [accountId, tenantId]
+    );
+    if (!existing.rows[0].password_hash) {
+      const studentRes = await query(
+        'SELECT student_id, admission_number FROM students WHERE id = $1 AND tenant_id = $2',
+        [studentPk, tenantId]
+      );
+      const loginId =
+        String(studentRes.rows[0]?.student_id || '').trim() ||
+        String(studentRes.rows[0]?.admission_number || '').trim() ||
+        `S${studentPk}`;
+      const bcrypt = await import('bcryptjs');
+      const hash = await bcrypt.hash(String(loginId), 10);
+      await query(
+        `UPDATE parent_portal_accounts SET password_hash = $1 WHERE id = $2 AND tenant_id = $3`,
+        [hash, accountId, tenantId]
+      );
+    }
+    return accountId;
+  }
 
   const studentRes = await query(
     'SELECT student_id, admission_number FROM students WHERE id = $1 AND tenant_id = $2',
@@ -194,15 +223,15 @@ export async function ensureParentAccountForStudent(tenantId: number, studentPk:
   );
   if (studentRes.rows.length === 0) throw new Error('Student not found');
   const loginId =
-    studentRes.rows[0].student_id ||
-    studentRes.rows[0].admission_number ||
+    String(studentRes.rows[0].student_id || '').trim() ||
+    String(studentRes.rows[0].admission_number || '').trim() ||
     `S${studentPk}`;
 
   const bcrypt = await import('bcryptjs');
   const hash = await bcrypt.hash(String(loginId), 10);
   const inserted = await query(
-    `INSERT INTO parent_portal_accounts (tenant_id, student_id, password_hash, must_change_password)
-     VALUES ($1, $2, $3, false)
+    `INSERT INTO parent_portal_accounts (tenant_id, student_id, password_hash, must_change_password, is_active)
+     VALUES ($1, $2, $3, false, true)
      RETURNING id`,
     [tenantId, studentPk, hash]
   );

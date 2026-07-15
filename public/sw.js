@@ -722,18 +722,16 @@ self.addEventListener('push', (event) => {
     tag: payloadData.tag || data.tag || `scholarnerve-${Date.now()}`,
     timestamp: Date.now(),
   };
-  const badgeCountFromPayload = Number(payloadData.unreadCount || data.unreadCount || 0);
+  const badgeCountFromPayload = Number(payloadData.unreadCount ?? data.unreadCount ?? NaN);
   event.waitUntil(
     (async () => {
       await self.registration.showNotification(title, options);
       if (!navigator.setAppBadge) return;
-      if (badgeCountFromPayload > 0) {
-        await navigator.setAppBadge(badgeCountFromPayload);
+      if (Number.isFinite(badgeCountFromPayload) && badgeCountFromPayload >= 0) {
+        if (badgeCountFromPayload > 0) await navigator.setAppBadge(badgeCountFromPayload);
+        else if (navigator.clearAppBadge) await navigator.clearAppBadge();
         return;
       }
-      const notifs = await self.registration.getNotifications();
-      if (notifs.length > 0) await navigator.setAppBadge(notifs.length);
-      else if (navigator.clearAppBadge) await navigator.clearAppBadge();
     })(),
   );
 });
@@ -743,15 +741,11 @@ self.addEventListener('notificationclick', (event) => {
   const targetUrl = event.notification?.data?.url || '/';
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clientList) => {
-      if (self.registration.setAppBadge) {
-        const notifs = await self.registration.getNotifications();
-        if (notifs.length > 0) await self.registration.setAppBadge(notifs.length);
-        else if (self.registration.clearAppBadge) await self.registration.clearAppBadge();
-      }
       for (const client of clientList) {
         if ('focus' in client) {
           await client.focus();
           client.postMessage({ type: 'APP_NAV', url: targetUrl });
+          client.postMessage({ type: 'SYNC_BADGE' });
           return;
         }
       }
@@ -760,15 +754,8 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
-self.addEventListener('notificationclose', (event) => {
-  event.waitUntil(
-    (async () => {
-      if (!self.registration.setAppBadge) return;
-      const notifs = await self.registration.getNotifications();
-      if (notifs.length > 0) await self.registration.setAppBadge(notifs.length);
-      else if (self.registration.clearAppBadge) await self.registration.clearAppBadge();
-    })(),
-  );
+self.addEventListener('notificationclose', () => {
+  // Badge count is owned by the app via SET_BADGE_COUNT — do not infer from tray notifications.
 });
 
 self.addEventListener('message', (event) => {

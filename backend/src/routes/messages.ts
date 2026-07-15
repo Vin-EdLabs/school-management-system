@@ -259,6 +259,13 @@ router.put('/:id/read', authenticateParent, async (req: ParentRequest, res) => {
        WHERE r.message_id = m.id AND m.id = $1 AND m.parent_account_id = $2 AND m.tenant_id = $3 AND r.sender_type = 'school'`,
       [id, req.parent!.accountId, req.parent!.tenantId]
     );
+    await query(
+      `UPDATE parent_notifications
+       SET is_read = true
+       WHERE parent_account_id = $1 AND tenant_id = $2 AND is_read = false
+         AND (title ILIKE '%parent desk%' OR title ILIKE '%school replied%')`,
+      [req.parent!.accountId, req.parent!.tenantId]
+    ).catch(() => undefined);
     return res.json({ success: true });
   } catch (error) {
     console.error('Mark message read error:', error);

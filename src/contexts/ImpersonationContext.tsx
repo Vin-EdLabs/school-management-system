@@ -293,6 +293,13 @@ export const ImpersonationProvider: React.FC<{ children: React.ReactNode; return
           throw new Error('User not found');
         });
         if (navKind === 'hard') hardNav = true;
+      } catch (e: unknown) {
+        clearImpersonationTransition();
+        toast({
+          title: 'Could not become user',
+          description: e instanceof Error ? e.message : 'Try another ID or student name',
+          variant: 'destructive',
+        });
       } finally {
         if (!hardNav) setLoading(false);
       }
@@ -329,6 +336,13 @@ export const ImpersonationProvider: React.FC<{ children: React.ReactNode; return
           );
         });
         if (navKind === 'hard') hardNav = true;
+      } catch (e: unknown) {
+        clearImpersonationTransition();
+        toast({
+          title: 'Could not open parent portal',
+          description: e instanceof Error ? e.message : 'Try another student',
+          variant: 'destructive',
+        });
       } finally {
         if (!hardNav) setLoading(false);
       }

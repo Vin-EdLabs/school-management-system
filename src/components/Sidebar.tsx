@@ -8,6 +8,7 @@ import { apiService } from '../services/api';
 import { ACTIVE_TERM_EXEMPT_MODULES } from './common/ActiveTermRequiredShell';
 import { toast } from '@/hooks/use-toast';
 import { cn } from "@/lib/utils";
+import { syncPwaAppBadge } from '@/utils/pwaAppBadge';
 import {
   LayoutDashboard,
   Users,
@@ -539,16 +540,21 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
   }, [isHeadmaster, headmasterMenu, menuItems]);
 
   const refreshCommsBadges = useCallback(async () => {
+    let deskCount = 0;
+    let supportCount = 0;
+    let messagesCount = 0;
     try {
       if (hasAccess('parent-desk')) {
         const d = await apiService.get<{ count: number }>('/messages/admin/unread-count');
-        setParentDeskUnread(Number(d?.count ?? 0));
+        deskCount = Number(d?.count ?? 0);
+        setParentDeskUnread(deskCount);
       } else {
         setParentDeskUnread(0);
       }
       if (hasAccess('support-chat')) {
         const s = await apiService.get<{ count: number }>('/support-chat/unread-count');
-        setSupportUnread(Number(s?.count ?? 0));
+        supportCount = Number(s?.count ?? 0);
+        setSupportUnread(supportCount);
       } else {
         setSupportUnread(0);
       }
@@ -561,15 +567,18 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
       if (hasAccess('messages')) {
         const { chatService } = await import('../services/chatService');
         const c = await chatService.listChannels();
-        setMessagesUnread(Number(c?.total_unread ?? 0));
+        messagesCount = Number(c?.total_unread ?? 0);
+        setMessagesUnread(messagesCount);
       } else {
         setMessagesUnread(0);
       }
+      syncPwaAppBadge(deskCount + supportCount + messagesCount);
     } catch {
       setParentDeskUnread(0);
       setSupportUnread(0);
       setPaymentSubmissionsPending(0);
       setMessagesUnread(0);
+      syncPwaAppBadge(0);
     }
   }, [hasAccess]);
 
@@ -603,12 +612,14 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
     socket.on('new-parent-message', onCountUpdate);
     socket.on('support-chat-read', onCountUpdate);
     window.addEventListener('comms-badges-refresh', onLocalRefresh);
+    window.addEventListener('pwa-badge-sync', onLocalRefresh);
     return () => {
       socket.off('tenant-data-changed', onTenant);
       socket.off('new-support-message', onCountUpdate);
       socket.off('new-parent-message', onCountUpdate);
       socket.off('support-chat-read', onCountUpdate);
       window.removeEventListener('comms-badges-refresh', onLocalRefresh);
+      window.removeEventListener('pwa-badge-sync', onLocalRefresh);
     };
   }, [socket, refreshCommsBadges]);
 

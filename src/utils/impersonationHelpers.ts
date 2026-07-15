@@ -203,16 +203,24 @@ export async function bootstrapParentImpersonationSession(
     const res = await fetch(`${apiService.getBaseUrl()}/parent/me`, {
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     });
-    if (!res.ok) return false;
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(
+        typeof err?.error === 'string'
+          ? err.error
+          : `Could not open parent portal (HTTP ${res.status})`
+      );
+    }
     const me = (await res.json()) as Record<string, unknown>;
-    const studentInfo = { ...me, must_change_password: false };
+    const studentInfo = { ...me, tenant_id: me.tenant_id ?? tenantId, must_change_password: false };
     localStorage.setItem(`parent_student_${tenantId}`, JSON.stringify(studentInfo));
     window.dispatchEvent(
       new CustomEvent('parent-impersonation-session-ready', { detail: { tenantId } })
     );
     return true;
-  } catch {
-    return false;
+  } catch (e: unknown) {
+    clearParentImpersonationLocal(tenantId);
+    throw e instanceof Error ? e : new Error('Could not open parent portal');
   }
 }
 

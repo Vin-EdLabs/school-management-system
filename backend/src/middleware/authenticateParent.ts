@@ -35,8 +35,13 @@ export async function resolveParentFromToken(
   if (!Number.isInteger(accountId) || accountId <= 0) return null;
   if (!Number.isInteger(jwtTenantId) || jwtTenantId <= 0) return null;
 
+  const isImpersonation =
+    decoded.impersonatorId != null && String(decoded.impersonatorId).trim() !== '';
+
   const row = await query(
-    'SELECT id, student_id, tenant_id FROM parent_portal_accounts WHERE id = $1 AND tenant_id = $2 AND is_active = true',
+    isImpersonation
+      ? 'SELECT id, student_id, tenant_id FROM parent_portal_accounts WHERE id = $1 AND tenant_id = $2'
+      : 'SELECT id, student_id, tenant_id FROM parent_portal_accounts WHERE id = $1 AND tenant_id = $2 AND is_active = true',
     [accountId, jwtTenantId]
   );
   if (row.rows.length === 0) return null;

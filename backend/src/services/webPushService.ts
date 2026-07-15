@@ -67,9 +67,15 @@ export async function sendPushToParentAccount(parentAccountId: number, payload: 
 
   if (webPushEnabled && subs.rows.length > 0) {
     const unreadRes = await query(
-      `SELECT COUNT(*)::int AS total
-       FROM parent_notifications
-       WHERE parent_account_id = $1 AND is_read = false`,
+      `SELECT
+         (SELECT COUNT(*)::int FROM parent_notifications WHERE parent_account_id = $1 AND is_read = false)
+         +
+         (SELECT COUNT(*)::int
+          FROM message_replies r
+          INNER JOIN parent_messages m ON m.id = r.message_id
+          WHERE m.parent_account_id = $1 AND m.is_deleted = false
+            AND r.is_deleted = false AND r.sender_type = 'school' AND r.is_read = false)
+       AS total`,
       [parentAccountId]
     ).catch(() => ({ rows: [{ total: 0 }] as any[] }));
     const unreadCount = Number(unreadRes.rows[0]?.total || 0);

@@ -50,6 +50,7 @@ import {
   readParentToken,
   studentBelongsToTenant,
 } from '@/utils/parentSession';
+import { syncPwaAppBadge } from '@/utils/pwaAppBadge';
 
 function resolveApiBase(): string {
   if (import.meta.env.VITE_API_BASE_URL) return import.meta.env.VITE_API_BASE_URL;
@@ -833,6 +834,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     setDataLoading(false);
     setActiveTab('overview');
     setAppNotifications([]);
+    syncPwaAppBadge(0);
   };
 
   const pushNotification = useCallback((title: string, message: string) => {
@@ -1354,7 +1356,8 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     }
     setDeskMessages((prev) => prev.map((m) => (Number(m.id) === Number(id) ? { ...m, unread_replies: 0 } : m)));
     void refreshParentDeskUnread();
-  }, [token, refreshParentDeskUnread]);
+    if (token) void loadServerNotifications(token);
+  }, [token, refreshParentDeskUnread, loadServerNotifications]);
 
   const submitDeskMessage = useCallback(async () => {
     if (!token || !deskBody.trim()) return;
@@ -1885,27 +1888,27 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   }, []);
 
   useEffect(() => {
-    const nav = navigator as Navigator & {
-      setAppBadge?: (count?: number) => Promise<void>;
-      clearAppBadge?: () => Promise<void>;
-    };
-    if (typeof nav.setAppBadge !== 'function') return;
-    if (totalPwaBadgeCount > 0) {
-      nav.setAppBadge(totalPwaBadgeCount).catch(() => undefined);
-    } else if (typeof nav.clearAppBadge === 'function') {
-      nav.clearAppBadge().catch(() => undefined);
-    } else {
-      nav.setAppBadge(0).catch(() => undefined);
-    }
-
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.ready
-        .then((reg) => {
-          reg.active?.postMessage({ type: 'SET_BADGE_COUNT', count: totalPwaBadgeCount });
-        })
-        .catch(() => undefined);
-    }
+    syncPwaAppBadge(totalPwaBadgeCount);
   }, [totalPwaBadgeCount]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshParentDeskUnread();
+        if (token) void loadServerNotifications(token);
+      }
+    };
+    const onBadgeSync = () => {
+      void refreshParentDeskUnread();
+      if (token) void loadServerNotifications(token);
+    };
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('pwa-badge-sync', onBadgeSync);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('pwa-badge-sync', onBadgeSync);
+    };
+  }, [token, refreshParentDeskUnread, loadServerNotifications]);
 
   const handleInstallApp = async () => {
     if (!installPromptEvent) {

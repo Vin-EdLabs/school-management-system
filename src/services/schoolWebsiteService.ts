@@ -49,6 +49,9 @@ export type PublicWebsiteBundle = {
     welcome_text: string | null;
     welcome_image_url: string | null;
     welcome_image_secondary_url?: string | null;
+    public_subdomain?: string | null;
+    effective_public_subdomain?: string;
+    website_url_suffix?: string;
     home_content?: WebsiteHomeContent;
     highlights: WebsiteHighlight[];
     stats: WebsiteStats;
@@ -68,7 +71,12 @@ function resolvePublicApiBase(): string {
 
 async function publicFetch<T>(path: string, slug: string, init?: RequestInit): Promise<T> {
   const base = resolvePublicApiBase();
-  const res = await fetch(`${base}${path}`, {
+  const host =
+    typeof window !== 'undefined' && window.location.hostname
+      ? encodeURIComponent(window.location.hostname)
+      : '';
+  const url = host ? `${base}${path}${path.includes('?') ? '&' : '?'}host=${host}` : `${base}${path}`;
+  const res = await fetch(url, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
@@ -83,7 +91,12 @@ async function publicFetch<T>(path: string, slug: string, init?: RequestInit): P
 
 async function publicForm<T>(path: string, slug: string, form: FormData): Promise<T> {
   const base = resolvePublicApiBase();
-  const res = await fetch(`${base}${path}`, {
+  const host =
+    typeof window !== 'undefined' && window.location.hostname
+      ? encodeURIComponent(window.location.hostname)
+      : '';
+  const url = host ? `${base}${path}?host=${host}` : `${base}${path}`;
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'X-Tenant-Slug': slug },
     body: form,
@@ -347,11 +360,25 @@ export const superAdminWebsiteService = {
     );
   },
 
+  setUrlSuffix(tenantId: number, suffix: string) {
+    return apiService.patch<{
+      tenant_id: number;
+      slug: string;
+      website_url_suffix: string;
+      public_site_url: string;
+      portal_url: string;
+    }>(`/super-admin/websites/${tenantId}/url-suffix`, { suffix }, { skipTenant: true, skipTenantHeaders: true });
+  },
+
   setSubdomain(tenantId: number, subdomain: string | null) {
     return apiService.patch<{
       tenant_id: number;
+      slug: string;
       public_subdomain: string | null;
       effective_public_subdomain: string;
+      website_url_suffix: string;
+      public_site_url: string;
+      portal_url: string;
     }>(`/super-admin/websites/${tenantId}/subdomain`, { subdomain }, { skipTenant: true, skipTenantHeaders: true });
   },
 };

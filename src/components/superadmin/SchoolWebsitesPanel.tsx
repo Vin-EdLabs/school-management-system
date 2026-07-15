@@ -20,9 +20,13 @@ import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { superAdminWebsiteService, type WebsiteEnableRequest } from '@/services/schoolWebsiteService';
 import {
-  getEffectiveWebsiteSubdomain,
-  getSchoolWebsiteDomainSuffix,
+  DEFAULT_WEBSITE_URL_SUFFIX,
+  getEffectivePublicWebsiteSlug,
+  getPortalPublicUrl,
+  getSchoolUrls,
   getSchoolWebsitePublicUrl,
+  normalizePublicWebsiteSlug,
+  normalizeWebsiteUrlSuffix,
 } from '@/utils/schoolWebsiteHost';
 
 type SchoolRow = Record<string, unknown>;
@@ -70,10 +74,10 @@ export default function SchoolWebsitesPanel({
   const [stats, setStats] = useState({ active_sites: 0, pending_applications: 0, pending_enable_requests: 0 });
   const [query, setQuery] = useState('');
   const [copiedId, setCopiedId] = useState<number | null>(null);
-  const [subdomainDrafts, setSubdomainDrafts] = useState<Record<number, string>>({});
-  const [savingSubdomain, setSavingSubdomain] = useState<number | null>(null);
-
-  const domainSuffix = getSchoolWebsiteDomainSuffix();
+  const [suffixDrafts, setSuffixDrafts] = useState<Record<number, string>>({});
+  const [slugDrafts, setSlugDrafts] = useState<Record<number, string>>({});
+  const [savingSuffix, setSavingSuffix] = useState<number | null>(null);
+  const [savingSlug, setSavingSlug] = useState<number | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -88,14 +92,19 @@ export default function SchoolWebsitesPanel({
         setStats(nextStats);
         onPendingCountChange?.(Number(nextStats.pending_enable_requests ?? requests.length));
         const drafts: Record<number, string> = {};
+        const slugMap: Record<number, string> = {};
         rows.forEach((s) => {
           const id = Number(s.tenant_id);
-          drafts[id] = String(
-            s.public_subdomain ||
-              getEffectiveWebsiteSubdomain(String(s.slug || ''), s.public_subdomain as string | null)
+          drafts[id] = normalizeWebsiteUrlSuffix(
+            String(s.website_url_suffix || DEFAULT_WEBSITE_URL_SUFFIX)
+          );
+          slugMap[id] = getEffectivePublicWebsiteSlug(
+            String(s.slug || ''),
+            s.public_subdomain as string | null | undefined
           );
         });
-        setSubdomainDrafts(drafts);
+        setSuffixDrafts(drafts);
+        setSlugDrafts(slugMap);
       })
       .catch(() => toast({ title: 'Failed to load websites', variant: 'destructive' }))
       .finally(() => setLoading(false));
@@ -117,8 +126,8 @@ export default function SchoolWebsitesPanel({
     return schools.filter((s) => {
       const name = String(s.tenant_name || '').toLowerCase();
       const slug = String(s.slug || '').toLowerCase();
-      const sub = String(s.effective_public_subdomain || s.public_subdomain || slug).toLowerCase();
-      return name.includes(q) || slug.includes(q) || sub.includes(q);
+      const suffix = String(s.website_url_suffix || DEFAULT_WEBSITE_URL_SUFFIX).toLowerCase();
+      return name.includes(q) || slug.includes(q) || suffix.includes(q);
     });
   }, [schools, query]);
 
@@ -134,25 +143,57 @@ export default function SchoolWebsitesPanel({
     }
   };
 
-  const saveSubdomain = async (tenantId: number, tenantSlug: string) => {
-    const draft = (subdomainDrafts[tenantId] || '').trim().toLowerCase();
-    const currentEffective = getEffectiveWebsiteSubdomain(tenantSlug, schools.find((s) => Number(s.tenant_id) === tenantId)?.public_subdomain as string | null);
-    if (draft === currentEffective) return;
+  const savePublicSlug = async (tenantId: number, tenantSlug: string) => {
+    const draft = normalizePublicWebsiteSlug(slugDrafts[tenantId] || tenantSlug);
+    const current = getEffectivePublicWebsiteSlug(
+      tenantSlug,
+      schools.find((s) => Number(s.tenant_id) === tenantId)?.public_subdomain as string | null
+    );
+    if (draft === current) return;
 
-    setSavingSubdomain(tenantId);
+    setSavingSlug(tenantId);
     try {
-      const resetToDefault = !draft || draft === tenantSlug.toLowerCase();
-      await superAdminWebsiteService.setSubdomain(tenantId, resetToDefault ? null : draft);
-      toast({ title: 'Public domain updated' });
+      const useDefault = !draft || draft === normalizePublicWebsiteSlug(tenantSlug);
+      await superAdminWebsiteService.setSubdomain(tenantId, useDefault ? null : draft);
+      toast({
+        title: 'Public website slug updated',
+        description: `${draft}-${suffixDrafts[tenantId] || 'edu'}.scholarnerve.com`,
+      });
       load();
     } catch (e) {
       toast({
-        title: 'Could not update domain',
+        title: 'Could not update public slug',
         description: e instanceof Error ? e.message : undefined,
         variant: 'destructive',
       });
     } finally {
-      setSavingSubdomain(null);
+      setSavingSlug(null);
+    }
+  };
+
+  const saveSuffix = async (tenantId: number, tenantSlug: string) => {
+    const draft = normalizeWebsiteUrlSuffix(suffixDrafts[tenantId] || DEFAULT_WEBSITE_URL_SUFFIX);
+    const current = normalizeWebsiteUrlSuffix(
+      String(schools.find((s) => Number(s.tenant_id) === tenantId)?.website_url_suffix || DEFAULT_WEBSITE_URL_SUFFIX)
+    );
+    if (draft === current) return;
+
+    setSavingSuffix(tenantId);
+    try {
+      await superAdminWebsiteService.setUrlSuffix(tenantId, draft);
+      toast({
+        title: 'Public website URL updated',
+        description: `${tenantSlug}-${draft}.scholarnerve.com`,
+      });
+      load();
+    } catch (e) {
+      toast({
+        title: 'Could not update URL suffix',
+        description: e instanceof Error ? e.message : undefined,
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingSuffix(null);
     }
   };
 
@@ -177,10 +218,8 @@ export default function SchoolWebsitesPanel({
 
   return (
     <div className="space-y-8 p-4 md:p-6 lg:p-8">
-      {/* Hero */}
       <div className="relative overflow-hidden rounded-3xl border border-emerald-200/60 bg-gradient-to-br from-emerald-50 via-white to-teal-50 p-6 shadow-sm dark:border-emerald-900/40 dark:from-emerald-950/30 dark:via-slate-950 dark:to-teal-950/20 md:p-8">
         <div className="pointer-events-none absolute -right-8 -top-8 h-40 w-40 rounded-full bg-emerald-400/20 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-10 left-1/3 h-32 w-32 rounded-full bg-teal-400/15 blur-3xl" />
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
             <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-emerald-200/80 bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
@@ -191,23 +230,21 @@ export default function SchoolWebsitesPanel({
               School Websites
             </h2>
             <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              Enable the premium public website for each school. Sites live at{' '}
-              <code className="rounded-md bg-white/80 px-1.5 py-0.5 text-xs font-semibold text-emerald-800 dark:bg-slate-900/80 dark:text-emerald-300">
-                school.{domainSuffix}
-              </code>{' '}
-              — you can customize the <strong>school</strong> part per tenant.
+              Portal: <code className="rounded bg-white/80 px-1.5 py-0.5 text-xs">{`{slug}.scholarnerve.com`}</code>
+              {' · '}
+              Public site:{' '}
+              <code className="rounded bg-white/80 px-1.5 py-0.5 text-xs">{`{public-slug}-{suffix}.scholarnerve.com`}</code>
             </p>
           </div>
           <div className="rounded-2xl border border-white/80 bg-white/70 px-4 py-3 text-xs text-muted-foreground backdrop-blur dark:border-slate-800 dark:bg-slate-900/60">
             <p className="font-semibold text-slate-800 dark:text-slate-100">URL format</p>
             <p className="mt-1 font-mono text-[11px] text-emerald-700 dark:text-emerald-300">
-              {'{subdomain}.'}{domainSuffix}
+              {'{slug}-{suffix}.scholarnerve.com'}
             </p>
           </div>
         </div>
       </div>
 
-      {/* Stats */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard
           label="Feature enabled"
@@ -260,7 +297,7 @@ export default function SchoolWebsitesPanel({
                 Website activation requests
               </h3>
               <p className="mt-1 text-xs text-muted-foreground">
-                Messages from schools requesting the ScholarNerve website feature — enable the toggle below each school when ready.
+                Enable the toggle below each school when ready.
               </p>
             </div>
             <Badge variant="destructive" className="w-fit rounded-full">
@@ -279,25 +316,20 @@ export default function SchoolWebsitesPanel({
                   </div>
                   {req.requested_by_name ? (
                     <p className="mt-1 text-xs text-muted-foreground">
-                      From: <span className="font-medium text-slate-700 dark:text-slate-200">{req.requested_by_name}</span>
+                      From: <span className="font-medium">{req.requested_by_name}</span>
                     </p>
                   ) : null}
                   <div className="mt-3 rounded-xl border border-rose-100 bg-white/90 p-4 dark:border-rose-900/30 dark:bg-slate-900/50">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Message</p>
-                    <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-800 dark:text-slate-100">
-                      {req.message}
-                    </p>
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed">{req.message}</p>
                   </div>
                 </div>
-                <div className="flex shrink-0 flex-wrap gap-2 lg:flex-col lg:items-stretch">
-                  <Button
-                    size="sm"
-                    className="h-10 rounded-xl bg-emerald-600 hover:bg-emerald-700"
-                    onClick={() => void toggle(Number(req.tenant_id), true)}
-                  >
-                    Enable website
-                  </Button>
-                </div>
+                <Button
+                  size="sm"
+                  className="h-10 rounded-xl bg-emerald-600 hover:bg-emerald-700"
+                  onClick={() => void toggle(Number(req.tenant_id), true)}
+                >
+                  Enable website
+                </Button>
               </div>
             ))}
           </div>
@@ -315,7 +347,7 @@ export default function SchoolWebsitesPanel({
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search school or domain…"
+              placeholder="Search school or suffix…"
               className="h-10 rounded-xl pl-9"
             />
           </div>
@@ -329,18 +361,25 @@ export default function SchoolWebsitesPanel({
               const tenantId = Number(s.tenant_id);
               const pendingReq = pendingByTenant.get(tenantId);
               const tenantSlug = String(s.slug || '');
-              const effectiveSub = getEffectiveWebsiteSubdomain(
+              const savedSuffix = normalizeWebsiteUrlSuffix(
+                String(s.website_url_suffix || DEFAULT_WEBSITE_URL_SUFFIX)
+              );
+              const draftSuffix = normalizeWebsiteUrlSuffix(suffixDrafts[tenantId] ?? savedSuffix);
+              const savedPublicSlug = getEffectivePublicWebsiteSlug(
                 tenantSlug,
                 s.public_subdomain as string | null | undefined
               );
-              const url = tenantSlug ? getSchoolWebsitePublicUrl(effectiveSub) : '';
-              const draft = subdomainDrafts[tenantId] ?? effectiveSub;
-              const customDomain = String(s.public_subdomain || '').trim().length > 0;
+              const draftPublicSlug = normalizePublicWebsiteSlug(slugDrafts[tenantId] ?? savedPublicSlug);
+              const previewHost = tenantSlug ? `${draftPublicSlug}-${draftSuffix}.scholarnerve.com` : '';
+              const publicUrl =
+                String(s.public_site_url || '') ||
+                (tenantSlug ? getSchoolWebsitePublicUrl(tenantSlug, savedSuffix, s.public_subdomain as string | null) : '');
+              const portalUrl = tenantSlug ? getPortalPublicUrl(tenantSlug) : '';
 
               return (
                 <div
                   key={String(s.tenant_id)}
-                  className="grid gap-5 px-5 py-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1.4fr)_auto] lg:items-center"
+                  className="grid gap-5 px-5 py-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1.5fr)_auto] lg:items-center"
                 >
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
@@ -359,17 +398,9 @@ export default function SchoolWebsitesPanel({
                         </Badge>
                       )}
                     </div>
-                    {pendingReq ? (
-                      <p className="mt-2 line-clamp-2 rounded-lg border border-rose-100 bg-rose-50/80 px-3 py-2 text-xs leading-relaxed text-rose-950 dark:border-rose-900/40 dark:bg-rose-950/20 dark:text-rose-100">
-                        <span className="font-semibold">Message: </span>
-                        {pendingReq.message}
-                      </p>
-                    ) : null}
                     <p className="mt-1 text-xs text-muted-foreground">
                       Portal slug: <span className="font-mono">{tenantSlug || '—'}</span>
-                      {customDomain && (
-                        <span className="ml-2 text-emerald-700 dark:text-emerald-300">· custom domain</span>
-                      )}
+                      <span className="ml-2 text-muted-foreground">(not editable here)</span>
                     </p>
                     <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
                       <span>{Number(s.pending_applications || 0)} pending apps</span>
@@ -377,61 +408,91 @@ export default function SchoolWebsitesPanel({
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                      Public domain
-                    </label>
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                      <div className="flex min-w-0 flex-1 items-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/50">
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                        Public website slug
+                      </label>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                         <Input
-                          value={draft}
+                          value={draftPublicSlug}
                           onChange={(e) =>
-                            setSubdomainDrafts((prev) => ({
+                            setSlugDrafts((prev) => ({
                               ...prev,
-                              [tenantId]: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''),
+                              [tenantId]: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 63),
                             }))
                           }
-                          className="h-10 border-0 bg-transparent font-mono text-sm shadow-none focus-visible:ring-0"
-                          placeholder="school-name"
+                          className="h-10 rounded-xl font-mono text-sm"
+                          placeholder={tenantSlug || 'school-slug'}
                         />
-                        <span className="shrink-0 border-l border-slate-200 px-3 py-2 text-xs text-muted-foreground dark:border-slate-700">
-                          .{domainSuffix}
-                        </span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-10 shrink-0 rounded-xl"
+                          disabled={savingSlug === tenantId}
+                          onClick={() => void savePublicSlug(tenantId, tenantSlug)}
+                        >
+                          {savingSlug === tenantId ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save slug'}
+                        </Button>
                       </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-10 shrink-0 rounded-xl"
-                        disabled={savingSubdomain === tenantId}
-                        onClick={() => void saveSubdomain(tenantId, tenantSlug)}
-                      >
-                        {savingSubdomain === tenantId ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          'Save domain'
-                        )}
-                      </Button>
+                      <p className="text-[11px] text-muted-foreground">
+                        Leave matching the portal slug to use the default. Only affects the public website URL.
+                      </p>
                     </div>
-                    {url && (
-                      <p className="truncate font-mono text-[11px] text-emerald-700 dark:text-emerald-300">{url}</p>
-                    )}
+
+                    <div className="space-y-2">
+                      <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                        Website URL suffix
+                      </label>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <div className="flex min-w-0 flex-1 items-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50 font-mono text-sm dark:border-slate-700 dark:bg-slate-900/50">
+                          <span className="shrink-0 px-3 py-2 text-muted-foreground">{draftPublicSlug}-</span>
+                          <Input
+                            value={draftSuffix}
+                            onChange={(e) =>
+                              setSuffixDrafts((prev) => ({
+                                ...prev,
+                                [tenantId]: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 20),
+                              }))
+                            }
+                            className="h-10 border-0 bg-transparent shadow-none focus-visible:ring-0"
+                            placeholder="edu"
+                          />
+                          <span className="shrink-0 border-l border-slate-200 px-3 py-2 text-xs text-muted-foreground dark:border-slate-700">
+                            .scholarnerve.com
+                          </span>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-10 shrink-0 rounded-xl"
+                          disabled={savingSuffix === tenantId}
+                          onClick={() => void saveSuffix(tenantId, tenantSlug)}
+                        >
+                          {savingSuffix === tenantId ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save suffix'}
+                        </Button>
+                      </div>
+                      {previewHost && (
+                        <p className="truncate font-mono text-[11px] text-emerald-700 dark:text-emerald-300">
+                          Preview: {previewHost}
+                        </p>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-3 lg:justify-end">
                     <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 dark:border-slate-700">
                       <span className="text-xs font-medium text-muted-foreground">Feature</span>
-                      <Switch
-                        checked={!!s.is_enabled}
-                        onCheckedChange={(v) => void toggle(tenantId, v)}
-                      />
+                      <Switch checked={!!s.is_enabled} onCheckedChange={(v) => void toggle(tenantId, v)} />
                     </div>
-                    {url && (
+                    {publicUrl && (
                       <>
                         <Button
                           size="sm"
                           variant="outline"
                           className="h-10 rounded-xl"
-                          onClick={() => void copyUrl(tenantId, url)}
+                          onClick={() => void copyUrl(tenantId, publicUrl)}
+                          title="Copy public site URL"
                         >
                           {copiedId === tenantId ? (
                             <Check className="h-4 w-4 text-emerald-600" />
@@ -442,11 +503,21 @@ export default function SchoolWebsitesPanel({
                         <Button
                           size="sm"
                           className="h-10 rounded-xl bg-emerald-600 hover:bg-emerald-700"
-                          onClick={() => window.open(url, '_blank')}
+                          onClick={() => window.open(publicUrl, '_blank')}
                         >
                           <ExternalLink className="h-4 w-4" />
-                          Open site
+                          Public site
                         </Button>
+                        {portalUrl && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-10 rounded-xl"
+                            onClick={() => window.open(portalUrl, '_blank')}
+                          >
+                            Portal
+                          </Button>
+                        )}
                       </>
                     )}
                   </div>

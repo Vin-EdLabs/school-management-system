@@ -273,15 +273,19 @@ function ActivationRequestPanel({
 export default function WebsiteFeaturePromo({
   schoolName,
   logoUrl,
+  previewUrl: previewUrlProp,
   subdomain,
   onRefresh,
 }: {
   schoolName: string;
   logoUrl: string | null;
-  subdomain: string;
+  previewUrl?: string;
+  /** @deprecated use previewUrl */
+  subdomain?: string;
   onRefresh?: () => void;
 }) {
-  const previewUrl = subdomain ? getSchoolWebsitePublicUrl(subdomain) : '';
+  const previewUrl =
+    previewUrlProp || (subdomain ? getSchoolWebsitePublicUrl(subdomain) : '');
 
   return (
     <div className="min-h-full animate-in fade-in duration-500">
@@ -337,7 +341,7 @@ export default function WebsiteFeaturePromo({
               ) : null}
             </div>
             <div className="w-full max-w-md shrink-0 lg:max-w-sm xl:max-w-md">
-              <BrowserMock url={previewUrl || 'yourschool.edu.scholarnerve.com'} schoolName={schoolName} />
+              <BrowserMock url={previewUrl || 'yourschool-edu.scholarnerve.com'} schoolName={schoolName} />
             </div>
           </div>
         </div>

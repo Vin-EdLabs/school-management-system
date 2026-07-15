@@ -1,3 +1,5 @@
+import { isSchoolWebsiteHost } from './schoolWebsiteHost';
+
 export function detectTenantSlugFromHost(hostname: string = window.location.hostname): string | null {
   let host = hostname.toLowerCase();
   if (!host) return null;
@@ -7,6 +9,8 @@ export function detectTenantSlugFromHost(hostname: string = window.location.host
   if (host.startsWith('www.')) {
     host = host.substring(4);
   }
+
+  if (isSchoolWebsiteHost(host)) return null;
 
   // Exclude main application domains directly
   const excludedDomains = [
@@ -27,11 +31,7 @@ export function detectTenantSlugFromHost(hostname: string = window.location.host
     return parts.length >= 3 ? parts[0] : null;
   }
 
-  // Public school websites: {subdomain}.edu.* or legacy schoolsite.*
-  if (parts.length >= 3 && (parts[1] === 'edu' || parts[1] === 'schoolsite')) return null;
-
-  const reservedSubdomains = ['www', 'api', 'app', 'admin', 'dev', 'staging', 'scholarnerve', 'portal', 'school', 'schoolsite', 'edu'];
-  if (reservedSubdomains.includes(parts[0])) return null;
+  const reservedSubdomains = ['www', 'api', 'app', 'admin', 'dev', 'staging', 'scholarnerve', 'portal', 'school', 'schoolsite', 'edu'];  if (reservedSubdomains.includes(parts[0])) return null;
 
   // Production wildcard domains:
   // For .onrender.com (3 parts: appname.onrender.com), we need 4 parts for a tenant (tenant.appname.onrender.com)

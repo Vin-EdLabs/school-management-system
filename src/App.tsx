@@ -25,7 +25,14 @@ import RegisterSchool from "./pages/RegisterSchool";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import { ParentPortalRoute } from "./pages/ParentPortal";
 import { detectTenantSlugFromHost, getSubdomainUrl, normalizeLegacyPathOnSubdomain } from "./utils/tenantHost";
-import { detectSchoolWebsiteSlugFromHost } from "./utils/schoolWebsiteHost";
+import {
+  buildLegacyRedirectUrl,
+  DEFAULT_WEBSITE_URL_SUFFIX,
+  detectSchoolWebsiteSlugFromHost,
+  getSchoolWebsitePublicUrl,
+  parseLegacySchoolWebsiteHost,
+  parsePublicWebsiteHost,
+} from "./utils/schoolWebsiteHost";
 import SchoolWebsiteApp from "./pages/school-website/SchoolWebsiteApp";
 import { PLATFORM_ADMIN_PATH } from '@/constants/platformAdminRoute';
 import { NetworkStatusBanner } from "@/components/ui/NetworkStatusBanner";
@@ -74,6 +81,63 @@ const SubdomainPathNormalizer = () => {
     }
   }, [location.pathname, location.search, location.hash, navigate]);
 
+  return null;
+};
+
+const SchoolWebsiteCanonicalRedirect = () => {
+  React.useEffect(() => {
+    const legacy = parseLegacySchoolWebsiteHost(window.location.hostname);
+    if (legacy) {
+      const targetBase = buildLegacyRedirectUrl(legacy.slug, DEFAULT_WEBSITE_URL_SUFFIX);
+      const target = new URL(targetBase);
+      target.pathname = window.location.pathname;
+      target.search = window.location.search;
+      target.hash = window.location.hash;
+      if (target.origin !== window.location.origin) {
+        window.location.replace(target.toString());
+      }
+      return;
+    }
+
+    const parsed = parsePublicWebsiteHost(window.location.hostname);
+    if (!parsed) return;
+
+    const apiBase =
+      import.meta.env.VITE_API_BASE_URL ||
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        ? 'http://localhost:3001/api'
+        : `${window.location.protocol}//${window.location.host}/api`);
+
+    void fetch(
+      `${apiBase}/public-website/site?host=${encodeURIComponent(window.location.hostname)}`,
+      { headers: { 'X-Tenant-Slug': parsed.slug } }
+    )
+      .then(async (res) => {
+        if (!res.ok) return;
+        const bundle = (await res.json()) as {
+          website?: {
+            slug?: string;
+            public_subdomain?: string | null;
+            effective_public_subdomain?: string;
+            website_url_suffix?: string;
+          };
+          tenant?: { slug?: string };
+        };
+        const effective = bundle.website?.effective_public_subdomain;
+        const suffix = bundle.website?.website_url_suffix || 'edu';
+        if (!effective || (parsed.slug === effective && parsed.suffix === suffix)) return;
+        const tenantSlug = bundle.website?.slug || bundle.tenant?.slug || parsed.slug;
+        const targetBase = getSchoolWebsitePublicUrl(tenantSlug, suffix, bundle.website?.public_subdomain);
+        const target = new URL(targetBase);
+        target.pathname = window.location.pathname;
+        target.search = window.location.search;
+        target.hash = window.location.hash;
+        if (target.hostname !== window.location.hostname) {
+          window.location.replace(target.toString());
+        }
+      })
+      .catch(() => {});
+  }, []);
   return null;
 };
 
@@ -349,6 +413,7 @@ const App = () => {
               <Toaster />
               <Sonner />
               <SubdomainPathNormalizer />
+              <SchoolWebsiteCanonicalRedirect />
                 {websiteSlug ? (
                   <Routes>
                     <Route path="/*" element={<SchoolWebsiteApp slug={websiteSlug} />} />

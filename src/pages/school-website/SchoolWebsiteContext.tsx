@@ -3,6 +3,11 @@ import {
   type PublicWebsiteBundle,
   schoolWebsitePublicService,
 } from '@/services/schoolWebsiteService';
+import {
+  detectSchoolWebsiteSlugFromHost,
+  detectSchoolWebsiteSuffixFromHost,
+  getSchoolWebsitePublicUrl,
+} from '@/utils/schoolWebsiteHost';
 
 type Ctx = {
   slug: string;
@@ -32,7 +37,32 @@ export function SchoolWebsiteProvider({
     setError(null);
     void schoolWebsitePublicService
       .getSite(slug)
-      .then(setData)
+      .then((bundle) => {
+        setData(bundle);
+        const hostSlug = detectSchoolWebsiteSlugFromHost();
+        const hostSuffix = detectSchoolWebsiteSuffixFromHost();
+        const effective = bundle.website?.effective_public_subdomain;
+        const canonicalSuffix = bundle.website?.website_url_suffix || 'edu';
+        const tenantSlug = bundle.website?.slug || bundle.tenant?.slug || slug;
+        if (
+          hostSlug &&
+          effective &&
+          (hostSlug !== effective || (hostSuffix && hostSuffix !== canonicalSuffix))
+        ) {
+          const targetBase = getSchoolWebsitePublicUrl(
+            tenantSlug,
+            canonicalSuffix,
+            bundle.website?.public_subdomain
+          );
+          const target = new URL(targetBase);
+          target.pathname = window.location.pathname;
+          target.search = window.location.search;
+          target.hash = window.location.hash;
+          if (target.hostname !== window.location.hostname) {
+            window.location.replace(target.toString());
+          }
+        }
+      })
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load website'))
       .finally(() => setLoading(false));
   }, [slug]);

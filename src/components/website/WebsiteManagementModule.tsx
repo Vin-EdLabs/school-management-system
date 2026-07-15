@@ -58,7 +58,7 @@ import {
   type WebsiteEvent,
   type WebsiteEventImage,
 } from '@/services/schoolWebsiteService';
-import { getEffectiveWebsiteSubdomain, getSchoolWebsitePublicUrl } from '@/utils/schoolWebsiteHost';
+import { DEFAULT_WEBSITE_URL_SUFFIX, getSchoolWebsitePublicUrl } from '@/utils/schoolWebsiteHost';
 import { useSchool } from '@/contexts/SchoolContext';
 import { resolveLogoUrl } from '@/services/tenantService';
 import WebsiteApplicationDetailsDialog, {
@@ -403,11 +403,13 @@ export default function WebsiteManagementModule() {
   const [statusSaving, setStatusSaving] = useState(false);
 
   const slug = String(overview.slug || '');
-  const publicSubdomain = getEffectiveWebsiteSubdomain(
-    slug,
-    overview.public_subdomain as string | null | undefined
+  const websiteSuffix = String(overview.website_url_suffix || DEFAULT_WEBSITE_URL_SUFFIX);
+  const effectivePublicSlug = String(
+    overview.effective_public_subdomain || overview.slug || ''
   );
-  const liveUrl = slug ? getSchoolWebsitePublicUrl(publicSubdomain) : '';
+  const liveUrl = slug
+    ? getSchoolWebsitePublicUrl(slug, websiteSuffix, overview.public_subdomain as string | null)
+    : '';
   const pendingCount = applications.filter((a) => a.status === 'pending').length;
   const pendingEmployment = employmentApps.filter((a) => a.status === 'pending').length;
   const unreadAlumni =
@@ -685,7 +687,7 @@ export default function WebsiteManagementModule() {
       <WebsiteFeaturePromo
         schoolName={String(school?.name || overview.school_name || 'Your school')}
         logoUrl={portalLogo}
-        subdomain={publicSubdomain}
+        previewUrl={liveUrl}
         onRefresh={() => void loadAll()}
       />
     );
@@ -812,7 +814,7 @@ export default function WebsiteManagementModule() {
                   ScholarNerve manages
                 </p>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Turning the website module on or off for your school, public subdomain ({publicSubdomain || 'your-school'}.edu…), and platform hosting.
+                  Turning the website module on or off for your school, public URL ({effectivePublicSlug}-{websiteSuffix}.scholarnerve.com), and platform hosting.
                 </p>
               </div>
             </div>
@@ -956,10 +958,31 @@ export default function WebsiteManagementModule() {
                 <p className="mt-1 text-sm text-muted-foreground">Share this link on flyers, social media, and with parents.</p>
               </div>
               <div className="space-y-4 p-6">
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 truncate rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 text-xs dark:border-slate-800 dark:bg-slate-900/50">
-                    {liveUrl || '—'}
-                  </code>
+                <div className="flex flex-wrap items-center gap-2">
+                  {liveUrl ? (
+                    <a
+                      href={liveUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 truncate rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 text-xs text-indigo-700 underline-offset-2 hover:underline dark:border-slate-800 dark:bg-slate-900/50 dark:text-indigo-300"
+                    >
+                      {liveUrl}
+                    </a>
+                  ) : (
+                    <code className="flex-1 truncate rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 text-xs dark:border-slate-800 dark:bg-slate-900/50">
+                      —
+                    </code>
+                  )}
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="h-11 w-11 shrink-0 rounded-xl"
+                    disabled={!liveUrl}
+                    onClick={() => liveUrl && window.open(liveUrl, '_blank')}
+                    title="Open public site"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                  </Button>
                   <Button
                     size="icon"
                     variant="outline"
@@ -975,7 +998,11 @@ export default function WebsiteManagementModule() {
                   </Button>
                 </div>
                 <p className="text-xs leading-relaxed text-muted-foreground">
-                  Your subdomain is managed by ScholarNerve. Contact support if you need it changed.
+                  Your public website lives at{' '}
+                  <strong>
+                    {effectivePublicSlug}-{websiteSuffix}.scholarnerve.com
+                  </strong>
+                  . The public slug and suffix are managed by ScholarNerve in the Super Admin panel.
                 </p>
               </div>
             </div>

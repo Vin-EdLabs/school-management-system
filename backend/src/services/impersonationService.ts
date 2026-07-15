@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
 import { query } from '../db/connection.js';
 import { writeAuditLog } from './auditService.js';
 
@@ -207,7 +208,6 @@ export async function ensureParentAccountForStudent(tenantId: number, studentPk:
         String(studentRes.rows[0]?.student_id || '').trim() ||
         String(studentRes.rows[0]?.admission_number || '').trim() ||
         `S${studentPk}`;
-      const bcrypt = await import('bcryptjs');
       const hash = await bcrypt.hash(String(loginId), 10);
       await query(
         `UPDATE parent_portal_accounts SET password_hash = $1 WHERE id = $2 AND tenant_id = $3`,
@@ -227,7 +227,6 @@ export async function ensureParentAccountForStudent(tenantId: number, studentPk:
     String(studentRes.rows[0].admission_number || '').trim() ||
     `S${studentPk}`;
 
-  const bcrypt = await import('bcryptjs');
   const hash = await bcrypt.hash(String(loginId), 10);
   const inserted = await query(
     `INSERT INTO parent_portal_accounts (tenant_id, student_id, password_hash, must_change_password, is_active)

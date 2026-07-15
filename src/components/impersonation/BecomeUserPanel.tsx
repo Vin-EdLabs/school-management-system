@@ -10,6 +10,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useSchool } from '../../contexts/SchoolContext';
 import { apiService } from '../../services/api';
 import { Eye, Loader2, Search, UserRoundSearch, X } from 'lucide-react';
+import { parentImpersonationErrorDescription } from '../../utils/impersonationHelpers';
 import { toast } from '@/hooks/use-toast';
 
 type SearchRow = {
@@ -123,7 +124,7 @@ const BecomeUserPanel: React.FC<Props> = ({ open, onClose }) => {
     } catch (e: unknown) {
       toast({
         title: 'Could not become user',
-        description: e instanceof Error ? e.message : 'Try another ID',
+        description: parentImpersonationErrorDescription(e),
         variant: 'destructive',
       });
     }
@@ -142,7 +143,12 @@ const BecomeUserPanel: React.FC<Props> = ({ open, onClose }) => {
     } catch (e: unknown) {
       toast({
         title: 'Could not become user',
-        description: e instanceof Error ? e.message : 'Try again',
+        description:
+          row.kind === 'parent'
+            ? parentImpersonationErrorDescription(e)
+            : e instanceof Error
+              ? e.message
+              : 'Try again',
         variant: 'destructive',
       });
     }

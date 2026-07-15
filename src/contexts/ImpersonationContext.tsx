@@ -15,6 +15,7 @@ import {
   saveAdminBackup,
   saveStaffImpersonationToken,
   exitStaffImpersonation,
+  parentImpersonationErrorDescription,
   prepareReturnToAdminDashboard,
   applyPostExitTenantContext,
   resolvePostImpersonationPath,
@@ -297,7 +298,7 @@ export const ImpersonationProvider: React.FC<{ children: React.ReactNode; return
         clearImpersonationTransition();
         toast({
           title: 'Could not become user',
-          description: e instanceof Error ? e.message : 'Try another ID or student name',
+          description: parentImpersonationErrorDescription(e),
           variant: 'destructive',
         });
       } finally {
@@ -340,7 +341,7 @@ export const ImpersonationProvider: React.FC<{ children: React.ReactNode; return
         clearImpersonationTransition();
         toast({
           title: 'Could not open parent portal',
-          description: e instanceof Error ? e.message : 'Try another student',
+          description: parentImpersonationErrorDescription(e),
           variant: 'destructive',
         });
       } finally {

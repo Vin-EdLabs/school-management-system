@@ -13,6 +13,33 @@ export const PARENT_IMPERSONATE_HANDOFF_KEY = 'parent_impersonate_handoff';
 /** Set before /school/:id redirect so tenant lookup is skipped on arrival */
 export const STAFF_IMPERSONATE_HANDOFF_KEY = 'staff_impersonate_handoff';
 export const IMPERSONATION_TRANSITION_CHANGED_EVENT = 'impersonation-transition-changed';
+
+/** Shown when parent portal view-as fails and no specific API error is available. */
+export const PARENT_PORTAL_ACCOUNT_REQUIRED_MESSAGE =
+  'Please create a parent account for the student';
+
+export function parentImpersonationErrorDescription(error: unknown): string {
+  if (!(error instanceof Error) || !error.message.trim()) {
+    return PARENT_PORTAL_ACCOUNT_REQUIRED_MESSAGE;
+  }
+  const msg = error.message.trim();
+  const generic = new Set([
+    'User not found',
+    'Student not found',
+    'Student not found in this school',
+    'Parent impersonation failed',
+    'Could not open parent portal',
+    'No teacher, staff user, or student matched that ID',
+    'Try another ID',
+    'Try again',
+    'Try another student',
+    'Try another ID or student name',
+  ]);
+  if (generic.has(msg) || msg.startsWith('Could not open parent portal (HTTP')) {
+    return PARENT_PORTAL_ACCOUNT_REQUIRED_MESSAGE;
+  }
+  return msg;
+}
 export const IMPERSONATION_TRANSITION_MSG_KEY = 'impersonation_transition_msg';
 export const IMPERSONATION_TRANSITION_PHASE_KEY = 'impersonation_transition_phase';
 export const IMPERSONATION_TRANSITION_STARTED_KEY = 'impersonation_transition_started';
@@ -206,9 +233,9 @@ export async function bootstrapParentImpersonationSession(
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(
-        typeof err?.error === 'string'
+        typeof err?.error === 'string' && err.error.trim()
           ? err.error
-          : `Could not open parent portal (HTTP ${res.status})`
+          : PARENT_PORTAL_ACCOUNT_REQUIRED_MESSAGE
       );
     }
     const me = (await res.json()) as Record<string, unknown>;
@@ -220,7 +247,7 @@ export async function bootstrapParentImpersonationSession(
     return true;
   } catch (e: unknown) {
     clearParentImpersonationLocal(tenantId);
-    throw e instanceof Error ? e : new Error('Could not open parent portal');
+    throw e instanceof Error ? e : new Error(PARENT_PORTAL_ACCOUNT_REQUIRED_MESSAGE);
   }
 }
 

@@ -256,7 +256,7 @@ router.post('/start-parent', async (req: AuthRequest, res) => {
     if (identifier) {
       const student = await resolveStudentForParentPortal(tenantId, String(identifier));
       if (!student) {
-        return res.status(404).json({ error: 'Student not found in this school' });
+        return res.status(404).json({ error: 'Please create a parent account for the student' });
       }
       studentPk = student.studentPk;
       studentDisplayId = student.studentDisplayId;
@@ -318,7 +318,7 @@ router.post('/start-parent', async (req: AuthRequest, res) => {
     });
   } catch (error: any) {
     console.error('parent impersonation error:', error);
-    res.status(500).json({ error: error?.message || 'Parent impersonation failed' });
+    res.status(500).json({ error: error?.message || 'Please create a parent account for the student' });
   }
 });
 
